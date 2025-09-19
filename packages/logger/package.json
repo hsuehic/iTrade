@@ -1,0 +1,38 @@
+{
+  "name": "@crypto-trading/logger",
+  "version": "0.1.0",
+  "description": "Structured logging system for crypto trading operations",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && cp dist/logger/src/index.d.ts dist/ && cp dist/logger/src/index.d.ts.map dist/ 2>/dev/null || true",
+    "dev": "tsdown src/index.ts --format esm --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@crypto-trading/core": "workspace:*",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/winston": "^2.4.4",
+    "tsdown": "^0.2.16"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

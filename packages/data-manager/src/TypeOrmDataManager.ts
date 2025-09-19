@@ -1,0 +1,468 @@
+import 'reflect-metadata';
+import { DataSource, Repository, LessThanOrEqual } from 'typeorm';
+import { IDataManager, Kline } from '@crypto-trading/core';
+import { KlineEntity } from './entities/KlineEntity';
+import { SymbolEntity } from './entities/SymbolEntity';
+import { DataQualityEntity } from './entities/DataQualityEntity';
+
+export interface TypeOrmDataManagerConfig {
+  type: 'postgres' | 'mysql';
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  database: string;
+  ssl?: boolean;
+  logging?: boolean | 'all' | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
+  synchronize?: boolean;
+  migrationsRun?: boolean;
+  extra?: any;
+}
+
+export class TypeOrmDataManager implements IDataManager {
+  private dataSource!: DataSource;
+  private klineRepository!: Repository<KlineEntity>;
+  private symbolRepository!: Repository<SymbolEntity>;
+  private dataQualityRepository!: Repository<DataQualityEntity>;
+  private isInitialized = false;
+
+  constructor(private config: TypeOrmDataManagerConfig) {}
+
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+
+    this.dataSource = new DataSource({
+      type: this.config.type,
+      host: this.config.host,
+      port: this.config.port,
+      username: this.config.username,
+      password: this.config.password,
+      database: this.config.database,
+      ssl: this.config.ssl,
+      synchronize: this.config.synchronize ?? false,
+      migrationsRun: this.config.migrationsRun ?? true,
+      logging: this.config.logging ?? false,
+      entities: [KlineEntity, SymbolEntity, DataQualityEntity],
+      extra: this.config.extra || {}
+    });
+
+    await this.dataSource.initialize();
+
+    this.klineRepository = this.dataSource.getRepository(KlineEntity);
+    this.symbolRepository = this.dataSource.getRepository(SymbolEntity);
+    this.dataQualityRepository = this.dataSource.getRepository(DataQualityEntity);
+
+    this.isInitialized = true;
+  }
+
+  async close(): Promise<void> {
+    if (this.dataSource?.isInitialized) {
+      await this.dataSource.destroy();
+      this.isInitialized = false;
+    }
+  }
+
+  async getKlines(
+    symbol: string,
+    interval: string,
+    startTime: Date,
+    endTime: Date,
+    limit?: number
+  ): Promise<Kline[]> {
+    this.ensureInitialized();
+
+    const queryBuilder = this.klineRepository
+      .createQueryBuilder('kline')
+      .where('kline.symbol = :symbol', { symbol })
+      .andWhere('kline.interval = :interval', { interval })
+      .andWhere('kline.openTime >= :startTime', { startTime })
+      .andWhere('kline.openTime <= :endTime', { endTime })
+      .orderBy('kline.openTime', 'ASC');
+
+    if (limit) {
+      queryBuilder.limit(limit);
+    }
+
+    const entities = await queryBuilder.getMany();
+
+    return entities.map(entity => this.entityToKline(entity));
+  }
+
+  async saveKlines(symbol: string, interval: string, klines: Kline[]): Promise<void> {
+    if (klines.length === 0) return;
+
+    this.ensureInitialized();
+
+    const entities = klines.map(kline => this.klineToEntity(kline));
+
+    // Use upsert to handle duplicates
+    await this.klineRepository.upsert(entities, {
+      conflictPaths: ['symbol', 'interval', 'openTime'],
+      skipUpdateIfNoValuesChanged: true
+    });
+
+    // Update data quality metrics
+    await this.updateDataQuality(symbol, interval);
+  }
+
+  async batchSaveKlines(klinesData: { symbol: string; interval: string; klines: Kline[] }[]): Promise<void> {
+    this.ensureInitialized();
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      for (const { symbol: _symbol, interval: _interval, klines } of klinesData) {
+        if (klines.length === 0) continue;
+
+        const entities = klines.map(kline => this.klineToEntity(kline));
+        
+        await queryRunner.manager.upsert(KlineEntity, entities, {
+          conflictPaths: ['symbol', 'interval', 'openTime'],
+          skipUpdateIfNoValuesChanged: true
+        });
+      }
+
+      await queryRunner.commitTransaction();
+
+      // Update data quality for all symbols
+      for (const { symbol, interval } of klinesData) {
+        await this.updateDataQuality(symbol, interval);
+      }
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async getLatestKlines(symbols: string[], interval: string, limit: number = 1): Promise<Map<string, Kline[]>> {
+    this.ensureInitialized();
+
+    const results = new Map<string, Kline[]>();
+
+    for (const symbol of symbols) {
+      const entities = await this.klineRepository.find({
+        where: { symbol, interval },
+        order: { openTime: 'DESC' },
+        take: limit
+      });
+
+      results.set(symbol, entities.map(entity => this.entityToKline(entity)));
+    }
+
+    return results;
+  }
+
+  async validateData(symbol: string, interval: string): Promise<boolean> {
+    this.ensureInitialized();
+
+    const count = await this.klineRepository.count({
+      where: { symbol, interval }
+    });
+
+    return count > 0;
+  }
+
+  async cleanData(symbol: string, interval: string): Promise<number> {
+    this.ensureInitialized();
+
+    // Find and remove duplicates
+    const duplicateQuery = `
+      DELETE k1 FROM klines k1
+      INNER JOIN klines k2 
+      WHERE k1.id > k2.id 
+      AND k1.symbol = k2.symbol 
+      AND k1.interval = k2.interval 
+      AND k1.openTime = k2.openTime
+    `;
+
+    const result = await this.dataSource.query(duplicateQuery);
+    const deletedCount = result.affectedRows || 0;
+
+    // Update data quality after cleanup
+    await this.updateDataQuality(symbol, interval);
+
+    return deletedCount;
+  }
+
+  async getAvailableSymbols(): Promise<string[]> {
+    this.ensureInitialized();
+
+    const entities = await this.symbolRepository.find({
+      where: { isActive: true },
+      select: ['symbol'],
+      order: { symbol: 'ASC' }
+    });
+
+    return entities.map(entity => entity.symbol);
+  }
+
+  async getAvailableIntervals(symbol: string): Promise<string[]> {
+    this.ensureInitialized();
+
+    const intervals = await this.klineRepository
+      .createQueryBuilder('kline')
+      .select('DISTINCT kline.interval', 'interval')
+      .where('kline.symbol = :symbol', { symbol })
+      .getRawMany();
+
+    return intervals.map(row => row.interval).sort();
+  }
+
+  async addSymbol(symbolData: {
+    symbol: string;
+    baseAsset: string;
+    quoteAsset: string;
+    exchange?: string;
+    baseAssetPrecision?: number;
+    quoteAssetPrecision?: number;
+    orderTypes?: string[];
+    timeInForces?: string[];
+    filters?: any;
+  }): Promise<void> {
+    this.ensureInitialized();
+
+    const entity = this.symbolRepository.create({
+      symbol: symbolData.symbol,
+      baseAsset: symbolData.baseAsset,
+      quoteAsset: symbolData.quoteAsset,
+      exchange: symbolData.exchange || 'binance',
+      baseAssetPrecision: symbolData.baseAssetPrecision || 8,
+      quoteAssetPrecision: symbolData.quoteAssetPrecision || 8,
+      orderTypes: symbolData.orderTypes,
+      timeInForces: symbolData.timeInForces,
+      filters: symbolData.filters ? JSON.stringify(symbolData.filters) : undefined
+    });
+
+    await this.symbolRepository.save(entity);
+  }
+
+  async getDataQualityMetrics(symbol: string, interval: string): Promise<{
+    totalRecords: number;
+    missingCandles: number;
+    duplicateCandles: number;
+    dataCompleteness: number;
+    firstCandleTime?: Date;
+    lastCandleTime?: Date;
+    lastUpdate?: Date;
+    avgGapMinutes: number;
+    maxGapMinutes: number;
+    issues: string[];
+  }> {
+    this.ensureInitialized();
+
+    const quality = await this.dataQualityRepository.findOne({
+      where: { symbol, interval }
+    });
+
+    if (!quality) {
+      // Calculate and store quality metrics if not exists
+      await this.updateDataQuality(symbol, interval);
+      return this.getDataQualityMetrics(symbol, interval);
+    }
+
+    return {
+      totalRecords: quality.totalRecords,
+      missingCandles: quality.missingCandles,
+      duplicateCandles: quality.duplicateCandles,
+      dataCompleteness: quality.completenessPercent,
+      firstCandleTime: quality.firstCandleTime,
+      lastCandleTime: quality.lastCandleTime,
+      lastUpdate: quality.lastUpdateTime,
+      avgGapMinutes: quality.avgGapMinutes,
+      maxGapMinutes: quality.maxGapMinutes,
+      issues: quality.issues ? JSON.parse(quality.issues) : []
+    };
+  }
+
+  async saveTrades(symbol: string, trades: any[]): Promise<void> {
+    // TODO: Implement trades storage with TypeORM entity
+    console.warn(`saveTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, trades: ${trades.length}`);
+  }
+
+  async getTrades(symbol: string, startTime: Date, endTime: Date, limit?: number): Promise<any[]> {
+    // TODO: Implement trades retrieval with TypeORM entity
+    console.warn(`getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`);
+    return [];
+  }
+
+  async deleteOldData(symbol: string, interval: string, olderThan: Date): Promise<number> {
+    this.ensureInitialized();
+
+    const result = await this.klineRepository.delete({
+      symbol,
+      interval,
+      openTime: LessThanOrEqual(olderThan)
+    });
+
+    return result.affected || 0;
+  }
+
+  async getDataSizeStats(): Promise<{
+    totalRecords: number;
+    uniqueSymbols: number;
+    uniqueIntervals: number;
+    oldestRecord?: Date;
+    newestRecord?: Date;
+    databaseSizeMB?: number;
+  }> {
+    this.ensureInitialized();
+
+    const [totalRecords, symbols, intervals, oldest, newest] = await Promise.all([
+      this.klineRepository.count(),
+      this.klineRepository
+        .createQueryBuilder('kline')
+        .select('COUNT(DISTINCT kline.symbol)', 'count')
+        .getRawOne(),
+      this.klineRepository
+        .createQueryBuilder('kline')
+        .select('COUNT(DISTINCT kline.interval)', 'count')
+        .getRawOne(),
+      this.klineRepository.findOne({ order: { openTime: 'ASC' } }),
+      this.klineRepository.findOne({ order: { openTime: 'DESC' } })
+    ]);
+
+    return {
+      totalRecords,
+      uniqueSymbols: parseInt(symbols.count),
+      uniqueIntervals: parseInt(intervals.count),
+      oldestRecord: oldest?.openTime,
+      newestRecord: newest?.openTime
+    };
+  }
+
+  private ensureInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error('TypeOrmDataManager not initialized. Call initialize() first.');
+    }
+  }
+
+  private entityToKline(entity: KlineEntity): Kline {
+    return {
+      symbol: entity.symbol,
+      interval: entity.interval,
+      openTime: entity.openTime,
+      closeTime: entity.closeTime,
+      open: entity.open,
+      high: entity.high,
+      low: entity.low,
+      close: entity.close,
+      volume: entity.volume,
+      quoteVolume: entity.quoteVolume,
+      trades: entity.trades,
+      takerBuyBaseVolume: entity.takerBuyBaseVolume,
+      takerBuyQuoteVolume: entity.takerBuyQuoteVolume
+    };
+  }
+
+  private klineToEntity(kline: Kline): Partial<KlineEntity> {
+    return {
+      symbol: kline.symbol,
+      interval: kline.interval,
+      openTime: kline.openTime,
+      closeTime: kline.closeTime,
+      open: kline.open,
+      high: kline.high,
+      low: kline.low,
+      close: kline.close,
+      volume: kline.volume,
+      quoteVolume: kline.quoteVolume,
+      trades: kline.trades,
+      takerBuyBaseVolume: kline.takerBuyBaseVolume,
+      takerBuyQuoteVolume: kline.takerBuyQuoteVolume
+    };
+  }
+
+  private async updateDataQuality(symbol: string, interval: string): Promise<void> {
+    const stats = await this.calculateDataQualityStats(symbol, interval);
+    
+    await this.dataQualityRepository.upsert(
+      {
+        symbol,
+        interval,
+        ...stats
+      },
+      ['symbol', 'interval']
+    );
+  }
+
+  private async calculateDataQualityStats(symbol: string, interval: string): Promise<Partial<DataQualityEntity>> {
+    const klines = await this.klineRepository.find({
+      where: { symbol, interval },
+      order: { openTime: 'ASC' }
+    });
+
+    if (klines.length === 0) {
+      return {
+        totalRecords: 0,
+        missingCandles: 0,
+        duplicateCandles: 0,
+        completenessPercent: 0
+      };
+    }
+
+    const totalRecords = klines.length;
+    const firstCandle = klines[0];
+    const lastCandle = klines[klines.length - 1];
+    
+    // Calculate expected candles based on interval
+    const intervalMs = this.intervalToMilliseconds(interval);
+    const expectedCandles = Math.floor(
+      (lastCandle.openTime.getTime() - firstCandle.openTime.getTime()) / intervalMs
+    ) + 1;
+    
+    const missingCandles = Math.max(0, expectedCandles - totalRecords);
+    const completenessPercent = expectedCandles > 0 ? (totalRecords / expectedCandles) * 100 : 100;
+
+    // Calculate gaps
+    const gaps: number[] = [];
+    for (let i = 1; i < klines.length; i++) {
+      const expectedNextTime = klines[i - 1].openTime.getTime() + intervalMs;
+      const actualTime = klines[i].openTime.getTime();
+      const gapMs = actualTime - expectedNextTime;
+      
+      if (gapMs > 0) {
+        gaps.push(Math.floor(gapMs / (1000 * 60))); // Convert to minutes
+      }
+    }
+
+    const avgGapMinutes = gaps.length > 0 ? Math.floor(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0;
+    const maxGapMinutes = gaps.length > 0 ? Math.max(...gaps) : 0;
+
+    return {
+      totalRecords,
+      missingCandles,
+      duplicateCandles: 0, // Would need more complex query to detect
+      completenessPercent: Math.round(completenessPercent * 100) / 100,
+      firstCandleTime: firstCandle.openTime,
+      lastCandleTime: lastCandle.openTime,
+      lastUpdateTime: new Date(),
+      avgGapMinutes,
+      maxGapMinutes
+    };
+  }
+
+  private intervalToMilliseconds(interval: string): number {
+    const match = interval.match(/^(\d+)([smhdwMy])$/);
+    if (!match) {
+      throw new Error(`Invalid interval format: ${interval}`);
+    }
+
+    const value = parseInt(match[1]);
+    const unit = match[2];
+
+    switch (unit) {
+      case 's': return value * 1000;
+      case 'm': return value * 60 * 1000;
+      case 'h': return value * 60 * 60 * 1000;
+      case 'd': return value * 24 * 60 * 60 * 1000;
+      case 'w': return value * 7 * 24 * 60 * 60 * 1000;
+      case 'M': return value * 30 * 24 * 60 * 60 * 1000; // Approximation
+      case 'y': return value * 365 * 24 * 60 * 60 * 1000; // Approximation
+      default: throw new Error(`Unknown interval unit: ${unit}`);
+    }
+  }
+}

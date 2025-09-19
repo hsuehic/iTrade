@@ -1,0 +1,42 @@
+{
+  "name": "@crypto-trading/data-manager",
+  "version": "0.1.0",
+  "description": "Data management and historical data handling for crypto trading",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && cp dist/data-manager/src/index.d.ts dist/ && cp dist/data-manager/src/index.d.ts.map dist/ 2>/dev/null || true",
+    "dev": "tsdown src/index.ts --format esm --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@crypto-trading/core": "workspace:*",
+    "decimal.js": "^10.4.3",
+    "node-csv": "^0.1.2",
+    "typeorm": "^0.3.17",
+    "pg": "^8.11.3",
+    "mysql2": "^3.6.5",
+    "reflect-metadata": "^0.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "@types/pg": "^8.10.9",
+    "tsdown": "^0.2.16"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
