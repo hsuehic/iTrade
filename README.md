@@ -1,4 +1,6 @@
-# Crypto Currency Trading Monorepo
+# iTrade
+
+AI(i, same pronounce with Chinese character 爱) trade, intelligent trade.
 
 A comprehensive cryptocurrency trading platform with strategy backtesting, built as a monorepo using pnpm.
 
@@ -21,7 +23,7 @@ This monorepo is organized into packages and applications:
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - pnpm 8+
 
 ### Installation

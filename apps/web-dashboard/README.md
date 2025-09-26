@@ -1,3 +1,3 @@
-# Web Dashboard
+# Web Dashboard of iTrade
 
 ## Context

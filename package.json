@@ -1,5 +1,5 @@
 {
-  "name": "crypto-trading-monorepo",
+  "name": "itrade",
   "version": "0.1.0",
   "private": true,
   "description": "Cryptocurrency trading strategies and backtesting monorepo",
