@@ -5,6 +5,25 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(body: Center(child: Text('Dashboard')));
+    return Scaffold(
+      body: const Center(child: Text('Dashboard')),
+
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final String? result =
+              await Navigator.of(context).pushNamed('/scan-qr') as String?;
+
+          if (result != null) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('QR Code: $result')));
+          }
+        },
+
+        tooltip: 'Scan QR',
+        icon: const Icon(Icons.qr_code_scanner),
+        label: const Text('Scan'),
+      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
   }
 }

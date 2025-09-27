@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:developer' as developer;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:ihsueh_itrade/screens/echart.dart';
+import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:uni_links/uni_links.dart';
 
 import 'services/api_client.dart';
@@ -25,8 +26,7 @@ Future<void> main() async {
   } catch (e) {
     // If config files are missing, keep app running and log a hint.
     // Add GoogleService-Info.plist (iOS) and google-services.json (Android), or configure via FlutterFire.
-    // ignore: avoid_print
-    print('Firebase initialization failed: $e');
+    developer.log('Firebase initialization failed', name: 'main', error: e);
   }
 
   if (firebaseReady) {
@@ -73,7 +73,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (_) => const LoginScreen(),
         '/home': (_) => const MyHomePage(title: 'iTrade'),
-        '/scan-qr': (_) => const EchartScreen(),
+        '/scan-qr': (_) => const QrScanScreen(),
       },
     );
   }
@@ -101,7 +101,7 @@ class _AuthGateState extends State<AuthGate> {
       final bool ok = await ApiClient.instance.hasSession();
       if (!mounted) return;
       setState(() {
-        _hasSession = true; // TODO: to set it with ok
+        _hasSession = ok;
         _loading = false;
       });
     } catch (_) {
@@ -168,6 +168,7 @@ class _MyHomePageState extends State<MyHomePage> {
     // fast, so that you can just rebuild anything that needs updating rather
     // than having to individually change instances of widgets.
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: null,
       body: SafeArea(top: true, bottom: false, child: _pages[_pageIndex]),
       bottomNavigationBar: DesignBottomNavBar(
@@ -181,24 +182,6 @@ class _MyHomePageState extends State<MyHomePage> {
           NavItemSpec(icon: Icons.manage_accounts, label: 'Profile'),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final String? result =
-              await Navigator.of(context).pushNamed('/scan-qr') as String?;
-          if (!mounted) {
-            return;
-          }
-          if (result != null) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('QR Code: $result')));
-          }
-        },
-
-        tooltip: 'Scan QR',
-        icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('Scan'),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 
@@ -214,12 +197,20 @@ class _MyHomePageState extends State<MyHomePage> {
       if (initial != null) {
         _handleIncomingUri(initial);
       }
-    } on PlatformException {
-      // ignore: avoid_print
-      print('Failed to get initial uri');
-    } on FormatException {
-      // ignore: avoid_print
-      print('Malformed initial uri');
+    } on PlatformException catch (e, st) {
+      developer.log(
+        'Failed to get initial uri',
+        name: 'DeepLinks',
+        error: e,
+        stackTrace: st,
+      );
+    } on FormatException catch (e, st) {
+      developer.log(
+        'Malformed initial uri',
+        name: 'DeepLinks',
+        error: e,
+        stackTrace: st,
+      );
     }
 
     _linkSubscription = uriLinkStream.listen(
@@ -228,9 +219,13 @@ class _MyHomePageState extends State<MyHomePage> {
           _handleIncomingUri(uri);
         }
       },
-      onError: (Object err) {
-        // ignore: avoid_print
-        print('uriLinkStream error: $err');
+      onError: (Object err, StackTrace st) {
+        developer.log(
+          'uriLinkStream error',
+          name: 'DeepLinks',
+          error: err,
+          stackTrace: st,
+        );
       },
     );
   }

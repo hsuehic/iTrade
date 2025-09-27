@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:ihsueh_itrade/services/api_client.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 
@@ -18,9 +19,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       // Best effort: inform server to clear session if endpoint exists
       try {
-        await ApiClient.instance.postJson('/api/auth/logout');
+        await ApiClient.instance.postJson(
+          '/api/auth/logout',
+          options: Options(
+            followRedirects: false,
+            validateStatus: (int? s) => s != null && s < 500,
+          ),
+        );
       } catch (err) {
-        print('Failed to logout: $err');
+        // Ignore logout errors; proceed to clear local session
       }
       await ApiClient.instance.clearCookies();
       await AuthService.instance.signOut();

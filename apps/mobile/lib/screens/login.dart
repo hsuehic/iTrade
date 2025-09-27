@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
-import 'package:ihsueh_itrade/services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,24 +23,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final String? idToken = await AuthService.instance.signInWithGoogle();
-      if (idToken == null) {
-        setState(() {
-          _loading = false;
-          _error = 'Sign-in cancelled or failed.';
-        });
+      final User? user = await AuthService.instance.signInWithGoogle();
+      if (user != null) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/home');
         return;
+      } else {
+        final String msg = 'Login failed';
+        setState(() => _error = msg);
       }
-
-      // Send idToken to backend callback URL to create session
-      // The server should set a session cookie in response
-      await ApiClient.instance.postJson(
-        '/api/auth/callback/google',
-        data: {'idToken': idToken},
-      );
-
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/home');
     } catch (e) {
       setState(() {
         _error = 'Login failed: $e';
@@ -71,15 +61,17 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      await ApiClient.instance.login(
-        '/api/auth/login',
-        data: {
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        },
+      final User? user = await AuthService.instance.signInWithCredentials(
+        _emailController.text.trim(),
+        _passwordController.text,
       );
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/home');
+      if (user != null) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/home');
+        return;
+      }
+      final String msg = 'Login failed';
+      setState(() => _error = msg);
     } catch (e) {
       setState(() {
         _error = 'Login failed: $e';
@@ -98,12 +90,14 @@ class _LoginScreenState extends State<LoginScreen> {
     final ThemeData theme = Theme.of(context);
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: SingleChildScrollView(
+          key: const PageStorageKey('login_scroll'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 20),
               Text(
                 'Welcome to iTrade',
                 style: theme.textTheme.headlineMedium?.copyWith(
@@ -111,13 +105,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 'Sign in to continue',
                 style: theme.textTheme.bodyLarge,
                 textAlign: TextAlign.center,
               ),
-              const Spacer(),
               if (_error != null)
                 Text(
                   _error!,
@@ -198,7 +191,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
                       SizedBox(
                         height: 48,
                         child: FilledButton(
@@ -210,7 +203,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ],
-              const Spacer(),
             ],
           ),
         ),

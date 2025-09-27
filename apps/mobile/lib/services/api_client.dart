@@ -108,7 +108,8 @@ class ApiClient {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      if (res.statusCode == 200) return true;
+      if (res.statusCode == 200 && res.data != null) return true;
+      return false;
     } catch (_) {
       // Ignore network/endpoint errors, fall back to cookie presence
     }
@@ -121,16 +122,6 @@ class ApiClient {
     } catch (_) {
       return false;
     }
-  }
-
-  /// Perform login; expects server to set session cookie via `Set-Cookie`.
-  Future<Response<dynamic>> login(
-    String path, {
-    required Map<String, dynamic> data,
-    Options? options,
-  }) async {
-    _ensureInitialized();
-    return _dio.post(path, data: data, options: options);
   }
 
   Future<Response<T>> getJson<T>(
