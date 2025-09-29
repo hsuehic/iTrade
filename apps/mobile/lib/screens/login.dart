@@ -45,13 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
   Future<void> _handleCredentialLogin() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -83,6 +76,13 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override

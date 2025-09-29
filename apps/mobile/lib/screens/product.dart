@@ -39,7 +39,7 @@ class _ProductScreenState extends State<ProductScreen>
     with AutomaticKeepAliveClientMixin {
   late final OKXDataService _okxService;
   final List<OKXKline> _klineData = [];
-  String _currentSymbol = 'BTC-USDT';
+  final _currentSymbol = 'BTC-USDT';
   double? _currentPrice;
   bool _isLoading = true;
   String _error = '';
@@ -70,7 +70,7 @@ class _ProductScreenState extends State<ProductScreen>
   // Time interval options for candlestick charts
   // time intervals list kept via chips below
 
-  String _currentTimeframe = '15m';
+  final _currentTimeframe = '15m';
 
   // connection status helpers removed
 
