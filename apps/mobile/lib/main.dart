@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ihsueh_itrade/screens/echart.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:uni_links/uni_links.dart';
 
@@ -11,10 +12,10 @@ import 'services/api_client.dart';
 import 'services/notification.dart';
 import 'screens/dashboard.dart';
 import 'screens/login.dart';
+import 'screens/forgot_password.dart';
 import 'screens/strategy.dart';
 import 'screens/product.dart';
 import 'screens/profile.dart';
-import 'screens/satistics.dart';
 import 'widgets/design_bottom_nav.dart';
 
 Future<void> main() async {
@@ -72,6 +73,7 @@ class MyApp extends StatelessWidget {
       home: const AuthGate(),
       routes: {
         '/login': (_) => const LoginScreen(),
+        '/forgot-password': (_) => const ForgotPasswordScreen(),
         '/home': (_) => const MyHomePage(title: 'iTrade'),
         '/scan-qr': (_) => const QrScanScreen(),
       },
@@ -148,7 +150,7 @@ class _MyHomePageState extends State<MyHomePage> {
     const DashboardScreen(),
     const StrategyScreen(),
     const ProductScreen(),
-    const StatisticsScreen(),
+    const EchartScreen(),
     const ProfileScreen(),
   ];
   StreamSubscription? _linkSubscription;

@@ -163,6 +163,20 @@ class ApiClient {
     }
   }
 
+  /// Debug helper: load cookies for the current base URL.
+  ///
+  /// Returns an empty list on errors or if cookies are unavailable.
+  Future<List<Cookie>> debugLoadCookiesForBaseUrl() async {
+    try {
+      if (_cookieJar == null) return <Cookie>[];
+      final Uri base = Uri.parse(_dio.options.baseUrl);
+      final List<Cookie> cookies = await _cookieJar!.loadForRequest(base);
+      return cookies;
+    } catch (_) {
+      return <Cookie>[];
+    }
+  }
+
   void _ensureInitialized() {
     if (!_initialized) {
       throw StateError(

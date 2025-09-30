@@ -64,10 +64,8 @@ class EchartScreen extends StatelessWidget {
         'scale': true,
         'splitArea': {'show': true},
       },
-      'dataZoom': [
-        {'type': 'inside', 'start': 50, 'end': 100},
-        {'show': true, 'type': 'slider', 'top': '90%'},
-      ],
+      // Disable interactive panning/zooming
+      'dataZoom': [],
       'series': [
         {
           'name': 'K线',
@@ -100,7 +98,32 @@ class EchartScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('K线图 (flutter_echarts)')),
       body: Column(
-        children: [Expanded(child: Echarts(option: jsonEncode(option)))],
+        children: [
+          Expanded(
+            child: Echarts(
+              option: jsonEncode(option),
+              // Prevent WebView bounce/overscroll (pull-to-refresh-like) behavior
+              extraScript: '''
+                (function(){
+                  try {
+                    var style = document.createElement('style');
+                    style.type = 'text/css';
+                    style.innerHTML = `
+                      html, body { height: 100%; margin: 0; overscroll-behavior: none; }
+                      /* Lock scrolling and rubber-banding */
+                      body { position: fixed; overflow: hidden; width: 100%; -webkit-overflow-scrolling: auto; touch-action: manipulation; }
+                      #chart { touch-action: manipulation; }
+                    `;
+                    document.head.appendChild(style);
+                  } catch (e) {
+                    console.log('style inject failed', e);
+                  }
+                })();
+              ''',
+            ),
+          ),
+          SizedBox(height: 160),
+        ],
       ),
     );
   }

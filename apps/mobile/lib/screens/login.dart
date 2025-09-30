@@ -11,7 +11,6 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _error;
-  bool _showEmailForm = false;
   bool _obscurePassword = true;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -99,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               const SizedBox(height: 20),
               Text(
-                'Welcome to iTrade',
+                'Welcome back',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -107,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Sign in to continue',
+                'Please sign in to your account',
                 style: theme.textTheme.bodyLarge,
                 textAlign: TextAlign.center,
               ),
@@ -119,90 +118,104 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: _loading ? null : _handleGoogleSignIn,
-                  icon: const Icon(Icons.login),
-                  label: Text(
-                    _loading ? 'Signing in...' : 'Sign in with Google',
-                  ),
+              const SizedBox(height: 16),
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _emailController,
+                      enabled: !_loading,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        final String v = (value ?? '').trim();
+                        if (v.isEmpty) return 'Email is required';
+                        if (!v.contains('@')) return 'Enter a valid email';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _passwordController,
+                      enabled: !_loading,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            );
+                          },
+                        ),
+                      ),
+                      obscureText: _obscurePassword,
+                      validator: (value) {
+                        final String v = value ?? '';
+                        if (v.isEmpty) return 'Password is required';
+                        if (v.length < 6) return 'At least 6 characters';
+                        return null;
+                      },
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                Navigator.of(
+                                  context,
+                                ).pushNamed('/forgot-password');
+                              },
+                        child: const Text('Forgot Password?'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: _loading ? null : _handleCredentialLogin,
+                        child: Text(_loading ? 'Signing in...' : 'Sign In'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),
-              TextButton(
-                onPressed: _loading
-                    ? null
-                    : () {
-                        setState(() => _showEmailForm = !_showEmailForm);
-                      },
-                child: Text(
-                  _showEmailForm ? 'Use Google instead' : 'Use email instead',
-                ),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: theme.dividerColor)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'or continue with',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  Expanded(child: Divider(color: theme.dividerColor)),
+                ],
               ),
-              if (_showEmailForm) ...[
-                const SizedBox(height: 12),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextFormField(
-                        controller: _emailController,
-                        enabled: !_loading,
-                        decoration: const InputDecoration(
-                          labelText: 'Email',
-                          prefixIcon: Icon(Icons.email_outlined),
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) {
-                          final String v = (value ?? '').trim();
-                          if (v.isEmpty) return 'Email is required';
-                          if (!v.contains('@')) return 'Enter a valid email';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _passwordController,
-                        enabled: !_loading,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () {
-                              setState(
-                                () => _obscurePassword = !_obscurePassword,
-                              );
-                            },
-                          ),
-                        ),
-                        obscureText: _obscurePassword,
-                        validator: (value) {
-                          final String v = value ?? '';
-                          if (v.isEmpty) return 'Password is required';
-                          if (v.length < 6) return 'At least 6 characters';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 48,
-                        child: FilledButton(
-                          onPressed: _loading ? null : _handleCredentialLogin,
-                          child: Text(_loading ? 'Signing in...' : 'Sign in'),
-                        ),
-                      ),
-                    ],
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed: _loading ? null : _handleGoogleSignIn,
+                  icon: const Icon(Icons.login),
+                  label: Text(
+                    _loading ? 'Signing in...' : 'Continue with Google',
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ),

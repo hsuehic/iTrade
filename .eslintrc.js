@@ -30,4 +30,4 @@ module.exports = {
     ],
   },
   ignorePatterns: ['dist', 'node_modules', '*.js'],
-}
+};

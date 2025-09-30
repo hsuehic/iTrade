@@ -13,6 +13,9 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.development
+.env.production
+.env.test
 
 # Logs
 logs/
@@ -33,11 +36,10 @@ coverage/
 *.lcov
 
 # IDE files
-.vscode/
 .idea/
 *.swp
 *.swo
-*~
+
 
 # OS generated files
 .DS_Store
