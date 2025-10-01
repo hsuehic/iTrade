@@ -1,79 +1,111 @@
-import tseslint from "typescript-eslint";
-import eslintPluginImport from "eslint-plugin-import";
-import prettier from "eslint-config-prettier";
-import { FlatCompat } from "@eslint/eslintrc";
-import eslintPluginPrettier from "eslint-plugin-prettier";
-
-const compat = new FlatCompat();
+import js from '@eslint/js';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import typescriptParser from '@typescript-eslint/parser';
+import importPlugin from 'eslint-plugin-import';
+import prettierPlugin from 'eslint-plugin-prettier';
+import globals from 'globals';
 
 export default [
-  // Global ignores (apply regardless of file types)
+  // 基础 JavaScript 配置
   {
-    ignores: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/.next/**",
-      "**/build/**",
-      "**/out/**",
-      "**/*.d.ts",
-      "eslint.config.mjs",
-    ],
+    ...js.configs.recommended,
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.es2020,
+        // 手动添加 React 相关全局变量
+        React: 'readonly',
+        JSX: 'readonly',
+      },
+    },
+    plugins: {
+      prettier: prettierPlugin,
+    },
+    rules: {
+      'prettier/prettier': 'error',
+    },
   },
 
-  // Base recommended + TypeScript
-  ...tseslint.configs.recommended,
-
-  // Next.js app (only apply to apps/web)
-  ...compat
-    .extends("next", "next/core-web-vitals", "next/typescript")
-    .map((cfg) => ({
-      ...cfg,
-      files: ["apps/web/**/*.{ts,tsx,js,jsx}"],
-      rules: {
-        ...(cfg.rules || {}),
-        "@next/next/no-html-link-for-pages": "off",
-      },
-    })),
-
-  // Import plugin rules
+  // TypeScript 配置
   {
-    plugins: { import: eslintPluginImport },
+    files: ['**/*.ts', '**/*.tsx'],
+    languageOptions: {
+      parser: typescriptParser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true, // 启用 JSX 支持
+        },
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.es2020,
+        React: 'readonly',
+        JSX: 'readonly',
+        NodeJS: 'readonly',
+      },
+    },
+    plugins: {
+      '@typescript-eslint': typescriptEslint,
+      import: importPlugin,
+      prettier: prettierPlugin,
+    },
     rules: {
-      "import/order": [
-        "error",
+      'prettier/prettier': 'error',
+      'no-prototype-builtins': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'all',
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+      '@typescript-eslint/no-explicit-any': 'warn',
+      'import/order': [
+        'error',
         {
           groups: [
-            "builtin",
-            "external",
-            "internal",
-            "parent",
-            "sibling",
-            "index",
+            'builtin',
+            'external',
+            'internal',
+            'parent',
+            'sibling',
+            'index',
           ],
-          "newlines-between": "always",
+          'newlines-between': 'always',
         },
       ],
     },
   },
 
-  // Project-specific customizations
+  // 忽略文件
   {
-    rules: {
-      "@typescript-eslint/no-unused-vars": "error",
-      "@typescript-eslint/no-explicit-any": "warn",
-    },
+    ignores: [
+      '**/dist/',
+      '**/node_modules/',
+      '**/build/',
+      '**/coverage/',
+      '**/.git/',
+      '**/.next/',
+      '**/out/',
+      '**/*.js',
+      '**/*.d.ts',
+      '**/*.min.js',
+      '**/package-lock.json',
+      '**/yarn.lock',
+      '**/pnpm-lock.yaml',
+      '**/.env*',
+      '**/.DS_Store',
+      '**/Thumbs.db',
+      '**/*.log',
+    ],
   },
-
-  // Run Prettier via ESLint so format-on-save works with the ESLint formatter
-  {
-    plugins: { prettier: eslintPluginPrettier },
-    rules: {
-      "prettier/prettier": "error",
-    },
-  },
-
-  // Prettier last to disable conflicting rules
-  prettier,
 ];
-
-

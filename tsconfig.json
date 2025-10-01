@@ -25,6 +25,6 @@
     },
     "types": ["node"]
   },
-  "include": ["packages/*/src/**/*", "apps/*/src/**/*"],
+  "include": ["packages/*/src/**/*", "apps/**/*"],
   "exclude": ["node_modules", "dist", "build"]
 }

@@ -130,9 +130,8 @@ export async function parallel<T>(
     const task = tasks[currentIndex];
 
     if (!task) return;
- 
-      results[currentIndex] = await task();
-     
+
+    results[currentIndex] = await task();
   };
 
   // Start initial batch
