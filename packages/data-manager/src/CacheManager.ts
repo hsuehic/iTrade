@@ -8,7 +8,7 @@ interface CacheEntry<T> {
 
 export interface CacheOptions {
   defaultTTL?: number; // Time to live in milliseconds
-  maxSize?: number;    // Maximum number of entries
+  maxSize?: number; // Maximum number of entries
 }
 
 export class CacheManager {
@@ -21,7 +21,11 @@ export class CacheManager {
     this.maxSize = options.maxSize || 1000;
   }
 
-  private generateKey(type: string, symbol: string, ...params: string[]): string {
+  private generateKey(
+    type: string,
+    symbol: string,
+    ...params: string[]
+  ): string {
     return [type, symbol, ...params].join(':');
   }
 
@@ -53,13 +57,13 @@ export class CacheManager {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
-      ttl: ttl || this.defaultTTL
+      ttl: ttl || this.defaultTTL,
     });
   }
 
   get<T>(key: string): T | null {
     const entry = this.cache.get(key);
-    
+
     if (!entry) {
       return null;
     }
@@ -107,7 +111,12 @@ export class CacheManager {
     return this.get<Trade[]>(key);
   }
 
-  setKlines(symbol: string, interval: string, klines: Kline[], ttl?: number): void {
+  setKlines(
+    symbol: string,
+    interval: string,
+    klines: Kline[],
+    ttl?: number
+  ): void {
     const key = this.generateKey('klines', symbol, interval);
     this.set(key, klines, ttl || 60000); // 1 minute for klines
   }
@@ -143,7 +152,7 @@ export class CacheManager {
     memoryUsage?: number;
   } {
     this.evictExpired();
-    
+
     return {
       size: this.cache.size,
       maxSize: this.maxSize,

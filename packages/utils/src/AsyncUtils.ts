@@ -1,7 +1,7 @@
 // Async Utility Functions
 
 export async function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function retry<T>(
@@ -19,21 +19,21 @@ export async function retry<T>(
     delay = 1000,
     backoff = 'exponential',
     maxDelay = 30000,
-    shouldRetry = () => true
+    shouldRetry = () => true,
   } = options;
 
   let lastError: Error;
-  
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      
+
       if (attempt === maxAttempts || !shouldRetry(lastError, attempt)) {
         throw lastError;
       }
-      
+
       // Calculate delay for next attempt
       let nextDelay = delay;
       switch (backoff) {
@@ -48,14 +48,14 @@ export async function retry<T>(
           nextDelay = delay;
           break;
       }
-      
+
       // Cap the delay at maxDelay
       nextDelay = Math.min(nextDelay, maxDelay);
-      
+
       await sleep(nextDelay);
     }
   }
-  
+
   throw lastError!;
 }
 
@@ -65,23 +65,23 @@ export function debounce<T extends (...args: any[]) => any>(
   immediate = false
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
-  
+
   return (...args: Parameters<T>) => {
     const later = () => {
       timeout = null;
-      if (!immediate) func.apply(null, args);
+      if (!immediate) func(...args);
     };
-    
+
     const callNow = immediate && !timeout;
-    
+
     if (timeout) {
       clearTimeout(timeout);
     }
-    
+
     timeout = setTimeout(later, wait);
-    
+
     if (callNow) {
-      func.apply(null, args);
+      func(...args);
     }
   };
 }
@@ -91,12 +91,12 @@ export function throttle<T extends (...args: any[]) => any>(
   limit: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean = false;
-  
+
   return (...args: Parameters<T>) => {
     if (!inThrottle) {
-      func.apply(null, args);
+      func(...args);
       inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
+      setTimeout(() => (inThrottle = false), limit);
     }
   };
 }
@@ -109,7 +109,7 @@ export async function timeout<T>(
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error(errorMessage)), ms);
   });
-  
+
   return Promise.race([promise, timeoutPromise]);
 }
 
@@ -118,37 +118,34 @@ export async function parallel<T>(
   concurrency = Infinity
 ): Promise<T[]> {
   if (concurrency >= tasks.length) {
-    return Promise.all(tasks.map(task => task()));
+    return Promise.all(tasks.map((task) => task()));
   }
-  
+
   const results: T[] = new Array(tasks.length);
   const executing: Promise<void>[] = [];
   let index = 0;
-  
+
   const executeNext = async (): Promise<void> => {
     const currentIndex = index++;
     const task = tasks[currentIndex];
-    
+
     if (!task) return;
-    
-    try {
+ 
       results[currentIndex] = await task();
-    } catch (error) {
-      throw error;
-    }
+     
   };
-  
+
   // Start initial batch
   for (let i = 0; i < Math.min(concurrency, tasks.length); i++) {
     executing.push(executeNext());
   }
-  
+
   // Process remaining tasks
   while (executing.length > 0) {
     await Promise.race(executing);
-    
+
     // Remove completed tasks and add new ones
-    const completedIndex = executing.findIndex(async p => {
+    const completedIndex = executing.findIndex(async (p) => {
       try {
         await p;
         return true;
@@ -156,29 +153,27 @@ export async function parallel<T>(
         return true;
       }
     });
-    
+
     if (completedIndex !== -1) {
       executing.splice(completedIndex, 1);
     }
-    
+
     if (index < tasks.length) {
       executing.push(executeNext());
     }
   }
-  
+
   return results;
 }
 
-export async function sequential<T>(
-  tasks: (() => Promise<T>)[]
-): Promise<T[]> {
+export async function sequential<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
   const results: T[] = [];
-  
+
   for (const task of tasks) {
     const result = await task();
     results.push(result);
   }
-  
+
   return results;
 }
 
@@ -187,11 +182,11 @@ export async function waterfall<T>(
   initialValue: any = undefined
 ): Promise<T> {
   let result = initialValue;
-  
+
   for (const task of tasks) {
     result = await task(result);
   }
-  
+
   return result;
 }
 
@@ -201,21 +196,21 @@ export function memoize<T extends (...args: any[]) => Promise<any>>(
   ttl?: number
 ): T {
   const cache = new Map<string, { value: any; timestamp: number }>();
-  
+
   const defaultKeyGenerator = (...args: any[]) => JSON.stringify(args);
   const getKey = keyGenerator || defaultKeyGenerator;
-  
+
   return (async (...args: Parameters<T>) => {
     const key = getKey(...args);
     const cached = cache.get(key);
-    
+
     if (cached && (!ttl || Date.now() - cached.timestamp < ttl)) {
       return cached.value;
     }
-    
+
     const result = await fn(...args);
     cache.set(key, { value: result, timestamp: Date.now() });
-    
+
     return result;
   }) as T;
 }
@@ -237,7 +232,11 @@ export class AsyncQueue<T> {
   }
 
   private async process(): Promise<void> {
-    if (this.processing || this.running >= this.concurrency || this.queue.length === 0) {
+    if (
+      this.processing ||
+      this.running >= this.concurrency ||
+      this.queue.length === 0
+    ) {
       return;
     }
 
@@ -245,7 +244,7 @@ export class AsyncQueue<T> {
     this.running++;
 
     const task = this.queue.shift()!;
-    
+
     try {
       const result = await task();
       this.results.push(result);
@@ -254,7 +253,7 @@ export class AsyncQueue<T> {
     } finally {
       this.running--;
       this.processing = false;
-      
+
       if (this.queue.length > 0) {
         setImmediate(() => this.process());
       }
@@ -288,7 +287,7 @@ export function deepClone<T>(obj: T): T {
   }
 
   if (obj instanceof Array) {
-    return obj.map(item => deepClone(item)) as unknown as T;
+    return obj.map((item) => deepClone(item)) as unknown as T;
   }
 
   if (typeof obj === 'object') {
@@ -311,16 +310,18 @@ export function deepMerge<T>(target: T, source: Partial<T>): T {
   for (const key in source) {
     if (source.hasOwnProperty(key)) {
       const sourceValue = source[key];
-      
+
       if (sourceValue === null || sourceValue === undefined) {
         continue;
       }
 
-      if (typeof sourceValue === 'object' && 
-          !Array.isArray(sourceValue) && 
-          typeof result[key] === 'object' && 
-          !Array.isArray(result[key]) &&
-          result[key] !== null) {
+      if (
+        typeof sourceValue === 'object' &&
+        !Array.isArray(sourceValue) &&
+        typeof result[key] === 'object' &&
+        !Array.isArray(result[key]) &&
+        result[key] !== null
+      ) {
         result[key] = deepMerge(result[key], sourceValue as any);
       } else {
         result[key] = deepClone(sourceValue) as any;
@@ -355,7 +356,7 @@ export class AsyncEventEmitter {
   async emit(event: string, ...args: any[]): Promise<void> {
     const listeners = this.events.get(event);
     if (listeners) {
-      await Promise.all(listeners.map(listener => listener(...args)));
+      await Promise.all(listeners.map((listener) => listener(...args)));
     }
   }
 

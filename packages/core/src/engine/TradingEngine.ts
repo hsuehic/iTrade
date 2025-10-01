@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -10,7 +11,13 @@ import {
   IPortfolioManager,
   ILogger,
 } from '../interfaces';
-import { Order, OrderSide, OrderType, Position, StrategyResult } from '../types';
+import {
+  Order,
+  OrderSide,
+  OrderType,
+  Position,
+  StrategyResult,
+} from '../types';
 import { EventBus } from '../events';
 
 export class TradingEngine extends EventEmitter implements ITradingEngine {
@@ -52,7 +59,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           await strategy.initialize(strategy.parameters);
           this.logger.info(`Strategy ${name} initialized successfully`);
         } catch (error) {
-          this.logger.error(`Failed to initialize strategy ${name}`, error as Error);
+          this.logger.error(
+            `Failed to initialize strategy ${name}`,
+            error as Error
+          );
           throw error;
         }
       }
@@ -67,7 +77,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._isRunning = true;
       this._eventBus.emitEngineStarted();
       this.logger.info('Trading engine started successfully');
-      
     } catch (error) {
       this._isRunning = false;
       this.logger.error('Failed to start trading engine', error as Error);
@@ -91,14 +100,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           await strategy.cleanup();
           this.logger.info(`Strategy ${name} cleaned up successfully`);
         } catch (error) {
-          this.logger.error(`Failed to cleanup strategy ${name}`, error as Error);
+          this.logger.error(
+            `Failed to cleanup strategy ${name}`,
+            error as Error
+          );
         }
       }
 
       this._isRunning = false;
       this._eventBus.emitEngineStopped();
       this.logger.info('Trading engine stopped successfully');
-      
     } catch (error) {
       this.logger.error('Error stopping trading engine', error as Error);
       this._eventBus.emitEngineError(error as Error);
@@ -149,10 +160,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     this.logger.info(`Removed exchange: ${name}`);
   }
 
-  public async onMarketData(
-    symbol: string,
-    data: any
-  ): Promise<void> {
+  public async onMarketData(symbol: string, data: any): Promise<void> {
     if (!this._isRunning) {
       return;
     }
@@ -162,7 +170,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       for (const [strategyName, strategy] of this._strategies) {
         try {
           const result = await strategy.analyze({ ticker: data });
-          
+
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
               strategyName,
@@ -179,7 +187,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
-          this.logger.error(`Error in strategy ${strategyName}`, error as Error);
+          this.logger.error(
+            `Error in strategy ${strategyName}`,
+            error as Error
+          );
           this._eventBus.emitStrategyError(strategyName, error as Error);
         }
       }
@@ -221,9 +232,15 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     };
 
     // Check risk limits
-    const riskCheckPassed = await this.riskManager.checkOrderRisk(order, positions, balances);
+    const riskCheckPassed = await this.riskManager.checkOrderRisk(
+      order,
+      positions,
+      balances
+    );
     if (!riskCheckPassed) {
-      const error = new Error(`Order rejected by risk manager: ${JSON.stringify(order)}`);
+      const error = new Error(
+        `Order rejected by risk manager: ${JSON.stringify(order)}`
+      );
       this.logger.error('Order rejected by risk manager', error, { order });
       throw error;
     }
@@ -254,7 +271,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
       this.logger.logTrade('Order executed', { order: executedOrder });
       return executedOrder;
-
     } catch (error) {
       this.logger.error('Failed to execute order', error as Error, { order });
       throw error;
@@ -267,7 +283,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
   public async getPosition(symbol: string): Promise<Position | undefined> {
     const positions = await this.getPositions();
-    return positions.find(p => p.symbol === symbol);
+    return positions.find((p) => p.symbol === symbol);
   }
 
   private async executeStrategySignal(
@@ -302,12 +318,15 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         confidence: signal.confidence,
         reason: signal.reason,
       });
-
     } catch (error) {
-      this.logger.error(`Failed to execute strategy signal for ${strategyName}`, error as Error, {
-        symbol,
-        signal,
-      });
+      this.logger.error(
+        `Failed to execute strategy signal for ${strategyName}`,
+        error as Error,
+        {
+          symbol,
+          signal,
+        }
+      );
     }
   }
 
@@ -329,8 +348,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private setupEventListeners(): void {
     // Listen for risk events
     this._eventBus.onRiskLimitExceeded(async (data) => {
-      this.logger.logRisk('Risk limit exceeded', data as unknown as Record<string, unknown>);
-      
+      this.logger.logRisk(
+        'Risk limit exceeded',
+        data as unknown as Record<string, unknown>
+      );
+
       if (data.severity === 'critical') {
         this.logger.warn('Critical risk limit exceeded, stopping engine');
         await this.stop();
@@ -353,7 +375,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           this.notifyStrategiesOrderFilled(order);
           break;
         case 'PARTIALLY_FILLED':
-          this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
+          this._eventBus.emitOrderPartiallyFilled({
+            order,
+            timestamp: new Date(),
+          });
           break;
         case 'CANCELED':
           this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
@@ -388,7 +413,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       try {
         await strategy.onOrderFilled(order);
       } catch (error) {
-        this.logger.error(`Error notifying strategy ${name} of order fill`, error as Error);
+        this.logger.error(
+          `Error notifying strategy ${name} of order fill`,
+          error as Error
+        );
       }
     }
   }

@@ -1,8 +1,8 @@
 import { EventEmitter } from 'events';
+
 import axios, { AxiosInstance } from 'axios';
 import WebSocket from 'ws';
 import { Decimal } from 'decimal.js';
-
 import {
   IExchange,
   Order,
@@ -25,7 +25,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
   protected wsConnections = new Map<string, WebSocket>();
   protected credentials?: ExchangeCredentials;
   protected _isConnected = false;
-  
+
   protected subscriptions = new Map<string, Set<string>>();
 
   constructor(
@@ -38,7 +38,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
       baseURL: this.baseUrl,
       timeout: 30000,
     });
-    
+
     this.setupHttpInterceptors();
   }
 
@@ -48,7 +48,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
 
   public async connect(credentials: ExchangeCredentials): Promise<void> {
     this.credentials = credentials;
-    
+
     try {
       // Test connection with a simple API call
       await this.testConnection();
@@ -70,14 +70,17 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     }
     this.wsConnections.clear();
     this.subscriptions.clear();
-    
+
     this._isConnected = false;
     this.emit('disconnected', this.name);
   }
 
   // Abstract methods that each exchange must implement
   public abstract getTicker(symbol: string): Promise<Ticker>;
-  public abstract getOrderBook(symbol: string, limit?: number): Promise<OrderBook>;
+  public abstract getOrderBook(
+    symbol: string,
+    limit?: number
+  ): Promise<OrderBook>;
   public abstract getTrades(symbol: string, limit?: number): Promise<Trade[]>;
   public abstract getKlines(
     symbol: string,
@@ -98,10 +101,21 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     clientOrderId?: string
   ): Promise<Order>;
 
-  public abstract cancelOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order>;
-  public abstract getOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order>;
+  public abstract cancelOrder(
+    symbol: string,
+    orderId: string,
+    clientOrderId?: string
+  ): Promise<Order>;
+  public abstract getOrder(
+    symbol: string,
+    orderId: string,
+    clientOrderId?: string
+  ): Promise<Order>;
   public abstract getOpenOrders(symbol?: string): Promise<Order[]>;
-  public abstract getOrderHistory(symbol?: string, limit?: number): Promise<Order[]>;
+  public abstract getOrderHistory(
+    symbol?: string,
+    limit?: number
+  ): Promise<Order[]>;
 
   public abstract getAccountInfo(): Promise<AccountInfo>;
   public abstract getBalances(): Promise<Balance[]>;
@@ -123,21 +137,27 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     await this.subscribe('trades', symbol);
   }
 
-  public async subscribeToKlines(symbol: string, interval: string): Promise<void> {
+  public async subscribeToKlines(
+    symbol: string,
+    interval: string
+  ): Promise<void> {
     await this.subscribe('klines', `${symbol}@${interval}`);
   }
 
-  public async unsubscribe(symbol: string, type: 'ticker' | 'orderbook' | 'trades' | 'klines'): Promise<void> {
+  public async unsubscribe(
+    symbol: string,
+    type: 'ticker' | 'orderbook' | 'trades' | 'klines'
+  ): Promise<void> {
     const key = type === 'klines' ? symbol : `${type}:${symbol}`;
     const subscriptions = this.subscriptions.get(type);
-    
+
     if (subscriptions) {
       subscriptions.delete(key);
       if (subscriptions.size === 0) {
         this.subscriptions.delete(type);
       }
     }
-    
+
     // Close WebSocket connection if no more subscriptions
     if (this.subscriptions.size === 0) {
       const ws = this.wsConnections.get('market');
@@ -150,30 +170,32 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
 
   // Protected helper methods
   protected abstract testConnection(): Promise<void>;
-  protected abstract signRequest(params: Record<string, any>): Record<string, any>;
+  protected abstract signRequest(
+    params: Record<string, any>
+  ): Record<string, any>;
 
   protected async subscribe(type: string, symbol: string): Promise<void> {
     if (!this.subscriptions.has(type)) {
       this.subscriptions.set(type, new Set());
     }
     this.subscriptions.get(type)!.add(symbol);
-    
+
     // Create WebSocket connection if it doesn't exist
     if (!this.wsConnections.has('market')) {
       await this.createWebSocketConnection();
     }
-    
+
     await this.sendWebSocketSubscription(type, symbol);
   }
 
   protected async createWebSocketConnection(): Promise<void> {
     const wsUrl = this.buildWebSocketUrl();
     const ws = new WebSocket(wsUrl);
-    
+
     ws.on('open', () => {
       this.emit('ws_connected', this.name);
     });
-    
+
     ws.on('message', (data: string) => {
       try {
         const message = JSON.parse(data);
@@ -182,30 +204,33 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
         this.emit('ws_error', error);
       }
     });
-    
+
     ws.on('close', (code: number, reason: string) => {
       this.emit('ws_disconnected', this.name, code, reason);
       this.wsConnections.delete('market');
-      
+
       // Reconnect if connection was not deliberately closed
       if (this._isConnected && code !== 1000) {
         setTimeout(() => {
-          this.createWebSocketConnection().catch(error => {
+          this.createWebSocketConnection().catch((error) => {
             this.emit('ws_error', error);
           });
         }, 5000);
       }
     });
-    
+
     ws.on('error', (error: Error) => {
       this.emit('ws_error', error);
     });
-    
+
     this.wsConnections.set('market', ws);
   }
 
   protected abstract buildWebSocketUrl(): string;
-  protected abstract sendWebSocketSubscription(type: string, symbol: string): Promise<void>;
+  protected abstract sendWebSocketSubscription(
+    type: string,
+    symbol: string
+  ): Promise<void>;
   protected abstract handleWebSocketMessage(message: any): void;
 
   protected setupHttpInterceptors(): void {

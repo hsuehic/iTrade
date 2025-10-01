@@ -22,7 +22,8 @@
     "baseUrl": ".",
     "paths": {
       "@crypto-trading/*": ["packages/*/src"]
-    }
+    },
+    "types": ["node"]
   },
   "include": ["packages/*/src/**/*", "apps/*/src/**/*"],
   "exclude": ["node_modules", "dist", "build"]

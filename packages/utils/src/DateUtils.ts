@@ -3,15 +3,24 @@ import 'moment-timezone';
 
 export class DateUtils {
   // Date Formatting
-  static formatTimestamp(date: Date | number, format = 'YYYY-MM-DD HH:mm:ss'): string {
+  static formatTimestamp(
+    date: Date | number,
+    format = 'YYYY-MM-DD HH:mm:ss'
+  ): string {
     return moment(date).format(format);
   }
 
-  static formatUTC(date: Date | number, format = 'YYYY-MM-DD HH:mm:ss'): string {
+  static formatUTC(
+    date: Date | number,
+    format = 'YYYY-MM-DD HH:mm:ss'
+  ): string {
     return moment(date).utc().format(format);
   }
 
-  static formatTimestampMs(timestampMs: number, format = 'YYYY-MM-DD HH:mm:ss'): string {
+  static formatTimestampMs(
+    timestampMs: number,
+    format = 'YYYY-MM-DD HH:mm:ss'
+  ): string {
     return moment(timestampMs).format(format);
   }
 
@@ -109,13 +118,17 @@ export class DateUtils {
     const marketTime = moment(date).tz(timezone);
     const hour = marketTime.hour();
     const dayOfWeek = marketTime.day();
-    
+
     // Traditional market hours: 9:30 AM - 4:00 PM, Monday-Friday
     return dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 9 && hour < 16;
   }
 
   // Time Range Generation
-  static generateDateRange(startDate: Date, endDate: Date, interval: 'day' | 'hour' | 'minute' = 'day'): Date[] {
+  static generateDateRange(
+    startDate: Date,
+    endDate: Date,
+    interval: 'day' | 'hour' | 'minute' = 'day'
+  ): Date[] {
     const dates: Date[] = [];
     let current = moment(startDate);
     const end = moment(endDate);
@@ -129,8 +142,9 @@ export class DateUtils {
   }
 
   static generateTradingDateRange(startDate: Date, endDate: Date): Date[] {
-    return this.generateDateRange(startDate, endDate, 'day')
-      .filter(date => this.isWeekday(date));
+    return this.generateDateRange(startDate, endDate, 'day').filter((date) =>
+      this.isWeekday(date)
+    );
   }
 
   // Time Zone Utilities
@@ -187,7 +201,7 @@ export class DateUtils {
   // Duration Formatting
   static formatDuration(durationMs: number): string {
     const duration = moment.duration(durationMs);
-    
+
     if (duration.asDays() >= 1) {
       return `${Math.floor(duration.asDays())}d ${duration.hours()}h ${duration.minutes()}m`;
     } else if (duration.asHours() >= 1) {
@@ -201,7 +215,7 @@ export class DateUtils {
 
   static formatShortDuration(durationMs: number): string {
     const duration = moment.duration(durationMs);
-    
+
     if (duration.asDays() >= 1) {
       return `${Math.floor(duration.asDays())}d`;
     } else if (duration.asHours() >= 1) {
@@ -238,11 +252,16 @@ export class DateUtils {
     const unit = match[2];
 
     switch (unit) {
-      case 's': return value * 1000;
-      case 'm': return value * 60 * 1000;
-      case 'h': return value * 60 * 60 * 1000;
-      case 'd': return value * 24 * 60 * 60 * 1000;
-      default: throw new Error(`Unknown interval unit: ${unit}`);
+      case 's':
+        return value * 1000;
+      case 'm':
+        return value * 60 * 1000;
+      case 'h':
+        return value * 60 * 60 * 1000;
+      case 'd':
+        return value * 24 * 60 * 60 * 1000;
+      default:
+        throw new Error(`Unknown interval unit: ${unit}`);
     }
   }
 

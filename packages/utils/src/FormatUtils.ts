@@ -2,7 +2,10 @@ import { Decimal } from 'decimal.js';
 
 export class FormatUtils {
   // Number Formatting
-  static formatDecimal(value: Decimal | string | number, decimals: number = 2): string {
+  static formatDecimal(
+    value: Decimal | string | number,
+    decimals: number = 2
+  ): string {
     try {
       const decimal = new Decimal(value);
       return decimal.toFixed(decimals);
@@ -11,7 +14,10 @@ export class FormatUtils {
     }
   }
 
-  static formatPrice(price: Decimal | string | number, decimals: number = 2): string {
+  static formatPrice(
+    price: Decimal | string | number,
+    decimals: number = 2
+  ): string {
     try {
       const decimal = new Decimal(price);
       return decimal.toFixed(decimals);
@@ -20,11 +26,15 @@ export class FormatUtils {
     }
   }
 
-  static formatCurrency(amount: Decimal | string | number, currency: string = 'USD', decimals: number = 2): string {
+  static formatCurrency(
+    amount: Decimal | string | number,
+    currency: string = 'USD',
+    decimals: number = 2
+  ): string {
     try {
       const decimal = new Decimal(amount);
       const formatted = decimal.toFixed(decimals);
-      
+
       if (currency === 'USD') {
         return `$${formatted}`;
       } else {
@@ -35,7 +45,10 @@ export class FormatUtils {
     }
   }
 
-  static formatPercentage(value: Decimal | string | number, decimals: number = 2): string {
+  static formatPercentage(
+    value: Decimal | string | number,
+    decimals: number = 2
+  ): string {
     try {
       const decimal = new Decimal(value);
       return `${decimal.toFixed(decimals)}%`;
@@ -44,16 +57,19 @@ export class FormatUtils {
     }
   }
 
-  static formatQuantity(quantity: Decimal | string | number, decimals: number = 8): string {
+  static formatQuantity(
+    quantity: Decimal | string | number,
+    decimals: number = 8
+  ): string {
     try {
       const decimal = new Decimal(quantity);
-      
+
       // Remove trailing zeros
       let formatted = decimal.toFixed(decimals);
       if (formatted.includes('.')) {
         formatted = formatted.replace(/\.?0+$/, '');
       }
-      
+
       return formatted;
     } catch {
       return '0';
@@ -61,11 +77,14 @@ export class FormatUtils {
   }
 
   // Large Number Formatting
-  static formatLargeNumber(value: Decimal | string | number, decimals: number = 2): string {
+  static formatLargeNumber(
+    value: Decimal | string | number,
+    decimals: number = 2
+  ): string {
     try {
       const decimal = new Decimal(value);
       const absValue = decimal.abs();
-      
+
       if (absValue.gte(1000000000)) {
         return `${decimal.div(1000000000).toFixed(decimals)}B`;
       } else if (absValue.gte(1000000)) {
@@ -84,7 +103,7 @@ export class FormatUtils {
     try {
       const decimal = new Decimal(value);
       const absValue = decimal.abs();
-      
+
       if (absValue.gte(1000000000000)) {
         return `${decimal.div(1000000000000).toFixed(1)}T`;
       } else if (absValue.gte(1000000000)) {
@@ -102,7 +121,10 @@ export class FormatUtils {
   }
 
   // Scientific Notation
-  static formatScientific(value: Decimal | string | number, decimals: number = 2): string {
+  static formatScientific(
+    value: Decimal | string | number,
+    decimals: number = 2
+  ): string {
     try {
       const decimal = new Decimal(value);
       return decimal.toExponential(decimals);
@@ -120,7 +142,11 @@ export class FormatUtils {
     return str.padEnd(length, char);
   }
 
-  static truncate(str: string, maxLength: number, suffix: string = '...'): string {
+  static truncate(
+    str: string,
+    maxLength: number,
+    suffix: string = '...'
+  ): string {
     if (str.length <= maxLength) return str;
     return str.slice(0, maxLength - suffix.length) + suffix;
   }
@@ -153,9 +179,12 @@ export class FormatUtils {
   }
 
   // Date Formatting (basic - DateUtils has more comprehensive date formatting)
-  static formatTimestamp(timestamp: number | Date, format: 'short' | 'medium' | 'long' = 'medium'): string {
+  static formatTimestamp(
+    timestamp: number | Date,
+    format: 'short' | 'medium' | 'long' = 'medium'
+  ): string {
     const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
-    
+
     switch (format) {
       case 'short':
         return date.toLocaleDateString();
@@ -163,28 +192,32 @@ export class FormatUtils {
         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
       case 'medium':
       default:
-        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        });
+        return (
+          date.toLocaleDateString() +
+          ' ' +
+          date.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        );
     }
   }
 
   // Trading-Specific Formatting
   static formatSymbol(symbol: string): string {
     if (!symbol) return '';
-    
+
     // Convert BTCUSDT -> BTC/USDT
     const normalized = symbol.toUpperCase();
     const commonQuotes = ['USDT', 'USDC', 'USD', 'BTC', 'ETH', 'BNB'];
-    
+
     for (const quote of commonQuotes) {
       if (normalized.endsWith(quote)) {
         const base = normalized.slice(0, -quote.length);
         return `${base}/${quote}`;
       }
     }
-    
+
     return normalized;
   }
 
@@ -194,30 +227,47 @@ export class FormatUtils {
 
   static formatOrderType(type: string): string {
     switch (type.toUpperCase()) {
-      case 'MARKET': return 'Market';
-      case 'LIMIT': return 'Limit';
-      case 'STOP_LOSS': return 'Stop Loss';
-      case 'STOP_LOSS_LIMIT': return 'Stop Loss Limit';
-      case 'TAKE_PROFIT': return 'Take Profit';
-      case 'TAKE_PROFIT_LIMIT': return 'Take Profit Limit';
-      default: return type;
+      case 'MARKET':
+        return 'Market';
+      case 'LIMIT':
+        return 'Limit';
+      case 'STOP_LOSS':
+        return 'Stop Loss';
+      case 'STOP_LOSS_LIMIT':
+        return 'Stop Loss Limit';
+      case 'TAKE_PROFIT':
+        return 'Take Profit';
+      case 'TAKE_PROFIT_LIMIT':
+        return 'Take Profit Limit';
+      default:
+        return type;
     }
   }
 
   static formatOrderStatus(status: string): string {
     switch (status.toUpperCase()) {
-      case 'NEW': return '🟡 New';
-      case 'PARTIALLY_FILLED': return '🟠 Partial';
-      case 'FILLED': return '🟢 Filled';
-      case 'CANCELED': return '🔴 Canceled';
-      case 'REJECTED': return '❌ Rejected';
-      case 'EXPIRED': return '⏰ Expired';
-      default: return status;
+      case 'NEW':
+        return '🟡 New';
+      case 'PARTIALLY_FILLED':
+        return '🟠 Partial';
+      case 'FILLED':
+        return '🟢 Filled';
+      case 'CANCELED':
+        return '🔴 Canceled';
+      case 'REJECTED':
+        return '❌ Rejected';
+      case 'EXPIRED':
+        return '⏰ Expired';
+      default:
+        return status;
     }
   }
 
   // Table Formatting
-  static formatTableRow(values: (string | number | Decimal)[], widths: number[]): string {
+  static formatTableRow(
+    values: (string | number | Decimal)[],
+    widths: number[]
+  ): string {
     return values
       .map((value, index) => {
         const str = typeof value === 'string' ? value : String(value);
@@ -228,10 +278,8 @@ export class FormatUtils {
 
   static formatTableHeader(headers: string[], widths: number[]): string {
     const headerRow = this.formatTableRow(headers, widths);
-    const separator = widths
-      .map(width => '-'.repeat(width))
-      .join('-|-');
-    
+    const separator = widths.map((width) => '-'.repeat(width)).join('-|-');
+
     return `${headerRow}\n${separator}`;
   }
 
@@ -260,11 +308,15 @@ export class FormatUtils {
   }
 
   // Crypto Address Formatting
-  static formatAddress(address: string, startLength: number = 6, endLength: number = 4): string {
+  static formatAddress(
+    address: string,
+    startLength: number = 6,
+    endLength: number = 4
+  ): string {
     if (!address || address.length <= startLength + endLength) {
       return address;
     }
-    
+
     return `${address.slice(0, startLength)}...${address.slice(-endLength)}`;
   }
 
@@ -274,11 +326,15 @@ export class FormatUtils {
   }
 
   // Progress Bar
-  static formatProgressBar(current: number, total: number, width: number = 20): string {
+  static formatProgressBar(
+    current: number,
+    total: number,
+    width: number = 20
+  ): string {
     const progress = Math.min(current / total, 1);
     const filled = Math.floor(progress * width);
     const empty = width - filled;
-    
+
     return `[${'█'.repeat(filled)}${' '.repeat(empty)}] ${(progress * 100).toFixed(1)}%`;
   }
 
@@ -286,7 +342,7 @@ export class FormatUtils {
   static formatFileSize(bytes: number): string {
     const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
     if (bytes === 0) return '0 Bytes';
-    
+
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`;
   }
@@ -297,7 +353,7 @@ export class FormatUtils {
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     const days = Math.floor(hours / 24);
-    
+
     if (days > 0) return `${days}d ${hours % 24}h`;
     if (hours > 0) return `${hours}h ${minutes % 60}m`;
     if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
@@ -310,7 +366,10 @@ export class FormatUtils {
     return numStr.replace(/\.?0+$/, '');
   }
 
-  static addThousandsSeparator(numStr: string, separator: string = ','): string {
+  static addThousandsSeparator(
+    numStr: string,
+    separator: string = ','
+  ): string {
     const parts = numStr.split('.');
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, separator);
     return parts.join('.');

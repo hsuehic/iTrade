@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
+
 import { ITradingEngine, IStrategy, IExchange, IRiskManager, IPortfolioManager, ILogger } from '../interfaces';
 import { Order, OrderSide, OrderType, Position } from '../types';
 export declare class TradingEngine extends EventEmitter implements ITradingEngine {

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+
 import { Order, Position, Balance, Ticker, OrderBook, Trade, Kline } from '../types';
 export declare const EVENTS: {
     readonly TICKER_UPDATE: "ticker_update";

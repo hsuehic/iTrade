@@ -17,34 +17,51 @@ export class ConfigUtils {
     return value;
   }
 
-  static getEnvAsNumber(key: string, defaultValue?: number): number | undefined {
+  static getEnvAsNumber(
+    key: string,
+    defaultValue?: number
+  ): number | undefined {
     const value = process.env[key];
     if (!value) return defaultValue;
-    
+
     const parsed = parseFloat(value);
     if (isNaN(parsed)) {
-      throw new Error(`Environment variable ${key} is not a valid number: ${value}`);
+      throw new Error(
+        `Environment variable ${key} is not a valid number: ${value}`
+      );
     }
-    
+
     return parsed;
   }
 
-  static getEnvAsBoolean(key: string, defaultValue?: boolean): boolean | undefined {
+  static getEnvAsBoolean(
+    key: string,
+    defaultValue?: boolean
+  ): boolean | undefined {
     const value = process.env[key];
     if (!value) return defaultValue;
-    
+
     const lower = value.toLowerCase();
     if (lower === 'true' || lower === '1' || lower === 'yes') return true;
     if (lower === 'false' || lower === '0' || lower === 'no') return false;
-    
-    throw new Error(`Environment variable ${key} is not a valid boolean: ${value}`);
+
+    throw new Error(
+      `Environment variable ${key} is not a valid boolean: ${value}`
+    );
   }
 
-  static getEnvAsArray(key: string, separator: string = ',', defaultValue?: string[]): string[] | undefined {
+  static getEnvAsArray(
+    key: string,
+    separator: string = ',',
+    defaultValue?: string[]
+  ): string[] | undefined {
     const value = process.env[key];
     if (!value) return defaultValue;
-    
-    return value.split(separator).map(item => item.trim()).filter(item => item.length > 0);
+
+    return value
+      .split(separator)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
   }
 
   // JSON Configuration Files
@@ -60,14 +77,16 @@ export class ConfigUtils {
     try {
       const content = readFileSync(configPath, 'utf8');
       const config = JSON.parse(content);
-      
+
       if (useCache) {
         this.configCache.set(configPath, config);
       }
-      
+
       return config;
     } catch (error) {
-      throw new Error(`Failed to load configuration from ${configPath}: ${error}`);
+      throw new Error(
+        `Failed to load configuration from ${configPath}: ${error}`
+      );
     }
   }
 
@@ -75,11 +94,13 @@ export class ConfigUtils {
     try {
       const content = JSON.stringify(config, null, 2);
       writeFileSync(configPath, content, 'utf8');
-      
+
       // Update cache
       this.configCache.set(configPath, config);
     } catch (error) {
-      throw new Error(`Failed to save configuration to ${configPath}: ${error}`);
+      throw new Error(
+        `Failed to save configuration to ${configPath}: ${error}`
+      );
     }
   }
 
@@ -117,12 +138,14 @@ export class ConfigUtils {
 
     for (const key in source) {
       if (source.hasOwnProperty(key)) {
-        if (typeof source[key] === 'object' && 
-            source[key] !== null && 
-            !Array.isArray(source[key]) &&
-            typeof result[key] === 'object' &&
-            result[key] !== null &&
-            !Array.isArray(result[key])) {
+        if (
+          typeof source[key] === 'object' &&
+          source[key] !== null &&
+          !Array.isArray(source[key]) &&
+          typeof result[key] === 'object' &&
+          result[key] !== null &&
+          !Array.isArray(result[key])
+        ) {
           result[key] = this.deepMerge(result[key], source[key]);
         } else {
           result[key] = source[key];
@@ -136,7 +159,7 @@ export class ConfigUtils {
   // Configuration Validation
   static validateConfig<T extends object>(
     config: any,
-    schema: Record<keyof T, (value: any) => boolean>,
+    schema: Record<keyof T, (value: any) => boolean>
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -162,33 +185,53 @@ export class ConfigUtils {
     return config[key];
   }
 
-  static getOptionalConfig<T>(config: any, key: keyof T, defaultValue: T[keyof T]): T[keyof T] {
+  static getOptionalConfig<T>(
+    config: any,
+    key: keyof T,
+    defaultValue: T[keyof T]
+  ): T[keyof T] {
     return config.hasOwnProperty(key) ? config[key] : defaultValue;
   }
 
   // Exchange Configuration Helpers
-  static loadExchangeConfig(exchangeName: string, configDir: string = './config'): any {
+  static loadExchangeConfig(
+    exchangeName: string,
+    configDir: string = './config'
+  ): any {
     const configPath = join(configDir, `${exchangeName.toLowerCase()}.json`);
     return this.loadConfig(configPath);
   }
 
-  static validateExchangeConfig(config: any): { valid: boolean; errors: string[] } {
+  static validateExchangeConfig(config: any): {
+    valid: boolean;
+    errors: string[];
+  } {
     const requiredKeys = ['apiKey', 'secretKey', 'baseUrl'];
     const errors: string[] = [];
 
     for (const key of requiredKeys) {
-      if (!config[key] || typeof config[key] !== 'string' || config[key].trim() === '') {
+      if (
+        !config[key] ||
+        typeof config[key] !== 'string' ||
+        config[key].trim() === ''
+      ) {
         errors.push(`Missing or invalid ${key}`);
       }
     }
 
     // Validate testnet flag
-    if (config.hasOwnProperty('testnet') && typeof config.testnet !== 'boolean') {
+    if (
+      config.hasOwnProperty('testnet') &&
+      typeof config.testnet !== 'boolean'
+    ) {
       errors.push('testnet must be a boolean value');
     }
 
     // Validate timeout
-    if (config.hasOwnProperty('timeout') && (!Number.isInteger(config.timeout) || config.timeout <= 0)) {
+    if (
+      config.hasOwnProperty('timeout') &&
+      (!Number.isInteger(config.timeout) || config.timeout <= 0)
+    ) {
       errors.push('timeout must be a positive integer');
     }
 
@@ -198,7 +241,7 @@ export class ConfigUtils {
   // Trading Configuration Helpers
   static loadTradingConfig(configPath: string = './config/trading.json'): any {
     const config = this.loadConfig(configPath);
-    
+
     // Apply environment variable overrides
     const envOverrides = {
       maxPositionSize: this.getEnvAsNumber('MAX_POSITION_SIZE'),
@@ -215,11 +258,17 @@ export class ConfigUtils {
     return this.mergeConfigs(config, cleanOverrides);
   }
 
-  static validateTradingConfig(config: any): { valid: boolean; errors: string[] } {
+  static validateTradingConfig(config: any): {
+    valid: boolean;
+    errors: string[];
+  } {
     const schema = {
-      maxPositionSize: (value: any) => typeof value === 'number' && value > 0 && value <= 100,
-      maxDailyLoss: (value: any) => typeof value === 'number' && value > 0 && value <= 50,
-      riskPerTrade: (value: any) => typeof value === 'number' && value > 0 && value <= 10,
+      maxPositionSize: (value: any) =>
+        typeof value === 'number' && value > 0 && value <= 100,
+      maxDailyLoss: (value: any) =>
+        typeof value === 'number' && value > 0 && value <= 50,
+      riskPerTrade: (value: any) =>
+        typeof value === 'number' && value > 0 && value <= 10,
       enableTrading: (value: any) => typeof value === 'boolean',
       symbols: (value: any) => Array.isArray(value) && value.length > 0,
     };
@@ -228,14 +277,16 @@ export class ConfigUtils {
   }
 
   // Database Configuration
-  static getDatabaseConfig(type: 'sqlite' | 'postgres' | 'mysql' = 'sqlite'): any {
+  static getDatabaseConfig(
+    type: 'sqlite' | 'postgres' | 'mysql' = 'sqlite'
+  ): any {
     switch (type) {
       case 'sqlite':
         return {
           type: 'sqlite',
           database: this.getEnv('DB_PATH', './data/trading.db'),
         };
-      
+
       case 'postgres':
         return {
           type: 'postgres',
@@ -245,7 +296,7 @@ export class ConfigUtils {
           password: this.getEnvRequired('DB_PASSWORD'),
           database: this.getEnvRequired('DB_DATABASE'),
         };
-      
+
       case 'mysql':
         return {
           type: 'mysql',
@@ -255,7 +306,7 @@ export class ConfigUtils {
           password: this.getEnvRequired('DB_PASSWORD'),
           database: this.getEnvRequired('DB_DATABASE'),
         };
-      
+
       default:
         throw new Error(`Unsupported database type: ${type}`);
     }
@@ -312,7 +363,7 @@ export class ConfigUtils {
             window: 60000,
           },
         };
-      
+
       case 'trading':
         return {
           maxPositionSize: 10,
@@ -322,7 +373,7 @@ export class ConfigUtils {
           symbols: ['BTCUSDT', 'ETHUSDT'],
           timeframes: ['1h', '4h', '1d'],
         };
-      
+
       case 'logging':
         return {
           level: 'info',
@@ -333,14 +384,17 @@ export class ConfigUtils {
           maxSize: '20m',
           format: 'json',
         };
-      
+
       default:
         throw new Error(`Unknown configuration type: ${type}`);
     }
   }
 
   // Config file generation
-  static generateConfigFile(configPath: string, type: 'exchange' | 'trading' | 'logging'): void {
+  static generateConfigFile(
+    configPath: string,
+    type: 'exchange' | 'trading' | 'logging'
+  ): void {
     const defaultConfig = this.createDefaultConfig(type);
     this.saveConfig(configPath, defaultConfig);
   }

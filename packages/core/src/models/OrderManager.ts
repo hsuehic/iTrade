@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
 
 import { Order, OrderStatus, OrderSide } from '../types';
@@ -10,19 +11,19 @@ export class OrderManager extends EventEmitter {
 
   public addOrder(order: Order): void {
     this.orders.set(order.id, order);
-    
+
     // Index by symbol
     if (!this.ordersBySymbol.has(order.symbol)) {
       this.ordersBySymbol.set(order.symbol, new Set());
     }
     this.ordersBySymbol.get(order.symbol)!.add(order.id);
-    
+
     // Index by status
     if (!this.ordersByStatus.has(order.status)) {
       this.ordersByStatus.set(order.status, new Set());
     }
     this.ordersByStatus.get(order.status)!.add(order.id);
-    
+
     this.emit('orderAdded', order);
   }
 
@@ -34,9 +35,9 @@ export class OrderManager extends EventEmitter {
 
     const oldStatus = order.status;
     const updatedOrder = { ...order, ...updates, updateTime: new Date() };
-    
+
     this.orders.set(orderId, updatedOrder);
-    
+
     // Update status index if status changed
     if (updates.status && updates.status !== oldStatus) {
       this.ordersByStatus.get(oldStatus)?.delete(orderId);
@@ -45,7 +46,7 @@ export class OrderManager extends EventEmitter {
       }
       this.ordersByStatus.get(updates.status)!.add(orderId);
     }
-    
+
     this.emit('orderUpdated', updatedOrder, order);
     return updatedOrder;
   }
@@ -59,7 +60,7 @@ export class OrderManager extends EventEmitter {
     this.orders.delete(orderId);
     this.ordersBySymbol.get(order.symbol)?.delete(orderId);
     this.ordersByStatus.get(order.status)?.delete(orderId);
-    
+
     this.emit('orderRemoved', order);
     return order;
   }
@@ -73,10 +74,10 @@ export class OrderManager extends EventEmitter {
     if (!orderIds) {
       return [];
     }
-    
+
     return Array.from(orderIds)
-      .map(id => this.orders.get(id))
-      .filter(order => order !== undefined) as Order[];
+      .map((id) => this.orders.get(id))
+      .filter((order) => order !== undefined) as Order[];
   }
 
   public getOrdersByStatus(status: OrderStatus): Order[] {
@@ -84,24 +85,27 @@ export class OrderManager extends EventEmitter {
     if (!orderIds) {
       return [];
     }
-    
+
     return Array.from(orderIds)
-      .map(id => this.orders.get(id))
-      .filter(order => order !== undefined) as Order[];
+      .map((id) => this.orders.get(id))
+      .filter((order) => order !== undefined) as Order[];
   }
 
   public getOpenOrders(symbol?: string): Order[] {
-    const openStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED];
+    const openStatuses: OrderStatus[] = [
+      OrderStatus.NEW,
+      OrderStatus.PARTIALLY_FILLED,
+    ];
     let openOrders: Order[] = [];
-    
+
     for (const status of openStatuses) {
       openOrders.push(...this.getOrdersByStatus(status));
     }
-    
+
     if (symbol) {
-      openOrders = openOrders.filter(order => order.symbol === symbol);
+      openOrders = openOrders.filter((order) => order.symbol === symbol);
     }
-    
+
     return openOrders;
   }
 
@@ -112,47 +116,53 @@ export class OrderManager extends EventEmitter {
   public getTotalQuantityForSymbol(symbol: string, side: OrderSide): Decimal {
     const orders = this.getOrdersBySymbol(symbol);
     return orders
-      .filter(order => order.side === side && (order.status === 'NEW' || order.status === 'PARTIALLY_FILLED'))
+      .filter(
+        (order) =>
+          order.side === side &&
+          (order.status === 'NEW' || order.status === 'PARTIALLY_FILLED')
+      )
       .reduce((total, order) => total.add(order.quantity), new Decimal(0));
   }
 
   public getAveragePrice(symbol: string, side: OrderSide): Decimal | null {
     const orders = this.getOrdersBySymbol(symbol).filter(
-      order => order.side === side && order.status === 'FILLED' && order.price
+      (order) => order.side === side && order.status === 'FILLED' && order.price
     );
-    
+
     if (orders.length === 0) {
       return null;
     }
-    
+
     let totalValue = new Decimal(0);
     let totalQuantity = new Decimal(0);
-    
+
     for (const order of orders) {
       if (order.price) {
         const value = order.price.mul(order.executedQuantity || order.quantity);
         totalValue = totalValue.add(value);
-        totalQuantity = totalQuantity.add(order.executedQuantity || order.quantity);
+        totalQuantity = totalQuantity.add(
+          order.executedQuantity || order.quantity
+        );
       }
     }
-    
+
     return totalQuantity.isZero() ? null : totalValue.div(totalQuantity);
   }
 
   public cancelAllOrders(symbol?: string): Order[] {
     const ordersToCancel = this.getOpenOrders(symbol);
     const cancelledOrders: Order[] = [];
-    
+
     for (const order of ordersToCancel) {
-      const cancelledOrder = this.updateOrder(order.id, { 
+      const cancelledOrder = this.updateOrder(order.id, {
         status: 'CANCELED' as OrderStatus,
-        updateTime: new Date()
+        updateTime: new Date(),
       });
       if (cancelledOrder) {
         cancelledOrders.push(cancelledOrder);
       }
     }
-    
+
     return cancelledOrders;
   }
 
@@ -165,15 +175,17 @@ export class OrderManager extends EventEmitter {
     totalVolume: Decimal;
     totalValue: Decimal;
   } {
-    const orders = symbol ? this.getOrdersBySymbol(symbol) : this.getAllOrders();
-    
+    const orders = symbol
+      ? this.getOrdersBySymbol(symbol)
+      : this.getAllOrders();
+
     let open = 0;
     let filled = 0;
     let cancelled = 0;
     let rejected = 0;
     let totalVolume = new Decimal(0);
     let totalValue = new Decimal(0);
-    
+
     for (const order of orders) {
       switch (order.status) {
         case 'NEW':
@@ -190,15 +202,15 @@ export class OrderManager extends EventEmitter {
           rejected++;
           break;
       }
-      
+
       const executedQty = order.executedQuantity || new Decimal(0);
       totalVolume = totalVolume.add(executedQty);
-      
+
       if (order.price) {
         totalValue = totalValue.add(order.price.mul(executedQty));
       }
     }
-    
+
     return {
       total: orders.length,
       open,

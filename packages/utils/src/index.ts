@@ -13,5 +13,5 @@ export {
   debounce,
   throttle,
   deepClone,
-  deepMerge
+  deepMerge,
 } from './AsyncUtils';

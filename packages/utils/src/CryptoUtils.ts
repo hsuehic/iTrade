@@ -46,10 +46,10 @@ export class CryptoUtils {
     // Add padding if necessary
     const padding = 4 - (data.length % 4);
     const paddedData = data + '='.repeat(padding % 4);
-    
+
     // Replace URL-safe characters
     const base64 = paddedData.replace(/-/g, '+').replace(/_/g, '/');
-    
+
     return this.base64Decode(base64);
   }
 
@@ -62,14 +62,17 @@ export class CryptoUtils {
     return randomBytes(length).toString('base64');
   }
 
-  static generateRandomString(length: number = 32, charset: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'): string {
+  static generateRandomString(
+    length: number = 32,
+    charset: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  ): string {
     let result = '';
     const bytes = randomBytes(length);
-    
+
     for (let i = 0; i < length; i++) {
       result += charset[bytes[i] % charset.length];
     }
-    
+
     return result;
   }
 
@@ -78,20 +81,29 @@ export class CryptoUtils {
   }
 
   static generateUUID(): string {
-    return randomBytes(16).toString('hex').replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
+    return randomBytes(16)
+      .toString('hex')
+      .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5');
   }
 
   // API Signature Generation (Common Patterns)
-  
+
   // Binance-style signature
-  static generateBinanceSignature(queryString: string, secretKey: string): string {
+  static generateBinanceSignature(
+    queryString: string,
+    secretKey: string
+  ): string {
     return this.hmacSha256(queryString, secretKey);
   }
 
   // Generic query string signing
-  static signQueryString(params: Record<string, any>, secretKey: string, algorithm: 'sha256' | 'sha512' = 'sha256'): string {
+  static signQueryString(
+    params: Record<string, any>,
+    secretKey: string,
+    algorithm: 'sha256' | 'sha512' = 'sha256'
+  ): string {
     const queryString = this.buildQueryString(params);
-    
+
     switch (algorithm) {
       case 'sha256':
         return this.hmacSha256(queryString, secretKey);
@@ -103,11 +115,15 @@ export class CryptoUtils {
   }
 
   // JWT-style signature (simplified)
-  static generateJWTSignature(header: object, payload: object, secretKey: string): string {
+  static generateJWTSignature(
+    header: object,
+    payload: object,
+    secretKey: string
+  ): string {
     const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
     const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
     const data = `${encodedHeader}.${encodedPayload}`;
-    
+
     return this.base64UrlEncode(this.hmacSha256(data, secretKey));
   }
 
@@ -115,36 +131,39 @@ export class CryptoUtils {
   static buildQueryString(params: Record<string, any>): string {
     return Object.keys(params)
       .sort()
-      .map(key => {
+      .map((key) => {
         const value = params[key];
         if (value === null || value === undefined) {
           return '';
         }
         return `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`;
       })
-      .filter(param => param.length > 0)
+      .filter((param) => param.length > 0)
       .join('&');
   }
 
   static parseQueryString(queryString: string): Record<string, string> {
     const params: Record<string, string> = {};
-    
+
     if (!queryString) return params;
-    
+
     const pairs = queryString.replace(/^\?/, '').split('&');
-    
+
     for (const pair of pairs) {
       const [key, value] = pair.split('=');
       if (key) {
         params[decodeURIComponent(key)] = decodeURIComponent(value || '');
       }
     }
-    
+
     return params;
   }
 
   // Data Integrity
-  static calculateChecksum(data: string | Buffer, algorithm: 'md5' | 'sha256' = 'sha256'): string {
+  static calculateChecksum(
+    data: string | Buffer,
+    algorithm: 'md5' | 'sha256' = 'sha256'
+  ): string {
     switch (algorithm) {
       case 'md5':
         return this.md5(data);
@@ -155,7 +174,11 @@ export class CryptoUtils {
     }
   }
 
-  static verifyChecksum(data: string | Buffer, expectedChecksum: string, algorithm: 'md5' | 'sha256' = 'sha256'): boolean {
+  static verifyChecksum(
+    data: string | Buffer,
+    expectedChecksum: string,
+    algorithm: 'md5' | 'sha256' = 'sha256'
+  ): boolean {
     const actualChecksum = this.calculateChecksum(data, algorithm);
     return actualChecksum.toLowerCase() === expectedChecksum.toLowerCase();
   }
@@ -165,17 +188,17 @@ export class CryptoUtils {
     if (a.length !== b.length) {
       return false;
     }
-    
+
     let result = 0;
     for (let i = 0; i < a.length; i++) {
       result |= a.charCodeAt(i) ^ b.charCodeAt(i);
     }
-    
+
     return result === 0;
   }
 
   // Exchange-Specific Utilities
-  
+
   // Coinbase Pro signature
   static generateCoinbaseSignature(
     timestamp: string,
@@ -197,12 +220,14 @@ export class CryptoUtils {
     secretKey: string
   ): string {
     const decodedSecret = Buffer.from(secretKey, 'base64');
-    const hash = createHash('sha256').update(nonce + postData).digest();
+    const hash = createHash('sha256')
+      .update(nonce + postData)
+      .digest();
     const hmac = createHmac('sha512', decodedSecret);
-    
+
     hmac.update(urlPath);
     hmac.update(hash);
-    
+
     return hmac.digest('base64');
   }
 
@@ -214,14 +239,19 @@ export class CryptoUtils {
     params: Record<string, any>,
     secretKey: string
   ): string {
-    const sortedParams = Object.keys(params).sort().reduce((acc, key) => {
-      acc[key] = params[key];
-      return acc;
-    }, {} as Record<string, any>);
-    
+    const sortedParams = Object.keys(params)
+      .sort()
+      .reduce(
+        (acc, key) => {
+          acc[key] = params[key];
+          return acc;
+        },
+        {} as Record<string, any>
+      );
+
     const queryString = this.buildQueryString(sortedParams);
     const payload = `${method.toUpperCase()}\n${hostname}\n${path}\n${queryString}`;
-    
+
     return this.base64Encode(this.hmacSha256(payload, secretKey));
   }
 
@@ -241,23 +271,29 @@ export class CryptoUtils {
   static isValidSignature(signature: string): boolean {
     // Basic validation for hex signatures
     const hexRegex = /^[a-fA-F0-9]+$/;
-    return typeof signature === 'string' && signature.length > 0 && hexRegex.test(signature);
+    return (
+      typeof signature === 'string' &&
+      signature.length > 0 &&
+      hexRegex.test(signature)
+    );
   }
 
   static isValidApiKey(apiKey: string): boolean {
     // Basic validation - should be non-empty string with reasonable length
-    return typeof apiKey === 'string' && apiKey.length >= 8 && apiKey.length <= 128;
+    return (
+      typeof apiKey === 'string' && apiKey.length >= 8 && apiKey.length <= 128
+    );
   }
 
   static maskApiKey(apiKey: string, visibleChars: number = 4): string {
     if (!apiKey || apiKey.length <= visibleChars * 2) {
       return '*'.repeat(8);
     }
-    
+
     const start = apiKey.slice(0, visibleChars);
     const end = apiKey.slice(-visibleChars);
     const middle = '*'.repeat(Math.max(4, apiKey.length - visibleChars * 2));
-    
+
     return `${start}${middle}${end}`;
   }
 
@@ -274,20 +310,24 @@ export class CryptoUtils {
     if (value === null || value === undefined) {
       return '';
     }
-    
+
     return encodeURIComponent(String(value));
   }
 
-  static buildApiUrl(baseUrl: string, endpoint: string, params?: Record<string, any>): string {
+  static buildApiUrl(
+    baseUrl: string,
+    endpoint: string,
+    params?: Record<string, any>
+  ): string {
     const url = new URL(endpoint, baseUrl);
-    
+
     if (params) {
       const queryString = this.buildQueryString(params);
       if (queryString) {
         url.search = queryString;
       }
     }
-    
+
     return url.toString();
   }
 
@@ -302,11 +342,11 @@ export class CryptoUtils {
     if (typeof data === 'string') {
       return data;
     }
-    
+
     if (typeof data === 'object' && data !== null) {
       return JSON.stringify(data, Object.keys(data).sort());
     }
-    
+
     return String(data);
   }
 }

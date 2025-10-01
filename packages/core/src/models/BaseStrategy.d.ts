@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+
 import { IStrategy } from '../interfaces';
 import { StrategyParameters, StrategyResult, Order, Position, Ticker, OrderBook, Trade, Kline } from '../types';
 export declare abstract class BaseStrategy extends EventEmitter implements IStrategy {

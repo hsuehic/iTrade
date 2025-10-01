@@ -8,5 +8,5 @@ export type {
   IRiskManager,
   RiskLimits,
   RiskMetrics,
-  RiskAlert
+  RiskAlert,
 } from '@crypto-trading/core';

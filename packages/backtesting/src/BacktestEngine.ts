@@ -1,5 +1,4 @@
 import { Decimal } from 'decimal.js';
-
 import {
   IBacktestEngine,
   IStrategy,
@@ -16,7 +15,10 @@ export class BacktestEngine implements IBacktestEngine {
   private trades: BacktestTrade[] = [];
   private equity: Array<{ timestamp: Date; value: Decimal }> = [];
   private currentBalance: Decimal = new Decimal(0);
-  private positions: Map<string, { quantity: Decimal; avgPrice: Decimal; side: OrderSide }> = new Map();
+  private positions: Map<
+    string,
+    { quantity: Decimal; avgPrice: Decimal; side: OrderSide }
+  > = new Map();
 
   public async runBacktest(
     strategy: IStrategy,
@@ -89,17 +91,22 @@ export class BacktestEngine implements IBacktestEngine {
     if (!signal.quantity) return;
 
     const price = signal.price || kline.close;
-    const slippageAdjustedPrice = signal.action === 'hold' ? price : this.applySlippage(price, signal.action, config.slippage);
-    const commission = slippageAdjustedPrice.mul(signal.quantity).mul(config.commission);
+    const slippageAdjustedPrice =
+      signal.action === 'hold'
+        ? price
+        : this.applySlippage(price, signal.action, config.slippage);
+    const commission = slippageAdjustedPrice
+      .mul(signal.quantity)
+      .mul(config.commission);
 
     const currentPosition = this.positions.get(symbol);
-    
+
     if (signal.action === 'buy') {
       const cost = slippageAdjustedPrice.mul(signal.quantity).add(commission);
-      
+
       if (this.currentBalance.gte(cost)) {
         this.currentBalance = this.currentBalance.sub(cost);
-        
+
         if (currentPosition) {
           // Add to existing position
           const totalQuantity = currentPosition.quantity.add(signal.quantity);
@@ -107,7 +114,7 @@ export class BacktestEngine implements IBacktestEngine {
             .mul(currentPosition.avgPrice)
             .add(slippageAdjustedPrice.mul(signal.quantity));
           const avgPrice = totalValue.div(totalQuantity);
-          
+
           this.positions.set(symbol, {
             quantity: totalQuantity,
             avgPrice,
@@ -122,11 +129,17 @@ export class BacktestEngine implements IBacktestEngine {
           });
         }
       }
-    } else if (signal.action === 'sell' && currentPosition && currentPosition.quantity.gte(signal.quantity)) {
+    } else if (
+      signal.action === 'sell' &&
+      currentPosition &&
+      currentPosition.quantity.gte(signal.quantity)
+    ) {
       // Sell position
-      const proceeds = slippageAdjustedPrice.mul(signal.quantity).sub(commission);
+      const proceeds = slippageAdjustedPrice
+        .mul(signal.quantity)
+        .sub(commission);
       this.currentBalance = this.currentBalance.add(proceeds);
-      
+
       // Calculate PnL
       const pnl = slippageAdjustedPrice
         .sub(currentPosition.avgPrice)
@@ -160,15 +173,20 @@ export class BacktestEngine implements IBacktestEngine {
     }
   }
 
-  private applySlippage(price: Decimal, action: 'buy' | 'sell', slippage?: Decimal): Decimal {
+  private applySlippage(
+    price: Decimal,
+    action: 'buy' | 'sell',
+    slippage?: Decimal
+  ): Decimal {
     if (!slippage || slippage.isZero()) {
       return price;
     }
 
-    const slippageMultiplier = action === 'buy' 
-      ? new Decimal(1).add(slippage)  // Pay more when buying
-      : new Decimal(1).sub(slippage); // Receive less when selling
-    
+    const slippageMultiplier =
+      action === 'buy'
+        ? new Decimal(1).add(slippage) // Pay more when buying
+        : new Decimal(1).sub(slippage); // Receive less when selling
+
     return price.mul(slippageMultiplier);
   }
 
@@ -185,7 +203,10 @@ export class BacktestEngine implements IBacktestEngine {
     return totalValue;
   }
 
-  public calculateMetrics(trades: any[], initialBalance: Decimal): BacktestResult {
+  public calculateMetrics(
+    trades: any[],
+    initialBalance: Decimal
+  ): BacktestResult {
     if (trades.length === 0) {
       return {
         totalReturn: new Decimal(0),
@@ -202,28 +223,31 @@ export class BacktestEngine implements IBacktestEngine {
     }
 
     // Calculate returns
-    const finalBalance = this.equity[this.equity.length - 1]?.value || initialBalance;
+    const finalBalance =
+      this.equity[this.equity.length - 1]?.value || initialBalance;
     const totalReturn = finalBalance.sub(initialBalance).div(initialBalance);
 
     // Calculate win rate
-    const winningTrades = trades.filter(trade => trade.pnl.gt(0));
+    const winningTrades = trades.filter((trade) => trade.pnl.gt(0));
     const winRate = new Decimal(winningTrades.length).div(trades.length);
 
     // Calculate profit factor
     const grossProfit = trades
-      .filter(trade => trade.pnl.gt(0))
+      .filter((trade) => trade.pnl.gt(0))
       .reduce((sum, trade) => sum.add(trade.pnl), new Decimal(0));
-    
+
     const grossLoss = trades
-      .filter(trade => trade.pnl.lt(0))
+      .filter((trade) => trade.pnl.lt(0))
       .reduce((sum, trade) => sum.add(trade.pnl.abs()), new Decimal(0));
-    
-    const profitFactor = grossLoss.isZero() ? new Decimal(0) : grossProfit.div(grossLoss);
+
+    const profitFactor = grossLoss.isZero()
+      ? new Decimal(0)
+      : grossProfit.div(grossLoss);
 
     // Calculate max drawdown
     let maxDrawdown = new Decimal(0);
     let peak = initialBalance;
-    
+
     for (const point of this.equity) {
       if (point.value.gt(peak)) {
         peak = point.value;
@@ -235,17 +259,23 @@ export class BacktestEngine implements IBacktestEngine {
     }
 
     // Calculate average trade duration
-    const avgTradeDuration = trades.reduce((sum, trade) => sum + trade.duration, 0) / trades.length;
+    const avgTradeDuration =
+      trades.reduce((sum, trade) => sum + trade.duration, 0) / trades.length;
 
     // Calculate annualized return (simplified)
     const years = this.calculateTimeSpanInYears();
-    const annualizedReturn = years > 0 ? totalReturn.div(years) : new Decimal(0);
+    const annualizedReturn =
+      years > 0 ? totalReturn.div(years) : new Decimal(0);
 
     // Calculate Sharpe ratio (simplified - would need risk-free rate and volatility)
     const returns = this.calculateDailyReturns();
-    const avgReturn = returns.reduce((sum, r) => sum.add(r), new Decimal(0)).div(returns.length);
+    const avgReturn = returns
+      .reduce((sum, r) => sum.add(r), new Decimal(0))
+      .div(returns.length);
     const volatility = this.calculateVolatility(returns, avgReturn);
-    const sharpeRatio = volatility.isZero() ? new Decimal(0) : avgReturn.div(volatility);
+    const sharpeRatio = volatility.isZero()
+      ? new Decimal(0)
+      : avgReturn.div(volatility);
 
     return {
       totalReturn,
@@ -263,39 +293,39 @@ export class BacktestEngine implements IBacktestEngine {
 
   private calculateTimeSpanInYears(): number {
     if (this.equity.length < 2) return 0;
-    
+
     const start = this.equity[0].timestamp.getTime();
     const end = this.equity[this.equity.length - 1].timestamp.getTime();
     const diffMs = end - start;
     const diffYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
-    
+
     return diffYears;
   }
 
   private calculateDailyReturns(): Decimal[] {
     const returns: Decimal[] = [];
-    
+
     for (let i = 1; i < this.equity.length; i++) {
       const prevValue = this.equity[i - 1].value;
       const currentValue = this.equity[i].value;
-      
+
       if (!prevValue.isZero()) {
         const dailyReturn = currentValue.sub(prevValue).div(prevValue);
         returns.push(dailyReturn);
       }
     }
-    
+
     return returns;
   }
 
   private calculateVolatility(returns: Decimal[], avgReturn: Decimal): Decimal {
     if (returns.length < 2) return new Decimal(0);
-    
-    const squaredDeviations = returns.map(r => r.sub(avgReturn).pow(2));
+
+    const squaredDeviations = returns.map((r) => r.sub(avgReturn).pow(2));
     const variance = squaredDeviations
       .reduce((sum, deviation) => sum.add(deviation), new Decimal(0))
       .div(returns.length - 1);
-    
+
     return variance.sqrt();
   }
 
@@ -316,9 +346,13 @@ Trading Statistics:
 - Average Trade Duration: ${result.avgTradeDuration.toFixed(1)} periods
 
 Trade Summary:
-${result.trades.slice(0, 10).map(trade => 
-  `${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${trade.pnl.toFixed(2)}`
-).join('\n')}
+${result.trades
+  .slice(0, 10)
+  .map(
+    (trade) =>
+      `${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${trade.pnl.toFixed(2)}`
+  )
+  .join('\n')}
 ${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trades` : ''}
     `.trim();
 
@@ -335,15 +369,15 @@ ${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trade
     // In a real implementation, this would yield historical data in chronological order
     const duration = endTime.getTime() - startTime.getTime();
     const intervals = Math.floor(duration / (60 * 1000)); // Assuming 1-minute intervals
-    
+
     for (let i = 0; i < intervals; i++) {
       const timestamp = new Date(startTime.getTime() + i * 60 * 1000);
-      
+
       // Generate synthetic data for demonstration
       const basePrice = new Decimal(100);
       const randomFactor = new Decimal(Math.random() * 0.02 - 0.01); // ±1% random change
       const price = basePrice.mul(new Decimal(1).add(randomFactor));
-      
+
       yield {
         symbol,
         interval: timeframe,

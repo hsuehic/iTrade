@@ -38,17 +38,15 @@ class AuthService {
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
-    // await _google.initialize(
-    //   clientId: Platform.isIOS
-    //       ? kGoogleIosClientId
-    //       : Platform.isAndroid
-    //       ? kGoogleAndroidClientId
-    //       : kGoogleWebClientId,
-    //   // Configure for server-side auth to get authorization codes instead of ID tokens
-    //   serverClientId:
-    //       kGoogleWebClientId, // Must match your Auth.js backend client ID
-    // );
-    await _google.initialize(serverClientId: kGoogleWebClientId);
+
+    await _google.initialize(
+      clientId: Platform.isIOS
+          ? kGoogleIosClientId
+          : Platform.isAndroid
+          ? kGoogleAndroidClientId
+          : kGoogleWebClientId,
+      serverClientId: kGoogleWebClientId,
+    );
     _initialized = true;
   }
 

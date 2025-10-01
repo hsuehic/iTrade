@@ -1,7 +1,16 @@
 import { EventEmitter } from 'events';
 
 import { IStrategy } from '../interfaces';
-import { StrategyParameters, StrategyResult, Order, Position, Ticker, OrderBook, Trade, Kline } from '../types';
+import {
+  StrategyParameters,
+  StrategyResult,
+  Order,
+  Position,
+  Ticker,
+  OrderBook,
+  Trade,
+  Kline,
+} from '../types';
 
 export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   protected _parameters: StrategyParameters = {};
@@ -69,9 +78,13 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   }
 
   protected validateParameters(requiredParams: string[]): void {
-    const missing = requiredParams.filter(param => !(param in this._parameters));
+    const missing = requiredParams.filter(
+      (param) => !(param in this._parameters)
+    );
     if (missing.length > 0) {
-      throw new Error(`Missing required parameters for strategy ${this.name}: ${missing.join(', ')}`);
+      throw new Error(
+        `Missing required parameters for strategy ${this.name}: ${missing.join(', ')}`
+      );
     }
   }
 

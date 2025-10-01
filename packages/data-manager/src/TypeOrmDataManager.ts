@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { DataSource, Repository, LessThanOrEqual } from 'typeorm';
 import { IDataManager, Kline } from '@crypto-trading/core';
+
 import { KlineEntity } from './entities/KlineEntity';
 import { SymbolEntity } from './entities/SymbolEntity';
 import { DataQualityEntity } from './entities/DataQualityEntity';
@@ -13,7 +14,10 @@ export interface TypeOrmDataManagerConfig {
   password: string;
   database: string;
   ssl?: boolean;
-  logging?: boolean | 'all' | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
+  logging?:
+    | boolean
+    | 'all'
+    | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
   synchronize?: boolean;
   migrationsRun?: boolean;
   extra?: any;
@@ -43,14 +47,15 @@ export class TypeOrmDataManager implements IDataManager {
       migrationsRun: this.config.migrationsRun ?? true,
       logging: this.config.logging ?? false,
       entities: [KlineEntity, SymbolEntity, DataQualityEntity],
-      extra: this.config.extra || {}
+      extra: this.config.extra || {},
     });
 
     await this.dataSource.initialize();
 
     this.klineRepository = this.dataSource.getRepository(KlineEntity);
     this.symbolRepository = this.dataSource.getRepository(SymbolEntity);
-    this.dataQualityRepository = this.dataSource.getRepository(DataQualityEntity);
+    this.dataQualityRepository =
+      this.dataSource.getRepository(DataQualityEntity);
 
     this.isInitialized = true;
   }
@@ -85,27 +90,33 @@ export class TypeOrmDataManager implements IDataManager {
 
     const entities = await queryBuilder.getMany();
 
-    return entities.map(entity => this.entityToKline(entity));
+    return entities.map((entity) => this.entityToKline(entity));
   }
 
-  async saveKlines(symbol: string, interval: string, klines: Kline[]): Promise<void> {
+  async saveKlines(
+    symbol: string,
+    interval: string,
+    klines: Kline[]
+  ): Promise<void> {
     if (klines.length === 0) return;
 
     this.ensureInitialized();
 
-    const entities = klines.map(kline => this.klineToEntity(kline));
+    const entities = klines.map((kline) => this.klineToEntity(kline));
 
     // Use upsert to handle duplicates
     await this.klineRepository.upsert(entities, {
       conflictPaths: ['symbol', 'interval', 'openTime'],
-      skipUpdateIfNoValuesChanged: true
+      skipUpdateIfNoValuesChanged: true,
     });
 
     // Update data quality metrics
     await this.updateDataQuality(symbol, interval);
   }
 
-  async batchSaveKlines(klinesData: { symbol: string; interval: string; klines: Kline[] }[]): Promise<void> {
+  async batchSaveKlines(
+    klinesData: { symbol: string; interval: string; klines: Kline[] }[]
+  ): Promise<void> {
     this.ensureInitialized();
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -113,14 +124,18 @@ export class TypeOrmDataManager implements IDataManager {
     await queryRunner.startTransaction();
 
     try {
-      for (const { symbol: _symbol, interval: _interval, klines } of klinesData) {
+      for (const {
+        symbol: _symbol,
+        interval: _interval,
+        klines,
+      } of klinesData) {
         if (klines.length === 0) continue;
 
-        const entities = klines.map(kline => this.klineToEntity(kline));
-        
+        const entities = klines.map((kline) => this.klineToEntity(kline));
+
         await queryRunner.manager.upsert(KlineEntity, entities, {
           conflictPaths: ['symbol', 'interval', 'openTime'],
-          skipUpdateIfNoValuesChanged: true
+          skipUpdateIfNoValuesChanged: true,
         });
       }
 
@@ -138,7 +153,11 @@ export class TypeOrmDataManager implements IDataManager {
     }
   }
 
-  async getLatestKlines(symbols: string[], interval: string, limit: number = 1): Promise<Map<string, Kline[]>> {
+  async getLatestKlines(
+    symbols: string[],
+    interval: string,
+    limit: number = 1
+  ): Promise<Map<string, Kline[]>> {
     this.ensureInitialized();
 
     const results = new Map<string, Kline[]>();
@@ -147,10 +166,13 @@ export class TypeOrmDataManager implements IDataManager {
       const entities = await this.klineRepository.find({
         where: { symbol, interval },
         order: { openTime: 'DESC' },
-        take: limit
+        take: limit,
       });
 
-      results.set(symbol, entities.map(entity => this.entityToKline(entity)));
+      results.set(
+        symbol,
+        entities.map((entity) => this.entityToKline(entity))
+      );
     }
 
     return results;
@@ -160,7 +182,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.ensureInitialized();
 
     const count = await this.klineRepository.count({
-      where: { symbol, interval }
+      where: { symbol, interval },
     });
 
     return count > 0;
@@ -194,10 +216,10 @@ export class TypeOrmDataManager implements IDataManager {
     const entities = await this.symbolRepository.find({
       where: { isActive: true },
       select: ['symbol'],
-      order: { symbol: 'ASC' }
+      order: { symbol: 'ASC' },
     });
 
-    return entities.map(entity => entity.symbol);
+    return entities.map((entity) => entity.symbol);
   }
 
   async getAvailableIntervals(symbol: string): Promise<string[]> {
@@ -209,7 +231,7 @@ export class TypeOrmDataManager implements IDataManager {
       .where('kline.symbol = :symbol', { symbol })
       .getRawMany();
 
-    return intervals.map(row => row.interval).sort();
+    return intervals.map((row) => row.interval).sort();
   }
 
   async addSymbol(symbolData: {
@@ -234,13 +256,18 @@ export class TypeOrmDataManager implements IDataManager {
       quoteAssetPrecision: symbolData.quoteAssetPrecision || 8,
       orderTypes: symbolData.orderTypes,
       timeInForces: symbolData.timeInForces,
-      filters: symbolData.filters ? JSON.stringify(symbolData.filters) : undefined
+      filters: symbolData.filters
+        ? JSON.stringify(symbolData.filters)
+        : undefined,
     });
 
     await this.symbolRepository.save(entity);
   }
 
-  async getDataQualityMetrics(symbol: string, interval: string): Promise<{
+  async getDataQualityMetrics(
+    symbol: string,
+    interval: string
+  ): Promise<{
     totalRecords: number;
     missingCandles: number;
     duplicateCandles: number;
@@ -255,7 +282,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.ensureInitialized();
 
     const quality = await this.dataQualityRepository.findOne({
-      where: { symbol, interval }
+      where: { symbol, interval },
     });
 
     if (!quality) {
@@ -274,28 +301,41 @@ export class TypeOrmDataManager implements IDataManager {
       lastUpdate: quality.lastUpdateTime,
       avgGapMinutes: quality.avgGapMinutes,
       maxGapMinutes: quality.maxGapMinutes,
-      issues: quality.issues ? JSON.parse(quality.issues) : []
+      issues: quality.issues ? JSON.parse(quality.issues) : [],
     };
   }
 
   async saveTrades(symbol: string, trades: any[]): Promise<void> {
     // TODO: Implement trades storage with TypeORM entity
-    console.warn(`saveTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, trades: ${trades.length}`);
+    console.warn(
+      `saveTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, trades: ${trades.length}`
+    );
   }
 
-  async getTrades(symbol: string, startTime: Date, endTime: Date, limit?: number): Promise<any[]> {
+  async getTrades(
+    symbol: string,
+    startTime: Date,
+    endTime: Date,
+    limit?: number
+  ): Promise<any[]> {
     // TODO: Implement trades retrieval with TypeORM entity
-    console.warn(`getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`);
+    console.warn(
+      `getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`
+    );
     return [];
   }
 
-  async deleteOldData(symbol: string, interval: string, olderThan: Date): Promise<number> {
+  async deleteOldData(
+    symbol: string,
+    interval: string,
+    olderThan: Date
+  ): Promise<number> {
     this.ensureInitialized();
 
     const result = await this.klineRepository.delete({
       symbol,
       interval,
-      openTime: LessThanOrEqual(olderThan)
+      openTime: LessThanOrEqual(olderThan),
     });
 
     return result.affected || 0;
@@ -311,32 +351,35 @@ export class TypeOrmDataManager implements IDataManager {
   }> {
     this.ensureInitialized();
 
-    const [totalRecords, symbols, intervals, oldest, newest] = await Promise.all([
-      this.klineRepository.count(),
-      this.klineRepository
-        .createQueryBuilder('kline')
-        .select('COUNT(DISTINCT kline.symbol)', 'count')
-        .getRawOne(),
-      this.klineRepository
-        .createQueryBuilder('kline')
-        .select('COUNT(DISTINCT kline.interval)', 'count')
-        .getRawOne(),
-      this.klineRepository.findOne({ order: { openTime: 'ASC' } }),
-      this.klineRepository.findOne({ order: { openTime: 'DESC' } })
-    ]);
+    const [totalRecords, symbols, intervals, oldest, newest] =
+      await Promise.all([
+        this.klineRepository.count(),
+        this.klineRepository
+          .createQueryBuilder('kline')
+          .select('COUNT(DISTINCT kline.symbol)', 'count')
+          .getRawOne(),
+        this.klineRepository
+          .createQueryBuilder('kline')
+          .select('COUNT(DISTINCT kline.interval)', 'count')
+          .getRawOne(),
+        this.klineRepository.findOne({ order: { openTime: 'ASC' } }),
+        this.klineRepository.findOne({ order: { openTime: 'DESC' } }),
+      ]);
 
     return {
       totalRecords,
       uniqueSymbols: parseInt(symbols.count),
       uniqueIntervals: parseInt(intervals.count),
       oldestRecord: oldest?.openTime,
-      newestRecord: newest?.openTime
+      newestRecord: newest?.openTime,
     };
   }
 
   private ensureInitialized(): void {
     if (!this.isInitialized) {
-      throw new Error('TypeOrmDataManager not initialized. Call initialize() first.');
+      throw new Error(
+        'TypeOrmDataManager not initialized. Call initialize() first.'
+      );
     }
   }
 
@@ -354,7 +397,7 @@ export class TypeOrmDataManager implements IDataManager {
       quoteVolume: entity.quoteVolume,
       trades: entity.trades,
       takerBuyBaseVolume: entity.takerBuyBaseVolume,
-      takerBuyQuoteVolume: entity.takerBuyQuoteVolume
+      takerBuyQuoteVolume: entity.takerBuyQuoteVolume,
     };
   }
 
@@ -372,27 +415,33 @@ export class TypeOrmDataManager implements IDataManager {
       quoteVolume: kline.quoteVolume,
       trades: kline.trades,
       takerBuyBaseVolume: kline.takerBuyBaseVolume,
-      takerBuyQuoteVolume: kline.takerBuyQuoteVolume
+      takerBuyQuoteVolume: kline.takerBuyQuoteVolume,
     };
   }
 
-  private async updateDataQuality(symbol: string, interval: string): Promise<void> {
+  private async updateDataQuality(
+    symbol: string,
+    interval: string
+  ): Promise<void> {
     const stats = await this.calculateDataQualityStats(symbol, interval);
-    
+
     await this.dataQualityRepository.upsert(
       {
         symbol,
         interval,
-        ...stats
+        ...stats,
       },
       ['symbol', 'interval']
     );
   }
 
-  private async calculateDataQualityStats(symbol: string, interval: string): Promise<Partial<DataQualityEntity>> {
+  private async calculateDataQualityStats(
+    symbol: string,
+    interval: string
+  ): Promise<Partial<DataQualityEntity>> {
     const klines = await this.klineRepository.find({
       where: { symbol, interval },
-      order: { openTime: 'ASC' }
+      order: { openTime: 'ASC' },
     });
 
     if (klines.length === 0) {
@@ -400,22 +449,25 @@ export class TypeOrmDataManager implements IDataManager {
         totalRecords: 0,
         missingCandles: 0,
         duplicateCandles: 0,
-        completenessPercent: 0
+        completenessPercent: 0,
       };
     }
 
     const totalRecords = klines.length;
     const firstCandle = klines[0];
     const lastCandle = klines[klines.length - 1];
-    
+
     // Calculate expected candles based on interval
     const intervalMs = this.intervalToMilliseconds(interval);
-    const expectedCandles = Math.floor(
-      (lastCandle.openTime.getTime() - firstCandle.openTime.getTime()) / intervalMs
-    ) + 1;
-    
+    const expectedCandles =
+      Math.floor(
+        (lastCandle.openTime.getTime() - firstCandle.openTime.getTime()) /
+          intervalMs
+      ) + 1;
+
     const missingCandles = Math.max(0, expectedCandles - totalRecords);
-    const completenessPercent = expectedCandles > 0 ? (totalRecords / expectedCandles) * 100 : 100;
+    const completenessPercent =
+      expectedCandles > 0 ? (totalRecords / expectedCandles) * 100 : 100;
 
     // Calculate gaps
     const gaps: number[] = [];
@@ -423,13 +475,16 @@ export class TypeOrmDataManager implements IDataManager {
       const expectedNextTime = klines[i - 1].openTime.getTime() + intervalMs;
       const actualTime = klines[i].openTime.getTime();
       const gapMs = actualTime - expectedNextTime;
-      
+
       if (gapMs > 0) {
         gaps.push(Math.floor(gapMs / (1000 * 60))); // Convert to minutes
       }
     }
 
-    const avgGapMinutes = gaps.length > 0 ? Math.floor(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0;
+    const avgGapMinutes =
+      gaps.length > 0
+        ? Math.floor(gaps.reduce((a, b) => a + b, 0) / gaps.length)
+        : 0;
     const maxGapMinutes = gaps.length > 0 ? Math.max(...gaps) : 0;
 
     return {
@@ -441,7 +496,7 @@ export class TypeOrmDataManager implements IDataManager {
       lastCandleTime: lastCandle.openTime,
       lastUpdateTime: new Date(),
       avgGapMinutes,
-      maxGapMinutes
+      maxGapMinutes,
     };
   }
 
@@ -455,14 +510,22 @@ export class TypeOrmDataManager implements IDataManager {
     const unit = match[2];
 
     switch (unit) {
-      case 's': return value * 1000;
-      case 'm': return value * 60 * 1000;
-      case 'h': return value * 60 * 60 * 1000;
-      case 'd': return value * 24 * 60 * 60 * 1000;
-      case 'w': return value * 7 * 24 * 60 * 60 * 1000;
-      case 'M': return value * 30 * 24 * 60 * 60 * 1000; // Approximation
-      case 'y': return value * 365 * 24 * 60 * 60 * 1000; // Approximation
-      default: throw new Error(`Unknown interval unit: ${unit}`);
+      case 's':
+        return value * 1000;
+      case 'm':
+        return value * 60 * 1000;
+      case 'h':
+        return value * 60 * 60 * 1000;
+      case 'd':
+        return value * 24 * 60 * 60 * 1000;
+      case 'w':
+        return value * 7 * 24 * 60 * 60 * 1000;
+      case 'M':
+        return value * 30 * 24 * 60 * 60 * 1000; // Approximation
+      case 'y':
+        return value * 365 * 24 * 60 * 60 * 1000; // Approximation
+      default:
+        throw new Error(`Unknown interval unit: ${unit}`);
     }
   }
 }

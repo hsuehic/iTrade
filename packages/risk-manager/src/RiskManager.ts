@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
 import {
   Balance,
@@ -11,13 +12,13 @@ import {
 } from '@crypto-trading/core';
 
 export interface RiskManagerConfig {
-  maxDrawdown: Decimal;           // Maximum portfolio drawdown (%)
-  maxPositionSize: Decimal;       // Maximum position size (% of portfolio)
-  maxDailyLoss: Decimal;         // Maximum daily loss (% of portfolio)
-  maxLeverage: Decimal;          // Maximum leverage ratio
+  maxDrawdown: Decimal; // Maximum portfolio drawdown (%)
+  maxPositionSize: Decimal; // Maximum position size (% of portfolio)
+  maxDailyLoss: Decimal; // Maximum daily loss (% of portfolio)
+  maxLeverage: Decimal; // Maximum leverage ratio
   maxCorrelatedExposure: Decimal; // Maximum exposure to correlated assets (%)
-  stopLossBuffer: Decimal;       // Buffer above stop loss levels (%)
-  riskFreeRate: Decimal;         // Annual risk-free rate for calculations (%)
+  stopLossBuffer: Decimal; // Buffer above stop loss levels (%)
+  riskFreeRate: Decimal; // Annual risk-free rate for calculations (%)
 }
 
 export class RiskManager extends EventEmitter implements IRiskManager {
@@ -30,7 +31,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
   constructor(config: Partial<RiskManagerConfig> = {}) {
     super();
-    
+
     this.config = {
       maxDrawdown: config.maxDrawdown || new Decimal(20), // 20%
       maxPositionSize: config.maxPositionSize || new Decimal(10), // 10%
@@ -39,16 +40,20 @@ export class RiskManager extends EventEmitter implements IRiskManager {
       maxCorrelatedExposure: config.maxCorrelatedExposure || new Decimal(30), // 30%
       stopLossBuffer: config.stopLossBuffer || new Decimal(1), // 1%
       riskFreeRate: config.riskFreeRate || new Decimal(2), // 2%
-      ...config
+      ...config,
     };
 
     this.dailyResetTime = this.getNextDailyReset();
     this.setupDailyReset();
   }
-  get limits (): RiskLimits {
+  get limits(): RiskLimits {
     return this.getLimits();
-  };
-  checkOrderRisk(order: Order, currentPositions: Position[], balances: Balance[]): Promise<boolean> {
+  }
+  checkOrderRisk(
+    order: Order,
+    currentPositions: Position[],
+    balances: Balance[]
+  ): Promise<boolean> {
     console.log(order, currentPositions, balances);
     throw new Error('Method not implemented.');
   }
@@ -56,7 +61,10 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     console.log(position, limits);
     throw new Error('Method not implemented.');
   }
-  calculateRiskMetrics(positions: Position[], balances: Balance[]): Promise<RiskMetrics> {
+  calculateRiskMetrics(
+    positions: Position[],
+    balances: Balance[]
+  ): Promise<RiskMetrics> {
     console.log(positions, balances);
     throw new Error('Method not implemented.');
   }
@@ -75,43 +83,50 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   }
 
   // Risk Limit Validation
-  async validateOrder(order: any, portfolioValue: Decimal, positions: Position[]): Promise<boolean> {
+  async validateOrder(
+    order: any,
+    portfolioValue: Decimal,
+    positions: Position[]
+  ): Promise<boolean> {
     const checks = [
       this.checkPositionSize(order, portfolioValue),
       this.checkDailyLoss(),
       this.checkDrawdown(),
       this.checkLeverage(order, portfolioValue, positions),
-      this.checkEmergencyMode()
+      this.checkEmergencyMode(),
     ];
 
     const results = await Promise.all(checks);
-    const passed = results.every(result => result);
+    const passed = results.every((result) => result);
 
     if (!passed) {
       this.emit('orderRejected', {
         orderId: order.id,
         reason: 'Risk limits exceeded',
-        checks: results
+        checks: results,
       });
     }
 
     return passed;
   }
 
-  private async checkPositionSize(order: any, portfolioValue: Decimal): Promise<boolean> {
+  private async checkPositionSize(
+    order: any,
+    portfolioValue: Decimal
+  ): Promise<boolean> {
     if (portfolioValue.eq(0)) return false;
 
     const orderValue = order.quantity.mul(order.price || new Decimal(0));
     const positionSizePercent = orderValue.div(portfolioValue).mul(100);
 
     const passed = positionSizePercent.lte(this.config.maxPositionSize);
-    
+
     if (!passed) {
       this.emitRiskAlert({
         type: 'POSITION_SIZE_EXCEEDED',
         severity: 'high',
         message: `Position size ${positionSizePercent.toFixed(2)}% exceeds limit ${this.config.maxPositionSize.toFixed(2)}%`,
-        data: { orderValue, portfolioValue, positionSizePercent }
+        data: { orderValue, portfolioValue, positionSizePercent },
       });
     }
 
@@ -128,7 +143,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
         type: 'DAILY_LOSS_LIMIT',
         severity: 'high',
         message: `Daily loss ${dailyLossPercent.toFixed(2)}% exceeds limit ${this.config.maxDailyLoss.toFixed(2)}%`,
-        data: { dailyLossPercent, limit: this.config.maxDailyLoss }
+        data: { dailyLossPercent, limit: this.config.maxDailyLoss },
       });
     }
 
@@ -143,27 +158,37 @@ export class RiskManager extends EventEmitter implements IRiskManager {
         type: 'MAX_DRAWDOWN_EXCEEDED',
         severity: 'critical',
         message: `Drawdown ${this.currentDrawdown.toFixed(2)}% exceeds limit ${this.config.maxDrawdown.toFixed(2)}%`,
-        data: { currentDrawdown: this.currentDrawdown, maxDrawdown: this.config.maxDrawdown }
+        data: {
+          currentDrawdown: this.currentDrawdown,
+          maxDrawdown: this.config.maxDrawdown,
+        },
       });
-      
+
       this.enterEmergencyMode();
     }
 
     return passed;
   }
 
-  private async checkLeverage(order: any, portfolioValue: Decimal, positions: Position[]): Promise<boolean> {
+  private async checkLeverage(
+    order: any,
+    portfolioValue: Decimal,
+    positions: Position[]
+  ): Promise<boolean> {
     // Calculate current leverage
     const totalExposure = this.calculateTotalExposure(positions);
-    const currentLeverage = portfolioValue.gt(0) ? totalExposure.div(portfolioValue) : new Decimal(0);
-    
+    const currentLeverage = portfolioValue.gt(0)
+      ? totalExposure.div(portfolioValue)
+      : new Decimal(0);
+
     // Calculate leverage after this order
     const orderExposure = order.quantity.mul(order.price || new Decimal(0));
-    const newTotalExposure = order.side === 'BUY' 
-      ? totalExposure.add(orderExposure)
-      : totalExposure;
-    const newLeverage = portfolioValue.gt(0) ? newTotalExposure.div(portfolioValue) : new Decimal(0);
-    
+    const newTotalExposure =
+      order.side === 'BUY' ? totalExposure.add(orderExposure) : totalExposure;
+    const newLeverage = portfolioValue.gt(0)
+      ? newTotalExposure.div(portfolioValue)
+      : new Decimal(0);
+
     const passed = newLeverage.lte(this.config.maxLeverage);
 
     if (!passed) {
@@ -171,7 +196,11 @@ export class RiskManager extends EventEmitter implements IRiskManager {
         type: 'LEVERAGE_EXCEEDED',
         severity: 'high',
         message: `Leverage ${newLeverage.toFixed(2)}x exceeds limit ${this.config.maxLeverage.toFixed(2)}x`,
-        data: { currentLeverage, newLeverage, maxLeverage: this.config.maxLeverage }
+        data: {
+          currentLeverage,
+          newLeverage,
+          maxLeverage: this.config.maxLeverage,
+        },
       });
     }
 
@@ -184,7 +213,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
         type: 'EMERGENCY_MODE_ACTIVE',
         severity: 'critical',
         message: 'Trading halted - Emergency mode active',
-        data: { emergencyMode: true }
+        data: { emergencyMode: true },
       });
       return false;
     }
@@ -193,9 +222,9 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
   // Position Sizing
   calculatePositionSize(
-    portfolioValue: Decimal, 
-    riskPerTrade: Decimal, 
-    entryPrice: Decimal, 
+    portfolioValue: Decimal,
+    riskPerTrade: Decimal,
+    entryPrice: Decimal,
     stopLoss: Decimal
   ): Decimal {
     if (stopLoss.eq(0) || entryPrice.eq(stopLoss)) {
@@ -207,7 +236,9 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     const positionSize = riskAmount.div(riskPerUnit);
 
     // Apply position size limit
-    const maxPositionValue = portfolioValue.mul(this.config.maxPositionSize.div(100));
+    const maxPositionValue = portfolioValue.mul(
+      this.config.maxPositionSize.div(100)
+    );
     const maxPositionSize = maxPositionValue.div(entryPrice);
 
     return Decimal.min(positionSize, maxPositionSize);
@@ -228,20 +259,26 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
     // Kelly formula: f = (bp - q) / b
     // Where: b = odds received (win/loss ratio), p = probability of win, q = probability of loss
-    const kellyFraction = winProbability.mul(winLossRatio).sub(lossProbability).div(winLossRatio);
+    const kellyFraction = winProbability
+      .mul(winLossRatio)
+      .sub(lossProbability)
+      .div(winLossRatio);
 
     // Apply a fraction of Kelly (typically 25-50%) for safety
     const fractionalKelly = kellyFraction.mul(0.25);
 
     // Ensure it doesn't exceed position size limits
     const maxFraction = this.config.maxPositionSize.div(100);
-    return Decimal.min(Decimal.max(fractionalKelly, new Decimal(0)), maxFraction);
+    return Decimal.min(
+      Decimal.max(fractionalKelly, new Decimal(0)),
+      maxFraction
+    );
   }
 
   // Risk Monitoring
   updatePortfolioMetrics(
-    currentValue: Decimal, 
-    positions: Position[], 
+    currentValue: Decimal,
+    positions: Position[],
     dailyPnl?: Decimal
   ): RiskAlert {
     // Update peak value and drawdown
@@ -249,7 +286,10 @@ export class RiskManager extends EventEmitter implements IRiskManager {
       this.peakValue = currentValue;
       this.currentDrawdown = new Decimal(0);
     } else if (this.peakValue.gt(0)) {
-      this.currentDrawdown = this.peakValue.sub(currentValue).div(this.peakValue).mul(100);
+      this.currentDrawdown = this.peakValue
+        .sub(currentValue)
+        .div(this.peakValue)
+        .mul(100);
     }
 
     // Update daily P&L
@@ -265,13 +305,18 @@ export class RiskManager extends EventEmitter implements IRiskManager {
         currentDrawdown: this.currentDrawdown,
         peakValue: this.peakValue,
         totalExposure: this.calculateTotalExposure(positions),
-        leverage: currentValue.gt(0) ? this.calculateTotalExposure(positions).div(currentValue) : new Decimal(0),
+        leverage: currentValue.gt(0)
+          ? this.calculateTotalExposure(positions).div(currentValue)
+          : new Decimal(0),
         positionCount: positions.length,
         largestPosition: this.getLargestPositionSize(positions, currentValue),
-        concentrationRisk: this.calculateConcentrationRisk(positions, currentValue),
+        concentrationRisk: this.calculateConcentrationRisk(
+          positions,
+          currentValue
+        ),
         dailyPnl: this.dailyPnl,
-        emergencyMode: this.emergencyMode
-      }
+        emergencyMode: this.emergencyMode,
+      },
     };
 
     this.emit('riskMetricsUpdated', metrics);
@@ -285,7 +330,10 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     }, new Decimal(0));
   }
 
-  private getLargestPositionSize(positions: Position[], portfolioValue: Decimal): Decimal {
+  private getLargestPositionSize(
+    positions: Position[],
+    portfolioValue: Decimal
+  ): Decimal {
     if (positions.length === 0 || portfolioValue.eq(0)) {
       return new Decimal(0);
     }
@@ -298,26 +346,32 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     return largestValue.div(portfolioValue).mul(100);
   }
 
-  private calculateConcentrationRisk(positions: Position[], portfolioValue: Decimal): Decimal {
+  private calculateConcentrationRisk(
+    positions: Position[],
+    portfolioValue: Decimal
+  ): Decimal {
     if (positions.length === 0 || portfolioValue.eq(0)) {
       return new Decimal(0);
     }
 
     // Calculate Herfindahl-Hirschman Index (HHI) for concentration
-    const weights = positions.map(position => {
+    const weights = positions.map((position) => {
       const positionValue = position.quantity.mul(position.avgPrice);
       return positionValue.div(portfolioValue);
     });
 
-    const hhi = weights.reduce((sum, weight) => sum.add(weight.pow(2)), new Decimal(0));
+    const hhi = weights.reduce(
+      (sum, weight) => sum.add(weight.pow(2)),
+      new Decimal(0)
+    );
     return hhi.mul(100); // Convert to percentage
   }
 
   // Stop Loss Management
   calculateDynamicStopLoss(
-    entryPrice: Decimal, 
-    currentPrice: Decimal, 
-    atr: Decimal, 
+    entryPrice: Decimal,
+    currentPrice: Decimal,
+    atr: Decimal,
     side: 'BUY' | 'SELL'
   ): Decimal {
     const atrMultiplier = new Decimal(2); // 2x ATR for stop loss
@@ -330,7 +384,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
       const trailingStop = currentPrice.sub(atr.mul(atrMultiplier));
       const fixedStop = entryPrice.sub(atr.mul(atrMultiplier));
       stopLoss = Decimal.max(trailingStop, fixedStop);
-      
+
       // Apply buffer
       stopLoss = stopLoss.mul(new Decimal(1).sub(buffer));
     } else {
@@ -338,7 +392,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
       const trailingStop = currentPrice.add(atr.mul(atrMultiplier));
       const fixedStop = entryPrice.add(atr.mul(atrMultiplier));
       stopLoss = Decimal.min(trailingStop, fixedStop);
-      
+
       // Apply buffer
       stopLoss = stopLoss.mul(new Decimal(1).add(buffer));
     }
@@ -353,7 +407,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
       this.emit('emergencyModeActivated', {
         reason: 'Risk limits exceeded',
         timestamp: new Date(),
-        currentDrawdown: this.currentDrawdown
+        currentDrawdown: this.currentDrawdown,
       });
     }
   }
@@ -362,7 +416,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     if (this.emergencyMode) {
       this.emergencyMode = false;
       this.emit('emergencyModeDeactivated', {
-        timestamp: new Date()
+        timestamp: new Date(),
       });
     }
   }
@@ -374,7 +428,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   // Risk Alerts
   private emitRiskAlert(alert: RiskAlert): void {
     this.emit('riskAlert', alert);
-    
+
     // Log critical alerts
     if (alert.severity === 'critical') {
       console.error(`CRITICAL RISK ALERT: ${alert.message}`, alert.data);
@@ -395,7 +449,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   private setupDailyReset(): void {
     const now = new Date();
     const msUntilReset = this.dailyResetTime.getTime() - now.getTime();
-    
+
     setTimeout(() => {
       this.resetDailyMetrics();
       // Set up next reset
@@ -419,22 +473,22 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   // Utility Methods
   getVaR(returns: Decimal[], confidence: number = 0.95): Decimal {
     if (returns.length === 0) return new Decimal(0);
-    
+
     const sortedReturns = returns.sort((a, b) => a.comparedTo(b));
     const index = Math.floor((1 - confidence) * sortedReturns.length);
-    
+
     return sortedReturns[Math.max(0, index)].abs();
   }
 
   getCVaR(returns: Decimal[], confidence: number = 0.95): Decimal {
     if (returns.length === 0) return new Decimal(0);
-    
+
     const sortedReturns = returns.sort((a, b) => a.comparedTo(b));
     const cutoffIndex = Math.floor((1 - confidence) * sortedReturns.length);
     const tailReturns = sortedReturns.slice(0, cutoffIndex + 1);
-    
+
     if (tailReturns.length === 0) return new Decimal(0);
-    
+
     return tailReturns
       .reduce((sum, r) => sum.add(r.abs()), new Decimal(0))
       .div(tailReturns.length);

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
+
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
-
 import {
   Order,
   OrderSide,
@@ -27,9 +27,13 @@ export class BinanceExchange extends BaseExchange {
   private static readonly TESTNET_WS_URL = 'wss://testnet.binance.vision/ws/';
 
   constructor(isTestnet = false) {
-    const baseUrl = isTestnet ? BinanceExchange.TESTNET_BASE_URL : BinanceExchange.MAINNET_BASE_URL;
-    const wsBaseUrl = isTestnet ? BinanceExchange.TESTNET_WS_URL : BinanceExchange.MAINNET_WS_URL;
-    
+    const baseUrl = isTestnet
+      ? BinanceExchange.TESTNET_BASE_URL
+      : BinanceExchange.MAINNET_BASE_URL;
+    const wsBaseUrl = isTestnet
+      ? BinanceExchange.TESTNET_WS_URL
+      : BinanceExchange.MAINNET_WS_URL;
+
     super('binance', baseUrl, wsBaseUrl);
   }
 
@@ -162,7 +166,11 @@ export class BinanceExchange extends BaseExchange {
     return this.transformBinanceOrder(response.data);
   }
 
-  public async cancelOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order> {
+  public async cancelOrder(
+    symbol: string,
+    orderId: string,
+    clientOrderId?: string
+  ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
       symbol: normalizedSymbol,
@@ -176,12 +184,18 @@ export class BinanceExchange extends BaseExchange {
     }
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.delete('/api/v3/order', { data: signedParams });
+    const response = await this.httpClient.delete('/api/v3/order', {
+      data: signedParams,
+    });
 
     return this.transformBinanceOrder(response.data);
   }
 
-  public async getOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order> {
+  public async getOrder(
+    symbol: string,
+    orderId: string,
+    clientOrderId?: string
+  ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
       symbol: normalizedSymbol,
@@ -195,7 +209,9 @@ export class BinanceExchange extends BaseExchange {
     }
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.get('/api/v3/order', { params: signedParams });
+    const response = await this.httpClient.get('/api/v3/order', {
+      params: signedParams,
+    });
 
     return this.transformBinanceOrder(response.data);
   }
@@ -205,7 +221,9 @@ export class BinanceExchange extends BaseExchange {
     if (symbol) params.symbol = this.normalizeSymbol(symbol);
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.get('/api/v3/openOrders', { params: signedParams });
+    const response = await this.httpClient.get('/api/v3/openOrders', {
+      params: signedParams,
+    });
 
     return response.data.map((order: any) => this.transformBinanceOrder(order));
   }
@@ -215,7 +233,9 @@ export class BinanceExchange extends BaseExchange {
     if (symbol) params.symbol = this.normalizeSymbol(symbol);
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.get('/api/v3/allOrders', { params: signedParams });
+    const response = await this.httpClient.get('/api/v3/allOrders', {
+      params: signedParams,
+    });
 
     return response.data.map((order: any) => this.transformBinanceOrder(order));
   }
@@ -230,7 +250,9 @@ export class BinanceExchange extends BaseExchange {
         asset: balance.asset,
         free: this.formatDecimal(balance.free),
         locked: this.formatDecimal(balance.locked),
-        total: this.formatDecimal(balance.free).add(this.formatDecimal(balance.locked)),
+        total: this.formatDecimal(balance.free).add(
+          this.formatDecimal(balance.locked)
+        ),
       })),
       canTrade: data.canTrade,
       canWithdraw: data.canWithdraw,
@@ -258,9 +280,13 @@ export class BinanceExchange extends BaseExchange {
     const minTradeSize: { [symbol: string]: Decimal } = {};
 
     data.symbols.forEach((symbolInfo: any) => {
-      const lotSizeFilter = symbolInfo.filters.find((filter: any) => filter.filterType === 'LOT_SIZE');
+      const lotSizeFilter = symbolInfo.filters.find(
+        (filter: any) => filter.filterType === 'LOT_SIZE'
+      );
       if (lotSizeFilter) {
-        minTradeSize[symbolInfo.symbol] = this.formatDecimal(lotSizeFilter.minQty);
+        minTradeSize[symbolInfo.symbol] = this.formatDecimal(
+          lotSizeFilter.minQty
+        );
       }
     });
 
@@ -282,7 +308,7 @@ export class BinanceExchange extends BaseExchange {
 
   protected buildWebSocketUrl(): string {
     const streams = [];
-    
+
     // Build stream names based on subscriptions
     for (const [type, symbols] of this.subscriptions) {
       for (const symbol of symbols) {
@@ -306,14 +332,17 @@ export class BinanceExchange extends BaseExchange {
     return `${this.wsBaseUrl}${streams.join('/')}`;
   }
 
-  protected async sendWebSocketSubscription(_type: string, _symbol: string): Promise<void> {
+  protected async sendWebSocketSubscription(
+    _type: string,
+    _symbol: string
+  ): Promise<void> {
     // Binance uses combined streams, so we need to reconnect with new stream list
     const ws = this.wsConnections.get('market');
     if (ws) {
       ws.close();
       this.wsConnections.delete('market');
     }
-    
+
     await this.createWebSocketConnection();
   }
 
@@ -324,17 +353,33 @@ export class BinanceExchange extends BaseExchange {
 
       switch (streamType) {
         case 'ticker':
-          this.emit('ticker', symbol.toUpperCase(), this.transformBinanceTicker(data));
+          this.emit(
+            'ticker',
+            symbol.toUpperCase(),
+            this.transformBinanceTicker(data)
+          );
           break;
         case 'depth':
-          this.emit('orderbook', symbol.toUpperCase(), this.transformBinanceOrderBook(data, symbol));
+          this.emit(
+            'orderbook',
+            symbol.toUpperCase(),
+            this.transformBinanceOrderBook(data, symbol)
+          );
           break;
         case 'trade':
-          this.emit('trade', symbol.toUpperCase(), this.transformBinanceTrade(data, symbol));
+          this.emit(
+            'trade',
+            symbol.toUpperCase(),
+            this.transformBinanceTrade(data, symbol)
+          );
           break;
         default:
           if (streamType.startsWith('kline')) {
-            this.emit('kline', symbol.toUpperCase(), this.transformBinanceKline(data.k));
+            this.emit(
+              'kline',
+              symbol.toUpperCase(),
+              this.transformBinanceKline(data.k)
+            );
           }
           break;
       }
@@ -384,7 +429,7 @@ export class BinanceExchange extends BaseExchange {
       '1w': '1w',
       '1M': '1M',
     };
-    
+
     return intervalMap[interval] || interval;
   }
 
@@ -397,64 +442,76 @@ export class BinanceExchange extends BaseExchange {
       [OrderType.TAKE_PROFIT]: 'TAKE_PROFIT',
       [OrderType.TAKE_PROFIT_LIMIT]: 'TAKE_PROFIT_LIMIT',
     };
-    
+
     return typeMap[type] || 'LIMIT';
   }
 
   private transformBinanceOrder(order: any): Order {
     const status = this.transformBinanceOrderStatus(order.status);
-    
+
     return {
       id: order.orderId?.toString() || uuidv4(),
       clientOrderId: order.clientOrderId,
       symbol: order.symbol,
-      side: order.side?.toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+      side:
+        order.side?.toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformBinanceOrderType(order.type),
       quantity: this.formatDecimal(order.origQty || order.quantity || '0'),
       price: order.price ? this.formatDecimal(order.price) : undefined,
-      stopPrice: order.stopPrice ? this.formatDecimal(order.stopPrice) : undefined,
+      stopPrice: order.stopPrice
+        ? this.formatDecimal(order.stopPrice)
+        : undefined,
       status,
-      timeInForce: order.timeInForce as TimeInForce || 'GTC',
-      timestamp: this.formatTimestamp(order.time || order.transactTime || Date.now()),
-      updateTime: order.updateTime ? this.formatTimestamp(order.updateTime) : undefined,
-      executedQuantity: order.executedQty ? this.formatDecimal(order.executedQty) : undefined,
-      cummulativeQuoteQuantity: order.cummulativeQuoteQty ? 
-        this.formatDecimal(order.cummulativeQuoteQty) : undefined,
-      fills: order.fills ? order.fills.map((fill: any) => ({
-        id: uuidv4(),
-        price: this.formatDecimal(fill.price),
-        quantity: this.formatDecimal(fill.qty),
-        commission: this.formatDecimal(fill.commission),
-        commissionAsset: fill.commissionAsset,
-        timestamp: this.formatTimestamp(order.transactTime || Date.now()),
-      })) : undefined,
+      timeInForce: (order.timeInForce as TimeInForce) || 'GTC',
+      timestamp: this.formatTimestamp(
+        order.time || order.transactTime || Date.now()
+      ),
+      updateTime: order.updateTime
+        ? this.formatTimestamp(order.updateTime)
+        : undefined,
+      executedQuantity: order.executedQty
+        ? this.formatDecimal(order.executedQty)
+        : undefined,
+      cummulativeQuoteQuantity: order.cummulativeQuoteQty
+        ? this.formatDecimal(order.cummulativeQuoteQty)
+        : undefined,
+      fills: order.fills
+        ? order.fills.map((fill: any) => ({
+            id: uuidv4(),
+            price: this.formatDecimal(fill.price),
+            quantity: this.formatDecimal(fill.qty),
+            commission: this.formatDecimal(fill.commission),
+            commissionAsset: fill.commissionAsset,
+            timestamp: this.formatTimestamp(order.transactTime || Date.now()),
+          }))
+        : undefined,
     };
   }
 
   private transformBinanceOrderStatus(status: string): OrderStatus {
     const statusMap: { [key: string]: OrderStatus } = {
-      'NEW': OrderStatus.NEW,
-      'PARTIALLY_FILLED': OrderStatus.PARTIALLY_FILLED,
-      'FILLED': OrderStatus.FILLED,
-      'CANCELED': OrderStatus.CANCELED,
-      'PENDING_CANCEL': OrderStatus.CANCELED,
-      'REJECTED': OrderStatus.REJECTED,
-      'EXPIRED': OrderStatus.EXPIRED,
+      NEW: OrderStatus.NEW,
+      PARTIALLY_FILLED: OrderStatus.PARTIALLY_FILLED,
+      FILLED: OrderStatus.FILLED,
+      CANCELED: OrderStatus.CANCELED,
+      PENDING_CANCEL: OrderStatus.CANCELED,
+      REJECTED: OrderStatus.REJECTED,
+      EXPIRED: OrderStatus.EXPIRED,
     };
-    
+
     return statusMap[status] || OrderStatus.NEW;
   }
 
   private transformBinanceOrderType(type: string): OrderType {
     const typeMap: { [key: string]: OrderType } = {
-      'MARKET': OrderType.MARKET,
-      'LIMIT': OrderType.LIMIT,
-      'STOP_LOSS': OrderType.STOP_LOSS,
-      'STOP_LOSS_LIMIT': OrderType.STOP_LOSS_LIMIT,
-      'TAKE_PROFIT': OrderType.TAKE_PROFIT,
-      'TAKE_PROFIT_LIMIT': OrderType.TAKE_PROFIT_LIMIT,
+      MARKET: OrderType.MARKET,
+      LIMIT: OrderType.LIMIT,
+      STOP_LOSS: OrderType.STOP_LOSS,
+      STOP_LOSS_LIMIT: OrderType.STOP_LOSS_LIMIT,
+      TAKE_PROFIT: OrderType.TAKE_PROFIT,
+      TAKE_PROFIT_LIMIT: OrderType.TAKE_PROFIT_LIMIT,
     };
-    
+
     return typeMap[type] || OrderType.LIMIT;
   }
 

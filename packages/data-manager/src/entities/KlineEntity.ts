@@ -1,4 +1,11 @@
-import { Entity, PrimaryGeneratedColumn, Column, Index, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  Index,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { Decimal } from 'decimal.js';
 
 // Custom transformer for Decimal type
@@ -37,7 +44,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   open!: Decimal;
 
@@ -45,7 +52,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   high!: Decimal;
 
@@ -53,7 +60,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   low!: Decimal;
 
@@ -61,7 +68,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   close!: Decimal;
 
@@ -69,7 +76,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   volume!: Decimal;
 
@@ -77,7 +84,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   quoteVolume!: Decimal;
 
@@ -89,7 +96,7 @@ export class KlineEntity {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   takerBuyBaseVolume?: Decimal;
 
@@ -98,7 +105,7 @@ export class KlineEntity {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new DecimalTransformer()
+    transformer: new DecimalTransformer(),
   })
   takerBuyQuoteVolume?: Decimal;
 

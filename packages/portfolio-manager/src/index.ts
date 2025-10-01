@@ -8,5 +8,5 @@ export type {
   IPortfolioManager,
   PortfolioSnapshot,
   PerformanceMetrics,
-  PositionSummary
+  PositionSummary,
 } from '@crypto-trading/core';

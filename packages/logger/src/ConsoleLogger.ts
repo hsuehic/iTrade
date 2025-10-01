@@ -4,8 +4,8 @@ export class ConsoleLogger implements ILogger {
   private level: LogLevel;
   private colors: { [key in LogLevel]: string } = {
     debug: '\x1b[36m', // Cyan
-    info: '\x1b[32m',  // Green
-    warn: '\x1b[33m',  // Yellow
+    info: '\x1b[32m', // Green
+    warn: '\x1b[33m', // Yellow
     error: '\x1b[31m', // Red
   };
   private reset = '\x1b[0m';
@@ -24,12 +24,16 @@ export class ConsoleLogger implements ILogger {
     return levels[level] >= levels[this.level];
   }
 
-  private formatMessage(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
+  private formatMessage(
+    level: LogLevel,
+    message: string,
+    meta?: Record<string, unknown>
+  ): string {
     const timestamp = new Date().toISOString();
     const color = this.colors[level];
     const levelStr = level.toUpperCase().padEnd(5);
     const metaStr = meta ? ' ' + JSON.stringify(meta, null, 2) : '';
-    
+
     return `${color}${timestamp} [${levelStr}]${this.reset} ${message}${metaStr}`;
   }
 
@@ -54,11 +58,13 @@ export class ConsoleLogger implements ILogger {
   error(message: string, error?: Error | Record<string, unknown>): void {
     if (this.shouldLog(LogLevel.ERROR)) {
       if (error instanceof Error) {
-        console.error(this.formatMessage(LogLevel.ERROR, message, {
-          error: error.message,
-          stack: error.stack,
-          name: error.name
-        }));
+        console.error(
+          this.formatMessage(LogLevel.ERROR, message, {
+            error: error.message,
+            stack: error.stack,
+            name: error.name,
+          })
+        );
       } else {
         console.error(this.formatMessage(LogLevel.ERROR, message, error));
       }

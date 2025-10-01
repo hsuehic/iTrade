@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
+
 import { Order, OrderStatus, OrderSide } from '../types';
 export declare class OrderManager extends EventEmitter {
     private orders;

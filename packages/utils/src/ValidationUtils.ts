@@ -30,6 +30,7 @@ export class ValidationUtils {
     return value instanceof Date && !isNaN(value.getTime());
   }
 
+   
   static isFunction(value: any): value is Function {
     return typeof value === 'function';
   }
@@ -127,9 +128,9 @@ export class ValidationUtils {
   // Financial Validation
   static isValidSymbol(symbol: string): boolean {
     if (!this.isString(symbol)) return false;
-    
+
     // Common crypto symbol patterns: BTCUSDT, BTC-USD, BTC/USDT
-    const symbolRegex = /^[A-Z]{2,10}[\/\-]?[A-Z]{2,10}$/;
+    const symbolRegex = /^[A-Z]{2,10}[/-]?[A-Z]{2,10}$/;
     return symbolRegex.test(symbol.toUpperCase());
   }
 
@@ -141,7 +142,11 @@ export class ValidationUtils {
     return this.isPositiveDecimal(quantity);
   }
 
-  static isValidPercentage(percentage: Decimal | string | number, min = 0, max = 100): boolean {
+  static isValidPercentage(
+    percentage: Decimal | string | number,
+    min = 0,
+    max = 100
+  ): boolean {
     try {
       const decimal = new Decimal(percentage);
       return decimal.gte(min) && decimal.lte(max);
@@ -155,8 +160,14 @@ export class ValidationUtils {
   }
 
   static isValidOrderType(type: string): boolean {
-    return ['MARKET', 'LIMIT', 'STOP_LOSS', 'STOP_LOSS_LIMIT', 'TAKE_PROFIT', 'TAKE_PROFIT_LIMIT']
-      .includes(type.toUpperCase());
+    return [
+      'MARKET',
+      'LIMIT',
+      'STOP_LOSS',
+      'STOP_LOSS_LIMIT',
+      'TAKE_PROFIT',
+      'TAKE_PROFIT_LIMIT',
+    ].includes(type.toUpperCase());
   }
 
   static isValidTimeInForce(tif: string): boolean {
@@ -176,7 +187,10 @@ export class ValidationUtils {
     return this.isArray(array) && array.length <= maxLength;
   }
 
-  static allItemsValid<T>(array: T[], validator: (item: T) => boolean): boolean {
+  static allItemsValid<T>(
+    array: T[],
+    validator: (item: T) => boolean
+  ): boolean {
     return this.isArray(array) && array.every(validator);
   }
 
@@ -185,7 +199,11 @@ export class ValidationUtils {
     return this.isNumber(value) && value >= min && value <= max;
   }
 
-  static isDecimalInRange(value: Decimal | string | number, min: Decimal, max: Decimal): boolean {
+  static isDecimalInRange(
+    value: Decimal | string | number,
+    min: Decimal,
+    max: Decimal
+  ): boolean {
     try {
       const decimal = new Decimal(value);
       return decimal.gte(min) && decimal.lte(max);
@@ -213,23 +231,36 @@ export class ValidationUtils {
 
   // Object Validation
   static hasProperty(obj: any, property: string): boolean {
-    return this.isObject(obj) && Object.prototype.hasOwnProperty.call(obj, property);
+    return (
+      this.isObject(obj) && Object.prototype.hasOwnProperty.call(obj, property)
+    );
   }
 
   static hasAllProperties(obj: any, properties: string[]): boolean {
-    return this.isObject(obj) && properties.every(prop => this.hasProperty(obj, prop));
+    return (
+      this.isObject(obj) &&
+      properties.every((prop) => this.hasProperty(obj, prop))
+    );
   }
 
-  static hasRequiredProperties<T extends object>(obj: any, requiredProps: (keyof T)[]): obj is T {
-    return this.isObject(obj) && requiredProps.every(prop => 
-      this.hasProperty(obj, prop as string) && !this.isNullOrUndefined((obj as T)[prop])
+  static hasRequiredProperties<T extends object>(
+    obj: any,
+    requiredProps: (keyof T)[]
+  ): obj is T {
+    return (
+      this.isObject(obj) &&
+      requiredProps.every(
+        (prop) =>
+          this.hasProperty(obj, prop as string) &&
+          !this.isNullOrUndefined((obj as T)[prop])
+      )
     );
   }
 
   // Schema Validation
   static validateSchema<T extends object>(
     obj: any,
-    schema: Record<keyof T, (value: any) => boolean>,
+    schema: Record<keyof T, (value: any) => boolean>
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -250,26 +281,45 @@ export class ValidationUtils {
   }
 
   // Trading-Specific Validation
-  static isValidOrderData(orderData: any): { valid: boolean; errors: string[] } {
+  static isValidOrderData(orderData: any): {
+    valid: boolean;
+    errors: string[];
+  } {
     const errors: string[] = [];
 
-    if (!this.hasProperty(orderData, 'symbol') || !this.isValidSymbol(orderData.symbol)) {
+    if (
+      !this.hasProperty(orderData, 'symbol') ||
+      !this.isValidSymbol(orderData.symbol)
+    ) {
       errors.push('Invalid or missing symbol');
     }
 
-    if (!this.hasProperty(orderData, 'side') || !this.isValidOrderSide(orderData.side)) {
+    if (
+      !this.hasProperty(orderData, 'side') ||
+      !this.isValidOrderSide(orderData.side)
+    ) {
       errors.push('Invalid or missing order side');
     }
 
-    if (!this.hasProperty(orderData, 'type') || !this.isValidOrderType(orderData.type)) {
+    if (
+      !this.hasProperty(orderData, 'type') ||
+      !this.isValidOrderType(orderData.type)
+    ) {
       errors.push('Invalid or missing order type');
     }
 
-    if (!this.hasProperty(orderData, 'quantity') || !this.isValidQuantity(orderData.quantity)) {
+    if (
+      !this.hasProperty(orderData, 'quantity') ||
+      !this.isValidQuantity(orderData.quantity)
+    ) {
       errors.push('Invalid or missing quantity');
     }
 
-    if (orderData.type === 'LIMIT' && (!this.hasProperty(orderData, 'price') || !this.isValidPrice(orderData.price))) {
+    if (
+      orderData.type === 'LIMIT' &&
+      (!this.hasProperty(orderData, 'price') ||
+        !this.isValidPrice(orderData.price))
+    ) {
       errors.push('Limit orders require a valid price');
     }
 
@@ -279,19 +329,36 @@ export class ValidationUtils {
   static isValidKlineData(kline: any): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    const requiredFields = ['symbol', 'openTime', 'closeTime', 'open', 'high', 'low', 'close', 'volume'];
-    
+    const requiredFields = [
+      'symbol',
+      'openTime',
+      'closeTime',
+      'open',
+      'high',
+      'low',
+      'close',
+      'volume',
+    ];
+
     for (const field of requiredFields) {
       if (!this.hasProperty(kline, field)) {
         errors.push(`Missing required field: ${field}`);
       }
     }
 
-    if (this.hasProperty(kline, 'openTime') && !this.isDate(kline.openTime) && !this.isValidDateString(kline.openTime)) {
+    if (
+      this.hasProperty(kline, 'openTime') &&
+      !this.isDate(kline.openTime) &&
+      !this.isValidDateString(kline.openTime)
+    ) {
       errors.push('Invalid openTime format');
     }
 
-    if (this.hasProperty(kline, 'closeTime') && !this.isDate(kline.closeTime) && !this.isValidDateString(kline.closeTime)) {
+    if (
+      this.hasProperty(kline, 'closeTime') &&
+      !this.isDate(kline.closeTime) &&
+      !this.isValidDateString(kline.closeTime)
+    ) {
       errors.push('Invalid closeTime format');
     }
 
@@ -302,7 +369,10 @@ export class ValidationUtils {
       }
     }
 
-    if (this.hasProperty(kline, 'volume') && !this.isNonNegativeDecimal(kline.volume)) {
+    if (
+      this.hasProperty(kline, 'volume') &&
+      !this.isNonNegativeDecimal(kline.volume)
+    ) {
       errors.push('Invalid volume');
     }
 
@@ -317,7 +387,7 @@ export class ValidationUtils {
 
   static normalizeSymbol(symbol: string): string {
     if (!this.isString(symbol)) return '';
-    return symbol.toUpperCase().replace(/[\/\-]/g, '');
+    return symbol.toUpperCase().replace(/[/-]/g, '');
   }
 
   static validateAndThrow(condition: boolean, message: string): void {
@@ -326,7 +396,11 @@ export class ValidationUtils {
     }
   }
 
-  static validateOrDefault<T>(value: any, validator: (value: any) => value is T, defaultValue: T): T {
+  static validateOrDefault<T>(
+    value: any,
+    validator: (value: any) => value is T,
+    defaultValue: T
+  ): T {
     return validator(value) ? value : defaultValue;
   }
 }

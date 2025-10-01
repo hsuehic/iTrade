@@ -14,7 +14,7 @@ export type {
   IDataManager,
   DataSource,
   DataQueryOptions,
-  CacheOptions
+  CacheOptions,
 } from '@crypto-trading/core';
 
 export type { TypeOrmDataManagerConfig } from './TypeOrmDataManager';

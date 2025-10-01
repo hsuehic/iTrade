@@ -1,6 +1,11 @@
 import { Decimal } from 'decimal.js';
-
-import { BaseStrategy, StrategyResult, StrategyParameters, Ticker, Kline } from '@crypto-trading/core';
+import {
+  BaseStrategy,
+  StrategyResult,
+  StrategyParameters,
+  Ticker,
+  Kline,
+} from '@crypto-trading/core';
 
 export interface MovingAverageParameters extends StrategyParameters {
   fastPeriod: number;
@@ -20,14 +25,14 @@ export class MovingAverageStrategy extends BaseStrategy {
 
   protected async onInitialize(): Promise<void> {
     this.validateParameters(['fastPeriod', 'slowPeriod', 'threshold']);
-    
+
     const fastPeriod = this.getParameter<number>('fastPeriod');
     const slowPeriod = this.getParameter<number>('slowPeriod');
-    
+
     if (fastPeriod >= slowPeriod) {
       throw new Error('Fast period must be less than slow period');
     }
-    
+
     this.priceHistory = [];
     this.position = 'none';
   }
@@ -52,7 +57,7 @@ export class MovingAverageStrategy extends BaseStrategy {
 
     // Add price to history
     this.priceHistory.push(currentPrice);
-    
+
     const fastPeriod = this.getParameter<number>('fastPeriod');
     const slowPeriod = this.getParameter<number>('slowPeriod');
     const threshold = this.getParameter<number>('threshold', 0.001);
@@ -108,7 +113,9 @@ export class MovingAverageStrategy extends BaseStrategy {
       quantity,
       price: currentPrice,
       confidence,
-      reason: reason || `Fast MA: ${fastValue.toFixed(2)}, Slow MA: ${slowValue.toFixed(2)}`,
+      reason:
+        reason ||
+        `Fast MA: ${fastValue.toFixed(2)}, Slow MA: ${slowValue.toFixed(2)}`,
     };
   }
 
@@ -118,8 +125,11 @@ export class MovingAverageStrategy extends BaseStrategy {
     }
 
     const relevantPrices = this.priceHistory.slice(-period);
-    const sum = relevantPrices.reduce((acc, price) => acc.add(price), new Decimal(0));
-    
+    const sum = relevantPrices.reduce(
+      (acc, price) => acc.add(price),
+      new Decimal(0)
+    );
+
     return sum.div(period);
   }
 

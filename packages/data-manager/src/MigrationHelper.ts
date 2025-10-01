@@ -1,7 +1,9 @@
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { TypeOrmDataManager } from './TypeOrmDataManager';
+
 import { Decimal } from 'decimal.js';
+
+import { TypeOrmDataManager } from './TypeOrmDataManager';
 
 export interface MigrationOptions {
   batchSize?: number;
@@ -30,7 +32,7 @@ export class MigrationHelper {
       batchSize = 1000,
       skipExisting = true,
       validateData = true,
-      onProgress
+      onProgress,
     } = options;
 
     const startTime = Date.now();
@@ -40,7 +42,7 @@ export class MigrationHelper {
       skippedRecords: 0,
       errorRecords: 0,
       errors: [],
-      duration: 0
+      duration: 0,
     };
 
     try {
@@ -99,7 +101,7 @@ export class MigrationHelper {
       intervals = [],
       dateRange,
       batchSize = 1000,
-      onProgress
+      onProgress,
     } = options;
 
     const sourceManager = new TypeOrmDataManager(sourceConfig);
@@ -112,43 +114,69 @@ export class MigrationHelper {
       skippedRecords: 0,
       errorRecords: 0,
       errors: [],
-      duration: 0
+      duration: 0,
     };
 
     try {
       // Get symbols and intervals to migrate
-      const symbolsToMigrate = symbols.length > 0 ? symbols : await sourceManager.getAvailableSymbols();
-      
+      const symbolsToMigrate =
+        symbols.length > 0
+          ? symbols
+          : await sourceManager.getAvailableSymbols();
+
       let totalOperations = 0;
       let completedOperations = 0;
 
       // Calculate total operations
       for (const symbol of symbolsToMigrate) {
-        const availableIntervals = intervals.length > 0 ? intervals : await sourceManager.getAvailableIntervals(symbol);
+        const availableIntervals =
+          intervals.length > 0
+            ? intervals
+            : await sourceManager.getAvailableIntervals(symbol);
         totalOperations += availableIntervals.length;
       }
 
       onProgress?.(0, totalOperations, 'Starting database migration...');
 
       for (const symbol of symbolsToMigrate) {
-        const availableIntervals = intervals.length > 0 ? intervals : await sourceManager.getAvailableIntervals(symbol);
-        
+        const availableIntervals =
+          intervals.length > 0
+            ? intervals
+            : await sourceManager.getAvailableIntervals(symbol);
+
         for (const interval of availableIntervals) {
-          onProgress?.(completedOperations, totalOperations, `Migrating ${symbol} ${interval}`);
+          onProgress?.(
+            completedOperations,
+            totalOperations,
+            `Migrating ${symbol} ${interval}`
+          );
 
           try {
-            const startDate = dateRange?.start ? new Date(dateRange.start) : new Date('2020-01-01');
-            const endDate = dateRange?.end ? new Date(dateRange.end) : new Date();
+            const startDate = dateRange?.start
+              ? new Date(dateRange.start)
+              : new Date('2020-01-01');
+            const endDate = dateRange?.end
+              ? new Date(dateRange.end)
+              : new Date();
 
             // Get data from source
-            const klines = await sourceManager.getKlines(symbol, interval, startDate, endDate);
+            const klines = await sourceManager.getKlines(
+              symbol,
+              interval,
+              startDate,
+              endDate
+            );
             stats.totalRecords += klines.length;
 
             if (klines.length > 0) {
               // Save to target in batches
               for (let i = 0; i < klines.length; i += batchSize) {
                 const batch = klines.slice(i, i + batchSize);
-                await this.targetDataManager.saveKlines(symbol, interval, batch);
+                await this.targetDataManager.saveKlines(
+                  symbol,
+                  interval,
+                  batch
+                );
                 stats.migratedRecords += batch.length;
               }
             }
@@ -174,7 +202,7 @@ export class MigrationHelper {
   private async getJsonFiles(directory: string): Promise<string[]> {
     try {
       const files = await fs.readdir(directory);
-      return files.filter(file => file.endsWith('.json'));
+      return files.filter((file) => file.endsWith('.json'));
     } catch (error) {
       throw new Error(`Cannot read directory ${directory}: ${error}`);
     }
@@ -192,16 +220,18 @@ export class MigrationHelper {
       skippedRecords: 0,
       errorRecords: 0,
       errors: [],
-      duration: 0
+      duration: 0,
     };
 
     try {
       // Parse symbol and interval from filename
       const fileName = filePath.split('/').pop() || '';
       const match = fileName.match(/^(.+)_(.+)\.json$/);
-      
+
       if (!match) {
-        throw new Error(`Invalid filename format: ${fileName}. Expected: SYMBOL_INTERVAL.json`);
+        throw new Error(
+          `Invalid filename format: ${fileName}. Expected: SYMBOL_INTERVAL.json`
+        );
       }
 
       const [, symbol, interval] = match;
@@ -228,22 +258,27 @@ export class MigrationHelper {
         close: new Decimal(raw.close),
         volume: new Decimal(raw.volume),
         quoteVolume: new Decimal(raw.quoteVolume),
-        trades: raw.trades
+        trades: raw.trades,
       }));
 
       // Validate data if requested
       if (validateData) {
-        const validKlines = klines.filter(kline => this.validateKline(kline));
+        const validKlines = klines.filter((kline) => this.validateKline(kline));
         stats.errorRecords = klines.length - validKlines.length;
-        
+
         if (stats.errorRecords > 0) {
-          stats.errors.push(`${stats.errorRecords} invalid klines in ${fileName}`);
+          stats.errors.push(
+            `${stats.errorRecords} invalid klines in ${fileName}`
+          );
         }
       }
 
       // Check if data already exists
       if (skipExisting) {
-        const existingData = await this.targetDataManager.validateData(symbol, interval);
+        const existingData = await this.targetDataManager.validateData(
+          symbol,
+          interval
+        );
         if (existingData) {
           stats.skippedRecords = stats.totalRecords;
           return stats;
@@ -306,13 +341,15 @@ export class MigrationHelper {
 
     const [sourceKlines, targetKlines] = await Promise.all([
       sourceManager.getKlines(symbol, interval, startDate, endDate),
-      this.targetDataManager.getKlines(symbol, interval, startDate, endDate)
+      this.targetDataManager.getKlines(symbol, interval, startDate, endDate),
     ]);
 
     const differences: string[] = [];
-    
+
     if (sourceKlines.length !== targetKlines.length) {
-      differences.push(`Record count mismatch: source=${sourceKlines.length}, target=${targetKlines.length}`);
+      differences.push(
+        `Record count mismatch: source=${sourceKlines.length}, target=${targetKlines.length}`
+      );
     }
 
     // Sample validation of a few records
@@ -323,10 +360,14 @@ export class MigrationHelper {
 
       if (source && target) {
         if (!source.open.eq(target.open)) {
-          differences.push(`Open price mismatch at index ${i}: ${source.open} vs ${target.open}`);
+          differences.push(
+            `Open price mismatch at index ${i}: ${source.open} vs ${target.open}`
+          );
         }
         if (!source.close.eq(target.close)) {
-          differences.push(`Close price mismatch at index ${i}: ${source.close} vs ${target.close}`);
+          differences.push(
+            `Close price mismatch at index ${i}: ${source.close} vs ${target.close}`
+          );
         }
       }
     }
@@ -335,7 +376,7 @@ export class MigrationHelper {
       isValid: differences.length === 0,
       sourceCount: sourceKlines.length,
       targetCount: targetKlines.length,
-      differences
+      differences,
     };
   }
 }

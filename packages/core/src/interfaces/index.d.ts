@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
+
 import { Order, OrderSide, OrderType, TimeInForce, Ticker, OrderBook, Trade, Kline, AccountInfo, Balance, Position, ExchangeCredentials, ExchangeInfo, StrategyParameters, StrategyResult, BacktestConfig, BacktestResult, RiskLimits, RiskMetrics } from '../types';
 export interface IExchange extends EventEmitter {
     readonly name: string;

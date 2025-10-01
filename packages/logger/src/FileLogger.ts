@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import { dirname } from 'path';
+
 import { ILogger, LogLevel } from '@crypto-trading/core';
 
 export interface FileLoggerOptions {
@@ -19,7 +20,7 @@ export class FileLogger implements ILogger {
       level: options.level || LogLevel.INFO,
       maxFileSize: options.maxFileSize || 50, // 50MB default
       maxFiles: options.maxFiles || 5,
-      ...options
+      ...options,
     };
 
     this.ensureLogDirectory();
@@ -40,20 +41,24 @@ export class FileLogger implements ILogger {
     return levels[level] >= levels[this.options.level];
   }
 
-  private formatLogEntry(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
+  private formatLogEntry(
+    level: LogLevel,
+    message: string,
+    meta?: Record<string, unknown>
+  ): string {
     const timestamp = new Date().toISOString();
     const logEntry = {
       timestamp,
       level: level.toUpperCase(),
       message,
-      ...meta
+      ...meta,
     };
     return JSON.stringify(logEntry) + '\n';
   }
 
   private async writeToFile(content: string): Promise<void> {
     this.writeQueue.push(content);
-    
+
     if (this.isWriting) {
       return;
     }
@@ -84,6 +89,7 @@ export class FileLogger implements ILogger {
         await this.rotateLogFile();
       }
     } catch (error) {
+      console.error('Failed to check file size:', error);
       // File doesn't exist yet, which is fine
     }
   }
@@ -97,7 +103,7 @@ export class FileLogger implements ILogger {
     for (let i = this.options.maxFiles - 1; i > 0; i--) {
       const oldFile = `${baseName}.${i}${extension}`;
       const newFile = `${baseName}.${i + 1}${extension}`;
-      
+
       try {
         await fs.access(oldFile);
         if (i === this.options.maxFiles - 1) {
@@ -143,12 +149,12 @@ export class FileLogger implements ILogger {
   error(message: string, error?: Error | Record<string, unknown>): void {
     if (this.shouldLog(LogLevel.ERROR)) {
       let logMeta: Record<string, unknown> = {};
-      
+
       if (error instanceof Error) {
         logMeta = {
           error: error.message,
           stack: error.stack,
-          name: error.name
+          name: error.name,
         };
       } else if (error) {
         logMeta = error;
@@ -186,7 +192,7 @@ export class FileLogger implements ILogger {
   async flush(): Promise<void> {
     // Wait for all pending writes to complete
     while (this.writeQueue.length > 0 || this.isWriting) {
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
   }
 }
