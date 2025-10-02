@@ -37,9 +37,9 @@ Future<void> main() async {
     NotificationService.instance.listenToMessages();
   }
   await ApiClient.instance.init(
-    baseUrl: 'https://trader.ihsueh.com',
+    baseUrl: 'https://itrade.ihsueh.com',
     // Allow handshake during development if the cert is self-signed/misconfigured
-    insecureAllowBadCertForHosts: const <String>['trader.ihsueh.com'],
+    insecureAllowBadCertForHosts: const <String>['itrade.ihsueh.com'],
   );
   runApp(const MyApp());
 }

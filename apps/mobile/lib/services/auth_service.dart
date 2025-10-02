@@ -86,34 +86,26 @@ class AuthService {
       );
 
       // Use Dio directly to send form-encoded data (not JSON)
-      final Response<dynamic> callbackRes = await ApiClient.instance.dio.post(
-        '/api/auth/callback/google?redirect=false',
-        data:
-            callbackData, // Dio will automatically encode as form data when content-type is form-encoded
-        options: Options(
-          followRedirects: false,
-          validateStatus: (int? s) => s != null && s < 500,
-          contentType: Headers.formUrlEncodedContentType,
-          headers: <String, dynamic>{
-            'X-Auth-Return-Redirect': '1',
-            'Accept': 'application/json',
-          },
-        ),
+      // Send ID token to your server
+      final response = await ApiClient.instance.postJson(
+        '/api/mobile/sign-in/social',
+        data: {'provider': 'google', 'idToken': idToken},
       );
+
       developer.log(
-        'Callback response status: ${callbackRes.statusCode}',
+        'Callback response status: ${response.statusCode}',
         name: 'AuthService',
       );
       developer.log(
-        'Callback response data: ${callbackRes.data}',
+        'Callback response data: ${response.data}',
         name: 'AuthService',
       );
       developer.log(
-        'Callback response headers: ${callbackRes.headers.map}',
+        'Callback response headers: ${response.headers.map}',
         name: 'AuthService',
       );
 
-      final List<String>? setCookies = callbackRes.headers.map['set-cookie'];
+      final List<String>? setCookies = response.headers.map['set-cookie'];
       if (setCookies != null && setCookies.isNotEmpty) {
         developer.log(
           'Set-Cookie received (${setCookies.length}): ${setCookies.join('; ')}',
@@ -127,9 +119,9 @@ class AuthService {
       }
 
       // Check if callback was successful
-      if (callbackRes.statusCode != 200) {
+      if (response.statusCode != 200) {
         developer.log(
-          'Callback failed with status ${callbackRes.statusCode}: ${callbackRes.data}',
+          'Callback failed with status ${response.statusCode}: ${response.data}',
           name: 'AuthService',
         );
       }
@@ -151,7 +143,7 @@ class AuthService {
       } catch (e) {
         developer.log('Failed to read cookie jar: $e', name: 'AuthService');
       }
-      if (callbackRes.statusCode == 200) {
+      if (response.statusCode == 200) {
         final res = await getUser();
         return res;
       }
@@ -169,30 +161,10 @@ class AuthService {
   }
 
   Future<User?> signInWithCredentials(String email, String password) async {
-    // Auth.js (NextAuth) Credentials flow: 1) fetch CSRF 2) submit form
-    final Response<dynamic> csrf = await ApiClient.instance.getJson(
-      '/api/auth/csrf',
-      options: Options(
-        followRedirects: false,
-        validateStatus: (int? s) => s != null && s < 500,
-      ),
-    );
-    final String? csrfToken = (csrf.data is Map)
-        ? (csrf.data['csrfToken'] as String?)
-        : null;
-    if (csrfToken == null) {
-      return null;
-    }
-
     final Response<dynamic> res = await ApiClient.instance.postJson(
       // Prefer redirect=false to avoid 302; some setups may still return 302
-      '/api/auth/callback/credentials?redirect=false',
-      data: {
-        'csrfToken': csrfToken,
-        'email': email,
-        'password': password,
-        'callbackUrl': '/',
-      },
+      '/api/mobile/sign-in/email',
+      data: {'email': email, 'password': password},
       options: Options(
         followRedirects: false,
         validateStatus: (int? s) => s != null && s < 500,
@@ -211,7 +183,7 @@ class AuthService {
 
   Future<User?> getUser() async {
     final Response<dynamic> res = await ApiClient.instance.getJson(
-      '/api/auth/session',
+      '/api/auth/get-session',
       options: Options(
         followRedirects: false,
         validateStatus: (int? s) => s != null && s < 500,
@@ -302,7 +274,7 @@ class AuthService {
     try {
       await _google.signOut();
       await ApiClient.instance.postJson(
-        '/api/auth/logout',
+        '/api/auth/sign-out',
         options: Options(
           followRedirects: false,
           validateStatus: (int? s) => s != null && s < 500,
