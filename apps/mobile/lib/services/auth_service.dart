@@ -168,7 +168,7 @@ class AuthService {
       options: Options(
         followRedirects: false,
         validateStatus: (int? s) => s != null && s < 500,
-        contentType: Headers.formUrlEncodedContentType,
+        contentType: Headers.jsonContentType,
         headers: <String, dynamic>{
           'X-Auth-Return-Redirect': '1',
           'Accept': 'application/json',
