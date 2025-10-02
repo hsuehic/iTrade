@@ -161,6 +161,11 @@ class AuthService {
   }
 
   Future<User?> signInWithCredentials(String email, String password) async {
+    final csrfRes = await ApiClient.instance.getJson(
+      '/api/mobile/sign-in/csrf',
+    );
+    final csrfToken = csrfRes.data['csrfToken'];
+
     final Response<dynamic> res = await ApiClient.instance.postJson(
       // Prefer redirect=false to avoid 302; some setups may still return 302
       '/api/mobile/sign-in/email',
@@ -172,6 +177,7 @@ class AuthService {
         headers: <String, dynamic>{
           'X-Auth-Return-Redirect': '1',
           'Accept': 'application/json',
+          'X-CSRF-Token': csrfToken,
         },
       ),
     );
