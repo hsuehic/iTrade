@@ -1,21 +1,21 @@
-import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 
 import { auth } from '@/lib/auth';
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { email, password } = body;
+  const { provider, idToken } = body;
 
-  const result = await auth.api.signInEmail({
+  const result = await auth.api.signInSocial({
     body: {
-      email,
-      password,
-      rememberMe: true,
+      provider,
+      idToken: {
+        token: idToken,
+      },
     },
     headers: await headers(),
     asResponse: true,
   });
 
-  return NextResponse.json(result, { status: 200 });
+  return result;
 }
