@@ -29,6 +29,9 @@ class NotificationService {
     );
     await _local.initialize(initSettings);
 
+    _messaging.subscribeToTopic('news');
+    _messaging.subscribeToTopic('allUsers');
+
     if (Platform.isIOS || Platform.isMacOS) {
       await _messaging.setForegroundNotificationPresentationOptions(
         alert: true,
@@ -65,8 +68,6 @@ class NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       if (onTap != null) onTap(message);
     });
-
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
   Future<void> _showLocal(RemoteMessage message) async {

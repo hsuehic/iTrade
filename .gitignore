@@ -60,3 +60,5 @@ api-keys/
 .cache/
 .turbo/
 .next/
+
+*firebase-admin.json

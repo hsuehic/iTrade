@@ -34,10 +34,10 @@ Future<void> main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     await NotificationService.instance.initialize();
     await NotificationService.instance.requestPermissions();
+    // TODO: add onTab to handle push message.
     NotificationService.instance.listenToMessages();
     final token = await NotificationService.instance.getDeviceToken();
-    print('Token:');
-    print(token);
+    developer.log('token: $token');
   }
   await ApiClient.instance.init(
     baseUrl: 'https://itrade.ihsueh.com',
