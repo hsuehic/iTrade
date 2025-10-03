@@ -4,59 +4,81 @@ export async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function retry<T>(
-  fn: () => Promise<T>,
+export function retry<T, Args extends any[]>(
+  fn: (...args: Args) => Promise<T>,
   options: {
     maxAttempts?: number;
     delay?: number;
     backoff?: 'fixed' | 'linear' | 'exponential';
     maxDelay?: number;
     shouldRetry?: (error: Error, attempt: number) => boolean;
+    till?: (result: T, attempt: number) => boolean;
   } = {}
-): Promise<T> {
+): (...args: Args) => Promise<T> {
   const {
     maxAttempts = 3,
     delay = 1000,
-    backoff = 'exponential',
+    backoff = 'fixed',
     maxDelay = 30000,
     shouldRetry = () => true,
+    till = () => true,
   } = options;
 
-  let lastError: Error;
+  return async (...args: Args): Promise<T> => {
+    let lastError: Error;
+    let lastResult: T;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        lastResult = await fn(...args);
+        if (till(lastResult, attempt)) {
+          return lastResult;
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (error instanceof Error) {
+          console.error(
+            `Attempt ${attempt} failed with error:`,
+            error.stack || error.message
+          );
+        } else {
+          console.error(`Attempt ${attempt} failed with non-Error:`, error);
+        }
 
-      if (attempt === maxAttempts || !shouldRetry(lastError, attempt)) {
-        throw lastError;
+        if (attempt === maxAttempts || !shouldRetry(lastError, attempt)) {
+          throw lastError;
+        }
+
+        // Calculate delay for next attempt
+        const calculateNextDelay = (
+          delay: number,
+          attempt: number,
+          backoff: string
+        ): number => {
+          switch (backoff) {
+            case 'linear':
+              return delay * attempt;
+            case 'exponential':
+              return delay * Math.pow(2, attempt - 1);
+            case 'fixed':
+            default:
+              return delay;
+          }
+        };
+        let nextDelay = calculateNextDelay(delay, attempt, backoff);
+
+        // Cap the delay at maxDelay
+        if (maxDelay <= 0) {
+          throw new Error('maxDelay must be a positive number');
+        }
+        nextDelay = Math.min(nextDelay, maxDelay);
+
+        await sleep(nextDelay);
       }
-
-      // Calculate delay for next attempt
-      let nextDelay = delay;
-      switch (backoff) {
-        case 'linear':
-          nextDelay = delay * attempt;
-          break;
-        case 'exponential':
-          nextDelay = delay * Math.pow(2, attempt - 1);
-          break;
-        case 'fixed':
-        default:
-          nextDelay = delay;
-          break;
-      }
-
-      // Cap the delay at maxDelay
-      nextDelay = Math.min(nextDelay, maxDelay);
-
-      await sleep(nextDelay);
     }
-  }
 
-  throw lastError!;
+    throw lastError!;
+  };
 }
 
 export function debounce<T extends (...args: any[]) => any>(

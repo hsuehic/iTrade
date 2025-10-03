@@ -48,6 +48,10 @@ dependencies:
   flutter_echarts: ^2.5.0
   web_socket_channel: ^3.0.1
   convert: ^3.1.1
+  crypto: ^3.0.2
+  logger: ^2.0.0
+  shared_preferences: ^2.2.2
+  local_auth: ^2.1.7
   syncfusion_flutter_charts: ^31.1.21
   flutter_echart: ^2.0.0
   better_auth_flutter: ^0.0.7

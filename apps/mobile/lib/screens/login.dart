@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
+import 'package:local_auth/local_auth.dart';
+
+import '../services/preference.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,9 +15,63 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String? _error;
   bool _obscurePassword = true;
+  bool _isBiometricEnabled = false;
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final LocalAuthentication _localAuth = LocalAuthentication();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBiometricSetting();
+  }
+
+  Future<void> _loadBiometricSetting() async {
+    final isBiometricEnabled = await Preference.getBiometricEnabled();
+    setState(() {
+      _isBiometricEnabled = isBiometricEnabled ?? false;
+    });
+    if (_isBiometricEnabled) {
+      final savedEmail = await Preference.getSavedEmail();
+      final savedPassword = await Preference.getSavedPassword();
+      if (savedEmail != null && savedPassword != null) {
+        _authenticateWithBiometric();
+      }
+    }
+  }
+
+  Future<void> _authenticateWithBiometric() async {
+    try {
+      bool canCheckBiometrics = await _localAuth.canCheckBiometrics;
+      if (!canCheckBiometrics) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Device does not support biometrics')),
+        );
+        return;
+      }
+
+      bool didAuthenticate = await _localAuth.authenticate(
+        localizedReason: 'Authenticate to login',
+        options: const AuthenticationOptions(biometricOnly: true),
+      );
+
+      if (didAuthenticate) {
+        final savedEmail = await Preference.getSavedEmail();
+        final savedPassword = await Preference.getSavedPassword();
+        if (savedEmail != null && savedPassword != null) {
+          _emailController.text = savedEmail;
+          _passwordController.text = savedPassword;
+          _handleCredentialLogin();
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Biometric error: $e')));
+    }
+  }
 
   Future<void> _handleGoogleSignIn() async {
     setState(() {
@@ -25,6 +82,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final User? user = await AuthService.instance.signInWithGoogle();
       if (user != null) {
         if (!mounted) return;
+        await Preference.setSavedEmail(_emailController.text.trim());
+        await Preference.setSavedPassword(_passwordController.text);
         Navigator.of(context).pushReplacementNamed('/home');
         return;
       } else {
@@ -60,6 +119,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user != null) {
         if (!mounted) return;
         Navigator.of(context).pushReplacementNamed('/home');
+        await Preference.setSavedEmail(_emailController.text.trim());
+        await Preference.setSavedPassword(_passwordController.text);
         return;
       }
       final String msg = 'Login failed';
