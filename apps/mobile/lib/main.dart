@@ -35,6 +35,9 @@ Future<void> main() async {
     await NotificationService.instance.initialize();
     await NotificationService.instance.requestPermissions();
     NotificationService.instance.listenToMessages();
+    final token = await NotificationService.instance.getDeviceToken();
+    print('Token:');
+    print(token);
   }
   await ApiClient.instance.init(
     baseUrl: 'https://itrade.ihsueh.com',

@@ -1,6 +1,4 @@
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
 import 'package:logger/logger.dart';
 
 class Preference {
@@ -18,7 +16,7 @@ class Preference {
   }
 
   static String encryptPassword(String password) {
-    return sha256.convert(utf8.encode(password)).toString();
+    return password;
   }
 
   static String? decryptPassword(String? encryptedPassword) {

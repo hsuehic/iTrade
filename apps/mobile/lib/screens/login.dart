@@ -27,6 +27,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _loadBiometricSetting();
   }
 
+  bool _isNotEmpty(String? value) {
+    return value != null && value.trim() != '';
+  }
+
   Future<void> _loadBiometricSetting() async {
     final isBiometricEnabled = await Preference.getBiometricEnabled();
     setState(() {
@@ -35,7 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_isBiometricEnabled) {
       final savedEmail = await Preference.getSavedEmail();
       final savedPassword = await Preference.getSavedPassword();
-      if (savedEmail != null && savedPassword != null) {
+      if (_isNotEmpty(savedEmail) && _isNotEmpty(savedPassword)) {
         _authenticateWithBiometric();
       }
     }
@@ -82,8 +86,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final User? user = await AuthService.instance.signInWithGoogle();
       if (user != null) {
         if (!mounted) return;
-        await Preference.setSavedEmail(_emailController.text.trim());
-        await Preference.setSavedPassword(_passwordController.text);
         Navigator.of(context).pushReplacementNamed('/home');
         return;
       } else {

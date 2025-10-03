@@ -65,6 +65,8 @@ class NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       if (onTap != null) onTap(message);
     });
+
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
   Future<void> _showLocal(RemoteMessage message) async {
@@ -98,4 +100,5 @@ class NotificationService {
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Background handler; Firebase.initializeApp is automatically handled by FlutterFire if configured
+  print(message.data);
 }
