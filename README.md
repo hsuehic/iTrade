@@ -1,208 +1,153 @@
 # iTrade
 
-AI(i, same pronounce with Chinese character 爱) trade, intelligent trade.
+A crypto trading platform with modular architecture.
 
-A comprehensive cryptocurrency trading platform with strategy backtesting, built as a monorepo using pnpm.
+## Project Structure
+```
+itrade/
+├── packages/
+│   ├── core/               # Core module
+│   ├── strategies/        # Strategy implementations
+│   │   └── src/strategies/
+│   │       └── MovingAverageStrategy.ts
+│   ├── exchange-connectors/ # Exchange connectors
+│   ├── data-manager/      # Data management
+│   ├── risk-management/   # Risk management
+│   └── event-bus/         # Event bus
+├── apps/
+│   ├── cli/               # CLI tool
+│   │   ├── src/commands/BacktestCommand.ts
+│   │   └── src/index.ts
+│   ├── mobile/           # Mobile client (Flutter)
+│   │   ├── lib/          # Dart code
+│   │   ├── android/      # Android-specific code
+│   │   └── ios/         # iOS-specific code
+│   ├── web/             # Web manager (Next.js)
+│   │   ├── app/         # Next.js routes
+│   │   ├── components/  # React components
+│   │   └── public/     # Static assets
+│   └── services/       # Service configurations (e.g., Docker)
+├── docs/                # Documentation
+│   ├── strategy-example-cn.md
+│   ├── strategy-flow-cn.md
+│   ├── strategy-example-en.md
+│   └── strategy-flow-en.md
+├── README.md           # Project overview
+└── package.json        # Project configuration
+```
 
-## 🏗️ Architecture
+## Documentation
+### Chinese
+- [策略示例](./docs/strategy-example-cn.md)
+- [策略执行流程](./docs/strategy-flow-cn.md)
 
-This monorepo is organized into packages and applications:
+### English
+- [Strategy Example](./docs/strategy-example-en.md)
+- [Strategy Execution Flow](./docs/strategy-flow-en.md)
 
-### 📦 Packages
+## Features
+- Modular design for easy extension.
+- Supports real-time data and historical backtesting.
+- Integrated risk management.
 
-- **`@crypto-trading/core`** - Core trading engine, types, and interfaces
-- **`@crypto-trading/exchange-connectors`** - Exchange API connectors (REST & WebSocket)
-- **`@crypto-trading/strategies`** - Trading strategy implementations
-- **`@crypto-trading/backtesting`** - Backtesting engine for strategy validation
+## Core Workflows
+### 1. Strategy Execution Flow
+```mermaid
+sequenceDiagram
+    participant User
+    participant TradeEngine
+    participant DataManager
+    participant Strategy
+    participant ExchangeConnector
 
-### 🚀 Applications
+    User->>TradeEngine: Start Engine
+    TradeEngine->>DataManager: Fetch Market Data
+    DataManager-->>TradeEngine: Return Data
+    TradeEngine->>Strategy: Analyze Data
+    Strategy-->>TradeEngine: Generate Signal
+    TradeEngine->>ExchangeConnector: Execute Trade
+    ExchangeConnector-->>TradeEngine: Confirm Execution
+    TradeEngine-->>User: Notify Result
+```
 
-- **`@crypto-trading/cli`** - Command-line interface for backtesting and strategy management
+### 2. CLI Tool Flow
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant BacktestCommand
+    participant TradeEngine
 
-## 🛠️ Development Setup
+    User->>CLI: Run `backtest` Command
+    CLI->>BacktestCommand: Parse Arguments
+    BacktestCommand->>TradeEngine: Load Strategy & Data
+    TradeEngine-->>BacktestCommand: Return Results
+    BacktestCommand-->>CLI: Format Output
+    CLI-->>User: Display Results
+```
 
-### Prerequisites
+### 3. Web Manager Flow
+```mermaid
+sequenceDiagram
+    participant User
+    participant WebUI
+    participant API
+    participant TradeEngine
 
-- Node.js 18+
-- pnpm 8+
+    User->>WebUI: Submit Trade Request
+    WebUI->>API: Send Request
+    API->>TradeEngine: Process Request
+    TradeEngine-->>API: Return Status
+    API-->>WebUI: Update UI
+    WebUI-->>User: Show Confirmation
+```
 
-### Installation
+## Quick Start
 
+### 1. Install Dependencies
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm run build
-
-# Run tests
-pnpm run test
+yarn add @crypto-trading/core @crypto-trading/strategies
 ```
 
-### Development
+### 2. Create a Strategy
+Implement a strategy (e.g., `MovingAverageStrategy`) by extending `BaseStrategy`.
 
-```bash
-# Start development mode (with watch)
-pnpm run dev
-
-# Run linting
-pnpm run lint
-
-# Type checking
-pnpm run type-check
-```
-
-## 📊 Using the CLI
-
-### Running Backtests
-
-```bash
-# Interactive mode
-pnpm --filter @crypto-trading/cli start backtest --interactive
-
-# Direct mode
-pnpm --filter @crypto-trading/cli start backtest \\
-  --strategy moving-average \\
-  --symbol BTCUSDT \\
-  --start-date 2024-01-01 \\
-  --end-date 2024-12-31 \\
-  --initial-balance 10000
-```
-
-## 📈 Strategies
-
-### Moving Average Strategy
-
-A simple moving average crossover strategy:
-
-- **Fast MA**: Short-term moving average (default: 10 periods)
-- **Slow MA**: Long-term moving average (default: 20 periods)  
-- **Signal**: Buy when fast MA crosses above slow MA, sell when below
-
-## 🔗 Exchange Support
-
-### Currently Implemented
-
-- **Binance** - Spot trading with REST and WebSocket APIs
-
-### Planned
-
-- Coinbase Pro
-- Kraken
-- FTX (if available)
-
-## 🏛️ Package Structure
-
-```
-packages/
-├── core/                 # Core trading engine
-│   ├── src/
-│   │   ├── types/       # TypeScript type definitions
-│   │   ├── interfaces/  # Core interfaces
-│   │   ├── engine/      # Trading engine implementation
-│   │   ├── events/      # Event system
-│   │   └── models/      # Base models
-├── exchange-connectors/ # Exchange API connectors
-│   ├── src/
-│   │   ├── base/       # Base exchange implementation
-│   │   ├── binance/    # Binance connector
-│   │   └── utils/      # Utilities
-├── strategies/          # Trading strategies
-│   ├── src/
-│   │   ├── strategies/ # Strategy implementations
-│   │   └── indicators/ # Technical indicators
-└── backtesting/         # Backtesting engine
-    └── src/
-        └── BacktestEngine.ts
-
-apps/
-├── cli/                 # Command-line interface
-│   └── src/
-│       ├── commands/    # CLI commands
-│       └── index.ts
-└── web-dashboard/       # Web dashboard (planned)
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-```bash
-# Exchange API Keys (for live trading)
-BINANCE_API_KEY=your_api_key
-BINANCE_SECRET_KEY=your_secret_key
-BINANCE_TESTNET=true  # Use testnet for development
-
-# Risk Management
-MAX_POSITION_SIZE=0.1    # 10% of portfolio per position
-MAX_DAILY_LOSS=0.05      # 5% max daily loss
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pnpm run test
-
-# Run tests for specific package
-pnpm --filter @crypto-trading/core run test
-
-# Watch mode
-pnpm run test:watch
-```
-
-## 📝 Adding New Strategies
-
-1. Create a new strategy class extending `BaseStrategy`:
-
+### 3. Register and Run
 ```typescript
-import { BaseStrategy, StrategyResult } from '@crypto-trading/core';
+import { TradeEngine } from '@crypto-trading/core';
+import { MovingAverageStrategy } from './strategies/moving-average-strategy';
 
-export class MyStrategy extends BaseStrategy {
-  async analyze(marketData: any): Promise<StrategyResult> {
-    // Your strategy logic here
-    return {
-      action: 'buy',
-      quantity: new Decimal(100),
-      confidence: 0.8,
-      reason: 'My custom signal'
-    };
-  }
-}
+const engine = new TradeEngine();
+const strategy = new MovingAverageStrategy();
+engine.registerStrategy(strategy);
+
+// Start the engine
+engine.start();
 ```
 
-2. Add it to the strategies package exports
-3. Register it in the CLI commands
+### 4. Configure Exchange
+```typescript
+import { BinanceConnector } from '@crypto-trading/exchange-connectors';
 
-## 🔒 Risk Management
+const binance = new BinanceConnector({ apiKey: 'YOUR_API_KEY' });
+engine.addExchange(binance);
+```
 
-The system includes built-in risk management:
+### 5. Run the Project
+```bash
+node index.ts
+```
 
-- Position size limits
-- Daily loss limits  
-- Maximum drawdown protection
-- Emergency stop functionality
+## FAQ
+### Q1: How to debug strategies?
+Add logs in the `analyze` method:
+```typescript
+console.log(`Fast MA: ${fastMA}, Slow MA: ${slowMA}`);
+```
 
-## 📊 Backtesting Features
+### Q2: How to add a new exchange?
+Implement the `IExchangeConnector` interface (refer to `BinanceConnector`).
 
-- Historical data simulation
-- Commission and slippage modeling
-- Comprehensive performance metrics
-- Equity curve analysis
-- Trade-by-trade breakdown
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## ⚠️ Disclaimer
-
-This software is for educational and research purposes only. Cryptocurrency trading involves substantial risk of loss. Past performance does not guarantee future results. Always do your own research and never invest more than you can afford to lose.
+## Next Steps
+- Explore dynamic strategy loading.
+- Read detailed module documentation.
