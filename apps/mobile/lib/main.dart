@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:ihsueh_itrade/screens/echart.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:uni_links/uni_links.dart';
+import 'constant/network.dart';
+import 'design/themes/theme.dart';
 
 import 'services/api_client.dart';
 import 'services/notification.dart';
@@ -34,45 +36,35 @@ Future<void> main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
     await NotificationService.instance.initialize();
     await NotificationService.instance.requestPermissions();
-    // TODO: add onTab to handle push message.
     NotificationService.instance.listenToMessages();
     final token = await NotificationService.instance.getDeviceToken();
     developer.log('token: $token');
   }
   await ApiClient.instance.init(
-    baseUrl: 'https://itrade.ihsueh.com',
+    baseUrl: NetworkParameter.host,
     // Allow handshake during development if the cert is self-signed/misconfigured
-    insecureAllowBadCertForHosts: const <String>['itrade.ihsueh.com'],
+    insecureAllowBadCertForHosts: const <String>[NetworkParameter.origin],
   );
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   // This widget is the root of your application.
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool isDark = false;
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'iTrade',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       home: const AuthGate(),
       routes: {
         '/login': (_) => const LoginScreen(),

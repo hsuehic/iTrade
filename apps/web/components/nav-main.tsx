@@ -1,5 +1,3 @@
-'use client';
-
 import {
   IconCirclePlusFilled,
   IconMail,
@@ -23,7 +21,7 @@ export function NavMain() {
   const items = [
     {
       title: 'Dashboard',
-      url: '#',
+      url: '/dashboard',
       icon: IconDashboard,
     },
     {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../design/extensions/spacing_extension.dart';
 
 class NavItemSpec {
   final IconData icon;
@@ -98,12 +99,17 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color color = selected ? activeColor : inactiveColor;
+    final theme = Theme.of(context);
+    final spacing = theme.extension<AppSpacing>();
+
+    final Color color = selected
+        ? theme.colorScheme.primary
+        : theme.colorScheme.onSurface;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(spacing!.md),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

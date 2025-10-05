@@ -97,7 +97,7 @@ class ApiClient {
   /// Attempts a lightweight GET to [sessionCheckPath] expecting 200 when
   /// authenticated. Falls back to checking persisted cookies for the base URL.
   Future<bool> hasSession({
-    String sessionCheckPath = '/api/auth/session',
+    String sessionCheckPath = '/api/auth/get-session',
   }) async {
     _ensureInitialized();
     try {
