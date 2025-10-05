@@ -1,4 +1,4 @@
-<svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <!-- 币体渐变 -->
     <radialGradient id="coinGradient" cx="50%" cy="50%" r="50%">
@@ -11,38 +11,38 @@
       <stop offset="100%" stop-color="#000" stop-opacity="0"/>
     </radialGradient>
     <!-- 银灰色背景渐变 -->
-    <linearGradient id="bgGradient" x1="0" y1="0" x2="0" y2="80" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bgGradient" x1="0" y1="0" x2="0" y2="683" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#F5F7FA"/>
       <stop offset="100%" stop-color="#B0BEC5"/>
     </linearGradient>
-    <linearGradient id="arrowRed" x1="40" y1="24" x2="40" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="arrowRed" x1="341" y1="205" x2="341" y2="479" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#EF4444" stop-opacity="0.8"/>
       <stop offset="50%" stop-color="#EF4444" stop-opacity="0.3"/>
       <stop offset="100%" stop-color="#EF4444" stop-opacity="0.8"/>
     </linearGradient>
-    <linearGradient id="arrowGreen" x1="40" y1="56" x2="40" y2="24" gradientUnits="userSpaceOnUse">
+    <linearGradient id="arrowGreen" x1="341" y1="479" x2="341" y2="205" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#10B981" stop-opacity="0.8"/>
       <stop offset="50%" stop-color="#10B981" stop-opacity="0.3"/>
       <stop offset="100%" stop-color="#10B981" stop-opacity="0.8"/>
     </linearGradient>
   </defs>
   <!-- 币体 -->
-  <circle cx="30" cy="30" r="28" fill="url(#coinGradient)" />
+  <circle cx="256" cy="256" r="240" fill="url(#coinGradient)" />
   <!-- 币体阴影 -->
-  <ellipse cx="30" cy="40" rx="18" ry="8" fill="url(#coinShadow)" />
+  <ellipse cx="256" cy="341" rx="154" ry="68" fill="url(#coinShadow)" />
   <!-- 币体高光 -->
-  <ellipse cx="24" cy="22" rx="8" ry="3" fill="#fff" opacity="0.5"/>
+  <ellipse cx="205" cy="188" rx="68" ry="26" fill="#fff" opacity="0.5"/>
   <!-- 中央比特币符号 -->
-  <text x="30" y="40" text-anchor="middle" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B82F6" stroke="#fff" stroke-width="2" paint-order="stroke" style="filter: drop-shadow(0 1px 1px #1E40AF66);">₿</text>
+  <text x="256" y="341" text-anchor="middle" font-family="Arial, sans-serif" font-size="240" font-weight="bold" fill="#3B82F6" stroke="#fff" stroke-width="17" paint-order="stroke" style="filter: drop-shadow(0 8px 8px #1E40AF66);">₿</text>
   <!-- 交易箭头（上下方向） -->
   <g>
     <!-- 上半部分红色箭头 -->
-    <path d="M30 14 L30 30" stroke="url(#arrowRed)" stroke-width="4" stroke-linecap="round"/>
-    <path d="M30 14 L22 22" stroke="url(#arrowRed)" stroke-width="4" stroke-linecap="round"/>
-    <path d="M30 14 L38 22" stroke="url(#arrowRed)" stroke-width="4" stroke-linecap="round"/>
+    <path d="M256 120 L256 256" stroke="url(#arrowRed)" stroke-width="34" stroke-linecap="round"/>
+    <path d="M256 120 L188 188" stroke="url(#arrowRed)" stroke-width="34" stroke-linecap="round"/>
+    <path d="M256 120 L324 188" stroke="url(#arrowRed)" stroke-width="34" stroke-linecap="round"/>
     <!-- 下半部分绿色箭头 -->
-    <path d="M30 30 L30 46" stroke="url(#arrowGreen)" stroke-width="3" stroke-linecap="round"/>
-    <path d="M30 46 L22 38" stroke="url(#arrowGreen)" stroke-width="3" stroke-linecap="round"/>
-    <path d="M30 46 L38 38" stroke="url(#arrowGreen)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M256 256 L256 392" stroke="url(#arrowGreen)" stroke-width="26" stroke-linecap="round"/>
+    <path d="M256 392 L188 324" stroke="url(#arrowGreen)" stroke-width="26" stroke-linecap="round"/>
+    <path d="M256 392 L324 324" stroke="url(#arrowGreen)" stroke-width="26" stroke-linecap="round"/>
   </g>
 </svg>

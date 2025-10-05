@@ -5,10 +5,11 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "mobile",
+      "name": "mobile (debug mode)",
       "cwd": "apps/mobile",
       "request": "launch",
-      "type": "dart"
+      "type": "dart",
+      "flutterMode": "debug"
     },
     {
       "name": "mobile (profile mode)",
