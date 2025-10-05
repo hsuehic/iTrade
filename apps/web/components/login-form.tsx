@@ -2,16 +2,12 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import {
-  IconBrandApple,
-  IconBrandGithub,
-  IconBrandGoogle,
-} from '@tabler/icons-react';
 
 import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconApple, IconGithub, IconGoogle } from '@/components/icons';
 export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -97,7 +93,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
         </div>
         <div className="grid grid-cols-3 gap-4">
           <Button variant="outline" type="button" className="w-full">
-            <IconBrandApple />
+            <IconApple />
             <span className="sr-only">Login with Apple</span>
           </Button>
           <Button
@@ -106,11 +102,11 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             className="w-full"
             onClick={() => signIn.social({ provider: 'google' })}
           >
-            <IconBrandGoogle />
+            <IconGoogle />
             <span className="sr-only">Login with Google</span>
           </Button>
           <Button variant="outline" type="button" className="w-full">
-            <IconBrandGithub />
+            <IconGithub />
             <span className="sr-only">Login with Github</span>
           </Button>
         </div>
