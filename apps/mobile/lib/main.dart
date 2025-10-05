@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ihsueh_itrade/screens/echart.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
+import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:uni_links/uni_links.dart';
 import 'constant/network.dart';
 import 'design/themes/theme.dart';
@@ -95,7 +96,8 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _checkSession() async {
     try {
-      final bool ok = await ApiClient.instance.hasSession();
+      final User? user = await AuthService.instance.getUser();
+      final bool ok = user != null;
       if (!mounted) return;
       setState(() {
         _hasSession = ok;

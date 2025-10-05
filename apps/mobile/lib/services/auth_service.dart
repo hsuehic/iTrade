@@ -188,80 +188,46 @@ class AuthService {
   }
 
   Future<User?> getUser() async {
-    final Response<dynamic> res = await ApiClient.instance.getJson(
-      '/api/auth/get-session',
-      options: Options(
-        followRedirects: false,
-        validateStatus: (int? s) => s != null && s < 500,
-      ),
-    );
-    developer.log(
-      'Session response status: ${res.statusCode}',
-      name: 'AuthService',
-    );
-    developer.log(
-      'Session response headers: ${res.headers.map}',
-      name: 'AuthService',
-    );
-    developer.log('Session response data: ${res.data}', name: 'AuthService');
-    developer.log(
-      'Session response data type: ${res.data.runtimeType}',
-      name: 'AuthService',
-    );
-
-    if (res.data == null) {
-      developer.log('Session response body is null', name: 'AuthService');
-      return null;
-    }
-
-    if (res.statusCode != 200) {
-      developer.log(
-        'Session response failed with status ${res.statusCode}: ${res.data}',
-        name: 'AuthService',
-      );
-      return null;
-    }
-
-    // Check if response data has the expected structure
-    if (res.data is! Map) {
-      developer.log(
-        'Session response data is not a Map: ${res.data}',
-        name: 'AuthService',
-      );
-      return null;
-    }
-
-    final Map<String, dynamic> responseData = res.data as Map<String, dynamic>;
-    if (!responseData.containsKey('user')) {
-      developer.log(
-        'Session response missing "user" key: ${responseData.keys.toList()}',
-        name: 'AuthService',
-      );
-      return null;
-    }
-
-    final dynamic userData = responseData['user'];
-    if (userData is! Map) {
-      developer.log('User data is not a Map: $userData', name: 'AuthService');
-      return null;
-    }
-
-    final Map<String, dynamic> userMap = userData as Map<String, dynamic>;
-    developer.log(
-      'User data keys: ${userMap.keys.toList()}',
-      name: 'AuthService',
-    );
-
     try {
+      final Response<dynamic> res = await ApiClient.instance.getJson(
+        '/api/auth/get-session',
+        options: Options(
+          followRedirects: false,
+          validateStatus: (int? s) => s != null && s < 500,
+        ),
+      );
+
+      if (res.data == null) {
+        return null;
+      }
+
+      if (res.statusCode != 200) {
+        return null;
+      }
+
+      // Check if response data has the expected structure
+      if (res.data is! Map) {
+        return null;
+      }
+
+      final Map<String, dynamic> responseData =
+          res.data as Map<String, dynamic>;
+      if (!responseData.containsKey('user')) {
+        return null;
+      }
+
+      final dynamic userData = responseData['user'];
+      if (userData is! Map) {
+        return null;
+      }
+
+      final Map<String, dynamic> userMap = userData as Map<String, dynamic>;
+
       user = User(
         id: userMap['id']?.toString(),
         email: userMap['email']?.toString() ?? '',
         name: userMap['name']?.toString() ?? '',
         image: userMap['image']?.toString(),
-      );
-      developer.log(
-        'Successfully created user: ${user?.email}',
-        name: 'AuthService',
       );
       return user;
     } catch (e, st) {
@@ -271,7 +237,6 @@ class AuthService {
         error: e,
         stackTrace: st,
       );
-      developer.log('Raw user data: $userMap', name: 'AuthService');
       return null;
     }
   }

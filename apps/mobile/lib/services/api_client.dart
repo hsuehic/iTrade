@@ -92,38 +92,6 @@ class ApiClient {
     _initialized = true;
   }
 
-  /// Check if a valid authenticated session exists.
-  ///
-  /// Attempts a lightweight GET to [sessionCheckPath] expecting 200 when
-  /// authenticated. Falls back to checking persisted cookies for the base URL.
-  Future<bool> hasSession({
-    String sessionCheckPath = '/api/auth/get-session',
-  }) async {
-    _ensureInitialized();
-    try {
-      final Response<dynamic> res = await _dio.get<dynamic>(
-        sessionCheckPath,
-        options: Options(
-          followRedirects: false,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      if (res.statusCode == 200 && res.data != null) return true;
-      return false;
-    } catch (_) {
-      // Ignore network/endpoint errors, fall back to cookie presence
-    }
-
-    try {
-      if (_cookieJar == null) return false;
-      final Uri base = Uri.parse(_dio.options.baseUrl);
-      final List<Cookie> cookies = await _cookieJar!.loadForRequest(base);
-      return cookies.isNotEmpty;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<Response<T>> getJson<T>(
     String path, {
     Map<String, dynamic>? queryParameters,
