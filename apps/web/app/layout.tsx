@@ -12,6 +12,9 @@ const geistMono = GeistMono;
 export const metadata: Metadata = {
   title: 'iTrade',
   description: 'iTrade - Trade crypto with intelligence',
+  icons: {
+    icon: '/favicon/favicon.ico',
+  },
 };
 
 export default function RootLayout({
