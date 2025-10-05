@@ -4,8 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:ihsueh_itrade/screens/echart.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
+import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:uni_links/uni_links.dart';
 import 'constant/network.dart';
@@ -147,7 +147,7 @@ class _MyHomePageState extends State<MyHomePage> {
     const DashboardScreen(),
     const StrategyScreen(),
     const ProductScreen(),
-    const EchartScreen(),
+    const StatisticsScreen(),
     const ProfileScreen(),
   ];
   StreamSubscription? _linkSubscription;
@@ -169,7 +169,7 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: null,
-      body: SafeArea(top: true, bottom: false, child: _pages[_pageIndex]),
+      body: _pages[_pageIndex],
       bottomNavigationBar: DesignBottomNavBar(
         currentIndex: _pageIndex,
         onTap: (index) => setState(() => _pageIndex = index),
