@@ -44,7 +44,7 @@ export class BacktestConfigEntity implements BacktestConfig {
   @Column('simple-array')
   symbols!: string[];
 
-  @Column({ length: 10 })
+  @Column({ type: 'character varying', length: 10 })
   timeframe!: string;
 
   @OneToMany(() => BacktestResultEntity, (r) => r.config)

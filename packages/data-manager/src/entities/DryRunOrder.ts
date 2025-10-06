@@ -19,23 +19,28 @@ import {
 } from '@crypto-trading/core';
 
 import { DecimalTransformer } from './Kline';
-import { PositionEntity } from './Position';
-import { StrategyEntity } from './Strategy';
-import { OrderFillEntity } from './OrderFill';
+import { DryRunSessionEntity } from './DryRunSession';
+import { DryRunOrderFillEntity } from './DryRunOrderFill';
 
-@Entity('orders')
+@Entity('dry_run_orders')
 @Index(['symbol'])
 @Index(['status'])
 @Index(['timestamp'])
-export class OrderEntity implements Order {
+export class DryRunOrderEntity implements Order {
   @PrimaryGeneratedColumn()
   internalId!: number;
 
-  @Column({ type: 'text', unique: true })
+  @Column({ type: 'text' })
   id!: string;
 
   @Column({ type: 'text', nullable: true })
   clientOrderId?: string | undefined;
+
+  @ManyToOne(() => DryRunSessionEntity, (s) => s.orders, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'sessionId' })
+  session!: DryRunSessionEntity;
 
   @Column({ type: 'character varying', length: 20 })
   symbol!: string;
@@ -102,16 +107,8 @@ export class OrderEntity implements Order {
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
-  @OneToMany(() => OrderFillEntity, (f) => f.order, { cascade: true })
-  fills?: OrderFillEntity[] | undefined;
-
-  @ManyToOne(() => StrategyEntity, (s) => s.orders, { nullable: true })
-  @JoinColumn({ name: 'strategyId' })
-  strategy?: StrategyEntity;
-
-  @ManyToOne(() => PositionEntity, (p) => p.orders, { nullable: true })
-  @JoinColumn({ name: 'positionId' })
-  position?: PositionEntity;
+  @OneToMany(() => DryRunOrderFillEntity, (f) => f.order, { cascade: true })
+  fills?: DryRunOrderFillEntity[] | undefined;
 
   @CreateDateColumn()
   createdAt!: Date;

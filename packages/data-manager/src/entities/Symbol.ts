@@ -15,16 +15,16 @@ export class SymbolEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ length: 20, unique: true })
+  @Column({ type: 'character varying', length: 20, unique: true })
   symbol!: string;
 
-  @Column({ length: 10 })
+  @Column({ type: 'character varying', length: 10 })
   baseAsset!: string;
 
-  @Column({ length: 10 })
+  @Column({ type: 'character varying', length: 10 })
   quoteAsset!: string;
 
-  @Column({ length: 20, default: 'binance' })
+  @Column({ type: 'character varying', length: 20, default: 'binance' })
   exchange!: string;
 
   @Column({ type: 'boolean', default: true })

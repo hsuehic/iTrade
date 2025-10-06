@@ -1,30 +1,51 @@
 import { Decimal } from 'decimal.js';
 import {
   Column,
-  CreateDateColumn,
   Entity,
   Index,
-  OneToMany,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
-  UpdateDateColumn,
 } from 'typeorm';
-import { Position } from '@crypto-trading/core';
+import { BacktestTrade, OrderSide } from '@crypto-trading/core';
 
 import { DecimalTransformer } from './Kline';
-import { OrderEntity } from './Order';
+import { DryRunSessionEntity } from './DryRunSession';
 
-@Entity('positions')
-@Index(['symbol'])
-@Index(['timestamp'])
-export class PositionEntity implements Position {
+@Entity('dry_run_trades')
+@Index(['entryTime'])
+@Index(['exitTime'])
+export class DryRunTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @ManyToOne(() => DryRunSessionEntity, (s) => s.trades, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'sessionId' })
+  session!: DryRunSessionEntity;
 
   @Column({ type: 'character varying', length: 20 })
   symbol!: string;
 
-  @Column({ type: 'text' })
-  side!: 'long' | 'short';
+  @Column({ type: 'enum', enum: OrderSide })
+  side!: OrderSide;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    transformer: new DecimalTransformer(),
+  })
+  entryPrice!: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    transformer: new DecimalTransformer(),
+  })
+  exitPrice!: Decimal;
 
   @Column({
     type: 'decimal',
@@ -34,13 +55,11 @@ export class PositionEntity implements Position {
   })
   quantity!: Decimal;
 
-  @Column({
-    type: 'decimal',
-    precision: 28,
-    scale: 10,
-    transformer: new DecimalTransformer(),
-  })
-  avgPrice!: Decimal;
+  @Column({ type: 'timestamp' })
+  entryTime!: Date;
+
+  @Column({ type: 'timestamp' })
+  exitTime!: Date;
 
   @Column({
     type: 'decimal',
@@ -48,33 +67,16 @@ export class PositionEntity implements Position {
     scale: 10,
     transformer: new DecimalTransformer(),
   })
-  markPrice!: Decimal;
-
-  @Column({
-    type: 'decimal',
-    precision: 28,
-    scale: 10,
-    transformer: new DecimalTransformer(),
-  })
-  unrealizedPnl!: Decimal;
+  pnl!: Decimal;
 
   @Column({
     type: 'decimal',
     precision: 10,
-    scale: 2,
+    scale: 6,
     transformer: new DecimalTransformer(),
   })
-  leverage!: Decimal;
+  commission!: Decimal;
 
-  @Column({ type: 'timestamp' })
-  timestamp!: Date;
-
-  @OneToMany(() => OrderEntity, (o) => o.position)
-  orders?: OrderEntity[];
-
-  @CreateDateColumn()
-  createdAt!: Date;
-
-  @UpdateDateColumn()
-  updatedAt!: Date;
+  @Column({ type: 'int' })
+  duration!: number;
 }

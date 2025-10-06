@@ -5,23 +5,25 @@ import {
   Index,
   ManyToOne,
   PrimaryGeneratedColumn,
+  JoinColumn,
 } from 'typeorm';
 import { OrderFill } from '@crypto-trading/core';
 
 import { DecimalTransformer } from './Kline';
-import { OrderEntity } from './Order';
+import { DryRunOrderEntity } from './DryRunOrder';
 
-@Entity('order_fills')
+@Entity('dry_run_order_fills')
 @Index(['timestamp'])
-export class OrderFillEntity implements OrderFill {
+export class DryRunOrderFillEntity implements OrderFill {
   @PrimaryGeneratedColumn()
   internalId!: number;
 
-  @Column({ type: 'text', unique: true })
+  @Column({ type: 'text' })
   id!: string;
 
-  @ManyToOne(() => OrderEntity, (o) => o.fills, { onDelete: 'CASCADE' })
-  order!: OrderEntity;
+  @ManyToOne(() => DryRunOrderEntity, (o) => o.fills, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'orderId' })
+  order!: DryRunOrderEntity;
 
   @Column({
     type: 'decimal',

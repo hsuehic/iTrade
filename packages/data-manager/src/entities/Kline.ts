@@ -28,10 +28,10 @@ export class KlineEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ length: 20 })
+  @Column({ type: 'character varying', length: 20 })
   symbol!: string;
 
-  @Column({ length: 10 })
+  @Column({ type: 'character varying', length: 10 })
   interval!: string;
 
   @Column({ type: 'timestamp' })

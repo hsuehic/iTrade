@@ -25,15 +25,16 @@
   "dependencies": {
     "@crypto-trading/core": "workspace:*",
     "decimal.js": "^10.4.3",
-    "node-csv": "^0.1.2",
-    "typeorm": "^0.3.17",
-    "pg": "^8.11.3",
     "mysql2": "^3.6.5",
-    "reflect-metadata": "^0.1.13"
+    "node-csv": "^0.1.2",
+    "pg": "^8.11.3",
+    "reflect-metadata": "^0.1.13",
+    "typeorm": "^0.3.17"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "@types/pg": "^8.10.9",
+    "dotenv": "^17.2.3",
     "tsdown": "^0.2.16"
   },
   "peerDependencies": {

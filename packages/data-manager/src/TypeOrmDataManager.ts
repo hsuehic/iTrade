@@ -16,6 +16,11 @@ import { BacktestConfigEntity } from './entities/BacktestConfig';
 import { BacktestResultEntity } from './entities/BacktestResult';
 import { BacktestTradeEntity } from './entities/BacktestTrade';
 import { EquityPointEntity } from './entities/EquityPoint';
+import { DryRunSessionEntity } from './entities/DryRunSession';
+import { DryRunOrderEntity } from './entities/DryRunOrder';
+import { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
+import { DryRunTradeEntity } from './entities/DryRunTrade';
+import { DryRunResultEntity } from './entities/DryRunResult';
 
 export interface TypeOrmDataManagerConfig {
   type: 'postgres' | 'mysql';
@@ -39,6 +44,8 @@ export class TypeOrmDataManager implements IDataManager {
   private klineRepository!: Repository<KlineEntity>;
   private symbolRepository!: Repository<SymbolEntity>;
   private dataQualityRepository!: Repository<DataQualityEntity>;
+  // Dry run repositories (initialized on demand via dataSource)
+  // Using inline repository lookups to avoid expanding class members excessively
   private isInitialized = false;
 
   constructor(private config: TypeOrmDataManagerConfig) {}
@@ -72,6 +79,12 @@ export class TypeOrmDataManager implements IDataManager {
         BacktestResultEntity,
         BacktestTradeEntity,
         EquityPointEntity,
+        // Dry Run entities
+        DryRunSessionEntity,
+        DryRunOrderEntity,
+        DryRunOrderFillEntity,
+        DryRunTradeEntity,
+        DryRunResultEntity,
       ],
       extra: this.config.extra || {},
     });
@@ -349,6 +362,114 @@ export class TypeOrmDataManager implements IDataManager {
       `getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`
     );
     return [];
+  }
+
+  // -------------------- Dry Run helpers --------------------
+  async createDryRunSession(session: {
+    strategyId?: number;
+    name?: string;
+    parametersSnapshot?: Record<string, unknown>;
+    startTime: Date;
+    timeframe?: string;
+    symbols?: string[];
+    initialBalance: number | string | import('decimal.js').Decimal;
+    commission?: number | string | import('decimal.js').Decimal;
+    slippage?: number | string | import('decimal.js').Decimal;
+    notes?: string;
+  }): Promise<DryRunSessionEntity> {
+    this.ensureInitialized();
+
+    const sessionRepo = this.dataSource.getRepository(DryRunSessionEntity);
+    const entity = sessionRepo.create({
+      name: session.name,
+      parametersSnapshot: session.parametersSnapshot,
+      startTime: session.startTime,
+      timeframe: session.timeframe,
+      symbols: session.symbols,
+      initialBalance: session.initialBalance,
+      commission: session.commission ?? 0,
+      slippage: session.slippage,
+      notes: session.notes,
+    });
+
+    if (session.strategyId) {
+      entity.strategy = { id: session.strategyId } as StrategyEntity;
+    }
+
+    return await sessionRepo.save(entity);
+  }
+
+  async completeDryRunSession(
+    sessionId: number,
+    endTime: Date,
+    status: 'completed' | 'failed' | 'canceled' = 'completed'
+  ): Promise<void> {
+    this.ensureInitialized();
+    const repo = this.dataSource.getRepository(DryRunSessionEntity);
+    await repo.update(
+      { id: sessionId },
+      { endTime, status: status as unknown as DryRunSessionEntity['status'] }
+    );
+  }
+
+  async saveDryRunOrders(
+    sessionId: number,
+    orders: Array<
+      Omit<
+        DryRunOrderEntity,
+        'internalId' | 'session' | 'createdAt' | 'updatedAt'
+      >
+    >
+  ): Promise<void> {
+    this.ensureInitialized();
+    if (orders.length === 0) return;
+
+    const repo = this.dataSource.getRepository(DryRunOrderEntity);
+    const entities = orders.map((o) => ({
+      ...o,
+      session: { id: sessionId } as unknown as DryRunSessionEntity,
+    }));
+    await repo.save(entities as unknown as DryRunOrderEntity[]);
+  }
+
+  async saveDryRunOrderFills(
+    fills: Array<
+      Omit<DryRunOrderFillEntity, 'internalId' | 'createdAt' | 'updatedAt'>
+    >
+  ): Promise<void> {
+    this.ensureInitialized();
+    if (fills.length === 0) return;
+
+    const repo = this.dataSource.getRepository(DryRunOrderFillEntity);
+    await repo.save(fills as unknown as DryRunOrderFillEntity[]);
+  }
+
+  async saveDryRunTrades(
+    sessionId: number,
+    trades: Array<Omit<DryRunTradeEntity, 'id' | 'session'>>
+  ): Promise<void> {
+    this.ensureInitialized();
+    if (trades.length === 0) return;
+
+    const repo = this.dataSource.getRepository(DryRunTradeEntity);
+    const entities = trades.map((t) => ({
+      ...t,
+      session: { id: sessionId } as unknown as DryRunSessionEntity,
+    }));
+    await repo.save(entities as unknown as DryRunTradeEntity[]);
+  }
+
+  async saveDryRunResult(
+    sessionId: number,
+    result: Omit<DryRunResultEntity, 'id' | 'session' | 'createdAt'>
+  ): Promise<DryRunResultEntity> {
+    this.ensureInitialized();
+    const repo = this.dataSource.getRepository(DryRunResultEntity);
+    const entity = repo.create({
+      ...(result as unknown as DryRunResultEntity),
+      session: { id: sessionId } as unknown as DryRunSessionEntity,
+    });
+    return await repo.save(entity);
   }
 
   async deleteOldData(

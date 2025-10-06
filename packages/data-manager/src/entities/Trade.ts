@@ -13,7 +13,7 @@ export class TradeEntity implements Trade {
   @Column({ type: 'text', unique: true })
   id!: string;
 
-  @Column({ length: 20 })
+  @Column({ type: 'character varying', length: 20 })
   symbol!: string;
 
   @Column({

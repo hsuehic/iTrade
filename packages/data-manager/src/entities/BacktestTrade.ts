@@ -22,7 +22,7 @@ export class BacktestTradeEntity implements BacktestTrade {
   @JoinColumn({ name: 'resultId' })
   result!: BacktestResultEntity;
 
-  @Column({ length: 20 })
+  @Column({ type: 'character varying', length: 20 })
   symbol!: string;
 
   @Column({ type: 'enum', enum: OrderSide })

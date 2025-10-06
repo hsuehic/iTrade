@@ -24,7 +24,7 @@ export class BalanceEntity implements Balance {
   })
   accountInfo!: AccountInfoEntity;
 
-  @Column({ length: 20 })
+  @Column({ type: 'character varying', length: 20 })
   asset!: string;
 
   @Column({
