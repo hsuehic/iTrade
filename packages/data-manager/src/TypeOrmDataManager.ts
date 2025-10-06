@@ -21,6 +21,9 @@ import { DryRunOrderEntity } from './entities/DryRunOrder';
 import { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
 import { DryRunTradeEntity } from './entities/DryRunTrade';
 import { DryRunResultEntity } from './entities/DryRunResult';
+import { User } from './entities/User';
+import { Account } from './entities/Account';
+import { Session } from './entities/Session';
 
 export interface TypeOrmDataManagerConfig {
   type: 'postgres' | 'mysql';
@@ -79,6 +82,10 @@ export class TypeOrmDataManager implements IDataManager {
         BacktestResultEntity,
         BacktestTradeEntity,
         EquityPointEntity,
+        // Auth and user management entities
+        User,
+        Account,
+        Session,
         // Dry Run entities
         DryRunSessionEntity,
         DryRunOrderEntity,

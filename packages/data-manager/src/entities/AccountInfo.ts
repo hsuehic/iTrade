@@ -5,11 +5,17 @@ import {
   Entity,
   OneToMany,
   PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
 } from 'typeorm';
 
 import { BalanceEntity } from './Balance';
+import { User } from './User';
 
 @Entity('account_info')
+@Index(['user'])
+@Index(['user', 'exchange'])
 export class AccountInfoEntity implements AccountInfo {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -39,4 +45,8 @@ export class AccountInfoEntity implements AccountInfo {
 
   @Column({ type: 'character varying', length: 255 })
   accountId!: string;
+
+  @ManyToOne(() => User, { nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user!: User;
 }

@@ -15,18 +15,21 @@ This package provides comprehensive data management capabilities for crypto trad
 ## Features
 
 ### 🗄️ Database Support
+
 - **PostgreSQL** - Production-ready with advanced indexing
 - **MySQL** - Reliable and widely supported
 - **Connection Pooling** - Optimized database connections
 - **Migrations** - Schema version management
 
 ### 📊 Data Models
+
 - **Kline/Candle Data** - OHLCV with volume and trade count
 - **Symbol Management** - Trading pair definitions
 - **Timeframe Support** - Multiple interval configurations
 - **Metadata Tracking** - Data source and quality metrics
 
 ### 🚀 Performance Features
+
 - **Batch Operations** - Efficient bulk data processing
 - **Indexing Strategy** - Optimized for time-series queries
 - **Memory Caching** - Configurable TTL-based caching
@@ -41,6 +44,7 @@ pnpm add @crypto-trading/data-manager @crypto-trading/core
 ## Database Setup
 
 ### PostgreSQL
+
 ```typescript
 import { TypeOrmDataManager } from '@crypto-trading/data-manager';
 
@@ -55,6 +59,7 @@ const dataManager = new TypeOrmDataManager({
 ```
 
 ### MySQL
+
 ```typescript
 const dataManager = new TypeOrmDataManager({
   type: 'mysql',
@@ -69,6 +74,7 @@ const dataManager = new TypeOrmDataManager({
 ## Usage Examples
 
 ### Basic Operations
+
 ```typescript
 import { TypeOrmDataManager, FileDataManager } from '@crypto-trading/data-manager';
 
@@ -105,6 +111,7 @@ const historicalData = await dataManager.getKlines(
 ```
 
 ### Advanced Queries
+
 ```typescript
 // Get latest candle for each symbol
 const latestCandles = await dataManager.getLatestKlines(['BTCUSDT', 'ETHUSDT'], '1h');
@@ -118,6 +125,7 @@ const validationResults = await dataManager.validateDataIntegrity('BTCUSDT', '1h
 ```
 
 ### Caching Integration
+
 ```typescript
 import { CacheManager } from '@crypto-trading/data-manager';
 
@@ -134,6 +142,7 @@ const cached = cache.getKlines('BTCUSDT', '1m');
 ## Configuration
 
 ### Database Connection Options
+
 ```typescript
 interface DatabaseConfig {
   type: 'postgres' | 'mysql';
@@ -151,6 +160,7 @@ interface DatabaseConfig {
 ```
 
 ### File Storage Configuration
+
 ```typescript
 const fileManager = new FileDataManager('./market-data', {
   compression: true,
@@ -162,6 +172,7 @@ const fileManager = new FileDataManager('./market-data', {
 ```
 
 ### Cache Configuration
+
 ```typescript
 const cacheConfig = {
   defaultTTL: 300000, // 5 minutes
@@ -174,7 +185,167 @@ const cacheConfig = {
 
 ## Data Models
 
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+  symbols ||--o{ klines : has
+  symbols ||--o{ data_quality : has
+  strategies ||--o{ orders : places
+  positions ||--o{ orders : contains
+  orders ||--o{ order_fills : fills
+  account_info ||--o{ balances : has
+  backtest_config ||--o{ backtest_results : produces
+  backtest_results ||--o{ equity_points : tracks
+  backtest_results ||--o{ backtest_trades : includes
+  dry_run_sessions ||--o{ dry_run_orders : contains
+  dry_run_orders ||--o{ dry_run_order_fills : fills
+  dry_run_sessions ||--o{ dry_run_trades : includes
+  dry_run_sessions ||--o{ dry_run_results : summarizes
+
+  symbols {
+    int id PK
+    string symbol
+    string baseAsset
+    string quoteAsset
+  }
+
+  klines {
+    string symbol
+    string interval
+    datetime openTime
+    datetime closeTime
+  }
+
+  data_quality {
+    string symbol
+    string interval
+    int totalRecords
+    float completenessPercent
+  }
+
+  strategies {
+    int id PK
+    string name
+  }
+
+  positions {
+    int id PK
+    string symbol
+    string side
+  }
+
+  orders {
+    int internalId PK
+    text id
+    string symbol
+    enum side
+    enum type
+    enum status
+    int strategyId FK
+    int positionId FK
+  }
+
+  order_fills {
+    int internalId PK
+    text id
+    int orderId FK
+    decimal price
+    decimal quantity
+  }
+
+  account_info {
+    int id PK
+    boolean canTrade
+    datetime updateTime
+  }
+
+  balances {
+    int id PK
+    int accountInfoId FK
+    string asset
+    decimal free
+    decimal locked
+  }
+
+  backtest_config {
+    int id PK
+    datetime startDate
+    datetime endDate
+    decimal initialBalance
+  }
+
+  backtest_results {
+    int id PK
+    int configId FK
+    int strategyId FK
+    decimal totalReturn
+    decimal sharpeRatio
+  }
+
+  equity_points {
+    int id PK
+    int resultId FK
+    datetime timestamp
+    decimal value
+  }
+
+  backtest_trades {
+    int id PK
+    int resultId FK
+    string symbol
+    enum side
+    decimal entryPrice
+    decimal exitPrice
+  }
+
+  dry_run_sessions {
+    int id PK
+    int strategyId FK
+    datetime startTime
+    datetime endTime
+    enum status
+  }
+
+  dry_run_orders {
+    int internalId PK
+    text id
+    int sessionId FK
+    string symbol
+    enum side
+    enum type
+    enum status
+  }
+
+  dry_run_order_fills {
+    int internalId PK
+    text id
+    int orderId FK
+    decimal price
+    decimal quantity
+  }
+
+  dry_run_trades {
+    int id PK
+    int sessionId FK
+    string symbol
+    enum side
+    decimal entryPrice
+    decimal exitPrice
+  }
+
+  dry_run_results {
+    int id PK
+    int sessionId FK
+    decimal totalReturn
+    decimal sharpeRatio
+  }
+```
+
+Note: Some links (e.g., `symbols` to `klines`/`data_quality`) are logical relations by fields rather than enforced foreign keys.
+
 ### Kline Entity
+
 ```typescript
 interface KlineData {
   symbol: string;
@@ -196,12 +367,14 @@ interface KlineData {
 ## Performance Optimization
 
 ### Database Indexing
+
 - **Primary Index**: `(symbol, interval, openTime)`
 - **Time Range Index**: `(openTime, closeTime)`
 - **Symbol Index**: `(symbol)` for cross-timeframe queries
 - **Composite Index**: `(symbol, interval)` for symbol-specific queries
 
 ### Memory Management
+
 ```typescript
 // Configure connection pooling
 const poolConfig = {
@@ -219,6 +392,7 @@ const poolConfig = {
 ## Data Migration
 
 ### From JSON Files
+
 ```typescript
 import { MigrationHelper } from '@crypto-trading/data-manager';
 
@@ -233,6 +407,7 @@ await migrator.migrateFromFiles('./historical-data', {
 ```
 
 ### Between Databases
+
 ```typescript
 // Migrate between different database systems
 await migrator.migrateBetweenDatabases(sourceConfig, targetConfig, {
@@ -245,6 +420,7 @@ await migrator.migrateBetweenDatabases(sourceConfig, targetConfig, {
 ## Monitoring & Analytics
 
 ### Data Quality Metrics
+
 ```typescript
 const metrics = await dataManager.getDataQualityMetrics('BTCUSDT', '1h');
 console.log(metrics);
@@ -259,6 +435,7 @@ console.log(metrics);
 ```
 
 ### Performance Monitoring
+
 ```typescript
 // Enable query performance logging
 const dataManager = new TypeOrmDataManager({
@@ -293,6 +470,7 @@ try {
 ## Best Practices
 
 ### 1. Connection Management
+
 ```typescript
 // Always initialize before use
 await dataManager.initialize();
@@ -304,6 +482,7 @@ process.on('SIGTERM', async () => {
 ```
 
 ### 2. Batch Operations
+
 ```typescript
 // Use batch operations for bulk data
 const BATCH_SIZE = 1000;
@@ -314,6 +493,7 @@ for (let i = 0; i < largeDataset.length; i += BATCH_SIZE) {
 ```
 
 ### 3. Query Optimization
+
 ```typescript
 // Use specific date ranges to leverage indexes
 const data = await dataManager.getKlines(
@@ -328,6 +508,7 @@ const data = await dataManager.getKlines(
 ## API Reference
 
 ### TypeOrmDataManager
+
 - `initialize()` - Initialize database connection
 - `saveKlines(symbol, interval, klines)` - Save candle data
 - `getKlines(symbol, interval, start, end, limit?)` - Retrieve candle data
@@ -339,6 +520,7 @@ const data = await dataManager.getKlines(
 - `close()` - Close database connections
 
 ### FileDataManager
+
 - `saveKlines(symbol, interval, klines)` - Save to JSON files
 - `getKlines(symbol, interval, start, end, limit?)` - Load from files
 - `validateData(symbol, interval)` - File data validation
@@ -346,6 +528,7 @@ const data = await dataManager.getKlines(
 - `getAvailableSymbols()` - List stored symbols
 
 ### CacheManager
+
 - `setKlines(symbol, interval, data, ttl?)` - Cache data
 - `getKlines(symbol, interval)` - Retrieve cached data
 - `invalidateSymbol(symbol)` - Clear symbol cache

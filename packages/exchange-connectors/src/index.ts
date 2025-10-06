@@ -1,5 +1,6 @@
 // Base classes
 export { BaseExchange } from './base/BaseExchange';
+export { MarketDataExchange } from './base/MarketDataExchange';
 
 // Exchange implementations
 export { BinanceExchange } from './binance/BinanceExchange';

@@ -1,10 +1,8 @@
-import { Column, Entity, Index, OneToMany } from 'typeorm';
+import { Column, Entity, OneToMany } from 'typeorm';
 
 import { Account } from './Account';
 import { Session } from './Session';
 
-@Index('user_email_key', ['email'], { unique: true })
-@Index('user_pkey', ['id'], { unique: true })
 @Entity('user', { schema: 'public' })
 export class User {
   @Column('text', { primary: true, name: 'id' })

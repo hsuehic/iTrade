@@ -13,6 +13,7 @@ import {
 
 import { DecimalTransformer } from './Kline';
 import { StrategyEntity } from './Strategy';
+import { User } from './User';
 import { DryRunOrderEntity } from './DryRunOrder';
 import { DryRunTradeEntity } from './DryRunTrade';
 import { DryRunResultEntity } from './DryRunResult';
@@ -27,6 +28,7 @@ export enum DryRunStatus {
 @Entity('dry_run_sessions')
 @Index(['createdAt'])
 @Index(['status'])
+@Index(['user'])
 export class DryRunSessionEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -99,4 +101,8 @@ export class DryRunSessionEntity {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
+  @ManyToOne(() => User, { nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user!: User;
 }

@@ -1,9 +1,7 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
 import { User } from './User';
 
-@Index('session_pkey', ['id'], { unique: true })
-@Index('session_token_key', ['token'], { unique: true })
 @Entity('session', { schema: 'public' })
 export class Session {
   @Column('text', { primary: true, name: 'id' })

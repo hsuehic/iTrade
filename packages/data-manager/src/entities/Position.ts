@@ -7,15 +7,20 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { Position } from '@crypto-trading/core';
 
 import { DecimalTransformer } from './Kline';
 import { OrderEntity } from './Order';
+import { User } from './User';
 
 @Entity('positions')
 @Index(['symbol'])
 @Index(['timestamp'])
+@Index(['user'])
+@Index(['user', 'symbol'])
 export class PositionEntity implements Position {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -77,4 +82,8 @@ export class PositionEntity implements Position {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
+  @ManyToOne(() => User, { nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user!: User;
 }

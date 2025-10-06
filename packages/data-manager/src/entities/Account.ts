@@ -1,8 +1,7 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
 import { User } from './User';
 
-@Index('account_pkey', ['id'], { unique: true })
 @Entity('account', { schema: 'public' })
 export class Account {
   @Column('text', { primary: true, name: 'id' })

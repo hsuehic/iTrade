@@ -1,11 +1,22 @@
 import { Decimal } from 'decimal.js';
-import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
 import { BacktestConfig } from '@crypto-trading/core';
 
 import { DecimalTransformer } from './Kline';
 import { BacktestResultEntity } from './BacktestResult';
+import { User } from './User';
 
 @Entity('backtest_configs')
+@Index(['user'])
+@Index(['user', 'startDate'])
 export class BacktestConfigEntity implements BacktestConfig {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -49,4 +60,8 @@ export class BacktestConfigEntity implements BacktestConfig {
 
   @OneToMany(() => BacktestResultEntity, (r) => r.config)
   results?: BacktestResultEntity[];
+
+  @ManyToOne(() => User, { nullable: false })
+  @JoinColumn({ name: 'userId' })
+  user!: User;
 }
