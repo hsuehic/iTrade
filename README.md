@@ -3,7 +3,9 @@
 A crypto strategy trading platform with modular architecture.
 
 ## Core Workflows
+
 ### 1. Strategy Execution Flow
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -23,6 +25,7 @@ sequenceDiagram
 ```
 
 ### 2. CLI Tool Flow
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -39,6 +42,7 @@ sequenceDiagram
 ```
 
 ### 3. Web Manager Flow
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -57,14 +61,17 @@ sequenceDiagram
 ## Quick Start
 
 ### 1. Install Dependencies
+
 ```bash
 yarn add @crypto-trading/core @crypto-trading/strategies
 ```
 
 ### 2. Create a Strategy
+
 Implement a strategy (e.g., `MovingAverageStrategy`) by extending `BaseStrategy`.
 
 ### 3. Register and Run
+
 ```typescript
 import { TradeEngine } from '@crypto-trading/core';
 import { MovingAverageStrategy } from './strategies/moving-average-strategy';
@@ -78,6 +85,7 @@ engine.start();
 ```
 
 ### 4. Configure Exchange
+
 ```typescript
 import { BinanceConnector } from '@crypto-trading/exchange-connectors';
 
@@ -86,11 +94,13 @@ engine.addExchange(binance);
 ```
 
 ### 5. Run the Project
+
 ```bash
 node index.ts
 ```
 
 ## Project Structure
+
 ```
 itrade/
 ├── packages/
@@ -125,6 +135,7 @@ itrade/
 ```
 
 ## Tech Stack
+
 ```mermaid
 ---
 config:
@@ -205,29 +216,38 @@ flowchart TD
 ```
 
 ## Documentation
+
 ### Chinese
+
 - [策略示例](./docs/strategy-example-cn.md)
 - [策略执行流程](./docs/strategy-flow-cn.md)
 
 ### English
+
 - [Strategy Example](./docs/strategy-example-en.md)
 - [Strategy Execution Flow](./docs/strategy-flow-en.md)
 
 ## Features
+
 - Modular design for easy extension.
 - Supports real-time data and historical backtesting.
 - Integrated risk management.
 
 ## FAQ
+
 ### Q1: How to debug strategies?
+
 Add logs in the `analyze` method:
+
 ```typescript
 console.log(`Fast MA: ${fastMA}, Slow MA: ${slowMA}`);
 ```
 
 ### Q2: How to add a new exchange?
+
 Implement the `IExchangeConnector` interface (refer to `BinanceConnector`).
 
-## Next Steps
-- Explore dynamic strategy loading.
-- Read detailed module documentation.
+## Roadmap
+
+- [ ] Improve Backtest mode for strategy
+- [ ] Support Dry-Run mode for strategy

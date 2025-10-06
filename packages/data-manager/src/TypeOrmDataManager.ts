@@ -2,9 +2,20 @@ import 'reflect-metadata';
 import { DataSource, Repository, LessThanOrEqual } from 'typeorm';
 import { IDataManager, Kline } from '@crypto-trading/core';
 
-import { KlineEntity } from './entities/KlineEntity';
-import { SymbolEntity } from './entities/SymbolEntity';
-import { DataQualityEntity } from './entities/DataQualityEntity';
+import { KlineEntity } from './entities/Kline';
+import { SymbolEntity } from './entities/Symbol';
+import { DataQualityEntity } from './entities/DataQuality';
+import { TradeEntity } from './entities/Trade';
+import { OrderEntity } from './entities/Order';
+import { OrderFillEntity } from './entities/OrderFill';
+import { PositionEntity } from './entities/Position';
+import { StrategyEntity } from './entities/Strategy';
+import { AccountInfoEntity } from './entities/AccountInfo';
+import { BalanceEntity } from './entities/Balance';
+import { BacktestConfigEntity } from './entities/BacktestConfig';
+import { BacktestResultEntity } from './entities/BacktestResult';
+import { BacktestTradeEntity } from './entities/BacktestTrade';
+import { EquityPointEntity } from './entities/EquityPoint';
 
 export interface TypeOrmDataManagerConfig {
   type: 'postgres' | 'mysql';
@@ -46,7 +57,22 @@ export class TypeOrmDataManager implements IDataManager {
       synchronize: this.config.synchronize ?? false,
       migrationsRun: this.config.migrationsRun ?? true,
       logging: this.config.logging ?? false,
-      entities: [KlineEntity, SymbolEntity, DataQualityEntity],
+      entities: [
+        KlineEntity,
+        SymbolEntity,
+        DataQualityEntity,
+        TradeEntity,
+        OrderEntity,
+        OrderFillEntity,
+        PositionEntity,
+        StrategyEntity,
+        AccountInfoEntity,
+        BalanceEntity,
+        BacktestConfigEntity,
+        BacktestResultEntity,
+        BacktestTradeEntity,
+        EquityPointEntity,
+      ],
       extra: this.config.extra || {},
     });
 

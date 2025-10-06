@@ -1,0 +1,36 @@
+import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
+
+import { User } from './User';
+
+@Index('session_pkey', ['id'], { unique: true })
+@Index('session_token_key', ['token'], { unique: true })
+@Entity('session', { schema: 'public' })
+export class Session {
+  @Column('text', { primary: true, name: 'id' })
+  id!: string;
+
+  @Column('timestamp with time zone', { name: 'expiresAt' })
+  expiresAt!: Date;
+
+  @Column('text', { name: 'token', unique: true })
+  token!: string;
+
+  @Column('timestamp with time zone', {
+    name: 'createdAt',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
+  createdAt!: Date;
+
+  @Column('timestamp with time zone', { name: 'updatedAt' })
+  updatedAt!: Date;
+
+  @Column('text', { name: 'ipAddress', nullable: true })
+  ipAddress?: string | null;
+
+  @Column('text', { name: 'userAgent', nullable: true })
+  userAgent?: string | null;
+
+  @ManyToOne(() => User, (user) => user.sessions, { onDelete: 'CASCADE' })
+  @JoinColumn([{ name: 'userId', referencedColumnName: 'id' }])
+  user!: User;
+}

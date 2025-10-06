@@ -5,9 +5,20 @@ export { CacheManager } from './CacheManager';
 export { MigrationHelper } from './MigrationHelper';
 
 // Entity exports
-export { KlineEntity, DecimalTransformer } from './entities/KlineEntity';
-export { SymbolEntity } from './entities/SymbolEntity';
-export { DataQualityEntity } from './entities/DataQualityEntity';
+export { KlineEntity, DecimalTransformer } from './entities/Kline';
+export { SymbolEntity } from './entities/Symbol';
+export { DataQualityEntity } from './entities/DataQuality';
+export { TradeEntity } from './entities/Trade';
+export { OrderEntity } from './entities/Order';
+export { OrderFillEntity } from './entities/OrderFill';
+export { PositionEntity } from './entities/Position';
+export { StrategyEntity } from './entities/Strategy';
+export { AccountInfoEntity } from './entities/AccountInfo';
+export { BalanceEntity } from './entities/Balance';
+export { BacktestConfigEntity } from './entities/BacktestConfig';
+export { BacktestResultEntity } from './entities/BacktestResult';
+export { BacktestTradeEntity } from './entities/BacktestTrade';
+export { EquityPointEntity } from './entities/EquityPoint';
 
 // Types and interfaces
 export type {

@@ -3,6 +3,7 @@ export { BaseExchange } from './base/BaseExchange';
 
 // Exchange implementations
 export { BinanceExchange } from './binance/BinanceExchange';
+export { CoinbaseExchange } from './coinbase/CoinbaseExchange';
 
 // Re-export types from core for convenience
 export type {
