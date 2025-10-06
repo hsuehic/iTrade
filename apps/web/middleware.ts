@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionCookie } from 'better-auth/cookies';
-export async function middleware(request: NextRequest) {
-  const sessionCookie = getSessionCookie(request);
-  // THIS IS NOT SECURE!
-  // This is the recommended approach to optimistically redirect users
-  // We recommend handling auth checks in each page/route
-  if (!sessionCookie) {
-    return NextResponse.redirect(new URL('/auth/sign-in', request.url));
-  }
-  return NextResponse.next();
-}
+
+import { withAuth } from './middlewares/auth';
+import { withPathHeader } from './middlewares/path-header';
+
+const chain = (
+  ...middlewares: Array<(req: NextRequest, res: NextResponse) => NextResponse>
+) => {
+  return (req: NextRequest) => {
+    return middlewares.reduce(
+      (res, middleware) => middleware(req, res),
+      NextResponse.next()
+    );
+  };
+};
+
+export const middleware = chain(withAuth, withPathHeader);
+
 export const config = {
   matcher: ['/dashboard/:path*'], // Specify the routes the middleware applies to
 };

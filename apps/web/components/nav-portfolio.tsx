@@ -5,10 +5,12 @@ import {
   IconFolder,
   IconShare3,
   IconTrash,
-  IconFileWord,
-  IconReport,
-  IconDatabase,
+  IconCoinBitcoin,
+  IconCoins,
+  IconReceiptDollar,
+  IconCalendarDollar,
 } from '@tabler/icons-react';
+import { usePathname } from 'next/navigation';
 
 import {
   DropdownMenu,
@@ -27,33 +29,39 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 
-export function NavDocuments() {
+export function NavPortfolio() {
+  const pathname = usePathname();
   const { isMobile } = useSidebar();
   const items = [
     {
-      name: 'Data Library',
-      url: '#',
-      icon: IconDatabase,
+      name: 'Balance',
+      url: '/portfolio/balance',
+      icon: IconCalendarDollar,
     },
     {
-      name: 'Reports',
-      url: '#',
-      icon: IconReport,
+      name: 'Assets',
+      url: '/portfolio/assets',
+      icon: IconCoinBitcoin,
     },
     {
-      name: 'Word Assistant',
-      url: '#',
-      icon: IconFileWord,
+      name: 'Positions',
+      url: '/portfolio/positions',
+      icon: IconCoins,
+    },
+    {
+      name: 'Transactions',
+      url: '/portfolio/transactions',
+      icon: IconReceiptDollar,
     },
   ];
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Documents</SidebarGroupLabel>
+      <SidebarGroupLabel>Portfolio</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton isActive={pathname === item.url} asChild>
               <a href={item.url}>
                 <item.icon />
                 <span>{item.name}</span>

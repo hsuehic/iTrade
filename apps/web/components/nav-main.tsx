@@ -1,14 +1,11 @@
 import {
-  IconCirclePlusFilled,
-  IconMail,
   IconDashboard,
-  IconListDetails,
-  IconChartBar,
-  IconFolder,
-  IconUsers,
+  IconClockBitcoin,
+  IconClockDollar,
+  IconDeviceAnalytics,
+  IconWorldDollar,
 } from '@tabler/icons-react';
 
-import { Button } from '@/components/ui/button';
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -17,7 +14,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-export function NavMain() {
+export function NavMain({ pathname }: { pathname?: string | null }) {
   const items = [
     {
       title: 'Dashboard',
@@ -25,58 +22,67 @@ export function NavMain() {
       icon: IconDashboard,
     },
     {
-      title: 'Lifecycle',
-      url: '#',
-      icon: IconListDetails,
+      title: 'Strategies',
+      url: '/strategies',
+      icon: IconDeviceAnalytics,
     },
     {
-      title: 'Analytics',
-      url: '#',
-      icon: IconChartBar,
+      title: 'Dry run',
+      url: '/dry-run',
+      icon: IconClockBitcoin,
     },
     {
-      title: 'Projects',
-      url: '#',
-      icon: IconFolder,
+      title: 'Becktesting',
+      url: '/backtestings',
+      icon: IconClockDollar,
     },
     {
-      title: 'Team',
-      url: '#',
-      icon: IconUsers,
+      title: 'Market',
+      url: '/market',
+      icon: IconWorldDollar,
     },
   ];
 
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
-        <SidebarMenu>
+        {/* <SidebarMenu>
           <SidebarMenuItem className="flex items-center gap-2">
             <SidebarMenuButton
               tooltip="Quick Create"
               className="bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground min-w-8 duration-200 ease-linear"
             >
               <IconCirclePlusFilled />
-              <span>Quick Create</span>
+              <span>Create Strategy</span>
             </SidebarMenuButton>
             <Button
               size="icon"
               className="size-8 group-data-[collapsible=icon]:opacity-0"
               variant="outline"
             >
-              <IconMail />
-              <span className="sr-only">Inbox</span>
+              <IconCalculatorFilled />
+              <span className="sr-only">Backtest</span>
             </Button>
           </SidebarMenuItem>
-        </SidebarMenu>
+        </SidebarMenu> */}
         <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton tooltip={item.title}>
-                {item.icon && <item.icon />}
-                <span>{item.title}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {items.map((item) => {
+            const { title, url } = item;
+            return (
+              <SidebarMenuItem key={title}>
+                <SidebarMenuButton
+                  isActive={pathname === url}
+                  tooltip={title}
+                  asChild
+                >
+                  <a href={url}>
+                    {item.icon && <item.icon />}
+                    <span>{title}</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

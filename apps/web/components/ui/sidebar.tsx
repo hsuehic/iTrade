@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Slot } from '@radix-ui/react-slot';
 import { cva, VariantProps } from 'class-variance-authority';
 import { PanelLeftIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
@@ -461,13 +462,30 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<'ul'>) {
   );
 }
 
-function SidebarMenuItem({ className, ...props }: React.ComponentProps<'li'>) {
+function SidebarMenuItem({
+  className,
+  isActive,
+  url,
+  ...props
+}: React.ComponentProps<'li'> & { isActive?: boolean; url?: string }) {
+  const router = useRouter();
+  const eventHandler: { onClick?: React.MouseEventHandler<HTMLElement> } = {};
+  if (!isActive && !!url) {
+    eventHandler.onClick = () => {
+      if (url.startsWith('/')) {
+        router.push(url);
+      } else {
+        window.location.href = url;
+      }
+    };
+  }
   return (
     <li
       data-slot="sidebar-menu-item"
       data-sidebar="menu-item"
-      className={cn('group/menu-item relative', className)}
+      className={cn('group/menu-item cursor-pointer relative', className)}
       {...props}
+      {...eventHandler}
     />
   );
 }
@@ -496,7 +514,7 @@ const sidebarMenuButtonVariants = cva(
 
 function SidebarMenuButton({
   asChild = false,
-  isActive = false,
+  isActive,
   variant = 'default',
   size = 'default',
   tooltip,

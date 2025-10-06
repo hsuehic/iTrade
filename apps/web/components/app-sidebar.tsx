@@ -1,7 +1,8 @@
 import * as React from 'react';
 import Image from 'next/image';
+import { headers } from 'next/headers';
 
-import { NavDocuments } from '@/components/nav-documents';
+import { NavPortfolio } from '@/components/nav-portfolio';
 import { NavMain } from '@/components/nav-main';
 import { NavSecondary } from '@/components/nav-secondary';
 import { NavUser } from '@/components/nav-user';
@@ -15,7 +16,10 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export async function AppSidebar({
+  ...props
+}: React.ComponentProps<typeof Sidebar>) {
+  const pathname = (await headers()).get('x-current-pathname');
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -34,8 +38,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain />
-        <NavDocuments />
+        <NavMain pathname={pathname} />
+        <NavPortfolio />
         <NavSecondary className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

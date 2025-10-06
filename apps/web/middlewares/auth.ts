@@ -1,0 +1,13 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSessionCookie } from 'better-auth/cookies';
+
+export function withAuth(request: NextRequest, res: NextResponse) {
+  const sessionCookie = getSessionCookie(request);
+  // THIS IS NOT SECURE!
+  // This is the recommended approach to optimistically redirect users
+  // We recommend handling auth checks in each page/route
+  if (!sessionCookie) {
+    return NextResponse.redirect(new URL('/auth/sign-in', request.url));
+  }
+  return res;
+}
