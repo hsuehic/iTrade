@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from './session-provider';
 
 import { signOut } from '@/lib/auth-client';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
