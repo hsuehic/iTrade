@@ -79,7 +79,9 @@ export class DryRunResultEntity implements BacktestResult {
   @Column({ type: 'int' })
   avgTradeDuration!: number;
 
-  // Equity series is optional for dry run; if needed later we can add a table
+  // Store equity series as JSON to satisfy BacktestResult interface
+  @Column({ type: 'jsonb', nullable: true })
+  equity!: Array<{ timestamp: Date; value: Decimal }>;
 
   @OneToMany(() => DryRunTradeEntity, (t: DryRunTradeEntity) => t.session, {
     cascade: true,

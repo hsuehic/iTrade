@@ -1,0 +1,38 @@
+{
+  "name": "@crypto-trading/dry-run-engine",
+  "version": "0.1.0",
+  "description": "Dry run engine to simulate strategy execution and persist via TypeORM dry-run entities",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && (cp dist/src/index.d.ts dist/ 2>/dev/null || cp dist/dry-run-engine/src/index.d.ts dist/ 2>/dev/null || true) && (cp dist/src/index.d.ts.map dist/ 2>/dev/null || cp dist/dry-run-engine/src/index.d.ts.map dist/ 2>/dev/null || true)",
+    "dev": "tsdown src/index.ts --format esm --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@crypto-trading/core": "workspace:*",
+    "@crypto-trading/data-manager": "workspace:*",
+    "decimal.js": "^10.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "tsdown": "^0.2.16"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  }
+}

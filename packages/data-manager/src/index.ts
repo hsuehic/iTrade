@@ -19,6 +19,11 @@ export { BacktestConfigEntity } from './entities/BacktestConfig';
 export { BacktestResultEntity } from './entities/BacktestResult';
 export { BacktestTradeEntity } from './entities/BacktestTrade';
 export { EquityPointEntity } from './entities/EquityPoint';
+export { DryRunSessionEntity } from './entities/DryRunSession';
+export { DryRunOrderEntity } from './entities/DryRunOrder';
+export { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
+export { DryRunTradeEntity } from './entities/DryRunTrade';
+export { DryRunResultEntity } from './entities/DryRunResult';
 
 // Types and interfaces
 export type {

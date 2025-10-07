@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../design/extensions/spacing_extension.dart';
 import '../services/preference.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -71,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Biometric error: $e')));
@@ -150,24 +153,26 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
           key: const PageStorageKey('login_scroll'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(spacing.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 20),
+              SizedBox(height: spacing.md),
               Text(
-                'Welcome back',
+                'Welcome to iTrade',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: spacing.sm),
               Text(
                 'Please sign in to your account',
                 style: theme.textTheme.bodyLarge,
@@ -181,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   textAlign: TextAlign.center,
                 ),
-              const SizedBox(height: 16),
+              SizedBox(height: spacing.md),
               Form(
                 key: _formKey,
                 child: Column(
@@ -254,7 +259,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: spacing.md),
               Row(
                 children: [
                   Expanded(child: Divider(color: theme.dividerColor)),
@@ -268,16 +273,50 @@ class _LoginScreenState extends State<LoginScreen> {
                   Expanded(child: Divider(color: theme.dividerColor)),
                 ],
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 48,
-                child: OutlinedButton.icon(
-                  onPressed: _loading ? null : _handleGoogleSignIn,
-                  icon: const Icon(Icons.login),
-                  label: Text(
-                    _loading ? 'Signing in...' : 'Continue with Google',
+              SizedBox(height: spacing.md),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Coming soon')),
+                      ),
+                    },
+                    icon: SvgPicture.asset(
+                      'assets/icons/apple.svg',
+                      width: 16,
+                      height: 16,
+                    ),
+                    label: Text('Apple'),
                   ),
-                ),
+
+                  SizedBox(width: spacing.md),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleGoogleSignIn,
+                    icon: SvgPicture.asset(
+                      'assets/icons/google.svg',
+                      width: 16,
+                      height: 16,
+                    ),
+                    label: Text('Google'),
+                  ),
+
+                  SizedBox(width: spacing.md),
+                  OutlinedButton.icon(
+                    onPressed: () => {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Coming soon')),
+                      ),
+                    },
+                    icon: SvgPicture.asset(
+                      'assets/icons/github.svg',
+                      width: 16,
+                      height: 16,
+                    ),
+                    label: Text('Github'),
+                  ),
+                ],
               ),
             ],
           ),

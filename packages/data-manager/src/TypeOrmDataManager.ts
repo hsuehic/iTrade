@@ -383,6 +383,7 @@ export class TypeOrmDataManager implements IDataManager {
     commission?: number | string | import('decimal.js').Decimal;
     slippage?: number | string | import('decimal.js').Decimal;
     notes?: string;
+    userId: string;
   }): Promise<DryRunSessionEntity> {
     this.ensureInitialized();
 
@@ -402,6 +403,11 @@ export class TypeOrmDataManager implements IDataManager {
     if (session.strategyId) {
       entity.strategy = { id: session.strategyId } as StrategyEntity;
     }
+
+    // Associate required user
+    (entity as any).user = {
+      id: session.userId,
+    } as unknown as import('./entities/User').User;
 
     return await sessionRepo.save(entity);
   }

@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
@@ -13,7 +14,6 @@ import 'design/themes/theme.dart';
 
 import 'services/api_client.dart';
 import 'services/notification.dart';
-import 'screens/dashboard.dart';
 import 'screens/login.dart';
 import 'screens/forgot_password.dart';
 import 'screens/strategy.dart';
@@ -63,7 +63,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'iTrade',
-      theme: AppTheme.light,
+      theme: AppTheme.brand,
       darkTheme: AppTheme.dark,
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       home: const AuthGate(),
@@ -144,7 +144,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _pageIndex = 0;
   final List<Widget> _pages = [
-    const DashboardScreen(),
+    const PortfolioScreen(),
     const StrategyScreen(),
     const ProductScreen(),
     const StatisticsScreen(),
@@ -174,7 +174,7 @@ class _MyHomePageState extends State<MyHomePage> {
         currentIndex: _pageIndex,
         onTap: (index) => setState(() => _pageIndex = index),
         items: const [
-          NavItemSpec(icon: Icons.dashboard, label: 'Dashboard'),
+          NavItemSpec(icon: Icons.pie_chart, label: 'Portfolio'),
           NavItemSpec(icon: Icons.calculate, label: 'Strategy'),
           NavItemSpec(icon: Icons.widgets, label: 'Product'),
           NavItemSpec(icon: Icons.analytics, label: 'Statistics'),

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
 import '../services/okx_data_service.dart';
 import '../widgets/order_book_widget.dart';
 
@@ -344,78 +343,6 @@ class _ProductScreenState extends State<ProductScreen>
 
     return Column(
       children: [
-        // Removed connection status bar
-        // Top: chart full width (fixed height)
-        SizedBox(
-          height: 200,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: SfCartesianChart(
-              plotAreaBorderWidth: 0,
-              primaryXAxis: CategoryAxis(
-                isVisible: true,
-                majorGridLines: const MajorGridLines(width: 0),
-              ),
-              primaryYAxis: NumericAxis(
-                opposedPosition: true,
-                majorGridLines: const MajorGridLines(width: 0.5),
-              ),
-              trackballBehavior: TrackballBehavior(
-                enable: true,
-                activationMode: ActivationMode.singleTap,
-                tooltipSettings: const InteractiveTooltip(
-                  enable: true,
-                  color: Colors.black87,
-                  borderWidth: 0,
-                  format:
-                      'point.x\nO: \$point.open  H: \$point.high\nL: \$point.low  C: \$point.close',
-                ),
-                lineColor: Colors.white70,
-                lineWidth: 1,
-              ),
-              series: <CartesianSeries<dynamic, String>>[
-                CandleSeries<_CandlePoint, String>(
-                  animationDuration: 0,
-                  dataSource: _klineData
-                      .map(
-                        (k) => _CandlePoint(
-                          x: _formatTimeLabel(k.time),
-                          open: k.open,
-                          high: k.high,
-                          low: k.low,
-                          close: k.close,
-                        ),
-                      )
-                      .toList(),
-                  xValueMapper: (_CandlePoint p, _) => p.x,
-                  lowValueMapper: (_CandlePoint p, _) => p.low,
-                  highValueMapper: (_CandlePoint p, _) => p.high,
-                  openValueMapper: (_CandlePoint p, _) => p.open,
-                  closeValueMapper: (_CandlePoint p, _) => p.close,
-                  bearColor: const Color(0xFFEC0000),
-                  bullColor: const Color(0xFF00DA3C),
-                ),
-                if (_currentPrice != null)
-                  LineSeries<_LinePoint, String>(
-                    animationDuration: 0,
-                    enableTooltip: false,
-                    dataSource: _klineData
-                        .map(
-                          (k) => _LinePoint(
-                            x: _formatTimeLabel(k.time),
-                            y: _currentPrice!,
-                          ),
-                        )
-                        .toList(),
-                    xValueMapper: (_LinePoint p, _) => p.x,
-                    yValueMapper: (_LinePoint p, _) => p.y,
-                    color: const Color(0xFFFF6600),
-                    width: 2,
-                  ),
-              ],
-            ),
-          ),
-        ),
         // Middle: Order Book row (separate row)
 
         // Bottom: scrollable Order Form
