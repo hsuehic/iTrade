@@ -10,8 +10,6 @@
   "packageManager": "pnpm@10.18.0",
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "pnpm -r dev",
-    "test": "pnpm -r test",
     "test:watch": "pnpm -r test:watch",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",

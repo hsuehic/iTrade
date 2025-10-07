@@ -7,6 +7,10 @@ import {
 } from '@/components/ui/card';
 import { SignUpForm } from '@/components/sign-up-form';
 
+export const metadata = {
+  title: 'Sign up',
+};
+
 export default function SignUp() {
   return (
     <Card className="z-50 rounded-md rounded-t-none max-w-md">

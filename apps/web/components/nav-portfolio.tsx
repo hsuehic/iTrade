@@ -44,13 +44,13 @@ export function NavPortfolio() {
       icon: IconCoinBitcoin,
     },
     {
-      name: 'Positions',
-      url: '/portfolio/positions',
+      name: 'Position',
+      url: '/portfolio/position',
       icon: IconCoins,
     },
     {
-      name: 'Transactions',
-      url: '/portfolio/transactions',
+      name: 'Transaction',
+      url: '/portfolio/transaction',
       icon: IconReceiptDollar,
     },
   ];

@@ -22,8 +22,8 @@ export function NavMain({ pathname }: { pathname?: string | null }) {
       icon: IconDashboard,
     },
     {
-      title: 'Strategies',
-      url: '/strategies',
+      title: 'Strategy',
+      url: '/strategy',
       icon: IconDeviceAnalytics,
     },
     {
@@ -33,7 +33,7 @@ export function NavMain({ pathname }: { pathname?: string | null }) {
     },
     {
       title: 'Becktesting',
-      url: '/backtestings',
+      url: '/backtest',
       icon: IconClockDollar,
     },
     {

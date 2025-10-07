@@ -9,6 +9,8 @@ import {
 } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 
+import { useSession } from './session-provider';
+
 import { signOut } from '@/lib/auth-client';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -26,12 +28,11 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { useAuth } from '@/hooks/use-auth';
 
 export function NavUser() {
   const { isMobile } = useSidebar();
   const router = useRouter();
-  const user = useAuth();
+  const user = useSession()?.user;
   if (!user) return null;
 
   return (
@@ -45,7 +46,6 @@ export function NavUser() {
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarImage src={user.image || undefined} alt={user.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{user.name}</span>
@@ -66,7 +66,6 @@ export function NavUser() {
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage src={user.image || undefined} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>

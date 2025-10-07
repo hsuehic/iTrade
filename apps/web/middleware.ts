@@ -17,5 +17,5 @@ const chain = (
 export const middleware = chain(withAuth, withPathHeader);
 
 export const config = {
-  matcher: ['/dashboard/:path*'], // Specify the routes the middleware applies to
+  matcher: ['/:path+'], // Specify the routes the middleware applies to
 };
