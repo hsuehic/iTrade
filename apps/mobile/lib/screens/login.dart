@@ -52,9 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
       bool canCheckBiometrics = await _localAuth.canCheckBiometrics;
       if (!canCheckBiometrics) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Device does not support biometrics')),
-        );
+        _showSnack('Device does not support biometrics');
         return;
       }
 
@@ -74,10 +72,31 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Biometric error: $e')));
+      _showSnack('Biometric error: $e');
     }
+  }
+
+  void _showSnack(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          text,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onPrimary.withAlpha(255),
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.onSurface.withAlpha(88),
+        behavior: SnackBarBehavior.floating, // 改为悬浮样式
+        margin: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 80,
+        ), // 控制上下左右位置
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.all(16),
+        elevation: 0,
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _handleGoogleSignIn() async {
@@ -278,11 +297,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   OutlinedButton.icon(
-                    onPressed: () => {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Coming soon')),
-                      ),
-                    },
+                    onPressed: () => {_showSnack('Comming soon')},
                     icon: SvgPicture.asset(
                       'assets/icons/apple.svg',
                       width: 16,
@@ -304,11 +319,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   SizedBox(width: spacing.md),
                   OutlinedButton.icon(
-                    onPressed: () => {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Coming soon')),
-                      ),
-                    },
+                    onPressed: () => {_showSnack('Comming soon')},
                     icon: SvgPicture.asset(
                       'assets/icons/github.svg',
                       width: 16,
