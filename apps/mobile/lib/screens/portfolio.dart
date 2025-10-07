@@ -19,7 +19,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       AssetItem(
         symbol: 'USDT',
         name: 'Tether',
-        iconUrl: 'https://cryptoicons.org/api/icon/usdt/128',
+        iconUrl: 'https://cryptocurrencyliveprices.com/img/usdt-tether.png',
         price: 1,
         amount: 6000,
         dailyChange: 0.12,
@@ -27,7 +27,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       AssetItem(
         symbol: 'BTC',
         name: 'Bitcoin',
-        iconUrl: 'https://cryptoicons.org/api/icon/btc/128',
+        iconUrl: 'https://cryptocurrencyliveprices.com/img/btc-bitcoin.png',
         price: 68000,
         amount: 0.05,
         dailyChange: 1.25,
@@ -35,7 +35,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       AssetItem(
         symbol: 'ETH',
         name: 'Ethereum',
-        iconUrl: 'https://cryptoicons.org/api/icon/eth/128',
+        iconUrl: 'https://cryptocurrencyliveprices.com/img/eth-ethereum.png',
         price: 3500,
         amount: 1.2,
         dailyChange: -0.85,
@@ -43,7 +43,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       AssetItem(
         symbol: 'SOL',
         name: 'Solana',
-        iconUrl: 'https://cryptoicons.org/api/icon/sol/128',
+        iconUrl: 'https://cryptocurrencyliveprices.com/img/sol-solana.png',
         price: 180,
         amount: 5,
         dailyChange: 3.12,
@@ -337,7 +337,7 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
         TweenAnimationBuilder<double>(
           duration: const Duration(milliseconds: 800),
           curve: Curves.easeOut,
-          tween: Tween(begin: 0, end: widget.total),
+          tween: Tween(begin: widget.total - 10, end: widget.total),
           builder: (context, value, _) => SizedBox(
             height: theme.textTheme.displaySmall?.fontSize != null
                 ? (theme.textTheme.displaySmall!.fontSize! * 1.2)

@@ -188,10 +188,10 @@ class AssetListItem extends StatelessWidget {
             // Icon
             Image.network(
               asset.iconUrl,
-              width: 40,
-              height: 40,
+              width: 28,
+              height: 28,
               errorBuilder: (context, error, stackTrace) =>
-                  Icon(Icons.monetization_on, size: 40),
+                  Icon(Icons.monetization_on, size: 28),
             ),
             const SizedBox(width: 12),
 

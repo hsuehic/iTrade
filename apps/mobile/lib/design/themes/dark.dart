@@ -22,5 +22,5 @@ final ThemeData darkTheme = ThemeData(
     bodyMedium: TypographyTokens.body,
   ),
   extensions: [AppSpacing.fromTokens()],
-  useMaterial3: true,
+  useMaterial3: false,
 );

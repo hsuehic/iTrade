@@ -50,7 +50,7 @@ class DesignBottomNavBar extends StatelessWidget {
           BoxShadow(
             color: Color(0x14000000),
             blurRadius: 10,
-            offset: Offset(0, -2),
+            offset: Offset(0, -1),
           ),
         ],
       ),

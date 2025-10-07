@@ -1,23 +1,15 @@
 {
-  "editor.formatOnSave": true,
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit"
-  },
-  "eslint.format.enable": true,
   "eslint.useFlatConfig": true,
-  "eslint.workingDirectories": [
-    { "mode": "auto" }
-  ],
-  "[json]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
-  },
-  "[typescript]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
-  },
-  "[typescriptreact]": {
-    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
-  },
-  "files.associations": {
-    "*.webmanifest": "json"
-  }
+  "eslint.workingDirectories": [{ "mode": "auto" }],
+  "eslint.probe": ["javascript", "typescript", "javascriptreact", "typescriptreact"],
+  "eslint.validate": ["javascript", "typescript", "javascriptreact", "typescriptreact"],
+  "editor.formatOnSave": true,
+  "eslint.format.enable": true,
+  "editor.codeActionsOnSave": { "source.fixAll.eslint": "always" },
+  "[typescript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
+  "[typescriptreact]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
+  "[javascript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
+  "[javascriptreact]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
+  "prettier.enable": true,
+  "eslint.trace.server": "messages"
 }

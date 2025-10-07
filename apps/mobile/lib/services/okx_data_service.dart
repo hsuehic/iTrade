@@ -55,6 +55,7 @@ class OKXTicker {
   final double volCcy24h;
   final double vol24h;
   final String timestamp;
+  final String iconUrl;
 
   OKXTicker({
     required this.instId,
@@ -70,6 +71,7 @@ class OKXTicker {
     required this.volCcy24h,
     required this.vol24h,
     required this.timestamp,
+    required this.iconUrl,
   });
 
   factory OKXTicker.fromJson(Map<String, dynamic> json) {
@@ -87,6 +89,8 @@ class OKXTicker {
       volCcy24h: double.tryParse(json['volCcy24h'] ?? '0') ?? 0,
       vol24h: double.tryParse(json['vol24h'] ?? '0') ?? 0,
       timestamp: json['ts'] ?? '',
+      iconUrl:
+          'https://www.okx.com/cdn/oksupport/asset/currency/icon/${json['instId'].split('-')[0].toLowerCase()}.png?x-oss-process=image/format,webp/ignore-error,1',
     );
   }
 }
@@ -234,6 +238,31 @@ class OKXDataService {
       developer.log('Error getting ticker: $e');
       rethrow;
     }
+  }
+
+  Future<List<OKXTicker>> getTickers(String instType) async {
+    try {
+      final response = await _dio.get(
+        '/market/tickers',
+        queryParameters: {'instType': instType},
+      );
+
+      if (response.data['code'] == '0') {
+        final List<dynamic> data = response.data['data'];
+        if (data.isNotEmpty) {
+          final List<OKXTicker> tickers = data
+              .map((item) => OKXTicker.fromJson(item))
+              .toList();
+          tickers.sort((a, b) => b.volCcy24h.compareTo(a.volCcy24h));
+          return tickers;
+        }
+      }
+      developer.log('Error getting tickers: ${response.data['msg']}');
+      throw Exception('Failed to get ticker: ${response.data['msg']}');
+    } catch (e) {
+      developer.log('Error getting ticker: $e');
+    }
+    return [];
   }
 
   /// Get order book data
