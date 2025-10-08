@@ -8,7 +8,7 @@ import { signIn, requestPasswordReset } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { IconApple, IconGithub, IconGoogle } from '@/components/icons';
+import { IconGithub, IconGoogle } from '@/components/icons';
 export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -100,11 +100,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             Or continue with
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Button variant="outline" type="button" className="w-full">
-            <IconApple />
-            <span className="sr-only">Login with Apple</span>
-          </Button>
+        <div className="grid grid-cols-2 gap-4 center">
           <Button
             variant="outline"
             type="button"
@@ -114,7 +110,12 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             <IconGoogle />
             <span className="sr-only">Login with Google</span>
           </Button>
-          <Button variant="outline" type="button" className="w-full">
+          <Button
+            variant="outline"
+            type="button"
+            className="w-full"
+            onClick={() => signIn.social({ provider: 'github' })}
+          >
             <IconGithub />
             <span className="sr-only">Login with Github</span>
           </Button>
