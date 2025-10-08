@@ -296,16 +296,6 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: () => {_showSnack('Comming soon')},
-                    icon: SvgPicture.asset(
-                      'assets/icons/apple.svg',
-                      width: 16,
-                      height: 16,
-                    ),
-                    label: Text('Apple'),
-                  ),
-
                   SizedBox(width: spacing.md),
                   OutlinedButton.icon(
                     onPressed: _loading ? null : _handleGoogleSignIn,
@@ -327,6 +317,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     label: Text('Github'),
                   ),
+                  SizedBox(width: spacing.md),
                 ],
               ),
             ],
