@@ -22,12 +22,12 @@ export default function AuthLayout({
 }) {
   return (
     <div className="bg-muted flex min-h-screen flex-col items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm md:max-w-3xl">
+      <div className="w-full max-w-sm md:max-w-3xl ">
         <div className={cn('flex flex-col gap-6')}>
           <Card className="overflow-hidden p-0">
             <CardContent className="grid p-0 md:grid-cols-2">
-              {children}
-              <div className="bg-muted relative hidden md:block">
+              <div className="w-[382px]">{children}</div>
+              <div className="bg-muted relative hidden md:block w-[384px] min-h-[538px]">
                 <Image
                   src="/promote.png"
                   alt="Promote"

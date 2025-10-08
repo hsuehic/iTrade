@@ -2,9 +2,8 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { toast } from 'sonner';
 
-import { signIn, requestPasswordReset } from '@/lib/auth-client';
+import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -65,16 +64,8 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
           <div className="flex items-center">
             <Label htmlFor="password">Password</Label>
             <a
-              href="#"
+              href="/auth/forget-password"
               className="ml-auto text-sm underline-offset-2 hover:underline"
-              onClick={(e) => {
-                e.preventDefault();
-                requestPasswordReset({
-                  email,
-                  redirectTo: '/auth/reset-password',
-                });
-                toast.success('Password reset email sent');
-              }}
             >
               Forgot your password?
             </a>

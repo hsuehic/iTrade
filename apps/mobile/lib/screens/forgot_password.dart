@@ -29,8 +29,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
     try {
       await ApiClient.instance.postJson(
-        '/api/auth/forgot-password',
-        data: <String, dynamic>{'email': _emailController.text.trim()},
+        '/api/auth/request-password-reset',
+        data: <String, dynamic>{
+          'email': _emailController.text.trim(),
+          'redirectTo': '/auth/reset-password',
+        },
       );
       if (!mounted) return;
       setState(() {
@@ -42,10 +45,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         _error = 'Failed to send reset email';
       });
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _submitting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+        });
+      }
     }
   }
 

@@ -69,7 +69,13 @@ export default async function RootLayout({
             ) : (
               children
             )}
-            <Toaster />
+            <Toaster
+              position="top-center" // 默认位置，可选: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
+              richColors={true} // 使用丰富颜色，false 使用系统主题颜色
+              toastOptions={{
+                duration: 3000, // 默认显示时间
+              }}
+            />
           </ThemeProvider>
         </SessionProvider>
       </body>

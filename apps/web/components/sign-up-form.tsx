@@ -34,7 +34,14 @@ export function SignUpForm() {
     }
   };
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-4 p-6 md:p-8">
+      <div className="flex flex-col items-center text-center">
+        <h1 className="text-2xl font-bold">Sign up</h1>
+        <p className="text-muted-foreground text-balance">
+          Welcome to iTrade world. Already have an account, back to{' '}
+          <a href="/auth/sign-in">sign in</a>;
+        </p>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
           <Label htmlFor="first-name">First name</Label>
