@@ -1,6 +1,6 @@
 # iTrade
 
-A crypto strategy trading platform with modular architecture.
+Intelligent and Strategic Trading Platform for Everyone
 
 ## Core Workflows
 ### 1. Strategy Execution Flow
