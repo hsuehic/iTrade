@@ -5,6 +5,7 @@ import '../models/order.dart';
 import '../services/strategy_service.dart';
 import '../services/order_service.dart';
 import '../utils/crypto_icons.dart';
+import '../utils/exchange_config.dart';
 
 class StrategyDetailScreen extends StatefulWidget {
   final Strategy strategy;
@@ -411,11 +412,32 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                   ),
                   const SizedBox(height: 16),
                   _DetailRow(label: 'Type', value: _formatType(_strategy.type)),
-                  _DetailRow(
-                    label: 'Exchange',
-                    value: _strategy.exchange ?? 'N/A',
+                  // Exchange row with chip
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Exchange',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        ExchangeChip(
+                          exchangeId: _strategy.exchange,
+                          showIcon: true,
+                          fontSize: 12,
+                        ),
+                      ],
+                    ),
                   ),
-                  _DetailRow(label: 'Symbol', value: _strategy.symbol ?? 'N/A'),
+                  _DetailRow(
+                    label: 'Symbol',
+                    value:
+                        _strategy.normalizedSymbol ?? _strategy.symbol ?? 'N/A',
+                  ),
                   _DetailRow(
                     label: 'Created',
                     value: _formatDate(_strategy.createdAt),

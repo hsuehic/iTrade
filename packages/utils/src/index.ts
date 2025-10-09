@@ -15,3 +15,12 @@ export {
   deepClone,
   deepMerge,
 } from './AsyncUtils';
+
+// Exchange utilities
+export { 
+  normalizeSymbol, 
+  getSymbolVariants, 
+  detectMarketType, 
+  isFuturesMarket 
+} from './ExchangeUtils';
+export type { ExchangeId, MarketType } from './ExchangeUtils';

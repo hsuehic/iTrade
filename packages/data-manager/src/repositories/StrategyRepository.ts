@@ -1,4 +1,5 @@
 import { DataSource, Repository } from 'typeorm';
+import { normalizeSymbol, detectMarketType } from '@itrade/utils';
 import { StrategyEntity } from '../entities/Strategy';
 
 export class StrategyRepository {
@@ -19,7 +20,15 @@ export class StrategyRepository {
     userId: string;
   }): Promise<StrategyEntity> {
     const { userId, ...strategyData } = data;
-    const entity = this.repository.create(strategyData as any);
+    
+    // Automatically compute normalizedSymbol and marketType if symbol and exchange are provided
+    const entityData: any = { ...strategyData };
+    if (entityData.symbol && entityData.exchange) {
+      entityData.normalizedSymbol = normalizeSymbol(entityData.symbol, entityData.exchange);
+      entityData.marketType = detectMarketType(entityData.symbol);
+    }
+    
+    const entity = this.repository.create(entityData);
     (entity as any).user = { id: userId };
 
     const saved = await this.repository.save(entity);
@@ -58,7 +67,23 @@ export class StrategyRepository {
   }
 
   async update(id: number, updates: Partial<StrategyEntity>): Promise<void> {
-    await this.repository.update({ id }, updates);
+    const updateData: any = { ...updates };
+    
+    // Re-compute normalizedSymbol and marketType if symbol or exchange is being updated
+    if (updateData.symbol || updateData.exchange) {
+      // Fetch existing strategy to get current values
+      const existing = await this.repository.findOne({ where: { id } });
+      if (existing) {
+        const symbol = updateData.symbol || existing.symbol;
+        const exchange = updateData.exchange || existing.exchange;
+        if (symbol && exchange) {
+          updateData.normalizedSymbol = normalizeSymbol(symbol, exchange);
+          updateData.marketType = detectMarketType(symbol);
+        }
+      }
+    }
+    
+    await this.repository.update({ id }, updateData);
   }
 
   async delete(id: number): Promise<void> {

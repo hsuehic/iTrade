@@ -461,9 +461,26 @@ export class CoinbaseExchange extends BaseExchange {
   }
 
   protected normalizeSymbol(symbol: string): string {
-    // Convert common formats like BTC/USDT or btc-usd to Coinbase product id BTC-USD
-    const s = symbol.replace('/', '-').toUpperCase();
-    return s;
+    // Convert common formats to Coinbase product id format
+    // Spot: BTC/USDC -> BTC-USDC (default quote coin is USDC)
+    // Perpetual: BTC/USDC:USDC -> BTC-USDC-INTX
+    
+    const upperSymbol = symbol.toUpperCase();
+    
+    // Handle perpetual format: BTC/USDC:USDC (CCXT format for perpetual)
+    if (upperSymbol.includes(':')) {
+      const [pair] = upperSymbol.split(':');
+      // BTC/USDC -> BTC-USDC-INTX
+      return pair.replace('/', '-') + '-INTX';
+    }
+    
+    // Handle already formatted perpetual (BTC-USDC-INTX)
+    if (upperSymbol.includes('-INTX')) {
+      return upperSymbol;
+    }
+    
+    // Spot format: BTC/USDC -> BTC-USDC
+    return upperSymbol.replace('/', '-');
   }
 
   private mapIntervalToGranularity(interval: string): number {

@@ -195,8 +195,10 @@ export class StrategyManager {
       });
 
       this.logger.info(`✅ Added strategy: ${dbStrategy.name} (ID: ${strategyId})`);
+      // Use normalizedSymbol from database (auto-computed)
+      const displaySymbol = (dbStrategy as any).normalizedSymbol || dbStrategy.symbol || 'N/A';
       this.logger.info(
-        `   Type: ${dbStrategy.type}, Symbol: ${dbStrategy.symbol}, Exchange: ${dbStrategy.exchange || 'default'}`
+        `   Type: ${dbStrategy.type}, Symbol: ${displaySymbol}, Exchange: ${dbStrategy.exchange || 'default'}`
       );
     } catch (error) {
       this.logger.error(

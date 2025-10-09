@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && cp dist/data-manager/src/index.d.ts dist/ && cp dist/data-manager/src/index.d.ts.map dist/ 2>/dev/null || true",
     "dev": "tsdown src/index.ts --format esm --watch",
+    "sync-schema": "tsx sync-scheme-to-db.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",

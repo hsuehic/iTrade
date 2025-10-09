@@ -146,7 +146,7 @@ export default function AnalyticsPage() {
     return value.toFixed(2);
   };
 
-  const formatPnL = (pnl: number | string | undefined): JSX.Element => {
+  const formatPnL = (pnl: number | string | undefined): React.ReactElement => {
     if (pnl === undefined || pnl === null) return <span>N/A</span>;
     const value = typeof pnl === 'string' ? parseFloat(pnl) : pnl;
     const formatted = value.toFixed(2);

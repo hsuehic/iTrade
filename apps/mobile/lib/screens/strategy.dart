@@ -3,6 +3,7 @@ import '../models/strategy.dart';
 import '../services/strategy_service.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../utils/crypto_icons.dart';
+import '../utils/exchange_config.dart';
 import 'strategy_detail.dart';
 
 enum SortBy { name, pnl, status }
@@ -459,11 +460,24 @@ class _StrategyCard extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
+                            // Market Type Icon (Perp/Futures)
+                            if (strategy.marketType != 'spot') ...[
+                              Icon(
+                                strategy.marketType == 'perpetual'
+                                    ? Icons.flash_on
+                                    : Icons.trending_up,
+                                size: 14,
+                                color: Colors.orange,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                             Text(
-                              strategy.symbol ?? 'N/A',
+                              strategy.normalizedSymbol ??
+                                  strategy.symbol ??
+                                  'N/A',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -471,14 +485,15 @@ class _StrategyCard extends StatelessWidget {
                                 fontFamily: 'monospace',
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              strategy.exchange ?? '',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey[500],
+                            if (strategy.exchange != null &&
+                                strategy.exchange!.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              ExchangeChip(
+                                exchangeId: strategy.exchange,
+                                showIcon: true,
+                                fontSize: 10,
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ],

@@ -29,11 +29,19 @@ export enum StrategyType {
   CUSTOM = 'custom',
 }
 
+export enum MarketType {
+  SPOT = 'spot',
+  PERPETUAL = 'perpetual',
+  FUTURES = 'futures',
+  MARGIN = 'margin',
+}
+
 @Entity('strategies')
 @Index(['user'])
 @Index(['user', 'name'], { unique: true })
 @Index(['status'])
 @Index(['exchange'])
+@Index(['marketType'])
 export class StrategyEntity {
   @PrimaryGeneratedColumn()
   id!: number;
@@ -63,6 +71,16 @@ export class StrategyEntity {
 
   @Column({ type: 'text', nullable: true })
   symbol?: string;
+
+  @Column({ type: 'text', nullable: true })
+  normalizedSymbol?: string;
+
+  @Column({
+    type: 'enum',
+    enum: MarketType,
+    default: MarketType.SPOT,
+  })
+  marketType!: MarketType;
 
   @Column({ type: 'jsonb', nullable: true })
   parameters?: StrategyParameters;

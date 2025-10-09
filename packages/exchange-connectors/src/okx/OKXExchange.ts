@@ -456,8 +456,27 @@ export class OKXExchange extends BaseExchange {
   }
 
   protected normalizeSymbol(symbol: string): string {
-    // OKX 使用 BTC-USDT 格式
-    return symbol.replace('/', '-').toUpperCase();
+    // Convert common formats to OKX format
+    // Spot: BTC/USDT -> BTC-USDT
+    // Futures: BTC/USDT:USDT -> BTC-USDT-SWAP (perpetual)
+    // Futures: BTC-USD-SWAP -> BTC-USD-SWAP (keep as is)
+    
+    const upperSymbol = symbol.toUpperCase();
+    
+    // Handle futures format: BTC/USDT:USDT (CCXT format for perpetual)
+    if (upperSymbol.includes(':')) {
+      const [pair] = upperSymbol.split(':');
+      const base = pair.replace('/', '-');
+      return `${base}-SWAP`; // OKX perpetual swap format
+    }
+    
+    // Handle already formatted swap contracts
+    if (upperSymbol.includes('-SWAP') || upperSymbol.includes('-FUTURES')) {
+      return upperSymbol.replace('/', '-');
+    }
+    
+    // Handle spot: BTC/USDT -> BTC-USDT
+    return upperSymbol.replace('/', '-');
   }
 
   protected buildWebSocketUrl(): string {

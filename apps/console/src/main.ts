@@ -51,28 +51,68 @@ async function main() {
 
   logger.info('📊 iTrade Console started with database-driven strategy management');
 
-  // Add exchange
-  // ⚠️ Binance Testnet 的 WebSocket 可能不稳定
-  // 对于只订阅市场数据（无需 API 密钥），可以使用主网
-  const USE_MAINNET_FOR_DATA = true; // 改为 true 使用主网数据流
-  const binance = new BinanceExchange(!USE_MAINNET_FOR_DATA); // false = mainnet, true = testnet
-
-  // 仅添加基本事件监听器（WebSocket 被阻断，使用 REST 轮询）
-  binance.on('connected', () => {
-    logger.info('✅ Exchange connected (REST API working)');
-  });
-
-  await binance.connect({
-    apiKey: process.env.BINANCE_API_KEY || '',
-    secretKey: process.env.BINANCE_SECRET_KEY || '',
-    sandbox: !USE_MAINNET_FOR_DATA, // 与 isTestnet 保持一致
-  });
-  engine.addExchange('binance', binance);
-
-  // Initialize Order Sync Service after exchange is connected
-  // 每 5 秒同步一次未完成订单，确保状态更新的可靠性
+  // Initialize exchanges dynamically based on database strategies
   const exchanges = new Map<string, any>();
-  exchanges.set('binance', binance);
+  const USE_MAINNET_FOR_DATA = true; // Use mainnet for market data
+
+  // Initialize Binance (most common)
+  try {
+    const binance = new BinanceExchange(!USE_MAINNET_FOR_DATA);
+    binance.on('connected', () => {
+      logger.info('✅ Binance exchange connected');
+    });
+    await binance.connect({
+      apiKey: process.env.BINANCE_API_KEY || '',
+      secretKey: process.env.BINANCE_SECRET_KEY || '',
+      sandbox: !USE_MAINNET_FOR_DATA,
+    });
+    engine.addExchange('binance', binance);
+    exchanges.set('binance', binance);
+    logger.info('✅ Binance exchange initialized');
+  } catch (error) {
+    logger.error('Failed to initialize Binance exchange', error as Error);
+  }
+
+  // Initialize Coinbase (if credentials available)
+  if (process.env.COINBASE_API_KEY && process.env.COINBASE_SECRET_KEY) {
+    try {
+      const { CoinbaseExchange } = await import('@itrade/exchange-connectors');
+      const coinbase = new CoinbaseExchange();
+      await coinbase.connect({
+        apiKey: process.env.COINBASE_API_KEY,
+        secretKey: process.env.COINBASE_SECRET_KEY,
+        sandbox: !USE_MAINNET_FOR_DATA,
+      });
+      engine.addExchange('coinbase', coinbase);
+      exchanges.set('coinbase', coinbase);
+      logger.info('✅ Coinbase exchange initialized');
+    } catch (error) {
+      logger.warn('Failed to initialize Coinbase exchange', error as Error);
+    }
+  }
+
+  // Initialize OKX (if credentials available)
+  if (process.env.OKX_API_KEY && process.env.OKX_SECRET_KEY && process.env.OKX_PASSPHRASE) {
+    try {
+      const { OKXExchange } = await import('@itrade/exchange-connectors');
+      const okx = new OKXExchange(!USE_MAINNET_FOR_DATA);
+      await okx.connect({
+        apiKey: process.env.OKX_API_KEY,
+        secretKey: process.env.OKX_SECRET_KEY,
+        passphrase: process.env.OKX_PASSPHRASE,
+        sandbox: !USE_MAINNET_FOR_DATA,
+      });
+      engine.addExchange('okx', okx);
+      exchanges.set('okx', okx);
+      logger.info('✅ OKX exchange initialized');
+    } catch (error) {
+      logger.warn('Failed to initialize OKX exchange', error as Error);
+    }
+  }
+
+  logger.info(`📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`);
+
+  // Initialize Order Sync Service for all connected exchanges
   const orderSyncService = new OrderSyncService(exchanges, dataManager, {
     syncInterval: 5000,
     batchSize: 5,
@@ -86,14 +126,6 @@ async function main() {
   orderSyncService.on('debug', (msg) => logger.debug(msg));
   
   await orderSyncService.start();
-
-  // const coinbase = new CoinbaseExchange();
-  // await coinbase.connect({
-  //   apiKey: process.env.COINBASE_API_KEY || '',
-  //   secretKey: process.env.COINBASE_SECRET_KEY || '',
-  //   sandbox: true, // Use testnet for safety
-  // });
-  // engine.addExchange('coinbase', coinbase);
 
   // Start trading engine
   await engine.start();
