@@ -24,6 +24,11 @@ import { DryRunResultEntity } from './entities/DryRunResult';
 import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
+import {
+  StrategyRepository,
+  OrderRepository,
+  PnLRepository,
+} from './repositories';
 
 export interface TypeOrmDataManagerConfig {
   type: 'postgres' | 'mysql';
@@ -47,6 +52,12 @@ export class TypeOrmDataManager implements IDataManager {
   private klineRepository!: Repository<KlineEntity>;
   private symbolRepository!: Repository<SymbolEntity>;
   private dataQualityRepository!: Repository<DataQualityEntity>;
+  
+  // Domain repositories
+  private strategyRepository!: StrategyRepository;
+  private orderRepository!: OrderRepository;
+  private pnlRepository!: PnLRepository;
+  
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
   private isInitialized = false;
@@ -102,6 +113,11 @@ export class TypeOrmDataManager implements IDataManager {
     this.symbolRepository = this.dataSource.getRepository(SymbolEntity);
     this.dataQualityRepository =
       this.dataSource.getRepository(DataQualityEntity);
+
+    // Initialize domain repositories
+    this.strategyRepository = new StrategyRepository(this.dataSource);
+    this.orderRepository = new OrderRepository(this.dataSource);
+    this.pnlRepository = new PnLRepository(this.dataSource);
 
     this.isInitialized = true;
   }
@@ -687,5 +703,121 @@ export class TypeOrmDataManager implements IDataManager {
       default:
         throw new Error(`Unknown interval unit: ${unit}`);
     }
+  }
+
+  // -------------------- Strategy Management --------------------
+  // Delegating to StrategyRepository
+
+  async createStrategy(data: {
+    name: string;
+    description?: string;
+    type: string;
+    status?: string;
+    exchange?: string;
+    symbol?: string;
+    parameters?: any;
+    userId: string;
+  }): Promise<StrategyEntity> {
+    this.ensureInitialized();
+    return await this.strategyRepository.create(data);
+  }
+
+  async getStrategy(id: number): Promise<StrategyEntity | null> {
+    this.ensureInitialized();
+    return await this.strategyRepository.findById(id);
+  }
+
+  async getStrategies(filters?: {
+    userId?: string;
+    status?: string;
+    exchange?: string;
+  }): Promise<StrategyEntity[]> {
+    this.ensureInitialized();
+    return await this.strategyRepository.findAll(filters);
+  }
+
+  async updateStrategy(
+    id: number,
+    updates: Partial<StrategyEntity>
+  ): Promise<void> {
+    this.ensureInitialized();
+    await this.strategyRepository.update(id, updates);
+  }
+
+  async deleteStrategy(id: number): Promise<void> {
+    this.ensureInitialized();
+    await this.strategyRepository.delete(id);
+  }
+
+  async updateStrategyStatus(
+    id: number,
+    status: string,
+    errorMessage?: string
+  ): Promise<void> {
+    this.ensureInitialized();
+    await this.strategyRepository.updateStatus(id, status, errorMessage);
+  }
+
+  // -------------------- Order Management --------------------
+  // Delegating to OrderRepository
+
+  async saveOrder(order: Partial<OrderEntity>): Promise<OrderEntity> {
+    this.ensureInitialized();
+    return await this.orderRepository.save(order);
+  }
+
+  async updateOrder(
+    id: string,
+    updates: Partial<OrderEntity>
+  ): Promise<void> {
+    this.ensureInitialized();
+    await this.orderRepository.update(id, updates);
+  }
+
+  async getOrder(id: string): Promise<OrderEntity | null> {
+    this.ensureInitialized();
+    return await this.orderRepository.findById(id);
+  }
+
+  async getOrders(filters?: {
+    strategyId?: number;
+    symbol?: string;
+    status?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<OrderEntity[]> {
+    this.ensureInitialized();
+    return await this.orderRepository.findAll(filters);
+  }
+
+  // -------------------- PnL Analytics --------------------
+  // Delegating to PnLRepository
+
+  async getStrategyPnL(strategyId: number): Promise<{
+    totalPnl: number;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    totalOrders: number;
+    filledOrders: number;
+  }> {
+    this.ensureInitialized();
+    return await this.pnlRepository.getStrategyPnL(strategyId);
+  }
+
+  async getOverallPnL(userId?: string): Promise<{
+    totalPnl: number;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    totalOrders: number;
+    strategies: Array<{
+      strategyId: number;
+      strategyName: string;
+      pnl: number;
+      realizedPnl: number;
+      unrealizedPnl: number;
+    }>;
+  }> {
+    this.ensureInitialized();
+    return await this.pnlRepository.getOverallPnL(userId);
   }
 }

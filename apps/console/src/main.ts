@@ -1,13 +1,36 @@
-import { TradingEngine, LogLevel } from '@itrade/core';
+import { TradingEngine, LogLevel, OrderSyncService } from '@itrade/core';
 import { ConsoleLogger } from '@itrade/logger';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
-import { MovingAverageStrategy } from '@itrade/strategies';
 import { BinanceExchange } from '@itrade/exchange-connectors';
+import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
+import { StrategyManager } from './strategy-manager';
+import { OrderTracker } from './order-tracker';
 
-const logger = new ConsoleLogger(LogLevel.DEBUG); // 改为 DEBUG 级别查看详细日志
+// Load environment variables (inline instead of dotenv package)
+// Assuming environment variables are set via system or .env file in parent directory
+
+const logger = new ConsoleLogger(LogLevel.DEBUG);
+
 async function main() {
+  // Initialize database connection
+  logger.info('Connecting to database...');
+  const dataManager = new TypeOrmDataManager({
+    type: 'postgres',
+    host: process.env.DATABASE_HOST || 'localhost',
+    port: parseInt(process.env.DATABASE_PORT || '5432'),
+    username: process.env.DATABASE_USER || 'postgres',
+    password: process.env.DATABASE_PASSWORD || 'postgres',
+    database: process.env.DATABASE_NAME || 'itrade',
+    ssl: process.env.DATABASE_SSL === 'true',
+    logging: ['error'],
+    synchronize: false,
+  });
+
+  await dataManager.initialize();
+  logger.info('✅ Database connected');
+
   // Initialize components
   const riskManager = new RiskManager({
     maxDrawdown: new Decimal(20),
@@ -19,24 +42,14 @@ async function main() {
   // Create engine
   const engine = new TradingEngine(riskManager, portfolioManager, logger);
 
-  // Add strategy
-  // Note: Use standard format 'BTC/USDT' - it will be automatically converted
-  // to exchange-specific format (Binance: 'BTCUSDT', Coinbase: 'BTC-USDT')
-  const symbol = 'BTC/USDT';
-  const strategy = new MovingAverageStrategy({
-    fastPeriod: 3, // 减少到 3（更快收集数据）
-    slowPeriod: 5, // 减少到 5（只需 5 个数据点）
-    threshold: 0.001, // 降低阈值（0.1% 更容易触发）
-    symbol,
-    subscription: {
-      ticker: true,
-      klines: true,
-    },
-  });
-  engine.addStrategy('ma-strategy', strategy);
+  // Initialize Strategy Manager
+  const strategyManager = new StrategyManager(engine, dataManager, logger);
 
-  logger.info('📊 Strategy configured: FastMA=3, SlowMA=5, Threshold=0.1%');
-  logger.info('   (Will start analyzing after receiving 5 ticker updates)');
+  // Initialize Order Tracker
+  const orderTracker = new OrderTracker(dataManager, logger);
+  await orderTracker.start();
+
+  logger.info('📊 iTrade Console started with database-driven strategy management');
 
   // Add exchange
   // ⚠️ Binance Testnet 的 WebSocket 可能不稳定
@@ -56,6 +69,24 @@ async function main() {
   });
   engine.addExchange('binance', binance);
 
+  // Initialize Order Sync Service after exchange is connected
+  // 每 5 秒同步一次未完成订单，确保状态更新的可靠性
+  const exchanges = new Map<string, any>();
+  exchanges.set('binance', binance);
+  const orderSyncService = new OrderSyncService(exchanges, dataManager, {
+    syncInterval: 5000,
+    batchSize: 5,
+    autoStart: false,
+  });
+  
+  // 监听事件并输出日志
+  orderSyncService.on('info', (msg) => logger.info(msg));
+  orderSyncService.on('warn', (msg) => logger.warn(msg));
+  orderSyncService.on('error', (err) => logger.error('OrderSyncService error:', err as Error));
+  orderSyncService.on('debug', (msg) => logger.debug(msg));
+  
+  await orderSyncService.start();
+
   // const coinbase = new CoinbaseExchange();
   // await coinbase.connect({
   //   apiKey: process.env.COINBASE_API_KEY || '',
@@ -64,85 +95,117 @@ async function main() {
   // });
   // engine.addExchange('coinbase', coinbase);
 
-  // Start trading
+  // Start trading engine
   await engine.start();
 
-  // 🔥 Critical: Subscribe to market data to receive ticker updates
-  // Without this, the strategy will never receive data and won't generate signals
-  logger.info(`Subscribing to ticker data for ${symbol}...`);
-  logger.info(
-    `Using ${USE_MAINNET_FOR_DATA ? 'MAINNET' : 'TESTNET'} for market data`
-  );
+  // Start strategy manager (loads strategies from database)
+  await strategyManager.start();
 
-  // ⚠️ WebSocket 连接被阻断（ECONNRESET）
-  // 使用 REST API 轮询作为替代方案
-  logger.warn(
-    '⚠️  WebSocket appears to be blocked. Using REST API polling instead...'
-  );
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('🚀 iTrade Trading System is LIVE');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('📊 Active strategies are loaded from database');
+  logger.info('🔄 Monitoring for strategy updates every second');
+  logger.info('📈 Performance reports every 60 seconds');
+  logger.info('💼 Orders will be tracked and saved to database');
+  logger.info('🔄 Order sync running every 5 seconds for reliability');
+  logger.info('🛡️  Protection against WebSocket failures enabled');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-  let tickerCount = 0;
-  const pollInterval = setInterval(async () => {
-    try {
-      const ticker = await binance.getTicker(symbol);
-      tickerCount++;
-      logger.info(
-        `📈 Ticker #${tickerCount}: ${symbol} = ${ticker.price.toString()}`
-      );
-
-      // 手动触发 onTicker（使用新的类型安全方法）
-      logger.debug(`🔍 Calling engine.onTicker for ${symbol}`);
-      await engine.onTicker(symbol, ticker, 'binance');
-
-      // 查看策略状态（调试用）
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const maStrategy = engine.getStrategy('ma-strategy') as any;
-      if (maStrategy && maStrategy.priceHistory) {
-        const historyLength = maStrategy.priceHistory.length;
-        logger.info(`📊 Strategy collected ${historyLength}/5 data points`);
-
-        if (historyLength >= 5) {
-          const fastMA = maStrategy.getFastMA();
-          const slowMA = maStrategy.getSlowMA();
-          const position = maStrategy.getCurrentPosition();
-          const fastValue = fastMA.toNumber();
-          const slowValue = slowMA.toNumber();
-          const diff = (((fastValue - slowValue) / slowValue) * 100).toFixed(4);
-          logger.info(
-            `📈 FastMA=${fastValue.toFixed(2)}, SlowMA=${slowValue.toFixed(2)}, Diff=${diff}%, Position=${position}`
-          );
-        }
-      }
-    } catch (error) {
-      logger.error('❌ Failed in polling loop:', error as Error);
-    }
-  }, 1000); // 每秒轮询一次
-
-  // 清理函数
-  process.on('SIGINT', () => {
-    clearInterval(pollInterval);
-  });
-
-  logger.info('Trading system is running...');
-  logger.info('Waiting for market data and strategy signals...');
-
-  // 添加策略信号监听
+  // Setup enhanced event monitoring
   const { EventBus } = await import('@itrade/core');
   const eventBus = EventBus.getInstance();
 
+  // Track strategy signals with enhanced logging
   eventBus.onStrategySignal((signal) => {
     logger.info(
-      `🎯 Strategy Signal: ${signal.action} ${signal.symbol} @ ${signal.price} (confidence: ${signal.confidence})`
+      `🎯 SIGNAL: ${signal.strategyName} - ${signal.action} ${signal.symbol} @ ${signal.price}`
     );
-    logger.info(`   Reason: ${signal.reason}`);
+    logger.info(`   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`);
+    logger.info(`   💭 Reason: ${signal.reason}`);
+  });
+
+  // Track order lifecycle
+  eventBus.onOrderCreated((data) => {
+    logger.info(
+      `📝 ORDER CREATED: ${data.order.side} ${data.order.quantity} ${data.order.symbol} @ ${data.order.price || 'MARKET'}`
+    );
+    logger.info(`   Order ID: ${data.order.id}`);
+  });
+
+  eventBus.onOrderFilled((data) => {
+    logger.info(`✅ ORDER FILLED: ${data.order.id}`);
+    logger.info(
+      `   Executed: ${data.order.executedQuantity} @ avg ${data.order.cummulativeQuoteQuantity?.div(data.order.executedQuantity || 1)}`
+    );
+  });
+
+  eventBus.onOrderPartiallyFilled((data) => {
+    logger.info(
+      `⏳ ORDER PARTIAL FILL: ${data.order.id} - ${data.order.executedQuantity}/${data.order.quantity}`
+    );
+  });
+
+  eventBus.onOrderCancelled((data) => {
+    logger.info(`❌ ORDER CANCELLED: ${data.order.id}`);
+  });
+
+  eventBus.onOrderRejected((data) => {
+    logger.error(`🚫 ORDER REJECTED: ${data.order.id}`);
   });
 
   // Keep the process running
   process.on('SIGINT', async () => {
-    logger.info('Shutting down...');
-    await engine.stop();
-    await binance.disconnect();
+    logger.info('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logger.info('🛑 Shutting down gracefully...');
+    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
+    try {
+      await orderSyncService.stop();
+      logger.info('✅ Order sync service stopped');
+      
+      await strategyManager.stop();
+      logger.info('✅ Strategy manager stopped');
+      
+      await orderTracker.stop?.();
+      logger.info('✅ Order tracker stopped');
+      
+      await engine.stop();
+      logger.info('✅ Trading engine stopped');
+      
+      await binance.disconnect();
+      logger.info('✅ Exchange disconnected');
+      
+      await dataManager.close();
+      logger.info('✅ Database connection closed');
+      
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.info('👋 Goodbye!');
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    } catch (error) {
+      logger.error('Error during shutdown:', error as Error);
+    }
+    
     process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    logger.info('Received SIGTERM signal, shutting down...');
+    process.emit('SIGINT' as any);
+  });
+
+  // Handle uncaught errors
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception:', error);
+    process.emit('SIGINT' as any);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled rejection:', reason as Error);
   });
 }
 
-main().catch(logger.error);
+main().catch((error) => {
+  logger.error('Fatal error:', error);
+  process.exit(1);
+});

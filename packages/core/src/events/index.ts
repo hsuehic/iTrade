@@ -73,7 +73,7 @@ export interface KlineUpdateEvent {
   timestamp: Date;
 }
 
-export interface OrderEvent {
+export interface OrderEventData {
   order: Order;
   timestamp: Date;
 }
@@ -154,23 +154,23 @@ export class EventBus extends EventEmitter {
     return this.emit(EVENTS.KLINE_UPDATE, data);
   }
 
-  public emitOrderCreated(data: OrderEvent): boolean {
+  public emitOrderCreated(data: OrderEventData): boolean {
     return this.emit(EVENTS.ORDER_CREATED, data);
   }
 
-  public emitOrderFilled(data: OrderEvent): boolean {
+  public emitOrderFilled(data: OrderEventData): boolean {
     return this.emit(EVENTS.ORDER_FILLED, data);
   }
 
-  public emitOrderPartiallyFilled(data: OrderEvent): boolean {
+  public emitOrderPartiallyFilled(data: OrderEventData): boolean {
     return this.emit(EVENTS.ORDER_PARTIALLY_FILLED, data);
   }
 
-  public emitOrderCancelled(data: OrderEvent): boolean {
+  public emitOrderCancelled(data: OrderEventData): boolean {
     return this.emit(EVENTS.ORDER_CANCELLED, data);
   }
 
-  public emitOrderRejected(data: OrderEvent): boolean {
+  public emitOrderRejected(data: OrderEventData): boolean {
     return this.emit(EVENTS.ORDER_REJECTED, data);
   }
 
@@ -268,8 +268,28 @@ export class EventBus extends EventEmitter {
     return this.on(EVENTS.KLINE_UPDATE, callback);
   }
 
-  public onOrderFilled(callback: (data: OrderEvent) => void): this {
+  public onOrderCreated(callback: (data: OrderEventData) => void): this {
+    return this.on(EVENTS.ORDER_CREATED, callback);
+  }
+
+  public onOrderFilled(callback: (data: OrderEventData) => void): this {
     return this.on(EVENTS.ORDER_FILLED, callback);
+  }
+
+  public onOrderPartiallyFilled(callback: (data: OrderEventData) => void): this {
+    return this.on(EVENTS.ORDER_PARTIALLY_FILLED, callback);
+  }
+
+  public onOrderCancelled(callback: (data: OrderEventData) => void): this {
+    return this.on(EVENTS.ORDER_CANCELLED, callback);
+  }
+
+  public onOrderRejected(callback: (data: OrderEventData) => void): this {
+    return this.on(EVENTS.ORDER_REJECTED, callback);
+  }
+
+  public onBalanceUpdate(callback: (data: BalanceUpdateEvent) => void): this {
+    return this.on(EVENTS.BALANCE_UPDATE, callback);
   }
 
   public onPositionUpdate(callback: (data: PositionUpdateEvent) => void): this {

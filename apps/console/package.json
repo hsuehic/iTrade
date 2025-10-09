@@ -12,6 +12,7 @@
   "license": "MIT",
   "dependencies": {
     "@itrade/core": "workspace:*",
+    "@itrade/data-manager": "workspace:*",
     "@itrade/exchange-connectors": "workspace:*",
     "@itrade/logger": "workspace:*",
     "@itrade/portfolio-manager": "workspace:*",

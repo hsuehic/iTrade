@@ -4,6 +4,13 @@ export { TypeOrmDataManager } from './TypeOrmDataManager';
 export { CacheManager } from './CacheManager';
 export { MigrationHelper } from './MigrationHelper';
 
+// Repositories
+export {
+  StrategyRepository,
+  OrderRepository,
+  PnLRepository,
+} from './repositories';
+
 // Entity exports
 export { KlineEntity, DecimalTransformer } from './entities/Kline';
 export { SymbolEntity } from './entities/Symbol';
@@ -13,6 +20,7 @@ export { OrderEntity } from './entities/Order';
 export { OrderFillEntity } from './entities/OrderFill';
 export { PositionEntity } from './entities/Position';
 export { StrategyEntity } from './entities/Strategy';
+export { StrategyStatus, StrategyType } from './entities/Strategy';
 export { AccountInfoEntity } from './entities/AccountInfo';
 export { BalanceEntity } from './entities/Balance';
 export { BacktestConfigEntity } from './entities/BacktestConfig';

@@ -1,0 +1,351 @@
+# iTrade Project - AI Agent Documentation Rules
+
+## 📂 Documentation Structure
+
+When creating or modifying documentation files, follow this structure:
+
+### Root Level
+
+- `README.md` - Project overview and main documentation entry point
+- Keep root directory clean, avoid creating new documentation files here
+
+### Documentation Directories
+
+#### `/docs/` - Project-level Documentation
+
+Main documentation hub for the entire project.
+
+**Subdirectories:**
+
+- `/docs/guides/` - User guides and tutorials
+  - Quick start guides
+  - How-to guides
+  - Best practices
+  - Examples: `PROJECT_QUICK_START.md`, `RUN_COMMANDS.md`, `STRATEGY_MANAGEMENT_GUIDE.md`
+
+- `/docs/development/` - Development process documentation
+  - Implementation summaries
+  - Improvement logs
+  - Migration guides
+  - Bug fixes documentation
+  - Examples: `CONSOLE_WEB_IMPROVEMENTS.md`, `IMPLEMENTATION_SUMMARY.md`, `IMPROVEMENTS_SUMMARY.md`
+
+- `/docs/api/` - API reference documentation
+  - Existing: `API-REFERENCE-MARKET-DATA.md`
+  - API specifications
+  - Interface documentation
+
+- `/docs/architecture/` - Architecture and design documentation
+  - System design documents
+  - Architecture decisions (ADR)
+  - Technical specifications
+  - Existing: `DESIGN-ANALYSIS-MARKET-DATA-API.md`, `trading-engine-analysis.md`
+
+#### Application-Specific Documentation
+
+**Console Application** - `/apps/console/docs/`
+
+- `QUICK_START.md` - Console quick start guide
+- Application-specific guides
+- Console configuration
+
+**Web Application** - `/apps/web/docs/`
+
+- Web application guides
+- API documentation
+- Deployment guides
+
+**Mobile Application** - `/apps/mobile/docs/`
+
+- Mobile setup guides
+- Platform-specific documentation
+- Build instructions
+
+#### Package-Specific Documentation
+
+**Core Package** - `/packages/core/docs/`
+
+- Core functionality documentation
+- Examples: `ORDER_SYNC_MECHANISM.md`, `ORDER_SYNC_IMPLEMENTATION.md`
+- API reference for core modules
+
+**Data Manager** - `/packages/data-manager/docs/`
+
+- Database schema documentation
+- Data migration guides
+
+**Exchange Connectors** - `/packages/exchange-connectors/docs/`
+
+- Exchange integration guides
+- Per-exchange documentation
+
+**Other Packages** - `/packages/{package-name}/docs/`
+
+- Package-specific documentation
+- Usage examples
+- API reference
+
+---
+
+## 📝 Documentation Naming Conventions
+
+### File Names
+
+- Use `UPPERCASE_WITH_UNDERSCORES.md` for important top-level docs
+- Use `lowercase-with-hyphens.md` for regular documentation
+- Use descriptive names: `QUICK_START.md`, `API_REFERENCE.md`
+
+### Bilingual Documentation Naming
+
+**Default Language**: English (no suffix)
+**Chinese Version**: Add `_CN` suffix
+
+Examples:
+- `README.md` - English (default)
+- `README_CN.md` - Chinese version
+- `QUICK_START.md` - English
+- `QUICK_START_CN.md` - Chinese version
+- `API_REFERENCE.md` - English
+- `API_REFERENCE_CN.md` - Chinese version
+
+**Rationale**:
+- English is the international standard for open-source projects
+- Cursor AI and most development tools work best with English
+- Makes the project more accessible to global developers
+
+### Document Types and Locations
+
+| Document Type | Location | Example |
+|--------------|----------|---------|
+| Quick Start Guide | `{app}/docs/QUICK_START.md` | `apps/console/docs/QUICK_START.md` |
+| User Guide | `docs/guides/` | `docs/guides/STRATEGY_MANAGEMENT_GUIDE.md` |
+| API Reference | `docs/api/` or `{package}/docs/` | `packages/core/docs/API_REFERENCE.md` |
+| Implementation Log | `docs/development/` | `docs/development/IMPLEMENTATION_SUMMARY.md` |
+| Architecture Doc | `docs/architecture/` | `docs/architecture/SYSTEM_DESIGN.md` |
+| Package Feature Doc | `{package}/docs/` | `packages/core/docs/ORDER_SYNC_MECHANISM.md` |
+| Troubleshooting | `docs/guides/` | `docs/guides/TROUBLESHOOTING.md` |
+| Changelog | `docs/development/` | `docs/development/CHANGELOG.md` |
+
+---
+
+## 🎯 When Creating New Documentation
+
+### Step 1: Determine Document Type
+
+Ask yourself:
+
+- Is this a user guide? → `docs/guides/`
+- Is this implementation/improvement documentation? → `docs/development/`
+- Is this API reference? → `docs/api/` or `{package}/docs/`
+- Is this architecture/design? → `docs/architecture/`
+- Is this specific to an application? → `apps/{app}/docs/`
+- Is this specific to a package feature? → `packages/{package}/docs/`
+
+### Step 2: Choose Appropriate Location
+
+```
+# For a new core package feature
+✅ packages/core/docs/NEW_FEATURE.md
+❌ /NEW_FEATURE.md (root directory)
+
+# For console application guide
+✅ apps/console/docs/USAGE_GUIDE.md
+❌ /CONSOLE_USAGE_GUIDE.md (root directory)
+
+# For project-wide implementation summary
+✅ docs/development/FEATURE_IMPLEMENTATION.md
+❌ /IMPLEMENTATION.md (root directory)
+
+# For user guide or tutorial
+✅ docs/guides/HOW_TO_DEPLOY.md
+❌ /DEPLOYMENT.md (root directory)
+```
+
+### Step 3: Link from README
+
+Update the relevant README.md to reference your new documentation:
+
+- Main `README.md` for project-level docs
+- Package `README.md` for package-specific docs
+- Application `README.md` for app-specific docs
+
+---
+
+## 📚 Documentation Templates
+
+### Quick Start Template
+
+```markdown
+# {Application/Package} Quick Start Guide
+
+## Prerequisites
+- List requirements
+
+## Installation
+- Step by step
+
+## Usage
+- Basic usage examples
+
+## Next Steps
+- Links to detailed guides
+```
+
+### Implementation/Feature Template
+
+```markdown
+# {Feature Name} Implementation
+
+## Overview
+Brief description
+
+## Implementation Details
+Technical details
+
+## Usage
+How to use
+
+## Testing
+How to test
+
+## Related Documentation
+Links to related docs
+```
+
+---
+
+## 🔄 Migration Rules
+
+When AI generates documentation in the root directory:
+
+1. **Immediately recognize** the document type
+2. **Move to appropriate location**:
+
+   ```bash
+   # Example
+   mv ROOT_DOC.md docs/guides/ROOT_DOC.md
+   # or
+   mv FEATURE_DOC.md packages/core/docs/FEATURE_DOC.md
+   ```
+
+3. **Update any references** in other files
+4. **Add to relevant README** for discoverability
+
+---
+
+## ✅ Best Practices
+
+1. **Keep root clean**: Only `README.md` and essential project files
+2. **Use subdirectories**: Organize by type and scope
+3. **Link documents**: Cross-reference related documentation
+4. **Update READMEs**: Keep README files up-to-date with doc links
+5. **Consistent naming**: Follow naming conventions
+6. **Clear hierarchy**: User docs separate from dev docs
+
+---
+
+## 🎨 Document Structure
+
+### Every Document Should Have
+
+1. **Title** (H1)
+2. **Brief description** (1-2 sentences)
+3. **Table of contents** (for long docs)
+4. **Main content** (well-structured with headings)
+5. **Related links** (at the end)
+6. **Last updated date** (optional but recommended)
+
+---
+
+## 📖 Examples of Well-Organized Documentation
+
+### Good Examples ✅
+
+```
+packages/core/docs/
+├── README.md (package overview + links to all docs)
+├── ORDER_SYNC_MECHANISM.md (feature design)
+├── ORDER_SYNC_IMPLEMENTATION.md (implementation)
+└── API_REFERENCE.md (API docs)
+
+apps/console/docs/
+├── QUICK_START.md (how to start)
+├── CONFIGURATION.md (config guide)
+└── DEPLOYMENT.md (deployment guide)
+
+docs/
+├── guides/
+│   ├── PROJECT_QUICK_START.md
+│   └── STRATEGY_MANAGEMENT_GUIDE.md
+├── development/
+│   ├── IMPLEMENTATION_SUMMARY.md
+│   └── CONSOLE_WEB_IMPROVEMENTS.md
+└── architecture/
+    └── SYSTEM_DESIGN.md
+```
+
+### Bad Examples ❌
+
+```
+# Don't do this:
+├── QUICK_START.md (which app?)
+├── FEATURE_1.md (unclear purpose)
+├── NEW_IMPLEMENTATION.md (what implementation?)
+├── DOCS.md (too vague)
+└── NOTES.md (should be in proper location)
+```
+
+---
+
+## 🤖 AI Agent Instructions
+
+When you (AI) create documentation:
+
+1. **NEVER put files in root directory** (except README.md updates)
+2. **ASK** if unclear where to place: "This looks like a {type} document. Should I place it in {location}?"
+3. **SUGGEST** appropriate location based on content
+4. **CREATE** directory structure if it doesn't exist
+5. **UPDATE** relevant README files with links
+6. **FOLLOW** naming conventions consistently
+
+### Decision Tree for AI
+
+```
+Is it a Quick Start?
+└─ Yes → apps/{app}/docs/QUICK_START.md
+└─ No ↓
+
+Is it implementation/improvement documentation?
+└─ Yes → docs/development/{NAME}.md
+└─ No ↓
+
+Is it a package feature documentation?
+└─ Yes → packages/{package}/docs/{FEATURE}.md
+└─ No ↓
+
+Is it a user guide?
+└─ Yes → docs/guides/{NAME}.md
+└─ No ↓
+
+Is it architecture/design?
+└─ Yes → docs/architecture/{NAME}.md
+└─ No ↓
+
+Is it API reference?
+└─ Yes → docs/api/{NAME}.md or packages/{package}/docs/API.md
+```
+
+---
+
+## 📌 Summary
+
+**Golden Rule**: Documentation should be close to what it documents.
+
+- **Application docs** → `apps/{app}/docs/`
+- **Package docs** → `packages/{package}/docs/`
+- **Project docs** → `docs/{category}/`
+- **Root directory** → Keep clean!
+
+When in doubt, put it in `docs/guides/` and organize later.
+
+**Remember**: Good documentation structure makes the project more maintainable and user-friendly! 📚✨

@@ -8,14 +8,17 @@ export { TradingEngine } from './engine/TradingEngine';
 // Models
 export { BaseStrategy } from './models/BaseStrategy';
 export { OrderManager } from './models/OrderManager';
+export { OrderSyncService } from './models/OrderSyncService';
+export type { OrderSyncConfig, OrderSyncStats, IOrderDataManager } from './models/OrderSyncService';
 
-// Events (excluding OrderEvent to avoid duplicate export)
+// Events
 export { EVENTS, EventBus } from './events';
 export type {
   TickerUpdateEvent,
   OrderBookUpdateEvent,
   TradeUpdateEvent,
   KlineUpdateEvent,
+  OrderEventData,
   BalanceUpdateEvent,
   PositionUpdateEvent,
   StrategySignalEvent,

@@ -1,14 +1,595 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset } from '@/components/ui/sidebar';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  CardFooter,
+} from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
+import { JsonEditor } from '@/components/json-editor';
+import { toast } from 'sonner';
+import {
+  IconPlus,
+  IconPlayerPlay,
+  IconPlayerPause,
+  IconTrash,
+  IconEdit,
+  IconChartLine,
+  IconClock,
+  IconSettings,
+} from '@tabler/icons-react';
 
-export const metadata = {
-  title: 'Strategy',
+type Strategy = {
+  id: number;
+  name: string;
+  description?: string;
+  type: string;
+  status: string;
+  exchange?: string;
+  symbol?: string;
+  parameters?: any;
+  lastExecutionTime?: string;
+  createdAt: string;
+  updatedAt: string;
 };
-export default function Page() {
+
+export default function StrategyPage() {
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    type: 'moving_average',
+    exchange: 'binance',
+    symbol: 'BTC/USDT',
+    parameters: JSON.stringify(
+      {
+        fastPeriod: 12,
+        slowPeriod: 26,
+        threshold: 0.001,
+        subscription: {
+          ticker: true,
+          klines: true,
+          method: 'rest',
+        },
+      },
+      null,
+      2
+    ),
+  });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchStrategies();
+  }, []);
+
+  const fetchStrategies = async () => {
+    try {
+      const response = await fetch('/api/strategies');
+      if (!response.ok) throw new Error('Failed to fetch strategies');
+      const data = await response.json();
+      setStrategies(data.strategies);
+    } catch (error) {
+      toast.error('Failed to load strategies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createStrategy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      let parameters;
+      try {
+        parameters = JSON.parse(formData.parameters);
+      } catch {
+        toast.error('Invalid JSON in parameters field');
+        return;
+      }
+
+      const url = isEditing ? `/api/strategies/${editingId}` : '/api/strategies';
+      const method = isEditing ? 'PATCH' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, parameters }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || `Failed to ${isEditing ? 'update' : 'create'} strategy`);
+      }
+
+      toast.success(`Strategy ${isEditing ? 'updated' : 'created'} successfully`);
+      setIsCreateDialogOpen(false);
+      resetForm();
+      fetchStrategies();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const editStrategy = (strategy: Strategy) => {
+    setFormData({
+      name: strategy.name,
+      description: strategy.description || '',
+      type: strategy.type,
+      exchange: strategy.exchange || 'binance',
+      symbol: strategy.symbol || '',
+      parameters: JSON.stringify(strategy.parameters || {}, null, 2),
+    });
+    setIsEditing(true);
+    setEditingId(strategy.id);
+    setIsCreateDialogOpen(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      type: 'moving_average',
+      exchange: 'binance',
+      symbol: 'BTC/USDT',
+      parameters: JSON.stringify(
+        {
+          fastPeriod: 12,
+          slowPeriod: 26,
+          threshold: 0.001,
+          subscription: {
+            ticker: true,
+            klines: true,
+            method: 'rest',
+          },
+        },
+        null,
+        2
+      ),
+    });
+    setIsEditing(false);
+    setEditingId(null);
+  };
+
+  const updateStrategyStatus = async (id: number, newStatus: string) => {
+    try {
+      const response = await fetch(`/api/strategies/${id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update strategy status');
+
+      toast.success(`Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`);
+      fetchStrategies();
+    } catch (error) {
+      toast.error('Failed to update strategy status');
+    }
+  };
+
+  const deleteStrategy = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this strategy?')) return;
+
+    try {
+      const response = await fetch(`/api/strategies/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete strategy');
+      }
+
+      toast.success('Strategy deleted');
+      fetchStrategies();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+      active: 'default',
+      stopped: 'secondary',
+      paused: 'outline',
+      error: 'destructive',
+    };
+    return (
+      <Badge variant={variants[status] || 'default'}>
+        {status.toUpperCase()}
+      </Badge>
+    );
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'bg-green-500';
+      case 'stopped':
+        return 'bg-gray-500';
+      case 'paused':
+        return 'bg-yellow-500';
+      case 'error':
+        return 'bg-red-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
   return (
     <SidebarInset>
-      <SiteHeader title="Strategy" />
-      <div></div>
+      <SiteHeader title="Strategy Management" />
+      <div className="flex flex-1 flex-col">
+        <div className="@container/main flex flex-1 flex-col gap-2">
+          <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+            {/* Header */}
+            <div className="flex justify-between items-start px-4 lg:px-6">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">Trading Strategies</h2>
+                <p className="text-muted-foreground mt-1">
+                  Create, manage and monitor your automated trading strategies
+                </p>
+              </div>
+              <Dialog
+                open={isCreateDialogOpen}
+                onOpenChange={(open) => {
+                  setIsCreateDialogOpen(open);
+                  if (!open) resetForm();
+                }}
+              >
+                <DialogTrigger asChild>
+                  <Button size="lg">
+                    <IconPlus className="mr-2 h-4 w-4" />
+                    New Strategy
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>
+                      {isEditing ? 'Edit Strategy' : 'Create New Strategy'}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {isEditing
+                        ? 'Update your trading strategy configuration'
+                        : 'Configure a new automated trading strategy'}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={createStrategy} className="space-y-6">
+                    <Tabs defaultValue="basic" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                        <TabsTrigger value="config">Configuration</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="basic" className="space-y-4 mt-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="name">
+                              Strategy Name <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id="name"
+                              placeholder="e.g., BTC MA Cross"
+                              value={formData.name}
+                              onChange={(e) =>
+                                setFormData({ ...formData, name: e.target.value })
+                              }
+                              required
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="type">
+                              Strategy Type <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                              value={formData.type}
+                              onValueChange={(value) =>
+                                setFormData({ ...formData, type: value })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="moving_average">
+                                  Moving Average Crossover
+                                </SelectItem>
+                                <SelectItem value="rsi">RSI Indicator</SelectItem>
+                                <SelectItem value="macd">MACD Strategy</SelectItem>
+                                <SelectItem value="bollinger_bands">
+                                  Bollinger Bands
+                                </SelectItem>
+                                <SelectItem value="custom">Custom Strategy</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="exchange">Exchange</Label>
+                            <Input
+                              id="exchange"
+                              placeholder="binance"
+                              value={formData.exchange}
+                              onChange={(e) =>
+                                setFormData({ ...formData, exchange: e.target.value })
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Trading platform (e.g., binance, coinbase)
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="symbol">
+                              Trading Pair <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id="symbol"
+                              placeholder="BTC/USDT"
+                              value={formData.symbol}
+                              onChange={(e) =>
+                                setFormData({ ...formData, symbol: e.target.value })
+                              }
+                              required
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Use format: BTC/USDT, ETH/USD
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="description">Description</Label>
+                          <Textarea
+                            id="description"
+                            placeholder="Describe your strategy's approach and goals..."
+                            value={formData.description}
+                            onChange={(e) =>
+                              setFormData({ ...formData, description: e.target.value })
+                            }
+                            rows={3}
+                          />
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="config" className="space-y-4 mt-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="parameters">
+                            Strategy Parameters <span className="text-red-500">*</span>
+                          </Label>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            Configure your strategy parameters in JSON format
+                          </p>
+                          <JsonEditor
+                            value={formData.parameters}
+                            onChange={(value) =>
+                              setFormData({ ...formData, parameters: value })
+                            }
+                            placeholder={JSON.stringify(
+                              {
+                                fastPeriod: 12,
+                                slowPeriod: 26,
+                                threshold: 0.001,
+                                subscription: {
+                                  ticker: true,
+                                  klines: true,
+                                  method: 'rest',
+                                },
+                              },
+                              null,
+                              2
+                            )}
+                          />
+                        </div>
+
+                        <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
+                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                            <IconSettings className="h-4 w-4" />
+                            Common Parameters
+                          </h4>
+                          <ul className="text-xs text-muted-foreground space-y-1">
+                            <li>
+                              • <code className="font-mono">fastPeriod</code>: Short-term
+                              moving average period
+                            </li>
+                            <li>
+                              • <code className="font-mono">slowPeriod</code>: Long-term
+                              moving average period
+                            </li>
+                            <li>
+                              • <code className="font-mono">threshold</code>: Signal
+                              threshold (0.001 = 0.1%)
+                            </li>
+                            <li>
+                              • <code className="font-mono">subscription</code>: Market
+                              data subscription config
+                            </li>
+                          </ul>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                    <Separator />
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setIsCreateDialogOpen(false);
+                          resetForm();
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit">
+                        {isEditing ? 'Update Strategy' : 'Create Strategy'}
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {/* Strategies List */}
+            <div className="px-4 lg:px-6">
+              {loading ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="text-center space-y-3">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
+                    <p className="text-sm text-muted-foreground">
+                      Loading strategies...
+                    </p>
+                  </div>
+                </div>
+              ) : strategies.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="flex flex-col items-center justify-center py-16">
+                    <div className="rounded-full bg-muted p-4 mb-4">
+                      <IconChartLine className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">No strategies yet</h3>
+                    <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
+                      Get started by creating your first automated trading strategy.
+                      Configure parameters, set your trading pair, and start trading.
+                    </p>
+                    <Button onClick={() => setIsCreateDialogOpen(true)}>
+                      <IconPlus className="mr-2 h-4 w-4" />
+                      Create Your First Strategy
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {strategies.map((strategy) => (
+                    <Card
+                      key={strategy.id}
+                      className="hover:shadow-lg transition-shadow duration-200"
+                    >
+                      <CardHeader>
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              <div
+                                className={`h-2 w-2 rounded-full ${getStatusColor(strategy.status)}`}
+                              />
+                              {strategy.name}
+                            </CardTitle>
+                            <CardDescription className="mt-1">
+                              {strategy.type.replace(/_/g, ' ')}
+                            </CardDescription>
+                          </div>
+                          {getStatusBadge(strategy.status)}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {strategy.description && (
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {strategy.description}
+                          </p>
+                        )}
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Exchange</span>
+                            <span className="font-medium">
+                              {strategy.exchange || 'Not set'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Trading Pair</span>
+                            <span className="font-mono font-medium">
+                              {strategy.symbol}
+                            </span>
+                          </div>
+                          {strategy.lastExecutionTime && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
+                              <IconClock className="h-3 w-3" />
+                              <span>
+                                Last run:{' '}
+                                {new Date(strategy.lastExecutionTime).toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                      <CardFooter className="flex gap-2">
+                        {strategy.status === 'active' ? (
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() =>
+                              updateStrategyStatus(strategy.id, 'stopped')
+                            }
+                          >
+                            <IconPlayerPause className="h-4 w-4 mr-2" />
+                            Stop
+                          </Button>
+                        ) : (
+                          <Button
+                            className="flex-1"
+                            onClick={() =>
+                              updateStrategyStatus(strategy.id, 'active')
+                            }
+                          >
+                            <IconPlayerPlay className="h-4 w-4 mr-2" />
+                            Start
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => editStrategy(strategy)}
+                          disabled={strategy.status === 'active'}
+                        >
+                          <IconEdit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => deleteStrategy(strategy.id)}
+                          disabled={strategy.status === 'active'}
+                          className="hover:bg-destructive hover:text-destructive-foreground"
+                        >
+                          <IconTrash className="h-4 w-4" />
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </SidebarInset>
   );
 }

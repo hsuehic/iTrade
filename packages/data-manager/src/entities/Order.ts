@@ -102,6 +102,48 @@ export class OrderEntity implements Order {
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
+  @Column({ type: 'text', nullable: true })
+  exchange?: string;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: new DecimalTransformer(),
+  })
+  realizedPnl?: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: new DecimalTransformer(),
+  })
+  unrealizedPnl?: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: new DecimalTransformer(),
+  })
+  averagePrice?: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: new DecimalTransformer(),
+  })
+  commission?: Decimal;
+
+  @Column({ type: 'text', nullable: true })
+  commissionAsset?: string;
+
   @OneToMany(() => OrderFillEntity, (f) => f.order, { cascade: true })
   fills?: OrderFillEntity[] | undefined;
 
