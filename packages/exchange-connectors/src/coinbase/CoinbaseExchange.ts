@@ -277,8 +277,110 @@ export class CoinbaseExchange extends BaseExchange {
   }
 
   public async getPositions(): Promise<Position[]> {
-    // Spot only
-    return [];
+    try {
+      // Step 1: Get all accounts to find perpetual portfolio IDs
+      const accountsResp = await this.httpClient.get(
+        '/api/v3/brokerage/accounts'
+      );
+      const accounts = accountsResp.data?.accounts || [];
+
+      // Debug: Log all accounts to understand the structure (remove in production)
+      // console.log('[Coinbase Debug] All accounts:', JSON.stringify(accounts, null, 2));
+
+      // Find perpetual accounts - they might have different structures
+      const perpetualAccounts = accounts.filter((account: any) => {
+        // Check multiple possible indicators for perpetual accounts
+        return (
+          account.portfolio_uuid ||
+          account.retail_portfolio_id ||
+          account.platform === 'ACCOUNT_PLATFORM_INTX' ||
+          account.type?.includes('INTX') ||
+          account.name?.includes('INTX') ||
+          account.name?.includes('Perpetual') ||
+          account.name?.includes('Futures')
+        );
+      });
+
+      // console.log(`[Coinbase Debug] Found ${perpetualAccounts.length} potential perpetual accounts:`,
+      //   perpetualAccounts.map((acc: any) => ({
+      //     uuid: acc.uuid,
+      //     name: acc.name,
+      //     type: acc.type,
+      //     portfolio_uuid: acc.portfolio_uuid
+      //   })));
+
+      if (perpetualAccounts.length === 0) {
+        // No perpetual accounts found - this is normal for spot-only accounts
+        return [];
+      }
+
+      const positions: Position[] = [];
+
+      // Step 2: Get positions for each perpetual portfolio
+      for (const account of perpetualAccounts) {
+        const portfolioUuid =
+          account.portfolio_uuid || account.retail_portfolio_id;
+        if (!portfolioUuid) continue;
+
+        try {
+          const positionsResp = await this.httpClient.get(
+            `/api/v3/brokerage/intx/positions/${portfolioUuid}`
+          );
+          const portfolioPositions = positionsResp.data?.positions || [];
+
+          for (const pos of portfolioPositions) {
+            if (!pos.product_id || !pos.net_size) continue;
+
+            // Handle different data formats - some fields might be objects with 'value' property
+            const getDecimalValue = (field: any): string => {
+              if (typeof field === 'string') return field;
+              if (typeof field === 'number') return field.toString();
+              if (field && typeof field === 'object' && field.value)
+                return field.value;
+              return '0';
+            };
+
+            const size = this.formatDecimal(getDecimalValue(pos.net_size));
+            if (size.isZero()) continue; // Skip zero positions
+
+            positions.push({
+              symbol: pos.product_id,
+              side: size.isPositive() ? 'long' : 'short',
+              quantity: size.abs(),
+              avgPrice: pos.avg_entry_price
+                ? this.formatDecimal(getDecimalValue(pos.avg_entry_price))
+                : this.formatDecimal('0'),
+              markPrice: pos.mark_price
+                ? this.formatDecimal(getDecimalValue(pos.mark_price))
+                : this.formatDecimal('0'),
+              unrealizedPnl: pos.unrealized_pnl
+                ? this.formatDecimal(getDecimalValue(pos.unrealized_pnl))
+                : this.formatDecimal('0'),
+              leverage: pos.leverage
+                ? this.formatDecimal(getDecimalValue(pos.leverage))
+                : this.formatDecimal('1'),
+              timestamp: new Date(),
+            });
+          }
+        } catch (error: any) {
+          // If 404 for this specific portfolio, it might not have positions
+          if (error.response?.status === 404) {
+            continue; // This portfolio has no positions
+          }
+          // For other errors, log and continue
+          console.warn(
+            `Failed to fetch positions for portfolio ${portfolioUuid}:`,
+            error.message
+          );
+        }
+      }
+
+      return positions;
+    } catch (error: any) {
+      // If we can't get accounts at all, return empty array
+      console.warn('Failed to fetch accounts for positions:', error.message);
+      return [];
+    }
   }
 
   public async getExchangeInfo(): Promise<ExchangeInfo> {
