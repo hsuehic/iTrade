@@ -23,4 +23,4 @@ export type {
   AccountInfo,
   Balance,
   Position,
-} from '@crypto-trading/core';
+} from '@itrade/core';

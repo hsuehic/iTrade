@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 
 import axios, { AxiosInstance } from 'axios';
 import WebSocket from 'ws';
-import { Ticker, OrderBook, Trade, Kline } from '@crypto-trading/core';
+import { Ticker, OrderBook, Trade, Kline } from '@itrade/core';
 
 export abstract class MarketDataExchange extends EventEmitter {
   protected httpClient: AxiosInstance;

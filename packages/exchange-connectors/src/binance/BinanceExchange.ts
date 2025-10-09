@@ -16,7 +16,7 @@ import {
   Balance,
   Position,
   ExchangeInfo,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
 

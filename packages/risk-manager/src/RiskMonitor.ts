@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 
 import { Decimal } from 'decimal.js';
-import { RiskAlert } from '@crypto-trading/core';
+import { RiskAlert } from '@itrade/core';
 
 export interface MonitoringConfig {
   checkInterval: number; // Monitoring interval in milliseconds

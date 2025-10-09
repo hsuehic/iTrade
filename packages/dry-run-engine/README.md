@@ -1,6 +1,6 @@
-# @crypto-trading/dry-run-engine
+# @itrade/dry-run-engine
 
-A minimal dry run engine that simulates strategy execution against historical klines and persists orders/trades/results using the TypeORM DryRun entities via `@crypto-trading/data-manager`.
+A minimal dry run engine that simulates strategy execution against historical klines and persists orders/trades/results using the TypeORM DryRun entities via `@itrade/data-manager`.
 
 ## Install
 
@@ -10,9 +10,9 @@ This is a workspace package. Build the repo root with pnpm.
 
 ```ts
 import { Decimal } from 'decimal.js';
-import { DryRunEngine } from '@crypto-trading/dry-run-engine';
-import { TypeOrmDataManagerConfig } from '@crypto-trading/data-manager';
-import { IStrategy } from '@crypto-trading/core';
+import { DryRunEngine } from '@itrade/dry-run-engine';
+import { TypeOrmDataManagerConfig } from '@itrade/data-manager';
+import { IStrategy } from '@itrade/core';
 
 const config: TypeOrmDataManagerConfig = {
   type: 'postgres',

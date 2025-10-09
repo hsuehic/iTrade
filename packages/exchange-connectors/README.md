@@ -1,4 +1,4 @@
-# @crypto-trading/exchange-connectors
+# @itrade/exchange-connectors
 
 Exchange API connectors with unified interface supporting both REST and WebSocket protocols.
 
@@ -15,9 +15,11 @@ This package provides standardized connectors for cryptocurrency exchanges, offe
 ## Supported Exchanges
 
 ### ✅ Currently Implemented
+
 - **Binance** - Spot trading with testnet support
 
 ### 🚧 Planned
+
 - Coinbase Pro
 - Kraken  
 - Bybit
@@ -26,7 +28,7 @@ This package provides standardized connectors for cryptocurrency exchanges, offe
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/exchange-connectors @crypto-trading/core
+pnpm add @itrade/exchange-connectors @itrade/core
 ```
 
 ## Usage
@@ -34,7 +36,7 @@ pnpm add @crypto-trading/exchange-connectors @crypto-trading/core
 ### Basic Setup
 
 ```typescript
-import { BinanceExchange } from '@crypto-trading/exchange-connectors';
+import { BinanceExchange } from '@itrade/exchange-connectors';
 
 // Create exchange instance
 const binance = new BinanceExchange(false); // false = mainnet, true = testnet
@@ -108,7 +110,7 @@ binance.on('kline', (symbol, kline) => {
 ### Trading Operations
 
 ```typescript
-import { OrderSide, OrderType } from '@crypto-trading/exchange-connectors';
+import { OrderSide, OrderType } from '@itrade/exchange-connectors';
 
 // Place market order
 const marketOrder = await binance.createOrder(
@@ -163,7 +165,7 @@ const orderHistory = await binance.getOrderHistory('BTCUSDT', 50);
 ### Creating New Exchange Connector
 
 ```typescript
-import { BaseExchange } from '@crypto-trading/exchange-connectors';
+import { BaseExchange } from '@itrade/exchange-connectors';
 
 class MyExchange extends BaseExchange {
   constructor() {

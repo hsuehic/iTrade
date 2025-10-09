@@ -6,4 +6,4 @@ export type {
   BacktestConfig,
   BacktestResult,
   BacktestTrade,
-} from '@crypto-trading/core';
+} from '@itrade/core';

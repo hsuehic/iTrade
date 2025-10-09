@@ -58,7 +58,7 @@ sequenceDiagram
 
 ### 1. Install Dependencies
 ```bash
-yarn add @crypto-trading/core @crypto-trading/strategies
+yarn add @itrade/core @itrade/strategies
 ```
 
 ### 2. Create a Strategy
@@ -66,7 +66,7 @@ Implement a strategy (e.g., `MovingAverageStrategy`) by extending `BaseStrategy`
 
 ### 3. Register and Run
 ```typescript
-import { TradeEngine } from '@crypto-trading/core';
+import { TradeEngine } from '@itrade/core';
 import { MovingAverageStrategy } from './strategies/moving-average-strategy';
 
 const engine = new TradeEngine();
@@ -79,7 +79,7 @@ engine.start();
 
 ### 4. Configure Exchange
 ```typescript
-import { BinanceConnector } from '@crypto-trading/exchange-connectors';
+import { BinanceConnector } from '@itrade/exchange-connectors';
 
 const binance = new BinanceConnector({ apiKey: 'YOUR_API_KEY' });
 engine.addExchange(binance);

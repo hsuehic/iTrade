@@ -9,4 +9,4 @@ export type {
   RiskLimits,
   RiskMetrics,
   RiskAlert,
-} from '@crypto-trading/core';
+} from '@itrade/core';

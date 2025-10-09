@@ -10,7 +10,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { Position } from '@crypto-trading/core';
+import { Position } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { OrderEntity } from './Order';

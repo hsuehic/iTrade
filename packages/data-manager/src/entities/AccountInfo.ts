@@ -1,4 +1,4 @@
-import { AccountInfo } from '@crypto-trading/core';
+import { AccountInfo } from '@itrade/core';
 import {
   Column,
   CreateDateColumn,

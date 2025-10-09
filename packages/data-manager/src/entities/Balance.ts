@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Balance } from '@crypto-trading/core';
+import { Balance } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { AccountInfoEntity } from './AccountInfo';

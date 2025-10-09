@@ -1,4 +1,4 @@
-# @crypto-trading/strategies
+# @itrade/strategies
 
 Collection of cryptocurrency trading strategies with comprehensive technical analysis support.
 
@@ -39,7 +39,7 @@ This package provides battle-tested trading strategies and technical indicators 
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/strategies @crypto-trading/core
+pnpm add @itrade/strategies @itrade/core
 ```
 
 ## Usage
@@ -47,7 +47,7 @@ pnpm add @crypto-trading/strategies @crypto-trading/core
 ### Moving Average Strategy
 
 ```typescript
-import { MovingAverageStrategy } from '@crypto-trading/strategies';
+import { MovingAverageStrategy } from '@itrade/strategies';
 
 const strategy = new MovingAverageStrategy({
   fastPeriod: 10,        // Fast MA period
@@ -75,7 +75,7 @@ if (signal.action !== 'hold') {
 ### Custom Strategy Development
 
 ```typescript
-import { BaseStrategy, StrategyResult } from '@crypto-trading/strategies';
+import { BaseStrategy, StrategyResult } from '@itrade/strategies';
 
 class MyCustomStrategy extends BaseStrategy {
   private indicator: MyIndicator;
@@ -269,7 +269,7 @@ strategy.on('cleanup', (strategyName) => {
 ### Trend Indicators
 
 ```typescript
-import { SMA, EMA, MACD } from '@crypto-trading/strategies';
+import { SMA, EMA, MACD } from '@itrade/strategies';
 
 // Simple Moving Average
 const sma = new SMA(20);
@@ -292,7 +292,7 @@ console.log('Histogram:', macd.getHistogram());
 ### Oscillators
 
 ```typescript
-import { RSI, Stochastic, CCI } from '@crypto-trading/strategies';
+import { RSI, Stochastic, CCI } from '@itrade/strategies';
 
 // RSI
 const rsi = new RSI(14);
@@ -309,7 +309,7 @@ console.log('Stochastic %D:', stoch.getPercentD());
 ### Volatility Indicators
 
 ```typescript
-import { BollingerBands, ATR } from '@crypto-trading/strategies';
+import { BollingerBands, ATR } from '@itrade/strategies';
 
 // Bollinger Bands
 const bb = new BollingerBands(20, 2);
@@ -329,7 +329,7 @@ console.log('ATR:', atr.getValue());
 ### Grid Search
 
 ```typescript
-import { ParameterOptimizer } from '@crypto-trading/strategies';
+import { ParameterOptimizer } from '@itrade/strategies';
 
 const optimizer = new ParameterOptimizer();
 
@@ -426,7 +426,7 @@ pnpm test:performance
 ### Complete Strategy Implementation
 
 ```typescript
-import { BaseStrategy, StrategyResult, SMA, RSI } from '@crypto-trading/strategies';
+import { BaseStrategy, StrategyResult, SMA, RSI } from '@itrade/strategies';
 
 interface TrendFollowingParameters extends StrategyParameters {
   smaPeriod: number;

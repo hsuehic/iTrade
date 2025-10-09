@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
-import { Position, OrderSide, Order } from '@crypto-trading/core';
+import { Position, OrderSide, Order } from '@itrade/core';
 
 export interface PositionSummary {
   symbol: string;

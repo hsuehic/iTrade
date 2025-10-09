@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/exchange-connectors",
+  "name": "@itrade/exchange-connectors",
   "version": "0.1.0",
   "description": "Exchange connectors with REST and WebSocket support",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
+    "@itrade/core": "workspace:*",
     "axios": "^1.6.7",
     "ws": "^8.16.0",
     "crypto": "^1.0.1",

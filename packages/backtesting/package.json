@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/backtesting",
+  "name": "@itrade/backtesting",
   "version": "0.1.0",
   "description": "Backtesting engine for trading strategies",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
+    "@itrade/core": "workspace:*",
     "decimal.js": "^10.4.3"
   },
   "devDependencies": {

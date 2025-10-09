@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/logger",
+  "name": "@itrade/logger",
   "version": "0.1.0",
   "description": "Structured logging system for crypto trading operations",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
+    "@itrade/core": "workspace:*",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^4.7.1"
   },

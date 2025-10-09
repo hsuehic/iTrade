@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { DataSource, Repository, LessThanOrEqual } from 'typeorm';
-import { IDataManager, Kline } from '@crypto-trading/core';
+import { IDataManager, Kline } from '@itrade/core';
 
 import { KlineEntity } from './entities/Kline';
 import { SymbolEntity } from './entities/Symbol';

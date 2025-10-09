@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/cli",
+  "name": "@itrade/cli",
   "version": "0.1.0",
   "description": "Command line interface for crypto trading tools",
   "main": "./dist/index.js",
@@ -18,10 +18,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
-    "@crypto-trading/exchange-connectors": "workspace:*",
-    "@crypto-trading/strategies": "workspace:*",
-    "@crypto-trading/backtesting": "workspace:*",
+    "@itrade/core": "workspace:*",
+    "@itrade/exchange-connectors": "workspace:*",
+    "@itrade/strategies": "workspace:*",
+    "@itrade/backtesting": "workspace:*",
     "commander": "^12.0.0",
     "inquirer": "^9.2.15",
     "chalk": "^5.3.0",

@@ -9,7 +9,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import type { StrategyParameters } from '@crypto-trading/core';
+import type { StrategyParameters } from '@itrade/core';
 
 import { OrderEntity } from './Order';
 import { User } from './User';

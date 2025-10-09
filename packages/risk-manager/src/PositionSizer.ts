@@ -1,5 +1,5 @@
 import { Decimal } from 'decimal.js';
-import { Position } from '@crypto-trading/core';
+import { Position } from '@itrade/core';
 
 export interface PositionSizeParams {
   portfolioValue: Decimal;

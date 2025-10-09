@@ -68,16 +68,16 @@ importers:
 
   apps/cli:
     dependencies:
-      '@crypto-trading/backtesting':
+      '@itrade/backtesting':
         specifier: workspace:*
         version: link:../../packages/backtesting
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@crypto-trading/exchange-connectors':
+      '@itrade/exchange-connectors':
         specifier: workspace:*
         version: link:../../packages/exchange-connectors
-      '@crypto-trading/strategies':
+      '@itrade/strategies':
         specifier: workspace:*
         version: link:../../packages/strategies
       chalk:
@@ -102,6 +102,8 @@ importers:
       tsdown:
         specifier: ^0.2.16
         version: 0.2.17(rollup@4.52.4)(typescript@5.9.3)
+
+  apps/console: {}
 
   apps/web:
     dependencies:
@@ -271,7 +273,7 @@ importers:
 
   packages/backtesting:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       decimal.js:
@@ -306,7 +308,7 @@ importers:
 
   packages/data-manager:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       decimal.js:
@@ -346,10 +348,10 @@ importers:
 
   packages/dry-run-engine:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
-      '@crypto-trading/data-manager':
+      '@itrade/data-manager':
         specifier: workspace:*
         version: link:../data-manager
       decimal.js:
@@ -365,7 +367,7 @@ importers:
 
   packages/exchange-connectors:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       axios:
@@ -399,7 +401,7 @@ importers:
 
   packages/logger:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       typescript:
@@ -424,7 +426,7 @@ importers:
 
   packages/portfolio-manager:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       decimal.js:
@@ -449,7 +451,7 @@ importers:
 
   packages/risk-manager:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       decimal.js:
@@ -468,7 +470,7 @@ importers:
 
   packages/strategies:
     dependencies:
-      '@crypto-trading/core':
+      '@itrade/core':
         specifier: workspace:*
         version: link:../core
       decimal.js:

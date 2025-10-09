@@ -2,8 +2,8 @@ import { Command } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import { Decimal } from 'decimal.js';
-import { MovingAverageStrategy } from '@crypto-trading/strategies';
-import { BacktestEngine } from '@crypto-trading/backtesting';
+import { MovingAverageStrategy } from '@itrade/strategies';
+import { BacktestEngine } from '@itrade/backtesting';
 
 interface BacktestOptions {
   strategy?: string;

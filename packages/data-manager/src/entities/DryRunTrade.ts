@@ -7,7 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { BacktestTrade, OrderSide } from '@crypto-trading/core';
+import { BacktestTrade, OrderSide } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { DryRunSessionEntity } from './DryRunSession';

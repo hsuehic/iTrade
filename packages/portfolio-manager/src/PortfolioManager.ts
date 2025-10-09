@@ -8,7 +8,7 @@ import {
   Balance,
   OrderSide,
   Order,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 import { Decimal } from 'decimal.js';
 
 export class PortfolioManager

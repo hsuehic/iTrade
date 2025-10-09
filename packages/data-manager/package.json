@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/data-manager",
+  "name": "@itrade/data-manager",
   "version": "0.1.0",
   "description": "Data management and historical data handling for crypto trading",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
+    "@itrade/core": "workspace:*",
     "decimal.js": "^10.4.3",
     "mysql2": "^3.6.5",
     "node-csv": "^0.1.2",

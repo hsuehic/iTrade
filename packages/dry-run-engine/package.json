@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/dry-run-engine",
+  "name": "@itrade/dry-run-engine",
   "version": "0.1.0",
   "description": "Dry run engine to simulate strategy execution and persist via TypeORM dry-run entities",
   "main": "./dist/index.js",
@@ -21,8 +21,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
-    "@crypto-trading/data-manager": "workspace:*",
+    "@itrade/core": "workspace:*",
+    "@itrade/data-manager": "workspace:*",
     "decimal.js": "^10.4.3"
   },
   "devDependencies": {

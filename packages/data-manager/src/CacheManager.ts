@@ -1,4 +1,4 @@
-import { Kline, Ticker, OrderBook, Trade } from '@crypto-trading/core';
+import { Kline, Ticker, OrderBook, Trade } from '@itrade/core';
 
 interface CacheEntry<T> {
   data: T;

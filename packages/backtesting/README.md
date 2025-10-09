@@ -1,4 +1,4 @@
-# @crypto-trading/backtesting
+# @itrade/backtesting
 
 Comprehensive backtesting engine for validating cryptocurrency trading strategies with historical data.
 
@@ -33,7 +33,7 @@ This package provides a robust backtesting framework that simulates trading stra
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/backtesting @crypto-trading/core
+pnpm add @itrade/backtesting @itrade/core
 ```
 
 ## Usage
@@ -41,8 +41,8 @@ pnpm add @crypto-trading/backtesting @crypto-trading/core
 ### Basic Backtesting
 
 ```typescript
-import { BacktestEngine } from '@crypto-trading/backtesting';
-import { MovingAverageStrategy } from '@crypto-trading/strategies';
+import { BacktestEngine } from '@itrade/backtesting';
+import { MovingAverageStrategy } from '@itrade/strategies';
 
 // Create backtest engine
 const engine = new BacktestEngine();

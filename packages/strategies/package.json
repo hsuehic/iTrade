@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/strategies",
+  "name": "@itrade/strategies",
   "version": "0.1.0",
   "description": "Trading strategies collection",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
+    "@itrade/core": "workspace:*",
     "decimal.js": "^10.4.3",
     "uuid": "^9.0.1"
   },

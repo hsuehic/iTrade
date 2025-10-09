@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 
 import { Decimal } from 'decimal.js';
-import { IDataManager, Kline } from '@crypto-trading/core';
+import { IDataManager, Kline } from '@itrade/core';
 
 export class FileDataManager implements IDataManager {
   private dataPath: string;

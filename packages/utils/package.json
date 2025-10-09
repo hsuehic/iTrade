@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/utils",
+  "name": "@itrade/utils",
   "version": "0.1.0",
   "description": "Utility functions and helpers for crypto trading",
   "main": "dist/index.js",

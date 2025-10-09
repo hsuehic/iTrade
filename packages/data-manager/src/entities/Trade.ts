@@ -1,6 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import { Trade } from '@crypto-trading/core';
+import { Trade } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 

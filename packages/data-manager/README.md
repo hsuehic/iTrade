@@ -1,4 +1,4 @@
-# @crypto-trading/data-manager
+# @itrade/data-manager
 
 Professional-grade data management system for cryptocurrency trading applications with TypeORM integration.
 
@@ -38,7 +38,7 @@ This package provides comprehensive data management capabilities for crypto trad
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/data-manager @crypto-trading/core
+pnpm add @itrade/data-manager @itrade/core
 ```
 
 ## Database Setup
@@ -46,7 +46,7 @@ pnpm add @crypto-trading/data-manager @crypto-trading/core
 ### PostgreSQL
 
 ```typescript
-import { TypeOrmDataManager } from '@crypto-trading/data-manager';
+import { TypeOrmDataManager } from '@itrade/data-manager';
 
 const dataManager = new TypeOrmDataManager({
   type: 'postgres',
@@ -76,7 +76,7 @@ const dataManager = new TypeOrmDataManager({
 ### Basic Operations
 
 ```typescript
-import { TypeOrmDataManager, FileDataManager } from '@crypto-trading/data-manager';
+import { TypeOrmDataManager, FileDataManager } from '@itrade/data-manager';
 
 // Initialize with database
 const dataManager = new TypeOrmDataManager(dbConfig);
@@ -127,7 +127,7 @@ const validationResults = await dataManager.validateDataIntegrity('BTCUSDT', '1h
 ### Caching Integration
 
 ```typescript
-import { CacheManager } from '@crypto-trading/data-manager';
+import { CacheManager } from '@itrade/data-manager';
 
 const cache = new CacheManager({
   defaultTTL: 60000, // 1 minute
@@ -394,7 +394,7 @@ const poolConfig = {
 ### From JSON Files
 
 ```typescript
-import { MigrationHelper } from '@crypto-trading/data-manager';
+import { MigrationHelper } from '@itrade/data-manager';
 
 const migrator = new MigrationHelper(dataManager);
 
@@ -550,4 +550,4 @@ When contributing to this package:
 - **pg** - PostgreSQL client
 - **mysql2** - MySQL client  
 - **decimal.js** - Precision decimal arithmetic
-- **@crypto-trading/core** - Core types and interfaces
+- **@itrade/core** - Core types and interfaces

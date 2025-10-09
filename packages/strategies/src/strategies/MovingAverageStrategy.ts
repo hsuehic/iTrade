@@ -5,7 +5,7 @@ import {
   StrategyParameters,
   Ticker,
   Kline,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 export interface MovingAverageParameters extends StrategyParameters {
   fastPeriod: number;

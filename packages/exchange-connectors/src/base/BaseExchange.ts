@@ -18,7 +18,7 @@ import {
   Position,
   ExchangeCredentials,
   ExchangeInfo,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 export abstract class BaseExchange extends EventEmitter implements IExchange {
   protected httpClient: AxiosInstance;

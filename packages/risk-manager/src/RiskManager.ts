@@ -9,7 +9,7 @@ import {
   RiskAlert,
   RiskLimits,
   RiskMetrics,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 export interface RiskManagerConfig {
   maxDrawdown: Decimal; // Maximum portfolio drawdown (%)

@@ -1,4 +1,4 @@
-# @crypto-trading/utils
+# @itrade/utils
 
 Comprehensive utility library providing essential functions and helpers for cryptocurrency trading applications.
 
@@ -55,14 +55,14 @@ This package offers a rich collection of utility functions designed specifically
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/utils
+pnpm add @itrade/utils
 ```
 
 ## Quick Start
 
 ### Date Operations
 ```typescript
-import { DateUtils } from '@crypto-trading/utils';
+import { DateUtils } from '@itrade/utils';
 
 // Trading-specific date functions
 const nextTradingDay = DateUtils.getNextWeekday(new Date());
@@ -77,7 +77,7 @@ const intervalMs = DateUtils.intervalToMilliseconds('1d'); // 86400000
 
 ### Mathematical Operations
 ```typescript
-import { MathUtils } from '@crypto-trading/utils';
+import { MathUtils } from '@itrade/utils';
 import { Decimal } from 'decimal.js';
 
 // Precision arithmetic
@@ -99,7 +99,7 @@ const annualizedReturn = MathUtils.annualizeReturn(compoundReturn, 5, 252); // 5
 
 ### Data Validation
 ```typescript
-import { ValidationUtils } from '@crypto-trading/utils';
+import { ValidationUtils } from '@itrade/utils';
 
 // Trading data validation
 const isValidSymbol = ValidationUtils.isValidSymbol('BTCUSDT'); // true
@@ -132,7 +132,7 @@ const { valid: userValid, errors: userErrors } = ValidationUtils.validateSchema(
 
 ### Formatting Utilities
 ```typescript
-import { FormatUtils } from '@crypto-trading/utils';
+import { FormatUtils } from '@itrade/utils';
 
 // Price formatting
 const price = FormatUtils.formatPrice(new Decimal('45123.456789'), 2); // "45123.46"
@@ -155,7 +155,7 @@ const address = FormatUtils.formatAddress('0x1234567890abcdef1234567890abcdef123
 
 ### Cryptographic Operations
 ```typescript
-import { CryptoUtils } from '@crypto-trading/utils';
+import { CryptoUtils } from '@itrade/utils';
 
 // Hashing
 const hash = CryptoUtils.sha256('sensitive data');
@@ -178,7 +178,7 @@ const apiUrl = CryptoUtils.buildApiUrl('https://api.binance.com', '/api/v3/ticke
 
 ### Configuration Management
 ```typescript
-import { ConfigUtils } from '@crypto-trading/utils';
+import { ConfigUtils } from '@itrade/utils';
 
 // Environment variables with type conversion
 const port = ConfigUtils.getEnvAsNumber('PORT', 3000);
@@ -201,7 +201,7 @@ if (!valid) {
 
 ### Async Programming Utilities
 ```typescript
-import { sleep, retry, debounce, parallel } from '@crypto-trading/utils';
+import { sleep, retry, debounce, parallel } from '@itrade/utils';
 
 // Delay execution
 await sleep(1000); // Wait 1 second

@@ -9,4 +9,4 @@ export type {
   PortfolioSnapshot,
   PerformanceMetrics,
   PositionSummary,
-} from '@crypto-trading/core';
+} from '@itrade/core';

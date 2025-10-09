@@ -9,7 +9,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { BacktestResult } from '@crypto-trading/core';
+import { BacktestResult } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { BacktestTradeEntity } from './BacktestTrade';

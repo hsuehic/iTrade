@@ -4,9 +4,9 @@
 以下是一个持续运行的自定义策略示例，结合实时数据订阅和定时任务：
 
 ```typescript
-import { TypeOrmDataManager } from '@crypto-trading/data-manager';
-import { ExchangeConnector, MarketData } from '@crypto-trading/exchange-connectors';
-import { CoreModule, Signal, RiskManagement } from '@crypto-trading/core';
+import { TypeOrmDataManager } from '@itrade/data-manager';
+import { ExchangeConnector, MarketData } from '@itrade/exchange-connectors';
+import { CoreModule, Signal, RiskManagement } from '@itrade/core';
 import { EventEmitter } from 'events';
 
 // 初始化模块

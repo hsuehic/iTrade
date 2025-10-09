@@ -1,4 +1,4 @@
-import { ILogger, LogLevel } from '@crypto-trading/core';
+import { ILogger, LogLevel } from '@itrade/core';
 
 export class ConsoleLogger implements ILogger {
   private level: LogLevel;

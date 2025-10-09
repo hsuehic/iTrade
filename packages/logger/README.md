@@ -1,4 +1,4 @@
-# @crypto-trading/logger
+# @itrade/logger
 
 Enterprise-grade structured logging system designed specifically for cryptocurrency trading applications.
 
@@ -35,14 +35,14 @@ This package provides comprehensive logging capabilities tailored for trading sy
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/logger @crypto-trading/core
+pnpm add @itrade/logger @itrade/core
 ```
 
 ## Quick Start
 
 ### Basic Usage
 ```typescript
-import { TradingLogger } from '@crypto-trading/logger';
+import { TradingLogger } from '@itrade/logger';
 
 const logger = new TradingLogger({
   level: 'info',
@@ -72,7 +72,7 @@ logger.logStrategy('Signal generated', {
 
 ### Console Logger (Development)
 ```typescript
-import { ConsoleLogger } from '@crypto-trading/logger';
+import { ConsoleLogger } from '@itrade/logger';
 
 const logger = new ConsoleLogger('debug');
 
@@ -82,7 +82,7 @@ logger.logTrade('Mock trade executed', { symbol: 'BTCUSDT' });
 
 ### File Logger (Custom Implementation)
 ```typescript
-import { FileLogger } from '@crypto-trading/logger';
+import { FileLogger } from '@itrade/logger';
 
 const logger = new FileLogger({
   logFile: './logs/custom.log',
@@ -486,4 +486,4 @@ logger.logPerformance('Strategy metrics', {
 
 - **winston** - Core logging framework
 - **winston-daily-rotate-file** - Automatic log rotation
-- **@crypto-trading/core** - Core types and interfaces
+- **@itrade/core** - Core types and interfaces

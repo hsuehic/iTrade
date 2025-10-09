@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/core",
+  "name": "@itrade/core",
   "version": "0.1.0",
   "description": "Core trading engine and interfaces",
   "main": "./dist/index.js",

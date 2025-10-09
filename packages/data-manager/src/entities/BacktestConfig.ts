@@ -8,7 +8,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { BacktestConfig } from '@crypto-trading/core';
+import { BacktestConfig } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { BacktestResultEntity } from './BacktestResult';

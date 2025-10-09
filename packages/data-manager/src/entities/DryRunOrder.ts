@@ -16,7 +16,7 @@ import {
   OrderStatus,
   OrderType,
   TimeInForce,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { DryRunSessionEntity } from './DryRunSession';

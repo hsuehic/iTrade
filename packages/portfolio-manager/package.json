@@ -1,5 +1,5 @@
 {
-  "name": "@crypto-trading/portfolio-manager",
+  "name": "@itrade/portfolio-manager",
   "version": "0.1.0",
   "description": "Portfolio tracking and management for crypto trading",
   "main": "dist/index.js",
@@ -23,7 +23,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@crypto-trading/core": "workspace:*",
+    "@itrade/core": "workspace:*",
     "decimal.js": "^10.4.3",
     "uuid": "^9.0.1"
   },

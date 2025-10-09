@@ -70,6 +70,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Connect to all exchanges
       for (const [name, exchange] of this._exchanges) {
         if (!exchange.isConnected) {
+          exchange.connect({
+            apiKey: '',
+            secretKey: '',
+            sandbox: false,
+          });
           this.logger.warn(`Exchange ${name} is not connected`);
         }
       }

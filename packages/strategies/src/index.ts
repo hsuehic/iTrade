@@ -8,4 +8,4 @@ export {
   type IStrategy,
   type StrategyParameters,
   type StrategyResult,
-} from '@crypto-trading/core';
+} from '@itrade/core';

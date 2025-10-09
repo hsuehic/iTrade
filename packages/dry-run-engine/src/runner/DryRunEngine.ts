@@ -5,15 +5,15 @@ import {
   StrategyResult,
   OrderSide,
   BacktestResult,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 import {
   TypeOrmDataManager,
   TypeOrmDataManagerConfig,
-} from '@crypto-trading/data-manager';
+} from '@itrade/data-manager';
 import {
   DryRunOrderEntity,
   DryRunTradeEntity,
-} from '@crypto-trading/data-manager';
+} from '@itrade/data-manager';
 
 export interface DryRunRunOptions {
   userId: string;

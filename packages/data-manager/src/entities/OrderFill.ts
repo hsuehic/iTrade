@@ -6,7 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { OrderFill } from '@crypto-trading/core';
+import { OrderFill } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { OrderEntity } from './Order';

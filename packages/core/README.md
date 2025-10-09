@@ -1,4 +1,4 @@
-# @crypto-trading/core
+# @itrade/core
 
 The core trading engine and foundational types for the cryptocurrency trading platform.
 
@@ -38,7 +38,7 @@ This package provides the fundamental building blocks for cryptocurrency trading
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/core
+pnpm add @itrade/core
 ```
 
 ## Usage
@@ -52,7 +52,7 @@ import {
   IRiskManager,
   IPortfolioManager,
   ILogger,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 // Create engine with dependencies
 const engine = new TradingEngine(
@@ -74,7 +74,7 @@ await engine.start();
 ### Creating Custom Strategies
 
 ```typescript
-import { BaseStrategy, StrategyResult } from '@crypto-trading/core';
+import { BaseStrategy, StrategyResult } from '@itrade/core';
 
 class MyCustomStrategy extends BaseStrategy {
   async analyze(marketData: any): Promise<StrategyResult> {
@@ -96,7 +96,7 @@ class MyCustomStrategy extends BaseStrategy {
 ### Event System Usage
 
 ```typescript
-import { EventBus, EVENTS } from '@crypto-trading/core';
+import { EventBus, EVENTS } from '@itrade/core';
 
 const eventBus = EventBus.getInstance();
 

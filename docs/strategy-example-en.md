@@ -4,9 +4,9 @@
 Below is a continuously running custom strategy example, combining real-time data subscription and scheduled tasks:
 
 ```typescript
-import { TypeOrmDataManager } from '@crypto-trading/data-manager';
-import { ExchangeConnector, MarketData } from '@crypto-trading/exchange-connectors';
-import { CoreModule, Signal, RiskManagement } from '@crypto-trading/core';
+import { TypeOrmDataManager } from '@itrade/data-manager';
+import { ExchangeConnector, MarketData } from '@itrade/exchange-connectors';
+import { CoreModule, Signal, RiskManagement } from '@itrade/core';
 import { EventEmitter } from 'events';
 
 // Initialize modules

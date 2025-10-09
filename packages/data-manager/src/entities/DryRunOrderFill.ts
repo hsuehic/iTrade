@@ -7,7 +7,7 @@ import {
   PrimaryGeneratedColumn,
   JoinColumn,
 } from 'typeorm';
-import { OrderFill } from '@crypto-trading/core';
+import { OrderFill } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { DryRunOrderEntity } from './DryRunOrder';

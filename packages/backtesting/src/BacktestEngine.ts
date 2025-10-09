@@ -9,7 +9,7 @@ import {
   Kline,
   OrderSide,
   StrategyResult,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 export class BacktestEngine implements IBacktestEngine {
   private trades: BacktestTrade[] = [];

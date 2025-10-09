@@ -3,7 +3,7 @@ import {
   PortfolioSnapshot,
   PerformanceMetrics,
   Order,
-} from '@crypto-trading/core';
+} from '@itrade/core';
 
 export interface TradeAnalysis {
   totalTrades: number;

@@ -1,4 +1,4 @@
-# @crypto-trading/risk-manager
+# @itrade/risk-manager
 
 Advanced risk management and position sizing system for cryptocurrency trading applications.
 
@@ -39,14 +39,14 @@ This package provides comprehensive risk management capabilities for trading sys
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/risk-manager @crypto-trading/core
+pnpm add @itrade/risk-manager @itrade/core
 ```
 
 ## Quick Start
 
 ### Basic Risk Management
 ```typescript
-import { RiskManager } from '@crypto-trading/risk-manager';
+import { RiskManager } from '@itrade/risk-manager';
 import { Decimal } from 'decimal.js';
 
 // Initialize with risk parameters
@@ -82,7 +82,7 @@ if (isValid) {
 
 ### Position Sizing
 ```typescript
-import { PositionSizer } from '@crypto-trading/risk-manager';
+import { PositionSizer } from '@itrade/risk-manager';
 
 const sizer = new PositionSizer();
 
@@ -109,7 +109,7 @@ console.log(`Kelly position size: $${kellySize}`);
 
 ### Risk Monitoring
 ```typescript
-import { RiskMonitor } from '@crypto-trading/risk-manager';
+import { RiskMonitor } from '@itrade/risk-manager';
 
 const monitor = new RiskMonitor({
   checkInterval: 5000,                 // Check every 5 seconds
@@ -646,4 +646,4 @@ riskManager.on('emergencyModeActivated', async (data) => {
 ## Dependencies
 
 - **decimal.js** - Precision decimal arithmetic
-- **@crypto-trading/core** - Core types and interfaces
+- **@itrade/core** - Core types and interfaces

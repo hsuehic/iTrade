@@ -1,4 +1,4 @@
-# @crypto-trading/portfolio-manager
+# @itrade/portfolio-manager
 
 Comprehensive portfolio management and performance analytics system for cryptocurrency trading.
 
@@ -35,14 +35,14 @@ This package provides enterprise-grade portfolio management capabilities:
 ## Installation
 
 ```bash
-pnpm add @crypto-trading/portfolio-manager @crypto-trading/core
+pnpm add @itrade/portfolio-manager @itrade/core
 ```
 
 ## Quick Start
 
 ### Basic Portfolio Management
 ```typescript
-import { PortfolioManager } from '@crypto-trading/portfolio-manager';
+import { PortfolioManager } from '@itrade/portfolio-manager';
 import { Decimal } from 'decimal.js';
 
 // Initialize with starting balance
@@ -66,7 +66,7 @@ console.log(`Total Return: ${returnPct.toFixed(2)}%`);
 
 ### Performance Analysis
 ```typescript
-import { PerformanceAnalyzer } from '@crypto-trading/portfolio-manager';
+import { PerformanceAnalyzer } from '@itrade/portfolio-manager';
 
 const analyzer = new PerformanceAnalyzer();
 
@@ -87,7 +87,7 @@ console.log('Performance Metrics:', {
 
 ### Position Tracking
 ```typescript
-import { PositionTracker } from '@crypto-trading/portfolio-manager';
+import { PositionTracker } from '@itrade/portfolio-manager';
 
 const tracker = new PositionTracker();
 
@@ -502,4 +502,4 @@ class RiskManager {
 
 - **decimal.js** - Precision decimal arithmetic
 - **uuid** - Unique identifier generation
-- **@crypto-trading/core** - Core types and interfaces
+- **@itrade/core** - Core types and interfaces

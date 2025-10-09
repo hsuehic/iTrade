@@ -21,7 +21,7 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@crypto-trading/*": ["packages/*/src"]
+      "@itrade/*": ["packages/*/src"]
     },
     "types": ["node"]
   },

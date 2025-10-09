@@ -1,6 +1,6 @@
 import winston, { format, transports, Logger } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
-import { ILogger, LogLevel } from '@crypto-trading/core';
+import { ILogger, LogLevel } from '@itrade/core';
 
 export interface FileLoggerOptions {
   logFile: string;

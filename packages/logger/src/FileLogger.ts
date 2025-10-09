@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import { dirname } from 'path';
 
-import { ILogger, LogLevel } from '@crypto-trading/core';
+import { ILogger, LogLevel } from '@itrade/core';
 
 export interface FileLoggerOptions {
   logFile: string;
