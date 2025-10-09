@@ -31,18 +31,26 @@ export class CoinbaseExchange extends BaseExchange {
     'wss://advanced-trade-ws.coinbase.com';
 
   constructor() {
-    super(
-      'coinbase',
-      CoinbaseExchange.MAINNET_BASE_URL,
-      CoinbaseExchange.MAINNET_WS_URL
-    );
+    const envBase = process.env.COINBASE_BASE_URL;
+    const useExchangeApi =
+      (process.env.COINBASE_USE_EXCHANGE_API || 'false').toLowerCase() ===
+      'true';
+    const base =
+      envBase ||
+      (useExchangeApi
+        ? 'https://api.exchange.coinbase.com'
+        : CoinbaseExchange.MAINNET_BASE_URL);
+
+    super('coinbase', base, CoinbaseExchange.MAINNET_WS_URL);
   }
 
   protected async testConnection(): Promise<void> {
     try {
-      await this.httpClient.get('/api/v3/brokerage/products', {
-        params: { limit: 1 },
-      });
+      // Test with a simple authenticated endpoint to verify credentials work
+      const response = await this.httpClient.get('/api/v3/brokerage/accounts');
+      if (!response.data) {
+        throw new Error('Invalid response from Coinbase API');
+      }
     } catch (error) {
       throw new Error(`Failed to connect to Coinbase: ${error}`);
     }
@@ -471,54 +479,118 @@ export class CoinbaseExchange extends BaseExchange {
 
     const queryString = searchParams.toString();
     const requestPath = queryString ? `${pathname}?${queryString}` : pathname;
+    // Ensure the actual request URL matches the signed path exactly
+    config.url = requestPath;
+    if (config.params) delete config.params;
     // Note: not used in JWT flow; left here for potential fallback HMAC scheme
     // const body = config.data ? JSON.stringify(config.data) : '';
 
-    // Prefer JWT Bearer auth for Coinbase Advanced Trade v3 REST
-    const toBase64Url = (input: Buffer | string): string => {
-      const b64 = (typeof input === 'string' ? Buffer.from(input) : input)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/g, '');
-      return b64;
-    };
+    const _isAdvancedTradePath = requestPath.startsWith('/api/v3/brokerage');
+    const host = (() => {
+      try {
+        return new URL(this.baseUrl).host;
+      } catch {
+        return 'api.coinbase.com';
+      }
+    })();
 
-    const nowSec = parseInt(timestamp, 10);
-    const fullUrl = config.url?.startsWith('http')
-      ? new URL(config.url).toString()
-      : `${this.baseUrl}${requestPath}`;
+    // Detect auth method based on secret key format and host
+    const isExchangeHost = host.includes('api.exchange.coinbase.com');
+    const isPemKey = this.credentials.secretKey.includes('-----BEGIN');
+    const forceJwt =
+      (process.env.COINBASE_FORCE_JWT || 'false').toLowerCase() === 'true';
 
-    const jwtHeader = {
-      alg: 'HS256',
-      kid: this.credentials.apiKey,
-      nonce: crypto.randomBytes(16).toString('hex'),
-    } as const;
+    // Use JWT if: PEM key detected, Exchange host, or explicitly forced
+    const useJwt = isPemKey || isExchangeHost || forceJwt;
 
-    const issuer = process.env.COINBASE_JWT_ISSUER || 'cdp';
-    const jwtPayload = {
-      iss: issuer,
-      nbf: nowSec,
-      exp: nowSec + 120,
-      sub: this.credentials.apiKey,
-      uri: `${method} ${fullUrl}`,
-    } as const;
+    if (useJwt) {
+      // Coinbase Exchange uses JWT ES256
+      const nowSec = parseInt(timestamp, 10);
+      const uri = `${method} ${host}${requestPath}`;
 
-    const encodedHeader = toBase64Url(JSON.stringify(jwtHeader));
-    const encodedPayload = toBase64Url(JSON.stringify(jwtPayload));
-    const signingInput = `${encodedHeader}.${encodedPayload}`;
-    const jwtSignature = crypto
-      .createHmac('sha256', this.credentials.secretKey)
-      .update(signingInput)
-      .digest();
-    const encodedSignature = toBase64Url(jwtSignature);
-    const bearerToken = `${signingInput}.${encodedSignature}`;
+      const header = {
+        alg: 'ES256',
+        kid: this.credentials.apiKey,
+        nonce: crypto.randomBytes(16).toString('hex'),
+      } as const;
+      const payload = {
+        iss: process.env.COINBASE_JWT_ISSUER || 'cdp',
+        nbf: nowSec,
+        exp: nowSec + 120,
+        sub: this.credentials.apiKey,
+        uri,
+      } as const;
 
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${bearerToken}`,
-      'Content-Type': 'application/json',
-    };
+      const toBase64Url = (input: Buffer | string): string =>
+        (typeof input === 'string' ? Buffer.from(input) : input)
+          .toString('base64')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/g, '');
+
+      const signingInput = `${toBase64Url(
+        JSON.stringify(header)
+      )}.${toBase64Url(JSON.stringify(payload))}`;
+
+      const signer = crypto.createSign('SHA256');
+      signer.update(signingInput);
+      signer.end();
+      const derSignature = signer.sign(this.credentials.secretKey);
+
+      const derToJose = (der: Buffer): string => {
+        let offset = 0;
+        if (der[offset++] !== 0x30) throw new Error('Invalid DER');
+        const _seqLen = der[offset++];
+        if (der[offset++] !== 0x02) throw new Error('Invalid DER r');
+        let rLen = der[offset++];
+        let r = der.slice(offset, offset + rLen);
+        offset += rLen;
+        if (der[offset++] !== 0x02) throw new Error('Invalid DER s');
+        let sLen = der[offset++];
+        let s = der.slice(offset, offset + sLen);
+        while (r.length > 32 && r[0] === 0x00) r = r.slice(1);
+        while (s.length > 32 && s[0] === 0x00) s = s.slice(1);
+        if (r.length < 32)
+          r = Buffer.concat([Buffer.alloc(32 - r.length, 0), r]);
+        if (s.length < 32)
+          s = Buffer.concat([Buffer.alloc(32 - s.length, 0), s]);
+        const jose = Buffer.concat([r, s]);
+        return toBase64Url(jose);
+      };
+
+      const signature = derToJose(derSignature);
+      const token = `${signingInput}.${signature}`;
+
+      config.headers = {
+        ...config.headers,
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent':
+          process.env.COINBASE_USER_AGENT || 'coinbase-advanced-ts/0.1.0',
+      };
+    } else {
+      // Advanced Trade (api.coinbase.com) uses CB-ACCESS HMAC headers
+      const prehash =
+        timestamp +
+        method +
+        requestPath +
+        (config.data ? JSON.stringify(config.data) : '');
+      const hmac = crypto.createHmac(
+        'sha256',
+        Buffer.from(this.credentials.secretKey, 'base64')
+      );
+      const signature = hmac.update(prehash).digest('base64');
+      config.headers = {
+        ...config.headers,
+        'CB-ACCESS-KEY': this.credentials.apiKey,
+        'CB-ACCESS-SIGN': signature,
+        'CB-ACCESS-TIMESTAMP': timestamp,
+        ...(this.credentials.passphrase
+          ? { 'CB-ACCESS-PASSPHRASE': this.credentials.passphrase }
+          : {}),
+        'Content-Type': 'application/json',
+      };
+    }
 
     return config;
   }
