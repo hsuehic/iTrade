@@ -57,13 +57,13 @@ export class TypeOrmDataManager implements IDataManager {
   private klineRepository!: Repository<KlineEntity>;
   private symbolRepository!: Repository<SymbolEntity>;
   private dataQualityRepository!: Repository<DataQualityEntity>;
-  
+
   // Domain repositories
   private strategyRepository!: StrategyRepository;
   private orderRepository!: OrderRepository;
   private pnlRepository!: PnLRepository;
   private accountSnapshotRepository!: AccountSnapshotRepository;
-  
+
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
   private isInitialized = false;
@@ -125,7 +125,9 @@ export class TypeOrmDataManager implements IDataManager {
     this.strategyRepository = new StrategyRepository(this.dataSource);
     this.orderRepository = new OrderRepository(this.dataSource);
     this.pnlRepository = new PnLRepository(this.dataSource);
-    this.accountSnapshotRepository = new AccountSnapshotRepository(this.dataSource);
+    this.accountSnapshotRepository = new AccountSnapshotRepository(
+      this.dataSource
+    );
 
     this.isInitialized = true;
   }
@@ -774,10 +776,7 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.orderRepository.save(order);
   }
 
-  async updateOrder(
-    id: string,
-    updates: Partial<OrderEntity>
-  ): Promise<void> {
+  async updateOrder(id: string, updates: Partial<OrderEntity>): Promise<void> {
     this.ensureInitialized();
     await this.orderRepository.update(id, updates);
   }
@@ -837,7 +836,9 @@ export class TypeOrmDataManager implements IDataManager {
     await this.accountSnapshotRepository.save(data);
   }
 
-  async getLatestAccountSnapshot(exchange: string): Promise<AccountSnapshotData | null> {
+  async getLatestAccountSnapshot(
+    exchange: string
+  ): Promise<AccountSnapshotData | null> {
     this.ensureInitialized();
     return await this.accountSnapshotRepository.getLatest(exchange);
   }
@@ -848,7 +849,11 @@ export class TypeOrmDataManager implements IDataManager {
     endTime: Date
   ): Promise<AccountSnapshotData[]> {
     this.ensureInitialized();
-    return await this.accountSnapshotRepository.getHistory(exchange, startTime, endTime);
+    return await this.accountSnapshotRepository.getHistory(
+      exchange,
+      startTime,
+      endTime
+    );
   }
 
   async getAccountSnapshotStatistics(
@@ -857,7 +862,11 @@ export class TypeOrmDataManager implements IDataManager {
     endTime: Date
   ) {
     this.ensureInitialized();
-    return await this.accountSnapshotRepository.getStatistics(exchange, startTime, endTime);
+    return await this.accountSnapshotRepository.getStatistics(
+      exchange,
+      startTime,
+      endTime
+    );
   }
 
   async getBalanceTimeSeries(

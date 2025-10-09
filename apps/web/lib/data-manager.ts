@@ -20,11 +20,11 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
   initPromise = (async () => {
     const dm = new TypeOrmDataManager({
       type: 'postgres',
-      host: process.env.DATABASE_HOST || 'localhost',
-      port: parseInt(process.env.DATABASE_PORT || '5432'),
-      username: process.env.DATABASE_USER || 'postgres',
-      password: process.env.DATABASE_PASSWORD || 'postgres',
-      database: process.env.DATABASE_NAME || 'itrade',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      username: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_DB || 'itrade',
       ssl: process.env.DATABASE_SSL === 'true',
       logging: ['error'],
       synchronize: true, // Auto-create tables if they don't exist
@@ -38,4 +38,3 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
 
   return initPromise;
 }
-

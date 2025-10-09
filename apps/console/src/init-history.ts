@@ -1,12 +1,12 @@
 #!/usr/bin/env tsx
 /**
  * Initialize Historical Account Snapshots
- * 
+ *
  * This script fetches current account data from all configured exchanges
  * and creates initial snapshots in the database.
- * 
+ *
  * ⚠️  Run this ONCE to initialize historical data.
- * 
+ *
  * Usage:
  *   tsx src/init-history.ts
  */
@@ -15,7 +15,11 @@ import 'reflect-metadata';
 import dotenv from 'dotenv';
 import { LogLevel } from '@itrade/core';
 import { ConsoleLogger } from '@itrade/logger';
-import { BinanceExchange, OKXExchange, CoinbaseExchange } from '@itrade/exchange-connectors';
+import {
+  BinanceExchange,
+  OKXExchange,
+  CoinbaseExchange,
+} from '@itrade/exchange-connectors';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
 
@@ -40,7 +44,8 @@ const OKX_PASSPHRASE = trimOrEmpty(process.env.OKX_PASSPHRASE);
 const COINBASE_API_KEY = trimOrEmpty(process.env.COINBASE_API_KEY);
 const COINBASE_SECRET_KEY = trimOrEmpty(process.env.COINBASE_SECRET_KEY);
 
-const USE_MAINNET_FOR_DATA = (process.env.USE_MAINNET_FOR_DATA ?? 'true').toLowerCase() !== 'false';
+const USE_MAINNET_FOR_DATA =
+  (process.env.USE_MAINNET_FOR_DATA ?? 'true').toLowerCase() !== 'false';
 
 const envSnapshot = {
   DB_HOST: process.env.DB_HOST,
@@ -95,7 +100,9 @@ async function main() {
   // Initialize Binance
   if (BINANCE_API_KEY && BINANCE_SECRET_KEY) {
     try {
-      logger.info(`📡 Connecting to Binance (sandbox=${!USE_MAINNET_FOR_DATA})...`);
+      logger.info(
+        `📡 Connecting to Binance (sandbox=${!USE_MAINNET_FOR_DATA})...`
+      );
       const binance = new BinanceExchange(!USE_MAINNET_FOR_DATA);
       await binance.connect({
         apiKey: BINANCE_API_KEY,
@@ -114,7 +121,9 @@ async function main() {
         positions,
       });
 
-      logger.info(`✅ Binance: ${balances.length} balances, ${positions.length} positions`);
+      logger.info(
+        `✅ Binance: ${balances.length} balances, ${positions.length} positions`
+      );
     } catch (error: any) {
       logger.error(`❌ Failed to fetch Binance data: ${error.message}`);
     }
@@ -145,7 +154,9 @@ async function main() {
         positions,
       });
 
-      logger.info(`✅ OKX: ${balances.length} balances, ${positions.length} positions`);
+      logger.info(
+        `✅ OKX: ${balances.length} balances, ${positions.length} positions`
+      );
     } catch (error: any) {
       logger.error(`❌ Failed to fetch OKX data: ${error.message}`);
     }
@@ -156,7 +167,9 @@ async function main() {
   // Initialize Coinbase
   if (COINBASE_API_KEY && COINBASE_SECRET_KEY) {
     try {
-      logger.info(`📡 Connecting to Coinbase (sandbox=${!USE_MAINNET_FOR_DATA})...`);
+      logger.info(
+        `📡 Connecting to Coinbase (sandbox=${!USE_MAINNET_FOR_DATA})...`
+      );
       const coinbase = new CoinbaseExchange();
       await coinbase.connect({
         apiKey: COINBASE_API_KEY,
@@ -175,7 +188,9 @@ async function main() {
         positions,
       });
 
-      logger.info(`✅ Coinbase: ${balances.length} balances, ${positions.length} positions`);
+      logger.info(
+        `✅ Coinbase: ${balances.length} balances, ${positions.length} positions`
+      );
     } catch (error: any) {
       logger.error(`❌ Failed to fetch Coinbase data: ${error.message}`);
     }
@@ -184,7 +199,9 @@ async function main() {
   }
 
   if (exchanges.length === 0) {
-    logger.error('❌ No exchanges configured. Please set API credentials in .env file.');
+    logger.error(
+      '❌ No exchanges configured. Please set API credentials in .env file.'
+    );
     await dataManager.close();
     process.exit(1);
   }
@@ -209,9 +226,13 @@ async function main() {
       let unrealizedPnl = new Decimal(0);
 
       for (const position of positions) {
-        const positionNotional = (position.markPrice || new Decimal(0)).mul(position.quantity || new Decimal(0));
+        const positionNotional = (position.markPrice || new Decimal(0)).mul(
+          position.quantity || new Decimal(0)
+        );
         totalPositionValue = totalPositionValue.plus(positionNotional);
-        unrealizedPnl = unrealizedPnl.plus(position.unrealizedPnl || new Decimal(0));
+        unrealizedPnl = unrealizedPnl.plus(
+          position.unrealizedPnl || new Decimal(0)
+        );
       }
 
       // Create snapshot
@@ -248,7 +269,7 @@ async function main() {
       const totalEquity = totalBalance.plus(totalPositionValue);
       logger.info(
         `💾 ${name.toUpperCase()}: Equity=$${totalEquity.toFixed(2)}, Balance=$${totalBalance.toFixed(2)}, ` +
-        `Positions=${positions.length}, Unrealized P&L=$${unrealizedPnl.toFixed(2)}`
+          `Positions=${positions.length}, Unrealized P&L=$${unrealizedPnl.toFixed(2)}`
       );
     } catch (error: any) {
       logger.error(`❌ Failed to save ${name} snapshot: ${error.message}`);
@@ -275,4 +296,3 @@ main().catch((error) => {
   console.error('❌ Fatal error:', error);
   process.exit(1);
 });
-
