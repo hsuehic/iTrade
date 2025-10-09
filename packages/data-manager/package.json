@@ -2,18 +2,17 @@
   "name": "@itrade/data-manager",
   "version": "0.1.0",
   "description": "Data management and historical data handling for crypto trading",
-  "main": "dist/index.js",
-  "module": "dist/index.mjs",
-  "types": "dist/index.d.ts",
+  "main": "dist/data-manager/src/index.js",
+  "types": "dist/data-manager/src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "types": "./dist/data-manager/src/index.d.ts",
+      "require": "./dist/data-manager/src/index.js",
+      "import": "./dist/data-manager/src/index.js"
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && cp dist/data-manager/src/index.d.ts dist/ && cp dist/data-manager/src/index.d.ts.map dist/ 2>/dev/null || true",
+    "build": "rm -rf dist && tsc --project tsconfig.build.json",
     "dev": "tsdown src/index.ts --format esm --watch",
     "sync-schema": "tsx sync-scheme-to-db.ts",
     "test": "vitest run",
@@ -29,7 +28,7 @@
     "mysql2": "^3.6.5",
     "node-csv": "^0.1.2",
     "pg": "^8.11.3",
-    "reflect-metadata": "^0.1.13",
+    "reflect-metadata": "^0.1.14",
     "typeorm": "^0.3.17"
   },
   "devDependencies": {

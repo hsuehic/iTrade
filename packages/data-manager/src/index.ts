@@ -1,4 +1,6 @@
 // Data Manager - Historical data and market data management with TypeORM
+import 'reflect-metadata';
+
 export { FileDataManager } from './FileDataManager';
 export { TypeOrmDataManager } from './TypeOrmDataManager';
 export { CacheManager } from './CacheManager';
@@ -10,6 +12,11 @@ export {
   OrderRepository,
   PnLRepository,
 } from './repositories';
+export { AccountSnapshotRepository } from './repositories/AccountSnapshotRepository';
+export type {
+  AccountSnapshotData,
+  AccountSnapshotQueryOptions,
+} from './repositories/AccountSnapshotRepository';
 
 // Entity exports
 export { KlineEntity, DecimalTransformer } from './entities/Kline';
@@ -23,6 +30,7 @@ export { StrategyEntity } from './entities/Strategy';
 export { StrategyStatus, StrategyType, MarketType } from './entities/Strategy';
 export { AccountInfoEntity } from './entities/AccountInfo';
 export { BalanceEntity } from './entities/Balance';
+export { AccountSnapshotEntity } from './entities/AccountSnapshot';
 export { BacktestConfigEntity } from './entities/BacktestConfig';
 export { BacktestResultEntity } from './entities/BacktestResult';
 export { BacktestTradeEntity } from './entities/BacktestTrade';

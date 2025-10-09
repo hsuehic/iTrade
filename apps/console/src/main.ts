@@ -1,4 +1,5 @@
-import { TradingEngine, LogLevel, OrderSyncService } from '@itrade/core';
+import 'reflect-metadata';
+import { TradingEngine, LogLevel, OrderSyncService, AccountPollingService, PollingResult } from '@itrade/core';
 import { ConsoleLogger } from '@itrade/logger';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
@@ -7,9 +8,10 @@ import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
 import { StrategyManager } from './strategy-manager';
 import { OrderTracker } from './order-tracker';
+import dotenv from 'dotenv';
 
-// Load environment variables (inline instead of dotenv package)
-// Assuming environment variables are set via system or .env file in parent directory
+// Load environment variables from .env file
+dotenv.config();
 
 const logger = new ConsoleLogger(LogLevel.DEBUG);
 
@@ -18,12 +20,12 @@ async function main() {
   logger.info('Connecting to database...');
   const dataManager = new TypeOrmDataManager({
     type: 'postgres',
-    host: process.env.DATABASE_HOST || 'localhost',
-    port: parseInt(process.env.DATABASE_PORT || '5432'),
-    username: process.env.DATABASE_USER || 'postgres',
-    password: process.env.DATABASE_PASSWORD || 'postgres',
-    database: process.env.DATABASE_NAME || 'itrade',
-    ssl: process.env.DATABASE_SSL === 'true',
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    username: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    database: process.env.DB_DB || 'itrade',
+    ssl: process.env.DB_SSL === 'true',
     logging: ['error'],
     synchronize: false,
   });
@@ -87,7 +89,7 @@ async function main() {
       exchanges.set('coinbase', coinbase);
       logger.info('✅ Coinbase exchange initialized');
     } catch (error) {
-      logger.warn('Failed to initialize Coinbase exchange', error as Error);
+      logger.error('Failed to initialize Coinbase exchange', error as Error);
     }
   }
 
@@ -106,7 +108,7 @@ async function main() {
       exchanges.set('okx', okx);
       logger.info('✅ OKX exchange initialized');
     } catch (error) {
-      logger.warn('Failed to initialize OKX exchange', error as Error);
+      logger.error('Failed to initialize OKX exchange', error as Error);
     }
   }
 
@@ -127,6 +129,58 @@ async function main() {
   
   await orderSyncService.start();
 
+  // Initialize Account Polling Service
+  const accountPollingService = new AccountPollingService(
+    {
+      pollingInterval: parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000'), // 默认1分钟
+      enablePersistence: process.env.ACCOUNT_POLLING_PERSISTENCE !== 'false', // 默认启用
+      exchanges: Array.from(exchanges.keys()),
+      retryAttempts: 3,
+      retryDelay: 5000,
+    },
+    logger
+  );
+
+  // Register all connected exchanges
+  for (const [name, exchange] of exchanges) {
+    accountPollingService.registerExchange(name, exchange);
+  }
+
+  // Set data manager for persistence
+  accountPollingService.setDataManager(dataManager);
+
+  // Setup event listeners
+  accountPollingService.on('started', () => {
+    logger.info('✅ Account polling service started');
+  });
+
+  accountPollingService.on('pollingComplete', (results: PollingResult[]) => {
+    const successCount = results.filter((r) => r.success).length;
+    logger.debug(
+      `📊 Account polling completed: ${successCount}/${results.length} exchanges successful`
+    );
+  });
+
+  accountPollingService.on('exchangePolled', (data) => {
+    logger.debug(
+      `💰 ${data.exchange} account updated: ${data.balances.length} balances, ${data.positions.length} positions`
+    );
+  });
+
+  accountPollingService.on('snapshotSaved', (snapshot) => {
+    logger.debug(
+      `💾 Account snapshot saved: ${snapshot.exchange} - Balance: ${snapshot.totalBalance.toFixed(2)} USDT`
+    );
+  });
+
+  accountPollingService.on('pollingError', (error) => {
+    logger.error(`❌ Polling error for ${error.exchange}: ${error.error}`);
+  });
+
+  // Start account polling
+  await accountPollingService.start();
+  logger.info('🔄 Account polling service initialized and running');
+
   // Start trading engine
   await engine.start();
 
@@ -141,6 +195,7 @@ async function main() {
   logger.info('📈 Performance reports every 60 seconds');
   logger.info('💼 Orders will be tracked and saved to database');
   logger.info('🔄 Order sync running every 5 seconds for reliability');
+  logger.info('💰 Account polling service active (polling interval: ' + (parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000') / 1000) + 's)');
   logger.info('🛡️  Protection against WebSocket failures enabled');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
@@ -193,6 +248,9 @@ async function main() {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     try {
+      await accountPollingService.stop();
+      logger.info('✅ Account polling service stopped');
+
       await orderSyncService.stop();
       logger.info('✅ Order sync service stopped');
       
@@ -205,8 +263,15 @@ async function main() {
       await engine.stop();
       logger.info('✅ Trading engine stopped');
       
-      await binance.disconnect();
-      logger.info('✅ Exchange disconnected');
+      // Disconnect all exchanges
+      for (const [name, exchange] of exchanges) {
+        try {
+          await exchange.disconnect();
+          logger.info(`✅ ${name} exchange disconnected`);
+        } catch (err) {
+          logger.error(`Failed to disconnect ${name}:`, err as Error);
+        }
+      }
       
       await dataManager.close();
       logger.info('✅ Database connection closed');

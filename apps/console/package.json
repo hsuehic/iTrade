@@ -6,7 +6,9 @@
   "scripts": {
     "test": "tsx src/main.ts",
     "dev": "tsx src/main.ts",
-    "dev:watch": "tsx watch src/main.ts"
+    "dev:watch": "tsx watch src/main.ts",
+    "init-history": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/init-history.ts",
+    "cron": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/cron.ts"
   },
   "author": "xiaoweihsueh@gmail.com",
   "license": "MIT",
@@ -18,6 +20,14 @@
     "@itrade/portfolio-manager": "workspace:*",
     "@itrade/risk-manager": "workspace:*",
     "@itrade/strategies": "workspace:*",
-    "decimal.js": "^10.6.0"
+    "@types/node-cron": "^3.0.11",
+    "decimal.js": "^10.6.0",
+    "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1",
+    "reflect-metadata": "^0.1.14"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0"
   }
 }

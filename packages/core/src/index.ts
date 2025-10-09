@@ -11,6 +11,14 @@ export { OrderManager } from './models/OrderManager';
 export { OrderSyncService } from './models/OrderSyncService';
 export type { OrderSyncConfig, OrderSyncStats, IOrderDataManager } from './models/OrderSyncService';
 
+// Services
+export { AccountPollingService } from './services/AccountPollingService';
+export type {
+  AccountPollingConfig,
+  PollingResult,
+  AccountSnapshotData,
+} from './services/AccountPollingService';
+
 // Events
 export { EVENTS, EventBus } from './events';
 export type {

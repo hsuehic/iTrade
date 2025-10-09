@@ -2,7 +2,14 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   // In Next.js 15.5+, use serverExternalPackages instead of experimental.serverComponentsExternalPackages
-  serverExternalPackages: ['typeorm', '@itrade/data-manager'],
+  serverExternalPackages: [
+    'typeorm',
+    '@itrade/data-manager',
+    '@itrade/core',
+    '@itrade/utils',
+    '@itrade/logger',
+    '@itrade/exchange-connectors',
+  ],
   
   webpack: (config, { isServer }) => {
     if (isServer) {

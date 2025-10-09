@@ -271,8 +271,13 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
 
   protected abstract addAuthentication(config: any): any;
 
-  protected formatDecimal(value: string | number): Decimal {
-    return new Decimal(value.toString());
+  protected formatDecimal(value: unknown): Decimal {
+    if (value === undefined || value === null) return new Decimal(0);
+    if (typeof value === 'string') {
+      const v = value.trim();
+      return v ? new Decimal(v) : new Decimal(0);
+    }
+    return new Decimal((value as any).toString());
   }
 
   protected formatTimestamp(timestamp: number): Date {

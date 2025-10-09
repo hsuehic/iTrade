@@ -5,7 +5,7 @@ export function withAuth(request: NextRequest, res: NextResponse) {
   const sessionCookie = getSessionCookie(request);
   const pathname = request.nextUrl.pathname;
   const skipPathsPattern =
-    /(^\/api\/mobile)|(^\/api\/auth\/)|(^\/auth)|(^\/_next)|((\.js|\.css|\.png|\.jpg|\.jpeg|\.svg|\.gif|\.woff|\.woff2|\.ttf|\.eot|\.otf|\.map)$)/;
+    /(^\/api\/)|(^\/auth)|(^\/_next)|((\.js|\.css|\.png|\.jpg|\.jpeg|\.svg|\.gif|\.woff|\.woff2|\.ttf|\.eot|\.otf|\.map)$)/;
   if (skipPathsPattern.test(pathname)) {
     return res;
   }

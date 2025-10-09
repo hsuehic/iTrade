@@ -416,10 +416,12 @@ export class OKXExchange extends BaseExchange {
     return response.data.data.map((pos: any) => ({
       symbol: pos.instId,
       side: pos.posSide === 'long' ? 'long' : 'short',
-      quantity: this.formatDecimal(pos.pos),
-      entryPrice: this.formatDecimal(pos.avgPx),
-      unrealizedPnl: this.formatDecimal(pos.upl),
-      leverage: parseFloat(pos.lever),
+      quantity: this.formatDecimal((pos.pos ?? '0').toString()),
+      avgPrice: this.formatDecimal((pos.avgPx ?? '0').toString()),
+      markPrice: this.formatDecimal((pos.markPx ?? pos.avgPx ?? '0').toString()),
+      unrealizedPnl: this.formatDecimal((pos.upl ?? '0').toString()),
+      leverage: this.formatDecimal((pos.lever ?? '0').toString()),
+      timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
     }));
   }
 

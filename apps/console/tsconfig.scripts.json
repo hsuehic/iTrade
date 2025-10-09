@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "baseUrl": ".",
+    "paths": {
+      "@itrade/core": ["../../packages/core/dist/index.js"],
+      "@crypto-trading/core": ["../../packages/core/dist/index.js"],
+      "@itrade/logger": ["../../packages/logger/dist/index.js"],
+      "@itrade/data-manager": ["../../packages/data-manager/dist/data-manager/src/index.js"],
+      "@itrade/exchange-connectors": ["../../packages/exchange-connectors/dist/index.js"],
+      "@itrade/portfolio-manager": ["../../packages/portfolio-manager/dist/index.js"],
+      "@itrade/risk-manager": ["../../packages/risk-manager/dist/index.js"],
+      "@itrade/strategies": ["../../packages/strategies/dist/index.js"]
+    }
+  },
+  "include": ["src/**/*"]
+}

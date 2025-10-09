@@ -21,6 +21,7 @@ import { DryRunOrderEntity } from './entities/DryRunOrder';
 import { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
 import { DryRunTradeEntity } from './entities/DryRunTrade';
 import { DryRunResultEntity } from './entities/DryRunResult';
+import { AccountSnapshotEntity } from './entities/AccountSnapshot';
 import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
@@ -29,6 +30,10 @@ import {
   OrderRepository,
   PnLRepository,
 } from './repositories';
+import {
+  AccountSnapshotRepository,
+  AccountSnapshotData,
+} from './repositories/AccountSnapshotRepository';
 
 export interface TypeOrmDataManagerConfig {
   type: 'postgres' | 'mysql';
@@ -57,6 +62,7 @@ export class TypeOrmDataManager implements IDataManager {
   private strategyRepository!: StrategyRepository;
   private orderRepository!: OrderRepository;
   private pnlRepository!: PnLRepository;
+  private accountSnapshotRepository!: AccountSnapshotRepository;
   
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -89,6 +95,7 @@ export class TypeOrmDataManager implements IDataManager {
         StrategyEntity,
         AccountInfoEntity,
         BalanceEntity,
+        AccountSnapshotEntity,
         BacktestConfigEntity,
         BacktestResultEntity,
         BacktestTradeEntity,
@@ -118,6 +125,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.strategyRepository = new StrategyRepository(this.dataSource);
     this.orderRepository = new OrderRepository(this.dataSource);
     this.pnlRepository = new PnLRepository(this.dataSource);
+    this.accountSnapshotRepository = new AccountSnapshotRepository(this.dataSource);
 
     this.isInitialized = true;
   }
@@ -819,5 +827,75 @@ export class TypeOrmDataManager implements IDataManager {
   }> {
     this.ensureInitialized();
     return await this.pnlRepository.getOverallPnL(userId);
+  }
+
+  // -------------------- Account Snapshot Methods --------------------
+  // For AccountPollingService integration
+
+  async saveAccountSnapshot(data: AccountSnapshotData): Promise<void> {
+    this.ensureInitialized();
+    await this.accountSnapshotRepository.save(data);
+  }
+
+  async getLatestAccountSnapshot(exchange: string): Promise<AccountSnapshotData | null> {
+    this.ensureInitialized();
+    return await this.accountSnapshotRepository.getLatest(exchange);
+  }
+
+  async getAccountSnapshotHistory(
+    exchange: string,
+    startTime: Date,
+    endTime: Date
+  ): Promise<AccountSnapshotData[]> {
+    this.ensureInitialized();
+    return await this.accountSnapshotRepository.getHistory(exchange, startTime, endTime);
+  }
+
+  async getAccountSnapshotStatistics(
+    exchange: string,
+    startTime: Date,
+    endTime: Date
+  ) {
+    this.ensureInitialized();
+    return await this.accountSnapshotRepository.getStatistics(exchange, startTime, endTime);
+  }
+
+  async getBalanceTimeSeries(
+    exchange: string,
+    startTime: Date,
+    endTime: Date,
+    interval: 'hour' | 'day' | 'week' = 'day'
+  ) {
+    this.ensureInitialized();
+    return await this.accountSnapshotRepository.getBalanceTimeSeries(
+      exchange,
+      startTime,
+      endTime,
+      interval
+    );
+  }
+
+  // Get AccountSnapshotRepository for advanced queries
+  getAccountSnapshotRepository(): AccountSnapshotRepository {
+    this.ensureInitialized();
+    return this.accountSnapshotRepository;
+  }
+
+  // Get StrategyRepository for advanced queries
+  getStrategyRepository(): StrategyRepository {
+    this.ensureInitialized();
+    return this.strategyRepository;
+  }
+
+  // Get OrderRepository for advanced queries
+  getOrderRepository(): OrderRepository {
+    this.ensureInitialized();
+    return this.orderRepository;
+  }
+
+  // Get PnLRepository for advanced queries
+  getPnLRepository(): PnLRepository {
+    this.ensureInitialized();
+    return this.pnlRepository;
   }
 }

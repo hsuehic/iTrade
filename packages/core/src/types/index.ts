@@ -326,3 +326,18 @@ export interface RiskAlert {
   timestamp?: Date;
   data?: Record<string, unknown>;
 }
+
+// Account Snapshot Types
+export interface AccountSnapshot {
+  id?: number;
+  exchange: string;
+  timestamp: Date;
+  totalBalance: Decimal;
+  availableBalance: Decimal;
+  lockedBalance: Decimal;
+  totalPositionValue: Decimal;
+  unrealizedPnl: Decimal;
+  positionCount: number;
+  balances: Balance[];
+  positions: Position[];
+}

@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { config } from 'dotenv';
 
 import { TypeOrmDataManager } from './src/TypeOrmDataManager';

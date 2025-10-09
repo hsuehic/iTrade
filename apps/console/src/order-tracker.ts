@@ -42,7 +42,9 @@ export class OrderTracker {
       this.handleOrderRejected(data.order);
     });
 
-    this.logger.info('✅ Order Tracker started - All orders will be saved to database');
+    this.logger.info(
+      '✅ Order Tracker started - All orders will be saved to database'
+    );
   }
 
   async stop(): Promise<void> {
@@ -53,7 +55,7 @@ export class OrderTracker {
     this.logger.info(`   Orders Filled: ${this.totalFilled}`);
     this.logger.info(`   Orders Cancelled: ${this.totalCancelled}`);
     this.logger.info(`   Orders Rejected: ${this.totalRejected}`);
-    
+
     const runTime = Date.now() - this.startTime.getTime();
     const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
     this.logger.info(`   Running time: ${hours} hours`);
@@ -85,7 +87,9 @@ export class OrderTracker {
         strategy: strategyId ? ({ id: strategyId } as any) : undefined,
       });
 
-      this.logger.info(`💾 Order saved to database: ${order.id} (Strategy ID: ${strategyId || 'none'})`);
+      this.logger.info(
+        `💾 Order saved to database: ${order.id} (Strategy ID: ${strategyId || 'none'})`
+      );
     } catch (error) {
       this.logger.error('❌ Failed to save order to database', error as Error);
     }
@@ -113,8 +117,8 @@ export class OrderTracker {
       const pnlStr = realizedPnl
         ? `💰 Realized PnL: ${realizedPnl.toFixed(2)}`
         : unrealizedPnl
-        ? `📊 Unrealized PnL: ${unrealizedPnl.toFixed(2)}`
-        : 'PnL: N/A';
+          ? `📊 Unrealized PnL: ${unrealizedPnl.toFixed(2)}`
+          : 'PnL: N/A';
 
       this.logger.info(
         `💾 Order filled and updated: ${order.id}, ${pnlStr}, Avg Price: ${averagePrice?.toFixed(8) || 'N/A'}`
@@ -151,12 +155,12 @@ export class OrderTracker {
   private async handleOrderCancelled(order: Order): Promise<void> {
     try {
       this.totalCancelled++;
-      
+
       await this.dataManager.updateOrder(order.id, {
         status: order.status,
         updateTime: order.updateTime,
       });
-      
+
       this.logger.info(`💾 Order cancelled and updated: ${order.id}`);
     } catch (error) {
       this.logger.error('❌ Failed to update cancelled order', error as Error);
@@ -166,12 +170,12 @@ export class OrderTracker {
   private async handleOrderRejected(order: Order): Promise<void> {
     try {
       this.totalRejected++;
-      
+
       await this.dataManager.updateOrder(order.id, {
         status: order.status,
         updateTime: order.updateTime,
       });
-      
+
       this.logger.error(`💾 Order rejected and updated: ${order.id}`);
     } catch (error) {
       this.logger.error('❌ Failed to update rejected order', error as Error);
@@ -187,7 +191,9 @@ export class OrderTracker {
       // Calculate average fill price
       let averagePrice: Decimal | undefined;
       if (order.executedQuantity && order.cummulativeQuoteQuantity) {
-        averagePrice = order.cummulativeQuoteQuantity.div(order.executedQuantity);
+        averagePrice = order.cummulativeQuoteQuantity.div(
+          order.executedQuantity
+        );
       }
 
       // Get previous orders for this symbol to calculate PnL
@@ -246,4 +252,3 @@ export class OrderTracker {
     return match ? parseInt(match[1]) : undefined;
   }
 }
-
