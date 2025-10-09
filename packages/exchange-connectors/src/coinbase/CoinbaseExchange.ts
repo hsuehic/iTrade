@@ -433,27 +433,90 @@ export class CoinbaseExchange extends BaseExchange {
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const method = (config.method || 'GET').toUpperCase();
-    const requestPath = config.url?.startsWith('http')
-      ? new URL(config.url).pathname +
-        (config.params
-          ? '?' + new URLSearchParams(config.params as any).toString()
-          : '')
-      : config.url;
-    const body = config.data ? JSON.stringify(config.data) : '';
+    // Build request path + query string deterministically to match the actual request
+    let pathname = config.url || '';
+    let searchParams = new URLSearchParams();
 
-    const prehash = timestamp + method + requestPath + body;
-    const key = this.credentials.secretKey;
-    const hmac = crypto.createHmac('sha256', Buffer.from(key, 'base64'));
-    const signature = hmac.update(prehash).digest('base64');
+    if (pathname.startsWith('http')) {
+      const fullUrl = new URL(pathname);
+      pathname = fullUrl.pathname;
+      // Preserve any query already encoded in the URL
+      searchParams = new URLSearchParams(fullUrl.searchParams.toString());
+    } else {
+      // Relative URL (axios baseURL is used). Extract existing query if present
+      const [pathOnly, existingQuery] = pathname.split('?');
+      pathname = pathOnly;
+      if (existingQuery) {
+        searchParams = new URLSearchParams(existingQuery);
+      }
+    }
+
+    // Merge config.params (if any) into the query string
+    if (config.params) {
+      for (const [key, value] of Object.entries(
+        config.params as Record<string, any>
+      )) {
+        if (value === undefined || value === null) continue;
+        if (Array.isArray(value)) {
+          for (const v of value) {
+            if (v === undefined || v === null) continue;
+            searchParams.append(key, String(v));
+          }
+        } else {
+          // Prefer set to overwrite any duplicate from existing query
+          searchParams.set(key, String(value));
+        }
+      }
+    }
+
+    const queryString = searchParams.toString();
+    const requestPath = queryString ? `${pathname}?${queryString}` : pathname;
+    // Note: not used in JWT flow; left here for potential fallback HMAC scheme
+    // const body = config.data ? JSON.stringify(config.data) : '';
+
+    // Prefer JWT Bearer auth for Coinbase Advanced Trade v3 REST
+    const toBase64Url = (input: Buffer | string): string => {
+      const b64 = (typeof input === 'string' ? Buffer.from(input) : input)
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+      return b64;
+    };
+
+    const nowSec = parseInt(timestamp, 10);
+    const fullUrl = config.url?.startsWith('http')
+      ? new URL(config.url).toString()
+      : `${this.baseUrl}${requestPath}`;
+
+    const jwtHeader = {
+      alg: 'HS256',
+      kid: this.credentials.apiKey,
+      nonce: crypto.randomBytes(16).toString('hex'),
+    } as const;
+
+    const issuer = process.env.COINBASE_JWT_ISSUER || 'cdp';
+    const jwtPayload = {
+      iss: issuer,
+      nbf: nowSec,
+      exp: nowSec + 120,
+      sub: this.credentials.apiKey,
+      uri: `${method} ${fullUrl}`,
+    } as const;
+
+    const encodedHeader = toBase64Url(JSON.stringify(jwtHeader));
+    const encodedPayload = toBase64Url(JSON.stringify(jwtPayload));
+    const signingInput = `${encodedHeader}.${encodedPayload}`;
+    const jwtSignature = crypto
+      .createHmac('sha256', this.credentials.secretKey)
+      .update(signingInput)
+      .digest();
+    const encodedSignature = toBase64Url(jwtSignature);
+    const bearerToken = `${signingInput}.${encodedSignature}`;
 
     config.headers = {
       ...config.headers,
-      'CB-ACCESS-KEY': this.credentials.apiKey,
-      'CB-ACCESS-SIGN': signature,
-      'CB-ACCESS-TIMESTAMP': timestamp,
-      ...(this.credentials.passphrase
-        ? { 'CB-ACCESS-PASSPHRASE': this.credentials.passphrase }
-        : {}),
+      Authorization: `Bearer ${bearerToken}`,
       'Content-Type': 'application/json',
     };
 
@@ -464,21 +527,21 @@ export class CoinbaseExchange extends BaseExchange {
     // Convert common formats to Coinbase product id format
     // Spot: BTC/USDC -> BTC-USDC (default quote coin is USDC)
     // Perpetual: BTC/USDC:USDC -> BTC-USDC-INTX
-    
+
     const upperSymbol = symbol.toUpperCase();
-    
+
     // Handle perpetual format: BTC/USDC:USDC (CCXT format for perpetual)
     if (upperSymbol.includes(':')) {
       const [pair] = upperSymbol.split(':');
       // BTC/USDC -> BTC-USDC-INTX
       return pair.replace('/', '-') + '-INTX';
     }
-    
+
     // Handle already formatted perpetual (BTC-USDC-INTX)
     if (upperSymbol.includes('-INTX')) {
       return upperSymbol;
     }
-    
+
     // Spot format: BTC/USDC -> BTC-USDC
     return upperSymbol.replace('/', '-');
   }
