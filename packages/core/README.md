@@ -46,13 +46,24 @@ pnpm add @itrade/core
 ### Basic Trading Engine Setup
 
 ```typescript
-import {
-  TradingEngine,
-  IExchange,
-  IRiskManager,
-  IPortfolioManager,
-  ILogger,
-} from '@itrade/core';
+import { TradingEngine, LogLevel } from '@itrade/core';
+import { ConsoleLogger } from '@itrade/logger';
+import { RiskManager } from '@itrade/risk-manager';
+import { PortfolioManager } from '@itrade/portfolio-manager';
+import { BinanceExchange } from '@itrade/exchange-connectors';
+import { MovingAverageStrategy } from '@itrade/strategies';
+import { Decimal } from 'decimal.js';
+
+// Initialize dependencies
+const logger = new ConsoleLogger(LogLevel.INFO);
+
+const riskManager = new RiskManager({
+  maxDrawdown: new Decimal(20),
+  maxPositionSize: new Decimal(10),
+  maxDailyLoss: new Decimal(5),
+});
+
+const portfolioManager = new PortfolioManager(new Decimal(10000));
 
 // Create engine with dependencies
 const engine = new TradingEngine(
@@ -61,11 +72,22 @@ const engine = new TradingEngine(
   logger
 );
 
-// Add exchanges
-engine.addExchange('binance', binanceConnector);
+// Configure and add exchange
+const binance = new BinanceExchange();
+await binance.connect({
+  apiKey: process.env.BINANCE_API_KEY || '',
+  secretKey: process.env.BINANCE_SECRET_KEY || '',
+  sandbox: true,
+});
+engine.addExchange('binance', binance);
 
-// Add strategies
-engine.addStrategy('ma-crossover', movingAverageStrategy);
+// Create and add strategy
+const strategy = new MovingAverageStrategy({
+  fastPeriod: 10,
+  slowPeriod: 30,
+  threshold: 0.001,  // 0.1% minimum crossover threshold
+});
+engine.addStrategy('ma-crossover', strategy);
 
 // Start trading
 await engine.start();
