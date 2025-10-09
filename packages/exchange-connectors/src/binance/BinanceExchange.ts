@@ -2,6 +2,7 @@ import crypto from 'crypto';
 
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
+import WebSocket from 'ws';
 import {
   Order,
   OrderSide,
@@ -339,9 +340,19 @@ export class BinanceExchange extends BaseExchange {
     // Binance uses combined streams, so we need to reconnect with new stream list
     const ws = this.wsConnections.get('market');
     if (ws) {
-      ws.close();
+      // 只有在 OPEN 或 CONNECTING 状态时才关闭
+      // 避免 "WebSocket was closed before the connection was established" 错误
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close();
+      }
       this.wsConnections.delete('market');
     }
+
+    // 等待一小段时间，确保旧连接完全关闭
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     await this.createWebSocketConnection();
   }
@@ -408,6 +419,12 @@ export class BinanceExchange extends BaseExchange {
       };
     }
     return config;
+  }
+
+  protected normalizeSymbol(symbol: string): string {
+    // Convert common formats like BTC/USDT or btc/usdt to Binance format BTCUSDT
+    // Binance uses no separator between base and quote currency
+    return symbol.replace('/', '').replace('-', '').toUpperCase();
   }
 
   private normalizeInterval(interval: string): string {

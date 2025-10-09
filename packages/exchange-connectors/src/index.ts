@@ -5,6 +5,7 @@ export { MarketDataExchange } from './base/MarketDataExchange';
 // Exchange implementations
 export { BinanceExchange } from './binance/BinanceExchange';
 export { CoinbaseExchange } from './coinbase/CoinbaseExchange';
+export { OKXExchange, type OKXCredentials } from './okx/OKXExchange';
 
 // Re-export types from core for convenience
 export type {

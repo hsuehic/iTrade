@@ -4,8 +4,19 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "test": ""
+    "test": "tsx src/main.ts",
+    "dev": "tsx src/main.ts",
+    "dev:watch": "tsx watch src/main.ts"
   },
-  "author": "",
-  "license": "MIT"
+  "author": "xiaoweihsueh@gmail.com",
+  "license": "MIT",
+  "dependencies": {
+    "@itrade/core": "workspace:*",
+    "@itrade/exchange-connectors": "workspace:*",
+    "@itrade/logger": "workspace:*",
+    "@itrade/portfolio-manager": "workspace:*",
+    "@itrade/risk-manager": "workspace:*",
+    "@itrade/strategies": "workspace:*",
+    "decimal.js": "^10.6.0"
+  }
 }

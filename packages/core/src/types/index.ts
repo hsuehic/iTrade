@@ -1,5 +1,8 @@
 import { Decimal } from 'decimal.js';
 
+// Re-export subscription types
+export * from './subscription';
+
 // Market Data Types
 export interface Ticker {
   symbol: string;
@@ -11,6 +14,7 @@ export interface Ticker {
   high24h?: Decimal;
   low24h?: Decimal;
   change24h?: Decimal;
+  exchange?: string; // 交易所名称，用于区分多交易所数据
 }
 
 export interface OrderBook {
@@ -18,6 +22,7 @@ export interface OrderBook {
   timestamp: Date;
   bids: Array<[Decimal, Decimal]>; // [price, quantity]
   asks: Array<[Decimal, Decimal]>; // [price, quantity]
+  exchange?: string; // 交易所名称，用于区分多交易所数据
 }
 
 export interface Trade {
@@ -29,6 +34,7 @@ export interface Trade {
   timestamp: Date;
   takerOrderId?: string;
   makerOrderId?: string;
+  exchange?: string; // 交易所名称，用于区分多交易所数据
 }
 
 export interface Kline {
@@ -45,6 +51,7 @@ export interface Kline {
   trades: number;
   takerBuyBaseVolume?: Decimal;
   takerBuyQuoteVolume?: Decimal;
+  exchange?: string; // 交易所名称，用于区分多交易所数据
 }
 
 // Order Types
@@ -134,7 +141,9 @@ export interface AccountInfo {
 
 // Strategy Types
 export interface StrategyParameters {
-  [key: string]: string | number | boolean | Decimal;
+  symbol?: string; // Trading symbol
+  subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
+  [key: string]: any; // Allow additional custom parameters
 }
 
 export interface StrategyResult {

@@ -103,7 +103,29 @@ importers:
         specifier: ^0.2.16
         version: 0.2.17(rollup@4.52.4)(typescript@5.9.3)
 
-  apps/console: {}
+  apps/console:
+    dependencies:
+      '@itrade/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@itrade/exchange-connectors':
+        specifier: workspace:*
+        version: link:../../packages/exchange-connectors
+      '@itrade/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
+      '@itrade/portfolio-manager':
+        specifier: workspace:*
+        version: link:../../packages/portfolio-manager
+      '@itrade/risk-manager':
+        specifier: workspace:*
+        version: link:../../packages/risk-manager
+      '@itrade/strategies':
+        specifier: workspace:*
+        version: link:../../packages/strategies
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
 
   apps/web:
     dependencies:
@@ -9216,7 +9238,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.45.0(eslint@9.36.0(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@9.36.0(jiti@2.6.1)):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.45.0(eslint@9.36.0(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.36.0(jiti@2.6.1)))(eslint@9.36.0(jiti@2.6.1)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -9238,7 +9260,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.36.0(jiti@2.6.1)
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.45.0(eslint@9.36.0(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1)(eslint@9.36.0(jiti@2.6.1))
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.45.0(eslint@9.36.0(jiti@2.6.1))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.36.0(jiti@2.6.1)))(eslint@9.36.0(jiti@2.6.1))
       hasown: 2.0.2
       is-core-module: 2.16.1
       is-glob: 4.0.3
