@@ -41,9 +41,9 @@ export function JsonEditor({
       setIsValid(true);
       setError('');
       return true;
-    } catch (e: any) {
+    } catch (e) {
       setIsValid(false);
-      setError(e.message);
+      setError(e instanceof Error ? e.message : 'Invalid JSON format');
       return false;
     }
   };
@@ -62,9 +62,9 @@ export function JsonEditor({
       onChange(formatted);
       setIsValid(true);
       setError('');
-    } catch (e: any) {
+    } catch (e) {
       // Keep the current value if formatting fails
-      setError(e.message);
+      setError(e instanceof Error ? e.message : 'Formatting failed');
     }
   };
 

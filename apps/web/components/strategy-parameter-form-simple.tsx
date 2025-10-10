@@ -21,6 +21,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
+interface SubscriptionConfig {
+  ticker?: boolean;
+  klines?: boolean;
+  method?: 'rest' | 'websocket';
+}
+
 interface StrategyParameterFormSimpleProps {
   strategyType: StrategyTypeKey;
   initialParameters?: Record<string, unknown>;
@@ -257,9 +263,12 @@ export function StrategyParameterFormSimple({
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />
               </div>
               <Switch
-                checked={Boolean((parameters.subscription as any)?.ticker)}
+                checked={Boolean(
+                  (parameters.subscription as SubscriptionConfig)?.ticker
+                )}
                 onCheckedChange={(checked: boolean) => {
-                  const currentSub = (parameters.subscription as any) || {};
+                  const currentSub =
+                    (parameters.subscription as SubscriptionConfig) || {};
                   handleParameterChange('subscription', {
                     ...currentSub,
                     ticker: checked,
@@ -274,9 +283,12 @@ export function StrategyParameterFormSimple({
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />
               </div>
               <Switch
-                checked={Boolean((parameters.subscription as any)?.klines)}
+                checked={Boolean(
+                  (parameters.subscription as SubscriptionConfig)?.klines
+                )}
                 onCheckedChange={(checked: boolean) => {
-                  const currentSub = (parameters.subscription as any) || {};
+                  const currentSub =
+                    (parameters.subscription as SubscriptionConfig) || {};
                   handleParameterChange('subscription', {
                     ...currentSub,
                     klines: checked,
@@ -289,12 +301,16 @@ export function StrategyParameterFormSimple({
           <div className="space-y-2">
             <Label className="text-sm">Data Method</Label>
             <Select
-              value={(parameters.subscription as any)?.method || 'rest'}
+              value={
+                (parameters.subscription as SubscriptionConfig)?.method ||
+                'rest'
+              }
               onValueChange={(value) => {
-                const currentSub = (parameters.subscription as any) || {};
+                const currentSub =
+                  (parameters.subscription as SubscriptionConfig) || {};
                 handleParameterChange('subscription', {
                   ...currentSub,
-                  method: value,
+                  method: value as 'rest' | 'websocket',
                 });
               }}
             >

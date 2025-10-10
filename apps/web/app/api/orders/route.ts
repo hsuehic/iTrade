@@ -20,7 +20,15 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
-    const filters: any = {};
+    interface OrderFilters {
+      strategyId?: number;
+      symbol?: string;
+      status?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+
+    const filters: OrderFilters = {};
     if (strategyId) {
       const id = parseInt(strategyId);
       if (isNaN(id)) {
@@ -40,7 +48,7 @@ export async function GET(request: NextRequest) {
     const orders = await dataManager.getOrders(filters);
 
     return NextResponse.json({ orders });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to fetch orders:', error);
     return NextResponse.json(
       { error: 'Failed to fetch orders' },

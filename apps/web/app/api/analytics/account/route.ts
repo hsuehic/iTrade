@@ -123,7 +123,12 @@ export async function GET(request: Request) {
     const historicalData = await Promise.all(historyPromises);
 
     // Transform historical data for chart
-    const chartData: { [key: string]: any } = {};
+    interface ChartDataPoint {
+      date: string;
+      [exchange: string]: string | number; // exchange names as keys with balance values
+    }
+
+    const chartData: { [key: string]: ChartDataPoint } = {};
 
     historicalData.forEach(({ exchange, history }) => {
       history.forEach((point) => {
@@ -165,7 +170,7 @@ export async function GET(request: Request) {
     });
 
     const chartDataArray = Object.values(chartData).sort(
-      (a: any, b: any) =>
+      (a: ChartDataPoint, b: ChartDataPoint) =>
         new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
@@ -175,11 +180,11 @@ export async function GET(request: Request) {
       exchangeLastValues[exchange] = 0; // Initialize with 0
     });
 
-    chartDataArray.forEach((item: any) => {
+    chartDataArray.forEach((item: ChartDataPoint) => {
       exchangesToQuery.forEach((exchange) => {
         if (item[exchange] !== undefined) {
           // Update last known value
-          exchangeLastValues[exchange] = item[exchange];
+          exchangeLastValues[exchange] = item[exchange] as number;
         } else {
           // Fill with last known value
           item[exchange] = exchangeLastValues[exchange];

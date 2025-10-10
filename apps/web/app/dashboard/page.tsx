@@ -27,7 +27,9 @@ export default function Page() {
         if (response.ok) {
           const data = await response.json();
           if (data.exchanges && data.exchanges.length > 0) {
-            const exchanges = data.exchanges.map((e: any) => e.exchange);
+            const exchanges = data.exchanges.map(
+              (e: { exchange: string }) => e.exchange
+            );
             setAvailableExchanges(exchanges);
           }
         }

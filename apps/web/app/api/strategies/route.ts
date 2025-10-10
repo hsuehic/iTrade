@@ -78,11 +78,16 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ strategy }, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating strategy:', error);
 
     // Check for unique constraint violation
-    if (error.code === '23505') {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === '23505'
+    ) {
       return NextResponse.json(
         { error: 'Strategy with this name already exists' },
         { status: 409 }

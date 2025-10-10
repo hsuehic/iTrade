@@ -49,6 +49,10 @@ interface BalanceChangeData {
   period: string;
 }
 
+interface StrategyData {
+  realizedPnl?: number;
+}
+
 interface StrategySummary {
   total: number;
   active: number;
@@ -100,7 +104,7 @@ export function TradingDashboardCards({
             // Calculate total realized PnL from all strategies
             const totalRealizedPnl =
               strategyJson.allStrategies?.reduce(
-                (sum: number, strategy: any) =>
+                (sum: number, strategy: StrategyData) =>
                   sum + (strategy.realizedPnl || 0),
                 0
               ) || 0;

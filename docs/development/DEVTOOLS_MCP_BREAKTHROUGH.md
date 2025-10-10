@@ -541,6 +541,6 @@ DevTools MCP represents an important milestone in AI Agent development. It's not
 
 *This article is written based on actual development experience of the iTrade project, showcasing the application effects of DevTools MCP in real projects.*
 
-**Author**: Richard  
+**Author**: <xiaoweihsueh@gmail.com>  
 **Date**: December 10, 2024  
 **Version**: 1.0

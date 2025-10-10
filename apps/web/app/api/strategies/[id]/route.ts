@@ -93,7 +93,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { name, description, type, status, exchange, symbol, parameters } =
       body;
 
-    const updates: any = {};
+    interface StrategyUpdates {
+      name?: string;
+      description?: string;
+      type?: string;
+      status?: string;
+      exchange?: string;
+      symbol?: string;
+      parameters?: Record<string, unknown>;
+    }
+
+    const updates: StrategyUpdates = {};
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (type !== undefined) updates.type = type;

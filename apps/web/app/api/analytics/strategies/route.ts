@@ -67,41 +67,61 @@ export async function GET(request: Request) {
       0
     );
 
+    interface ExchangeGroup {
+      exchange: string;
+      count: number;
+      totalPnl: number;
+      activeCount: number;
+    }
+
     // Group by exchange
-    const byExchange = strategyStats.reduce((acc: any, s) => {
-      if (!acc[s.exchange]) {
-        acc[s.exchange] = {
-          exchange: s.exchange,
-          count: 0,
-          totalPnl: 0,
-          activeCount: 0,
-        };
-      }
-      acc[s.exchange].count++;
-      acc[s.exchange].totalPnl += s.totalPnl;
-      if (s.status === 'active') {
-        acc[s.exchange].activeCount++;
-      }
-      return acc;
-    }, {});
+    const byExchange = strategyStats.reduce(
+      (acc: Record<string, ExchangeGroup>, s) => {
+        if (!acc[s.exchange]) {
+          acc[s.exchange] = {
+            exchange: s.exchange,
+            count: 0,
+            totalPnl: 0,
+            activeCount: 0,
+          };
+        }
+        acc[s.exchange].count++;
+        acc[s.exchange].totalPnl += s.totalPnl;
+        if (s.status === 'active') {
+          acc[s.exchange].activeCount++;
+        }
+        return acc;
+      },
+      {}
+    );
+
+    interface SymbolGroup {
+      symbol: string;
+      count: number;
+      totalPnl: number;
+      activeCount: number;
+    }
 
     // Group by symbol
-    const bySymbol = strategyStats.reduce((acc: any, s) => {
-      if (!acc[s.symbol]) {
-        acc[s.symbol] = {
-          symbol: s.symbol,
-          count: 0,
-          totalPnl: 0,
-          activeCount: 0,
-        };
-      }
-      acc[s.symbol].count++;
-      acc[s.symbol].totalPnl += s.totalPnl;
-      if (s.status === 'active') {
-        acc[s.symbol].activeCount++;
-      }
-      return acc;
-    }, {});
+    const bySymbol = strategyStats.reduce(
+      (acc: Record<string, SymbolGroup>, s) => {
+        if (!acc[s.symbol]) {
+          acc[s.symbol] = {
+            symbol: s.symbol,
+            count: 0,
+            totalPnl: 0,
+            activeCount: 0,
+          };
+        }
+        acc[s.symbol].count++;
+        acc[s.symbol].totalPnl += s.totalPnl;
+        if (s.status === 'active') {
+          acc[s.symbol].activeCount++;
+        }
+        return acc;
+      },
+      {}
+    );
 
     return NextResponse.json({
       summary: {
@@ -118,10 +138,10 @@ export async function GET(request: Request) {
       },
       topPerformers,
       byExchange: Object.values(byExchange).sort(
-        (a: any, b: any) => b.totalPnl - a.totalPnl
+        (a: ExchangeGroup, b: ExchangeGroup) => b.totalPnl - a.totalPnl
       ),
       bySymbol: Object.values(bySymbol).sort(
-        (a: any, b: any) => b.totalPnl - a.totalPnl
+        (a: SymbolGroup, b: SymbolGroup) => b.totalPnl - a.totalPnl
       ),
       allStrategies: strategyStats,
     });

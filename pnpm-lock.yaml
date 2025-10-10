@@ -178,6 +178,9 @@ importers:
       '@itrade/data-manager':
         specifier: workspace:*
         version: link:../../packages/data-manager
+      '@itrade/strategies':
+        specifier: workspace:*
+        version: link:../../packages/strategies
       '@itrade/utils':
         specifier: workspace:*
         version: link:../../packages/utils
