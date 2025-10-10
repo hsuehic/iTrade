@@ -8,7 +8,12 @@
     "dev": "tsx src/main.ts",
     "dev:watch": "tsx watch src/main.ts",
     "init-history": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/init-history.ts",
-    "cron": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/cron.ts"
+    "cron": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/cron.ts",
+    "diagnose": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/diagnose-auth.ts",
+    "get-ip": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/get-current-ip.ts",
+    "test-auth": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/detailed-auth-test.ts",
+    "test-basic": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/basic-api-test.ts",
+    "test-fixed": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/fixed-api-test.ts"
   },
   "author": "xiaoweihsueh@gmail.com",
   "license": "MIT",
@@ -21,6 +26,7 @@
     "@itrade/risk-manager": "workspace:*",
     "@itrade/strategies": "workspace:*",
     "@types/node-cron": "^3.0.11",
+    "axios": "^1.12.2",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.3",
     "node-cron": "^4.2.1",

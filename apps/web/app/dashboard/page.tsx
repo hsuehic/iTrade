@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+
 import { TradingDashboardCards } from '@/components/trading-dashboard-cards';
 import { AccountBalanceChart } from '@/components/account-balance-chart';
 import { StrategyPerformanceTable } from '@/components/strategy-performance-table';
@@ -10,7 +11,9 @@ import { SidebarInset } from '@/components/ui/sidebar';
 
 // 可配置的刷新间隔（毫秒）
 // 1000 = 1秒, 5000 = 5秒, 10000 = 10秒
-const REFRESH_INTERVAL = parseInt(process.env.NEXT_PUBLIC_DASHBOARD_REFRESH_INTERVAL || '5000');
+const REFRESH_INTERVAL = parseInt(
+  process.env.NEXT_PUBLIC_DASHBOARD_REFRESH_INTERVAL || '5000'
+);
 
 export default function Page() {
   const [selectedExchange, setSelectedExchange] = useState('all');
@@ -38,7 +41,7 @@ export default function Page() {
 
   return (
     <SidebarInset>
-      <SiteHeader 
+      <SiteHeader
         title="Trading Dashboard"
         links={
           <ExchangeSelector
@@ -48,23 +51,23 @@ export default function Page() {
           />
         }
       />
-      <div className="flex flex-1 flex-col">
+      <div className="flex flex-1 flex-col main-content">
         <div className="@container/main flex flex-1 flex-col gap-2">
           <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
             {/* Account Overview Cards */}
-            <TradingDashboardCards 
-              selectedExchange={selectedExchange} 
+            <TradingDashboardCards
+              selectedExchange={selectedExchange}
               refreshInterval={REFRESH_INTERVAL}
             />
-            
+
             {/* Account Balance Chart */}
             <div className="px-4 lg:px-6">
-              <AccountBalanceChart 
+              <AccountBalanceChart
                 selectedExchange={selectedExchange}
                 refreshInterval={REFRESH_INTERVAL}
               />
             </div>
-            
+
             {/* Strategy Performance Table */}
             <div className="px-4 lg:px-6">
               <StrategyPerformanceTable />

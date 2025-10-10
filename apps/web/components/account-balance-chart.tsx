@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { Line, LineChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -29,19 +29,21 @@ import {
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { ExchangeLogo } from '@/components/exchange-logo';
 
 const chartConfig = {
   binance: {
     label: 'Binance',
-    color: 'hsl(var(--chart-1))',
+    color: 'hsl(217 91% 60%)', // 蓝色
   },
   okx: {
     label: 'OKX',
-    color: 'hsl(var(--chart-2))',
+    color: 'hsl(142 76% 36%)', // 绿色
   },
   coinbase: {
     label: 'Coinbase',
-    color: 'hsl(var(--chart-3))',
+    color: 'hsl(221 83% 53%)', // 深蓝色
   },
 } satisfies ChartConfig;
 
@@ -50,15 +52,16 @@ interface AccountBalanceChartProps {
   refreshInterval?: number; // 轮询间隔（毫秒），默认 5000ms (5秒)
 }
 
-export function AccountBalanceChart({ 
-  selectedExchange, 
-  refreshInterval = 5000 
+export function AccountBalanceChart({
+  selectedExchange,
+  refreshInterval = 5000,
 }: AccountBalanceChartProps) {
   const isMobile = useIsMobile();
   const [timeRange, setTimeRange] = React.useState('30d');
   const [chartData, setChartData] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [exchanges, setExchanges] = React.useState<string[]>([]);
+  const updateTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   React.useEffect(() => {
     if (isMobile) {
@@ -81,8 +84,51 @@ export function AccountBalanceChart({
         );
         if (response.ok) {
           const data = await response.json();
-          setChartData(data.chartData || []);
-          
+          const newChartData = data.chartData || [];
+
+          if (isFirstLoad || timeRange !== '1h') {
+            // For first load or non-realtime views, replace all data
+            setChartData(newChartData);
+          } else {
+            // For 1-hour view, implement sliding window update with debounce
+            if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+            }
+
+            updateTimeoutRef.current = setTimeout(() => {
+              setChartData((prevData) => {
+                if (!prevData.length || !newChartData.length) {
+                  return newChartData;
+                }
+
+                // Get the latest timestamp from previous data
+                const latestPrevTime = new Date(
+                  prevData[prevData.length - 1]?.date
+                ).getTime();
+
+                // Find new data points that are newer than our latest
+                const newPoints = newChartData.filter(
+                  (point) => new Date(point.date).getTime() > latestPrevTime
+                );
+
+                if (newPoints.length === 0) {
+                  return prevData; // No new data
+                }
+
+                // Combine previous data with new points
+                let updatedData = [...prevData, ...newPoints];
+
+                // Keep only last 60 data points for smooth scrolling (1 hour of minute data)
+                const maxPoints = 60;
+                if (updatedData.length > maxPoints) {
+                  updatedData = updatedData.slice(-maxPoints);
+                }
+
+                return updatedData;
+              });
+            }, 100); // 100ms debounce for smoother updates
+          }
+
           // Extract exchange names from data
           if (data.chartData && data.chartData.length > 0) {
             const exchangeNames = Object.keys(data.chartData[0]).filter(
@@ -102,10 +148,15 @@ export function AccountBalanceChart({
     };
 
     fetchData();
-    
+
     // Refresh data at configured interval
     const interval = setInterval(fetchData, refreshInterval);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
   }, [timeRange, selectedExchange, refreshInterval]);
 
   const formatCurrency = (value: number) => {
@@ -123,6 +174,10 @@ export function AccountBalanceChart({
         return 'Last 7 days';
       case '90d':
         return 'Last 3 months';
+      case '1d':
+        return 'Last 1 day';
+      case '1h':
+        return 'Last 1 hour';
       case '30d':
       default:
         return 'Last 30 days';
@@ -134,15 +189,10 @@ export function AccountBalanceChart({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           Account Balance
-          {selectedExchange !== 'all' && (
-            <Badge variant="outline" className="text-xs capitalize font-normal">
-              {selectedExchange}
-            </Badge>
-          )}
         </CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
-            {selectedExchange === 'all' 
+            {selectedExchange === 'all'
               ? `Portfolio value over time • ${getPeriodLabel()}`
               : `${selectedExchange.charAt(0).toUpperCase() + selectedExchange.slice(1)} balance • ${getPeriodLabel()}`}
           </span>
@@ -154,11 +204,13 @@ export function AccountBalanceChart({
             value={timeRange}
             onValueChange={(value) => value && setTimeRange(value)}
             variant="outline"
-            className="hidden *:data-[slot=toggle-group-item]:!px-4 @[767px]/card:flex"
+            className="hidden *:data-[slot=toggle-group-item]:!px-3 @[767px]/card:flex"
           >
             <ToggleGroupItem value="90d">3 months</ToggleGroupItem>
             <ToggleGroupItem value="30d">30 days</ToggleGroupItem>
             <ToggleGroupItem value="7d">7 days</ToggleGroupItem>
+            <ToggleGroupItem value="1d">1 day</ToggleGroupItem>
+            <ToggleGroupItem value="1h">1 hour</ToggleGroupItem>
           </ToggleGroup>
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger
@@ -178,6 +230,12 @@ export function AccountBalanceChart({
               <SelectItem value="7d" className="rounded-lg">
                 Last 7 days
               </SelectItem>
+              <SelectItem value="1d" className="rounded-lg">
+                Last 1 day
+              </SelectItem>
+              <SelectItem value="1h" className="rounded-lg">
+                Last 1 hour
+              </SelectItem>
             </SelectContent>
           </Select>
         </CardAction>
@@ -189,7 +247,9 @@ export function AccountBalanceChart({
           <div className="flex h-[300px] items-center justify-center text-muted-foreground">
             <div className="text-center">
               <p className="text-lg font-medium">No data available</p>
-              <p className="text-sm">Start trading to see your account balance history</p>
+              <p className="text-sm">
+                Start trading to see your account balance history
+              </p>
             </div>
           </div>
         ) : (
@@ -197,31 +257,15 @@ export function AccountBalanceChart({
             config={chartConfig}
             className="aspect-auto h-[300px] w-full"
           >
-            <AreaChart data={chartData}>
-              <defs>
-                {exchanges.map((exchange, index) => (
-                  <linearGradient
-                    key={exchange}
-                    id={`fill${exchange}`}
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop
-                      offset="5%"
-                      stopColor={`hsl(var(--chart-${index + 1}))`}
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={`hsl(var(--chart-${index + 1}))`}
-                      stopOpacity={0.1}
-                    />
-                  </linearGradient>
-                ))}
-              </defs>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
+            <LineChart
+              data={chartData}
+              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid
+                vertical={false}
+                strokeDasharray="3 3"
+                opacity={0.3}
+              />
               <XAxis
                 dataKey="date"
                 tickLine={false}
@@ -230,10 +274,24 @@ export function AccountBalanceChart({
                 minTickGap={32}
                 tickFormatter={(value) => {
                   const date = new Date(value);
-                  return date.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                  });
+                  if (timeRange === '1h') {
+                    return date.toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    });
+                  } else if (timeRange === '1d') {
+                    return date.toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
+                    });
+                  } else {
+                    return date.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    });
+                  }
                 }}
               />
               <YAxis
@@ -247,34 +305,56 @@ export function AccountBalanceChart({
                 content={
                   <ChartTooltipContent
                     labelFormatter={(value) => {
-                      return new Date(value).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      });
+                      const date = new Date(value);
+                      if (timeRange === '1h') {
+                        return date.toLocaleString('en-US', {
+                          weekday: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true,
+                        });
+                      } else if (timeRange === '1d') {
+                        return date.toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true,
+                        });
+                      } else {
+                        return date.toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        });
+                      }
                     }}
                     formatter={(value) => formatCurrency(value as number)}
                     indicator="dot"
                   />
                 }
               />
-              {exchanges.map((exchange, index) => (
-                <Area
+              {exchanges.map((exchange) => (
+                <Line
                   key={exchange}
                   dataKey={exchange}
                   type="monotone"
-                  fill={`url(#fill${exchange})`}
-                  stroke={`hsl(var(--chart-${index + 1}))`}
-                  strokeWidth={2}
-                  stackId="a"
+                  stroke={
+                    chartConfig[exchange as keyof typeof chartConfig]?.color
+                  }
+                  strokeWidth={3}
+                  dot={false}
+                  activeDot={{ r: 6, strokeWidth: 2 }}
+                  animationDuration={timeRange === '1h' ? 800 : 300}
+                  animationEasing="ease-out"
+                  connectNulls={true}
                 />
               ))}
               <ChartLegend content={<ChartLegendContent />} />
-            </AreaChart>
+            </LineChart>
           </ChartContainer>
         )}
       </CardContent>
     </Card>
   );
 }
-

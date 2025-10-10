@@ -1,6 +1,7 @@
 'use client';
 
 import { IconBuildingBank } from '@tabler/icons-react';
+
 import {
   Select,
   SelectContent,
@@ -8,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ExchangeLogo } from '@/components/exchange-logo';
 
 interface ExchangeSelectorProps {
   value: string;
@@ -15,19 +17,43 @@ interface ExchangeSelectorProps {
   exchanges: string[];
 }
 
-export function ExchangeSelector({ value, onChange, exchanges }: ExchangeSelectorProps) {
+export function ExchangeSelector({
+  value,
+  onChange,
+  exchanges,
+}: ExchangeSelectorProps) {
   return (
     <div className="flex items-center gap-2">
-      <IconBuildingBank className="size-4 text-muted-foreground" />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Select exchange" />
+          <SelectValue placeholder="Select exchange">
+            {value === 'all' ? (
+              'All Exchanges'
+            ) : (
+              <ExchangeLogo
+                exchange={value}
+                size="sm"
+                showName={true}
+                className="text-sm"
+              />
+            )}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All Exchanges</SelectItem>
+          <SelectItem value="all">
+            <div className="flex items-center gap-2">
+              <IconBuildingBank className="size-4" />
+              <span>All Exchanges</span>
+            </div>
+          </SelectItem>
           {exchanges.map((exchange) => (
-            <SelectItem key={exchange} value={exchange} className="capitalize">
-              {exchange.charAt(0).toUpperCase() + exchange.slice(1)}
+            <SelectItem key={exchange} value={exchange}>
+              <ExchangeLogo
+                exchange={exchange}
+                size="sm"
+                showName={true}
+                className="text-sm"
+              />
             </SelectItem>
           ))}
         </SelectContent>
@@ -35,4 +61,3 @@ export function ExchangeSelector({ value, onChange, exchanges }: ExchangeSelecto
     </div>
   );
 }
-

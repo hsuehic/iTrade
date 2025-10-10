@@ -32,9 +32,9 @@ dotenv.config();
 
 const logger = new ConsoleLogger(LogLevel.INFO);
 
-// Polling interval (default: 1 minute)
+// Polling interval (default: 6 seconds for testing)
 const POLLING_INTERVAL = parseInt(
-  process.env.ACCOUNT_POLLING_INTERVAL || '60000'
+  process.env.ACCOUNT_POLLING_INTERVAL || '6000'
 );
 
 let dataManager: TypeOrmDataManager;
@@ -64,22 +64,26 @@ async function initialize() {
 
   // Initialize exchanges
   const exchanges = new Map<string, any>();
-  const USE_MAINNET_FOR_DATA = true;
+  const USE_TESTNET = false; // 使用主网
 
   // Binance
   if (process.env.BINANCE_API_KEY && process.env.BINANCE_SECRET_KEY) {
     try {
-      const binance = new BinanceExchange(!USE_MAINNET_FOR_DATA);
+      const binance = new BinanceExchange(USE_TESTNET);
       await binance.connect({
         apiKey: process.env.BINANCE_API_KEY,
         secretKey: process.env.BINANCE_SECRET_KEY,
-        sandbox: !USE_MAINNET_FOR_DATA,
+        sandbox: USE_TESTNET,
       });
       exchanges.set('binance', binance);
       logger.info('✅ Binance exchange initialized');
     } catch (error: any) {
       logger.warn(`⚠️  Failed to initialize Binance: ${error.message}`);
     }
+  } else {
+    logger.warn(
+      '⚠️  Binance API credentials not found in environment variables'
+    );
   }
 
   // OKX
@@ -89,18 +93,20 @@ async function initialize() {
     process.env.OKX_PASSPHRASE
   ) {
     try {
-      const okx = new OKXExchange(!USE_MAINNET_FOR_DATA);
+      const okx = new OKXExchange(USE_TESTNET);
       await okx.connect({
         apiKey: process.env.OKX_API_KEY,
         secretKey: process.env.OKX_SECRET_KEY,
         passphrase: process.env.OKX_PASSPHRASE,
-        sandbox: !USE_MAINNET_FOR_DATA,
+        sandbox: USE_TESTNET,
       });
       exchanges.set('okx', okx);
       logger.info('✅ OKX exchange initialized');
     } catch (error: any) {
       logger.warn(`⚠️  Failed to initialize OKX: ${error.message}`);
     }
+  } else {
+    logger.info('ℹ️  OKX API credentials not configured (optional)');
   }
 
   // Coinbase
@@ -110,13 +116,15 @@ async function initialize() {
       await coinbase.connect({
         apiKey: process.env.COINBASE_API_KEY,
         secretKey: process.env.COINBASE_SECRET_KEY,
-        sandbox: !USE_MAINNET_FOR_DATA,
+        sandbox: USE_TESTNET,
       });
       exchanges.set('coinbase', coinbase);
       logger.info('✅ Coinbase exchange initialized');
     } catch (error: any) {
       logger.warn(`⚠️  Failed to initialize Coinbase: ${error.message}`);
     }
+  } else {
+    logger.info('ℹ️  Coinbase API credentials not configured (optional)');
   }
 
   if (exchanges.size === 0) {
@@ -158,27 +166,17 @@ async function initialize() {
     );
   });
 
-  accountPollingService.on(
-    'exchangePolled',
-    (exchange: string, result: PollingResult) => {
-      if (result.success) {
-        logger.debug(
-          `✅ ${exchange}: ${result.balances?.length || 0} balances, ${result.positions?.length || 0} positions`
-        );
-      } else {
-        logger.error(`❌ ${exchange}: ${result.error}`);
-      }
-    }
-  );
+  accountPollingService.on('exchangePolled', (data: any) => {
+    logger.debug(
+      `✅ ${data.exchange}: ${data.balances?.length || 0} balances, ${data.positions?.length || 0} positions`
+    );
+  });
 
-  accountPollingService.on(
-    'snapshotSaved',
-    (exchange: string, snapshot: any) => {
-      logger.info(
-        `💾 ${exchange} snapshot saved: Equity=${snapshot.totalBalance.toFixed(2)}, Positions=${snapshot.positionCount}`
-      );
-    }
-  );
+  accountPollingService.on('snapshotSaved', (snapshot: any) => {
+    logger.info(
+      `💾 ${snapshot.exchange} snapshot saved: Equity=${snapshot.totalBalance.toFixed(2)}, Positions=${snapshot.positionCount}`
+    );
+  });
 
   accountPollingService.on('error', (error: Error) => {
     logger.error(`❌ Polling error: ${error.message}`);

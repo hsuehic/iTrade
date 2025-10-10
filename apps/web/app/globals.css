@@ -116,7 +116,37 @@
   * {
     @apply border-border outline-ring/50;
   }
+  
+  html, body {
+    overscroll-behavior: none; /* Prevent bounce/pull-to-refresh effects */
+    overflow-x: hidden; /* Prevent horizontal scroll */
+  }
+  
   body {
     @apply bg-background text-foreground;
+    /* Prevent momentum scrolling on iOS Safari */
+    -webkit-overflow-scrolling: touch;
+    /* Ensure no white space appears during scroll */
+    position: relative;
+    min-height: 100vh;
+  }
+  
+  /* Prevent pull-to-refresh on mobile browsers */
+  .main-content {
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Smooth chart animations */
+  .recharts-line-curve {
+    transition: all 0.3s ease-out;
+  }
+  
+  .recharts-line-dot {
+    transition: all 0.2s ease-out;
+  }
+  
+  /* Optimize chart container performance */
+  .recharts-wrapper {
+    contain: layout style paint;
   }
 }

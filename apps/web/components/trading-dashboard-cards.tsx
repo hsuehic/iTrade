@@ -13,14 +13,17 @@ import {
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
-  CardAction,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AnimatedCurrency, AnimatedInteger, AnimatedPercentage } from '@/components/animated-number';
+import {
+  AnimatedCurrency,
+  AnimatedInteger,
+  AnimatedPercentage,
+} from '@/components/animated-number';
 
 interface AccountSummary {
   totalBalance: number;
@@ -47,19 +50,23 @@ interface TradingDashboardCardsProps {
   refreshInterval?: number; // 轮询间隔（毫秒），默认 5000ms (5秒)
 }
 
-export function TradingDashboardCards({ 
-  selectedExchange, 
-  refreshInterval = 5000 
+export function TradingDashboardCards({
+  selectedExchange,
+  refreshInterval = 5000,
 }: TradingDashboardCardsProps) {
   const [accountData, setAccountData] = useState<AccountSummary | null>(null);
-  const [strategyData, setStrategyData] = useState<StrategySummary | null>(null);
+  const [strategyData, setStrategyData] = useState<StrategySummary | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [accountRes, strategyRes] = await Promise.all([
-          fetch(`/api/analytics/account?period=30d&exchange=${selectedExchange}`),
+          fetch(
+            `/api/analytics/account?period=30d&exchange=${selectedExchange}`
+          ),
           fetch('/api/analytics/strategies'),
         ]);
 
@@ -80,7 +87,7 @@ export function TradingDashboardCards({
     };
 
     fetchData();
-    
+
     // Refresh data at configured interval
     const interval = setInterval(fetchData, refreshInterval);
     return () => clearInterval(interval);
@@ -101,7 +108,7 @@ export function TradingDashboardCards({
     );
   }
 
-  const formatCurrency = (value: number) => {
+  const _formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -110,7 +117,7 @@ export function TradingDashboardCards({
     }).format(value);
   };
 
-  const formatPercentage = (value: number) => {
+  const _formatPercentage = (value: number) => {
     const formatted = Math.abs(value).toFixed(2);
     return value >= 0 ? `+${formatted}%` : `-${formatted}%`;
   };
@@ -125,20 +132,12 @@ export function TradingDashboardCards({
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
       {/* Total Equity Card */}
       <Card className="@container/card">
-        <CardHeader>
-          <CardDescription className="flex items-center gap-2">
-            <IconWallet className="size-4" />
-            Total Equity
-            {selectedExchange !== 'all' && (
-              <Badge variant="outline" className="ml-auto text-xs capitalize">
-                {selectedExchange}
-              </Badge>
-            )}
-          </CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            <AnimatedCurrency value={totalEquity} duration={0.6} />
-          </CardTitle>
-          <CardAction>
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconWallet className="size-4" />
+              Total Equity
+            </CardDescription>
             <Badge
               variant="outline"
               className={
@@ -152,9 +151,16 @@ export function TradingDashboardCards({
               ) : (
                 <IconTrendingDown className="size-3" />
               )}
-              <AnimatedPercentage value={balanceChange} duration={0.6} showSign={true} />
+              <AnimatedPercentage
+                value={balanceChange}
+                duration={0.7}
+                showSign={true}
+              />
             </Badge>
-          </CardAction>
+          </div>
+          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+            <AnimatedCurrency value={totalEquity} duration={0.7} />
+          </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
@@ -166,7 +172,7 @@ export function TradingDashboardCards({
             )}
           </div>
           <div className="text-muted-foreground">
-            {selectedExchange === 'all' 
+            {selectedExchange === 'all'
               ? 'Balance + Positions across all exchanges'
               : `Balance + Positions on ${selectedExchange}`}
           </div>
@@ -175,19 +181,12 @@ export function TradingDashboardCards({
 
       {/* Unrealized P&L Card */}
       <Card className="@container/card">
-        <CardHeader>
-          <CardDescription className="flex items-center gap-2">
-            <IconChartLine className="size-4" />
-            Unrealized P&L
-          </CardDescription>
-          <CardTitle
-            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
-              totalPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-            }`}
-          >
-            <AnimatedCurrency value={totalPnl} duration={0.6} />
-          </CardTitle>
-          <CardAction>
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconChartLine className="size-4" />
+              Unrealized P&L
+            </CardDescription>
             <Badge
               variant="outline"
               className={
@@ -201,9 +200,21 @@ export function TradingDashboardCards({
               ) : (
                 <IconTrendingDown className="size-3" />
               )}
-              {((totalPnl / Math.max(totalEquity - totalPnl, 1)) * 100).toFixed(2)}%
+              {((totalPnl / Math.max(totalEquity - totalPnl, 1)) * 100).toFixed(
+                2
+              )}
+              %
             </Badge>
-          </CardAction>
+          </div>
+          <CardTitle
+            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
+              totalPnl >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            <AnimatedCurrency value={totalPnl} duration={0.7} />
+          </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
@@ -218,19 +229,22 @@ export function TradingDashboardCards({
 
       {/* Active Strategies Card */}
       <Card className="@container/card">
-        <CardHeader>
-          <CardDescription className="flex items-center gap-2">
-            <IconRocket className="size-4" />
-            Active Strategies
-          </CardDescription>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            <AnimatedInteger value={activeStrategies} duration={0.6} />
-          </CardTitle>
-          <CardAction>
-            <Badge variant="outline" className="border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400">
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconRocket className="size-4" />
+              Active Strategies
+            </CardDescription>
+            <Badge
+              variant="outline"
+              className="border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400"
+            >
               {strategyData?.total || 0} total
             </Badge>
-          </CardAction>
+          </div>
+          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+            <AnimatedInteger value={activeStrategies} duration={0.7} />
+          </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
@@ -244,19 +258,12 @@ export function TradingDashboardCards({
 
       {/* Strategy P&L Card */}
       <Card className="@container/card">
-        <CardHeader>
-          <CardDescription className="flex items-center gap-2">
-            <IconCoins className="size-4" />
-            Strategy P&L
-          </CardDescription>
-          <CardTitle
-            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
-              strategyPnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
-            }`}
-          >
-            <AnimatedCurrency value={strategyPnl} duration={0.6} />
-          </CardTitle>
-          <CardAction>
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconCoins className="size-4" />
+              Strategy P&L
+            </CardDescription>
             <Badge
               variant="outline"
               className={
@@ -272,7 +279,16 @@ export function TradingDashboardCards({
               )}
               {strategyPnl >= 0 ? 'Profit' : 'Loss'}
             </Badge>
-          </CardAction>
+          </div>
+          <CardTitle
+            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
+              strategyPnl >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            <AnimatedCurrency value={strategyPnl} duration={0.7} />
+          </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
@@ -286,4 +302,3 @@ export function TradingDashboardCards({
     </div>
   );
 }
-

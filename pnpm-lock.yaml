@@ -132,6 +132,9 @@ importers:
       '@types/node-cron':
         specifier: ^3.0.11
         version: 3.0.11
+      axios:
+        specifier: ^1.12.2
+        version: 1.12.2
       decimal.js:
         specifier: ^10.6.0
         version: 10.6.0
@@ -444,6 +447,9 @@ importers:
       decimal.js:
         specifier: ^10.4.3
         version: 10.6.0
+      jsonwebtoken:
+        specifier: ^9.0.2
+        version: 9.0.2
       uuid:
         specifier: ^9.0.1
         version: 9.0.1
@@ -451,6 +457,9 @@ importers:
         specifier: ^8.16.0
         version: 8.18.3
     devDependencies:
+      '@types/jsonwebtoken':
+        specifier: ^9.0.6
+        version: 9.0.10
       '@types/node':
         specifier: ^20.11.24
         version: 20.19.19
