@@ -8,6 +8,7 @@ import {
   IconChartLine,
   IconCoins,
   IconRocket,
+  IconChevronDown,
 } from '@tabler/icons-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -24,14 +25,29 @@ import {
   AnimatedInteger,
   AnimatedPercentage,
 } from '@/components/animated-number';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 
 interface AccountSummary {
   totalBalance: number;
   totalPositionValue: number;
   totalEquity: number;
   totalUnrealizedPnl: number;
+  totalRealizedPnl?: number; // 新增已实现盈亏
   totalPositions: number;
   balanceChange: number;
+  balanceChangeValue?: number; // 新增余额变化数值
+  period: string;
+}
+
+interface BalanceChangeData {
+  change: number; // 百分比变化
+  changeValue: number; // 数值变化
   period: string;
 }
 
@@ -59,9 +75,13 @@ export function TradingDashboardCards({
     null
   );
   const [loading, setLoading] = useState(true);
+  const [balanceChangeData, setBalanceChangeData] =
+    useState<BalanceChangeData | null>(null);
+  const [balanceChangePeriod, setBalanceChangePeriod] = useState<string>('1m');
 
+  // Main account and strategy data
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchMainData = async () => {
       try {
         const [accountRes, strategyRes] = await Promise.all([
           fetch(
@@ -72,26 +92,87 @@ export function TradingDashboardCards({
 
         if (accountRes.ok) {
           const accountJson = await accountRes.json();
-          setAccountData(accountJson.summary);
-        }
+          let accountSummary = accountJson.summary;
 
-        if (strategyRes.ok) {
-          const strategyJson = await strategyRes.json();
-          setStrategyData(strategyJson.summary);
+          // Get realized PnL from strategies
+          if (strategyRes.ok) {
+            const strategyJson = await strategyRes.json();
+            setStrategyData(strategyJson.summary);
+
+            // Calculate total realized PnL from all strategies
+            const totalRealizedPnl =
+              strategyJson.allStrategies?.reduce(
+                (sum: number, strategy: any) =>
+                  sum + (strategy.realizedPnl || 0),
+                0
+              ) || 0;
+
+            accountSummary.totalRealizedPnl = totalRealizedPnl;
+          }
+
+          setAccountData(accountSummary);
         }
       } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
+        console.error('Failed to fetch main dashboard data:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    fetchMainData();
 
-    // Refresh data at configured interval
-    const interval = setInterval(fetchData, refreshInterval);
+    // Refresh main data at configured interval
+    const interval = setInterval(fetchMainData, refreshInterval);
     return () => clearInterval(interval);
   }, [selectedExchange, refreshInterval]);
+
+  // Balance change data (separate effect to avoid unnecessary calls)
+  useEffect(() => {
+    const fetchBalanceChangeData = async () => {
+      try {
+        const balanceChangeRes = await fetch(
+          `/api/analytics/account?period=${balanceChangePeriod}&exchange=${selectedExchange}`
+        );
+
+        if (balanceChangeRes.ok) {
+          const balanceChangeJson = await balanceChangeRes.json();
+          const summary = balanceChangeJson.summary;
+
+          // Calculate balance change value
+          const currentBalance = summary.totalBalance;
+          const changePercentage = summary.balanceChange;
+
+          // Debug log for 1d period issues
+          if (balanceChangePeriod === '1d' && changePercentage === 0) {
+            console.log('1d period data:', {
+              currentBalance,
+              changePercentage,
+              chartDataLength: balanceChangeJson.chartData?.length || 0,
+            });
+          }
+
+          // Correct formula: if current = 1000 and change = +5%,
+          // then previous = 1000/1.05 = 952.38, changeValue = 1000 - 952.38 = 47.62
+          let changeValue = 0;
+          if (changePercentage !== 0) {
+            const previousBalance =
+              currentBalance / (1 + changePercentage / 100);
+            changeValue = currentBalance - previousBalance;
+          }
+
+          setBalanceChangeData({
+            change: changePercentage,
+            changeValue: changeValue,
+            period: balanceChangePeriod,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch balance change data:', error);
+      }
+    };
+
+    fetchBalanceChangeData();
+  }, [selectedExchange, balanceChangePeriod]);
 
   if (loading) {
     return (
@@ -122,21 +203,21 @@ export function TradingDashboardCards({
     return value >= 0 ? `+${formatted}%` : `-${formatted}%`;
   };
 
+  const totalBalance = accountData?.totalBalance || 0;
   const totalEquity = accountData?.totalEquity || 0;
-  const totalPnl = accountData?.totalUnrealizedPnl || 0;
+  const totalRealizedPnl = accountData?.totalRealizedPnl || 0;
+  const totalUnrealizedPnl = accountData?.totalUnrealizedPnl || 0;
   const balanceChange = accountData?.balanceChange || 0;
-  const strategyPnl = strategyData?.totalPnl || 0;
-  const activeStrategies = strategyData?.active || 0;
 
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-      {/* Total Equity Card */}
+      {/* Balance Card */}
       <Card className="@container/card">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
             <CardDescription className="flex items-center gap-2">
               <IconWallet className="size-4" />
-              Total Equity
+              Balance
             </CardDescription>
             <Badge
               variant="outline"
@@ -153,13 +234,13 @@ export function TradingDashboardCards({
               )}
               <AnimatedPercentage
                 value={balanceChange}
-                duration={0.7}
+                duration={0.4}
                 showSign={true}
               />
             </Badge>
           </div>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            <AnimatedCurrency value={totalEquity} duration={0.7} />
+            <AnimatedCurrency value={totalBalance} duration={0.4} />
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
@@ -173,8 +254,158 @@ export function TradingDashboardCards({
           </div>
           <div className="text-muted-foreground">
             {selectedExchange === 'all'
-              ? 'Balance + Positions across all exchanges'
-              : `Balance + Positions on ${selectedExchange}`}
+              ? 'Cash balance across all exchanges'
+              : `Cash balance on ${selectedExchange}`}
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* Balance Change Card */}
+      <Card className="@container/card">
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconChartLine className="size-4" />
+              Balance Change
+            </CardDescription>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  (balanceChangeData?.change || 0) >= 0
+                    ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
+                    : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
+                }
+              >
+                {(balanceChangeData?.change || 0) >= 0 ? (
+                  <IconTrendingUp className="size-3" />
+                ) : (
+                  <IconTrendingDown className="size-3" />
+                )}
+                <AnimatedPercentage
+                  value={balanceChangeData?.change || 0}
+                  duration={0.4}
+                  showSign={true}
+                />
+              </Badge>
+            </div>
+          </div>
+          <CardTitle
+            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
+              (balanceChangeData?.changeValue || 0) >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            <AnimatedCurrency
+              value={balanceChangeData?.changeValue || 0}
+              duration={0.4}
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
+          <div className="line-clamp-1 flex gap-2 font-medium items-center">
+            {balanceChangeData?.change === 0 &&
+            balanceChangeData?.changeValue === 0
+              ? 'No change'
+              : (balanceChangeData?.changeValue || 0) >= 0
+                ? 'Balance increased'
+                : 'Balance decreased'}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-6 px-2 text-xs bg-muted/50 hover:bg-muted border border-transparent hover:border-border data-[state=open]:border-primary data-[state=open]:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/5 focus-visible:outline-none focus-visible:ring-0 focus:outline-none focus:ring-0 transition-colors"
+                >
+                  <span className="mr-1">
+                    {balanceChangePeriod === '1d'
+                      ? 'Day'
+                      : balanceChangePeriod === '1w'
+                        ? 'Week'
+                        : balanceChangePeriod === '1m'
+                          ? 'Month'
+                          : 'Year'}
+                  </span>
+                  <IconChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-20" align="start">
+                {[
+                  { value: '1d', label: 'Day' },
+                  { value: '1w', label: 'Week' },
+                  { value: '1m', label: 'Month' },
+                  { value: '1y', label: 'Year' },
+                ].map((period) => (
+                  <DropdownMenuItem
+                    key={period.value}
+                    onClick={() => setBalanceChangePeriod(period.value)}
+                    className="cursor-pointer text-sm"
+                  >
+                    {period.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div className="text-muted-foreground">
+            {balanceChangeData?.change === 0 &&
+            balanceChangeData?.changeValue === 0 &&
+            balanceChangePeriod === '1d'
+              ? 'Insufficient data for daily comparison'
+              : balanceChangePeriod === '1d'
+                ? 'Change in the last 24 hours'
+                : balanceChangePeriod === '1w'
+                  ? 'Change in the last week'
+                  : balanceChangePeriod === '1m'
+                    ? 'Change in the last month'
+                    : 'Change in the last year'}
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* Realized P&L Card */}
+      <Card className="@container/card">
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconChartLine className="size-4" />
+              Realized P&L
+            </CardDescription>
+            <Badge
+              variant="outline"
+              className={
+                totalRealizedPnl >= 0
+                  ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
+                  : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
+              }
+            >
+              {totalRealizedPnl >= 0 ? (
+                <IconTrendingUp className="size-3" />
+              ) : (
+                <IconTrendingDown className="size-3" />
+              )}
+              {totalRealizedPnl >= 0 ? 'Profit' : 'Loss'}
+            </Badge>
+          </div>
+          <CardTitle
+            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
+              totalRealizedPnl >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            <AnimatedCurrency value={totalRealizedPnl} duration={0.4} />
+          </CardTitle>
+        </CardHeader>
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
+          <div className="line-clamp-1 flex gap-2 font-medium">
+            {totalRealizedPnl >= 0
+              ? 'Closed profitable trades'
+              : 'Closed losing trades'}
+          </div>
+          <div className="text-muted-foreground">
+            Locked-in profits and losses from completed trades
           </div>
         </CardFooter>
       </Card>
@@ -184,118 +415,47 @@ export function TradingDashboardCards({
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
             <CardDescription className="flex items-center gap-2">
-              <IconChartLine className="size-4" />
+              <IconRocket className="size-4" />
               Unrealized P&L
             </CardDescription>
             <Badge
               variant="outline"
               className={
-                totalPnl >= 0
+                totalUnrealizedPnl >= 0
                   ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
                   : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
               }
             >
-              {totalPnl >= 0 ? (
+              {totalUnrealizedPnl >= 0 ? (
                 <IconTrendingUp className="size-3" />
               ) : (
                 <IconTrendingDown className="size-3" />
               )}
-              {((totalPnl / Math.max(totalEquity - totalPnl, 1)) * 100).toFixed(
-                2
-              )}
+              {totalEquity > 0
+                ? ((totalUnrealizedPnl / totalEquity) * 100).toFixed(2)
+                : '0.00'}
               %
             </Badge>
           </div>
           <CardTitle
             className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
-              totalPnl >= 0
+              totalUnrealizedPnl >= 0
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-red-600 dark:text-red-400'
             }`}
           >
-            <AnimatedCurrency value={totalPnl} duration={0.7} />
+            <AnimatedCurrency value={totalUnrealizedPnl} duration={0.4} />
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {totalPnl >= 0 ? 'Profitable positions' : 'Positions underwater'}
+            {totalUnrealizedPnl >= 0
+              ? 'Profitable positions'
+              : 'Positions underwater'}
           </div>
           <div className="text-muted-foreground">
             {accountData?.totalPositions || 0} open position
             {accountData?.totalPositions !== 1 ? 's' : ''}
-          </div>
-        </CardFooter>
-      </Card>
-
-      {/* Active Strategies Card */}
-      <Card className="@container/card">
-        <CardHeader className="space-y-2">
-          <div className="flex items-center justify-between">
-            <CardDescription className="flex items-center gap-2">
-              <IconRocket className="size-4" />
-              Active Strategies
-            </CardDescription>
-            <Badge
-              variant="outline"
-              className="border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400"
-            >
-              {strategyData?.total || 0} total
-            </Badge>
-          </div>
-          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            <AnimatedInteger value={activeStrategies} duration={0.7} />
-          </CardTitle>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            {activeStrategies > 0 ? 'Trading live' : 'No active strategies'}
-          </div>
-          <div className="text-muted-foreground">
-            Fill rate: {strategyData?.avgFillRate || '0.00'}%
-          </div>
-        </CardFooter>
-      </Card>
-
-      {/* Strategy P&L Card */}
-      <Card className="@container/card">
-        <CardHeader className="space-y-2">
-          <div className="flex items-center justify-between">
-            <CardDescription className="flex items-center gap-2">
-              <IconCoins className="size-4" />
-              Strategy P&L
-            </CardDescription>
-            <Badge
-              variant="outline"
-              className={
-                strategyPnl >= 0
-                  ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
-                  : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
-              }
-            >
-              {strategyPnl >= 0 ? (
-                <IconTrendingUp className="size-3" />
-              ) : (
-                <IconTrendingDown className="size-3" />
-              )}
-              {strategyPnl >= 0 ? 'Profit' : 'Loss'}
-            </Badge>
-          </div>
-          <CardTitle
-            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
-              strategyPnl >= 0
-                ? 'text-green-600 dark:text-green-400'
-                : 'text-red-600 dark:text-red-400'
-            }`}
-          >
-            <AnimatedCurrency value={strategyPnl} duration={0.7} />
-          </CardTitle>
-        </CardHeader>
-        <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            {strategyData?.totalOrders || 0} orders executed
-          </div>
-          <div className="text-muted-foreground">
-            {strategyData?.totalFilledOrders || 0} filled successfully
           </div>
         </CardFooter>
       </Card>

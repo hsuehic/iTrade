@@ -160,11 +160,39 @@ export function AccountBalanceChart({
   }, [timeRange, selectedExchange, refreshInterval]);
 
   const formatCurrency = (value: number) => {
+    // Smart formatting based on value magnitude
+    if (value >= 1000000) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+        notation: 'compact',
+        compactDisplay: 'short',
+      }).format(value);
+    } else if (value >= 10000) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(value);
+    } else {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
+    }
+  };
+
+  const formatTooltipCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(value);
   };
 
@@ -182,6 +210,35 @@ export function AccountBalanceChart({
       default:
         return 'Last 30 days';
     }
+  };
+
+  // Calculate Y-axis domain based on data range
+  const calculateYAxisDomain = () => {
+    if (!chartData || chartData.length === 0) return ['auto', 'auto'];
+
+    let min = Infinity;
+    let max = -Infinity;
+
+    chartData.forEach((item) => {
+      exchanges.forEach((exchange) => {
+        const value = item[exchange];
+        if (typeof value === 'number' && !isNaN(value)) {
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+        }
+      });
+    });
+
+    if (min === Infinity || max === -Infinity) return ['auto', 'auto'];
+
+    // Add 5% padding on both sides for better visualization
+    const range = max - min;
+    const padding = range * 0.05;
+
+    return [
+      Math.max(0, min - padding), // Don't go below 0 for financial data
+      max + padding,
+    ];
   };
 
   return (
@@ -242,9 +299,9 @@ export function AccountBalanceChart({
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         {loading ? (
-          <Skeleton className="h-[300px] w-full" />
+          <Skeleton className="h-[400px] w-full rounded-md" />
         ) : chartData.length === 0 ? (
-          <div className="flex h-[300px] items-center justify-center text-muted-foreground">
+          <div className="flex h-[400px] items-center justify-center text-muted-foreground">
             <div className="text-center">
               <p className="text-lg font-medium">No data available</p>
               <p className="text-sm">
@@ -255,23 +312,42 @@ export function AccountBalanceChart({
         ) : (
           <ChartContainer
             config={chartConfig}
-            className="aspect-auto h-[300px] w-full"
+            className="aspect-auto h-[400px] w-full"
           >
             <LineChart
               data={chartData}
-              margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
             >
+              <defs>
+                <linearGradient id="gridGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor="currentColor"
+                    stopOpacity="0.1"
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor="currentColor"
+                    stopOpacity="0.05"
+                  />
+                </linearGradient>
+              </defs>
               <CartesianGrid
+                horizontal={true}
                 vertical={false}
-                strokeDasharray="3 3"
-                opacity={0.3}
+                strokeDasharray="1 3"
+                stroke="currentColor"
+                strokeOpacity={0.1}
+                strokeWidth={0.5}
               />
               <XAxis
                 dataKey="date"
                 tickLine={false}
                 axisLine={false}
-                tickMargin={8}
-                minTickGap={32}
+                tickMargin={12}
+                minTickGap={40}
+                fontSize={12}
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 tickFormatter={(value) => {
                   const date = new Date(value);
                   if (timeRange === '1h') {
@@ -297,44 +373,107 @@ export function AccountBalanceChart({
               <YAxis
                 tickLine={false}
                 axisLine={false}
-                tickMargin={8}
+                tickMargin={12}
+                width={80}
+                fontSize={12}
+                tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                domain={calculateYAxisDomain()}
                 tickFormatter={formatCurrency}
               />
               <ChartTooltip
-                cursor={false}
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(value) => {
-                      const date = new Date(value);
-                      if (timeRange === '1h') {
-                        return date.toLocaleString('en-US', {
-                          weekday: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: true,
-                        });
-                      } else if (timeRange === '1d') {
-                        return date.toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          hour12: true,
-                        });
-                      } else {
-                        return date.toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                        });
-                      }
-                    }}
-                    formatter={(value) => formatCurrency(value as number)}
-                    indicator="dot"
-                  />
-                }
+                cursor={{
+                  stroke: 'hsl(var(--border))',
+                  strokeWidth: 1,
+                  strokeDasharray: '3 3',
+                }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload || payload.length === 0) return null;
+
+                  const date = new Date(label);
+                  let formattedDate;
+
+                  if (timeRange === '1h') {
+                    formattedDate = date.toLocaleString('en-US', {
+                      weekday: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                    });
+                  } else if (timeRange === '1d') {
+                    formattedDate = date.toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                    });
+                  } else {
+                    formattedDate = date.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    });
+                  }
+
+                  return (
+                    <div className="rounded-lg border bg-background/95 backdrop-blur-sm shadow-lg p-3 min-w-[200px]">
+                      <div className="text-sm font-medium text-foreground mb-2">
+                        {formattedDate}
+                      </div>
+                      <div className="space-y-1">
+                        {payload.map((entry, index) => {
+                          const exchangeName = entry.dataKey as string;
+                          const displayName =
+                            chartConfig[
+                              exchangeName as keyof typeof chartConfig
+                            ]?.label ||
+                            exchangeName.charAt(0).toUpperCase() +
+                              exchangeName.slice(1);
+
+                          return (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between gap-3"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-sm"
+                                  style={{ backgroundColor: entry.color }}
+                                />
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  {displayName}
+                                </span>
+                              </div>
+                              <span className="text-sm font-semibold text-foreground tabular-nums">
+                                {formatTooltipCurrency(entry.value as number)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {payload.length > 1 && (
+                        <div className="mt-2 pt-2 border-t border-border/50">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Total
+                            </span>
+                            <span className="text-sm font-semibold text-foreground tabular-nums">
+                              {formatTooltipCurrency(
+                                payload.reduce(
+                                  (sum, entry) => sum + (entry.value as number),
+                                  0
+                                )
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
               />
-              {exchanges.map((exchange) => (
+              {exchanges.map((exchange, index) => (
                 <Line
                   key={exchange}
                   dataKey={exchange}
@@ -342,12 +481,21 @@ export function AccountBalanceChart({
                   stroke={
                     chartConfig[exchange as keyof typeof chartConfig]?.color
                   }
-                  strokeWidth={3}
+                  strokeWidth={1.5}
                   dot={false}
-                  activeDot={{ r: 6, strokeWidth: 2 }}
-                  animationDuration={timeRange === '1h' ? 800 : 300}
+                  activeDot={{
+                    r: 4,
+                    strokeWidth: 2,
+                    fill: chartConfig[exchange as keyof typeof chartConfig]
+                      ?.color,
+                    stroke: 'hsl(var(--background))',
+                    filter: 'drop-shadow(0 2px 4px rgb(0 0 0 / 0.1))',
+                  }}
+                  animationDuration={timeRange === '1h' ? 800 : 400}
                   animationEasing="ease-out"
                   connectNulls={true}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
               ))}
               <ChartLegend content={<ChartLegendContent />} />

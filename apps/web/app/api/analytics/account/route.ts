@@ -31,6 +31,15 @@ export async function GET(request: Request) {
       case '7d':
         startTime.setDate(startTime.getDate() - 7);
         break;
+      case '1w':
+        startTime.setDate(startTime.getDate() - 7);
+        break;
+      case '1m':
+        startTime.setMonth(startTime.getMonth() - 1);
+        break;
+      case '1y':
+        startTime.setFullYear(startTime.getFullYear() - 1);
+        break;
       case '90d':
         startTime.setDate(startTime.getDate() - 90);
         break;
