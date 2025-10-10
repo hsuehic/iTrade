@@ -6,7 +6,6 @@ import {
   IconTrendingUp,
   IconWallet,
   IconChartLine,
-  IconCoins,
   IconRocket,
   IconChevronDown,
 } from '@tabler/icons-react';
@@ -22,7 +21,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AnimatedCurrency,
-  AnimatedInteger,
   AnimatedPercentage,
 } from '@/components/animated-number';
 import {
@@ -71,7 +69,7 @@ export function TradingDashboardCards({
   refreshInterval = 5000,
 }: TradingDashboardCardsProps) {
   const [accountData, setAccountData] = useState<AccountSummary | null>(null);
-  const [strategyData, setStrategyData] = useState<StrategySummary | null>(
+  const [_strategyData, setStrategyData] = useState<StrategySummary | null>(
     null
   );
   const [loading, setLoading] = useState(true);
@@ -148,6 +146,8 @@ export function TradingDashboardCards({
               currentBalance,
               changePercentage,
               chartDataLength: balanceChangeJson.chartData?.length || 0,
+              selectedExchange,
+              summary: balanceChangeJson.summary,
             });
           }
 
@@ -352,7 +352,9 @@ export function TradingDashboardCards({
             {balanceChangeData?.change === 0 &&
             balanceChangeData?.changeValue === 0 &&
             balanceChangePeriod === '1d'
-              ? 'Insufficient data for daily comparison'
+              ? selectedExchange === 'all'
+                ? 'Daily comparison requires more historical data across exchanges'
+                : 'Insufficient data for daily comparison'
               : balanceChangePeriod === '1d'
                 ? 'Change in the last 24 hours'
                 : balanceChangePeriod === '1w'

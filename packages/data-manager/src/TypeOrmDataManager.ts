@@ -10,6 +10,7 @@ import { OrderEntity } from './entities/Order';
 import { OrderFillEntity } from './entities/OrderFill';
 import { PositionEntity } from './entities/Position';
 import { StrategyEntity } from './entities/Strategy';
+import { StrategyStateEntity } from './entities/StrategyState';
 import { AccountInfoEntity } from './entities/AccountInfo';
 import { BalanceEntity } from './entities/Balance';
 import { BacktestConfigEntity } from './entities/BacktestConfig';
@@ -93,6 +94,7 @@ export class TypeOrmDataManager implements IDataManager {
         OrderFillEntity,
         PositionEntity,
         StrategyEntity,
+        StrategyStateEntity,
         AccountInfoEntity,
         BalanceEntity,
         AccountSnapshotEntity,

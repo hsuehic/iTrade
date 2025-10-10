@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { IconCheck, IconX, IconWand } from '@tabler/icons-react';
+
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { IconCheck, IconX, IconWand } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 
 interface JsonEditorProps {
@@ -115,4 +116,3 @@ export function JsonEditor({
     </div>
   );
 }
-

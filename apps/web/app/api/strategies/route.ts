@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { StrategyType, StrategyStatus } from '@itrade/data-manager';
+
 import { getDataManager } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { StrategyType, StrategyStatus } from '@itrade/data-manager';
 
 // GET /api/strategies - List all strategies for current user
 export async function GET(request: NextRequest) {
@@ -94,4 +95,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { StrategyStatus } from '@itrade/data-manager';
+
 import { getDataManager } from '@/lib/db';
 import { auth } from '@/lib/auth';
-import { StrategyStatus } from '@itrade/data-manager';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -22,7 +23,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid strategy ID' },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();
@@ -40,7 +44,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const strategy = await dataManager.getStrategy(id);
 
     if (!strategy) {
-      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Strategy not found' },
+        { status: 404 }
+      );
     }
 
     // Check ownership
@@ -60,4 +67,3 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   }
 }
-

@@ -18,7 +18,6 @@ import {
   ChartLegend,
   ChartLegendContent,
   ChartTooltip,
-  ChartTooltipContent,
 } from '@/components/ui/chart';
 import {
   Select,
@@ -29,8 +28,11 @@ import {
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
-import { ExchangeLogo } from '@/components/exchange-logo';
+
+interface ChartDataPoint {
+  date: string;
+  [exchange: string]: string | number;
+}
 
 const chartConfig = {
   binance: {
@@ -58,7 +60,7 @@ export function AccountBalanceChart({
 }: AccountBalanceChartProps) {
   const isMobile = useIsMobile();
   const [timeRange, setTimeRange] = React.useState('30d');
-  const [chartData, setChartData] = React.useState<any[]>([]);
+  const [chartData, setChartData] = React.useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [exchanges, setExchanges] = React.useState<string[]>([]);
   const updateTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -108,7 +110,8 @@ export function AccountBalanceChart({
 
                 // Find new data points that are newer than our latest
                 const newPoints = newChartData.filter(
-                  (point) => new Date(point.date).getTime() > latestPrevTime
+                  (point: ChartDataPoint) =>
+                    new Date(point.date).getTime() > latestPrevTime
                 );
 
                 if (newPoints.length === 0) {
@@ -473,7 +476,7 @@ export function AccountBalanceChart({
                   );
                 }}
               />
-              {exchanges.map((exchange, index) => (
+              {exchanges.map((exchange) => (
                 <Line
                   key={exchange}
                   dataKey={exchange}

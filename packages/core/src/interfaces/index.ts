@@ -90,6 +90,30 @@ export interface IExchange extends EventEmitter {
   getSymbols(): Promise<string[]>;
 }
 
+// Strategy State Management Types
+export interface StrategyStateSnapshot {
+  strategyId?: number;
+  internalState: Record<string, unknown>;
+  indicatorData: Record<string, unknown>;
+  lastSignal?: string;
+  signalTime?: Date;
+  currentPosition: string; // Decimal as string
+  averagePrice?: string; // Decimal as string
+}
+
+export interface StrategyRecoveryContext {
+  strategyId: number;
+  savedState?: StrategyStateSnapshot;
+  openOrders: Array<{
+    orderId: string;
+    status: string;
+    executedQuantity: string;
+    remainingQuantity: string;
+  }>;
+  totalPosition: string;
+  lastExecutionTime?: Date;
+}
+
 // Strategy Interface
 export interface IStrategy {
   readonly name: string;
@@ -105,6 +129,12 @@ export interface IStrategy {
 
   onOrderFilled(order: Order): Promise<void>;
   onPositionChanged(position: Position): Promise<void>;
+
+  // 🆕 State Management Methods
+  saveState(): Promise<StrategyStateSnapshot>;
+  restoreState(snapshot: StrategyStateSnapshot): Promise<void>;
+  setRecoveryContext(context: StrategyRecoveryContext): Promise<void>;
+  getStateVersion(): string; // For state schema versioning
 
   cleanup(): Promise<void>;
 }

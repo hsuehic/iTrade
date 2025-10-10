@@ -101,6 +101,7 @@ Main documentation hub for the entire project.
 **Chinese Version**: Add `_CN` suffix
 
 Examples:
+
 - `README.md` - English (default)
 - `README_CN.md` - Chinese version
 - `QUICK_START.md` - English
@@ -109,6 +110,7 @@ Examples:
 - `API_REFERENCE_CN.md` - Chinese version
 
 **Rationale**:
+
 - English is the international standard for open-source projects
 - Cursor AI and most development tools work best with English
 - Makes the project more accessible to global developers
@@ -349,3 +351,185 @@ Is it API reference?
 When in doubt, put it in `docs/guides/` and organize later.
 
 **Remember**: Good documentation structure makes the project more maintainable and user-friendly! 📚✨
+
+---
+
+## ✍️ Documentation Signature Rules
+
+### Required Ending Signature
+
+**All documentation, posts, and technical articles MUST end with the following signature format:**
+
+```markdown
+---
+
+Author: xiaoweihsueh@gmail.com  
+Date: [Current Date in format: Month Day, Year]
+```
+
+### Examples
+
+#### For Documentation Files
+
+```markdown
+---
+
+Author: xiaoweihsueh@gmail.com  
+Date: [Current Date in format: Month Day, Year]
+```
+
+#### For Wiki Posts
+
+```markdown
+---
+
+*This article is written based on actual development experience of the iTrade project.*
+
+Author: xiaoweihsueh@gmail.com  
+Date: [Current Date in format: Month Day, Year]
+```
+
+#### For Implementation Summaries
+
+```markdown
+---
+
+*Implementation completed and verified through automated testing.*
+
+Author: xiaoweihsueh@gmail.com  
+Date: [Current Date in format: Month Day, Year]
+```
+
+### AI Agent Instructions for Signatures
+
+1. **ALWAYS include** the signature at the end of every document
+2. **Use the actual current date when you are writing** (e.g., if today is December 10, 2024, use "December 10, 2024")
+3. **Do NOT use placeholder text** - always replace with the real current date
+4. **Do NOT include version numbers** - only Author and Date
+5. **Maintain consistent formatting** with the examples above
+6. **Add contextual notes** above the signature when appropriate (e.g., project context, implementation status)
+
+**Critical**:
+
+- When you see `[Current Date in format: Month Day, Year]` in the template, replace it with TODAY'S actual date
+- Format: "Month Day, Year" (e.g., "December 10, 2024")
+- Use the date when you are actually creating/updating the document, not a fixed date
+
+### Signature Placement
+
+- Place signature **after main content** but **before references/links section**
+- Use `---` horizontal rule to separate signature from main content
+- Keep signature formatting consistent across all documents
+
+This ensures consistent authorship attribution and helps track document creation/modification dates across the entire project.
+
+---
+
+## 🔧 Code Quality and Linting Rules
+
+### Mandatory Post-Edit Linting
+
+**After ANY modification to source code or documentation files, AI agents MUST execute appropriate linting commands to ensure code quality and formatting compliance.**
+
+#### Required Actions After Code Changes
+
+1. **For TypeScript/JavaScript files** (`.ts`, `.tsx`, `.js`, `.jsx`):
+
+   ```bash
+   # Run lint check for the specific project
+   pnpm lint                    # For Next.js apps
+   npm run lint                 # For other packages
+   
+   # If linting errors are found, attempt to auto-fix
+   pnpm lint --fix             # Auto-fix when possible
+   ```
+
+2. **For Markdown files** (`.md`):
+
+   ```bash
+   # Check markdown formatting
+   pnpm lint                   # If project has markdown linting
+   # Or use dedicated markdown linter if available
+   ```
+
+3. **For JSON/Config files** (`.json`, `.yaml`, `.yml`):
+
+   ```bash
+   # Validate JSON/YAML syntax
+   pnpm lint                   # Project-specific linting
+   ```
+
+#### Workflow Requirements
+
+1. **ALWAYS run linting** after making code changes
+2. **REPORT linting results** to the user
+3. **ATTEMPT to fix** common formatting issues automatically
+4. **STOP and ask for guidance** if critical errors cannot be auto-fixed
+5. **NEVER leave broken code** - ensure all changes compile and pass basic checks
+
+#### Project-Specific Lint Commands
+
+| Project Location | Command | Description |
+|------------------|---------|-------------|
+| `/apps/web/` | `pnpm lint` | Next.js web application linting |
+| `/apps/console/` | `pnpm lint` | Node.js console application linting |
+| `/apps/mobile/` | `flutter analyze` | Flutter mobile app analysis |
+| `/packages/*/` | `pnpm lint` or `npm run lint` | Package-specific linting |
+| Root directory | `pnpm lint:all` | Lint all workspaces (if available) |
+
+#### Error Handling Protocol
+
+```markdown
+1. Run appropriate lint command
+2. If errors found:
+   - Try auto-fix: `pnpm lint --fix`
+   - Report remaining errors to user
+   - Provide specific line numbers and descriptions
+   - Suggest manual fixes if auto-fix failed
+3. If critical errors:
+   - Do not proceed with additional changes
+   - Ask user for guidance on error resolution
+4. If warnings only:
+   - Report warnings but may proceed
+   - Suggest improvements for code quality
+```
+
+#### AI Agent Instructions for Linting
+
+1. **EXECUTE linting immediately** after any file modification
+2. **USE the read_lints tool** to check for specific file linting errors
+3. **BATCH lint checks** when modifying multiple files in the same project
+4. **PRIORITIZE auto-fixable issues** over manual interventions
+5. **DOCUMENT any persistent errors** that require manual attention
+
+#### Example Workflow
+
+```bash
+# After modifying apps/web/components/example.tsx
+cd apps/web
+pnpm lint
+
+# If errors found
+pnpm lint --fix
+
+# Check specific file if needed
+pnpm lint --file components/example.tsx
+```
+
+#### Quality Gates
+
+- **No compilation errors** allowed
+- **Critical linting errors** must be resolved
+- **Warnings should be minimized** where possible
+- **Consistent formatting** across all files
+- **Import organization** following project standards
+
+#### Skip Conditions
+
+Linting may be skipped ONLY when:
+
+- User explicitly requests to skip linting
+- Working on draft/experimental code that user acknowledges is temporary
+- System/configuration files that don't support linting
+
+**Default behavior: ALWAYS run linting unless explicitly told otherwise.**

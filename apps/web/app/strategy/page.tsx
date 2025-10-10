@@ -1,6 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
+import {
+  IconPlus,
+  IconPlayerPlay,
+  IconPlayerPause,
+  IconTrash,
+  IconEdit,
+  IconChartLine,
+  IconClock,
+  IconSettings,
+} from '@tabler/icons-react';
+import {
+  STRATEGY_REGISTRY,
+  getAllStrategyTypes,
+  getStrategyConfig,
+  getStrategyDefaultParameters,
+  type StrategyTypeKey,
+  type StrategyConfig,
+} from '@itrade/core';
+import {
+  getImplementedStrategies,
+  getAllStrategiesWithImplementationStatus,
+  type StrategyImplementationInfo,
+} from '@itrade/strategies';
+
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
@@ -34,18 +59,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { JsonEditor } from '@/components/json-editor';
-import { toast } from 'sonner';
+import { StrategyParameterFormSimple } from '@/components/strategy-parameter-form-simple';
 import {
-  IconPlus,
-  IconPlayerPlay,
-  IconPlayerPause,
-  IconTrash,
-  IconEdit,
-  IconChartLine,
-  IconClock,
-  IconSettings,
-} from '@tabler/icons-react';
-import { SUPPORTED_EXCHANGES, getSymbolFormatHint, getDefaultSymbol, getExchangeIcon, getExchangeLogoUrl, COMMON_TRADING_PAIRS, getCryptoIconUrl, extractBaseCurrency, normalizeSymbolForExchange } from '@/lib/exchanges';
+  SUPPORTED_EXCHANGES,
+  getSymbolFormatHint,
+  getDefaultSymbol,
+  getExchangeIcon,
+  getExchangeLogoUrl,
+  COMMON_TRADING_PAIRS,
+  getCryptoIconUrl,
+  extractBaseCurrency,
+  normalizeSymbolForExchange,
+  getTradingPairsForExchange,
+  getDefaultTradingPair,
+} from '@/lib/exchanges';
 
 type Strategy = {
   id: number;
@@ -67,29 +94,54 @@ export default function StrategyPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  // 使用策略配置系统获取默认值
+  const getDefaultStrategyType = (): StrategyTypeKey => {
+    const implementedStrategies = getImplementedStrategies();
+    return implementedStrategies.length > 0
+      ? implementedStrategies[0].type
+      : 'moving_average';
+  };
+
+  const getDefaultParametersForType = (type: StrategyTypeKey) => {
+    return getStrategyDefaultParameters(type);
+  };
+
+  // 处理参数表单变化
+  const handleParametersChange = useCallback(
+    (parameters: Record<string, any>) => {
+      setFormData((prev) => ({
+        ...prev,
+        parameters: JSON.stringify(parameters, null, 2),
+      }));
+    },
+    []
+  );
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    type: 'moving_average',
-    exchange: 'binance',
-    symbol: 'BTC/USDT',
+    type: getDefaultStrategyType(),
+    exchange: 'coinbase',
+    symbol: 'BTC/USDC:USDC',
     parameters: JSON.stringify(
-      {
-        fastPeriod: 12,
-        slowPeriod: 26,
-        threshold: 0.001,
-        subscription: {
-          ticker: true,
-          klines: true,
-          method: 'rest',
-        },
-      },
+      getDefaultParametersForType(getDefaultStrategyType()),
       null,
       2
     ),
   });
+
+  // 使用useMemo稳定initialParameters引用，避免无限循环
+  const memoizedInitialParameters = useMemo(() => {
+    try {
+      return JSON.parse(formData.parameters);
+    } catch {
+      return getDefaultParametersForType(formData.type as StrategyTypeKey);
+    }
+  }, [formData.parameters, formData.type]);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [showAdvancedMode, setShowAdvancedMode] = useState(false);
 
   useEffect(() => {
     fetchStrategies();
@@ -119,7 +171,9 @@ export default function StrategyPage() {
         return;
       }
 
-      const url = isEditing ? `/api/strategies/${editingId}` : '/api/strategies';
+      const url = isEditing
+        ? `/api/strategies/${editingId}`
+        : '/api/strategies';
       const method = isEditing ? 'PATCH' : 'POST';
 
       const response = await fetch(url, {
@@ -130,10 +184,14 @@ export default function StrategyPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || `Failed to ${isEditing ? 'update' : 'create'} strategy`);
+        throw new Error(
+          error.error || `Failed to ${isEditing ? 'update' : 'create'} strategy`
+        );
       }
 
-      toast.success(`Strategy ${isEditing ? 'updated' : 'created'} successfully`);
+      toast.success(
+        `Strategy ${isEditing ? 'updated' : 'created'} successfully`
+      );
       setIsCreateDialogOpen(false);
       resetForm();
       fetchStrategies();
@@ -157,29 +215,22 @@ export default function StrategyPage() {
   };
 
   const resetForm = () => {
+    const defaultType = getDefaultStrategyType();
     setFormData({
       name: '',
       description: '',
-      type: 'moving_average',
-      exchange: 'binance',
-      symbol: 'BTC/USDT',
+      type: defaultType,
+      exchange: 'coinbase',
+      symbol: 'BTC/USDC:USDC',
       parameters: JSON.stringify(
-        {
-          fastPeriod: 12,
-          slowPeriod: 26,
-          threshold: 0.001,
-          subscription: {
-            ticker: true,
-            klines: true,
-            method: 'rest',
-          },
-        },
+        getDefaultParametersForType(defaultType),
         null,
         2
       ),
     });
     setIsEditing(false);
     setEditingId(null);
+    setShowAdvancedMode(false);
   };
 
   const updateStrategyStatus = async (id: number, newStatus: string) => {
@@ -192,7 +243,9 @@ export default function StrategyPage() {
 
       if (!response.ok) throw new Error('Failed to update strategy status');
 
-      toast.success(`Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`);
+      toast.success(
+        `Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`
+      );
       fetchStrategies();
     } catch (error) {
       toast.error('Failed to update strategy status');
@@ -220,7 +273,10 @@ export default function StrategyPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+    const variants: Record<
+      string,
+      'default' | 'secondary' | 'destructive' | 'outline'
+    > = {
       active: 'default',
       stopped: 'secondary',
       paused: 'outline',
@@ -257,7 +313,9 @@ export default function StrategyPage() {
             {/* Header */}
             <div className="flex justify-between items-start px-4 lg:px-6">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">Trading Strategies</h2>
+                <h2 className="text-2xl font-bold tracking-tight">
+                  Trading Strategies
+                </h2>
                 <p className="text-muted-foreground mt-1">
                   Create, manage and monitor your automated trading strategies
                 </p>
@@ -297,41 +355,73 @@ export default function StrategyPage() {
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
                             <Label htmlFor="name">
-                              Strategy Name <span className="text-red-500">*</span>
+                              Strategy Name{' '}
+                              <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               id="name"
                               placeholder="e.g., BTC MA Cross"
                               value={formData.name}
                               onChange={(e) =>
-                                setFormData({ ...formData, name: e.target.value })
+                                setFormData({
+                                  ...formData,
+                                  name: e.target.value,
+                                })
                               }
                               required
                             />
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="type">
-                              Strategy Type <span className="text-red-500">*</span>
+                              Strategy Type{' '}
+                              <span className="text-red-500">*</span>
                             </Label>
                             <Select
                               value={formData.type}
-                              onValueChange={(value) =>
-                                setFormData({ ...formData, type: value })
-                              }
+                              onValueChange={(value: StrategyTypeKey) => {
+                                // 当策略类型改变时，自动更新默认参数
+                                const newParameters =
+                                  getDefaultParametersForType(value);
+                                setFormData({
+                                  ...formData,
+                                  type: value,
+                                  parameters: JSON.stringify(
+                                    newParameters,
+                                    null,
+                                    2
+                                  ),
+                                });
+                                // 重置为表单模式以便用户看到新策略的参数
+                                setShowAdvancedMode(false);
+                              }}
                             >
                               <SelectTrigger>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="moving_average">
-                                  Moving Average Crossover
-                                </SelectItem>
-                                <SelectItem value="rsi">RSI Indicator</SelectItem>
-                                <SelectItem value="macd">MACD Strategy</SelectItem>
-                                <SelectItem value="bollinger_bands">
-                                  Bollinger Bands
-                                </SelectItem>
-                                <SelectItem value="custom">Custom Strategy</SelectItem>
+                                {getAllStrategiesWithImplementationStatus().map(
+                                  (strategy) => (
+                                    <SelectItem
+                                      key={strategy.type}
+                                      value={strategy.type}
+                                      disabled={!strategy.isImplemented}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <span>{strategy.icon}</span>
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">
+                                            {strategy.name}
+                                          </span>
+                                          {!strategy.isImplemented && (
+                                            <span className="text-xs text-muted-foreground">
+                                              Coming Soon
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </SelectItem>
+                                  )
+                                )}
                               </SelectContent>
                             </Select>
                           </div>
@@ -345,12 +435,15 @@ export default function StrategyPage() {
                             <Select
                               value={formData.exchange}
                               onValueChange={(value) => {
-                                // Update exchange and set default symbol for that exchange
-                                const defaultSymbol = getDefaultSymbol(value);
+                                // Update exchange and set default trading pair for that exchange
+                                const defaultTradingPair =
+                                  getDefaultTradingPair(value);
                                 setFormData({
                                   ...formData,
                                   exchange: value,
-                                  symbol: isEditing ? formData.symbol : defaultSymbol,
+                                  symbol: isEditing
+                                    ? formData.symbol
+                                    : defaultTradingPair,
                                 });
                               }}
                             >
@@ -359,25 +452,40 @@ export default function StrategyPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {SUPPORTED_EXCHANGES.map((exchange) => {
-                                  const logoUrl = 'logoUrl' in exchange ? exchange.logoUrl : undefined;
-                                  const iconEmoji = 'iconEmoji' in exchange ? exchange.iconEmoji : '💱';
+                                  const logoUrl =
+                                    'logoUrl' in exchange
+                                      ? exchange.logoUrl
+                                      : undefined;
+                                  const iconEmoji =
+                                    'iconEmoji' in exchange
+                                      ? exchange.iconEmoji
+                                      : '💱';
                                   return (
-                                    <SelectItem key={exchange.id} value={exchange.id}>
+                                    <SelectItem
+                                      key={exchange.id}
+                                      value={exchange.id}
+                                    >
                                       <div className="flex items-center gap-3">
                                         {logoUrl ? (
-                                          <img 
-                                            src={logoUrl} 
+                                          <img
+                                            src={logoUrl}
                                             alt={exchange.name}
                                             className="w-5 h-5 rounded-full"
                                             onError={(e) => {
-                                              (e.target as HTMLImageElement).style.display = 'none';
+                                              (
+                                                e.target as HTMLImageElement
+                                              ).style.display = 'none';
                                             }}
                                           />
                                         ) : (
-                                          <span className="text-base">{iconEmoji}</span>
+                                          <span className="text-base">
+                                            {iconEmoji}
+                                          </span>
                                         )}
                                         <div className="flex items-center gap-2">
-                                          <span className="font-medium">{exchange.name}</span>
+                                          <span className="font-medium">
+                                            {exchange.name}
+                                          </span>
                                           <span className="text-xs text-muted-foreground">
                                             ({exchange.description})
                                           </span>
@@ -394,7 +502,8 @@ export default function StrategyPage() {
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="symbol">
-                              Trading Pair <span className="text-red-500">*</span>
+                              Trading Pair{' '}
+                              <span className="text-red-500">*</span>
                             </Label>
                             <Select
                               value={formData.symbol}
@@ -406,20 +515,33 @@ export default function StrategyPage() {
                                 <SelectValue placeholder="Select trading pair" />
                               </SelectTrigger>
                               <SelectContent>
-                                {COMMON_TRADING_PAIRS.map((pair) => (
-                                  <SelectItem key={pair.symbol} value={pair.symbol}>
+                                {getTradingPairsForExchange(
+                                  formData.exchange
+                                ).map((pair) => (
+                                  <SelectItem
+                                    key={pair.symbol}
+                                    value={pair.symbol}
+                                  >
                                     <div className="flex items-center gap-2">
-                                      <img 
+                                      <img
                                         src={getCryptoIconUrl(pair.base)}
                                         alt={pair.base}
                                         className="w-4 h-4 rounded-full"
                                         onError={(e) => {
-                                          (e.target as HTMLImageElement).style.display = 'none';
+                                          (
+                                            e.target as HTMLImageElement
+                                          ).style.display = 'none';
                                         }}
                                       />
-                                      <span className="font-medium">{pair.name}</span>
+                                      <span className="font-medium">
+                                        {pair.name}
+                                      </span>
                                       <span className="text-xs text-muted-foreground">
-                                        ({pair.type === 'perpetual' ? '⚡ Perp' : '💼 Spot'})
+                                        (
+                                        {pair.type === 'perpetual'
+                                          ? '⚡ Perp'
+                                          : '💼 Spot'}
+                                        )
                                       </span>
                                     </div>
                                   </SelectItem>
@@ -427,7 +549,8 @@ export default function StrategyPage() {
                               </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                              Format: {getSymbolFormatHint(formData.exchange)} • Backend normalizes automatically
+                              Format: {getSymbolFormatHint(formData.exchange)} •
+                              Backend normalizes automatically
                             </p>
                           </div>
                         </div>
@@ -439,7 +562,10 @@ export default function StrategyPage() {
                             placeholder="Describe your strategy's approach and goals..."
                             value={formData.description}
                             onChange={(e) =>
-                              setFormData({ ...formData, description: e.target.value })
+                              setFormData({
+                                ...formData,
+                                description: e.target.value,
+                              })
                             }
                             rows={3}
                           />
@@ -447,34 +573,68 @@ export default function StrategyPage() {
                       </TabsContent>
 
                       <TabsContent value="config" className="space-y-4 mt-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="parameters">
-                            Strategy Parameters <span className="text-red-500">*</span>
-                          </Label>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            Configure your strategy parameters in JSON format
-                          </p>
-                          <JsonEditor
-                            value={formData.parameters}
-                            onChange={(value) =>
-                              setFormData({ ...formData, parameters: value })
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <Label className="text-base font-medium">
+                              Strategy Parameters{' '}
+                              <span className="text-red-500">*</span>
+                            </Label>
+                            <p className="text-sm text-muted-foreground">
+                              {showAdvancedMode
+                                ? 'Configure parameters using JSON format'
+                                : 'Configure parameters using form inputs'}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setShowAdvancedMode(!showAdvancedMode)
                             }
-                            placeholder={JSON.stringify(
-                              {
-                                fastPeriod: 12,
-                                slowPeriod: 26,
-                                threshold: 0.001,
-                                subscription: {
-                                  ticker: true,
-                                  klines: true,
-                                  method: 'rest',
-                                },
-                              },
-                              null,
-                              2
+                          >
+                            {showAdvancedMode ? (
+                              <>
+                                <IconSettings className="h-4 w-4 mr-2" />
+                                Form Mode
+                              </>
+                            ) : (
+                              <>
+                                <IconClock className="h-4 w-4 mr-2" />
+                                JSON Mode
+                              </>
                             )}
-                          />
+                          </Button>
                         </div>
+
+                        {showAdvancedMode ? (
+                          <div className="space-y-2">
+                            <JsonEditor
+                              value={formData.parameters}
+                              onChange={(value) =>
+                                setFormData({ ...formData, parameters: value })
+                              }
+                              placeholder={JSON.stringify(
+                                getDefaultParametersForType(
+                                  formData.type as StrategyTypeKey
+                                ),
+                                null,
+                                2
+                              )}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Advanced mode: Edit parameters in JSON format.
+                              Switch to form mode for guided parameter
+                              configuration.
+                            </p>
+                          </div>
+                        ) : (
+                          <StrategyParameterFormSimple
+                            strategyType={formData.type as StrategyTypeKey}
+                            initialParameters={memoizedInitialParameters}
+                            onParametersChange={handleParametersChange}
+                          />
+                        )}
 
                         <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
                           <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
@@ -483,20 +643,20 @@ export default function StrategyPage() {
                           </h4>
                           <ul className="text-xs text-muted-foreground space-y-1">
                             <li>
-                              • <code className="font-mono">fastPeriod</code>: Short-term
-                              moving average period
+                              • <code className="font-mono">fastPeriod</code>:
+                              Short-term moving average period
                             </li>
                             <li>
-                              • <code className="font-mono">slowPeriod</code>: Long-term
-                              moving average period
+                              • <code className="font-mono">slowPeriod</code>:
+                              Long-term moving average period
                             </li>
                             <li>
-                              • <code className="font-mono">threshold</code>: Signal
-                              threshold (0.001 = 0.1%)
+                              • <code className="font-mono">threshold</code>:
+                              Signal threshold (0.001 = 0.1%)
                             </li>
                             <li>
-                              • <code className="font-mono">subscription</code>: Market
-                              data subscription config
+                              • <code className="font-mono">subscription</code>:
+                              Market data subscription config
                             </li>
                           </ul>
                         </div>
@@ -540,10 +700,13 @@ export default function StrategyPage() {
                     <div className="rounded-full bg-muted p-4 mb-4">
                       <IconChartLine className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">No strategies yet</h3>
+                    <h3 className="text-lg font-semibold mb-2">
+                      No strategies yet
+                    </h3>
                     <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-                      Get started by creating your first automated trading strategy.
-                      Configure parameters, set your trading pair, and start trading.
+                      Get started by creating your first automated trading
+                      strategy. Configure parameters, set your trading pair, and
+                      start trading.
                     </p>
                     <Button onClick={() => setIsCreateDialogOpen(true)}>
                       <IconPlus className="mr-2 h-4 w-4" />
@@ -583,15 +746,23 @@ export default function StrategyPage() {
 
                         <div className="space-y-2">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Exchange</span>
-                            <Badge variant="outline" className="font-medium gap-1.5">
-                              {strategy.exchange && getExchangeLogoUrl(strategy.exchange) ? (
-                                <img 
+                            <span className="text-muted-foreground">
+                              Exchange
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="font-medium gap-1.5"
+                            >
+                              {strategy.exchange &&
+                              getExchangeLogoUrl(strategy.exchange) ? (
+                                <img
                                   src={getExchangeLogoUrl(strategy.exchange)}
                                   alt={strategy.exchange}
                                   className="w-4 h-4 rounded-full"
                                   onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = 'none';
+                                    (
+                                      e.target as HTMLImageElement
+                                    ).style.display = 'none';
                                   }}
                                 />
                               ) : strategy.exchange ? (
@@ -606,15 +777,25 @@ export default function StrategyPage() {
                             </Badge>
                           </div>
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">Trading Pair</span>
+                            <span className="text-muted-foreground">
+                              Trading Pair
+                            </span>
                             <div className="flex items-center gap-2">
-                              {strategy.marketType && strategy.marketType !== 'spot' && (
-                                <Badge variant="destructive" className="text-xs">
-                                  {strategy.marketType === 'perpetual' ? '⚡ Perp' : '📈 Futures'}
-                                </Badge>
-                              )}
+                              {strategy.marketType &&
+                                strategy.marketType !== 'spot' && (
+                                  <Badge
+                                    variant="destructive"
+                                    className="text-xs"
+                                  >
+                                    {strategy.marketType === 'perpetual'
+                                      ? '⚡ Perp'
+                                      : '📈 Futures'}
+                                  </Badge>
+                                )}
                               <span className="font-mono font-medium">
-                                {strategy.normalizedSymbol || strategy.symbol || 'N/A'}
+                                {strategy.normalizedSymbol ||
+                                  strategy.symbol ||
+                                  'N/A'}
                               </span>
                             </div>
                           </div>
@@ -623,7 +804,9 @@ export default function StrategyPage() {
                               <IconClock className="h-3 w-3" />
                               <span>
                                 Last run:{' '}
-                                {new Date(strategy.lastExecutionTime).toLocaleString()}
+                                {new Date(
+                                  strategy.lastExecutionTime
+                                ).toLocaleString()}
                               </span>
                             </div>
                           )}

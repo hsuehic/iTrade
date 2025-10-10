@@ -9,7 +9,8 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import type { StrategyParameters } from '@itrade/core';
+import type { StrategyParameters, StrategyTypeKey } from '@itrade/core';
+import { getAllStrategyTypes } from '@itrade/core';
 
 import { OrderEntity } from './Order';
 import { User } from './User';
@@ -21,12 +22,51 @@ export enum StrategyStatus {
   ERROR = 'error',
 }
 
+// ⚠️ 策略类型枚举 - 必须与 @itrade/core 中的 STRATEGY_REGISTRY 保持同步
+// 🔧 添加新策略时，需要同时更新策略配置文件和此枚举
 export enum StrategyType {
   MOVING_AVERAGE = 'moving_average',
   RSI = 'rsi',
   MACD = 'macd',
   BOLLINGER_BANDS = 'bollinger_bands',
   CUSTOM = 'custom',
+}
+
+// 🔍 编译时验证：确保枚举与策略配置保持同步
+const validateStrategyTypeSync = () => {
+  const registryTypes = getAllStrategyTypes();
+  const enumTypes = Object.values(StrategyType);
+
+  // 检查是否所有注册的策略类型都存在于枚举中
+  const missingInEnum = registryTypes.filter(
+    (type) => !enumTypes.includes(type as any)
+  );
+  if (missingInEnum.length > 0) {
+    console.warn(
+      `⚠️ Strategy types missing in StrategyType enum: ${missingInEnum.join(', ')}`
+    );
+  }
+
+  // 检查是否枚举中有未注册的类型
+  const missingInRegistry = enumTypes.filter(
+    (type) => !registryTypes.includes(type as StrategyTypeKey)
+  );
+  if (missingInRegistry.length > 0) {
+    console.warn(
+      `⚠️ Strategy types missing in STRATEGY_REGISTRY: ${missingInRegistry.join(', ')}`
+    );
+  }
+
+  return missingInEnum.length === 0 && missingInRegistry.length === 0;
+};
+
+// 在开发环境下进行同步验证
+if (process.env.NODE_ENV === 'development') {
+  try {
+    validateStrategyTypeSync();
+  } catch (error) {
+    console.warn('⚠️ Strategy type validation failed:', error);
+  }
 }
 
 export enum MarketType {

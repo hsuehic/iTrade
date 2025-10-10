@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+
 import { getDataManager } from '@/lib/db';
 import { auth } from '@/lib/auth';
 
@@ -21,14 +22,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid strategy ID' },
+        { status: 400 }
+      );
     }
 
     const dataManager = await getDataManager();
     const strategy = await dataManager.getStrategy(id);
 
     if (!strategy) {
-      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Strategy not found' },
+        { status: 404 }
+      );
     }
 
     // Check ownership
@@ -61,14 +68,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid strategy ID' },
+        { status: 400 }
+      );
     }
 
     const dataManager = await getDataManager();
     const strategy = await dataManager.getStrategy(id);
 
     if (!strategy) {
-      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Strategy not found' },
+        { status: 404 }
+      );
     }
 
     // Check ownership
@@ -77,7 +90,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json();
-    const { name, description, type, status, exchange, symbol, parameters } = body;
+    const { name, description, type, status, exchange, symbol, parameters } =
+      body;
 
     const updates: any = {};
     if (name !== undefined) updates.name = name;
@@ -116,14 +130,20 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid strategy ID' },
+        { status: 400 }
+      );
     }
 
     const dataManager = await getDataManager();
     const strategy = await dataManager.getStrategy(id);
 
     if (!strategy) {
-      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Strategy not found' },
+        { status: 404 }
+      );
     }
 
     // Check ownership
@@ -149,4 +169,3 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     );
   }
 }
-

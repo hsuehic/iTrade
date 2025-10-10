@@ -9,7 +9,11 @@ export { TradingEngine } from './engine/TradingEngine';
 export { BaseStrategy } from './models/BaseStrategy';
 export { OrderManager } from './models/OrderManager';
 export { OrderSyncService } from './models/OrderSyncService';
-export type { OrderSyncConfig, OrderSyncStats, IOrderDataManager } from './models/OrderSyncService';
+export type {
+  OrderSyncConfig,
+  OrderSyncStats,
+  IOrderDataManager,
+} from './models/OrderSyncService';
 
 // Services
 export { AccountPollingService } from './services/AccountPollingService';
@@ -34,3 +38,29 @@ export type {
   EngineEvent,
   ExchangeEvent,
 } from './events';
+
+// Strategy Registry - 策略配置中心
+export {
+  STRATEGY_REGISTRY,
+  getImplementedStrategies,
+  getAllStrategyTypes,
+  getStrategyConfig,
+  getStrategyDefaultParameters,
+  isValidStrategyType,
+  getStrategiesByCategory,
+} from './config/strategy-registry';
+export type {
+  StrategyTypeKey,
+  StrategyConfig,
+  StrategyParameterDefinition,
+} from './config/strategy-registry';
+
+// Strategy State Management & Monitoring
+export { StrategyStateManager } from './models/StrategyStateManager';
+export { StrategyStateMonitor } from './monitoring/StrategyStateMonitor';
+export { TypeOrmStrategyStateAdapter } from './adapters/TypeOrmStrategyStateAdapter';
+export type {
+  StateRecoveryMetrics,
+  StrategyHealthStatus,
+} from './monitoring/StrategyStateMonitor';
+export type { StrategyRecoveryResult } from './models/StrategyStateManager';

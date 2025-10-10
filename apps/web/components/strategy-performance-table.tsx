@@ -78,7 +78,7 @@ export function StrategyPerformanceTable() {
     };
 
     fetchData();
-    
+
     // Refresh every minute
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
@@ -222,7 +222,9 @@ export function StrategyPerformanceTable() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Exchange</TableHead>
-                      <TableHead className="text-right">Total Strategies</TableHead>
+                      <TableHead className="text-right">
+                        Total Strategies
+                      </TableHead>
                       <TableHead className="text-right">Active</TableHead>
                       <TableHead className="text-right">Total P&L</TableHead>
                       <TableHead className="text-right">Avg P&L</TableHead>
@@ -282,7 +284,9 @@ export function StrategyPerformanceTable() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Symbol</TableHead>
-                      <TableHead className="text-right">Total Strategies</TableHead>
+                      <TableHead className="text-right">
+                        Total Strategies
+                      </TableHead>
                       <TableHead className="text-right">Active</TableHead>
                       <TableHead className="text-right">Total P&L</TableHead>
                       <TableHead className="text-right">Avg P&L</TableHead>
@@ -333,4 +337,3 @@ export function StrategyPerformanceTable() {
     </Card>
   );
 }
-

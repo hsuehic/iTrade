@@ -1,6 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import {
+  IconTrendingUp,
+  IconTrendingDown,
+  IconFileInvoice,
+  IconChartBar,
+} from '@tabler/icons-react';
+
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,13 +29,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
-import {
-  IconTrendingUp,
-  IconTrendingDown,
-  IconFileInvoice,
-  IconChartBar,
-} from '@tabler/icons-react';
 
 type PnLData = {
   totalPnl: number;
@@ -106,7 +107,7 @@ export default function AnalyticsPage() {
       }
 
       await fetchOrders();
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to load analytics data');
     } finally {
       setLoading(false);
@@ -115,12 +116,14 @@ export default function AnalyticsPage() {
 
   const fetchStrategyPnL = async (strategyId: number) => {
     try {
-      const response = await fetch(`/api/analytics/pnl?strategyId=${strategyId}`);
+      const response = await fetch(
+        `/api/analytics/pnl?strategyId=${strategyId}`
+      );
       if (response.ok) {
         const data = await response.json();
         setStrategyPnL(data.pnl);
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to load strategy PnL');
     }
   };
@@ -135,7 +138,7 @@ export default function AnalyticsPage() {
         const data = await response.json();
         setOrders(data.orders);
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('Failed to load orders');
     }
   };
@@ -174,7 +177,10 @@ export default function AnalyticsPage() {
                 Track your performance and profitability
               </p>
             </div>
-            <Select value={selectedStrategyId} onValueChange={setSelectedStrategyId}>
+            <Select
+              value={selectedStrategyId}
+              onValueChange={setSelectedStrategyId}
+            >
               <SelectTrigger className="w-[250px]">
                 <SelectValue placeholder="All Strategies" />
               </SelectTrigger>
@@ -198,7 +204,9 @@ export default function AnalyticsPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total PnL</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total PnL
+                  </CardTitle>
                   {displayPnL && displayPnL.totalPnl >= 0 ? (
                     <IconTrendingUp className="h-4 w-4 text-green-600" />
                   ) : (
@@ -226,7 +234,9 @@ export default function AnalyticsPage() {
                   <div className="text-2xl font-bold">
                     {displayPnL ? formatPnL(displayPnL.realizedPnl) : 'N/A'}
                   </div>
-                  <p className="text-xs text-muted-foreground">Closed positions</p>
+                  <p className="text-xs text-muted-foreground">
+                    Closed positions
+                  </p>
                 </CardContent>
               </Card>
 
@@ -241,7 +251,9 @@ export default function AnalyticsPage() {
                   <div className="text-2xl font-bold">
                     {displayPnL ? formatPnL(displayPnL.unrealizedPnl) : 'N/A'}
                   </div>
-                  <p className="text-xs text-muted-foreground">Open positions</p>
+                  <p className="text-xs text-muted-foreground">
+                    Open positions
+                  </p>
                 </CardContent>
               </Card>
 
@@ -302,27 +314,41 @@ export default function AnalyticsPage() {
                                 <TableCell className="text-xs">
                                   {new Date(order.timestamp).toLocaleString()}
                                 </TableCell>
-                                <TableCell>{order.strategy?.name || 'N/A'}</TableCell>
+                                <TableCell>
+                                  {order.strategy?.name || 'N/A'}
+                                </TableCell>
                                 <TableCell>{order.symbol}</TableCell>
                                 <TableCell>
                                   <Badge
                                     variant={
-                                      order.side === 'BUY' ? 'default' : 'secondary'
+                                      order.side === 'BUY'
+                                        ? 'default'
+                                        : 'secondary'
                                     }
                                   >
                                     {order.side}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>{order.type}</TableCell>
-                                <TableCell>{formatNumber(order.quantity)}</TableCell>
                                 <TableCell>
-                                  {order.price ? formatNumber(order.price) : 'Market'}
+                                  {formatNumber(order.quantity)}
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant="outline">{order.status}</Badge>
+                                  {order.price
+                                    ? formatNumber(order.price)
+                                    : 'Market'}
                                 </TableCell>
-                                <TableCell>{formatPnL(order.realizedPnl)}</TableCell>
-                                <TableCell>{formatPnL(order.unrealizedPnl)}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">
+                                    {order.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {formatPnL(order.realizedPnl)}
+                                </TableCell>
+                                <TableCell>
+                                  {formatPnL(order.unrealizedPnl)}
+                                </TableCell>
                               </TableRow>
                             ))}
                           </TableBody>
@@ -339,7 +365,8 @@ export default function AnalyticsPage() {
                     <CardTitle>PnL by Strategy</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {!overallPnL?.strategies || overallPnL.strategies.length === 0 ? (
+                    {!overallPnL?.strategies ||
+                    overallPnL.strategies.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground">
                         No strategy data available
                       </div>
@@ -360,7 +387,9 @@ export default function AnalyticsPage() {
                                 {strategy.strategyName}
                               </TableCell>
                               <TableCell>{formatPnL(strategy.pnl)}</TableCell>
-                              <TableCell>{formatPnL(strategy.realizedPnl)}</TableCell>
+                              <TableCell>
+                                {formatPnL(strategy.realizedPnl)}
+                              </TableCell>
                               <TableCell>
                                 {formatPnL(strategy.unrealizedPnl)}
                               </TableCell>
@@ -379,4 +408,3 @@ export default function AnalyticsPage() {
     </SidebarInset>
   );
 }
-

@@ -14,7 +14,7 @@ interface AnimatedNumberProps {
 
 /**
  * AnimatedNumber - 带动画效果的数字组件
- * 
+ *
  * 使用 framer-motion 实现平滑的数字过渡动画
  */
 export function AnimatedNumber({
@@ -129,4 +129,3 @@ export function AnimatedInteger({
 
   return <motion.span className={className}>{display}</motion.span>;
 }
-

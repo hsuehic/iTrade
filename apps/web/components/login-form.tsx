@@ -28,6 +28,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
     });
     if (res.error) {
       setError(res.error.message || 'Failed to sign in');
+      setLoading(false);
       return;
     }
     // Ensure navigation + data refresh

@@ -92,7 +92,7 @@ export function getExchangeLogoUrl(exchangeId: string): string | undefined {
 
 /**
  * Common trading pairs with crypto icons
- * Format: 
+ * Format:
  * - Spot: BTC/USDT, BTC/USD
  * - Perpetual: BTC/USDT:USDT (Binance/OKX), BTC/USDC:USDC (Coinbase)
  * Backend will normalize to exchange-specific format:
@@ -102,23 +102,100 @@ export function getExchangeLogoUrl(exchangeId: string): string | undefined {
  */
 export const COMMON_TRADING_PAIRS = [
   // Spot pairs (USDT-based - Binance/OKX)
-  { symbol: 'BTC/USDT', base: 'BTC', quote: 'USDT', name: 'Bitcoin', type: 'spot', exchange: 'binance,okx' },
-  { symbol: 'ETH/USDT', base: 'ETH', quote: 'USDT', name: 'Ethereum', type: 'spot', exchange: 'binance,okx' },
-  { symbol: 'BNB/USDT', base: 'BNB', quote: 'USDT', name: 'BNB', type: 'spot', exchange: 'binance,okx' },
-  { symbol: 'SOL/USDT', base: 'SOL', quote: 'USDT', name: 'Solana', type: 'spot', exchange: 'binance,okx' },
-  
+  {
+    symbol: 'BTC/USDT',
+    base: 'BTC',
+    quote: 'USDT',
+    name: 'Bitcoin',
+    type: 'spot',
+    exchange: 'binance,okx',
+  },
+  {
+    symbol: 'ETH/USDT',
+    base: 'ETH',
+    quote: 'USDT',
+    name: 'Ethereum',
+    type: 'spot',
+    exchange: 'binance,okx',
+  },
+  {
+    symbol: 'BNB/USDT',
+    base: 'BNB',
+    quote: 'USDT',
+    name: 'BNB',
+    type: 'spot',
+    exchange: 'binance,okx',
+  },
+  {
+    symbol: 'SOL/USDT',
+    base: 'SOL',
+    quote: 'USDT',
+    name: 'Solana',
+    type: 'spot',
+    exchange: 'binance,okx',
+  },
+
   // Spot pairs (USDC-based - Coinbase)
-  { symbol: 'BTC/USDC', base: 'BTC', quote: 'USDC', name: 'Bitcoin', type: 'spot', exchange: 'coinbase' },
-  { symbol: 'ETH/USDC', base: 'ETH', quote: 'USDC', name: 'Ethereum', type: 'spot', exchange: 'coinbase' },
-  
+  {
+    symbol: 'BTC/USDC',
+    base: 'BTC',
+    quote: 'USDC',
+    name: 'Bitcoin',
+    type: 'spot',
+    exchange: 'coinbase',
+  },
+  {
+    symbol: 'ETH/USDC',
+    base: 'ETH',
+    quote: 'USDC',
+    name: 'Ethereum',
+    type: 'spot',
+    exchange: 'coinbase',
+  },
+
   // Perpetual contracts - USDT-based (Binance/OKX)
-  { symbol: 'BTC/USDT:USDT', base: 'BTC', quote: 'USDT', name: 'Bitcoin Perp', type: 'perpetual', exchange: 'binance,okx' },
-  { symbol: 'ETH/USDT:USDT', base: 'ETH', quote: 'USDT', name: 'Ethereum Perp', type: 'perpetual', exchange: 'binance,okx' },
-  { symbol: 'SOL/USDT:USDT', base: 'SOL', quote: 'USDT', name: 'Solana Perp', type: 'perpetual', exchange: 'binance,okx' },
-  
+  {
+    symbol: 'BTC/USDT:USDT',
+    base: 'BTC',
+    quote: 'USDT',
+    name: 'Bitcoin Perp',
+    type: 'perpetual',
+    exchange: 'binance,okx',
+  },
+  {
+    symbol: 'ETH/USDT:USDT',
+    base: 'ETH',
+    quote: 'USDT',
+    name: 'Ethereum Perp',
+    type: 'perpetual',
+    exchange: 'binance,okx',
+  },
+  {
+    symbol: 'SOL/USDT:USDT',
+    base: 'SOL',
+    quote: 'USDT',
+    name: 'Solana Perp',
+    type: 'perpetual',
+    exchange: 'binance,okx',
+  },
+
   // Perpetual contracts - USDC-based (Coinbase)
-  { symbol: 'BTC/USDC:USDC', base: 'BTC', quote: 'USDC', name: 'Bitcoin Perp', type: 'perpetual', exchange: 'coinbase' },
-  { symbol: 'ETH/USDC:USDC', base: 'ETH', quote: 'USDC', name: 'Ethereum Perp', type: 'perpetual', exchange: 'coinbase' },
+  {
+    symbol: 'BTC/USDC:USDC',
+    base: 'BTC',
+    quote: 'USDC',
+    name: 'Bitcoin Perp',
+    type: 'perpetual',
+    exchange: 'coinbase',
+  },
+  {
+    symbol: 'ETH/USDC:USDC',
+    base: 'ETH',
+    quote: 'USDC',
+    name: 'Ethereum Perp',
+    type: 'perpetual',
+    exchange: 'coinbase',
+  },
 ] as const;
 
 /**
@@ -139,12 +216,47 @@ export function extractBaseCurrency(symbol: string): string {
 }
 
 /**
+ * Get trading pairs for a specific exchange
+ */
+export function getTradingPairsForExchange(exchangeId: string) {
+  return COMMON_TRADING_PAIRS.filter((pair) =>
+    pair.exchange.includes(exchangeId.toLowerCase())
+  );
+}
+
+/**
+ * Get default trading pair for an exchange (preferably perpetual)
+ */
+export function getDefaultTradingPair(exchangeId: string): string {
+  const exchangePairs = getTradingPairsForExchange(exchangeId);
+
+  // First try to find a perpetual BTC pair
+  const btcPerp = exchangePairs.find(
+    (pair) => pair.base === 'BTC' && pair.type === 'perpetual'
+  );
+  if (btcPerp) return btcPerp.symbol;
+
+  // Then try any perpetual pair
+  const anyPerp = exchangePairs.find((pair) => pair.type === 'perpetual');
+  if (anyPerp) return anyPerp.symbol;
+
+  // Finally fall back to any BTC pair or first available
+  const btcSpot = exchangePairs.find((pair) => pair.base === 'BTC');
+  if (btcSpot) return btcSpot.symbol;
+
+  return exchangePairs[0]?.symbol || 'BTC/USDT';
+}
+
+/**
  * Normalize symbol to exchange-specific format
  * This mirrors the backend normalizeSymbol logic
  */
-export function normalizeSymbolForExchange(symbol: string, exchangeId: string): string {
+export function normalizeSymbolForExchange(
+  symbol: string,
+  exchangeId: string
+): string {
   const upperSymbol = symbol.toUpperCase();
-  
+
   switch (exchangeId.toLowerCase()) {
     case 'binance':
       // Binance: BTCUSDT for both spot and perpetual
@@ -156,7 +268,7 @@ export function normalizeSymbolForExchange(symbol: string, exchangeId: string): 
         return upperSymbol.replace('/', '').replace('-', '');
       }
       return upperSymbol.replace('/', '').replace('-', '');
-      
+
     case 'okx':
       // OKX: BTC-USDT (spot), BTC-USDT-SWAP (perpetual)
       if (upperSymbol.includes(':')) {
@@ -168,7 +280,7 @@ export function normalizeSymbolForExchange(symbol: string, exchangeId: string): 
         return upperSymbol.replace('/', '-');
       }
       return upperSymbol.replace('/', '-');
-      
+
     case 'coinbase':
       // Coinbase: BTC-USD (spot), BTC-PERP-INTX (perpetual)
       if (upperSymbol.includes(':')) {
@@ -180,9 +292,8 @@ export function normalizeSymbolForExchange(symbol: string, exchangeId: string): 
         return upperSymbol;
       }
       return upperSymbol.replace('/', '-');
-      
+
     default:
       return symbol;
   }
 }
-

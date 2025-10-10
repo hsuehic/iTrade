@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+
 import { getDataManager } from '@/lib/data-manager';
 
 /**
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     const strategyStats = await Promise.all(
       strategies.map(async (strategy) => {
         const pnl = await dm.getStrategyPnL(strategy.id);
-        
+
         return {
           id: strategy.id,
           name: strategy.name,
@@ -33,12 +34,14 @@ export async function GET(request: Request) {
           unrealizedPnl: pnl.unrealizedPnl || 0,
           totalOrders: pnl.totalOrders || 0,
           filledOrders: pnl.filledOrders || 0,
-          fillRate: pnl.totalOrders > 0
-            ? ((pnl.filledOrders / pnl.totalOrders) * 100).toFixed(2)
-            : '0.00',
-          roi: strategy.initialCapital && strategy.initialCapital > 0
-            ? ((pnl.totalPnl / strategy.initialCapital) * 100).toFixed(2)
-            : '0.00',
+          fillRate:
+            pnl.totalOrders > 0
+              ? ((pnl.filledOrders / pnl.totalOrders) * 100).toFixed(2)
+              : '0.00',
+          roi:
+            strategy.initialCapital && strategy.initialCapital > 0
+              ? ((pnl.totalPnl / strategy.initialCapital) * 100).toFixed(2)
+              : '0.00',
           createdAt: strategy.createdAt,
           updatedAt: strategy.updatedAt,
         };
@@ -51,10 +54,18 @@ export async function GET(request: Request) {
       .slice(0, limit);
 
     // Calculate summary statistics
-    const activeStrategies = strategyStats.filter((s) => s.status === 'active').length;
+    const activeStrategies = strategyStats.filter(
+      (s) => s.status === 'active'
+    ).length;
     const totalPnl = strategyStats.reduce((sum, s) => sum + s.totalPnl, 0);
-    const totalOrders = strategyStats.reduce((sum, s) => sum + s.totalOrders, 0);
-    const totalFilledOrders = strategyStats.reduce((sum, s) => sum + s.filledOrders, 0);
+    const totalOrders = strategyStats.reduce(
+      (sum, s) => sum + s.totalOrders,
+      0
+    );
+    const totalFilledOrders = strategyStats.reduce(
+      (sum, s) => sum + s.filledOrders,
+      0
+    );
 
     // Group by exchange
     const byExchange = strategyStats.reduce((acc: any, s) => {
@@ -100,13 +111,18 @@ export async function GET(request: Request) {
         totalPnl,
         totalOrders,
         totalFilledOrders,
-        avgFillRate: totalOrders > 0
-          ? ((totalFilledOrders / totalOrders) * 100).toFixed(2)
-          : '0.00',
+        avgFillRate:
+          totalOrders > 0
+            ? ((totalFilledOrders / totalOrders) * 100).toFixed(2)
+            : '0.00',
       },
       topPerformers,
-      byExchange: Object.values(byExchange).sort((a: any, b: any) => b.totalPnl - a.totalPnl),
-      bySymbol: Object.values(bySymbol).sort((a: any, b: any) => b.totalPnl - a.totalPnl),
+      byExchange: Object.values(byExchange).sort(
+        (a: any, b: any) => b.totalPnl - a.totalPnl
+      ),
+      bySymbol: Object.values(bySymbol).sort(
+        (a: any, b: any) => b.totalPnl - a.totalPnl
+      ),
       allStrategies: strategyStats,
     });
   } catch (error) {
@@ -117,4 +133,3 @@ export async function GET(request: Request) {
     );
   }
 }
-
