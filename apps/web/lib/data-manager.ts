@@ -18,6 +18,8 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
 
   // Start initialization
   initPromise = (async () => {
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+
     const dm = new TypeOrmDataManager({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -26,13 +28,36 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_DB || 'itrade',
       ssl: process.env.DATABASE_SSL === 'true',
-      logging: ['error'],
-      synchronize: true, // Auto-create tables if they don't exist
+      logging: isDevelopment ? ['error', 'warn'] : false,
+      synchronize: false, // ⚠️ NEVER use true in production - use migrations instead
+
+      // Connection pool optimization
+      poolSize: 10, // Maximum connections
+      extra: {
+        max: 10, // Maximum pool size
+        min: 2, // Minimum pool size
+        idleTimeoutMillis: 30000, // Close idle connections after 30s
+        connectionTimeoutMillis: 5000, // Connection timeout 5s
+        statement_timeout: 10000, // Query timeout 10s
+      },
+
+      // Performance optimizations
+      cache: {
+        type: 'database',
+        duration: 30000, // Cache queries for 30 seconds
+      },
+
+      // Disable automatic transaction for better performance
+      maxQueryExecutionTime: 5000, // Log slow queries over 5s
     });
 
     await dm.initialize();
     dataManagerInstance = dm;
-    console.log('✅ DataManager initialized for Web API');
+
+    if (isDevelopment) {
+      console.log('✅ DataManager initialized for Web API');
+    }
+
     return dm;
   })();
 

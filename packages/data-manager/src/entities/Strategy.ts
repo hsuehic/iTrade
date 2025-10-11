@@ -134,7 +134,7 @@ export class StrategyEntity {
   @OneToMany(() => OrderEntity, (o) => o.strategy)
   orders?: OrderEntity[];
 
-  @ManyToOne(() => User, { nullable: false, lazy: true })
+  @ManyToOne(() => User, { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

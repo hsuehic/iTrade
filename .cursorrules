@@ -533,3 +533,190 @@ Linting may be skipped ONLY when:
 - System/configuration files that don't support linting
 
 **Default behavior: ALWAYS run linting unless explicitly told otherwise.**
+
+---
+
+## 📦 Package Build Rules
+
+### Mandatory Package Rebuild
+
+**After ANY modification to source files under `packages/**`, AI agents MUST:**
+
+1. ✅ **Rebuild the modified package** - Compile TypeScript changes
+2. ✅ **Rebuild dependent packages** (if any) - Ensure type propagation
+3. ✅ **Rebuild web application** - **MANDATORY** final verification step
+
+**This ensures changes are compiled, types are updated, and everything integrates correctly.**
+
+#### When to Rebuild
+
+Rebuild is REQUIRED when modifying:
+
+1. **TypeScript/JavaScript source files** (`packages/*/src/**/*.ts`, `*.tsx`, `*.js`, `*.jsx`)
+2. **Entity definitions** (`packages/data-manager/src/entities/**/*.ts`)
+3. **Type definitions** (`packages/*/src/types/**/*.ts`)
+4. **Repository files** (`packages/data-manager/src/repositories/**/*.ts`)
+5. **Any exported modules** that other packages depend on
+
+#### Package Dependencies
+
+```
+Common dependency chains:
+- data-manager → core, strategies, exchange-connectors
+- core → strategies, exchange-connectors
+- utils → all packages
+- logger → all packages
+```
+
+#### Rebuild Commands
+
+| Package | Command | Build Time |
+|---------|---------|------------|
+| `packages/core` | `cd packages/core && pnpm build` | ~2-5s |
+| `packages/data-manager` | `cd packages/data-manager && pnpm build` | ~3-8s |
+| `packages/strategies` | `cd packages/strategies && pnpm build` | ~2-4s |
+| `packages/utils` | `cd packages/utils && pnpm build` | ~1-2s |
+| `packages/logger` | `cd packages/logger && pnpm build` | ~1-2s |
+| `packages/exchange-connectors` | `cd packages/exchange-connectors && pnpm build` | ~2-4s |
+| All packages | `pnpm build --filter "./packages/*"` | ~10-20s |
+
+#### Rebuild Workflow
+
+1. **Identify modified package**:
+   ```bash
+   # Example: Modified packages/data-manager/src/entities/Strategy.ts
+   ```
+
+2. **Rebuild the package**:
+   ```bash
+   cd packages/data-manager && pnpm build
+   ```
+
+3. **Rebuild dependent packages** (if needed):
+   ```bash
+   # If core depends on data-manager and was using the modified code
+   cd packages/core && pnpm build
+   ```
+
+4. **Rebuild web application to verify**:
+   ```bash
+   # ALWAYS rebuild web to ensure everything works
+   cd apps/web && pnpm build
+   ```
+
+5. **Verify build success**:
+   ```bash
+   # Check for build errors
+   # Ensure no TypeScript compilation errors
+   # Confirm web build completes successfully
+   ```
+
+#### AI Agent Instructions for Package Builds
+
+1. **ALWAYS rebuild** after modifying package source files
+2. **Build in dependency order** (dependencies first, then dependents)
+3. **ALWAYS rebuild web application** after package changes to verify integration
+4. **Report build status** to the user at each step
+5. **If build fails**:
+   - Report the exact error
+   - Attempt to fix the issue
+   - Rebuild after fixing
+6. **Batch builds** when modifying multiple packages
+7. **Never skip web build** - it's the final verification step
+
+#### Example Workflow
+
+```bash
+# Scenario: Modified Strategy entity and StrategyRepository
+
+# Step 1: Identify modified package
+echo "Modified: packages/data-manager/src/entities/Strategy.ts"
+echo "Modified: packages/data-manager/src/repositories/StrategyRepository.ts"
+
+# Step 2: Rebuild data-manager
+cd packages/data-manager
+pnpm build
+
+# Step 3: Rebuild dependent packages if needed
+# If core/strategies import from data-manager, rebuild them too
+cd ../core
+pnpm build
+
+# Step 4: ALWAYS rebuild web to verify everything works
+cd ../../apps/web
+pnpm build
+
+# Step 5: Verify no errors
+echo "✅ All packages rebuilt successfully"
+echo "✅ Web application build verified"
+```
+
+#### Build Optimization
+
+- **Incremental builds**: TypeScript only rebuilds changed files
+- **Parallel builds**: Use `pnpm -r --parallel build` for multiple packages
+- **Skip if no TypeScript changes**: Don't rebuild for doc-only changes
+
+#### Skip Conditions
+
+Rebuild may be skipped ONLY when:
+
+- Only modifying `.md` documentation files
+- Only modifying test files (`*.test.ts`, `*.spec.ts`) in non-published packages
+- Only modifying configuration files (`.json`, `.yml`) that don't affect build output
+- User explicitly requests to skip rebuild (rare)
+
+#### Common Build Errors and Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Cannot find module` | Package not rebuilt | Rebuild the dependency |
+| `Type error` | Outdated type definitions | Rebuild packages in order |
+| `Circular dependency` | Import cycle | Check and fix imports |
+| `Out of memory` | Large build | Increase Node memory |
+
+#### Performance Considerations
+
+- Average single package build: **2-5 seconds**
+- Average multi-package build: **10-20 seconds**
+- Full monorepo build: **30-60 seconds**
+- **Web application build: 3-5 seconds**
+
+**Total time for typical workflow:**
+- Single package + web: **5-10 seconds**
+- Multiple packages + web: **15-25 seconds**
+- Full rebuild + web: **35-65 seconds**
+
+**Always rebuild to avoid runtime errors and type mismatches!**
+
+### Quick Reference
+
+```bash
+# Standard workflow (RECOMMENDED)
+# 1. Rebuild modified package
+cd packages/{package-name} && pnpm build
+
+# 2. Rebuild dependent packages (if any)
+cd ../dependent-package && pnpm build
+
+# 3. ALWAYS rebuild web to verify
+cd ../../apps/web && pnpm build
+
+# ---
+
+# Alternative: Multiple packages (if interdependent)
+cd packages/data-manager && pnpm build && \
+cd ../core && pnpm build && \
+cd ../strategies && pnpm build && \
+cd ../../apps/web && pnpm build
+
+# Alternative: All packages + web at once
+pnpm build --filter "./packages/*" && \
+cd apps/web && pnpm build
+
+# Alternative: Parallel (faster but harder to debug)
+pnpm -r --parallel --filter "./packages/*" build && \
+cd apps/web && pnpm build
+```
+
+**Critical Rule**: ALWAYS finish with `cd apps/web && pnpm build` to verify integration! 🏗️✅

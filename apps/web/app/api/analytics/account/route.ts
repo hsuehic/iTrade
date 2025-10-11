@@ -197,39 +197,13 @@ export async function GET(request: Request) {
       current: number,
       history: typeof chartDataArray
     ) => {
-      // Debug logging for troubleshooting
-      if (period === '1d' && exchange === 'all') {
-        console.log('[Balance Change Debug]', {
-          period,
-          exchange,
-          historyLength: history.length,
-          current,
-          firstHistoryItem: history[0],
-          lastHistoryItem: history[history.length - 1],
-          exchangesToQuery,
-        });
-      }
-
       if (history.length === 0) return 0;
 
-      // For single data point, check if we have any meaningful comparison
-      if (history.length === 1) {
-        // Try to get balance from 24 hours ago directly from database
-        if (
-          period === '1d' ||
-          period === '1w' ||
-          period === '1m' ||
-          period === '1y'
-        ) {
-          // Return 0 as we can't calculate change with single data point
-          // But don't treat this as an error - just insufficient data
-          return 0;
-        }
-      }
+      // For single data point, insufficient data for comparison
+      if (history.length === 1) return 0;
 
       // Find the first meaningful (non-zero) balance entry
       let firstMeaningfulBalance = 0;
-      let firstMeaningfulIndex = -1;
 
       for (let i = 0; i < history.length; i++) {
         const totalBalance = Object.values(history[i])
@@ -238,129 +212,27 @@ export async function GET(request: Request) {
 
         if (totalBalance > 0) {
           firstMeaningfulBalance = totalBalance;
-          firstMeaningfulIndex = i;
           break;
         }
       }
 
-      if (firstMeaningfulBalance === 0 || firstMeaningfulIndex === -1) {
-        // If no meaningful historical data found
-        console.log('[Balance Change] No meaningful historical data found');
-        return 0;
-      }
+      if (firstMeaningfulBalance === 0) return 0;
 
       const changePercent =
         ((current - firstMeaningfulBalance) / firstMeaningfulBalance) * 100;
 
-      // Sanity check: if change is over 50% in a day, it's likely a data issue
+      // Sanity check: if change is over 50% in a day, likely data issue
       if (period === '1d' && Math.abs(changePercent) > 50) {
-        console.log('[Balance Change] Suspicious large change detected:', {
-          changePercent,
-          firstMeaningfulBalance,
-          current,
-          period,
-          firstMeaningfulIndex,
-        });
-        // For day period, cap at reasonable change (maybe account creation scenario)
-        // But more likely it's a data issue, so return 0
         return 0;
-      }
-
-      // Debug for 1d period
-      if (period === '1d' && exchange === 'all') {
-        console.log('[Balance Change Calculation]', {
-          firstMeaningfulBalance,
-          current,
-          changePercent: changePercent,
-          calculation: `((${current} - ${firstMeaningfulBalance}) / ${firstMeaningfulBalance}) * 100`,
-          firstMeaningfulIndex,
-        });
       }
 
       return changePercent;
     };
 
-    let balanceChange = calculateChange(totalBalance, chartDataArray);
+    const balanceChange = calculateChange(totalBalance, chartDataArray);
 
-    // Fallback calculation if chart data is insufficient (especially for 1d with 'all' exchange)
-    if (
-      balanceChange === 0 &&
-      chartDataArray.length < 2 &&
-      period === '1d' &&
-      exchange === 'all'
-    ) {
-      try {
-        console.log(
-          '[Balance Change Fallback] Attempting direct database query...'
-        );
-
-        // Get snapshots from 24 hours ago for all exchanges
-        const fallbackStartTime = new Date();
-        fallbackStartTime.setHours(fallbackStartTime.getHours() - 24);
-
-        let historicalBalance = 0;
-
-        // Query each exchange for data from 24 hours ago
-        for (const exchangeName of exchangesToQuery) {
-          const historicalSnapshots = await dm.getBalanceTimeSeries(
-            exchangeName,
-            fallbackStartTime,
-            new Date(fallbackStartTime.getTime() + 60 * 60 * 1000), // 1 hour window
-            'hour'
-          );
-
-          if (historicalSnapshots.length > 0) {
-            // Get the closest snapshot to 24 hours ago
-            const closestSnapshot = historicalSnapshots.reduce(
-              (closest, current) => {
-                const closestDiff = Math.abs(
-                  fallbackStartTime.getTime() - closest.timestamp.getTime()
-                );
-                const currentDiff = Math.abs(
-                  fallbackStartTime.getTime() - current.timestamp.getTime()
-                );
-                return currentDiff < closestDiff ? current : closest;
-              }
-            );
-
-            historicalBalance += parseFloat(closestSnapshot.balance.toString());
-          }
-        }
-
-        console.log('[Balance Change Fallback] Raw data:', {
-          historicalBalance,
-          currentBalance: totalBalance,
-          exchangesToQuery,
-          fallbackStartTime: fallbackStartTime.toISOString(),
-        });
-
-        if (historicalBalance > 0 && totalBalance !== historicalBalance) {
-          balanceChange =
-            ((totalBalance - historicalBalance) / historicalBalance) * 100;
-          console.log('[Balance Change Fallback] Calculated change:', {
-            historicalBalance,
-            currentBalance: totalBalance,
-            change: balanceChange,
-            calculation: `((${totalBalance} - ${historicalBalance}) / ${historicalBalance}) * 100`,
-          });
-        } else if (historicalBalance === 0) {
-          console.log(
-            '[Balance Change Fallback] Historical balance is 0 - cannot calculate meaningful change'
-          );
-          // Don't set balanceChange, keep it as 0
-        } else {
-          console.log(
-            '[Balance Change Fallback] No meaningful change detected:',
-            {
-              historicalBalance,
-              currentBalance: totalBalance,
-            }
-          );
-        }
-      } catch (fallbackError) {
-        console.error('[Balance Change Fallback] Error:', fallbackError);
-      }
-    }
+    // Note: Removed expensive fallback query that was causing performance issues
+    // If historical data is insufficient, balanceChange will be 0
 
     const totalEquity = totalBalance + totalPositionValue;
 

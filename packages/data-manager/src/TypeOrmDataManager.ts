@@ -51,6 +51,16 @@ export interface TypeOrmDataManagerConfig {
   synchronize?: boolean;
   migrationsRun?: boolean;
   extra?: any;
+  // Performance optimization options
+  poolSize?: number;
+  cache?:
+    | boolean
+    | {
+        type?: 'database' | 'redis';
+        duration?: number;
+        options?: any;
+      };
+  maxQueryExecutionTime?: number;
 }
 
 export class TypeOrmDataManager implements IDataManager {
@@ -85,6 +95,9 @@ export class TypeOrmDataManager implements IDataManager {
       synchronize: this.config.synchronize ?? false,
       migrationsRun: this.config.migrationsRun ?? true,
       logging: this.config.logging ?? false,
+      poolSize: this.config.poolSize,
+      cache: this.config.cache,
+      maxQueryExecutionTime: this.config.maxQueryExecutionTime,
       entities: [
         KlineEntity,
         SymbolEntity,

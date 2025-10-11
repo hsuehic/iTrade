@@ -64,5 +64,9 @@ export const auth = betterAuth({
       clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
     },
   },
-  trustedOrigins: ['http://localhost:3000', 'https://itrade.ihsueh.com'],
+  trustedOrigins: [
+    'http://localhost:3000',
+    'http://localhost:3002',
+    'https://itrade.ihsueh.com',
+  ],
 });
