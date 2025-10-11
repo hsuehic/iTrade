@@ -14,7 +14,7 @@ export interface StateRecoveryMetrics {
   dataInconsistencies: number;
 }
 
-interface StrategyHealthStatus {
+export interface StrategyHealthStatus {
   strategyId: number;
   isHealthy: boolean;
   lastHealthCheck: Date;
@@ -151,11 +151,7 @@ export class StrategyStateMonitor extends EventEmitter {
   /**
    * Record a failed recovery
    */
-  public recordRecoveryFailure(
-    strategyId: number,
-    startTime: Date,
-    error: string
-  ): void {
+  public recordRecoveryFailure(strategyId: number, error: string): void {
     this.metrics.failedRecoveries++;
     this.metrics.lastFailedRecovery = new Date();
 
@@ -327,7 +323,7 @@ export class StrategyStateMonitor extends EventEmitter {
     const now = new Date();
     let issuesFound = 0;
 
-    for (const [strategyId, health] of this.strategyHealth) {
+    for (const [, health] of this.strategyHealth) {
       const issues: string[] = [];
       const recommendations: string[] = [];
 

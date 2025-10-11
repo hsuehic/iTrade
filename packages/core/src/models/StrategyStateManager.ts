@@ -187,6 +187,7 @@ export class StrategyStateManager extends EventEmitter {
     const result: StrategyRecoveryResult = {
       strategyId,
       success: false,
+      recovered: false,
       openOrders: [],
       partialOrders: [],
       totalPosition: '0',
@@ -260,6 +261,7 @@ export class StrategyStateManager extends EventEmitter {
       result.issues.push(...consistencyIssues);
 
       result.success = true;
+      result.recovered = savedState !== null;
       result.recoveryTime = Date.now() - startTime;
 
       this.emit('recoveryCompleted', result);
