@@ -42,10 +42,10 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
       },
 
       // Performance optimizations
-      cache: {
-        type: 'database',
-        duration: 30000, // Cache queries for 30 seconds
-      },
+      // cache: {
+      //   type: 'database',
+      //   duration: 30000, // Cache queries for 30 seconds
+      // },
 
       // Disable automatic transaction for better performance
       maxQueryExecutionTime: 5000, // Log slow queries over 5s

@@ -4,6 +4,9 @@ import { StrategyType, StrategyStatus } from '@itrade/data-manager';
 import { getDataManager } from '@/lib/data-manager';
 import { auth } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // GET /api/strategies - List all strategies for current user
 export async function GET(request: NextRequest) {
   try {

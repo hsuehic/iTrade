@@ -141,7 +141,7 @@ export default function StrategyPage() {
 
   const fetchStrategies = async () => {
     try {
-      const response = await fetch('/api/strategies');
+      const response = await fetch('/api/strategies', { cache: 'no-store' });
       if (!response.ok) throw new Error('Failed to fetch strategies');
       const data = await response.json();
       setStrategies(data.strategies);
