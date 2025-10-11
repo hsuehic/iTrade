@@ -25,6 +25,7 @@ export async function GET(request: Request) {
           id: strategy.id,
           name: strategy.name,
           symbol: strategy.symbol,
+          normalizedSymbol: strategy.normalizedSymbol,
           exchange: strategy.exchange,
           status: strategy.status,
           type: strategy.type,

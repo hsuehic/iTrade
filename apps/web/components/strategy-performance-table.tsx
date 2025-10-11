@@ -163,14 +163,7 @@ export function StrategyPerformanceTable() {
                               {strategy.normalizedSymbol && (
                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                                   {strategy.normalizedSymbol}
-                                  {strategy.marketType === 'perpetual' && (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs py-0 px-1 h-4"
-                                    >
-                                      PERP
-                                    </Badge>
-                                  )}
+                                  {strategy.marketType === 'perpetual' && ' ⚡'}
                                 </span>
                               )}
                             </div>

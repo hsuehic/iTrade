@@ -509,13 +509,13 @@ export function AccountBalanceChart({
                   stroke={
                     chartConfig[exchange as keyof typeof chartConfig]?.color
                   }
-                  strokeWidth={2.5}
+                  strokeWidth={1}
                   fill={`url(#gradient-${exchange})`}
                   fillOpacity={1}
                   dot={
                     chartData.length <= 10
                       ? {
-                          r: 3,
+                          r: 1.5,
                           strokeWidth: 2,
                           fill: 'hsl(var(--background))',
                           stroke:
@@ -527,7 +527,7 @@ export function AccountBalanceChart({
                   }
                   activeDot={{
                     r: 5,
-                    strokeWidth: 3,
+                    strokeWidth: 2,
                     fill: chartConfig[exchange as keyof typeof chartConfig]
                       ?.color,
                     stroke: 'hsl(var(--background))',
