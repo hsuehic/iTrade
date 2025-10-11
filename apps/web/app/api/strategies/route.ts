@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { StrategyType, StrategyStatus } from '@itrade/data-manager';
 
-import { getDataManager } from '@/lib/db';
+import { getDataManager } from '@/lib/data-manager';
 import { auth } from '@/lib/auth';
 
 // GET /api/strategies - List all strategies for current user

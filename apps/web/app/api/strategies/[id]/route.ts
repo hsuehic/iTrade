@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { StrategyType, StrategyStatus } from '@itrade/data-manager';
 
-import { getDataManager } from '@/lib/db';
+import { getDataManager } from '@/lib/data-manager';
 import { auth } from '@/lib/auth';
 
 type RouteContext = {
