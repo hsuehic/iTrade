@@ -29,6 +29,7 @@ import {
   DEFAULT_KLINES_CONFIG,
 } from '../types';
 import { EventBus } from '../events';
+
 import { SubscriptionManager } from './SubscriptionManager';
 
 export class TradingEngine extends EventEmitter implements ITradingEngine {
@@ -425,7 +426,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       return this.onOrderBook(symbol, data as OrderBook, exchangeName);
     } else if (this.isKline(data)) {
       return this.onKline(symbol, data as Kline, exchangeName);
-    } else if (Array.isArray(data) && data.length > 0 && this.isTrade(data[0])) {
+    } else if (
+      Array.isArray(data) &&
+      data.length > 0 &&
+      this.isTrade(data[0])
+    ) {
       return this.onTrades(symbol, data as Trade[], exchangeName);
     }
 
@@ -930,7 +935,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     );
 
     if (method === 'websocket') {
-      await this.subscribeViaWebSocket(exchange, symbol, type, normalizedConfig);
+      await this.subscribeViaWebSocket(
+        exchange,
+        symbol,
+        type,
+        normalizedConfig
+      );
       this.subscriptionManager.subscribe(strategyName, key, 'websocket');
     } else {
       const timerId = await this.subscribeViaREST(
@@ -939,12 +949,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type,
         normalizedConfig
       );
-      this.subscriptionManager.subscribe(
-        strategyName,
-        key,
-        'rest',
-        timerId
-      );
+      this.subscriptionManager.subscribe(strategyName, key, 'rest', timerId);
     }
   }
 
@@ -960,7 +965,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   ): Promise<void> {
     // Normalize config to match what was used during subscription
     const normalizedConfig = this.normalizeDataConfig(type, config);
-    
+
     const key: SubscriptionKey = {
       exchange: exchange.name,
       symbol,

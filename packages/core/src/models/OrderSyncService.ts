@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+
 import { Decimal } from 'decimal.js';
 
 import { IExchange } from '../interfaces';
@@ -41,25 +42,25 @@ export interface IOrderDataManager {
 
 /**
  * OrderSyncService - 订单状态同步服务
- * 
+ *
  * 核心功能：
  * - 定时轮询未完成订单的状态
  * - 从交易所获取最新状态并更新数据库
  * - 检测状态变化并触发 EventBus 事件
  * - 防止重复事件触发
- * 
+ *
  * 使用场景：
  * - WebSocket 推送失败或延迟
  * - 网络不稳定导致消息丢失
  * - 应用重启后状态恢复
- * 
+ *
  * @example
  * ```typescript
  * const syncService = new OrderSyncService(exchanges, dataManager, {
  *   syncInterval: 5000,
  *   batchSize: 5
  * });
- * 
+ *
  * await syncService.start();
  * ```
  */
@@ -67,9 +68,9 @@ export class OrderSyncService extends EventEmitter {
   private syncInterval: NodeJS.Timeout | null = null;
   private eventBus: EventBus;
   private isRunning = false;
-  
+
   private lastKnownStatuses = new Map<string, OrderStatus>();
-  
+
   private stats: OrderSyncStats = {
     totalSyncs: 0,
     successfulSyncs: 0,
@@ -87,14 +88,14 @@ export class OrderSyncService extends EventEmitter {
     config: OrderSyncConfig = {}
   ) {
     super();
-    
+
     this.config = {
       syncInterval: config.syncInterval ?? 5000,
       batchSize: config.batchSize ?? 5,
       autoStart: config.autoStart ?? false,
       maxErrorRecords: config.maxErrorRecords ?? 10,
     };
-    
+
     this.eventBus = EventBus.getInstance();
 
     if (this.config.autoStart) {
@@ -246,7 +247,10 @@ export class OrderSyncService extends EventEmitter {
   ): Promise<void> {
     const exchange = this.exchanges.get(exchangeName);
     if (!exchange || !exchange.isConnected) {
-      this.emit('warn', `Exchange ${exchangeName} not available for order sync`);
+      this.emit(
+        'warn',
+        `Exchange ${exchangeName} not available for order sync`
+      );
       return;
     }
 
@@ -263,7 +267,10 @@ export class OrderSyncService extends EventEmitter {
   /**
    * 同步单个订单状态
    */
-  private async syncSingleOrder(exchange: IExchange, dbOrder: any): Promise<void> {
+  private async syncSingleOrder(
+    exchange: IExchange,
+    dbOrder: any
+  ): Promise<void> {
     try {
       const exchangeOrder = await exchange.getOrder(
         dbOrder.symbol,
@@ -292,7 +299,10 @@ export class OrderSyncService extends EventEmitter {
         orderId: dbOrder.id,
       });
 
-      this.emit('debug', `Failed to sync order ${dbOrder.id}: ${(error as Error).message}`);
+      this.emit(
+        'debug',
+        `Failed to sync order ${dbOrder.id}: ${(error as Error).message}`
+      );
     }
   }
 
@@ -307,7 +317,8 @@ export class OrderSyncService extends EventEmitter {
     const dbExecutedQty = dbOrder.executedQuantity
       ? new Decimal(dbOrder.executedQuantity)
       : new Decimal(0);
-    const exchangeExecutedQty = exchangeOrder.executedQuantity || new Decimal(0);
+    const exchangeExecutedQty =
+      exchangeOrder.executedQuantity || new Decimal(0);
 
     if (!dbExecutedQty.equals(exchangeExecutedQty)) {
       return true;
@@ -351,7 +362,10 @@ export class OrderSyncService extends EventEmitter {
   /**
    * 触发订单状态变化事件
    */
-  private async emitOrderEvents(_oldOrder: any, newOrder: Order): Promise<void> {
+  private async emitOrderEvents(
+    _oldOrder: any,
+    newOrder: Order
+  ): Promise<void> {
     const lastStatus = this.lastKnownStatuses.get(newOrder.id);
 
     if (lastStatus === newOrder.status) {
@@ -372,12 +386,18 @@ export class OrderSyncService extends EventEmitter {
         break;
 
       case OrderStatus.PARTIALLY_FILLED:
-        this.emit('info', `📨 Emitting orderPartiallyFilled event for ${newOrder.id}`);
+        this.emit(
+          'info',
+          `📨 Emitting orderPartiallyFilled event for ${newOrder.id}`
+        );
         this.eventBus.emitOrderPartiallyFilled(eventData);
         break;
 
       case OrderStatus.CANCELED:
-        this.emit('info', `📨 Emitting orderCancelled event for ${newOrder.id}`);
+        this.emit(
+          'info',
+          `📨 Emitting orderCancelled event for ${newOrder.id}`
+        );
         this.eventBus.emitOrderCancelled(eventData);
         break;
 
@@ -395,9 +415,13 @@ export class OrderSyncService extends EventEmitter {
   /**
    * 添加错误记录
    */
-  private addError(error: { time: Date; error: string; orderId?: string }): void {
+  private addError(error: {
+    time: Date;
+    error: string;
+    orderId?: string;
+  }): void {
     this.stats.errors.push(error);
-    
+
     if (this.stats.errors.length > this.config.maxErrorRecords) {
       this.stats.errors.shift();
     }
@@ -436,7 +460,7 @@ export class OrderSyncService extends EventEmitter {
     }
 
     this.config.syncInterval = intervalMs;
-    
+
     if (this.isRunning && this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = setInterval(() => {
@@ -463,4 +487,3 @@ export class OrderSyncService extends EventEmitter {
     return this.isRunning;
   }
 }
-

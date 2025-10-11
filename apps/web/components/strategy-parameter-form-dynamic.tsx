@@ -21,6 +21,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 
 interface StrategyParameterFormDynamicProps {
   strategyType: StrategyTypeKey;
@@ -229,6 +230,152 @@ export function StrategyParameterFormDynamic({
               rows={4}
               className="font-mono text-sm"
             />
+            <p className="text-xs text-muted-foreground">
+              {paramDef.description}
+            </p>
+          </div>
+        );
+
+      case 'date':
+        return (
+          <div key={paramDef.name} className="space-y-2">
+            <Label htmlFor={paramDef.name}>
+              {paramDef.name
+                .split(/(?=[A-Z])/)
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')}
+              {paramDef.required && (
+                <span className="text-red-500 ml-1">*</span>
+              )}
+            </Label>
+            <Input
+              id={paramDef.name}
+              type="date"
+              value={
+                value instanceof Date
+                  ? value.toISOString().split('T')[0]
+                  : (value as string)
+              }
+              onChange={(e) =>
+                handleParameterChange(paramDef.name, e.target.value)
+              }
+              required={paramDef.required}
+            />
+            <p className="text-xs text-muted-foreground">
+              {paramDef.description}
+            </p>
+          </div>
+        );
+
+      case 'enum':
+        return (
+          <div key={paramDef.name} className="space-y-2">
+            <Label htmlFor={paramDef.name}>
+              {paramDef.name
+                .split(/(?=[A-Z])/)
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')}
+              {paramDef.required && (
+                <span className="text-red-500 ml-1">*</span>
+              )}
+            </Label>
+            <Select
+              value={value as string}
+              onValueChange={(newValue) =>
+                handleParameterChange(paramDef.name, newValue)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select an option" />
+              </SelectTrigger>
+              <SelectContent>
+                {(paramDef.validation?.options || []).map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {option.charAt(0).toUpperCase() + option.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {paramDef.description}
+            </p>
+          </div>
+        );
+
+      case 'range':
+        return (
+          <div key={paramDef.name} className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor={paramDef.name}>
+                {paramDef.name
+                  .split(/(?=[A-Z])/)
+                  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ')}
+                {paramDef.required && (
+                  <span className="text-red-500 ml-1">*</span>
+                )}
+              </Label>
+              <span className="text-sm font-medium">
+                {value as number}
+                {paramDef.unit && <span className="ml-1">{paramDef.unit}</span>}
+              </span>
+            </div>
+            <Slider
+              id={paramDef.name}
+              value={[value as number]}
+              onValueChange={(values) =>
+                handleParameterChange(paramDef.name, values[0])
+              }
+              min={paramDef.min ?? 0}
+              max={paramDef.max ?? 100}
+              step={paramDef.step ?? 1}
+              className="py-4"
+            />
+            <p className="text-xs text-muted-foreground">
+              {paramDef.description}
+              {paramDef.min !== undefined && paramDef.max !== undefined && (
+                <span className="ml-1">
+                  (range: {paramDef.min} - {paramDef.max}
+                  {paramDef.unit && ` ${paramDef.unit}`})
+                </span>
+              )}
+            </p>
+          </div>
+        );
+
+      case 'color':
+        return (
+          <div key={paramDef.name} className="space-y-2">
+            <Label htmlFor={paramDef.name}>
+              {paramDef.name
+                .split(/(?=[A-Z])/)
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')}
+              {paramDef.required && (
+                <span className="text-red-500 ml-1">*</span>
+              )}
+            </Label>
+            <div className="flex gap-2 items-center">
+              <Input
+                id={paramDef.name}
+                type="color"
+                value={value as string}
+                onChange={(e) =>
+                  handleParameterChange(paramDef.name, e.target.value)
+                }
+                className="w-20 h-10 cursor-pointer"
+              />
+              <Input
+                type="text"
+                value={value as string}
+                onChange={(e) =>
+                  handleParameterChange(paramDef.name, e.target.value)
+                }
+                pattern="^#[0-9A-Fa-f]{6}$"
+                placeholder="#000000"
+                className="font-mono"
+              />
+            </div>
             <p className="text-xs text-muted-foreground">
               {paramDef.description}
             </p>

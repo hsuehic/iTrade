@@ -431,6 +431,21 @@ This ensures consistent authorship attribution and helps track document creation
 
 **After ANY modification to source code or documentation files, AI agents MUST execute appropriate linting commands to ensure code quality and formatting compliance.**
 
+#### Critical Rules Summary
+
+> **🚨 MANDATORY: Run `pnpm lint --fix` after EVERY source code modification**
+>
+> This single command:
+>
+>
+> 1. ✅ Checks TypeScript/JavaScript errors (ESLint)
+> 2. ✅ Applies Prettier formatting automatically
+> 3. ✅ Fixes import ordering
+> 4. ✅ Removes unused imports
+> 5. ✅ Ensures consistent code style
+>
+> **NEVER skip this step. NEVER leave formatting/linting errors.**
+
 #### Required Actions After Code Changes
 
 1. **For TypeScript/JavaScript files** (`.ts`, `.tsx`, `.js`, `.jsx`):
@@ -497,10 +512,21 @@ This ensures consistent authorship attribution and helps track document creation
 #### AI Agent Instructions for Linting
 
 1. **EXECUTE linting immediately** after any file modification
-2. **USE the read_lints tool** to check for specific file linting errors
-3. **BATCH lint checks** when modifying multiple files in the same project
-4. **PRIORITIZE auto-fixable issues** over manual interventions
-5. **DOCUMENT any persistent errors** that require manual attention
+2. **ALWAYS run `pnpm lint --fix`** to auto-fix ESLint + Prettier issues
+3. **USE the read_lints tool** to check for specific file linting errors
+4. **BATCH lint checks** when modifying multiple files in the same project
+5. **PRIORITIZE auto-fixable issues** over manual interventions
+6. **VERIFY formatting** matches Prettier configuration
+7. **DOCUMENT any persistent errors** that require manual attention
+
+**Formatting-Specific Instructions:**
+
+- ✅ Write code with single quotes from the start
+- ✅ Add semicolons to all statements
+- ✅ Use 2-space indentation
+- ✅ Keep lines under 100 characters when practical
+- ✅ Run `pnpm lint --fix` immediately after modifications
+- ✅ Never complete a task with Prettier errors
 
 #### Example Workflow
 
@@ -533,6 +559,225 @@ Linting may be skipped ONLY when:
 - System/configuration files that don't support linting
 
 **Default behavior: ALWAYS run linting unless explicitly told otherwise.**
+
+---
+
+## 🎨 Code Formatting Rules (Prettier)
+
+### Mandatory Prettier Formatting
+
+**ALL source code modifications MUST follow the Prettier configuration defined in the project. AI agents MUST ensure code is properly formatted before committing changes.**
+
+#### Core Principle
+
+> **"Write code that matches the existing codebase style automatically"**
+>
+>
+> When adding or modifying source code, AI agents MUST:
+>
+> 1. **Follow Prettier configuration** automatically
+> 2. **Run `pnpm lint --fix`** to apply formatting
+> 3. **NEVER leave formatting errors** in the code
+
+#### Prettier Configuration Location
+
+- **Root Configuration**: `.prettierrc`, `.prettierrc.json`, or `prettier.config.js`
+- **Editor Config**: `.editorconfig` (if present)
+- **Package-specific**: May override in package directories
+
+#### Key Formatting Rules (Enforced by Prettier)
+
+Based on the project's Prettier configuration:
+
+| Rule | Setting | Example |
+|------|---------|---------|
+| **Quote Style** | Single quotes (`'`) | `import { foo } from 'bar';` |
+| **Semicolons** | Required (`;`) | `const x = 1;` |
+| **Trailing Commas** | ES5 style | `{ a, b, c }` not `{ a, b, c, }` |
+| **Line Width** | 80-100 characters | Auto-wrap long lines |
+| **Indentation** | 2 spaces | Consistent spacing |
+| **Arrow Functions** | Parentheses when needed | `(x) => x + 1` |
+
+#### Automatic Formatting Workflow
+
+**Standard Process:**
+
+```bash
+# Step 1: Modify code files
+# (AI agent makes changes)
+
+# Step 2: Run linting with auto-fix (includes Prettier)
+cd <project-directory>
+pnpm lint --fix
+
+# Step 3: Verify no formatting errors remain
+pnpm lint
+
+# Step 4: If errors persist, read and fix manually
+# (Then rerun Step 2-3)
+```
+
+#### Common Prettier Fixes
+
+**1. Quote Style**
+
+```typescript
+// ❌ BAD (double quotes)
+import { Component } from "react"
+
+// ✅ GOOD (single quotes)
+
+import { Component } from 'react';
+```
+
+**2. Semicolons**
+
+```typescript
+// ❌ BAD (missing semicolons)
+const x = 1
+const y = 2
+
+// ✅ GOOD (with semicolons)
+
+const x = 1;
+const y = 2;
+```
+
+**3. Long Lines**
+
+```typescript
+// ❌ BAD (exceeds line width)
+const result = someVeryLongFunctionName(param1, param2, param3, param4, param5, param6);
+
+// ✅ GOOD (auto-wrapped)
+const result = someVeryLongFunctionName(
+  param1,
+  param2,
+  param3,
+  param4,
+
+  param5,
+  param6
+);
+```
+
+**4. Object/Array Formatting**
+
+```typescript
+// ❌ BAD (inconsistent formatting)
+const obj = {a:1,b:2,c:3}
+
+// ✅ GOOD (Prettier formatted)
+const obj = { a: 1, b: 2, c: 3 };
+
+// For long objects:
+const obj = {
+
+  property1: 'value1',
+  property2: 'value2',
+  property3: 'value3',
+};
+```
+
+**5. Import Statements**
+
+```typescript
+// ❌ BAD (wrong quote style)
+import {foo,bar,baz} from "module"
+
+// ✅ GOOD (Prettier formatted)
+import { foo, bar, baz } from 'module';
+```
+
+#### AI Agent Formatting Protocol
+
+**When writing new code:**
+
+1. ✅ **Write code following Prettier rules from the start**
+2. ✅ **Use single quotes** for strings
+3. ✅ **Add semicolons** at statement ends
+4. ✅ **Keep lines under 100 characters** when possible
+5. ✅ **Use consistent spacing** (2 spaces indentation)
+6. ✅ **Format imports** properly (single quotes, proper spacing)
+
+**After code modification:**
+
+1. ✅ **ALWAYS run `pnpm lint --fix`** immediately
+2. ✅ **Verify formatting** with `pnpm lint`
+3. ✅ **Fix any remaining issues** before proceeding
+4. ✅ **Report formatting status** to user
+
+**CRITICAL RULE:**
+
+> **NEVER commit or complete a task with Prettier formatting errors. If `pnpm lint --fix` doesn't resolve all issues, manually fix them before proceeding.**
+
+#### Project-Specific Prettier Commands
+
+| Location | Command | Purpose |
+|----------|---------|---------|
+
+| `/apps/web/` | `pnpm lint --fix` | Format web app code |
+| `/apps/console/` | `pnpm lint --fix` | Format console app code |
+| `/packages/*/` | `pnpm lint --fix` | Format package code |
+| Root | `pnpm lint:all --fix` | Format entire monorepo |
+
+#### Prettier Integration with Tools
+
+**ESLint Integration:**
+
+- Prettier runs as part of ESLint (`eslint-plugin-prettier`)
+- `pnpm lint --fix` applies both ESLint and Prettier fixes
+- Conflicts are resolved in favor of Prettier
+
+**Editor Integration:**
+
+- VS Code: Uses workspace Prettier config
+- Format on save: Recommended for developers
+- AI agents: Must use CLI commands
+
+#### Error Detection and Resolution
+
+**Common Prettier Errors:**
+
+```bash
+# Error Example:
+./components/example.tsx
+12:45  Error: Replace `"react"` with `'react';`  prettier/prettier
+15:1   Error: Delete `··`  prettier/prettier
+20:80  Error: Insert `⏎··`  prettier/prettier
+```
+
+**Resolution Steps:**
+
+1. Run `pnpm lint --fix` (auto-fixes most issues)
+2. If errors remain, manually review:
+   - Check quote style
+   - Verify semicolons
+   - Check line length
+   - Verify indentation
+3. Re-run `pnpm lint --fix`
+4. Verify with `pnpm lint`
+
+#### Quality Gates for Formatting
+
+**MUST PASS before task completion:**
+
+- ✅ No Prettier errors in `pnpm lint` output
+- ✅ All quotes are single quotes (`'`)
+- ✅ All statements end with semicolons (`;`)
+- ✅ Indentation is consistent (2 spaces)
+- ✅ Line length is reasonable (<100 chars)
+- ✅ Imports are properly formatted
+
+#### Skip Conditions
+
+Prettier formatting may be skipped ONLY when:
+
+- User explicitly requests to skip formatting
+- Working with auto-generated code that will be regenerated
+- Editing non-source files (`.md`, `.txt`, etc.) without Prettier config
+
+**Default behavior: ALWAYS apply Prettier formatting to source code.**
 
 ---
 
@@ -573,38 +818,45 @@ Common dependency chains:
 | Package | Command | Build Time |
 |---------|---------|------------|
 | `packages/core` | `cd packages/core && pnpm build` | ~2-5s |
+
 | `packages/data-manager` | `cd packages/data-manager && pnpm build` | ~3-8s |
 | `packages/strategies` | `cd packages/strategies && pnpm build` | ~2-4s |
 | `packages/utils` | `cd packages/utils && pnpm build` | ~1-2s |
 | `packages/logger` | `cd packages/logger && pnpm build` | ~1-2s |
 | `packages/exchange-connectors` | `cd packages/exchange-connectors && pnpm build` | ~2-4s |
+
 | All packages | `pnpm build --filter "./packages/*"` | ~10-20s |
 
 #### Rebuild Workflow
 
 1. **Identify modified package**:
+
    ```bash
    # Example: Modified packages/data-manager/src/entities/Strategy.ts
    ```
 
 2. **Rebuild the package**:
+
    ```bash
    cd packages/data-manager && pnpm build
    ```
 
 3. **Rebuild dependent packages** (if needed):
+
    ```bash
    # If core depends on data-manager and was using the modified code
    cd packages/core && pnpm build
    ```
 
 4. **Rebuild web application to verify**:
+
    ```bash
    # ALWAYS rebuild web to ensure everything works
    cd apps/web && pnpm build
    ```
 
 5. **Verify build success**:
+
    ```bash
    # Check for build errors
    # Ensure no TypeScript compilation errors
@@ -683,6 +935,7 @@ Rebuild may be skipped ONLY when:
 - **Web application build: 3-5 seconds**
 
 **Total time for typical workflow:**
+
 - Single package + web: **5-10 seconds**
 - Multiple packages + web: **15-25 seconds**
 - Full rebuild + web: **35-65 seconds**

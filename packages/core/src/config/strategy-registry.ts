@@ -13,16 +13,26 @@ export type StrategyTypeKey =
 
 export interface StrategyParameterDefinition {
   name: string;
-  type: 'number' | 'string' | 'boolean' | 'object';
+  type:
+    | 'number'
+    | 'string'
+    | 'boolean'
+    | 'object'
+    | 'date'
+    | 'enum'
+    | 'range'
+    | 'color';
   description: string;
   defaultValue: any;
   required?: boolean;
   min?: number;
   max?: number;
+  step?: number; // For range/number input step
   validation?: {
     pattern?: string;
-    options?: string[];
+    options?: string[]; // For enum/dropdown
   };
+  unit?: string; // Display unit (e.g., 'ms', '%', 'px')
 }
 
 export interface StrategyConfig {
@@ -287,12 +297,30 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
   custom: {
     type: 'custom',
     name: 'Custom Strategy',
-    description: 'User-defined custom trading strategy',
+    description:
+      'User-defined custom trading strategy with advanced parameters',
     icon: '🛠️',
     implemented: false, // 🔄 实际实现状态由 @itrade/strategies 包动态确定
     category: 'custom',
     defaultParameters: {
-      // 自定义策略的参数由用户定义
+      // Basic parameters
+      lookbackPeriod: 20,
+      signalStrength: 70,
+      riskLevel: 50,
+
+      // Advanced parameters demonstrating new field types
+      tradingMode: 'balanced',
+      startDate: '2024-01-01',
+      buyColor: '#10b981',
+      sellColor: '#ef4444',
+      useStopLoss: true,
+
+      // Custom logic
+      customLogic: {
+        entryRules: [],
+        exitRules: [],
+      },
+
       subscription: {
         ticker: true,
         klines: true,
@@ -300,23 +328,106 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
       },
     },
     parameterDefinitions: [
+      // Number field
+      {
+        name: 'lookbackPeriod',
+        type: 'number',
+        description: 'Historical data lookback period (candles)',
+        defaultValue: 20,
+        required: true,
+        min: 5,
+        max: 200,
+      },
+
+      // Range field with percentage
+      {
+        name: 'signalStrength',
+        type: 'range',
+        description: 'Minimum signal strength threshold',
+        defaultValue: 70,
+        min: 50,
+        max: 95,
+        step: 5,
+        unit: '%',
+      },
+
+      // Range field for risk level
+      {
+        name: 'riskLevel',
+        type: 'range',
+        description: 'Risk tolerance level (higher = more aggressive)',
+        defaultValue: 50,
+        min: 0,
+        max: 100,
+        step: 10,
+        unit: '%',
+      },
+
+      // Enum field
+      {
+        name: 'tradingMode',
+        type: 'enum',
+        description: 'Trading mode strategy',
+        defaultValue: 'balanced',
+        required: true,
+        validation: {
+          options: ['conservative', 'balanced', 'aggressive'],
+        },
+      },
+
+      // Date field
+      {
+        name: 'startDate',
+        type: 'date',
+        description: 'Strategy activation start date',
+        defaultValue: '2024-01-01',
+      },
+
+      // Color fields
+      {
+        name: 'buyColor',
+        type: 'color',
+        description: 'Buy signal indicator color',
+        defaultValue: '#10b981',
+      },
+      {
+        name: 'sellColor',
+        type: 'color',
+        description: 'Sell signal indicator color',
+        defaultValue: '#ef4444',
+      },
+
+      // Boolean field
+      {
+        name: 'useStopLoss',
+        type: 'boolean',
+        description: 'Enable automatic stop loss protection',
+        defaultValue: true,
+      },
+
+      // Object field
       {
         name: 'customLogic',
         type: 'object',
-        description: 'Custom strategy logic configuration',
-        defaultValue: {},
+        description: 'Custom strategy logic configuration (JSON format)',
+        defaultValue: {
+          entryRules: [],
+          exitRules: [],
+        },
         required: false,
       },
     ],
     documentation: {
       overview:
-        'Allows implementation of custom trading logic through user-defined parameters.',
+        'Highly customizable strategy with support for all parameter types. Demonstrates date pickers, color selectors, range sliders, enums, and more.',
       parameters:
-        'Parameters are completely customizable based on strategy requirements.',
-      signals: 'Signals depend on custom implementation.',
+        'Configure strategy using visual controls like sliders, date pickers, and color selectors. Advanced users can define custom logic in JSON format.',
+      signals:
+        'Signals depend on custom implementation and configured parameters.',
       riskFactors: [
         'Risk profile depends on implementation',
         'Requires thorough testing before live trading',
+        'Custom parameters need careful validation',
       ],
     },
   },

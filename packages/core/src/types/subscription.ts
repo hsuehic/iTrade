@@ -111,4 +111,3 @@ export const DEFAULT_KLINES_CONFIG: KlinesSubscriptionConfig = {
   limit: 1,
   pollInterval: 60000, // 1 minute
 };
-

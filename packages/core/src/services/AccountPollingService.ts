@@ -38,7 +38,7 @@ export interface AccountSnapshotData {
 
 /**
  * AccountPollingService - 定时轮询交易所账户信息
- * 
+ *
  * 功能：
  * - 定时轮询多个交易所的 balance 和 position
  * - 持久化数据到数据库
@@ -53,10 +53,7 @@ export class AccountPollingService extends EventEmitter {
   private logger?: ILogger;
   private dataManager?: any; // IDataManager with AccountSnapshot support
 
-  constructor(
-    config: Partial<AccountPollingConfig> = {},
-    logger?: ILogger
-  ) {
+  constructor(config: Partial<AccountPollingConfig> = {}, logger?: ILogger) {
     super();
 
     this.config = {
@@ -144,7 +141,9 @@ export class AccountPollingService extends EventEmitter {
       const exchange = this.exchanges.get(exchangeName.toLowerCase());
 
       if (!exchange) {
-        this.logger?.warn('Exchange not registered', { exchange: exchangeName });
+        this.logger?.warn('Exchange not registered', {
+          exchange: exchangeName,
+        });
         continue;
       }
 
@@ -157,8 +156,17 @@ export class AccountPollingService extends EventEmitter {
       results.push(result);
 
       // 如果轮询成功且启用持久化，保存数据
-      if (result.success && this.config.enablePersistence && result.balances && result.positions) {
-        await this.saveSnapshot(exchangeName, result.balances, result.positions);
+      if (
+        result.success &&
+        this.config.enablePersistence &&
+        result.balances &&
+        result.positions
+      ) {
+        await this.saveSnapshot(
+          exchangeName,
+          result.balances,
+          result.positions
+        );
       }
     }
 
@@ -211,13 +219,18 @@ export class AccountPollingService extends EventEmitter {
         };
       } catch (error) {
         attempt++;
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
 
-        this.logger?.error('Exchange poll failed', error instanceof Error ? error : new Error(errorMessage), {
-          exchange: exchangeName,
-          attempt,
-          maxAttempts: this.config.retryAttempts,
-        });
+        this.logger?.error(
+          'Exchange poll failed',
+          error instanceof Error ? error : new Error(errorMessage),
+          {
+            exchange: exchangeName,
+            attempt,
+            maxAttempts: this.config.retryAttempts,
+          }
+        );
 
         if (attempt < this.config.retryAttempts) {
           // 等待后重试
@@ -296,13 +309,13 @@ export class AccountPollingService extends EventEmitter {
         totalPositionValue,
         unrealizedPnl,
         positionCount: positions.length,
-        balances: balances.map(b => ({
+        balances: balances.map((b) => ({
           asset: b.asset,
           free: b.free,
           locked: b.locked,
           total: b.total,
         })),
-        positions: positions.map(p => ({
+        positions: positions.map((p) => ({
           symbol: p.symbol,
           side: p.side,
           quantity: p.quantity,
@@ -317,7 +330,7 @@ export class AccountPollingService extends EventEmitter {
       // 保存到数据库
       if (this.dataManager.saveAccountSnapshot) {
         await this.dataManager.saveAccountSnapshot(snapshot);
-        
+
         this.logger?.debug('Account snapshot saved', {
           exchange,
           totalBalance: totalBalance.toString(),
@@ -327,9 +340,13 @@ export class AccountPollingService extends EventEmitter {
         this.emit('snapshotSaved', snapshot);
       }
     } catch (error) {
-      this.logger?.error('Failed to save account snapshot', error instanceof Error ? error : new Error(String(error)), {
-        exchange,
-      });
+      this.logger?.error(
+        'Failed to save account snapshot',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          exchange,
+        }
+      );
 
       this.emit('snapshotError', {
         exchange,
@@ -343,14 +360,16 @@ export class AccountPollingService extends EventEmitter {
    */
   async pollNow(): Promise<PollingResult[]> {
     this.logger?.info('Manual polling triggered');
-    
+
     const results: PollingResult[] = [];
 
     for (const exchangeName of this.config.exchanges) {
       const exchange = this.exchanges.get(exchangeName.toLowerCase());
 
       if (!exchange) {
-        this.logger?.warn('Exchange not registered', { exchange: exchangeName });
+        this.logger?.warn('Exchange not registered', {
+          exchange: exchangeName,
+        });
         continue;
       }
 
@@ -362,8 +381,17 @@ export class AccountPollingService extends EventEmitter {
       const result = await this.pollExchange(exchangeName, exchange);
       results.push(result);
 
-      if (result.success && this.config.enablePersistence && result.balances && result.positions) {
-        await this.saveSnapshot(exchangeName, result.balances, result.positions);
+      if (
+        result.success &&
+        this.config.enablePersistence &&
+        result.balances &&
+        result.positions
+      ) {
+        await this.saveSnapshot(
+          exchangeName,
+          result.balances,
+          result.positions
+        );
       }
     }
 
@@ -373,7 +401,9 @@ export class AccountPollingService extends EventEmitter {
   /**
    * 获取最新的账户数据（从缓存）
    */
-  async getLatestSnapshot(exchange: string): Promise<AccountSnapshotData | null> {
+  async getLatestSnapshot(
+    exchange: string
+  ): Promise<AccountSnapshotData | null> {
     if (!this.dataManager || !this.dataManager.getLatestAccountSnapshot) {
       return null;
     }
@@ -381,9 +411,13 @@ export class AccountPollingService extends EventEmitter {
     try {
       return await this.dataManager.getLatestAccountSnapshot(exchange);
     } catch (error) {
-      this.logger?.error('Failed to get latest snapshot', error instanceof Error ? error : new Error(String(error)), {
-        exchange,
-      });
+      this.logger?.error(
+        'Failed to get latest snapshot',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          exchange,
+        }
+      );
       return null;
     }
   }
@@ -407,11 +441,15 @@ export class AccountPollingService extends EventEmitter {
         endTime
       );
     } catch (error) {
-      this.logger?.error('Failed to get snapshot history', error instanceof Error ? error : new Error(String(error)), {
-        exchange,
-        startTime,
-        endTime,
-      });
+      this.logger?.error(
+        'Failed to get snapshot history',
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          exchange,
+          startTime,
+          endTime,
+        }
+      );
       return [];
     }
   }
@@ -421,7 +459,7 @@ export class AccountPollingService extends EventEmitter {
    */
   updateConfig(config: Partial<AccountPollingConfig>): void {
     const wasRunning = this.isRunning;
-    
+
     if (wasRunning) {
       this.stop();
     }
@@ -456,4 +494,3 @@ export class AccountPollingService extends EventEmitter {
     };
   }
 }
-

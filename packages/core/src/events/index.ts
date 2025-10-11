@@ -276,7 +276,9 @@ export class EventBus extends EventEmitter {
     return this.on(EVENTS.ORDER_FILLED, callback);
   }
 
-  public onOrderPartiallyFilled(callback: (data: OrderEventData) => void): this {
+  public onOrderPartiallyFilled(
+    callback: (data: OrderEventData) => void
+  ): this {
     return this.on(EVENTS.ORDER_PARTIALLY_FILLED, callback);
   }
 
