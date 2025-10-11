@@ -29,8 +29,8 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // Check ownership
-      const strategy = await dataManager.getStrategy(id);
+      // Check ownership - need to include user for authorization
+      const strategy = await dataManager.getStrategy(id, { includeUser: true });
       if (!strategy || strategy.user.id !== session.user.id) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }

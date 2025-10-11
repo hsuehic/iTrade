@@ -39,10 +39,20 @@ export class StrategyRepository {
     return Array.isArray(saved) ? saved[0] : saved;
   }
 
-  async findById(id: number): Promise<StrategyEntity | null> {
+  async findById(
+    id: number,
+    options?: { includeUser?: boolean }
+  ): Promise<StrategyEntity | null> {
+    // Don't join by default - only if explicitly requested
+    if (options?.includeUser) {
+      return await this.repository.findOne({
+        where: { id },
+        relations: ['user'],
+      });
+    }
+
     return await this.repository.findOne({
       where: { id },
-      relations: ['user'],
     });
   }
 

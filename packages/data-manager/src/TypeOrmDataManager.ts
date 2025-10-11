@@ -747,15 +747,19 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.strategyRepository.create(data);
   }
 
-  async getStrategy(id: number): Promise<StrategyEntity | null> {
+  async getStrategy(
+    id: number,
+    options?: { includeUser?: boolean }
+  ): Promise<StrategyEntity | null> {
     this.ensureInitialized();
-    return await this.strategyRepository.findById(id);
+    return await this.strategyRepository.findById(id, options);
   }
 
   async getStrategies(filters?: {
     userId?: string;
     status?: string;
     exchange?: string;
+    includeUser?: boolean;
   }): Promise<StrategyEntity[]> {
     this.ensureInitialized();
     return await this.strategyRepository.findAll(filters);
@@ -807,6 +811,8 @@ export class TypeOrmDataManager implements IDataManager {
     status?: string;
     startDate?: Date;
     endDate?: Date;
+    includeStrategy?: boolean;
+    includeFills?: boolean;
   }): Promise<OrderEntity[]> {
     this.ensureInitialized();
     return await this.orderRepository.findAll(filters);

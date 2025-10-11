@@ -182,7 +182,26 @@ npx tsx sync-scheme-to-db.ts
 
 **无需 SQL 脚本** - TypeORM 自动管理所有索引！
 
-### 2. **使用 Redis 缓存**
+### 2. **优化 Join 查询 (已实施)**
+
+**问题**: 自动的 JOIN 查询导致性能问题。
+
+**解决方案**: 将所有 JOIN 改为可选（opt-in）。
+
+```typescript
+// ❌ 之前：总是 JOIN
+const strategy = await dm.getStrategy(id); // 自动 JOIN user
+
+// ✅ 现在：只在需要时 JOIN
+const strategy = await dm.getStrategy(id); // 快！不 JOIN
+const strategyWithUser = await dm.getStrategy(id, { includeUser: true }); // 需要时才 JOIN
+```
+
+**性能提升**: 5-10x 更快
+
+**详细文档**: 查看 [Join 查询优化详解](./JOIN_QUERY_OPTIMIZATION.md)
+
+### 3. **使用 Redis 缓存**
 
 对于频繁访问的数据，考虑使用 Redis：
 ```typescript
@@ -354,6 +373,14 @@ module.exports = {
 - [TypeORM Caching](https://typeorm.io/caching)
 - [Next.js Performance](https://nextjs.org/docs/pages/building-your-application/optimizing)
 - [PostgreSQL Performance Tuning](https://wiki.postgresql.org/wiki/Performance_Optimization)
+
+---
+
+## 📚 **相关文档**
+
+- [数据库索引管理指南](../../packages/data-manager/HOW_TO_ADD_INDEXES.md) - 如何添加和管理数据库索引
+- [Join 查询优化详解](./JOIN_QUERY_OPTIMIZATION.md) - 详细的 Join 查询优化方案和最佳实践
+- [数据库 Schema 管理](../../packages/data-manager/migrations/README.md) - TypeORM-first 方法管理数据库结构
 
 ---
 

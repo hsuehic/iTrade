@@ -30,7 +30,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const dataManager = await getDataManager();
-    const strategy = await dataManager.getStrategy(id);
+    // Include user for ownership check
+    const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
       return NextResponse.json(
@@ -76,7 +77,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const dataManager = await getDataManager();
-    const strategy = await dataManager.getStrategy(id);
+    // Include user for ownership check
+    const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
       return NextResponse.json(
@@ -115,6 +117,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     await dataManager.updateStrategy(id, updates);
 
+    // No need to include user in response
     const updatedStrategy = await dataManager.getStrategy(id);
     return NextResponse.json({ strategy: updatedStrategy });
   } catch (error) {
@@ -148,7 +151,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
 
     const dataManager = await getDataManager();
-    const strategy = await dataManager.getStrategy(id);
+    // Include user for ownership check
+    const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
       return NextResponse.json(

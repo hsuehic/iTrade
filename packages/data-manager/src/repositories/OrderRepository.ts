@@ -1,4 +1,5 @@
 import { DataSource, Repository } from 'typeorm';
+
 import { OrderEntity } from '../entities/Order';
 
 export class OrderRepository {
@@ -17,10 +18,19 @@ export class OrderRepository {
     await this.repository.update({ id }, updates);
   }
 
-  async findById(id: string): Promise<OrderEntity | null> {
+  async findById(
+    id: string,
+    options?: { includeStrategy?: boolean; includeFills?: boolean }
+  ): Promise<OrderEntity | null> {
+    const relations: string[] = [];
+
+    // Only join if explicitly requested
+    if (options?.includeStrategy) relations.push('strategy');
+    if (options?.includeFills) relations.push('fills');
+
     return await this.repository.findOne({
       where: { id },
-      relations: ['strategy', 'fills'],
+      relations: relations.length > 0 ? relations : undefined,
     });
   }
 
@@ -30,11 +40,18 @@ export class OrderRepository {
     status?: string;
     startDate?: Date;
     endDate?: Date;
+    includeStrategy?: boolean;
+    includeFills?: boolean;
   }): Promise<OrderEntity[]> {
-    const query = this.repository
-      .createQueryBuilder('order')
-      .leftJoinAndSelect('order.strategy', 'strategy')
-      .leftJoinAndSelect('order.fills', 'fills');
+    const query = this.repository.createQueryBuilder('order');
+
+    // Only join if explicitly requested (performance optimization)
+    if (filters?.includeStrategy) {
+      query.leftJoinAndSelect('order.strategy', 'strategy');
+    }
+    if (filters?.includeFills) {
+      query.leftJoinAndSelect('order.fills', 'fills');
+    }
 
     if (filters?.strategyId) {
       query.andWhere('order.strategyId = :strategyId', {
@@ -58,7 +75,10 @@ export class OrderRepository {
       });
     }
 
-    return await query.orderBy('order.timestamp', 'DESC').getMany();
+    // Add cache for better performance
+    return await query
+      .orderBy('order.timestamp', 'DESC')
+      .cache(30000) // Cache for 30 seconds
+      .getMany();
   }
 }
-
