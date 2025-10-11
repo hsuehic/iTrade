@@ -148,7 +148,7 @@ export class MovingAverageStrategy extends BaseStrategy {
     return this.slowMA;
   }
 
-  public getCurrentPosition(): 'long' | 'short' | 'none' {
+  public getPositionType(): 'long' | 'short' | 'none' {
     return this.position;
   }
 
@@ -324,7 +324,8 @@ export class MovingAverageStrategy extends BaseStrategy {
       priceHistoryLength: this.priceHistory.length,
       fastMA: this.fastMA.toString(),
       slowMA: this.slowMA.toString(),
-      currentPosition: this.getCurrentPosition().toString(),
+      currentPosition: this.getCurrentPosition().toString(), // BaseStrategy method - returns Decimal
+      positionType: this.getPositionType(), // MovingAverage method - returns 'long'|'short'|'none'
       averagePrice: this.getAveragePrice()?.toString(),
       lastSignal: this.getLastSignal(),
       isInitialized: this._isInitialized,
