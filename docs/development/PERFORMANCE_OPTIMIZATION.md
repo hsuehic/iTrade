@@ -148,26 +148,39 @@ for (const exchangeName of exchangesToQuery) {
 
 ## 🔧 **进一步优化建议**
 
-### 1. **数据库索引**
+### 1. **数据库索引 (TypeORM-First)**
 
-确保以下字段有索引：
-```sql
--- Strategies 表
-CREATE INDEX idx_strategies_userId ON strategies(userId);
-CREATE INDEX idx_strategies_status ON strategies(status);
-CREATE INDEX idx_strategies_exchange ON strategies(exchange);
-CREATE INDEX idx_strategies_createdAt ON strategies(createdAt);
+所有索引都在 Entity 文件中定义：
 
--- Orders 表
-CREATE INDEX idx_orders_strategyId ON orders(strategyId);
-CREATE INDEX idx_orders_symbol ON orders(symbol);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_timestamp ON orders(timestamp);
+```typescript
+// packages/data-manager/src/entities/Strategy.ts
+@Entity('strategies')
+@Index(['user'])
+@Index(['status'])
+@Index(['exchange'])
+export class StrategyEntity { }
 
--- Account Snapshots 表
-CREATE INDEX idx_snapshots_exchange ON account_snapshots(exchange);
-CREATE INDEX idx_snapshots_timestamp ON account_snapshots(timestamp);
+// packages/data-manager/src/entities/Order.ts
+@Entity('orders')
+@Index(['symbol'])
+@Index(['status'])
+@Index(['timestamp'])
+export class OrderEntity { }
+
+// packages/data-manager/src/entities/AccountSnapshot.ts
+@Entity('account_snapshots')
+@Index(['exchange', 'timestamp'])  // Composite index
+@Index(['timestamp'])
+export class AccountSnapshotEntity { }
 ```
+
+**应用索引：**
+```bash
+cd packages/data-manager
+npx tsx sync-scheme-to-db.ts
+```
+
+**无需 SQL 脚本** - TypeORM 自动管理所有索引！
 
 ### 2. **使用 Redis 缓存**
 

@@ -1,8 +1,8 @@
-import { Repository, DataSource, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Decimal } from 'decimal.js';
+import { Balance, Position } from '@itrade/core';
 
 import { AccountSnapshotEntity } from '../entities/AccountSnapshot';
-import { Balance, Position } from '@itrade/core';
 
 export interface AccountSnapshotData {
   id?: number;
@@ -27,7 +27,7 @@ export interface AccountSnapshotQueryOptions {
 
 /**
  * AccountSnapshotRepository - 账户快照数据仓库
- * 
+ *
  * 提供账户快照的 CRUD 操作
  */
 export class AccountSnapshotRepository {
@@ -107,7 +107,9 @@ export class AccountSnapshotRepository {
   /**
    * 查询账户快照历史
    */
-  async query(options: AccountSnapshotQueryOptions): Promise<AccountSnapshotData[]> {
+  async query(
+    options: AccountSnapshotQueryOptions
+  ): Promise<AccountSnapshotData[]> {
     const queryBuilder = this.repository.createQueryBuilder('snapshot');
 
     if (options.exchange) {
@@ -146,13 +148,17 @@ export class AccountSnapshotRepository {
     startTime: Date,
     endTime: Date
   ): Promise<AccountSnapshotData[]> {
-    const entities = await this.repository.find({
-      where: {
-        exchange,
-        timestamp: MoreThanOrEqual(startTime) && LessThanOrEqual(endTime),
-      },
-      order: { timestamp: 'ASC' },
-    });
+    // Use QueryBuilder for better performance with indexes
+    const entities = await this.repository
+      .createQueryBuilder('snapshot')
+      .where('snapshot.exchange = :exchange', { exchange })
+      .andWhere('snapshot.timestamp BETWEEN :startTime AND :endTime', {
+        startTime,
+        endTime,
+      })
+      .orderBy('snapshot.timestamp', 'ASC')
+      .cache(30000) // Cache for 30 seconds
+      .getMany();
 
     return entities.map((e) => this.entityToData(e));
   }
@@ -193,10 +199,20 @@ export class AccountSnapshotRepository {
 
     return {
       count: snapshots.length,
-      avgBalance: balances.reduce((sum, b) => sum.add(b), new Decimal(0)).div(balances.length),
-      maxBalance: balances.reduce((max, b) => (b.gt(max) ? b : max), balances[0]),
-      minBalance: balances.reduce((min, b) => (b.lt(min) ? b : min), balances[0]),
-      avgPositionCount: Math.round(positionCounts.reduce((sum, c) => sum + c, 0) / positionCounts.length),
+      avgBalance: balances
+        .reduce((sum, b) => sum.add(b), new Decimal(0))
+        .div(balances.length),
+      maxBalance: balances.reduce(
+        (max, b) => (b.gt(max) ? b : max),
+        balances[0]
+      ),
+      minBalance: balances.reduce(
+        (min, b) => (b.lt(min) ? b : min),
+        balances[0]
+      ),
+      avgPositionCount: Math.round(
+        positionCounts.reduce((sum, c) => sum + c, 0) / positionCounts.length
+      ),
       maxPositionCount: Math.max(...positionCounts),
       totalPnl: pnls.reduce((sum, p) => sum.add(p), new Decimal(0)),
     };
@@ -251,10 +267,10 @@ export class AccountSnapshotRepository {
 
     // 按天或周聚合
     const groupedData: Map<string, AccountSnapshotData[]> = new Map();
-    
+
     snapshots.forEach((snapshot) => {
       let key: string;
-      
+
       if (interval === 'day') {
         key = snapshot.timestamp.toISOString().split('T')[0];
       } else {
@@ -317,4 +333,3 @@ export class AccountSnapshotRepository {
     };
   }
 }
-

@@ -13,6 +13,11 @@ const configuration = {
   password: process.env.DB_PASSWORD!,
   database: process.env.DB_DB!,
   synchronize: true,
+  // Enable cache to create query-result-cache table
+  cache: {
+    type: 'database' as const,
+    duration: 30000,
+  },
 };
 console.log(configuration);
 const dataManager = new TypeOrmDataManager(configuration);

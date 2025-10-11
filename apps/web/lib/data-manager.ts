@@ -38,7 +38,7 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
         min: 2, // Minimum pool size
         idleTimeoutMillis: 30000, // Close idle connections after 30s
         connectionTimeoutMillis: 5000, // Connection timeout 5s
-        statement_timeout: 10000, // Query timeout 10s
+        statement_timeout: 10000, // Query timeout 10s (safe with indexes)
       },
 
       // Performance optimizations
