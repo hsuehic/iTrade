@@ -55,12 +55,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { JsonEditor } from '@/components/json-editor';
-import { StrategyParameterFormSimple } from '@/components/strategy-parameter-form-simple';
+import { StrategyParameterFormDynamic } from '@/components/strategy-parameter-form-dynamic';
+import { ExchangeLogo } from '@/components/exchange-logo';
+import { SymbolIcon } from '@/components/symbol-icon';
 import {
   SUPPORTED_EXCHANGES,
   getSymbolFormatHint,
-  getExchangeIcon,
-  getExchangeLogoUrl,
   getCryptoIconUrl,
   getTradingPairsForExchange,
   getDefaultTradingPair,
@@ -623,7 +623,7 @@ export default function StrategyPage() {
                             </p>
                           </div>
                         ) : (
-                          <StrategyParameterFormSimple
+                          <StrategyParameterFormDynamic
                             strategyType={formData.type as StrategyTypeKey}
                             initialParameters={memoizedInitialParameters}
                             onParametersChange={handleParametersChange}
@@ -745,25 +745,12 @@ export default function StrategyPage() {
                             </span>
                             <Badge
                               variant="outline"
-                              className="font-medium gap-1.5"
+                              className="font-medium gap-1.5 flex items-center"
                             >
-                              {strategy.exchange &&
-                              getExchangeLogoUrl(strategy.exchange) ? (
-                                <img
-                                  src={getExchangeLogoUrl(strategy.exchange)}
-                                  alt={strategy.exchange}
-                                  className="w-4 h-4 rounded-full"
-                                  onError={(e) => {
-                                    (
-                                      e.target as HTMLImageElement
-                                    ).style.display = 'none';
-                                  }}
-                                />
-                              ) : strategy.exchange ? (
-                                <span className="text-sm">
-                                  {getExchangeIcon(strategy.exchange)}
-                                </span>
-                              ) : null}
+                              <ExchangeLogo
+                                exchange={strategy.exchange || ''}
+                                size="sm"
+                              />
                               {strategy.exchange
                                 ? strategy.exchange.charAt(0).toUpperCase() +
                                   strategy.exchange.slice(1)
@@ -775,22 +762,32 @@ export default function StrategyPage() {
                               Trading Pair
                             </span>
                             <div className="flex items-center gap-2">
-                              {strategy.marketType &&
-                                strategy.marketType !== 'spot' && (
-                                  <Badge
-                                    variant="destructive"
-                                    className="text-xs"
-                                  >
-                                    {strategy.marketType === 'perpetual'
-                                      ? '⚡ Perp'
-                                      : '📈 Futures'}
-                                  </Badge>
-                                )}
+                              {strategy.symbol && (
+                                <SymbolIcon
+                                  symbol={strategy.symbol}
+                                  size="sm"
+                                />
+                              )}
                               <span className="font-mono font-medium">
                                 {strategy.normalizedSymbol ||
                                   strategy.symbol ||
                                   'N/A'}
                               </span>
+                              {strategy.marketType &&
+                                strategy.marketType !== 'spot' && (
+                                  <span
+                                    className="text-xs"
+                                    title={
+                                      strategy.marketType === 'perpetual'
+                                        ? 'Perpetual'
+                                        : 'Futures'
+                                    }
+                                  >
+                                    {strategy.marketType === 'perpetual'
+                                      ? '⚡'
+                                      : '📈'}
+                                  </span>
+                                )}
                             </div>
                           </div>
                           {strategy.lastExecutionTime && (

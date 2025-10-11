@@ -26,6 +26,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ExchangeLogo } from '@/components/exchange-logo';
+import { SymbolIcon } from '@/components/symbol-icon';
 
 interface Strategy {
   id: number;
@@ -147,11 +149,23 @@ export function StrategyPerformanceTable() {
                         <TableCell className="font-medium">
                           {strategy.name}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {strategy.symbol}
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <SymbolIcon symbol={strategy.symbol} size="sm" />
+                            <span className="font-mono text-sm">
+                              {strategy.symbol}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="capitalize">
+                          <Badge
+                            variant="outline"
+                            className="flex items-center gap-1.5 w-fit capitalize"
+                          >
+                            <ExchangeLogo
+                              exchange={strategy.exchange}
+                              size="sm"
+                            />
                             {strategy.exchange}
                           </Badge>
                         </TableCell>
@@ -236,7 +250,14 @@ export function StrategyPerformanceTable() {
                       return (
                         <TableRow key={stat.exchange}>
                           <TableCell className="font-medium capitalize">
-                            <Badge variant="outline" className="text-sm">
+                            <Badge
+                              variant="outline"
+                              className="flex items-center gap-1.5 w-fit text-sm"
+                            >
+                              <ExchangeLogo
+                                exchange={stat.exchange}
+                                size="sm"
+                              />
                               {stat.exchange}
                             </Badge>
                           </TableCell>
@@ -297,8 +318,13 @@ export function StrategyPerformanceTable() {
                       const avgPnl = stat.totalPnl / Math.max(stat.count, 1);
                       return (
                         <TableRow key={stat.symbol}>
-                          <TableCell className="font-mono font-semibold">
-                            {stat.symbol}
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <SymbolIcon symbol={stat.symbol} size="sm" />
+                              <span className="font-mono font-semibold">
+                                {stat.symbol}
+                              </span>
+                            </div>
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {stat.count}

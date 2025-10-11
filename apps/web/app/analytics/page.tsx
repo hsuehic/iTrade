@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SymbolIcon } from '@/components/symbol-icon';
 
 type PnLData = {
   totalPnl: number;
@@ -317,7 +318,17 @@ export default function AnalyticsPage() {
                                 <TableCell>
                                   {order.strategy?.name || 'N/A'}
                                 </TableCell>
-                                <TableCell>{order.symbol}</TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <SymbolIcon
+                                      symbol={order.symbol}
+                                      size="sm"
+                                    />
+                                    <span className="font-mono text-sm">
+                                      {order.symbol}
+                                    </span>
+                                  </div>
+                                </TableCell>
                                 <TableCell>
                                   <Badge
                                     variant={
