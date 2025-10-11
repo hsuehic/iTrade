@@ -59,7 +59,7 @@ export function AccountBalanceChart({
   refreshInterval = 5000,
 }: AccountBalanceChartProps) {
   const isMobile = useIsMobile();
-  const [timeRange, setTimeRange] = React.useState('30d');
+  const [timeRange, setTimeRange] = React.useState('1d');
   const [chartData, setChartData] = React.useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [exchanges, setExchanges] = React.useState<string[]>([]);
@@ -302,10 +302,10 @@ export function AccountBalanceChart({
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         {loading ? (
-          <Skeleton className="h-[400px] w-full rounded-md" />
+          <Skeleton className="h-[450px] w-full rounded-md" />
         ) : chartData.length === 0 ? (
-          <div className="flex h-[400px] items-center justify-center text-muted-foreground">
-            <div className="text-center">
+          <div className="flex h-[450px] items-center justify-center text-muted-foreground">
+            <div className="text-center space-y-2">
               <p className="text-lg font-medium">No data available</p>
               <p className="text-sm">
                 Start trading to see your account balance history
@@ -315,33 +315,57 @@ export function AccountBalanceChart({
         ) : (
           <ChartContainer
             config={chartConfig}
-            className="aspect-auto h-[400px] w-full"
+            className="aspect-auto h-[450px] w-full"
           >
             <LineChart
               data={chartData}
-              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              margin={{ top: 30, right: 40, left: 25, bottom: 25 }}
             >
               <defs>
-                <linearGradient id="gridGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="0%"
-                    stopColor="currentColor"
-                    stopOpacity="0.1"
-                  />
-                  <stop
-                    offset="100%"
-                    stopColor="currentColor"
-                    stopOpacity="0.05"
-                  />
-                </linearGradient>
+                {/* Gradient fills for each exchange */}
+                {exchanges.map((exchange) => (
+                  <linearGradient
+                    key={`gradient-${exchange}`}
+                    id={`gradient-${exchange}`}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor={
+                        chartConfig[exchange as keyof typeof chartConfig]
+                          ?.color || 'hsl(var(--primary))'
+                      }
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="50%"
+                      stopColor={
+                        chartConfig[exchange as keyof typeof chartConfig]
+                          ?.color || 'hsl(var(--primary))'
+                      }
+                      stopOpacity={0.1}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={
+                        chartConfig[exchange as keyof typeof chartConfig]
+                          ?.color || 'hsl(var(--primary))'
+                      }
+                      stopOpacity={0.0}
+                    />
+                  </linearGradient>
+                ))}
               </defs>
               <CartesianGrid
                 horizontal={true}
-                vertical={false}
-                strokeDasharray="1 3"
-                stroke="currentColor"
-                strokeOpacity={0.1}
-                strokeWidth={0.5}
+                vertical={true}
+                strokeDasharray="3 3"
+                stroke="hsl(var(--border))"
+                strokeOpacity={0.3}
+                strokeWidth={1}
               />
               <XAxis
                 dataKey="date"
@@ -376,12 +400,13 @@ export function AccountBalanceChart({
               <YAxis
                 tickLine={false}
                 axisLine={false}
-                tickMargin={12}
-                width={80}
+                tickMargin={16}
+                width={85}
                 fontSize={12}
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 domain={calculateYAxisDomain()}
                 tickFormatter={formatCurrency}
+                tickCount={8}
               />
               <ChartTooltip
                 cursor={{
@@ -484,21 +509,36 @@ export function AccountBalanceChart({
                   stroke={
                     chartConfig[exchange as keyof typeof chartConfig]?.color
                   }
-                  strokeWidth={1.5}
-                  dot={false}
+                  strokeWidth={2.5}
+                  dot={
+                    chartData.length <= 10
+                      ? {
+                          r: 3,
+                          strokeWidth: 2,
+                          fill: 'hsl(var(--background))',
+                          stroke:
+                            chartConfig[exchange as keyof typeof chartConfig]
+                              ?.color,
+                          filter: 'drop-shadow(0 2px 4px rgb(0 0 0 / 0.15))',
+                        }
+                      : false
+                  }
                   activeDot={{
-                    r: 4,
-                    strokeWidth: 2,
+                    r: 5,
+                    strokeWidth: 3,
                     fill: chartConfig[exchange as keyof typeof chartConfig]
                       ?.color,
                     stroke: 'hsl(var(--background))',
-                    filter: 'drop-shadow(0 2px 4px rgb(0 0 0 / 0.1))',
+                    filter: 'drop-shadow(0 4px 8px rgb(0 0 0 / 0.2))',
                   }}
                   animationDuration={timeRange === '1h' ? 800 : 400}
                   animationEasing="ease-out"
                   connectNulls={true}
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  fill={`url(#gradient-${exchange})`}
+                  fillOpacity={1}
+                  filter="drop-shadow(0 4px 6px rgb(0 0 0 / 0.05))"
                 />
               ))}
               <ChartLegend content={<ChartLegendContent />} />

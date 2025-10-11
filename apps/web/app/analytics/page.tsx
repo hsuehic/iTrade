@@ -61,6 +61,8 @@ type Order = {
     id: number;
     name: string;
   };
+  normalizedSymbol?: string;
+  marketType?: string;
 };
 
 type Strategy = {
@@ -324,9 +326,24 @@ export default function AnalyticsPage() {
                                       symbol={order.symbol}
                                       size="sm"
                                     />
-                                    <span className="font-mono text-sm">
-                                      {order.symbol}
-                                    </span>
+                                    <div className="flex flex-col">
+                                      <span className="font-mono text-sm">
+                                        {order.symbol}
+                                      </span>
+                                      {order.normalizedSymbol && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {order.normalizedSymbol}
+                                          {order.marketType === 'perpetual' && (
+                                            <Badge
+                                              variant="outline"
+                                              className="ml-1 text-xs py-0 px-1 h-4"
+                                            >
+                                              PERP
+                                            </Badge>
+                                          )}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </TableCell>
                                 <TableCell>

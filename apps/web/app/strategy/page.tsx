@@ -86,6 +86,10 @@ export default function StrategyPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [strategyToDelete, setStrategyToDelete] = useState<Strategy | null>(
+    null
+  );
   // 使用策略配置系统获取默认值
   const getDefaultStrategyType = (): StrategyTypeKey => {
     const implementedStrategies = getImplementedStrategies();
@@ -244,11 +248,21 @@ export default function StrategyPage() {
     }
   };
 
-  const deleteStrategy = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this strategy?')) return;
+  const openDeleteDialog = (strategy: Strategy) => {
+    setStrategyToDelete(strategy);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const closeDeleteDialog = () => {
+    setIsDeleteDialogOpen(false);
+    setStrategyToDelete(null);
+  };
+
+  const confirmDeleteStrategy = async () => {
+    if (!strategyToDelete) return;
 
     try {
-      const response = await fetch(`/api/strategies/${id}`, {
+      const response = await fetch(`/api/strategies/${strategyToDelete.id}`, {
         method: 'DELETE',
       });
 
@@ -257,8 +271,9 @@ export default function StrategyPage() {
         throw new Error(error.error || 'Failed to delete strategy');
       }
 
-      toast.success('Strategy deleted');
+      toast.success('Strategy deleted successfully');
       fetchStrategies();
+      closeDeleteDialog();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Failed to delete strategy'
@@ -299,559 +314,640 @@ export default function StrategyPage() {
   };
 
   return (
-    <SidebarInset>
-      <SiteHeader title="Strategy Management" />
-      <div className="flex flex-1 flex-col">
-        <div className="@container/main flex flex-1 flex-col gap-2">
-          <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-            {/* Header */}
-            <div className="flex justify-between items-start px-4 lg:px-6">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight">
-                  Trading Strategies
-                </h2>
-                <p className="text-muted-foreground mt-1">
-                  Create, manage and monitor your automated trading strategies
-                </p>
-              </div>
-              <Dialog
-                open={isCreateDialogOpen}
-                onOpenChange={(open) => {
-                  setIsCreateDialogOpen(open);
-                  if (!open) resetForm();
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button size="lg">
-                    <IconPlus className="mr-2 h-4 w-4" />
-                    New Strategy
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>
-                      {isEditing ? 'Edit Strategy' : 'Create New Strategy'}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {isEditing
-                        ? 'Update your trading strategy configuration'
-                        : 'Configure a new automated trading strategy'}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={createStrategy} className="space-y-6">
-                    <Tabs defaultValue="basic" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                        <TabsTrigger value="config">Configuration</TabsTrigger>
-                      </TabsList>
+    <>
+      <SidebarInset>
+        <SiteHeader title="Strategy Management" />
+        <div className="flex flex-1 flex-col">
+          <div className="@container/main flex flex-1 flex-col gap-2">
+            <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+              {/* Header */}
+              <div className="flex justify-between items-start px-4 lg:px-6">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight">
+                    Trading Strategies
+                  </h2>
+                  <p className="text-muted-foreground mt-1">
+                    Create, manage and monitor your automated trading strategies
+                  </p>
+                </div>
+                <Dialog
+                  open={isCreateDialogOpen}
+                  onOpenChange={(open) => {
+                    setIsCreateDialogOpen(open);
+                    if (!open) resetForm();
+                  }}
+                >
+                  <DialogTrigger asChild>
+                    <Button size="lg">
+                      <IconPlus className="mr-2 h-4 w-4" />
+                      New Strategy
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>
+                        {isEditing ? 'Edit Strategy' : 'Create New Strategy'}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {isEditing
+                          ? 'Update your trading strategy configuration'
+                          : 'Configure a new automated trading strategy'}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={createStrategy} className="space-y-6">
+                      <Tabs defaultValue="basic" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                          <TabsTrigger value="config">
+                            Configuration
+                          </TabsTrigger>
+                        </TabsList>
 
-                      <TabsContent value="basic" className="space-y-4 mt-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <TabsContent value="basic" className="space-y-4 mt-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="name">
+                                Strategy Name{' '}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Input
+                                id="name"
+                                placeholder="e.g., BTC MA Cross"
+                                value={formData.name}
+                                onChange={(e) =>
+                                  setFormData({
+                                    ...formData,
+                                    name: e.target.value,
+                                  })
+                                }
+                                required
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="type">
+                                Strategy Type{' '}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Select
+                                value={formData.type}
+                                onValueChange={(value: StrategyTypeKey) => {
+                                  // 当策略类型改变时，自动更新默认参数
+                                  const newParameters =
+                                    getDefaultParametersForType(value);
+                                  setFormData({
+                                    ...formData,
+                                    type: value,
+                                    parameters: JSON.stringify(
+                                      newParameters,
+                                      null,
+                                      2
+                                    ),
+                                  });
+                                  // 重置为表单模式以便用户看到新策略的参数
+                                  setShowAdvancedMode(false);
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getAllStrategiesWithImplementationStatus().map(
+                                    (strategy: StrategyImplementationInfo) => (
+                                      <SelectItem
+                                        key={strategy.type}
+                                        value={strategy.type}
+                                        disabled={!strategy.isImplemented}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <span>{strategy.icon}</span>
+                                          <div className="flex flex-col">
+                                            <span className="font-medium">
+                                              {strategy.name}
+                                            </span>
+                                            {!strategy.isImplemented && (
+                                              <span className="text-xs text-muted-foreground">
+                                                Coming Soon
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </SelectItem>
+                                    )
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="exchange">
+                                Exchange <span className="text-red-500">*</span>
+                              </Label>
+                              <Select
+                                value={formData.exchange}
+                                onValueChange={(value) => {
+                                  // Update exchange and set default trading pair for that exchange
+                                  const defaultTradingPair =
+                                    getDefaultTradingPair(value);
+                                  setFormData({
+                                    ...formData,
+                                    exchange: value,
+                                    symbol: isEditing
+                                      ? formData.symbol
+                                      : defaultTradingPair,
+                                  });
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select exchange" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {SUPPORTED_EXCHANGES.map((exchange) => {
+                                    const logoUrl =
+                                      'logoUrl' in exchange
+                                        ? exchange.logoUrl
+                                        : undefined;
+                                    const iconEmoji =
+                                      'iconEmoji' in exchange
+                                        ? exchange.iconEmoji
+                                        : '💱';
+                                    return (
+                                      <SelectItem
+                                        key={exchange.id}
+                                        value={exchange.id}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          {logoUrl ? (
+                                            <img
+                                              src={logoUrl}
+                                              alt={exchange.name}
+                                              className="w-5 h-5 rounded-full"
+                                              onError={(e) => {
+                                                (
+                                                  e.target as HTMLImageElement
+                                                ).style.display = 'none';
+                                              }}
+                                            />
+                                          ) : (
+                                            <span className="text-base">
+                                              {iconEmoji}
+                                            </span>
+                                          )}
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-medium">
+                                              {exchange.name}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                              ({exchange.description})
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground">
+                                Select your trading platform
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="symbol">
+                                Trading Pair{' '}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <Select
+                                value={formData.symbol}
+                                onValueChange={(value) =>
+                                  setFormData({ ...formData, symbol: value })
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select trading pair" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getTradingPairsForExchange(
+                                    formData.exchange
+                                  ).map((pair) => (
+                                    <SelectItem
+                                      key={pair.symbol}
+                                      value={pair.symbol}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <img
+                                          src={getCryptoIconUrl(pair.base)}
+                                          alt={pair.base}
+                                          className="w-4 h-4 rounded-full"
+                                          onError={(e) => {
+                                            (
+                                              e.target as HTMLImageElement
+                                            ).style.display = 'none';
+                                          }}
+                                        />
+                                        <span className="font-medium">
+                                          {pair.name}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground">
+                                          (
+                                          {pair.type === 'perpetual'
+                                            ? '⚡ Perp'
+                                            : '💼 Spot'}
+                                          )
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs text-muted-foreground">
+                                Format: {getSymbolFormatHint(formData.exchange)}{' '}
+                                • Backend normalizes automatically
+                              </p>
+                            </div>
+                          </div>
+
                           <div className="space-y-2">
-                            <Label htmlFor="name">
-                              Strategy Name{' '}
-                              <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              id="name"
-                              placeholder="e.g., BTC MA Cross"
-                              value={formData.name}
+                            <Label htmlFor="description">Description</Label>
+                            <Textarea
+                              id="description"
+                              placeholder="Describe your strategy's approach and goals..."
+                              value={formData.description}
                               onChange={(e) =>
                                 setFormData({
                                   ...formData,
-                                  name: e.target.value,
+                                  description: e.target.value,
                                 })
                               }
-                              required
+                              rows={3}
                             />
                           </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="type">
-                              Strategy Type{' '}
-                              <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={formData.type}
-                              onValueChange={(value: StrategyTypeKey) => {
-                                // 当策略类型改变时，自动更新默认参数
-                                const newParameters =
-                                  getDefaultParametersForType(value);
-                                setFormData({
-                                  ...formData,
-                                  type: value,
-                                  parameters: JSON.stringify(
-                                    newParameters,
-                                    null,
-                                    2
-                                  ),
-                                });
-                                // 重置为表单模式以便用户看到新策略的参数
-                                setShowAdvancedMode(false);
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {getAllStrategiesWithImplementationStatus().map(
-                                  (strategy: StrategyImplementationInfo) => (
-                                    <SelectItem
-                                      key={strategy.type}
-                                      value={strategy.type}
-                                      disabled={!strategy.isImplemented}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <span>{strategy.icon}</span>
-                                        <div className="flex flex-col">
-                                          <span className="font-medium">
-                                            {strategy.name}
-                                          </span>
-                                          {!strategy.isImplemented && (
-                                            <span className="text-xs text-muted-foreground">
-                                              Coming Soon
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </SelectItem>
-                                  )
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
+                        </TabsContent>
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="exchange">
-                              Exchange <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={formData.exchange}
-                              onValueChange={(value) => {
-                                // Update exchange and set default trading pair for that exchange
-                                const defaultTradingPair =
-                                  getDefaultTradingPair(value);
-                                setFormData({
-                                  ...formData,
-                                  exchange: value,
-                                  symbol: isEditing
-                                    ? formData.symbol
-                                    : defaultTradingPair,
-                                });
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select exchange" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {SUPPORTED_EXCHANGES.map((exchange) => {
-                                  const logoUrl =
-                                    'logoUrl' in exchange
-                                      ? exchange.logoUrl
-                                      : undefined;
-                                  const iconEmoji =
-                                    'iconEmoji' in exchange
-                                      ? exchange.iconEmoji
-                                      : '💱';
-                                  return (
-                                    <SelectItem
-                                      key={exchange.id}
-                                      value={exchange.id}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        {logoUrl ? (
-                                          <img
-                                            src={logoUrl}
-                                            alt={exchange.name}
-                                            className="w-5 h-5 rounded-full"
-                                            onError={(e) => {
-                                              (
-                                                e.target as HTMLImageElement
-                                              ).style.display = 'none';
-                                            }}
-                                          />
-                                        ) : (
-                                          <span className="text-base">
-                                            {iconEmoji}
-                                          </span>
-                                        )}
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-medium">
-                                            {exchange.name}
-                                          </span>
-                                          <span className="text-xs text-muted-foreground">
-                                            ({exchange.description})
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              Select your trading platform
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="symbol">
-                              Trading Pair{' '}
-                              <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={formData.symbol}
-                              onValueChange={(value) =>
-                                setFormData({ ...formData, symbol: value })
-                              }
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select trading pair" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {getTradingPairsForExchange(
-                                  formData.exchange
-                                ).map((pair) => (
-                                  <SelectItem
-                                    key={pair.symbol}
-                                    value={pair.symbol}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <img
-                                        src={getCryptoIconUrl(pair.base)}
-                                        alt={pair.base}
-                                        className="w-4 h-4 rounded-full"
-                                        onError={(e) => {
-                                          (
-                                            e.target as HTMLImageElement
-                                          ).style.display = 'none';
-                                        }}
-                                      />
-                                      <span className="font-medium">
-                                        {pair.name}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        (
-                                        {pair.type === 'perpetual'
-                                          ? '⚡ Perp'
-                                          : '💼 Spot'}
-                                        )
-                                      </span>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-xs text-muted-foreground">
-                              Format: {getSymbolFormatHint(formData.exchange)} •
-                              Backend normalizes automatically
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="description">Description</Label>
-                          <Textarea
-                            id="description"
-                            placeholder="Describe your strategy's approach and goals..."
-                            value={formData.description}
-                            onChange={(e) =>
-                              setFormData({
-                                ...formData,
-                                description: e.target.value,
-                              })
-                            }
-                            rows={3}
-                          />
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="config" className="space-y-4 mt-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <Label className="text-base font-medium">
-                              Strategy Parameters{' '}
-                              <span className="text-red-500">*</span>
-                            </Label>
-                            <p className="text-sm text-muted-foreground">
-                              {showAdvancedMode
-                                ? 'Configure parameters using JSON format'
-                                : 'Configure parameters using form inputs'}
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              setShowAdvancedMode(!showAdvancedMode)
-                            }
-                          >
-                            {showAdvancedMode ? (
-                              <>
-                                <IconSettings className="h-4 w-4 mr-2" />
-                                Form Mode
-                              </>
-                            ) : (
-                              <>
-                                <IconClock className="h-4 w-4 mr-2" />
-                                JSON Mode
-                              </>
-                            )}
-                          </Button>
-                        </div>
-
-                        {showAdvancedMode ? (
-                          <div className="space-y-2">
-                            <JsonEditor
-                              value={formData.parameters}
-                              onChange={(value) =>
-                                setFormData({ ...formData, parameters: value })
-                              }
-                              placeholder={JSON.stringify(
-                                getDefaultParametersForType(
-                                  formData.type as StrategyTypeKey
-                                ),
-                                null,
-                                2
-                              )}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              Advanced mode: Edit parameters in JSON format.
-                              Switch to form mode for guided parameter
-                              configuration.
-                            </p>
-                          </div>
-                        ) : (
-                          <StrategyParameterFormDynamic
-                            strategyType={formData.type as StrategyTypeKey}
-                            initialParameters={memoizedInitialParameters}
-                            onParametersChange={handleParametersChange}
-                          />
-                        )}
-
-                        <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
-                          <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                            <IconSettings className="h-4 w-4" />
-                            Common Parameters
-                          </h4>
-                          <ul className="text-xs text-muted-foreground space-y-1">
-                            <li>
-                              • <code className="font-mono">fastPeriod</code>:
-                              Short-term moving average period
-                            </li>
-                            <li>
-                              • <code className="font-mono">slowPeriod</code>:
-                              Long-term moving average period
-                            </li>
-                            <li>
-                              • <code className="font-mono">threshold</code>:
-                              Signal threshold (0.001 = 0.1%)
-                            </li>
-                            <li>
-                              • <code className="font-mono">subscription</code>:
-                              Market data subscription config
-                            </li>
-                          </ul>
-                        </div>
-                      </TabsContent>
-                    </Tabs>
-                    <Separator />
-                    <div className="flex justify-end gap-2 pt-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setIsCreateDialogOpen(false);
-                          resetForm();
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button type="submit">
-                        {isEditing ? 'Update Strategy' : 'Create Strategy'}
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {/* Strategies List */}
-            <div className="px-4 lg:px-6">
-              {loading ? (
-                <div className="flex items-center justify-center py-20">
-                  <div className="text-center space-y-3">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-                    <p className="text-sm text-muted-foreground">
-                      Loading strategies...
-                    </p>
-                  </div>
-                </div>
-              ) : strategies.length === 0 ? (
-                <Card className="border-dashed">
-                  <CardContent className="flex flex-col items-center justify-center py-16">
-                    <div className="rounded-full bg-muted p-4 mb-4">
-                      <IconChartLine className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-2">
-                      No strategies yet
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-                      Get started by creating your first automated trading
-                      strategy. Configure parameters, set your trading pair, and
-                      start trading.
-                    </p>
-                    <Button onClick={() => setIsCreateDialogOpen(true)}>
-                      <IconPlus className="mr-2 h-4 w-4" />
-                      Create Your First Strategy
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {strategies.map((strategy) => (
-                    <Card
-                      key={strategy.id}
-                      className="hover:shadow-lg transition-shadow duration-200"
-                    >
-                      <CardHeader>
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              <div
-                                className={`h-2 w-2 rounded-full ${getStatusColor(strategy.status)}`}
-                              />
-                              {strategy.name}
-                            </CardTitle>
-                            <CardDescription className="mt-1">
-                              {strategy.type.replace(/_/g, ' ')}
-                            </CardDescription>
-                          </div>
-                          {getStatusBadge(strategy.status)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {strategy.description && (
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {strategy.description}
-                          </p>
-                        )}
-
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              Exchange
-                            </span>
-                            <Badge
+                        <TabsContent value="config" className="space-y-4 mt-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <Label className="text-base font-medium">
+                                Strategy Parameters{' '}
+                                <span className="text-red-500">*</span>
+                              </Label>
+                              <p className="text-sm text-muted-foreground">
+                                {showAdvancedMode
+                                  ? 'Configure parameters using JSON format'
+                                  : 'Configure parameters using form inputs'}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
                               variant="outline"
-                              className="font-medium gap-1.5 flex items-center"
+                              size="sm"
+                              onClick={() =>
+                                setShowAdvancedMode(!showAdvancedMode)
+                              }
                             >
-                              <ExchangeLogo
-                                exchange={strategy.exchange || ''}
-                                size="sm"
-                              />
-                              {strategy.exchange
-                                ? strategy.exchange.charAt(0).toUpperCase() +
-                                  strategy.exchange.slice(1)
-                                : 'Not set'}
-                            </Badge>
+                              {showAdvancedMode ? (
+                                <>
+                                  <IconSettings className="h-4 w-4 mr-2" />
+                                  Form Mode
+                                </>
+                              ) : (
+                                <>
+                                  <IconClock className="h-4 w-4 mr-2" />
+                                  JSON Mode
+                                </>
+                              )}
+                            </Button>
                           </div>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              Trading Pair
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {strategy.symbol && (
-                                <SymbolIcon
-                                  symbol={strategy.symbol}
+
+                          {showAdvancedMode ? (
+                            <div className="space-y-2">
+                              <JsonEditor
+                                value={formData.parameters}
+                                onChange={(value) =>
+                                  setFormData({
+                                    ...formData,
+                                    parameters: value,
+                                  })
+                                }
+                                placeholder={JSON.stringify(
+                                  getDefaultParametersForType(
+                                    formData.type as StrategyTypeKey
+                                  ),
+                                  null,
+                                  2
+                                )}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Advanced mode: Edit parameters in JSON format.
+                                Switch to form mode for guided parameter
+                                configuration.
+                              </p>
+                            </div>
+                          ) : (
+                            <StrategyParameterFormDynamic
+                              strategyType={formData.type as StrategyTypeKey}
+                              initialParameters={memoizedInitialParameters}
+                              onParametersChange={handleParametersChange}
+                            />
+                          )}
+
+                          <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
+                            <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                              <IconSettings className="h-4 w-4" />
+                              Common Parameters
+                            </h4>
+                            <ul className="text-xs text-muted-foreground space-y-1">
+                              <li>
+                                • <code className="font-mono">fastPeriod</code>:
+                                Short-term moving average period
+                              </li>
+                              <li>
+                                • <code className="font-mono">slowPeriod</code>:
+                                Long-term moving average period
+                              </li>
+                              <li>
+                                • <code className="font-mono">threshold</code>:
+                                Signal threshold (0.001 = 0.1%)
+                              </li>
+                              <li>
+                                •{' '}
+                                <code className="font-mono">subscription</code>:
+                                Market data subscription config
+                              </li>
+                            </ul>
+                          </div>
+                        </TabsContent>
+                      </Tabs>
+                      <Separator />
+                      <div className="flex justify-end gap-2 pt-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setIsCreateDialogOpen(false);
+                            resetForm();
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit">
+                          {isEditing ? 'Update Strategy' : 'Create Strategy'}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              {/* Strategies List */}
+              <div className="px-4 lg:px-6">
+                {loading ? (
+                  <div className="flex items-center justify-center py-20">
+                    <div className="text-center space-y-3">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
+                      <p className="text-sm text-muted-foreground">
+                        Loading strategies...
+                      </p>
+                    </div>
+                  </div>
+                ) : strategies.length === 0 ? (
+                  <Card className="border-dashed">
+                    <CardContent className="flex flex-col items-center justify-center py-16">
+                      <div className="rounded-full bg-muted p-4 mb-4">
+                        <IconChartLine className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        No strategies yet
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
+                        Get started by creating your first automated trading
+                        strategy. Configure parameters, set your trading pair,
+                        and start trading.
+                      </p>
+                      <Button onClick={() => setIsCreateDialogOpen(true)}>
+                        <IconPlus className="mr-2 h-4 w-4" />
+                        Create Your First Strategy
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {strategies.map((strategy) => (
+                      <Card
+                        key={strategy.id}
+                        className="hover:shadow-lg transition-shadow duration-200"
+                      >
+                        <CardHeader>
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex-1">
+                              <CardTitle className="text-lg flex items-center gap-2">
+                                <div
+                                  className={`h-2 w-2 rounded-full ${getStatusColor(strategy.status)}`}
+                                />
+                                {strategy.name}
+                              </CardTitle>
+                              <CardDescription className="mt-1">
+                                {strategy.type.replace(/_/g, ' ')}
+                              </CardDescription>
+                            </div>
+                            {getStatusBadge(strategy.status)}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          {strategy.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-2">
+                              {strategy.description}
+                            </p>
+                          )}
+
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                Exchange
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="font-medium gap-1.5 flex items-center"
+                              >
+                                <ExchangeLogo
+                                  exchange={strategy.exchange || ''}
                                   size="sm"
                                 />
-                              )}
-                              <span className="font-mono font-medium">
-                                {strategy.normalizedSymbol ||
-                                  strategy.symbol ||
-                                  'N/A'}
+                                {strategy.exchange
+                                  ? strategy.exchange.charAt(0).toUpperCase() +
+                                    strategy.exchange.slice(1)
+                                  : 'Not set'}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">
+                                Trading Pair
                               </span>
-                              {strategy.marketType &&
-                                strategy.marketType !== 'spot' && (
-                                  <span
-                                    className="text-xs"
-                                    title={
-                                      strategy.marketType === 'perpetual'
-                                        ? 'Perpetual'
-                                        : 'Futures'
-                                    }
-                                  >
-                                    {strategy.marketType === 'perpetual'
-                                      ? '⚡'
-                                      : '📈'}
-                                  </span>
+                              <div className="flex items-center gap-2">
+                                {strategy.symbol && (
+                                  <SymbolIcon
+                                    symbol={strategy.symbol}
+                                    size="sm"
+                                  />
                                 )}
+                                <span className="font-mono font-medium">
+                                  {strategy.normalizedSymbol ||
+                                    strategy.symbol ||
+                                    'N/A'}
+                                </span>
+                                {strategy.marketType &&
+                                  strategy.marketType !== 'spot' && (
+                                    <span
+                                      className="text-xs"
+                                      title={
+                                        strategy.marketType === 'perpetual'
+                                          ? 'Perpetual'
+                                          : 'Futures'
+                                      }
+                                    >
+                                      {strategy.marketType === 'perpetual'
+                                        ? '⚡'
+                                        : '📈'}
+                                    </span>
+                                  )}
+                              </div>
                             </div>
+                            {strategy.lastExecutionTime && (
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
+                                <IconClock className="h-3 w-3" />
+                                <span>
+                                  Last run:{' '}
+                                  {new Date(
+                                    strategy.lastExecutionTime
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          {strategy.lastExecutionTime && (
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
-                              <IconClock className="h-3 w-3" />
-                              <span>
-                                Last run:{' '}
-                                {new Date(
-                                  strategy.lastExecutionTime
-                                ).toLocaleString()}
-                              </span>
-                            </div>
+                        </CardContent>
+                        <CardFooter className="flex gap-2">
+                          {strategy.status === 'active' ? (
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() =>
+                                updateStrategyStatus(strategy.id, 'stopped')
+                              }
+                            >
+                              <IconPlayerPause className="h-4 w-4 mr-2" />
+                              Stop
+                            </Button>
+                          ) : (
+                            <Button
+                              className="flex-1"
+                              onClick={() =>
+                                updateStrategyStatus(strategy.id, 'active')
+                              }
+                            >
+                              <IconPlayerPlay className="h-4 w-4 mr-2" />
+                              Start
+                            </Button>
                           )}
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex gap-2">
-                        {strategy.status === 'active' ? (
                           <Button
                             variant="outline"
-                            className="flex-1"
-                            onClick={() =>
-                              updateStrategyStatus(strategy.id, 'stopped')
-                            }
+                            size="icon"
+                            onClick={() => editStrategy(strategy)}
+                            disabled={strategy.status === 'active'}
                           >
-                            <IconPlayerPause className="h-4 w-4 mr-2" />
-                            Stop
+                            <IconEdit className="h-4 w-4" />
                           </Button>
-                        ) : (
                           <Button
-                            className="flex-1"
-                            onClick={() =>
-                              updateStrategyStatus(strategy.id, 'active')
-                            }
+                            variant="outline"
+                            size="icon"
+                            onClick={() => openDeleteDialog(strategy)}
+                            disabled={strategy.status === 'active'}
+                            className="hover:bg-destructive hover:text-destructive-foreground"
                           >
-                            <IconPlayerPlay className="h-4 w-4 mr-2" />
-                            Start
+                            <IconTrash className="h-4 w-4" />
                           </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => editStrategy(strategy)}
-                          disabled={strategy.status === 'active'}
-                        >
-                          <IconEdit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => deleteStrategy(strategy.id)}
-                          disabled={strategy.status === 'active'}
-                          className="hover:bg-destructive hover:text-destructive-foreground"
-                        >
-                          <IconTrash className="h-4 w-4" />
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </SidebarInset>
+      </SidebarInset>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <IconTrash className="h-5 w-5" />
+              Delete Strategy
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Are you sure you want to delete this strategy?
+            </DialogDescription>
+          </DialogHeader>
+          {strategyToDelete && (
+            <div className="py-4">
+              <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Name:</span>
+                  <span className="text-sm font-semibold">
+                    {strategyToDelete.name}
+                  </span>
+                </div>
+                {strategyToDelete.symbol && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Symbol:</span>
+                    <div className="flex items-center gap-2">
+                      <SymbolIcon symbol={strategyToDelete.symbol} size="sm" />
+                      <span className="text-sm font-mono">
+                        {strategyToDelete.symbol}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {strategyToDelete.exchange && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Exchange:</span>
+                    <div className="flex items-center gap-2">
+                      <ExchangeLogo
+                        exchange={strategyToDelete.exchange}
+                        size="sm"
+                      />
+                      <span className="text-sm capitalize">
+                        {strategyToDelete.exchange}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground mt-4">
+                This action cannot be undone. This will permanently delete the
+                strategy and all associated data.
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={closeDeleteDialog}
+              className="min-w-[100px]"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteStrategy}
+              className="min-w-[100px]"
+            >
+              <IconTrash className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

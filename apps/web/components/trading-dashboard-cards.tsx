@@ -20,10 +20,6 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AnimatedCurrency,
-  AnimatedPercentage,
-} from '@/components/animated-number';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -193,7 +189,7 @@ export function TradingDashboardCards({
     );
   }
 
-  const _formatCurrency = (value: number) => {
+  const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
@@ -202,9 +198,10 @@ export function TradingDashboardCards({
     }).format(value);
   };
 
-  const _formatPercentage = (value: number) => {
+  const formatPercentage = (value: number, showSign = true) => {
     const formatted = Math.abs(value).toFixed(2);
-    return value >= 0 ? `+${formatted}%` : `-${formatted}%`;
+    const sign = value >= 0 ? '+' : '-';
+    return showSign ? `${sign}${formatted}%` : `${formatted}%`;
   };
 
   const totalBalance = accountData?.totalBalance || 0;
@@ -236,15 +233,11 @@ export function TradingDashboardCards({
               ) : (
                 <IconTrendingDown className="size-3" />
               )}
-              <AnimatedPercentage
-                value={balanceChange}
-                duration={0.4}
-                showSign={true}
-              />
+              {formatPercentage(balanceChange)}
             </Badge>
           </div>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            <AnimatedCurrency value={totalBalance} duration={0.4} />
+            {formatCurrency(totalBalance)}
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
@@ -286,11 +279,7 @@ export function TradingDashboardCards({
                 ) : (
                   <IconTrendingDown className="size-3" />
                 )}
-                <AnimatedPercentage
-                  value={balanceChangeData?.change || 0}
-                  duration={0.4}
-                  showSign={true}
-                />
+                {formatPercentage(balanceChangeData?.change || 0)}
               </Badge>
             </div>
           </div>
@@ -301,10 +290,7 @@ export function TradingDashboardCards({
                 : 'text-red-600 dark:text-red-400'
             }`}
           >
-            <AnimatedCurrency
-              value={balanceChangeData?.changeValue || 0}
-              duration={0.4}
-            />
+            {formatCurrency(balanceChangeData?.changeValue || 0)}
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
@@ -401,7 +387,7 @@ export function TradingDashboardCards({
                 : 'text-red-600 dark:text-red-400'
             }`}
           >
-            <AnimatedCurrency value={totalRealizedPnl} duration={0.4} />
+            {formatCurrency(totalRealizedPnl)}
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
@@ -450,7 +436,7 @@ export function TradingDashboardCards({
                 : 'text-red-600 dark:text-red-400'
             }`}
           >
-            <AnimatedCurrency value={totalUnrealizedPnl} duration={0.4} />
+            {formatCurrency(totalUnrealizedPnl)}
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">

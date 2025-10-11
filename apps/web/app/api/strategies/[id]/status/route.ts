@@ -41,7 +41,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const dataManager = await getDataManager();
-    const strategy = await dataManager.getStrategy(id);
+    // Include user relation for ownership check
+    const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
       return NextResponse.json(
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Check ownership
-    if (strategy.user.id !== session.user.id) {
+    if (!strategy.user || strategy.user.id !== session.user.id) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

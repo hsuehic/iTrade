@@ -40,6 +40,8 @@ interface Strategy {
   totalOrders: number;
   filledOrders: number;
   fillRate: string;
+  normalizedSymbol?: string;
+  marketType?: string;
 }
 
 interface ExchangeStats {
@@ -54,6 +56,8 @@ interface SymbolStats {
   count: number;
   totalPnl: number;
   activeCount: number;
+  normalizedSymbol?: string;
+  marketType?: string;
 }
 
 export function StrategyPerformanceTable() {
@@ -152,9 +156,24 @@ export function StrategyPerformanceTable() {
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <SymbolIcon symbol={strategy.symbol} size="sm" />
-                            <span className="font-mono text-sm">
-                              {strategy.symbol}
-                            </span>
+                            <div className="flex flex-col">
+                              <span className="font-mono text-sm">
+                                {strategy.symbol}
+                              </span>
+                              {strategy.normalizedSymbol && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  {strategy.normalizedSymbol}
+                                  {strategy.marketType === 'perpetual' && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs py-0 px-1 h-4"
+                                    >
+                                      PERP
+                                    </Badge>
+                                  )}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
