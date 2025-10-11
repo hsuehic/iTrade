@@ -8,9 +8,9 @@ import { BacktestCommand } from './commands/BacktestCommand';
 const program = new Command();
 
 program
-  .name('iTrade')
+  .name('iTrade@iHsueh')
   .description(
-    'iTrade is a comprehensive cryptocurrency trading platform with strategy backtesting'
+    'iTrade@iHsueh is a intelligent and strategic trading platform for everyone'
   )
   .version('0.1.0');
 
