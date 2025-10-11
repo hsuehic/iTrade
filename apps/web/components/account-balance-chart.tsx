@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Line, LineChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, XAxis, YAxis, Area, AreaChart } from 'recharts';
 
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -37,15 +37,15 @@ interface ChartDataPoint {
 const chartConfig = {
   binance: {
     label: 'Binance',
-    color: 'hsl(217 91% 60%)', // 蓝色
+    color: '#F3BA2F', // 黄色
   },
   okx: {
     label: 'OKX',
-    color: 'hsl(142 76% 36%)', // 绿色
+    color: 'hsl(142,76%,36%)', // 绿色
   },
   coinbase: {
     label: 'Coinbase',
-    color: 'hsl(221 83% 53%)', // 深蓝色
+    color: '#2463EB', // 深蓝色
   },
 } satisfies ChartConfig;
 
@@ -317,7 +317,7 @@ export function AccountBalanceChart({
             config={chartConfig}
             className="aspect-auto h-[450px] w-full"
           >
-            <LineChart
+            <AreaChart
               data={chartData}
               margin={{ top: 30, right: 40, left: 25, bottom: 25 }}
             >
@@ -363,7 +363,7 @@ export function AccountBalanceChart({
                 horizontal={true}
                 vertical={true}
                 strokeDasharray="3 3"
-                stroke="hsl(var(--border))"
+                stroke="#999999"
                 strokeOpacity={0.3}
                 strokeWidth={1}
               />
@@ -398,8 +398,8 @@ export function AccountBalanceChart({
                 }}
               />
               <YAxis
-                tickLine={false}
-                axisLine={false}
+                tickLine={true}
+                axisLine={true}
                 tickMargin={16}
                 width={85}
                 fontSize={12}
@@ -502,14 +502,16 @@ export function AccountBalanceChart({
                 }}
               />
               {exchanges.map((exchange) => (
-                <Line
+                <Area
                   key={exchange}
-                  dataKey={exchange}
                   type="monotone"
+                  dataKey={exchange}
                   stroke={
                     chartConfig[exchange as keyof typeof chartConfig]?.color
                   }
                   strokeWidth={2.5}
+                  fill={`url(#gradient-${exchange})`}
+                  fillOpacity={1}
                   dot={
                     chartData.length <= 10
                       ? {
@@ -533,16 +535,14 @@ export function AccountBalanceChart({
                   }}
                   animationDuration={timeRange === '1h' ? 800 : 400}
                   animationEasing="ease-out"
-                  connectNulls={true}
+                  connectNulls
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  fill={`url(#gradient-${exchange})`}
-                  fillOpacity={1}
-                  filter="drop-shadow(0 4px 6px rgb(0 0 0 / 0.05))"
                 />
               ))}
+
               <ChartLegend content={<ChartLegendContent />} />
-            </LineChart>
+            </AreaChart>
           </ChartContainer>
         )}
       </CardContent>
