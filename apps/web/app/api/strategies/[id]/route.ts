@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { StrategyType, StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/db';
 import { auth } from '@/lib/auth';
@@ -96,8 +97,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     interface StrategyUpdates {
       name?: string;
       description?: string;
-      type?: string;
-      status?: string;
+      type?: StrategyType;
+      status?: StrategyStatus;
       exchange?: string;
       symbol?: string;
       parameters?: Record<string, unknown>;

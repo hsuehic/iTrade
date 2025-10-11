@@ -42,11 +42,12 @@ export const SUPPORTED_EXCHANGES = [
 ] as const;
 
 export type ExchangeId = (typeof SUPPORTED_EXCHANGES)[number]['id'];
+export type ExchangeInfo = (typeof SUPPORTED_EXCHANGES)[number];
 
 /**
  * Get exchange information by ID
  */
-export function getExchangeInfo(exchangeId: string) {
+export function getExchangeInfo(exchangeId: string): ExchangeInfo | undefined {
   return SUPPORTED_EXCHANGES.find((ex) => ex.id === exchangeId);
 }
 

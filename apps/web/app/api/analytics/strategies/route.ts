@@ -38,10 +38,10 @@ export async function GET(request: Request) {
             pnl.totalOrders > 0
               ? ((pnl.filledOrders / pnl.totalOrders) * 100).toFixed(2)
               : '0.00',
-          roi:
-            strategy.initialCapital && strategy.initialCapital > 0
-              ? ((pnl.totalPnl / strategy.initialCapital) * 100).toFixed(2)
-              : '0.00',
+          // TODO: Add initialCapital field to StrategyEntity to calculate ROI
+          // roi: strategy.initialCapital && strategy.initialCapital > 0
+          //   ? ((pnl.totalPnl / strategy.initialCapital) * 100).toFixed(2)
+          //   : '0.00',
           createdAt: strategy.createdAt,
           updatedAt: strategy.updatedAt,
         };
@@ -77,18 +77,19 @@ export async function GET(request: Request) {
     // Group by exchange
     const byExchange = strategyStats.reduce(
       (acc: Record<string, ExchangeGroup>, s) => {
-        if (!acc[s.exchange]) {
-          acc[s.exchange] = {
-            exchange: s.exchange,
+        const exchange = s.exchange || 'unknown';
+        if (!acc[exchange]) {
+          acc[exchange] = {
+            exchange,
             count: 0,
             totalPnl: 0,
             activeCount: 0,
           };
         }
-        acc[s.exchange].count++;
-        acc[s.exchange].totalPnl += s.totalPnl;
+        acc[exchange].count++;
+        acc[exchange].totalPnl += s.totalPnl;
         if (s.status === 'active') {
-          acc[s.exchange].activeCount++;
+          acc[exchange].activeCount++;
         }
         return acc;
       },
@@ -105,18 +106,19 @@ export async function GET(request: Request) {
     // Group by symbol
     const bySymbol = strategyStats.reduce(
       (acc: Record<string, SymbolGroup>, s) => {
-        if (!acc[s.symbol]) {
-          acc[s.symbol] = {
-            symbol: s.symbol,
+        const symbol = s.symbol || 'unknown';
+        if (!acc[symbol]) {
+          acc[symbol] = {
+            symbol,
             count: 0,
             totalPnl: 0,
             activeCount: 0,
           };
         }
-        acc[s.symbol].count++;
-        acc[s.symbol].totalPnl += s.totalPnl;
+        acc[symbol].count++;
+        acc[symbol].totalPnl += s.totalPnl;
         if (s.status === 'active') {
-          acc[s.symbol].activeCount++;
+          acc[symbol].activeCount++;
         }
         return acc;
       },
