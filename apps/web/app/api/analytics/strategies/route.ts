@@ -99,6 +99,8 @@ export async function GET(request: Request) {
 
     interface SymbolGroup {
       symbol: string;
+      normalizedSymbol?: string;
+      marketType: string;
       count: number;
       totalPnl: number;
       activeCount: number;
@@ -111,6 +113,8 @@ export async function GET(request: Request) {
         if (!acc[symbol]) {
           acc[symbol] = {
             symbol,
+            normalizedSymbol: s.normalizedSymbol,
+            marketType: s.marketType,
             count: 0,
             totalPnl: 0,
             activeCount: 0,

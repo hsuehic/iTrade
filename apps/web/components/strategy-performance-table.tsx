@@ -60,6 +60,27 @@ interface SymbolStats {
   marketType?: string;
 }
 
+const StrategySymbol = ({
+  strategy,
+}: {
+  strategy: { symbol: string; normalizedSymbol?: string; marketType?: string };
+}) => {
+  return (
+    <div className="flex items-center gap-2">
+      <SymbolIcon symbol={strategy.symbol} size="sm" />
+      <div className="flex flex-col">
+        <span className="font-mono text-sm">{strategy.symbol}</span>
+        {strategy.normalizedSymbol && (
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            {strategy.normalizedSymbol}
+            {strategy.marketType === 'perpetual' && ' ⚡'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export function StrategyPerformanceTable() {
   const [topStrategies, setTopStrategies] = useState<Strategy[]>([]);
   const [exchangeStats, setExchangeStats] = useState<ExchangeStats[]>([]);
@@ -154,20 +175,7 @@ export function StrategyPerformanceTable() {
                           {strategy.name}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <SymbolIcon symbol={strategy.symbol} size="sm" />
-                            <div className="flex flex-col">
-                              <span className="font-mono text-sm">
-                                {strategy.symbol}
-                              </span>
-                              {strategy.normalizedSymbol && (
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  {strategy.normalizedSymbol}
-                                  {strategy.marketType === 'perpetual' && ' ⚡'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                          <StrategySymbol strategy={strategy} />
                         </TableCell>
                         <TableCell>
                           <Badge
@@ -331,12 +339,7 @@ export function StrategyPerformanceTable() {
                       return (
                         <TableRow key={stat.symbol}>
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <SymbolIcon symbol={stat.symbol} size="sm" />
-                              <span className="font-mono font-semibold">
-                                {stat.symbol}
-                              </span>
-                            </div>
+                            <StrategySymbol strategy={stat} />
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {stat.count}
