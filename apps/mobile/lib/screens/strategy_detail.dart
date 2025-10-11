@@ -216,6 +216,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final statusColor = _getStatusColor(_strategy.status);
     final pnlValue = _pnl?.totalPnl ?? 0.0;
     final pnlColor = _getPnLColor(pnlValue);
@@ -245,14 +246,14 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [statusColor.withOpacity(0.8), statusColor],
+                  colors: [statusColor.withValues(alpha: 0.8), statusColor],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: statusColor.withOpacity(0.3),
+                    color: statusColor.withValues(alpha: 0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   ),
@@ -270,7 +271,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.3),
+                          color: Colors.white.withAlpha(78),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -306,7 +307,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                     Text(
                       _strategy.description!,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 14,
                       ),
                     ),
@@ -321,15 +322,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: theme.cardColor,
+                  color: isDark
+                      ? Colors.grey[900]
+                      : Colors.white.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.grey[850]!
+                        : Colors.grey.withValues(alpha: 0.08),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,15 +392,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 16),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: theme.cardColor,
+                color: isDark
+                    ? Colors.grey[900]
+                    : Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(
+                  color: isDark
+                      ? Colors.grey[850]!
+                      : Colors.grey.withValues(alpha: 0.08),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -456,7 +457,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.1),
+                        color: Colors.red.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -488,15 +489,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 16),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: theme.cardColor,
+                color: isDark
+                    ? Colors.grey[900]
+                    : Colors.white.withValues(alpha: 0.5),
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                border: Border.all(
+                  color: isDark
+                      ? Colors.grey[850]!
+                      : Colors.grey.withValues(alpha: 0.08),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,15 +573,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 16),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: theme.cardColor,
+                  color: isDark
+                      ? Colors.grey[900]
+                      : Colors.white.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.grey[850]!
+                        : Colors.grey.withValues(alpha: 0.08),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -593,18 +594,31 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                     ),
                     const SizedBox(height: 12),
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.grey[100],
+                        color: isDark
+                            ? Colors.grey[850]
+                            : Colors.grey.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.grey[800]!
+                              : Colors.grey.withValues(alpha: 0.12),
+                        ),
                       ),
-                      child: Text(
-                        const JsonEncoder.withIndent(
-                          '  ',
-                        ).convert(_strategy.parameters),
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          const JsonEncoder.withIndent(
+                            '  ',
+                          ).convert(_strategy.parameters),
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[300] : Colors.grey[800],
+                            height: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -783,8 +797,8 @@ class _OrderItem extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: order.isBuy
-                              ? Colors.green.withOpacity(0.1)
-                              : Colors.red.withOpacity(0.1),
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
@@ -805,7 +819,7 @@ class _OrderItem extends StatelessWidget {
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
+                      color: statusColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(

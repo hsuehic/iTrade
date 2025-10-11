@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../model/api.dart';
 import '../widgets/asset_list.dart';
+import '../widgets/custom_app_bar.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -10,11 +11,15 @@ class PortfolioScreen extends StatefulWidget {
   State<PortfolioScreen> createState() => _PortfolioScreenState();
 }
 
-class _PortfolioScreenState extends State<PortfolioScreen> {
+class _PortfolioScreenState extends State<PortfolioScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   String? _selectedSymbol;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     final assets = [
       AssetItem(
         symbol: 'USDT',
@@ -58,7 +63,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     final chartData = assets.map((a) => _PieData(a.symbol, a.value)).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Portfolio')),
+      appBar: const CustomAppBar(title: 'Portfolio'),
       body: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -382,7 +387,9 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
                 });
               },
               position: PopupMenuPosition.under,
-              color: Colors.white,
+              color: theme.brightness == Brightness.dark
+                  ? const Color(0xFF2A2A2A)
+                  : Colors.white,
               elevation: 4,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -401,6 +408,9 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
                       period,
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontWeight: period == _period ? FontWeight.bold : null,
+                        color: theme.brightness == Brightness.dark
+                            ? Colors.grey[200]
+                            : Colors.grey[800],
                       ),
                     ),
                   ),

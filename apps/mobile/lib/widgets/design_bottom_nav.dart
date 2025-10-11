@@ -12,9 +12,9 @@ class DesignBottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final List<NavItemSpec> items;
-  final Color backgroundColor;
-  final Color activeColor;
-  final Color inactiveColor;
+  final Color? backgroundColor;
+  final Color? activeColor;
+  final Color? inactiveColor;
   final double height;
   final double iconSize;
   final double labelSize;
@@ -25,9 +25,9 @@ class DesignBottomNavBar extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     required this.items,
-    this.backgroundColor = Colors.white,
-    this.activeColor = const Color(0xFF1B5E20),
-    this.inactiveColor = const Color(0xFF666666),
+    this.backgroundColor,
+    this.activeColor,
+    this.inactiveColor,
     this.height = 64,
     this.iconSize = 24,
     this.labelSize = 12,
@@ -36,23 +36,34 @@ class DesignBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final double bottomInset = MediaQuery.of(context).padding.bottom;
+
+    // Auto-adapt background color based on theme
+    final bgColor =
+        backgroundColor ?? (isDark ? Colors.grey[900] : Colors.white);
+
     return Container(
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: bgColor,
         border: Border(
           top: BorderSide(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.black.withValues(alpha: 0.08),
             width: 1,
           ),
         ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 10,
-            offset: Offset(0, -1),
-          ),
-        ],
+        boxShadow: isDark
+            ? []
+            : const [
+                BoxShadow(
+                  color: Color(0x14000000),
+                  blurRadius: 10,
+                  offset: Offset(0, -1),
+                ),
+              ],
       ),
       padding: EdgeInsets.only(bottom: bottomInset > 0 ? bottomInset : 8),
       height: height + (bottomInset > 0 ? bottomInset : 8),
@@ -64,8 +75,6 @@ class DesignBottomNavBar extends StatelessWidget {
               spec: items[i],
               selected: i == currentIndex,
               onTap: () => onTap(i),
-              activeColor: activeColor,
-              inactiveColor: inactiveColor,
               iconSize: iconSize,
               labelSize: labelSize,
               labelWeight: labelWeight,
@@ -80,8 +89,6 @@ class _NavItem extends StatelessWidget {
   final NavItemSpec spec;
   final bool selected;
   final VoidCallback onTap;
-  final Color activeColor;
-  final Color inactiveColor;
   final double iconSize;
   final double labelSize;
   final FontWeight labelWeight;
@@ -90,8 +97,6 @@ class _NavItem extends StatelessWidget {
     required this.spec,
     required this.selected,
     required this.onTap,
-    required this.activeColor,
-    required this.inactiveColor,
     required this.iconSize,
     required this.labelSize,
     required this.labelWeight,

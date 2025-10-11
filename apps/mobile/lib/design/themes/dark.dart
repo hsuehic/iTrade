@@ -21,6 +21,27 @@ final ThemeData darkTheme = ThemeData(
     headlineMedium: TypographyTokens.headline,
     bodyMedium: TypographyTokens.body,
   ),
+  // Enhanced Switch theme for better visibility in dark mode
+  switchTheme: SwitchThemeData(
+    thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return Colors.white; // White thumb when ON - high contrast
+      }
+      return Colors.grey[400]!; // Light gray when OFF
+    }),
+    trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return ColorTokens.darkPrimary; // Primary color track when ON
+      }
+      return Colors.grey[800]!; // Dark gray track when OFF
+    }),
+    trackOutlineColor: WidgetStateProperty.resolveWith<Color?>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return null; // No outline when ON
+      }
+      return Colors.grey[700]; // Subtle outline when OFF
+    }),
+  ),
   extensions: [AppSpacing.fromTokens()],
   useMaterial3: false,
 );

@@ -14,6 +14,8 @@ import 'design/themes/theme.dart';
 
 import 'services/api_client.dart';
 import 'services/notification.dart';
+import 'services/theme_service.dart';
+import 'screens/splash.dart';
 import 'screens/login.dart';
 import 'screens/forgot_password.dart';
 import 'screens/strategy.dart';
@@ -46,6 +48,10 @@ Future<void> main() async {
     // Allow handshake during development if the cert is self-signed/misconfigured
     insecureAllowBadCertForHosts: const <String>[NetworkParameter.origin],
   );
+
+  // Initialize theme service
+  await ThemeService.instance.init();
+
   runApp(const MyApp());
 }
 
@@ -58,20 +64,25 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  bool isDark = false;
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'iTrade',
-      theme: AppTheme.brand,
-      darkTheme: AppTheme.dark,
-      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
-      home: const AuthGate(),
-      routes: {
-        '/login': (_) => const LoginScreen(),
-        '/forgot-password': (_) => const ForgotPasswordScreen(),
-        '/home': (_) => const MyHomePage(title: 'iTrade'),
-        '/scan-qr': (_) => const QrScanScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.instance.themeMode,
+      builder: (context, themeMode, child) {
+        return MaterialApp(
+          title: 'iTrade',
+          theme: AppTheme.brand,
+          darkTheme: AppTheme.dark,
+          themeMode: themeMode,
+          home: const SplashScreen(),
+          routes: {
+            '/login': (_) => const LoginScreen(),
+            '/forgot-password': (_) => const ForgotPasswordScreen(),
+            '/home': (_) => const MyHomePage(title: 'iTrade'),
+            '/scan-qr': (_) => const QrScanScreen(),
+            '/profile': (_) => const ProfileScreen(),
+          },
+        );
       },
     );
   }
@@ -143,18 +154,20 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int _pageIndex = 0;
-  final List<Widget> _pages = [
-    const PortfolioScreen(),
-    const StrategyScreen(),
-    const ProductScreen(),
-    const StatisticsScreen(),
-    const ProfileScreen(),
-  ];
+  late final List<Widget> _pages;
   StreamSubscription? _linkSubscription;
 
   @override
   void initState() {
     super.initState();
+    // Initialize pages once to maintain their state
+    _pages = [
+      const PortfolioScreen(),
+      const StrategyScreen(),
+      const ProductScreen(),
+      const StatisticsScreen(),
+      const ProfileScreen(),
+    ];
     _initDeepLinks();
   }
 
@@ -169,7 +182,7 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: null,
-      body: _pages[_pageIndex],
+      body: IndexedStack(index: _pageIndex, children: _pages),
       bottomNavigationBar: DesignBottomNavBar(
         currentIndex: _pageIndex,
         onTap: (index) => setState(() => _pageIndex = index),

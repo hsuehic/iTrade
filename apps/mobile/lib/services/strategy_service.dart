@@ -20,18 +20,42 @@ class StrategyService {
       if (status != null) queryParams['status'] = status;
       if (exchange != null) queryParams['exchange'] = exchange;
 
+      print('🌐 Fetching strategies from /api/strategies');
       final Response response = await _apiClient.getJson(
         '/api/strategies',
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
-      if (response.statusCode == 200 && response.data is List) {
-        return (response.data as List)
-            .map((json) => Strategy.fromJson(json as Map<String, dynamic>))
-            .toList();
+      print('📡 Response status: ${response.statusCode}');
+      print('📦 Response data type: ${response.data.runtimeType}');
+
+      if (response.statusCode == 200) {
+        // API returns { strategies: [...] }
+        if (response.data is Map<String, dynamic>) {
+          final data = response.data as Map<String, dynamic>;
+          final strategiesList = data['strategies'] as List?;
+
+          if (strategiesList != null) {
+            final strategies = strategiesList
+                .map((json) => Strategy.fromJson(json as Map<String, dynamic>))
+                .toList();
+            print('✅ Parsed ${strategies.length} strategies');
+            return strategies;
+          }
+        }
+        // Fallback: if it's already a list
+        else if (response.data is List) {
+          final strategies = (response.data as List)
+              .map((json) => Strategy.fromJson(json as Map<String, dynamic>))
+              .toList();
+          print('✅ Parsed ${strategies.length} strategies (direct list)');
+          return strategies;
+        }
       }
+      print('⚠️ Unexpected response format or status code');
       return [];
     } catch (e) {
+      print('❌ Exception in getStrategies: $e');
       developer.log(
         'Failed to fetch strategies',
         name: 'StrategyService',
@@ -145,6 +169,41 @@ class StrategyService {
         error: e,
       );
       return false;
+    }
+  }
+
+  /// Fetch analytics data for all strategies
+  Future<Map<String, dynamic>> getAnalytics({int limit = 50}) async {
+    try {
+      final Response response = await _apiClient.getJson(
+        '/api/analytics/strategies',
+        queryParameters: {'limit': limit.toString()},
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+
+      return {
+        'summary': {},
+        'topPerformers': [],
+        'byExchange': [],
+        'bySymbol': [],
+        'allStrategies': [],
+      };
+    } catch (e) {
+      developer.log(
+        'Failed to fetch analytics',
+        name: 'StrategyService',
+        error: e,
+      );
+      return {
+        'summary': {},
+        'topPerformers': [],
+        'byExchange': [],
+        'bySymbol': [],
+        'allStrategies': [],
+      };
     }
   }
 }

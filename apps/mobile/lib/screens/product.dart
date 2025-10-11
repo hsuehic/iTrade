@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
+import '../widgets/custom_app_bar.dart';
 import '../services/okx_data_service.dart';
 
 class ProductScreen extends StatefulWidget {
@@ -81,7 +82,7 @@ class _ProductScreenState extends State<ProductScreen>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     final List<Tag> tags = [
       Tag(name: 'Spot', value: 'SPOT'),
       Tag(name: 'Swap', value: 'SWAP'),
@@ -92,16 +93,10 @@ class _ProductScreenState extends State<ProductScreen>
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: AppBar(
-        surfaceTintColor: Colors.transparent,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        leading: const Icon(Icons.menu, size: 24),
-        title: const Text('Products'),
-      ),
+      appBar: const CustomAppBar(title: 'Products'),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 16),
           SimpleSearchBar(
             onChanged: (query) {
               _handleQuery(query);

@@ -13,8 +13,10 @@ class ColorTokens {
   static const lightError = Color(0xFFDC3545);
   static const lightOnError = Color(0xFFFFFFFF);
 
-  // Dark
-  static const darkPrimary = Color(0xFF36D0AC);
+  // Dark - Enhanced colors for better visibility
+  static const darkPrimary = Color(
+    0xFF4AE8C2,
+  ); // Brighter teal for better contrast
   static const darkOnPrimary = Color(0xFF000000);
   static const darkSecondary = Color(0x9960F770);
   static const darkOnSecondary = Color(0xFF000000);

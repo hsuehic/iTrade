@@ -23,11 +23,10 @@ class ExchangeConfig {
   });
 
   /// Get full logo URL (from web server)
-  /// In production, replace with actual web server URL from environment config
   String? getLogoUrl() {
     if (logoUrl == null) return null;
-    // TODO: Replace with actual web server URL from environment config
-    const webServerUrl = 'http://localhost:3000';
+    // Use the same host as API
+    const webServerUrl = 'https://itrade.ihsueh.com';
     return '$webServerUrl$logoUrl';
   }
 }
@@ -188,9 +187,9 @@ class ExchangeChip extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: showIcon ? 6 : 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -309,6 +309,7 @@ When you (AI) create documentation:
 4. **CREATE** directory structure if it doesn't exist
 5. **UPDATE** relevant README files with links
 6. **FOLLOW** naming conventions consistently
+7. **DO NOT create summary documents** after completing tasks unless explicitly requested by the user
 
 ### Decision Tree for AI
 

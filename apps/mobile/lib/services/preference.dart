@@ -6,6 +6,7 @@ class Preference {
   static const String keySavedPassword = 'saved_password';
   static const String keyNotificationsEnabled = 'notifications_enabled';
   static const String keyBiometricEnabled = 'biometric_enabled';
+  static const String keyDarkMode = 'dark_mode';
 
   static SharedPreferences? _prefs;
   static final Logger _logger = Logger();
@@ -100,5 +101,13 @@ class Preference {
 
   static Future<bool?> getBiometricEnabled() async {
     return await getValue<bool>(keyBiometricEnabled);
+  }
+
+  static Future<void> setDarkMode(bool enabled) async {
+    await setValue(keyDarkMode, enabled);
+  }
+
+  static Future<bool?> getDarkMode() async {
+    return await getValue<bool>(keyDarkMode);
   }
 }

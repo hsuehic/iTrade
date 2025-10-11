@@ -1,14 +1,14 @@
 /// Utility class for getting cryptocurrency icons
 class CryptoIcons {
   /// Get icon URL for a cryptocurrency symbol
-  /// Uses OKX CDN for crypto icons
+  /// Uses CoinCap API for crypto icons (same as web app)
   static String getIconUrl(String symbol) {
     // Extract base currency from symbol
     String baseCurrency = _extractBaseCurrency(symbol);
-    baseCurrency = baseCurrency.toUpperCase();
+    baseCurrency = baseCurrency.toLowerCase();
 
-    // OKX CDN URL format
-    return 'https://static.coinall.ltd/cdn/oksupport/asset/currency/icon/$baseCurrency.png';
+    // CoinCap API URL format (2x resolution for better quality)
+    return 'https://assets.coincap.io/assets/icons/$baseCurrency@2x.png';
   }
 
   /// Extract base currency from trading pair symbol
@@ -44,4 +44,3 @@ class CryptoIcons {
     return symbol;
   }
 }
-
