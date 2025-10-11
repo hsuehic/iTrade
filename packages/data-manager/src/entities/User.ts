@@ -2,6 +2,7 @@ import { Column, Entity, OneToMany } from 'typeorm';
 
 import { Account } from './Account';
 import { Session } from './Session';
+import { StrategyEntity } from './Strategy';
 
 @Entity('user', { schema: 'public' })
 export class User {
@@ -40,4 +41,7 @@ export class User {
 
   @OneToMany(() => Session, (session) => session.user)
   sessions?: Session[];
+
+  @OneToMany(() => StrategyEntity, (strategy) => strategy.user)
+  strategies?: StrategyEntity[];
 }
