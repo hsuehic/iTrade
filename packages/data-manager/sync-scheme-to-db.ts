@@ -5,6 +5,23 @@ import { TypeOrmDataManager } from './src/TypeOrmDataManager';
 
 config();
 
+/**
+ * TypeORM Schema Synchronization Script
+ *
+ * This script synchronizes the database schema with entity definitions.
+ *
+ * What it does:
+ * - Creates/updates all tables from entity classes
+ * - Adds all indexes defined with @Index() decorators
+ * - Creates the query-result-cache table (for query caching)
+ * - Updates foreign key relationships
+ *
+ * Usage:
+ *   npx tsx sync-scheme-to-db.ts
+ *
+ * Note: In production, consider using migrations for more control.
+ */
+
 const configuration = {
   type: 'postgres' as const,
   host: process.env.DB_HOST!,
@@ -12,11 +29,11 @@ const configuration = {
   username: process.env.DB_USER!,
   password: process.env.DB_PASSWORD!,
   database: process.env.DB_DB!,
-  synchronize: true,
-  // Enable cache to create query-result-cache table
+  synchronize: true, // Auto-sync schema with entities
+  // Enable cache to auto-create query-result-cache table
   cache: {
     type: 'database' as const,
-    duration: 30000,
+    duration: 30000, // Cache duration in ms
   },
 };
 console.log(configuration);
