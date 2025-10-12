@@ -2,13 +2,13 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "mobile (debug iPhone 14)",
+      "name": "mobile (debug iPhone 16)",
       "cwd": "apps/mobile",
       "request": "launch",
       "type": "dart",
       "flutterMode": "debug",
-      "args": ["-d", "00008120-001A4110017BC01E"],
-      "deviceId": "00008120-001A4110017BC01E"
+      "args": ["-d", "AD4551B3-8A08-4632-9CC8-95CFF6BFB3DC"],
+      "deviceId": "AD4551B3-8A08-4632-9CC8-95CFF6BFB3DC"
     },
     {
       "name": "mobile (profile mode)",

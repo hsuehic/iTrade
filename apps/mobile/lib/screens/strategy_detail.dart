@@ -106,31 +106,31 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     setState(() => _isUpdating = true);
 
     try {
-      final success = await _strategyService.updateStrategyStatus(
+      final updatedStrategy = await _strategyService.updateStrategyStatus(
         _strategy.id,
         newStatus,
       );
 
-      if (success) {
-        // Fetch updated strategy
-        final updatedStrategy = await _strategyService.getStrategy(
-          _strategy.id,
-        );
-        if (updatedStrategy != null) {
-          setState(() {
-            _strategy = updatedStrategy;
-          });
+      if (updatedStrategy != null) {
+        setState(() {
+          _strategy = updatedStrategy;
+        });
 
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Strategy ${_strategy.isActive ? 'started' : 'stopped'}',
-                ),
-                backgroundColor: Colors.green,
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Strategy ${_strategy.isActive ? 'started' : 'stopped'}',
               ),
-            );
-          }
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating, // 让 SnackBar 悬浮而不是贴底
+              margin: const EdgeInsets.only(
+                bottom: 50,
+                left: 16,
+                right: 16,
+              ), // 距离底部 50px
+            ),
+          );
         }
       } else {
         throw Exception('Failed to update status');
@@ -141,6 +141,12 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
           SnackBar(
             content: Text('Failed to update strategy: $e'),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating, // 让 SnackBar 悬浮而不是贴底
+            margin: const EdgeInsets.only(
+              bottom: 58,
+              left: 16,
+              right: 16,
+            ), // 距离底部 50px
           ),
         );
       }

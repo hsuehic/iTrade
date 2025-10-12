@@ -20,14 +20,10 @@ class StrategyService {
       if (status != null) queryParams['status'] = status;
       if (exchange != null) queryParams['exchange'] = exchange;
 
-      print('🌐 Fetching strategies from /api/strategies');
       final Response response = await _apiClient.getJson(
         '/api/strategies',
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
-
-      print('📡 Response status: ${response.statusCode}');
-      print('📦 Response data type: ${response.data.runtimeType}');
 
       if (response.statusCode == 200) {
         // API returns { strategies: [...] }
@@ -39,7 +35,6 @@ class StrategyService {
             final strategies = strategiesList
                 .map((json) => Strategy.fromJson(json as Map<String, dynamic>))
                 .toList();
-            print('✅ Parsed ${strategies.length} strategies');
             return strategies;
           }
         }
@@ -48,14 +43,11 @@ class StrategyService {
           final strategies = (response.data as List)
               .map((json) => Strategy.fromJson(json as Map<String, dynamic>))
               .toList();
-          print('✅ Parsed ${strategies.length} strategies (direct list)');
           return strategies;
         }
       }
-      print('⚠️ Unexpected response format or status code');
       return [];
     } catch (e) {
-      print('❌ Exception in getStrategies: $e');
       developer.log(
         'Failed to fetch strategies',
         name: 'StrategyService',
@@ -137,21 +129,26 @@ class StrategyService {
   }
 
   /// Update strategy status
-  Future<bool> updateStrategyStatus(int id, String status) async {
+  Future<Strategy?> updateStrategyStatus(int id, String status) async {
     try {
       final Response response = await _apiClient.postJson(
         '/api/strategies/$id/status',
         data: {'status': status},
       );
 
-      return response.statusCode == 200;
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return Strategy.fromJson(
+          response.data['strategy'] as Map<String, dynamic>,
+        );
+      }
+      return null;
     } catch (e) {
       developer.log(
         'Failed to update strategy status',
         name: 'StrategyService',
         error: e,
       );
-      return false;
+      return null;
     }
   }
 
@@ -161,7 +158,7 @@ class StrategyService {
       final Response response = await _apiClient.dio.delete(
         '/api/strategies/$id',
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 && response.data['success'] == true;
     } catch (e) {
       developer.log(
         'Failed to delete strategy',
