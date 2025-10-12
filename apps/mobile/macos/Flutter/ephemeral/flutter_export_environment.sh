@@ -1,7 +1,7 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=/Users/xiaowei.xue/Downloads/software/flutter"
-export "FLUTTER_APPLICATION_PATH=/Users/xiaowei.xue/Documents/Xiaowei/project/iTrade/apps/mobile"
+export "FLUTTER_ROOT=/Users/xiaoweixue/Downloads/software/flutter"
+export "FLUTTER_APPLICATION_PATH=/Users/xiaoweixue/workspace/itrade/apps/mobile"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_BUILD_DIR=build"
 export "FLUTTER_BUILD_NAME=1.0.0"
