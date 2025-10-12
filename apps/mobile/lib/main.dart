@@ -24,35 +24,132 @@ import 'screens/profile.dart';
 import 'widgets/design_bottom_nav.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  bool firebaseReady = false;
+  // Wrap entire initialization in try-catch to prevent white screen
   try {
-    await Firebase.initializeApp();
-    firebaseReady = true;
-  } catch (e) {
-    // If config files are missing, keep app running and log a hint.
-    // Add GoogleService-Info.plist (iOS) and google-services.json (Android), or configure via FlutterFire.
-    developer.log('Firebase initialization failed', name: 'main', error: e);
+    WidgetsFlutterBinding.ensureInitialized();
+    developer.log('App initializing...', name: 'main');
+
+    // Firebase initialization with timeout
+    bool firebaseReady = false;
+    try {
+      await Firebase.initializeApp().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          developer.log('Firebase init timeout', name: 'main');
+          throw TimeoutException('Firebase initialization timed out');
+        },
+      );
+      firebaseReady = true;
+      developer.log('Firebase initialized', name: 'main');
+    } catch (e) {
+      // If config files are missing, keep app running and log a hint.
+      // Add GoogleService-Info.plist (iOS) and google-services.json (Android), or configure via FlutterFire.
+      developer.log('Firebase initialization failed', name: 'main', error: e);
+    }
+
+    // Firebase messaging setup (non-blocking)
+    if (firebaseReady) {
+      try {
+        FirebaseMessaging.onBackgroundMessage(
+          firebaseMessagingBackgroundHandler,
+        );
+        await NotificationService.instance.initialize().timeout(
+          const Duration(seconds: 5),
+        );
+        await NotificationService.instance.requestPermissions().timeout(
+          const Duration(seconds: 5),
+        );
+        NotificationService.instance.listenToMessages();
+        final token = await NotificationService.instance.getDeviceToken();
+        developer.log('FCM token: $token', name: 'main');
+      } catch (e) {
+        developer.log('Notification setup failed', name: 'main', error: e);
+      }
+    }
+
+    // API Client initialization with timeout
+    try {
+      await ApiClient.instance
+          .init(
+            baseUrl: NetworkParameter.host,
+            // Allow handshake during development if the cert is self-signed/misconfigured
+            insecureAllowBadCertForHosts: const <String>[
+              NetworkParameter.origin,
+            ],
+          )
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              developer.log('ApiClient init timeout', name: 'main');
+              throw TimeoutException('API Client initialization timed out');
+            },
+          );
+      developer.log('ApiClient initialized', name: 'main');
+    } catch (e) {
+      developer.log('ApiClient init failed', name: 'main', error: e);
+      // Continue app launch even if API init fails
+    }
+
+    // Initialize theme service (should be fast)
+    try {
+      await ThemeService.instance.init().timeout(const Duration(seconds: 3));
+      developer.log('ThemeService initialized', name: 'main');
+    } catch (e) {
+      developer.log('ThemeService init failed', name: 'main', error: e);
+      // Continue with default theme
+    }
+
+    developer.log('App initialization complete', name: 'main');
+    runApp(const MyApp());
+  } catch (e, stackTrace) {
+    // Last resort error handler - log and try to show error screen
+    developer.log(
+      'Critical error during app initialization',
+      name: 'main',
+      error: e,
+      stackTrace: stackTrace,
+    );
+    // Still try to run app with error screen
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          backgroundColor: Colors.white,
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.red, size: 64),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Failed to start iTrade',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error: ${e.toString()}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      // Try to restart
+                      SystemChannels.platform.invokeMethod(
+                        'SystemNavigator.pop',
+                      );
+                    },
+                    child: const Text('Restart App'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
-
-  if (firebaseReady) {
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    await NotificationService.instance.initialize();
-    await NotificationService.instance.requestPermissions();
-    NotificationService.instance.listenToMessages();
-    final token = await NotificationService.instance.getDeviceToken();
-    developer.log('token: $token');
-  }
-  await ApiClient.instance.init(
-    baseUrl: NetworkParameter.host,
-    // Allow handshake during development if the cert is self-signed/misconfigured
-    insecureAllowBadCertForHosts: const <String>[NetworkParameter.origin],
-  );
-
-  // Initialize theme service
-  await ThemeService.instance.init();
-
-  runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {

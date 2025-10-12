@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:developer' as developer;
 import '../services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -47,30 +48,108 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigateToNextScreen() async {
-    // Start loading user session in parallel with animation
-    final userFuture = _checkUserSession();
+    try {
+      developer.log('Starting navigation check', name: 'SplashScreen');
 
-    // Wait for minimum animation time (2.5 seconds)
-    await Future.delayed(const Duration(milliseconds: 2500));
+      // Start loading user session in parallel with animation
+      final userFuture = _checkUserSession();
 
-    // Ensure user check is complete
-    final isLoggedIn = await userFuture;
+      // Wait for minimum animation time (2.5 seconds)
+      await Future.delayed(const Duration(milliseconds: 2500));
 
-    // Check if widget is still mounted before using context
-    if (!mounted) return;
+      // Ensure user check is complete with timeout
+      bool isLoggedIn = false;
+      try {
+        isLoggedIn = await userFuture.timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            developer.log(
+              'User session check timed out, treating as logged out',
+              name: 'SplashScreen',
+            );
+            return false;
+          },
+        );
+      } catch (e) {
+        developer.log(
+          'Error waiting for user session',
+          name: 'SplashScreen',
+          error: e,
+        );
+        isLoggedIn = false;
+      }
 
-    // Navigate to appropriate screen
-    Navigator.of(context).pushReplacementNamed(isLoggedIn ? '/home' : '/login');
+      developer.log('Login status: $isLoggedIn', name: 'SplashScreen');
+
+      // Check if widget is still mounted before using context
+      if (!mounted) {
+        developer.log(
+          'Widget unmounted, skipping navigation',
+          name: 'SplashScreen',
+        );
+        return;
+      }
+
+      // Navigate to appropriate screen
+      try {
+        await Navigator.of(
+          context,
+        ).pushReplacementNamed(isLoggedIn ? '/home' : '/login');
+        developer.log('Navigation complete', name: 'SplashScreen');
+      } catch (e) {
+        developer.log('Navigation failed', name: 'SplashScreen', error: e);
+        // Fallback: try login route
+        if (mounted) {
+          Navigator.of(context).pushReplacementNamed('/login');
+        }
+      }
+    } catch (e, stackTrace) {
+      developer.log(
+        'Critical error in navigation',
+        name: 'SplashScreen',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      // Last resort: try to navigate to login
+      if (mounted) {
+        try {
+          Navigator.of(context).pushReplacementNamed('/login');
+        } catch (_) {
+          // If even this fails, we're in trouble but at least we tried
+        }
+      }
+    }
   }
 
   /// Check user session by calling AuthService.getUser()
   /// This replaces the AuthGate logic for better UX
   Future<bool> _checkUserSession() async {
     try {
-      final user = await AuthService.instance.getUser();
-      return user != null;
-    } catch (e) {
+      developer.log('Checking user session', name: 'SplashScreen');
+      final user = await AuthService.instance.getUser().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          developer.log(
+            'AuthService.getUser() timed out',
+            name: 'SplashScreen',
+          );
+          return null;
+        },
+      );
+      final isLoggedIn = user != null;
+      developer.log(
+        'User session check result: $isLoggedIn',
+        name: 'SplashScreen',
+      );
+      return isLoggedIn;
+    } catch (e, stackTrace) {
       // If session check fails, treat as logged out
+      developer.log(
+        'Session check failed, treating as logged out',
+        name: 'SplashScreen',
+        error: e,
+        stackTrace: stackTrace,
+      );
       return false;
     }
   }
@@ -132,6 +211,22 @@ class _SplashScreenState extends State<SplashScreen>
                             width: 70,
                             height: 70,
                             fit: BoxFit.cover,
+                            cacheWidth:
+                                140, // 2x resolution for high-DPI screens
+                            cacheHeight: 140,
+                            errorBuilder: (context, error, stackTrace) {
+                              developer.log(
+                                'Failed to load logo image',
+                                name: 'SplashScreen',
+                                error: error,
+                              );
+                              // Fallback to icon if image fails to load
+                              return const Icon(
+                                Icons.account_balance,
+                                size: 50,
+                                color: Colors.white,
+                              );
+                            },
                           ),
                         ),
                       ),

@@ -216,6 +216,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: 45,
                       height: 45,
                       fit: BoxFit.cover,
+                      cacheWidth: 90, // 2x resolution
+                      cacheHeight: 90,
                     ),
                   ),
                 ),

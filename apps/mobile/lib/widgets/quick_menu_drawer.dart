@@ -129,6 +129,8 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                         child: Image.asset(
                           'assets/images/logo-512x512.png',
                           fit: BoxFit.cover,
+                          cacheWidth: 64, // 2x resolution for 32px display
+                          cacheHeight: 64,
                         ),
                       ),
                     ),
