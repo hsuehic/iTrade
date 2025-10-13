@@ -199,15 +199,21 @@ export function createStrategyInstance(
  *
  * 返回每个策略的完整信息，包括实现状态
  */
-export function getAllStrategiesWithImplementationStatus(): (StrategyConfig & {
+export function getAllStrategiesWithImplementationStatus(): (Omit<
+  StrategyConfig,
+  'constructor'
+> & {
   isImplemented: boolean;
   constructor?: StrategyConstructor;
 })[] {
-  return Object.values(STRATEGY_REGISTRY).map((config) => ({
-    ...config,
-    isImplemented: isStrategyImplemented(config.type),
-    constructor: getStrategyConstructor(config.type),
-  }));
+  return Object.values(STRATEGY_REGISTRY).map((config) => {
+    const { constructor: _, ...configWithoutConstructor } = config as any;
+    return {
+      ...configWithoutConstructor,
+      isImplemented: isStrategyImplemented(config.type),
+      constructor: getStrategyConstructor(config.type),
+    };
+  });
 }
 
 /**
