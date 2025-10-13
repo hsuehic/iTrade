@@ -10,10 +10,7 @@ import {
   TypeOrmDataManager,
   TypeOrmDataManagerConfig,
 } from '@itrade/data-manager';
-import {
-  DryRunOrderEntity,
-  DryRunTradeEntity,
-} from '@itrade/data-manager';
+import { DryRunOrderEntity, DryRunTradeEntity } from '@itrade/data-manager';
 
 export interface DryRunRunOptions {
   userId: string;

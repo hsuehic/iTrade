@@ -30,7 +30,8 @@ export class OKXExchange extends BaseExchange {
   private static readonly MAINNET_BASE_URL = 'https://www.okx.com';
   private static readonly TESTNET_BASE_URL = 'https://www.okx.com'; // OKX 使用同一个 URL，通过 demo trading 模式区分
   private static readonly MAINNET_WS_URL = 'wss://ws.okx.com:8443/ws/v5/public';
-  private static readonly TESTNET_WS_URL = 'wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999'; // Demo trading
+  private static readonly TESTNET_WS_URL =
+    'wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999'; // Demo trading
 
   private passphrase?: string;
   private isDemo: boolean;
@@ -278,7 +279,11 @@ export class OKXExchange extends BaseExchange {
       params.ordId = orderId;
     }
 
-    const signedData = this.signOKXRequest('GET', '/api/v5/trade/order', params);
+    const signedData = this.signOKXRequest(
+      'GET',
+      '/api/v5/trade/order',
+      params
+    );
     const response = await this.httpClient.get('/api/v5/trade/order', {
       params,
       headers: signedData.headers,
@@ -366,7 +371,11 @@ export class OKXExchange extends BaseExchange {
   }
 
   public async getAccountInfo(): Promise<AccountInfo> {
-    const signedData = this.signOKXRequest('GET', '/api/v5/account/balance', {});
+    const signedData = this.signOKXRequest(
+      'GET',
+      '/api/v5/account/balance',
+      {}
+    );
     const response = await this.httpClient.get('/api/v5/account/balance', {
       headers: signedData.headers,
     });
@@ -404,7 +413,11 @@ export class OKXExchange extends BaseExchange {
   }
 
   public async getPositions(): Promise<Position[]> {
-    const signedData = this.signOKXRequest('GET', '/api/v5/account/positions', {});
+    const signedData = this.signOKXRequest(
+      'GET',
+      '/api/v5/account/positions',
+      {}
+    );
     const response = await this.httpClient.get('/api/v5/account/positions', {
       headers: signedData.headers,
     });
@@ -418,7 +431,9 @@ export class OKXExchange extends BaseExchange {
       side: pos.posSide === 'long' ? 'long' : 'short',
       quantity: this.formatDecimal((pos.pos ?? '0').toString()),
       avgPrice: this.formatDecimal((pos.avgPx ?? '0').toString()),
-      markPrice: this.formatDecimal((pos.markPx ?? pos.avgPx ?? '0').toString()),
+      markPrice: this.formatDecimal(
+        (pos.markPx ?? pos.avgPx ?? '0').toString()
+      ),
       unrealizedPnl: this.formatDecimal((pos.upl ?? '0').toString()),
       leverage: this.formatDecimal((pos.lever ?? '0').toString()),
       timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
@@ -462,21 +477,21 @@ export class OKXExchange extends BaseExchange {
     // Spot: BTC/USDT -> BTC-USDT
     // Futures: BTC/USDT:USDT -> BTC-USDT-SWAP (perpetual)
     // Futures: BTC-USD-SWAP -> BTC-USD-SWAP (keep as is)
-    
+
     const upperSymbol = symbol.toUpperCase();
-    
+
     // Handle futures format: BTC/USDT:USDT (CCXT format for perpetual)
     if (upperSymbol.includes(':')) {
       const [pair] = upperSymbol.split(':');
       const base = pair.replace('/', '-');
       return `${base}-SWAP`; // OKX perpetual swap format
     }
-    
+
     // Handle already formatted swap contracts
     if (upperSymbol.includes('-SWAP') || upperSymbol.includes('-FUTURES')) {
       return upperSymbol.replace('/', '-');
     }
-    
+
     // Handle spot: BTC/USDT -> BTC-USDT
     return upperSymbol.replace('/', '-');
   }
@@ -528,7 +543,11 @@ export class OKXExchange extends BaseExchange {
       if (channel === 'tickers') {
         this.emit('ticker', instId, this.transformOKXTicker(data, instId));
       } else if (channel === 'books5' || channel === 'books') {
-        this.emit('orderbook', instId, this.transformOKXOrderBook(data, instId));
+        this.emit(
+          'orderbook',
+          instId,
+          this.transformOKXOrderBook(data, instId)
+        );
       } else if (channel === 'trades') {
         this.emit('trade', instId, this.transformOKXTrade(data, instId));
       } else if (channel.startsWith('candle')) {
@@ -683,10 +702,10 @@ export class OKXExchange extends BaseExchange {
   private transformOKXOrderStatus(state: string): OrderStatus {
     const statusMap: { [key: string]: OrderStatus } = {
       live: OrderStatus.NEW,
-      'partially_filled': OrderStatus.PARTIALLY_FILLED,
+      partially_filled: OrderStatus.PARTIALLY_FILLED,
       filled: OrderStatus.FILLED,
       canceled: OrderStatus.CANCELED,
-      'mmp_canceled': OrderStatus.CANCELED,
+      mmp_canceled: OrderStatus.CANCELED,
       rejected: OrderStatus.REJECTED,
     };
 
@@ -797,4 +816,3 @@ export class OKXExchange extends BaseExchange {
     }
   }
 }
-

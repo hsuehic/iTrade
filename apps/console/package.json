@@ -4,9 +4,8 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "test": "tsx src/main.ts",
     "dev": "tsx src/main.ts",
-    "dev:watch": "tsx watch src/main.ts",
+    "dev:watch": "NODE_OPTIONS='--require=reflect-metadata/register' tsx watch --tsconfig tsconfig.runtime.json src/main.ts",
     "init-history": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/init-history.ts",
     "cron": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/cron.ts",
     "diagnose": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/diagnose-auth.ts",
@@ -25,6 +24,7 @@
     "@itrade/portfolio-manager": "workspace:*",
     "@itrade/risk-manager": "workspace:*",
     "@itrade/strategies": "workspace:*",
+    "@itrade/utils": "workspace:*",
     "@types/node-cron": "^3.0.11",
     "axios": "^1.12.2",
     "decimal.js": "^10.6.0",

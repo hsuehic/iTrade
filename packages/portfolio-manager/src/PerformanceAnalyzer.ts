@@ -1,9 +1,5 @@
 import { Decimal } from 'decimal.js';
-import {
-  PortfolioSnapshot,
-  PerformanceMetrics,
-  Order,
-} from '@itrade/core';
+import { PortfolioSnapshot, PerformanceMetrics, Order } from '@itrade/core';
 
 export interface TradeAnalysis {
   totalTrades: number;

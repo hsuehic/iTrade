@@ -5,6 +5,7 @@ export { ValidationUtils } from './ValidationUtils';
 export { FormatUtils } from './FormatUtils';
 export { CryptoUtils } from './CryptoUtils';
 export { ConfigUtils } from './ConfigUtils';
+export { ArrayUtils, FixedLengthList } from './ArrayUtils';
 
 // Re-export commonly used utilities
 export {
@@ -17,10 +18,10 @@ export {
 } from './AsyncUtils';
 
 // Exchange utilities
-export { 
-  normalizeSymbol, 
-  getSymbolVariants, 
-  detectMarketType, 
-  isFuturesMarket 
+export {
+  normalizeSymbol,
+  getSymbolVariants,
+  detectMarketType,
+  isFuturesMarket,
 } from './ExchangeUtils';
 export type { ExchangeId, MarketType } from './ExchangeUtils';

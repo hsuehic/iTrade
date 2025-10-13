@@ -12,7 +12,7 @@ import { DecimalTransformer } from './Kline';
 
 /**
  * AccountSnapshot Entity - 账户快照实体
- * 
+ *
  * 用于存储交易所账户的定期快照，包括：
  * - 余额信息
  * - 持仓信息
@@ -100,4 +100,3 @@ export class AccountSnapshotEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-

@@ -24,12 +24,13 @@
   },
   "dependencies": {
     "@itrade/core": "workspace:*",
+    "@itrade/utils": "workspace:*",
     "decimal.js": "^10.4.3",
     "mysql2": "^3.6.5",
     "node-csv": "^0.1.2",
     "pg": "^8.11.3",
     "reflect-metadata": "^0.1.14",
-    "typeorm": "^0.3.17"
+    "typeorm": "0.3.27"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",

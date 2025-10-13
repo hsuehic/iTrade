@@ -316,7 +316,7 @@ export class MovingAverageStrategy extends BaseStrategy {
   /**
    * Get comprehensive strategy status for monitoring
    */
-  public getStrategyStatus() {
+  public getStrategyState() {
     return {
       strategyId: this.getStrategyId(),
       name: this.name,

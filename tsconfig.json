@@ -22,9 +22,6 @@
     "declarationMap": true,
     "sourceMap": true,
     "baseUrl": ".",
-    "paths": {
-      "@itrade/*": ["packages/*/src"]
-    },
     "types": ["node"]
   },
   "include": ["packages/*/src/**/*", "apps/**/*"],

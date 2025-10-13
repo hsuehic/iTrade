@@ -1,16 +1,3 @@
-/**
- * 策略注册表 - 集中管理所有策略类型和配置
- *
- * 添加新策略时只需要在这里配置，系统会自动同步到前端、后端和console应用
- */
-
-export type StrategyTypeKey =
-  | 'moving_average'
-  | 'rsi'
-  | 'macd'
-  | 'bollinger_bands'
-  | 'custom';
-
 export interface StrategyParameterDefinition {
   name: string;
   type:
@@ -60,6 +47,20 @@ export interface StrategyConfig {
     riskFactors: string[];
   };
 }
+
+/**
+ * 策略注册表 - 集中管理所有策略类型和配置
+ *
+ * 添加新策略时只需要在这里配置，系统会自动同步到前端、后端和console应用
+ */
+
+export type StrategyTypeKey =
+  | 'moving_average'
+  | 'rsi'
+  | 'macd'
+  | 'bollinger_bands'
+  | 'window_grids'
+  | 'custom';
 
 /**
  * 🎯 策略注册表 - 所有策略的中央配置
@@ -255,6 +256,53 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
     category: 'volatility',
     defaultParameters: {
       period: 20,
+      stdDev: 2,
+      subscription: {
+        ticker: true,
+        klines: true,
+        method: 'rest',
+      },
+    },
+    parameterDefinitions: [
+      {
+        name: 'period',
+        type: 'number',
+        description: 'Moving average period for middle band',
+        defaultValue: 20,
+        required: true,
+        min: 5,
+        max: 100,
+      },
+      {
+        name: 'stdDev',
+        type: 'number',
+        description: 'Standard deviation multiplier for bands',
+        defaultValue: 2,
+        required: true,
+        min: 1,
+        max: 4,
+      },
+    ],
+    documentation: {
+      overview:
+        'Uses volatility bands around a moving average to identify overbought/oversold conditions.',
+      parameters: 'Standard settings: 20-period MA with 2 standard deviations.',
+      signals: 'BUY: Price touches lower band. SELL: Price touches upper band.',
+      riskFactors: [
+        'Assumes mean reversion behavior',
+        'May fail during strong breakout moves',
+      ],
+    },
+  },
+  window_grids: {
+    type: 'window_grids',
+    name: 'Window Grids',
+    description: 'Window-based grids strategy',
+    icon: '📊',
+    implemented: true, // 🚧 待实现🚧 待实现
+    category: 'volatility',
+    defaultParameters: {
+      windowSize: 20,
       stdDev: 2,
       subscription: {
         ticker: true,

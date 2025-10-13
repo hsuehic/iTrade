@@ -1,5 +1,15 @@
 import { Decimal } from 'decimal.js';
 
+export type OrderSide = 'BUY' | 'SELL' | 'buy' | 'sell';
+export type OrderType =
+  | 'MARKET'
+  | 'LIMIT'
+  | 'STOP_LOSS'
+  | 'STOP_LOSS_LIMIT'
+  | 'TAKE_PROFIT'
+  | 'TAKE_PROFIT_LIMIT';
+export type TimeInForce = 'GTC' | 'IOC' | 'FOK';
+
 export class ValidationUtils {
   // Type Validation
   static isString(value: any): value is string {
@@ -154,11 +164,11 @@ export class ValidationUtils {
     }
   }
 
-  static isValidOrderSide(side: string): boolean {
+  static isValidOrderSide(side: string): side is OrderSide {
     return ['BUY', 'SELL', 'buy', 'sell'].includes(side);
   }
 
-  static isValidOrderType(type: string): boolean {
+  static isValidOrderType(type: string): type is OrderType {
     return [
       'MARKET',
       'LIMIT',
@@ -169,7 +179,7 @@ export class ValidationUtils {
     ].includes(type.toUpperCase());
   }
 
-  static isValidTimeInForce(tif: string): boolean {
+  static isValidTimeInForce(tif: string): tif is TimeInForce {
     return ['GTC', 'IOC', 'FOK'].includes(tif.toUpperCase());
   }
 

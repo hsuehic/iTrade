@@ -14,6 +14,7 @@ import { TypeOrmDataManager, StrategyStatus } from '@itrade/data-manager';
 import {
   createStrategyInstance,
   getImplementedStrategies,
+  StrategyImplementationInfo,
 } from '@itrade/strategies';
 
 interface StrategyMetrics {
@@ -60,7 +61,7 @@ export class StrategyManager {
     this.logger.info(
       `📈 Available strategy implementations: ${implementedStrategies.length}`
     );
-    implementedStrategies.forEach((strategy) => {
+    implementedStrategies.forEach((strategy: StrategyImplementationInfo) => {
       this.logger.debug(`  ✅ ${strategy.name} (${strategy.type})`);
     });
 

@@ -30,16 +30,19 @@ export class BinanceExchange extends BaseExchange {
   private static readonly SPOT_TESTNET_URL = 'https://testnet.binance.vision';
   private static readonly SPOT_MAINNET_WS = 'wss://stream.binance.com:9443/ws/';
   private static readonly SPOT_TESTNET_WS = 'wss://testnet.binance.vision/ws/';
-  
+
   // USDT-M Futures API URLs (Perpetual)
   private static readonly FUTURES_MAINNET_URL = 'https://fapi.binance.com';
-  private static readonly FUTURES_TESTNET_URL = 'https://testnet.binancefuture.com';
-  private static readonly FUTURES_MAINNET_WS = 'wss://fstream.binance.com/ws/';
-  private static readonly FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/ws/';
+  private static readonly FUTURES_TESTNET_URL =
+    'https://testnet.binancefuture.com';
+  // WebSocket URLs for futures (reserved for future use)
+  private static readonly _FUTURES_MAINNET_WS = 'wss://fstream.binance.com/ws/';
+  private static readonly _FUTURES_TESTNET_WS =
+    'wss://stream.binancefuture.com/ws/';
 
   private spotClient: AxiosInstance;
   private futuresClient: AxiosInstance;
-  private isTestnet: boolean;
+  private _isTestnet: boolean;
 
   constructor(isTestnet = false) {
     const baseUrl = isTestnet
@@ -50,38 +53,38 @@ export class BinanceExchange extends BaseExchange {
       : BinanceExchange.SPOT_MAINNET_WS;
 
     super('binance', baseUrl, wsBaseUrl);
-    
-    this.isTestnet = isTestnet;
-    
+
+    this._isTestnet = isTestnet;
+
     // Initialize Spot API client
     this.spotClient = axios.create({
-      baseURL: isTestnet 
-        ? BinanceExchange.SPOT_TESTNET_URL 
+      baseURL: isTestnet
+        ? BinanceExchange.SPOT_TESTNET_URL
         : BinanceExchange.SPOT_MAINNET_URL,
       timeout: 30000,
     });
-    
+
     // Initialize Futures API client
     this.futuresClient = axios.create({
-      baseURL: isTestnet 
-        ? BinanceExchange.FUTURES_TESTNET_URL 
+      baseURL: isTestnet
+        ? BinanceExchange.FUTURES_TESTNET_URL
         : BinanceExchange.FUTURES_MAINNET_URL,
       timeout: 30000,
     });
   }
-  
+
   /**
-   * Get the appropriate API client based on market type
+   * Get the appropriate API client based on market type (reserved for future use)
    */
-  private getClient(marketType?: string): AxiosInstance {
+  private _getClient(marketType?: string): AxiosInstance {
     const isFutures = marketType === 'futures' || marketType === 'perpetual';
     return isFutures ? this.futuresClient : this.spotClient;
   }
-  
+
   /**
-   * Check if market type is futures/perpetual
+   * Check if market type is futures/perpetual (reserved for future use)
    */
-  private isFuturesMarket(marketType?: string): boolean {
+  private _isFuturesMarket(marketType?: string): boolean {
     return marketType === 'futures' || marketType === 'perpetual';
   }
 
@@ -473,20 +476,20 @@ export class BinanceExchange extends BaseExchange {
     // Spot: BTC/USDT -> BTCUSDT
     // Futures: BTC/USDT:USDT -> BTCUSDT (perpetual futures)
     // Futures: BTCUSD_PERP -> BTCUSD_PERP (keep as is)
-    
+
     const upperSymbol = symbol.toUpperCase();
-    
+
     // Handle futures format: BTC/USDT:USDT (CCXT format for perpetual)
     if (upperSymbol.includes(':')) {
       const [pair] = upperSymbol.split(':');
       return pair.replace('/', '').replace('-', '');
     }
-    
+
     // Handle already formatted perpetual futures (BTCUSD_PERP, BTCUSDT_PERP)
     if (upperSymbol.includes('_PERP') || upperSymbol.includes('_SWAP')) {
       return upperSymbol.replace('/', '').replace('-', '');
     }
-    
+
     // Handle spot: BTC/USDT -> BTCUSDT
     return upperSymbol.replace('/', '').replace('-', '');
   }

@@ -12,7 +12,7 @@ import { PortfolioManager } from '@itrade/portfolio-manager';
 import { BinanceExchange } from '@itrade/exchange-connectors';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 
 import { StrategyManager } from './strategy-manager';
 import { OrderTracker } from './order-tracker';

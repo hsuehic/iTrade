@@ -1,4 +1,5 @@
 import { DataSource, Repository } from 'typeorm';
+
 import { OrderEntity } from '../entities/Order';
 
 export class PnLRepository {
@@ -103,4 +104,3 @@ export class PnLRepository {
     };
   }
 }
-
