@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 
+import axios, { AxiosInstance } from 'axios';
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -24,9 +25,12 @@ import { BaseExchange } from '../base/BaseExchange';
  * Coinbase Advanced Trade API connector (public + private + WS)
  * Docs (subject to change): public REST base https://api.coinbase.com
  * WS base: wss://advanced-trade-ws.coinbase.com
+ * https://api.exchange.coinbase.com
  */
 export class CoinbaseExchange extends BaseExchange {
+  private publicHttpClient: AxiosInstance;
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
+  private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
   private static readonly MAINNET_WS_URL =
     'wss://advanced-trade-ws.coinbase.com';
 
@@ -42,6 +46,10 @@ export class CoinbaseExchange extends BaseExchange {
         : CoinbaseExchange.MAINNET_BASE_URL);
 
     super('coinbase', base, CoinbaseExchange.MAINNET_WS_URL);
+    this.publicHttpClient = axios.create({
+      baseURL: CoinbaseExchange.PUBLIC_BASE_URL,
+      timeout: 30000,
+    });
   }
 
   protected async testConnection(): Promise<void> {
@@ -58,8 +66,9 @@ export class CoinbaseExchange extends BaseExchange {
 
   public async getTicker(symbol: string): Promise<Ticker> {
     const productId = this.normalizeSymbol(symbol);
-    const resp = await this.httpClient.get(
-      `/api/v3/brokerage/products/${productId}/ticker`
+    const resp = await this.publicHttpClient.get(
+      // `/api/v3/brokerage/products/${productId}/ticker`
+      `/products/${productId}/ticker`
     );
     const data = resp.data;
     return {
@@ -130,16 +139,17 @@ export class CoinbaseExchange extends BaseExchange {
   ): Promise<Kline[]> {
     const productId = this.normalizeSymbol(symbol);
     const granularity = this.mapIntervalToGranularity(interval);
+    const accountInfo = await this.getAccountInfo();
+    console.log('Account Info:', accountInfo);
     const params: any = { granularity, limit }; // start/end iso8601 supported
     if (startTime) params.start = startTime.toISOString();
     if (endTime) params.end = endTime.toISOString();
-
+    console.log('/api/v3/brokerage/products/BTC-PERP-INTX/candles');
     const resp = await this.httpClient.get(
-      `/api/v3/brokerage/products/${productId}/candles`,
-      {
-        params,
-      }
+      `/api/v3/brokerage/products/BTC-PERP-INTX/candles`,
+      { params: { granularity: 'ONE_MINUTE' } }
     );
+    console.log('resp:', resp);
     const data = resp.data?.candles || resp.data || [];
     return data.map((c: any) => ({
       symbol: productId,

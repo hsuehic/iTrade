@@ -30,6 +30,8 @@
     "axios": "^1.12.2",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.3",
+    "jsonwebtoken": "^9.0.2",
+    "jsrsasign": "^11.1.0",
     "node-cron": "^4.2.1",
     "reflect-metadata": "^0.1.14"
   },

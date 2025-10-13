@@ -1,6 +1,6 @@
 {
   "version": "0.2.0",
-  "configurations": [    
+  "configurations": [
     {
       "name": "mobile (debug iPhone 16)",
       "cwd": "apps/mobile",
@@ -28,7 +28,7 @@
       "type": "node",
       "request": "launch",
       "name": "Debug console with tsx",
-      "runtimeExecutable": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin/tsx",
+      "runtimeExecutable": "/usr/local/bin/tsx",
       "args": ["src/main.ts"],
       "cwd": "${workspaceFolder}/apps/console",
       "sourceMaps": true,
