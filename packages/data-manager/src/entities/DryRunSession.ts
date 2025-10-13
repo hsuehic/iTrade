@@ -12,11 +12,11 @@ import {
 } from 'typeorm';
 
 import { DecimalTransformer } from './Kline';
-import { StrategyEntity } from './Strategy';
-import { User } from './User';
-import { DryRunOrderEntity } from './DryRunOrder';
-import { DryRunTradeEntity } from './DryRunTrade';
-import { DryRunResultEntity } from './DryRunResult';
+import type { StrategyEntity } from './Strategy';
+import type { User } from './User';
+import type { DryRunOrderEntity } from './DryRunOrder';
+import type { DryRunTradeEntity } from './DryRunTrade';
+import type { DryRunResultEntity } from './DryRunResult';
 
 export enum DryRunStatus {
   RUNNING = 'running',
@@ -33,7 +33,7 @@ export class DryRunSessionEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => StrategyEntity, { nullable: true })
+  @ManyToOne('StrategyEntity', { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
@@ -87,13 +87,13 @@ export class DryRunSessionEntity {
   @Column({ type: 'text', nullable: true })
   notes?: string;
 
-  @OneToMany(() => DryRunOrderEntity, (o: DryRunOrderEntity) => o.session)
+  @OneToMany('DryRunOrderEntity', (o: DryRunOrderEntity) => o.session)
   orders?: DryRunOrderEntity[];
 
-  @OneToMany(() => DryRunTradeEntity, (t: DryRunTradeEntity) => t.session)
+  @OneToMany('DryRunTradeEntity', (t: DryRunTradeEntity) => t.session)
   trades?: DryRunTradeEntity[];
 
-  @OneToMany(() => DryRunResultEntity, (r: DryRunResultEntity) => r.session)
+  @OneToMany('DryRunResultEntity', (r: DryRunResultEntity) => r.session)
   results?: DryRunResultEntity[];
 
   @CreateDateColumn()
@@ -102,7 +102,7 @@ export class DryRunSessionEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne('User', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

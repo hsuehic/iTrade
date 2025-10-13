@@ -10,8 +10,8 @@ import {
   Index,
 } from 'typeorm';
 
-import { BalanceEntity } from './Balance';
-import { User } from './User';
+import type { BalanceEntity } from './Balance';
+import type { User } from './User';
 
 @Entity('account_info')
 @Index(['user'])
@@ -32,7 +32,7 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'timestamp' })
   updateTime!: Date;
 
-  @OneToMany(() => BalanceEntity, (b) => b.accountInfo, {
+  @OneToMany('BalanceEntity', (b: BalanceEntity) => b.accountInfo, {
     cascade: true,
   })
   balances!: BalanceEntity[];
@@ -46,7 +46,7 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'character varying', length: 255 })
   accountId!: string;
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne('User', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

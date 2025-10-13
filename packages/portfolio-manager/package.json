@@ -13,7 +13,8 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && cp dist/portfolio-manager/src/index.d.ts dist/ && cp dist/portfolio-manager/src/index.d.ts.map dist/ 2>/dev/null || true",
+    "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
+    "build": "tsdown src/index.ts --format cjs --format esm --sourcemap || true",
     "dev": "tsdown src/index.ts --format esm --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,7 +25,8 @@
   },
   "dependencies": {
     "@itrade/core": "workspace:*",
-    "decimal.js": "^10.4.3",
+    "decimal.js": "^10.6.0",
+    "undici-types": "^7.16.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

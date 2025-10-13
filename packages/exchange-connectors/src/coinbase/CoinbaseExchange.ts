@@ -587,7 +587,7 @@ export class CoinbaseExchange extends BaseExchange {
     // Note: not used in JWT flow; left here for potential fallback HMAC scheme
     // const body = config.data ? JSON.stringify(config.data) : '';
 
-    const _isAdvancedTradePath = requestPath.startsWith('/api/v3/brokerage');
+    // const _isAdvancedTradePath = requestPath.startsWith('/api/v3/brokerage');
     const host = (() => {
       try {
         return new URL(this.baseUrl).host;

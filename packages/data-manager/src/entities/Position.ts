@@ -13,8 +13,8 @@ import {
 import { Position } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { OrderEntity } from './Order';
-import { User } from './User';
+import type { OrderEntity } from './Order';
+import type { User } from './User';
 
 @Entity('positions')
 @Index(['symbol'])
@@ -74,7 +74,7 @@ export class PositionEntity implements Position {
   @Column({ type: 'timestamp' })
   timestamp!: Date;
 
-  @OneToMany(() => OrderEntity, (o) => o.position)
+  @OneToMany('OrderEntity', (o: OrderEntity) => o.position)
   orders?: OrderEntity[];
 
   @CreateDateColumn()
@@ -83,7 +83,7 @@ export class PositionEntity implements Position {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne('User', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

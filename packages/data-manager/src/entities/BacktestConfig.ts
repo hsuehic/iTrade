@@ -11,8 +11,8 @@ import {
 import { BacktestConfig } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { BacktestResultEntity } from './BacktestResult';
-import { User } from './User';
+import type { BacktestResultEntity } from './BacktestResult';
+import type { User } from './User';
 
 @Entity('backtest_configs')
 @Index(['user'])
@@ -58,10 +58,10 @@ export class BacktestConfigEntity implements BacktestConfig {
   @Column({ type: 'character varying', length: 10 })
   timeframe!: string;
 
-  @OneToMany(() => BacktestResultEntity, (r) => r.config)
+  @OneToMany('BacktestResultEntity', (r: BacktestResultEntity) => r.config)
   results?: BacktestResultEntity[];
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne('User', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

@@ -4,8 +4,9 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
+    "start": "tsx src/main.ts",
     "dev": "tsx src/main.ts",
-    "dev:watch": "NODE_OPTIONS='--require=reflect-metadata/register' tsx watch --tsconfig tsconfig.runtime.json src/main.ts",
+    "dev:watch": "tsx watch src/main.ts",
     "init-history": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/init-history.ts",
     "cron": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/cron.ts",
     "diagnose": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/diagnose-auth.ts",

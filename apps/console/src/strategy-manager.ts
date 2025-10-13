@@ -169,6 +169,9 @@ export class StrategyManager {
         status: StrategyStatus.ACTIVE,
       });
       const activeStrategyIds = new Set(activeStrategies.map((s) => s.id));
+      this.logger.info(
+        `🔄 [SYNC] Active strategies: ${JSON.stringify(activeStrategyIds, null, 2)}`
+      );
 
       let addedCount = 0;
       let removedCount = 0;

@@ -5,7 +5,7 @@ import { OrderEntity } from '../entities/Order';
 export class PnLRepository {
   private repository: Repository<OrderEntity>;
 
-  constructor(private dataSource: DataSource) {
+  constructor(dataSource: DataSource) {
     this.repository = dataSource.getRepository(OrderEntity);
   }
 

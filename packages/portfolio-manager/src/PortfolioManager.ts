@@ -27,7 +27,7 @@ export class PortfolioManager
     if (initialBalance) {
       this.initialValue = initialBalance;
       this.totalValue = initialBalance;
-      this.setBalance('USDT', initialBalance, new Decimal(0));
+      this.setBalance('USDC', initialBalance, new Decimal(0));
     }
   }
   getPortfolioValue(): Promise<Decimal> {

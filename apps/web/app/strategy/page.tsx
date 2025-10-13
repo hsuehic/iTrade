@@ -19,7 +19,6 @@ import {
 import {
   getImplementedStrategies,
   getAllStrategiesWithImplementationStatus,
-  StrategyImplementationInfo,
 } from '@itrade/strategies';
 
 import { SiteHeader } from '@/components/site-header';
@@ -412,7 +411,7 @@ export default function StrategyPage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   {getAllStrategiesWithImplementationStatus().map(
-                                    (strategy: StrategyImplementationInfo) => (
+                                    (strategy) => (
                                       <SelectItem
                                         key={strategy.type}
                                         value={strategy.type}

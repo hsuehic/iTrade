@@ -10,7 +10,7 @@ import {
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { DryRunSessionEntity } from './DryRunSession';
+import type { DryRunSessionEntity } from './DryRunSession';
 
 @Entity('dry_run_trades')
 @Index(['entryTime'])
@@ -19,7 +19,7 @@ export class DryRunTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => DryRunSessionEntity, (s) => s.trades, {
+  @ManyToOne('DryRunSessionEntity', (s: DryRunSessionEntity) => s.trades, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sessionId' })

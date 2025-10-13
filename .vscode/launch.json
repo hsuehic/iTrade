@@ -1,6 +1,6 @@
 {
   "version": "0.2.0",
-  "configurations": [
+  "configurations": [    
     {
       "name": "mobile (debug iPhone 16)",
       "cwd": "apps/mobile",
@@ -28,26 +28,15 @@
       "type": "node",
       "request": "launch",
       "name": "Debug console with tsx",
-      "runtimeExecutable": "tsx",
-      "runtimeArgs": [
-        "--inspect"
-      ],
-      "args": [
-        "${file}"
-      ],
-      "cwd": "${workspaceFolder}",
-      "env": {
-        "NODE_ENV": "development"
-      },
-      "console": "integratedTerminal",
+      "runtimeExecutable": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin/tsx",
+      "args": ["src/main.ts"],
+      "cwd": "${workspaceFolder}/apps/console",
       "sourceMaps": true,
-      "resolveSourceMapLocations": [
-        "${workspaceFolder}/**",
-        "!**/node_modules/**"
-      ],
-      "skipFiles": [
-        "<node_internals>/**"
-      ]
+      "console": "integratedTerminal",
+      "env": {
+        "NODE_ENV": "development",
+        "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
+      }
     },
     {
       "type": "node",
@@ -57,6 +46,12 @@
       "runtimeArgs": ["run", "dev", "--filter", "@itrade/console"],
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "node-terminal",
+      "name": "JavaScript Debug Terminal",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/apps/console"
     }
   ]
 }

@@ -19,9 +19,9 @@ import {
 } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { PositionEntity } from './Position';
-import { StrategyEntity } from './Strategy';
-import { OrderFillEntity } from './OrderFill';
+import type { PositionEntity } from './Position';
+import type { StrategyEntity } from './Strategy';
+import type { OrderFillEntity } from './OrderFill';
 
 @Entity('orders')
 @Index(['symbol'])
@@ -144,14 +144,20 @@ export class OrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   commissionAsset?: string;
 
-  @OneToMany(() => OrderFillEntity, (f) => f.order, { cascade: true })
+  @OneToMany('OrderFillEntity', (f: OrderFillEntity) => f.order, {
+    cascade: true,
+  })
   fills?: OrderFillEntity[] | undefined;
 
-  @ManyToOne(() => StrategyEntity, (s) => s.orders, { nullable: true })
+  @ManyToOne('StrategyEntity', (s: StrategyEntity) => s.orders, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
-  @ManyToOne(() => PositionEntity, (p) => p.orders, { nullable: true })
+  @ManyToOne('PositionEntity', (p: PositionEntity) => p.orders, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'positionId' })
   position?: PositionEntity;
 

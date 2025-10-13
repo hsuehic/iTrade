@@ -19,8 +19,8 @@ import {
 } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { DryRunSessionEntity } from './DryRunSession';
-import { DryRunOrderFillEntity } from './DryRunOrderFill';
+import type { DryRunSessionEntity } from './DryRunSession';
+import type { DryRunOrderFillEntity } from './DryRunOrderFill';
 
 @Entity('dry_run_orders')
 @Index(['symbol'])
@@ -36,7 +36,7 @@ export class DryRunOrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   clientOrderId?: string | undefined;
 
-  @ManyToOne(() => DryRunSessionEntity, (s) => s.orders, {
+  @ManyToOne('DryRunSessionEntity', (s: DryRunSessionEntity) => s.orders, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sessionId' })
@@ -107,7 +107,9 @@ export class DryRunOrderEntity implements Order {
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
-  @OneToMany(() => DryRunOrderFillEntity, (f) => f.order, { cascade: true })
+  @OneToMany('DryRunOrderFillEntity', (f: DryRunOrderFillEntity) => f.order, {
+    cascade: true,
+  })
   fills?: DryRunOrderFillEntity[] | undefined;
 
   @CreateDateColumn()

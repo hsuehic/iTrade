@@ -12,8 +12,8 @@ import {
 import type { StrategyParameters, StrategyTypeKey } from '@itrade/core';
 import { getAllStrategyTypes } from '@itrade/core';
 
-import { OrderEntity } from './Order';
-import { User } from './User';
+import type { OrderEntity } from './Order';
+import type { User } from './User';
 
 export enum StrategyStatus {
   ACTIVE = 'active',
@@ -131,10 +131,10 @@ export class StrategyEntity {
   @Column({ type: 'timestamp', nullable: true })
   lastExecutionTime?: Date;
 
-  @OneToMany(() => OrderEntity, (o) => o.strategy)
+  @OneToMany('OrderEntity', (o: OrderEntity) => o.strategy)
   orders?: OrderEntity[];
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne('User', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

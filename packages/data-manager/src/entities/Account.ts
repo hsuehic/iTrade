@@ -49,7 +49,7 @@ export class Account {
   @Column('timestamp with time zone', { name: 'updatedAt' })
   updatedAt!: Date;
 
-  @ManyToOne(() => User, (user) => user.accounts, { onDelete: 'CASCADE' })
+  @ManyToOne('User', (user: User) => user.accounts, { onDelete: 'CASCADE' })
   @JoinColumn([{ name: 'userId', referencedColumnName: 'id' }])
   user!: User;
 }

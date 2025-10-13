@@ -6,7 +6,7 @@ import { StrategyEntity } from '../entities/Strategy';
 export class StrategyRepository {
   private repository: Repository<StrategyEntity>;
 
-  constructor(private dataSource: DataSource) {
+  constructor(dataSource: DataSource) {
     this.repository = dataSource.getRepository(StrategyEntity);
   }
 

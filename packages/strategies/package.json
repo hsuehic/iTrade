@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && cp dist/strategies/src/index.d.ts dist/ && cp dist/strategies/src/index.d.ts.map dist/ 2>/dev/null || true",
+    "build": "tsdown src/index.ts --format cjs --sourcemap && tsdown src/index.ts --format esm --sourcemap && tsc --project tsconfig.build.json && cp dist/strategies/src/index.d.ts dist/ && cp dist/strategies/src/index.d.ts.map dist/ 2>/dev/null || true",
     "dev": "tsdown src/index.ts --format esm --watch",
     "test": "vitest run",
     "test:watch": "vitest",
