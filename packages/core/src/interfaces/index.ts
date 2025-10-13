@@ -139,6 +139,16 @@ export interface IStrategy {
   cleanup(): Promise<void>;
 }
 
+export interface ExecuteOrderParameters {
+  strategyName: string;
+  symbol: string;
+  side: OrderSide;
+  quantity: Decimal;
+  type: OrderType;
+  price?: Decimal;
+  stopPrice?: Decimal;
+}
+
 // Trading Engine Interface
 export interface ITradingEngine extends EventEmitter {
   readonly isRunning: boolean;
@@ -160,15 +170,7 @@ export interface ITradingEngine extends EventEmitter {
   ): Promise<void>;
 
   // Order Management
-  executeOrder(
-    strategyName: string,
-    symbol: string,
-    side: OrderSide,
-    quantity: Decimal,
-    type: OrderType,
-    price?: Decimal,
-    stopPrice?: Decimal
-  ): Promise<Order>;
+  executeOrder(params: ExecuteOrderParameters): Promise<Order>;
 
   // Position Management
   getPositions(): Promise<Position[]>;

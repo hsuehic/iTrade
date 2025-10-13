@@ -142,6 +142,7 @@ export interface AccountInfo {
 // Strategy Types
 export interface StrategyParameters {
   symbol?: string; // Trading symbol
+  exchange?: string; // supported  exchange
   subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
   [key: string]: any; // Allow additional custom parameters
 }

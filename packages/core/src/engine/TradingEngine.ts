@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 
-import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
 
 import {
@@ -10,6 +9,7 @@ import {
   IRiskManager,
   IPortfolioManager,
   ILogger,
+  ExecuteOrderParameters,
 } from '../interfaces';
 import {
   Order,
@@ -527,15 +527,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     );
   }
 
-  public async executeOrder(
-    strategyName: string,
-    symbol: string,
-    side: OrderSide,
-    quantity: Decimal,
-    type: OrderType,
-    price?: Decimal,
-    stopPrice?: Decimal
-  ): Promise<Order> {
+  public async executeOrder(params: ExecuteOrderParameters): Promise<Order> {
+    const { strategyName, symbol, side, quantity, type, price, stopPrice } =
+      params;
     if (!this._isRunning) {
       throw new Error('Trading engine is not running');
     }
@@ -573,10 +567,20 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       throw error;
     }
 
+    const strategy = this._strategies.get(strategyName);
+    const exchangeName = strategy?.parameters.exchange;
+
+    const isPointedExchange = !!exchangeName;
     // Find an available exchange to execute the order
-    const exchange = this.findExchangeForSymbol(symbol);
+    const exchange = !!isPointedExchange
+      ? this._exchanges.get(exchangeName)
+      : this.findExchangeForSymbol(symbol);
     if (!exchange) {
-      throw new Error(`No exchange available for symbol ${symbol}`);
+      throw new Error(
+        isPointedExchange
+          ? `Exchange ${exchangeName} not found`
+          : `No exchange available for symbol ${symbol}`
+      );
     }
 
     try {
@@ -627,15 +631,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const orderType = signal.price ? OrderType.LIMIT : OrderType.MARKET;
       const side = signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
 
-      await this.executeOrder(
+      await this.executeOrder({
+        // exchange: exchangeName,
         strategyName,
         symbol,
         side,
-        signal.quantity,
-        orderType,
-        signal.price,
-        signal.stopLoss
-      );
+        quantity: signal.quantity,
+        type: orderType,
+        price: signal.price,
+        stopPrice: signal.stopLoss,
+      });
 
       this.logger.logStrategy('Executed signal', {
         strategy: strategyName,

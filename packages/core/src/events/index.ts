@@ -89,6 +89,7 @@ export interface PositionUpdateEvent {
 }
 
 export interface StrategySignalEvent {
+  exchange?: string; // to execute order on this exchange, if set
   strategyName: string;
   symbol: string;
   action: 'buy' | 'sell' | 'hold';
