@@ -1,14 +1,21 @@
 import 'reflect-metadata';
-import { TradingEngine, LogLevel, OrderSyncService, AccountPollingService, PollingResult } from '@itrade/core';
+import {
+  TradingEngine,
+  LogLevel,
+  OrderSyncService,
+  AccountPollingService,
+  PollingResult,
+} from '@itrade/core';
 import { ConsoleLogger } from '@itrade/logger';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
 import { BinanceExchange } from '@itrade/exchange-connectors';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
+import dotenv from 'dotenv';
+
 import { StrategyManager } from './strategy-manager';
 import { OrderTracker } from './order-tracker';
-import dotenv from 'dotenv';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -51,7 +58,9 @@ async function main() {
   const orderTracker = new OrderTracker(dataManager, logger);
   await orderTracker.start();
 
-  logger.info('📊 iTrade Console started with database-driven strategy management');
+  logger.info(
+    '📊 iTrade Console started with database-driven strategy management'
+  );
 
   // Initialize exchanges dynamically based on database strategies
   const exchanges = new Map<string, any>();
@@ -94,7 +103,11 @@ async function main() {
   }
 
   // Initialize OKX (if credentials available)
-  if (process.env.OKX_API_KEY && process.env.OKX_SECRET_KEY && process.env.OKX_PASSPHRASE) {
+  if (
+    process.env.OKX_API_KEY &&
+    process.env.OKX_SECRET_KEY &&
+    process.env.OKX_PASSPHRASE
+  ) {
     try {
       const { OKXExchange } = await import('@itrade/exchange-connectors');
       const okx = new OKXExchange(!USE_MAINNET_FOR_DATA);
@@ -112,7 +125,9 @@ async function main() {
     }
   }
 
-  logger.info(`📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`);
+  logger.info(
+    `📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`
+  );
 
   // Initialize Order Sync Service for all connected exchanges
   const orderSyncService = new OrderSyncService(exchanges, dataManager, {
@@ -120,19 +135,23 @@ async function main() {
     batchSize: 5,
     autoStart: false,
   });
-  
+
   // 监听事件并输出日志
   orderSyncService.on('info', (msg) => logger.info(msg));
   orderSyncService.on('warn', (msg) => logger.warn(msg));
-  orderSyncService.on('error', (err) => logger.error('OrderSyncService error:', err as Error));
+  orderSyncService.on('error', (err) =>
+    logger.error('OrderSyncService error:', err as Error)
+  );
   orderSyncService.on('debug', (msg) => logger.debug(msg));
-  
+
   await orderSyncService.start();
 
   // Initialize Account Polling Service
   const accountPollingService = new AccountPollingService(
     {
-      pollingInterval: parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000'), // 默认1分钟
+      pollingInterval: parseInt(
+        process.env.ACCOUNT_POLLING_INTERVAL || '60000'
+      ), // 默认1分钟
       enablePersistence: process.env.ACCOUNT_POLLING_PERSISTENCE !== 'false', // 默认启用
       exchanges: Array.from(exchanges.keys()),
       retryAttempts: 3,
@@ -195,7 +214,11 @@ async function main() {
   logger.info('📈 Performance reports every 60 seconds');
   logger.info('💼 Orders will be tracked and saved to database');
   logger.info('🔄 Order sync running every 5 seconds for reliability');
-  logger.info('💰 Account polling service active (polling interval: ' + (parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000') / 1000) + 's)');
+  logger.info(
+    '💰 Account polling service active (polling interval: ' +
+      parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000') / 1000 +
+      's)'
+  );
   logger.info('🛡️  Protection against WebSocket failures enabled');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
@@ -208,7 +231,9 @@ async function main() {
     logger.info(
       `🎯 SIGNAL: ${signal.strategyName} - ${signal.action} ${signal.symbol} @ ${signal.price}`
     );
-    logger.info(`   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`);
+    logger.info(
+      `   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`
+    );
     logger.info(`   💭 Reason: ${signal.reason}`);
   });
 
@@ -246,23 +271,23 @@ async function main() {
     logger.info('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logger.info('🛑 Shutting down gracefully...');
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    
+
     try {
       await accountPollingService.stop();
       logger.info('✅ Account polling service stopped');
 
       await orderSyncService.stop();
       logger.info('✅ Order sync service stopped');
-      
+
       await strategyManager.stop();
       logger.info('✅ Strategy manager stopped');
-      
+
       await orderTracker.stop?.();
       logger.info('✅ Order tracker stopped');
-      
+
       await engine.stop();
       logger.info('✅ Trading engine stopped');
-      
+
       // Disconnect all exchanges
       for (const [name, exchange] of exchanges) {
         try {
@@ -272,17 +297,17 @@ async function main() {
           logger.error(`Failed to disconnect ${name}:`, err as Error);
         }
       }
-      
+
       await dataManager.close();
       logger.info('✅ Database connection closed');
-      
+
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       logger.info('👋 Goodbye!');
       logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     } catch (error) {
       logger.error('Error during shutdown:', error as Error);
     }
-    
+
     process.exit(0);
   });
 

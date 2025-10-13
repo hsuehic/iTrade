@@ -275,7 +275,6 @@ export class StrategyManager {
       } catch (recoveryError) {
         this.stateMonitor.recordRecoveryFailure(
           strategyId,
-          recoveryStartTime,
           (recoveryError as Error).message
         );
 
