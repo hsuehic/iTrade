@@ -385,50 +385,52 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       // Social Login Buttons
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _loading ? null : _handleGoogleSignIn,
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                side: BorderSide(
-                                  color: isDark
-                                      ? Colors.grey[800]!
-                                      : Colors.grey.withValues(alpha: 0.3),
-                                ),
+                          OutlinedButton.icon(
+                            onPressed: _loading ? null : _handleGoogleSignIn,
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                                horizontal: 12,
                               ),
-                              icon: SvgPicture.asset(
-                                'assets/icons/google.svg',
-                                width: 18,
-                                height: 18,
+                              side: BorderSide(
+                                color: isDark
+                                    ? Colors.grey[800]!
+                                    : Colors.grey.withValues(alpha: 0.3),
                               ),
-                              label: const Text('Google'),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () => _showSnack('Coming soon'),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
-                                side: BorderSide(
-                                  color: isDark
-                                      ? Colors.grey[800]!
-                                      : Colors.grey.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              icon: SvgPicture.asset(
-                                'assets/icons/github.svg',
-                                width: 18,
-                                height: 18,
-                              ),
-                              label: const Text('Github'),
+                            icon: SvgPicture.asset(
+                              'assets/icons/google.svg',
+                              width: 18,
+                              height: 18,
                             ),
+                            label: const Text('Google'),
                           ),
+
+                          // const SizedBox(width: 12),
+                          // Expanded(
+                          //   child: OutlinedButton.icon(
+                          //     onPressed: () => _showSnack('Coming soon'),
+                          //     style: OutlinedButton.styleFrom(
+                          //       padding: const EdgeInsets.symmetric(
+                          //         vertical: 12,
+                          //       ),
+                          //       side: BorderSide(
+                          //         color: isDark
+                          //             ? Colors.grey[800]!
+                          //             : Colors.grey.withValues(alpha: 0.3),
+                          //       ),
+                          //     ),
+                          //     icon: SvgPicture.asset(
+                          //       'assets/icons/github.svg',
+                          //       width: 18,
+                          //       height: 18,
+                          //     ),
+                          //     label: const Text('Github'),
+                          //   ),
+                          // ),
                         ],
                       ),
                     ],
