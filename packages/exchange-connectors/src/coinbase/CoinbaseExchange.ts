@@ -21,6 +21,7 @@ import {
 
 import { BaseExchange } from '../base/BaseExchange';
 
+import { generateToken } from './token';
 /**
  * Coinbase Advanced Trade API connector (public + private + WS)
  * Docs (subject to change): public REST base https://api.coinbase.com
@@ -139,15 +140,12 @@ export class CoinbaseExchange extends BaseExchange {
   ): Promise<Kline[]> {
     const productId = this.normalizeSymbol(symbol);
     const granularity = this.mapIntervalToGranularity(interval);
-    const accountInfo = await this.getAccountInfo();
-    console.log('Account Info:', accountInfo);
     const params: any = { granularity, limit }; // start/end iso8601 supported
     if (startTime) params.start = startTime.toISOString();
     if (endTime) params.end = endTime.toISOString();
-    console.log('/api/v3/brokerage/products/BTC-PERP-INTX/candles');
     const resp = await this.httpClient.get(
-      `/api/v3/brokerage/products/BTC-PERP-INTX/candles`,
-      { params: { granularity: 'ONE_MINUTE' } }
+      `/api/v3/brokerage/products/${productId}/candles`,
+      { params }
     );
     console.log('resp:', resp);
     const data = resp.data?.candles || resp.data || [];
@@ -155,9 +153,7 @@ export class CoinbaseExchange extends BaseExchange {
       symbol: productId,
       interval,
       openTime: new Date(c.start || c.start_time || c.t || Date.now()),
-      closeTime: new Date(
-        (c.start || c.start_time || c.t || Date.now()) + granularity * 1000
-      ),
+      closeTime: new Date(c.start || c.start_time || c.t || Date.now()),
       open: this.formatDecimal(c.open || c.o),
       high: this.formatDecimal(c.high || c.h),
       low: this.formatDecimal(c.low || c.l),
@@ -551,6 +547,8 @@ export class CoinbaseExchange extends BaseExchange {
   protected addAuthentication(config: any): any {
     if (!this.credentials) return config;
 
+    console.log('config:', config);
+
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const method = (config.method || 'GET').toUpperCase();
     // Build request path + query string deterministically to match the actual request
@@ -591,6 +589,8 @@ export class CoinbaseExchange extends BaseExchange {
 
     const queryString = searchParams.toString();
     const requestPath = queryString ? `${pathname}?${queryString}` : pathname;
+    console.log('requestPath:', requestPath);
+
     // Ensure the actual request URL matches the signed path exactly
     config.url = requestPath;
     if (config.params) delete config.params;
@@ -617,68 +617,18 @@ export class CoinbaseExchange extends BaseExchange {
 
     if (useJwt) {
       // Coinbase Exchange uses JWT ES256
-      const nowSec = parseInt(timestamp, 10);
-      const uri = `${method} ${host}${requestPath}`;
 
-      const header = {
-        alg: 'ES256',
-        kid: this.credentials.apiKey,
-        nonce: crypto.randomBytes(16).toString('hex'),
-      } as const;
-      const payload = {
-        iss: process.env.COINBASE_JWT_ISSUER || 'cdp',
-        nbf: nowSec,
-        exp: nowSec + 120,
-        sub: this.credentials.apiKey,
-        uri,
-      } as const;
-
-      const toBase64Url = (input: Buffer | string): string =>
-        (typeof input === 'string' ? Buffer.from(input) : input)
-          .toString('base64')
-          .replace(/\+/g, '-')
-          .replace(/\//g, '_')
-          .replace(/=+$/g, '');
-
-      const signingInput = `${toBase64Url(
-        JSON.stringify(header)
-      )}.${toBase64Url(JSON.stringify(payload))}`;
-
-      const signer = crypto.createSign('SHA256');
-      signer.update(signingInput);
-      signer.end();
-      const derSignature = signer.sign(this.credentials.secretKey);
-
-      const derToJose = (der: Buffer): string => {
-        let offset = 0;
-        if (der[offset++] !== 0x30) throw new Error('Invalid DER');
-        const _seqLen = der[offset++];
-        if (der[offset++] !== 0x02) throw new Error('Invalid DER r');
-        let rLen = der[offset++];
-        let r = der.slice(offset, offset + rLen);
-        offset += rLen;
-        if (der[offset++] !== 0x02) throw new Error('Invalid DER s');
-        let sLen = der[offset++];
-        let s = der.slice(offset, offset + sLen);
-        while (r.length > 32 && r[0] === 0x00) r = r.slice(1);
-        while (s.length > 32 && s[0] === 0x00) s = s.slice(1);
-        if (r.length < 32)
-          r = Buffer.concat([Buffer.alloc(32 - r.length, 0), r]);
-        if (s.length < 32)
-          s = Buffer.concat([Buffer.alloc(32 - s.length, 0), s]);
-        const jose = Buffer.concat([r, s]);
-        return toBase64Url(jose);
-      };
-
-      const signature = derToJose(derSignature);
-      const token = `${signingInput}.${signature}`;
+      const token = generateToken(
+        method,
+        pathname,
+        this.credentials.apiKey,
+        this.credentials.secretKey
+      );
 
       config.headers = {
         ...config.headers,
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'User-Agent':
-          process.env.COINBASE_USER_AGENT || 'coinbase-advanced-ts/0.1.0',
       };
     } else {
       // Advanced Trade (api.coinbase.com) uses CB-ACCESS HMAC headers
@@ -710,19 +660,19 @@ export class CoinbaseExchange extends BaseExchange {
   protected normalizeSymbol(symbol: string): string {
     // Convert common formats to Coinbase product id format
     // Spot: BTC/USDC -> BTC-USDC (default quote coin is USDC)
-    // Perpetual: BTC/USDC:USDC -> BTC-USDC-INTX
+    // Perpetual: BTC/USDC:USDC -> BTC-PERP-INTX
 
     const upperSymbol = symbol.toUpperCase();
 
     // Handle perpetual format: BTC/USDC:USDC (CCXT format for perpetual)
     if (upperSymbol.includes(':')) {
       const [pair] = upperSymbol.split(':');
-      // BTC/USDC -> BTC-USDC-INTX
-      return pair.replace('/', '-') + '-INTX';
+      // BTC/USDC -> BTC-PERP-INTX
+      return pair.split('/')[0] + '-PERP-INTX';
     }
 
-    // Handle already formatted perpetual (BTC-USDC-INTX)
-    if (upperSymbol.includes('-INTX')) {
+    // Handle already formatted perpetual (BTC-PERP-INTX)
+    if (upperSymbol.includes('-PERP-INTX')) {
       return upperSymbol;
     }
 
@@ -730,17 +680,20 @@ export class CoinbaseExchange extends BaseExchange {
     return upperSymbol.replace('/', '-');
   }
 
-  private mapIntervalToGranularity(interval: string): number {
+  private mapIntervalToGranularity(interval: string): string {
     // Coinbase granularity is in seconds
-    const map: Record<string, number> = {
-      '1m': 60,
-      '5m': 300,
-      '15m': 900,
-      '1h': 3600,
-      '6h': 21600,
-      '1d': 86400,
+    const map: Record<string, string> = {
+      '1m': 'ONE_MINUTE',
+      '5m': 'FIVE_MINUTE',
+      '15m': 'FIFTEEN_MINUTE',
+      '30m': 'THIRTY_MINUTE',
+      '1h': 'ONE_HOUR',
+      '2h': 'TWO_HOUR',
+      '4h': 'FOUR_HOUR',
+      '6h': 'SIX_HOUR',
+      '1d': 'ONE_DAY',
     };
-    return map[interval] || 60;
+    return map[interval] || 'UNKNOWN_GRANULARITY';
   }
 
   private transformOrder(o: any): Order {

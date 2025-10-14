@@ -100,6 +100,7 @@ export function StrategyParameterFormDynamic({
               min={paramDef.min}
               max={paramDef.max}
               required={paramDef.required}
+              step={paramDef.step || 'any'}
             />
             <p className="text-xs text-muted-foreground">
               {paramDef.description}

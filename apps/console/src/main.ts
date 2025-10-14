@@ -17,7 +17,7 @@ import { StrategyManager } from './strategy-manager';
 // Load environment variables from .env file
 dotenv.config();
 
-const logger = new ConsoleLogger(LogLevel.DEBUG);
+const logger = new ConsoleLogger(LogLevel.ERROR);
 
 async function main() {
   // Initialize database connection

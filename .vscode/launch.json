@@ -28,7 +28,7 @@
       "type": "node",
       "request": "launch",
       "name": "Debug console with tsx",
-      "runtimeExecutable": "/usr/local/bin/tsx",
+      "runtimeExecutable": "tsx",
       "args": ["src/main.ts"],
       "cwd": "${workspaceFolder}/apps/console",
       "sourceMaps": true,

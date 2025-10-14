@@ -203,14 +203,14 @@ export function getAllStrategiesWithImplementationStatus(): (Omit<
   StrategyConfig,
   'constructor'
 > & {
-  isImplemented: boolean;
+  implemented: boolean;
   constructor?: StrategyConstructor;
 })[] {
   return Object.values(STRATEGY_REGISTRY).map((config) => {
     const { constructor: _, ...configWithoutConstructor } = config as any;
     return {
       ...configWithoutConstructor,
-      isImplemented: isStrategyImplemented(config.type),
+      implemented: isStrategyImplemented(config.type),
       constructor: getStrategyConstructor(config.type),
     };
   });

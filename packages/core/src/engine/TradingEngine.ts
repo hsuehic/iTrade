@@ -951,8 +951,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       );
       this.subscriptionManager.subscribe(strategyName, key, 'websocket');
     } else {
-      await this.subscribeViaREST(exchange, symbol, type, normalizedConfig);
-      this.subscriptionManager.subscribe(strategyName, key, 'rest');
+      const timerId = await this.subscribeViaREST(
+        exchange,
+        symbol,
+        type,
+        normalizedConfig
+      );
+      this.subscriptionManager.subscribe(strategyName, key, 'rest', timerId);
     }
   }
 
@@ -1039,50 +1044,53 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     symbol: string,
     type: DataType,
     config: any
-  ): Promise<void> {
+  ): Promise<NodeJS.Timeout> {
     const interval = this.getPollingInterval(type, config);
 
     this.logger.info(
       `Subscribing via REST polling: ${exchange.name} ${symbol} ${type} (interval: ${interval}ms)`
     );
 
-    try {
-      switch (type) {
-        case 'ticker':
-          const ticker = await exchange.getTicker(symbol);
-          await this.onTicker(symbol, ticker, exchange.name);
-          break;
-        case 'orderbook':
-          const depth = config.depth || 20;
-          const orderbook = await exchange.getOrderBook(symbol, depth);
-          await this.onOrderBook(symbol, orderbook, exchange.name);
-          break;
-        case 'trades':
-          const limit = config.limit || 10;
-          const trades = await exchange.getTrades(symbol, limit);
-          await this.onTrades(symbol, trades, exchange.name);
-          break;
-        case 'klines':
-          const klineInterval = config.interval || '1m';
-          const klineLimit = config.limit || 1;
-          const klines = await exchange.getKlines(
-            symbol,
-            klineInterval,
-            undefined,
-            undefined,
-            klineLimit
-          );
-          if (klines.length > 0) {
-            await this.onKline(symbol, klines[0], exchange.name);
-          }
-          break;
+    const timerId = setInterval(async () => {
+      try {
+        switch (type) {
+          case 'ticker':
+            const ticker = await exchange.getTicker(symbol);
+            await this.onTicker(symbol, ticker, exchange.name);
+            break;
+          case 'orderbook':
+            const depth = config.depth || 20;
+            const orderbook = await exchange.getOrderBook(symbol, depth);
+            await this.onOrderBook(symbol, orderbook, exchange.name);
+            break;
+          case 'trades':
+            const limit = config.limit || 10;
+            const trades = await exchange.getTrades(symbol, limit);
+            await this.onTrades(symbol, trades, exchange.name);
+            break;
+          case 'klines':
+            const klineInterval = config.interval || '1m';
+            const klineLimit = config.limit || 1;
+            const klines = await exchange.getKlines(
+              symbol,
+              klineInterval,
+              undefined,
+              undefined,
+              klineLimit
+            );
+            if (klines.length > 0) {
+              await this.onKline(symbol, klines[0], exchange.name);
+            }
+            break;
+        }
+      } catch (error) {
+        this.logger.error(
+          `Failed to poll ${type} for ${symbol} on ${exchange.name}:`,
+          error as Error
+        );
       }
-    } catch (error) {
-      this.logger.error(
-        `Failed to poll ${type} for ${symbol} on ${exchange.name}:`,
-        error as Error
-      );
-    }
+    }, interval);
+    return timerId;
   }
 
   /**
@@ -1165,7 +1173,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       case 'ticker':
         return 5000; // 1 second
       case 'orderbook':
-        return 5000; // 0.5 seconds
+        return 500; // 0.5 seconds
       case 'trades':
         return 5000; // 1 second
       case 'klines':

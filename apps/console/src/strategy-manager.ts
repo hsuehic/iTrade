@@ -37,9 +37,9 @@ export class StrategyManager {
   private stateMonitor: StrategyStateMonitor;
 
   // Configuration
-  private readonly SYNC_INTERVAL_MS = 10000; // Sync every 10 seconds (configurable)
-  private readonly REPORT_INTERVAL_MS = 60000; // Report every 60 seconds
-  private readonly STATE_BACKUP_INTERVAL_MS = 30000; // Backup state every 30 seconds
+  private readonly SYNC_INTERVAL_MS = 600000; // Sync every 10 seconds (configurable)
+  private readonly REPORT_INTERVAL_MS = 600000; // Report every 60 seconds
+  private readonly STATE_BACKUP_INTERVAL_MS = 60000; // Backup state every 30 seconds
 
   constructor(
     private engine: TradingEngine,

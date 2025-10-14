@@ -12,14 +12,6 @@
     "inlineSourceMap": false,
     "inlineSources": false
   },
-  "ts-node": {
-    "transpileOnly": false,
-    "require": ["tsconfig-paths/register"],
-    "compilerOptions": {
-      "module": "commonjs",
-      "sourceMap": true
-    }
-  },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
 }

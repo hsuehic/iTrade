@@ -415,7 +415,7 @@ export default function StrategyPage() {
                                       <SelectItem
                                         key={strategy.type}
                                         value={strategy.type}
-                                        disabled={!strategy.isImplemented}
+                                        disabled={!strategy.implemented}
                                       >
                                         <div className="flex items-center gap-2">
                                           <span>{strategy.icon}</span>
@@ -423,7 +423,7 @@ export default function StrategyPage() {
                                             <span className="font-medium">
                                               {strategy.name}
                                             </span>
-                                            {!strategy.isImplemented && (
+                                            {!strategy.implemented && (
                                               <span className="text-xs text-muted-foreground">
                                                 Coming Soon
                                               </span>

@@ -73,7 +73,7 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
     name: 'Moving Average Crossover',
     description: 'Classic trend-following strategy using two moving averages',
     icon: '📈',
-    implemented: false, // 🔄 实际实现状态由 @itrade/strategies 包动态确定
+    implemented: true, // 🔄 实际实现状态由 @itrade/strategies 包动态确定
     category: 'trend',
     defaultParameters: {
       fastPeriod: 12,

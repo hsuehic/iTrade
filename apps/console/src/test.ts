@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 
-import { generateToken } from './generateToken';
+import { generateToken } from './generate-token';
 import { BASE_URL } from './constants';
 import 'dotenv/config';
 
