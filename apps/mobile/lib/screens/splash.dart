@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
 import '../services/auth_service.dart';
+import '../main.dart' show MyHomePage;
+import './login.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -22,7 +24,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     // Initialize animations
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
 
@@ -55,7 +57,7 @@ class _SplashScreenState extends State<SplashScreen>
       final userFuture = _checkUserSession();
 
       // Wait for minimum animation time (2.5 seconds)
-      await Future.delayed(const Duration(milliseconds: 2500));
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       // Ensure user check is complete with timeout
       bool isLoggedIn = false;
@@ -90,17 +92,35 @@ class _SplashScreenState extends State<SplashScreen>
         return;
       }
 
-      // Navigate to appropriate screen
+      // Navigate to appropriate screen with no transition animation
       try {
-        await Navigator.of(
-          context,
-        ).pushReplacementNamed(isLoggedIn ? '/home' : '/login');
+        await Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) {
+              return isLoggedIn
+                  ? const MyHomePage(title: 'iTrade')
+                  : const LoginScreen();
+            },
+            transitionDuration: Duration.zero, // No transition animation
+            reverseTransitionDuration: Duration.zero,
+            settings: RouteSettings(name: isLoggedIn ? '/home' : '/login'),
+          ),
+        );
         developer.log('Navigation complete', name: 'SplashScreen');
       } catch (e) {
         developer.log('Navigation failed', name: 'SplashScreen', error: e);
-        // Fallback: try login route
+        // Fallback: try login route with no animation
         if (mounted) {
-          Navigator.of(context).pushReplacementNamed('/login');
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) {
+                return const LoginScreen();
+              },
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+              settings: const RouteSettings(name: '/login'),
+            ),
+          );
         }
       }
     } catch (e, stackTrace) {
@@ -256,18 +276,6 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
 
                     const SizedBox(height: 48),
-
-                    // Loading indicator
-                    SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 3,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
