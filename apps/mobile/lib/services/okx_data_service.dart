@@ -6,13 +6,13 @@ import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 class OKXKline {
-  final String timestamp;
-  final double open;
-  final double high;
-  final double low;
+  String timestamp;
+  double open;
+  double high;
+  double low;
   double close;
-  final double volume;
-  final DateTime time;
+  double volume;
+  DateTime time;
 
   OKXKline({
     required this.timestamp,
