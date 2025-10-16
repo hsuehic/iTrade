@@ -4,6 +4,7 @@ import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
 import '../widgets/custom_app_bar.dart';
 import '../services/okx_data_service.dart';
+import 'product_detail.dart';
 
 class ProductScreen extends StatefulWidget {
   const ProductScreen({super.key});
@@ -140,6 +141,15 @@ class _ProductScreenState extends State<ProductScreen>
 
                   return ListTile(
                     key: ValueKey(ticker.instId),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              ProductDetailScreen(productId: ticker.instId),
+                        ),
+                      );
+                    },
                     leading: Image.network(
                       ticker.iconUrl,
                       width: 28,

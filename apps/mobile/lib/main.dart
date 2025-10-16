@@ -363,7 +363,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     const Map<String, int> routeToIndex = {
       '/': 0,
-      '/dashboard': 0,
+      '/portfolio': 0,
       '/strategy': 1,
       '/product': 2,
       '/statistics': 3,

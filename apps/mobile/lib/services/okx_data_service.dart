@@ -10,7 +10,7 @@ class OKXKline {
   final double open;
   final double high;
   final double low;
-  final double close;
+  double close;
   final double volume;
   final DateTime time;
 
