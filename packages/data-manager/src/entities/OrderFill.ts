@@ -9,7 +9,7 @@ import {
 import { OrderFill } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import type { OrderEntity } from './Order';
+import { OrderEntity } from './Order';
 
 @Entity('order_fills')
 @Index(['timestamp'])
@@ -20,7 +20,7 @@ export class OrderFillEntity implements OrderFill {
   @Column({ type: 'text', unique: true })
   id!: string;
 
-  @ManyToOne('OrderEntity', (o: OrderEntity) => o.fills, {
+  @ManyToOne(() => OrderEntity, (o: OrderEntity) => o.fills, {
     onDelete: 'CASCADE',
   })
   order!: OrderEntity;

@@ -11,15 +11,15 @@ import {
 import { BacktestResult } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import type { DryRunSessionEntity } from './DryRunSession';
-import type { DryRunTradeEntity } from './DryRunTrade';
+import { DryRunSessionEntity } from './DryRunSession';
+import { DryRunTradeEntity } from './DryRunTrade';
 
 @Entity('dry_run_results')
 export class DryRunResultEntity implements BacktestResult {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('DryRunSessionEntity', (s: DryRunSessionEntity) => s.results, {
+  @ManyToOne(() => DryRunSessionEntity, (s: DryRunSessionEntity) => s.results, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sessionId' })
@@ -83,7 +83,7 @@ export class DryRunResultEntity implements BacktestResult {
   @Column({ type: 'jsonb', nullable: true })
   equity!: Array<{ timestamp: Date; value: Decimal }>;
 
-  @OneToMany('DryRunTradeEntity', (t: DryRunTradeEntity) => t.session, {
+  @OneToMany(() => DryRunTradeEntity, (t: DryRunTradeEntity) => t.session, {
     cascade: true,
   })
   trades!: DryRunTradeEntity[];

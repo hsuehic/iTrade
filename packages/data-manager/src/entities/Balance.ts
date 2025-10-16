@@ -11,7 +11,7 @@ import {
 import { Balance } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import type { AccountInfoEntity } from './AccountInfo';
+import { AccountInfoEntity } from './AccountInfo';
 
 @Entity('balances')
 @Index(['asset'])
@@ -20,7 +20,7 @@ export class BalanceEntity implements Balance {
   id!: number;
 
   @ManyToOne(
-    'AccountInfoEntity',
+    () => AccountInfoEntity,
     (account: AccountInfoEntity) => account.balances,
     {
       onDelete: 'CASCADE',

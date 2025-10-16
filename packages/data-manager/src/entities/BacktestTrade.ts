@@ -9,16 +9,20 @@ import {
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import type { BacktestResultEntity } from './BacktestResult';
+import { BacktestResultEntity } from './BacktestResult';
 
 @Entity('backtest_trades')
 export class BacktestTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('BacktestResultEntity', (r: BacktestResultEntity) => r.trades, {
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(
+    () => BacktestResultEntity,
+    (r: BacktestResultEntity) => r.trades,
+    {
+      onDelete: 'CASCADE',
+    }
+  )
   @JoinColumn({ name: 'resultId' })
   result!: BacktestResultEntity;
 

@@ -1,8 +1,8 @@
 import { Column, Entity, OneToMany } from 'typeorm';
 
-import type { Account } from './Account';
-import type { Session } from './Session';
-import type { StrategyEntity } from './Strategy';
+import { Account } from './Account';
+import { Session } from './Session';
+import { StrategyEntity } from './Strategy';
 
 @Entity('user', { schema: 'public' })
 export class User {
@@ -36,12 +36,12 @@ export class User {
   @Column('text', { name: 'role', nullable: true })
   role?: string | null;
 
-  @OneToMany('Account', (account: Account) => account.user)
+  @OneToMany(() => Account, (account: Account) => account.user)
   accounts?: Account[];
 
-  @OneToMany('Session', (session: Session) => session.user)
+  @OneToMany(() => Session, (session: Session) => session.user)
   sessions?: Session[];
 
-  @OneToMany('StrategyEntity', (strategy: StrategyEntity) => strategy.user)
+  @OneToMany(() => StrategyEntity, (strategy: StrategyEntity) => strategy.user)
   strategies?: StrategyEntity[];
 }

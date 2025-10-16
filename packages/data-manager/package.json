@@ -24,6 +24,7 @@
   "dependencies": {
     "@itrade/core": "workspace:*",
     "@itrade/utils": "workspace:*",
+    "@types/pg": "^8.x",
     "decimal.js": "^10.4.3",
     "mysql2": "^3.6.5",
     "node-csv": "^0.1.2",
@@ -33,7 +34,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
-    "@types/pg": "^8.10.9",
     "dotenv": "^17.2.3",
     "pkgroll": "^2.18.1",
     "tsdown": "^0.2.16"
