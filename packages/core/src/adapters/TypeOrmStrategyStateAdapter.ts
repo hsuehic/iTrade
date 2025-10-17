@@ -6,11 +6,33 @@ import {
 import { OrderStatus } from '../types';
 
 /**
+ * Minimal interface for data manager to avoid circular dependencies
+ */
+interface IDataManager {
+  getOrders(filter: { strategyId: number }): Promise<
+    Array<{
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+    }>
+  >;
+  getOrder(id: number): Promise<{
+    status: string;
+    executedQuantity?: string;
+    quantity?: string;
+    averagePrice?: string;
+  } | null>;
+}
+
+/**
  * TypeORM Data Manager 适配器
  * 将 TypeOrmDataManager 适配为 IStrategyStateManager 接口
  */
 export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
-  constructor(private dataManager: any) {} // 使用 any 避免循环依赖
+  constructor(private dataManager: IDataManager) {}
 
   async saveStrategyState(
     strategyId: number,
@@ -35,7 +57,7 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
     try {
       const orders = await this.dataManager.getOrders({ strategyId });
 
-      return orders.map((order: any) => ({
+      return orders.map((order) => ({
         orderId: order.id.toString(),
         status: order.status as OrderStatus,
         executedQuantity: order.executedQuantity?.toString() || '0',

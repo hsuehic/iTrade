@@ -15,6 +15,8 @@ import {
   Order,
   OrderSide,
   OrderType,
+  OrderStatus,
+  TimeInForce,
   Position,
   StrategyResult,
   Ticker,
@@ -22,22 +24,26 @@ import {
   Trade,
   Kline,
   DataType,
-  SubscriptionKey,
   DEFAULT_TICKER_CONFIG,
   DEFAULT_ORDERBOOK_CONFIG,
   DEFAULT_TRADES_CONFIG,
   DEFAULT_KLINES_CONFIG,
+  TickerSubscriptionConfig,
+  OrderBookSubscriptionConfig,
+  TradesSubscriptionConfig,
+  KlinesSubscriptionConfig,
+  SubscriptionParamValue,
 } from '../types';
 import { EventBus } from '../events';
 
-import { SubscriptionManager } from './SubscriptionManager';
+import { SubscriptionCoordinator } from './SubscriptionCoordinator';
 
 export class TradingEngine extends EventEmitter implements ITradingEngine {
   private _isRunning = false;
   private readonly _strategies = new Map<string, IStrategy>();
   private readonly _exchanges = new Map<string, IExchange>();
   private _eventBus: EventBus;
-  private subscriptionManager: SubscriptionManager;
+  private subscriptionCoordinator: SubscriptionCoordinator;
 
   constructor(
     private riskManager: IRiskManager,
@@ -46,7 +52,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   ) {
     super();
     this._eventBus = EventBus.getInstance();
-    this.subscriptionManager = new SubscriptionManager(logger);
+    this.subscriptionCoordinator = new SubscriptionCoordinator(logger);
     this.setupEventListeners();
   }
 
@@ -140,7 +146,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Clear all subscriptions
-      this.subscriptionManager.clear();
+      await this.subscriptionCoordinator.clear();
 
       this._isRunning = false;
       this._eventBus.emitEngineStopped();
@@ -415,7 +421,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   public async onMarketData(
     symbol: string,
-    data: any,
+    data: unknown,
     exchangeName?: string
   ): Promise<void> {
     if (!this._isRunning) {
@@ -439,13 +445,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     // Fallback to old behavior for unknown data types
     try {
-      if (exchangeName && data && typeof data === 'object') {
-        data.exchange = exchangeName;
+      if (exchangeName && data && typeof data === 'object' && data !== null) {
+        (data as Record<string, unknown>).exchange = exchangeName;
       }
 
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          const result = await strategy.analyze({ ticker: data });
+          const result = await strategy.analyze({ ticker: data as Ticker });
 
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
@@ -477,9 +483,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   /**
    * Type guard for Ticker
    */
-  private isTicker(data: any): data is Ticker {
+  private isTicker(data: unknown): data is Ticker {
     return (
-      data &&
+      data !== null &&
+      data !== undefined &&
       typeof data === 'object' &&
       'price' in data &&
       'volume' in data &&
@@ -490,23 +497,25 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   /**
    * Type guard for OrderBook
    */
-  private isOrderBook(data: any): data is OrderBook {
+  private isOrderBook(data: unknown): data is OrderBook {
     return (
-      data &&
+      data !== null &&
+      data !== undefined &&
       typeof data === 'object' &&
       'bids' in data &&
       'asks' in data &&
-      Array.isArray(data.bids) &&
-      Array.isArray(data.asks)
+      Array.isArray((data as { bids: unknown }).bids) &&
+      Array.isArray((data as { asks: unknown }).asks)
     );
   }
 
   /**
    * Type guard for Kline
    */
-  private isKline(data: any): data is Kline {
+  private isKline(data: unknown): data is Kline {
     return (
-      data &&
+      data !== null &&
+      data !== undefined &&
       typeof data === 'object' &&
       'open' in data &&
       'high' in data &&
@@ -519,9 +528,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   /**
    * Type guard for Trade
    */
-  private isTrade(data: any): data is Trade {
+  private isTrade(data: unknown): data is Trade {
     return (
-      data &&
+      data !== null &&
+      data !== undefined &&
       typeof data === 'object' &&
       'id' in data &&
       'price' in data &&
@@ -551,8 +561,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       quantity,
       price,
       stopPrice,
-      status: 'NEW' as any,
-      timeInForce: 'GTC' as any,
+      status: 'NEW' as OrderStatus,
+      timeInForce: 'GTC' as TimeInForce,
       timestamp: new Date(),
     };
 
@@ -595,7 +605,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         quantity,
         price,
         stopPrice,
-        'GTC' as any,
+        'GTC' as TimeInForce,
         order.clientOrderId
       );
 
@@ -728,7 +738,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     });
 
     // Listen for market data - use specific typed methods
-    exchange.on('ticker', (symbol: string, ticker: any) => {
+    exchange.on('ticker', (symbol: string, ticker: Ticker) => {
       this._eventBus.emitTickerUpdate({
         symbol,
         ticker,
@@ -737,7 +747,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this.onTicker(symbol, ticker, exchangeName);
     });
 
-    exchange.on('orderbook', (symbol: string, orderbook: any) => {
+    exchange.on('orderbook', (symbol: string, orderbook: OrderBook) => {
       this._eventBus.emitOrderBookUpdate({
         symbol,
         orderbook,
@@ -746,12 +756,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this.onOrderBook(symbol, orderbook, exchangeName);
     });
 
-    exchange.on('trade', (symbol: string, trade: any) => {
+    exchange.on('trade', (symbol: string, trade: Trade) => {
       // Single trade event - wrap in array for consistency
       this.onTrades(symbol, [trade], exchangeName);
     });
 
-    exchange.on('kline', (symbol: string, kline: any) => {
+    exchange.on('kline', (symbol: string, kline: Kline) => {
       this.onKline(symbol, kline, exchangeName);
     });
   }
@@ -798,48 +808,55 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     for (const exchange of exchanges) {
       // Subscribe to ticker
       if (config.ticker) {
-        await this.subscribeData(
+        const tickerParams = this.normalizeDataConfig('ticker', config.ticker);
+        await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
           symbol,
           'ticker',
-          config.ticker,
+          tickerParams as unknown as Record<string, SubscriptionParamValue>,
           config.method
         );
       }
 
       // Subscribe to orderbook
       if (config.orderbook) {
-        await this.subscribeData(
+        const orderbookParams = this.normalizeDataConfig(
+          'orderbook',
+          config.orderbook
+        );
+        await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
           symbol,
           'orderbook',
-          config.orderbook,
+          orderbookParams as unknown as Record<string, SubscriptionParamValue>,
           config.method
         );
       }
 
       // Subscribe to trades
       if (config.trades) {
-        await this.subscribeData(
+        const tradesParams = this.normalizeDataConfig('trades', config.trades);
+        await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
           symbol,
           'trades',
-          config.trades,
+          tradesParams as unknown as Record<string, SubscriptionParamValue>,
           config.method
         );
       }
 
       // Subscribe to klines
       if (config.klines) {
-        await this.subscribeData(
+        const klinesParams = this.normalizeDataConfig('klines', config.klines);
+        await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
           symbol,
           'klines',
-          config.klines,
+          klinesParams as unknown as Record<string, SubscriptionParamValue>,
           config.method
         );
       }
@@ -866,254 +883,55 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     for (const exchange of exchanges) {
       // Unsubscribe from ticker
       if (config.ticker) {
-        await this.unsubscribeData(
+        const tickerParams = this.normalizeDataConfig('ticker', config.ticker);
+        await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
           symbol,
           'ticker',
-          config.ticker
+          tickerParams as unknown as Record<string, SubscriptionParamValue>
         );
       }
 
       // Unsubscribe from orderbook
       if (config.orderbook) {
-        await this.unsubscribeData(
+        const orderbookParams = this.normalizeDataConfig(
+          'orderbook',
+          config.orderbook
+        );
+        await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
           symbol,
           'orderbook',
-          config.orderbook
+          orderbookParams as unknown as Record<string, SubscriptionParamValue>
         );
       }
 
       // Unsubscribe from trades
       if (config.trades) {
-        await this.unsubscribeData(
+        const tradesParams = this.normalizeDataConfig('trades', config.trades);
+        await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
           symbol,
           'trades',
-          config.trades
+          tradesParams as unknown as Record<string, SubscriptionParamValue>
         );
       }
 
       // Unsubscribe from klines
       if (config.klines) {
-        await this.unsubscribeData(
+        const klinesParams = this.normalizeDataConfig('klines', config.klines);
+        await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
           symbol,
           'klines',
-          config.klines
+          klinesParams as unknown as Record<string, SubscriptionParamValue>
         );
       }
     }
-  }
-
-  /**
-   * Subscribe to specific data type
-   */
-  private async subscribeData(
-    strategyName: string,
-    exchange: IExchange,
-    symbol: string,
-    type: DataType,
-    config: any,
-    methodHint?: 'websocket' | 'rest' | 'auto'
-  ): Promise<void> {
-    const normalizedConfig = this.normalizeDataConfig(type, config);
-    const key: SubscriptionKey = {
-      exchange: exchange.name,
-      symbol,
-      type,
-      params: normalizedConfig,
-    };
-
-    // Check if already subscribed
-    if (this.subscriptionManager.hasSubscription(key)) {
-      // Already subscribed, just add reference
-      this.subscriptionManager.subscribe(strategyName, key, 'rest');
-      return;
-    }
-
-    // Determine subscription method
-    const method = this.determineSubscriptionMethod(
-      methodHint || 'auto',
-      exchange
-    );
-
-    if (method === 'websocket') {
-      await this.subscribeViaWebSocket(
-        exchange,
-        symbol,
-        type,
-        normalizedConfig
-      );
-      this.subscriptionManager.subscribe(strategyName, key, 'websocket');
-    } else {
-      const timerId = await this.subscribeViaREST(
-        exchange,
-        symbol,
-        type,
-        normalizedConfig
-      );
-      this.subscriptionManager.subscribe(strategyName, key, 'rest', timerId);
-    }
-  }
-
-  /**
-   * Unsubscribe from specific data type
-   */
-  private async unsubscribeData(
-    strategyName: string,
-    exchange: IExchange,
-    symbol: string,
-    type: DataType,
-    config: any
-  ): Promise<void> {
-    // Normalize config to match what was used during subscription
-    const normalizedConfig = this.normalizeDataConfig(type, config);
-
-    const key: SubscriptionKey = {
-      exchange: exchange.name,
-      symbol,
-      type,
-      params: normalizedConfig, // ✅ Include params to match subscription key
-    };
-
-    const result = this.subscriptionManager.unsubscribe(strategyName, key);
-
-    if (result.shouldCancel) {
-      // Cancel the subscription
-      if (result.timerId) {
-        clearInterval(result.timerId);
-      }
-      // Note: Most exchanges don't support WebSocket unsubscribe
-      this.logger.info(
-        `Cancelled subscription: ${exchange.name} ${symbol} ${type}`
-      );
-    } else {
-      this.logger.debug(
-        `Kept subscription (still used by other strategies): ${exchange.name} ${symbol} ${type}`
-      );
-    }
-  }
-
-  /**
-   * Subscribe via WebSocket
-   */
-  private async subscribeViaWebSocket(
-    exchange: IExchange,
-    symbol: string,
-    type: DataType,
-    config: any
-  ): Promise<void> {
-    try {
-      switch (type) {
-        case 'ticker':
-          await exchange.subscribeToTicker(symbol);
-          break;
-        case 'orderbook':
-          await exchange.subscribeToOrderBook(symbol);
-          break;
-        case 'trades':
-          await exchange.subscribeToTrades(symbol);
-          break;
-        case 'klines':
-          const interval = config.interval || '1m';
-          await exchange.subscribeToKlines(symbol, interval);
-          break;
-      }
-      this.logger.info(
-        `Subscribed via WebSocket: ${exchange.name} ${symbol} ${type}`
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to subscribe via WebSocket: ${exchange.name} ${symbol} ${type}`,
-        error as Error
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Subscribe via REST polling
-   */
-  private async subscribeViaREST(
-    exchange: IExchange,
-    symbol: string,
-    type: DataType,
-    config: any
-  ): Promise<NodeJS.Timeout> {
-    const interval = this.getPollingInterval(type, config);
-
-    this.logger.info(
-      `Subscribing via REST polling: ${exchange.name} ${symbol} ${type} (interval: ${interval}ms)`
-    );
-
-    const timerId = setInterval(async () => {
-      try {
-        switch (type) {
-          case 'ticker':
-            const ticker = await exchange.getTicker(symbol);
-            await this.onTicker(symbol, ticker, exchange.name);
-            break;
-          case 'orderbook':
-            const depth = config.depth || 20;
-            const orderbook = await exchange.getOrderBook(symbol, depth);
-            await this.onOrderBook(symbol, orderbook, exchange.name);
-            break;
-          case 'trades':
-            const limit = config.limit || 10;
-            const trades = await exchange.getTrades(symbol, limit);
-            await this.onTrades(symbol, trades, exchange.name);
-            break;
-          case 'klines':
-            const klineInterval = config.interval || '1m';
-            const klineLimit = config.limit || 1;
-            const klines = await exchange.getKlines(
-              symbol,
-              klineInterval,
-              undefined,
-              undefined,
-              klineLimit
-            );
-            if (klines.length > 0) {
-              await this.onKline(symbol, klines[0], exchange.name);
-            }
-            break;
-        }
-      } catch (error) {
-        this.logger.error(
-          `Failed to poll ${type} for ${symbol} on ${exchange.name}:`,
-          error as Error
-        );
-      }
-    }, interval);
-    return timerId;
-  }
-
-  /**
-   * Determine subscription method
-   */
-  private determineSubscriptionMethod(
-    hint: 'websocket' | 'rest' | 'auto',
-    exchange: IExchange
-  ): 'websocket' | 'rest' {
-    if (hint === 'rest') {
-      return 'rest';
-    }
-
-    if (hint === 'websocket') {
-      return 'websocket';
-    }
-
-    // Auto: prefer WebSocket if connected
-    if (exchange.isConnected) {
-      return 'websocket';
-    }
-
-    return 'rest';
   }
 
   /**
@@ -1138,7 +956,55 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   /**
    * Normalize data config
    */
-  private normalizeDataConfig(type: DataType, config: any): any {
+  private normalizeDataConfig(
+    type: 'ticker',
+    config:
+      | boolean
+      | TickerSubscriptionConfig
+      | OrderBookSubscriptionConfig
+      | TradesSubscriptionConfig
+      | KlinesSubscriptionConfig
+  ): TickerSubscriptionConfig;
+  private normalizeDataConfig(
+    type: 'orderbook',
+    config:
+      | boolean
+      | TickerSubscriptionConfig
+      | OrderBookSubscriptionConfig
+      | TradesSubscriptionConfig
+      | KlinesSubscriptionConfig
+  ): OrderBookSubscriptionConfig;
+  private normalizeDataConfig(
+    type: 'trades',
+    config:
+      | boolean
+      | TickerSubscriptionConfig
+      | OrderBookSubscriptionConfig
+      | TradesSubscriptionConfig
+      | KlinesSubscriptionConfig
+  ): TradesSubscriptionConfig;
+  private normalizeDataConfig(
+    type: 'klines',
+    config:
+      | boolean
+      | TickerSubscriptionConfig
+      | OrderBookSubscriptionConfig
+      | TradesSubscriptionConfig
+      | KlinesSubscriptionConfig
+  ): KlinesSubscriptionConfig;
+  private normalizeDataConfig(
+    type: DataType,
+    config:
+      | boolean
+      | TickerSubscriptionConfig
+      | OrderBookSubscriptionConfig
+      | TradesSubscriptionConfig
+      | KlinesSubscriptionConfig
+  ):
+    | TickerSubscriptionConfig
+    | OrderBookSubscriptionConfig
+    | TradesSubscriptionConfig
+    | KlinesSubscriptionConfig {
     if (typeof config === 'boolean') {
       // Use default config
       switch (type) {
@@ -1157,36 +1023,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   /**
-   * Get polling interval for REST
-   */
-  private getPollingInterval(type: DataType, config: any): number {
-    if (config.interval !== undefined) {
-      return config.interval;
-    }
-
-    if (config.pollInterval !== undefined) {
-      return config.pollInterval;
-    }
-
-    // Default intervals
-    switch (type) {
-      case 'ticker':
-        return 5000; // 1 second
-      case 'orderbook':
-        return 500; // 0.5 seconds
-      case 'trades':
-        return 5000; // 1 second
-      case 'klines':
-        return 60000; // 1 minute
-      default:
-        return 5000;
-    }
-  }
-
-  /**
    * Get subscription statistics
    */
   public getSubscriptionStats() {
-    return this.subscriptionManager.getStats();
+    return this.subscriptionCoordinator.getStats();
   }
 }

@@ -1,6 +1,11 @@
 // Types and Interfaces
 export * from './types';
 export * from './interfaces';
+export type {
+  ISubscriptionCoordinator,
+  ISubscriptionObserver,
+  SubscriptionInfo as CoordinatorSubscriptionInfo,
+} from './interfaces/ISubscriptionCoordinator';
 
 // Core Engine
 export { TradingEngine } from './engine/TradingEngine';
@@ -64,3 +69,7 @@ export type {
   StrategyHealthStatus,
 } from './monitoring/StrategyStateMonitor';
 export type { StrategyRecoveryResult } from './models/StrategyStateManager';
+
+// Subscription Management
+export { SubscriptionCoordinator } from './engine/SubscriptionCoordinator';
+export { SubscriptionManager } from './engine/SubscriptionManager'; // Legacy

@@ -370,7 +370,7 @@ export class StrategyStateMonitor extends EventEmitter {
     }
   }
 
-  private triggerAlert(type: string, data: any): void {
+  private triggerAlert(type: string, data: Record<string, unknown>): void {
     const alertKey = `${type}_${data.strategyId}`;
     const now = new Date();
     const lastAlert = this.lastAlerts.get(alertKey);

@@ -27,7 +27,7 @@
       "request": "launch",
       "name": "Debug console with tsx",
       "runtimeExecutable": "tsx",
-      "args": ["src/main.ts"],
+      "args": ["${file}"],
       "cwd": "${workspaceFolder}/apps/console",
       "sourceMaps": true,
       "console": "integratedTerminal",

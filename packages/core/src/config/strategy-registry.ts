@@ -10,7 +10,7 @@ export interface StrategyParameterDefinition {
     | 'range'
     | 'color';
   description: string;
-  defaultValue: any;
+  defaultValue: string | number | boolean | object;
   required?: boolean;
   min?: number;
   max?: number;
@@ -36,7 +36,7 @@ export interface StrategyConfig {
   /** 策略分类 */
   category: 'trend' | 'momentum' | 'volatility' | 'custom';
   /** 默认参数配置 */
-  defaultParameters: Record<string, any>;
+  defaultParameters: Record<string, unknown>;
   /** 参数定义（用于UI生成和验证） */
   parameterDefinitions: StrategyParameterDefinition[];
   /** 策略说明文档 */
@@ -514,7 +514,7 @@ export function getStrategyConfig(
 /** 获取策略的默认参数 */
 export function getStrategyDefaultParameters(
   type: StrategyTypeKey
-): Record<string, any> {
+): Record<string, unknown> {
   return STRATEGY_REGISTRY[type]?.defaultParameters || {};
 }
 

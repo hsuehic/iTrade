@@ -33,11 +33,44 @@ export interface OrderSyncStats {
 }
 
 /**
+ * Database order representation
+ */
+export interface DBOrder {
+  id: string | number;
+  internalId?: string | number;
+  clientOrderId?: string;
+  symbol: string;
+  exchange?: string;
+  status: OrderStatus;
+  quantity?: string;
+  executedQuantity?: string;
+  cummulativeQuoteQuantity?: string;
+  price?: string;
+  averagePrice?: string;
+  type?: string;
+  side?: string;
+  timestamp?: Date;
+  updatedAt?: Date;
+}
+
+/**
  * 订单数据管理器接口（用于数据库操作）
  */
 export interface IOrderDataManager {
-  getOrders(filters: { status?: OrderStatus }): Promise<any[]>;
-  updateOrder(id: number | string, updates: any): Promise<void>;
+  getOrders(filters: { status?: OrderStatus }): Promise<
+    Array<{
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    }>
+  >;
+  updateOrder(id: number | string, updates: Partial<DBOrder>): Promise<void>;
 }
 
 /**
@@ -224,8 +257,46 @@ export class OrderSyncService extends EventEmitter {
   /**
    * 按交易所分组订单
    */
-  private groupOrdersByExchange(orders: any[]): Map<string, any[]> {
-    const grouped = new Map<string, any[]>();
+  private groupOrdersByExchange(
+    orders: Array<{
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    }>
+  ): Map<
+    string,
+    Array<{
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    }>
+  > {
+    const grouped = new Map<
+      string,
+      Array<{
+        id: number;
+        status: string;
+        executedQuantity?: string;
+        quantity?: string;
+        averagePrice?: string;
+        updatedAt?: Date;
+        exchange?: string;
+        symbol: string;
+        clientOrderId?: string;
+      }>
+    >();
 
     for (const order of orders) {
       const exchangeName = order.exchange || 'binance';
@@ -243,7 +314,17 @@ export class OrderSyncService extends EventEmitter {
    */
   private async syncExchangeOrders(
     exchangeName: string,
-    orders: any[]
+    orders: Array<{
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    }>
   ): Promise<void> {
     const exchange = this.exchanges.get(exchangeName);
     if (!exchange || !exchange.isConnected) {
@@ -269,12 +350,22 @@ export class OrderSyncService extends EventEmitter {
    */
   private async syncSingleOrder(
     exchange: IExchange,
-    dbOrder: any
+    dbOrder: {
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    }
   ): Promise<void> {
     try {
       const exchangeOrder = await exchange.getOrder(
         dbOrder.symbol,
-        dbOrder.id,
+        dbOrder.id.toString(),
         dbOrder.clientOrderId
       );
 
@@ -296,7 +387,7 @@ export class OrderSyncService extends EventEmitter {
       this.addError({
         time: new Date(),
         error: (error as Error).message,
-        orderId: dbOrder.id,
+        orderId: dbOrder.id.toString(),
       });
 
       this.emit(
@@ -309,7 +400,7 @@ export class OrderSyncService extends EventEmitter {
   /**
    * 检查订单是否发生了变化
    */
-  private hasOrderChanged(dbOrder: any, exchangeOrder: Order): boolean {
+  private hasOrderChanged(dbOrder: DBOrder, exchangeOrder: Order): boolean {
     if (dbOrder.status !== exchangeOrder.status) {
       return true;
     }
@@ -341,18 +432,32 @@ export class OrderSyncService extends EventEmitter {
    * 更新数据库中的订单
    */
   private async updateOrderInDatabase(
-    dbOrder: any,
+    dbOrder: {
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    },
     exchangeOrder: Order
   ): Promise<void> {
     try {
-      await this.dataManager.updateOrder(dbOrder.internalId, {
+      await this.dataManager.updateOrder(dbOrder.id, {
         status: exchangeOrder.status,
-        executedQuantity: exchangeOrder.executedQuantity,
-        cummulativeQuoteQuantity: exchangeOrder.cummulativeQuoteQuantity,
+        executedQuantity: exchangeOrder.executedQuantity?.toString(),
+        cummulativeQuoteQuantity:
+          exchangeOrder.cummulativeQuoteQuantity?.toString(),
         updateTime: exchangeOrder.updateTime || new Date(),
       });
 
-      this.emit('debug', `💾 Database updated for order ${dbOrder.id}`);
+      this.emit(
+        'debug',
+        `💾 Database updated for order ${dbOrder.id.toString()}`
+      );
     } catch (error) {
       this.emit('error', error);
       throw error;
@@ -363,7 +468,17 @@ export class OrderSyncService extends EventEmitter {
    * 触发订单状态变化事件
    */
   private async emitOrderEvents(
-    _oldOrder: any,
+    _oldOrder: {
+      id: number;
+      status: string;
+      executedQuantity?: string;
+      quantity?: string;
+      averagePrice?: string;
+      updatedAt?: Date;
+      exchange?: string;
+      symbol: string;
+      clientOrderId?: string;
+    },
     newOrder: Order
   ): Promise<void> {
     const lastStatus = this.lastKnownStatuses.get(newOrder.id);

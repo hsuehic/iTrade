@@ -11,5 +11,6 @@
   "[javascript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
   "[javascriptreact]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
   "prettier.enable": true,
-  "eslint.trace.server": "messages"
+  "eslint.trace.server": "messages",
+  "typescript.tsdk": "node_modules/typescript/lib"
 }

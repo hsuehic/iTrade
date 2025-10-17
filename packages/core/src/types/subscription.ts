@@ -65,13 +65,18 @@ export interface SubscriptionConfig {
 }
 
 /**
+ * Valid parameter types for subscriptions
+ */
+export type SubscriptionParamValue = string | number | boolean | undefined;
+
+/**
  * Internal subscription key for tracking subscriptions
  */
 export interface SubscriptionKey {
   exchange: string;
   symbol: string;
   type: DataType;
-  params?: Record<string, any>;
+  params?: Record<string, SubscriptionParamValue>;
 }
 
 /**

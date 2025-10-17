@@ -37,6 +37,21 @@ export interface AccountSnapshotData {
 }
 
 /**
+ * Data manager interface for account snapshot persistence
+ */
+export interface IAccountDataManager {
+  saveAccountSnapshot?(snapshot: AccountSnapshotData): Promise<void>;
+  getLatestAccountSnapshot?(
+    exchange: string
+  ): Promise<AccountSnapshotData | null>;
+  getAccountSnapshotHistory?(
+    exchange: string,
+    startTime: Date,
+    endTime: Date
+  ): Promise<AccountSnapshotData[]>;
+}
+
+/**
  * AccountPollingService - 定时轮询交易所账户信息
  *
  * 功能：
@@ -51,7 +66,7 @@ export class AccountPollingService extends EventEmitter {
   private pollingTimer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private logger?: ILogger;
-  private dataManager?: any; // IDataManager with AccountSnapshot support
+  private dataManager?: IAccountDataManager;
 
   constructor(config: Partial<AccountPollingConfig> = {}, logger?: ILogger) {
     super();
@@ -82,7 +97,7 @@ export class AccountPollingService extends EventEmitter {
   /**
    * 设置数据管理器（用于持久化）
    */
-  setDataManager(dataManager: any): void {
+  setDataManager(dataManager: IAccountDataManager): void {
     this.dataManager = dataManager;
     this.logger?.info('DataManager set for AccountPollingService');
   }

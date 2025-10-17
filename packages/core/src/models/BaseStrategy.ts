@@ -87,7 +87,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
     return value !== undefined ? (value as T) : (defaultValue as T);
   }
 
-  protected setParameter(key: string, value: any): void {
+  protected setParameter(key: string, value: unknown): void {
     this._parameters[key] = value;
   }
 

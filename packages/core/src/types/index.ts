@@ -144,7 +144,7 @@ export interface StrategyParameters {
   symbol?: string; // Trading symbol
   exchange?: string; // supported  exchange
   subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
-  [key: string]: any; // Allow additional custom parameters
+  [key: string]: unknown; // Allow additional custom parameters
 }
 
 export interface StrategyResult {
