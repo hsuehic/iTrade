@@ -60,7 +60,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     setState(() {
       _ticker = ticker;
-      _klines[_klines.length - 1].close = ticker.last;
+      final last = ticker.last;
+      final kline = _klines[_klines.length - 1];
+      kline.close = ticker.last;
+      kline.high = last > kline.high ? last : kline.high;
+      kline.low = last < kline.low ? last : kline.low;
     });
   }
 
