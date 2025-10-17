@@ -131,8 +131,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       // Disable interactive panning/zooming
       'dataZoom': [
         {
-          'type': 'inside', // optional: show slider at bottom
-          'xAxisIndex': 0,
+          "type": "inside",
+          "disabled": true, // 👈 this disables pinch/scroll zoom
+        },
+        {
+          "type": "slider",
+          "show": false, // 👈 hide zoom slider
         },
       ],
       'series': [
