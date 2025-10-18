@@ -34,7 +34,8 @@
       "env": {
         "NODE_ENV": "development",
         "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
-      }
+      },
+      "runtimeArgs": ["-r", "tsconfig-paths/register"]
     },
     {
       "type": "node",

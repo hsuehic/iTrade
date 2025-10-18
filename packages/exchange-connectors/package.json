@@ -5,6 +5,7 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "source": "src/index.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,8 +14,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --noEmit true && pkgroll --clean-dist  --sourcemap || true",
-    "dev": "tsdown src/index.ts --format esm --watch",
+    "build": "tsc --noEmit true && pkgroll --clean-dist  --sourcemap",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",

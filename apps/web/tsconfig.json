@@ -1,15 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -25,10 +20,17 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+      "@itrade/core/*": ["./packages/core/src/*"],
+      "@itrade/strategies/*": ["./packages/strategies/src/*"],
+      "@itrade/exchange-connectors": ["./packages/exchange-connectors/src/index.ts"],
+      "@itrade/data-manager/*": ["./packages/data-manager/src/*"],
+      "@itrade/utils/*": ["./packages/utils/src/*"],
+      "@itrade/logger/*": ["./packages/logger/src/*"],
+      "@itrade/portfolio-manager/*": ["./packages/portfolio-manager/src/*"],
+      "@itrade/risk-manager/*": ["./packages/risk-manager/src/*"],
+      "@/*": ["./*"]
+    },
+    "composite": true
   },
   "include": [
     "**/*.ts",
@@ -37,7 +39,5 @@
     "next-env.d.ts",
     ".next-dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

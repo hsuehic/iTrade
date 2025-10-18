@@ -13,9 +13,7 @@
     }
   },
   "scripts": {
-    "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
-    "build": "tsdown src/index.ts --format cjs --format esm --sourcemap || true",
-    "dev": "tsdown src/index.ts --format esm --watch",
+    "build": "tsc --noEmit && pkgroll --clean-dist --sourcemap",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",

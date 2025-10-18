@@ -5,9 +5,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
+    "noEmit": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
     "jsx": "react-jsx",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
@@ -25,5 +25,18 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["packages/*/src/**/*", "apps/**/*"],
-  "exclude": ["node_modules", "dist", "build"]
+  "exclude": ["node_modules", "dist", "build"],
+
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/strategies" },
+    { "path": "packages/exchange-connectors" },
+    { "path": "packages/data-manager" },
+    { "path": "packages/risk-manager" },
+    { "path": "packages/portfolio-manager" },
+    { "path": "packages/logger" },
+    { "path": "packages/utils" },
+    { "path": "apps/console" },
+    { "path": "apps/web" }
+  ]
 }

@@ -4,16 +4,7 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "start": "tsx src/main.ts",
-    "dev": "tsx src/main.ts",
-    "dev:watch": "tsx watch src/main.ts",
-    "init-history": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/init-history.ts",
-    "cron": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/cron.ts",
-    "diagnose": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register -r reflect-metadata src/diagnose-auth.ts",
-    "get-ip": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/get-current-ip.ts",
-    "test-auth": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/detailed-auth-test.ts",
-    "test-basic": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/basic-api-test.ts",
-    "test-fixed": "npx ts-node -P tsconfig.scripts.json -r tsconfig-paths/register src/fixed-api-test.ts"
+    "dev": "tsx src/main.ts"
   },
   "author": "xiaoweihsueh@gmail.com",
   "license": "MIT",

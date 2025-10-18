@@ -13,8 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs --sourcemap && tsdown src/index.ts --format esm --sourcemap || true",
-    "dev": "tsdown src/index.ts --format esm --watch",
+    "build": "tsc --noEmit && pkgroll --clean-dist --sourcemap",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",

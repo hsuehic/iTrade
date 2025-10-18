@@ -13,8 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format cjs && tsdown src/index.ts --format esm && tsc --project tsconfig.build.json && (cp dist/src/index.d.ts dist/ 2>/dev/null || cp dist/dry-run-engine/src/index.d.ts dist/ 2>/dev/null || true) && (cp dist/src/index.d.ts.map dist/ 2>/dev/null || cp dist/dry-run-engine/src/index.d.ts.map dist/ 2>/dev/null || true)",
-    "dev": "tsdown src/index.ts --format esm --watch",
+    "build": "tsc --noEmit && pkgroll --clean-dist --sourcemap",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",

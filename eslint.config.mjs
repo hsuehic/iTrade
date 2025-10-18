@@ -1,111 +1,87 @@
 import js from '@eslint/js';
-import typescriptEslint from '@typescript-eslint/eslint-plugin';
-import typescriptParser from '@typescript-eslint/parser';
-import importPlugin from 'eslint-plugin-import';
-import prettierPlugin from 'eslint-plugin-prettier';
+import { defineConfig } from 'eslint/config';
+import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import prettier from 'eslint-config-prettier';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import nextPlugin from '@next/eslint-plugin-next';
 
-export default [
-  // 基础 JavaScript 配置
-  {
-    ...js.configs.recommended,
-    languageOptions: {
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        ...globals.es2020,
-        // 手动添加 React 相关全局变量
-        React: 'readonly',
-        JSX: 'readonly',
-      },
-    },
-    plugins: {
-      prettier: prettierPlugin,
-    },
-    rules: {
-      'prettier/prettier': 'error',
-    },
-  },
-
-  // TypeScript 配置
-  {
-    files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: {
-      parser: typescriptParser,
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      parserOptions: {
-        ecmaFeatures: {
-          jsx: true, // 启用 JSX 支持
-        },
-      },
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        ...globals.es2020,
-        React: 'readonly',
-        JSX: 'readonly',
-        NodeJS: 'readonly',
-      },
-    },
-    plugins: {
-      '@typescript-eslint': typescriptEslint,
-      import: importPlugin,
-      prettier: prettierPlugin,
-    },
-    rules: {
-      'prettier/prettier': 'error',
-      'no-prototype-builtins': 'off',
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        {
-          args: 'all',
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_',
-          destructuredArrayIgnorePattern: '^_',
-          ignoreRestSiblings: true,
-        },
-      ],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      'import/order': [
-        'error',
-        {
-          groups: [
-            'builtin',
-            'external',
-            'internal',
-            'parent',
-            'sibling',
-            'index',
-          ],
-          'newlines-between': 'always',
-        },
-      ],
-    },
-  },
-
-  // 忽略文件
+export default defineConfig(
+  // 基础设置
   {
     ignores: [
-      '**/dist/',
-      '**/node_modules/',
-      '**/build/',
-      '**/coverage/',
-      '**/.git/',
-      '**/.next/',
-      '**/out/',
-      '**/*.js',
-      '**/*.d.ts',
-      '**/*.min.js',
-      '**/package-lock.json',
-      '**/yarn.lock',
-      '**/pnpm-lock.yaml',
-      '**/.env*',
-      '**/.DS_Store',
-      '**/Thumbs.db',
-      '**/*.log',
+      'node_modules',
+      'dist',
+      'build',
+      '.next',
+      '**/coverage',
+      '**/generated',
     ],
   },
-];
+
+  // 通用 JS/TS 规则
+  {
+    files: ['**/*.{ts,tsx,js,jsx}'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        projectService: true, // 自动识别每包 tsconfig.json
+      },
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+      },
+    },
+    plugins: {
+      '@typescript-eslint': tseslint.plugin,
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      ...tseslint.configs.recommended.rules,
+      'no-unused-vars': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_' },
+      ],
+      'no-console': 'off',
+      'no-debugger': 'warn',
+    },
+  },
+
+  // React + Next.js 前端应用
+  {
+    files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
+    plugins: {
+      react,
+      'react-hooks': reactHooks,
+      '@next/next': nextPlugin,
+    },
+    settings: {
+      react: { version: 'detect' },
+    },
+    rules: {
+      ...react.configs.recommended.rules,
+      ...reactHooks.configs.recommended.rules,
+      ...nextPlugin.configs.recommended.rules,
+      'react/react-in-jsx-scope': 'off',
+    },
+  },
+
+  // Node.js 控制台应用（apps/console）
+  {
+    files: ['apps/console/**/*.{ts,js}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      'no-process-exit': 'off',
+      '@typescript-eslint/no-var-requires': 'off',
+    },
+  },
+
+  // 最后应用 Prettier
+  prettier
+);
