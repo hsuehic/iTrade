@@ -3,6 +3,7 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import prettier from 'eslint-config-prettier';
+import prettierPlugin from 'eslint-plugin-prettier';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import nextPlugin from '@next/eslint-plugin-next';
@@ -35,6 +36,7 @@ export default defineConfig(
     },
     plugins: {
       '@typescript-eslint': tseslint.plugin,
+      'prettier': prettierPlugin
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -48,6 +50,7 @@ export default defineConfig(
       ],
       'no-console': 'off',
       'no-debugger': 'warn',
+      'prettier/prettier': 'error',
     },
   },
 
@@ -83,5 +86,8 @@ export default defineConfig(
   },
 
   // 最后应用 Prettier
-  prettier
+  {
+    files: ['**/*.{ts,tsx,js,jsx}'], // all JS/TS files in monorepo
+    ...prettier,
+  }
 );
