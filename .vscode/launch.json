@@ -40,6 +40,21 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Debug web with tsx",
+      "runtimeExecutable": "tsx",
+      "args": ["${file}"],
+      "cwd": "${workspaceFolder}/apps/web",
+      "sourceMaps": true,
+      "console": "integratedTerminal",
+      "env": {
+        "NODE_ENV": "development",
+        "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
+      },
+      "runtimeArgs": ["-r", "tsconfig-paths/register"]
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Debug pnpm run dev",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["run", "dev", "--filter", "@itrade/console"],
