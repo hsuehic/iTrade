@@ -2,8 +2,14 @@ import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:dio/dio.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:crypto/crypto.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+
 import 'api_client.dart';
 import 'config.dart';
 
@@ -35,6 +41,80 @@ class AuthService {
 
   GoogleSignInAccount? get currentAccount => _currentAccount;
   String? get idToken => _idToken;
+
+  String _generateNonce([int length = 32]) {
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._';
+    final random = Random.secure();
+    return List.generate(
+      length,
+      (_) => charset[random.nextInt(charset.length)],
+    ).join();
+  }
+
+  String _sha256ofString(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  Future<User?> signInWithApple() async {
+    final rawNonce = _generateNonce();
+    final nonceHash = _sha256ofString(rawNonce);
+
+    final credential = await SignInWithApple.getAppleIDCredential(
+      scopes: [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+      nonce: nonceHash,
+      webAuthenticationOptions: WebAuthenticationOptions(
+        clientId: 'com.ihsueh.itrade.web',
+        redirectUri: Uri.parse(
+          'https://itrade.ihsueh.com/api/auth/callback/apple',
+        ),
+      ),
+    );
+
+    // final dio = Dio(
+    //   BaseOptions(
+    //     baseUrl: 'https://itrade.ihsueh.com/api', // your Next.js backend
+    //     validateStatus: (status) => status! < 500,
+    //   ),
+    // );
+    // // Use Dio directly to send form-encoded data (not JSON)
+    // // Send ID token to your server
+    // // Send identityToken to your Better Auth backend
+    // final response = await dio.post(
+    //   '/auth/signin/apple',
+    //   data: {
+    //     'idToken': credential.identityToken,
+    //     'authorizationCode': credential.authorizationCode,
+    //     'rawNonce': rawNonce,
+    //   },
+    // );
+
+    // Send identityToken to your Better Auth backend
+    final response = await ApiClient.instance.postJson(
+      '/api/mobile/sign-in/social',
+      data: {
+        'provider': 'apple',
+        'idToken': credential.identityToken,
+        'authorizationCode': credential.authorizationCode,
+        'rawNonce': rawNonce,
+      },
+    );
+
+    if (response.statusCode == 200) {
+      developer.log('✅ Signed in with Apple successfully!');
+
+      final res = await getUser();
+      return res;
+    } else {
+      developer.log('❌ Failed: ${response.statusCode} ${response.data}');
+      return null;
+    }
+  }
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -92,19 +172,6 @@ class AuthService {
         data: {'provider': 'google', 'idToken': idToken},
       );
 
-      developer.log(
-        'Callback response status: ${response.statusCode}',
-        name: 'AuthService',
-      );
-      developer.log(
-        'Callback response data: ${response.data}',
-        name: 'AuthService',
-      );
-      developer.log(
-        'Callback response headers: ${response.headers.map}',
-        name: 'AuthService',
-      );
-
       final List<String>? setCookies = response.headers.map['set-cookie'];
       if (setCookies != null && setCookies.isNotEmpty) {
         developer.log(
@@ -124,26 +191,7 @@ class AuthService {
           'Callback failed with status ${response.statusCode}: ${response.data}',
           name: 'AuthService',
         );
-      }
-      // Dump cookies stored for base URL
-      try {
-        final List<Cookie> cookies = await ApiClient.instance
-            .debugLoadCookiesForBaseUrl();
-        if (cookies.isEmpty) {
-          developer.log(
-            'Cookie jar is empty after callback',
-            name: 'AuthService',
-          );
-        } else {
-          developer.log(
-            'Cookie jar contains: ${cookies.map((Cookie c) => '${c.name}=${c.value};Domain=${c.domain ?? ''};Path=${c.path ?? ''}').join(', ')}',
-            name: 'AuthService',
-          );
-        }
-      } catch (e) {
-        developer.log('Failed to read cookie jar: $e', name: 'AuthService');
-      }
-      if (response.statusCode == 200) {
+      } else {
         final res = await getUser();
         return res;
       }

@@ -127,6 +127,34 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleAppleSignIn() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final User? user = await AuthService.instance.signInWithApple();
+      if (user != null) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/home');
+        return;
+      } else {
+        final String msg = 'Login failed';
+        setState(() => _error = msg);
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Login failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _handleCredentialLogin() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -388,6 +416,28 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: _loading ? null : _handleAppleSignIn,
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                                horizontal: 12,
+                              ),
+                              side: BorderSide(
+                                color: isDark
+                                    ? Colors.grey[800]!
+                                    : Colors.grey.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            icon: SvgPicture.asset(
+                              'assets/icons/apple.svg',
+                              width: 18,
+                              height: 18,
+                            ),
+                            label: const Text('Apple'),
+                          ),
+                          const SizedBox(width: 12),
                           OutlinedButton.icon(
                             onPressed: _loading ? null : _handleGoogleSignIn,
                             style: OutlinedButton.styleFrom(
@@ -408,8 +458,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             label: const Text('Google'),
                           ),
-
-                          // const SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           // Expanded(
                           //   child: OutlinedButton.icon(
                           //     onPressed: () => _showSnack('Coming soon'),
