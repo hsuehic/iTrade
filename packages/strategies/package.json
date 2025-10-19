@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --noEmit && pkgroll --clean-dist --sourcemap",
+    "build": "tsc --noEmit true -p tsconfig.build.json && pkgroll --clean-dist --sourcemap --tsconfig tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",
@@ -23,12 +23,12 @@
   },
   "dependencies": {
     "@itrade/core": "workspace:*",
+    "@types/uuid": "^9.0.8",
     "decimal.js": "^10.4.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
-    "@types/uuid": "^9.0.8",
     "tsdown": "^0.2.16"
   },
   "files": [

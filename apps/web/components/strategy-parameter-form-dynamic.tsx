@@ -86,9 +86,7 @@ export function StrategyParameterFormDynamic({
                 .split(/(?=[A-Z])/)
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ')}
-              {paramDef.required && (
-                <span className="text-red-500 ml-1">*</span>
-              )}
+              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <Input
               id={paramDef.name}
@@ -124,9 +122,7 @@ export function StrategyParameterFormDynamic({
                     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                     .join(' ')}
                 </Label>
-                <p className="text-xs text-muted-foreground">
-                  {paramDef.description}
-                </p>
+                <p className="text-xs text-muted-foreground">{paramDef.description}</p>
               </div>
               <Switch
                 id={paramDef.name}
@@ -149,9 +145,7 @@ export function StrategyParameterFormDynamic({
                   .split(/(?=[A-Z])/)
                   .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                   .join(' ')}
-                {paramDef.required && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
+                {paramDef.required && <span className="text-red-500 ml-1">*</span>}
               </Label>
               <Select
                 value={value as string}
@@ -170,9 +164,7 @@ export function StrategyParameterFormDynamic({
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {paramDef.description}
-              </p>
+              <p className="text-xs text-muted-foreground">{paramDef.description}</p>
             </div>
           );
         } else {
@@ -184,23 +176,17 @@ export function StrategyParameterFormDynamic({
                   .split(/(?=[A-Z])/)
                   .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                   .join(' ')}
-                {paramDef.required && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
+                {paramDef.required && <span className="text-red-500 ml-1">*</span>}
               </Label>
               <Input
                 id={paramDef.name}
                 type="text"
                 value={value as string}
-                onChange={(e) =>
-                  handleParameterChange(paramDef.name, e.target.value)
-                }
+                onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
                 required={paramDef.required}
                 pattern={paramDef.validation?.pattern}
               />
-              <p className="text-xs text-muted-foreground">
-                {paramDef.description}
-              </p>
+              <p className="text-xs text-muted-foreground">{paramDef.description}</p>
             </div>
           );
         }
@@ -213,9 +199,7 @@ export function StrategyParameterFormDynamic({
                 .split(/(?=[A-Z])/)
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ')}
-              {paramDef.required && (
-                <span className="text-red-500 ml-1">*</span>
-              )}
+              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <Textarea
               id={paramDef.name}
@@ -231,9 +215,7 @@ export function StrategyParameterFormDynamic({
               rows={4}
               className="font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground">
-              {paramDef.description}
-            </p>
+            <p className="text-xs text-muted-foreground">{paramDef.description}</p>
           </div>
         );
 
@@ -245,9 +227,7 @@ export function StrategyParameterFormDynamic({
                 .split(/(?=[A-Z])/)
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ')}
-              {paramDef.required && (
-                <span className="text-red-500 ml-1">*</span>
-              )}
+              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <Input
               id={paramDef.name}
@@ -257,14 +237,10 @@ export function StrategyParameterFormDynamic({
                   ? value.toISOString().split('T')[0]
                   : (value as string)
               }
-              onChange={(e) =>
-                handleParameterChange(paramDef.name, e.target.value)
-              }
+              onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
               required={paramDef.required}
             />
-            <p className="text-xs text-muted-foreground">
-              {paramDef.description}
-            </p>
+            <p className="text-xs text-muted-foreground">{paramDef.description}</p>
           </div>
         );
 
@@ -276,15 +252,11 @@ export function StrategyParameterFormDynamic({
                 .split(/(?=[A-Z])/)
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ')}
-              {paramDef.required && (
-                <span className="text-red-500 ml-1">*</span>
-              )}
+              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <Select
               value={value as string}
-              onValueChange={(newValue) =>
-                handleParameterChange(paramDef.name, newValue)
-              }
+              onValueChange={(newValue) => handleParameterChange(paramDef.name, newValue)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select an option" />
@@ -297,9 +269,7 @@ export function StrategyParameterFormDynamic({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              {paramDef.description}
-            </p>
+            <p className="text-xs text-muted-foreground">{paramDef.description}</p>
           </div>
         );
 
@@ -312,9 +282,7 @@ export function StrategyParameterFormDynamic({
                   .split(/(?=[A-Z])/)
                   .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                   .join(' ')}
-                {paramDef.required && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
+                {paramDef.required && <span className="text-red-500 ml-1">*</span>}
               </Label>
               <span className="text-sm font-medium">
                 {value as number}
@@ -324,9 +292,7 @@ export function StrategyParameterFormDynamic({
             <Slider
               id={paramDef.name}
               value={[value as number]}
-              onValueChange={(values) =>
-                handleParameterChange(paramDef.name, values[0])
-              }
+              onValueChange={(values) => handleParameterChange(paramDef.name, values[0])}
               min={paramDef.min ?? 0}
               max={paramDef.max ?? 100}
               step={paramDef.step ?? 1}
@@ -352,34 +318,26 @@ export function StrategyParameterFormDynamic({
                 .split(/(?=[A-Z])/)
                 .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ')}
-              {paramDef.required && (
-                <span className="text-red-500 ml-1">*</span>
-              )}
+              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <div className="flex gap-2 items-center">
               <Input
                 id={paramDef.name}
                 type="color"
                 value={value as string}
-                onChange={(e) =>
-                  handleParameterChange(paramDef.name, e.target.value)
-                }
+                onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
                 className="w-20 h-10 cursor-pointer"
               />
               <Input
                 type="text"
                 value={value as string}
-                onChange={(e) =>
-                  handleParameterChange(paramDef.name, e.target.value)
-                }
+                onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
                 pattern="^#[0-9A-Fa-f]{6}$"
                 placeholder="#000000"
                 className="font-mono"
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              {paramDef.description}
-            </p>
+            <p className="text-xs text-muted-foreground">{paramDef.description}</p>
           </div>
         );
 
@@ -390,7 +348,7 @@ export function StrategyParameterFormDynamic({
 
   // Separate subscription parameters from strategy parameters
   const strategyParams = strategyConfig.parameterDefinitions.filter(
-    (p) => p.name !== 'subscription'
+    (p) => p.name !== 'subscription',
   );
 
   return (
@@ -441,16 +399,12 @@ export function StrategyParameterFormDynamic({
                 <Label className="text-sm">Ticker Data</Label>
                 <Switch
                   checked={Boolean(
-                    (
-                      parameters.subscription as
-                        | { ticker?: boolean }
-                        | undefined
-                    )?.ticker ?? true
+                    (parameters.subscription as { ticker?: boolean } | undefined)
+                      ?.ticker ?? true,
                   )}
                   onCheckedChange={(checked) => {
                     const currentSub =
-                      (parameters.subscription as Record<string, unknown>) ||
-                      {};
+                      (parameters.subscription as Record<string, unknown>) || {};
                     handleParameterChange('subscription', {
                       ...currentSub,
                       ticker: checked,
@@ -465,16 +419,12 @@ export function StrategyParameterFormDynamic({
                 <Label className="text-sm">Kline Data</Label>
                 <Switch
                   checked={Boolean(
-                    (
-                      parameters.subscription as
-                        | { klines?: boolean }
-                        | undefined
-                    )?.klines ?? true
+                    (parameters.subscription as { klines?: boolean } | undefined)
+                      ?.klines ?? true,
                   )}
                   onCheckedChange={(checked) => {
                     const currentSub =
-                      (parameters.subscription as Record<string, unknown>) ||
-                      {};
+                      (parameters.subscription as Record<string, unknown>) || {};
                     handleParameterChange('subscription', {
                       ...currentSub,
                       klines: checked,
@@ -489,8 +439,8 @@ export function StrategyParameterFormDynamic({
             <Label className="text-sm">Data Method</Label>
             <Select
               value={
-                ((parameters.subscription as { method?: string } | undefined)
-                  ?.method || 'rest') as string
+                ((parameters.subscription as { method?: string } | undefined)?.method ||
+                  'rest') as string
               }
               onValueChange={(value) => {
                 const currentSub =

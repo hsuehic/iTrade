@@ -15,11 +15,7 @@ export const metadata = {
   },
 };
 
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-muted flex min-h-screen flex-col items-center justify-center p-6 md:p-10">
       <div className="w-full max-w-sm md:max-w-3xl ">
@@ -40,8 +36,8 @@ export default function AuthLayout({
             </CardContent>
           </Card>
           <div className="text-muted-foreground text-center text-xs *:[a]:underline *:[a]:underline-offset-4 *:[a]:hover:text-primary">
-            By clicking continue, you agree to our{' '}
-            <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+            By clicking continue, you agree to our <a href="#">Terms of Service</a> and{' '}
+            <a href="#">Privacy Policy</a>.
           </div>
         </div>
       </div>

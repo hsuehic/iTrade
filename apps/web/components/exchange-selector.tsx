@@ -17,11 +17,7 @@ interface ExchangeSelectorProps {
   exchanges: string[];
 }
 
-export function ExchangeSelector({
-  value,
-  onChange,
-  exchanges,
-}: ExchangeSelectorProps) {
+export function ExchangeSelector({ value, onChange, exchanges }: ExchangeSelectorProps) {
   return (
     <div className="flex items-center gap-2">
       <Select value={value} onValueChange={onChange}>

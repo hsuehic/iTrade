@@ -102,7 +102,7 @@ export function JsonEditor({
         placeholder={placeholder}
         className={cn(
           'font-mono text-sm',
-          !isValid && 'border-red-500 focus-visible:ring-red-500'
+          !isValid && 'border-red-500 focus-visible:ring-red-500',
         )}
         style={{ minHeight }}
         rows={10}

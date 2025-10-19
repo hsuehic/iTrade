@@ -23,10 +23,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json(
-        { error: 'Invalid strategy ID' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
     }
 
     const dataManager = await getDataManager();
@@ -34,10 +31,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
-      return NextResponse.json(
-        { error: 'Strategy not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
     }
 
     // Check ownership
@@ -48,10 +42,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ strategy });
   } catch (error) {
     console.error('Error fetching strategy:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch strategy' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch strategy' }, { status: 500 });
   }
 }
 
@@ -70,10 +61,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json(
-        { error: 'Invalid strategy ID' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
     }
 
     const dataManager = await getDataManager();
@@ -81,10 +69,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
-      return NextResponse.json(
-        { error: 'Strategy not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
     }
 
     // Check ownership
@@ -93,8 +78,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json();
-    const { name, description, type, status, exchange, symbol, parameters } =
-      body;
+    const { name, description, type, status, exchange, symbol, parameters } = body;
 
     interface StrategyUpdates {
       name?: string;
@@ -122,10 +106,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ strategy: updatedStrategy });
   } catch (error) {
     console.error('Error updating strategy:', error);
-    return NextResponse.json(
-      { error: 'Failed to update strategy' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to update strategy' }, { status: 500 });
   }
 }
 
@@ -144,10 +125,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json(
-        { error: 'Invalid strategy ID' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
     }
 
     const dataManager = await getDataManager();
@@ -155,10 +133,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
-      return NextResponse.json(
-        { error: 'Strategy not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
     }
 
     // Check ownership
@@ -170,7 +145,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (strategy.status === 'active') {
       return NextResponse.json(
         { error: 'Cannot delete active strategy. Stop it first.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -178,9 +153,6 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting strategy:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete strategy' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to delete strategy' }, { status: 500 });
   }
 }

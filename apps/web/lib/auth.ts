@@ -4,6 +4,16 @@ import { Pool } from 'pg';
 import { sendEmail } from '@/lib/mailer';
 
 export const auth = betterAuth({
+  advanced: {
+    cookies: {
+      state: {
+        attributes: {
+          sameSite: 'none',
+          secure: true,
+        },
+      },
+    },
+  },
   database: new Pool({
     connectionString: process.env.POSTGRES_URL as string,
   }),
@@ -26,7 +36,7 @@ export const auth = betterAuth({
         await sendEmail(
           user.email,
           'Reset your password',
-          `Click the link to reset your password: ${url}`
+          `Click the link to reset your password: ${url}`,
         );
       },
     },
@@ -43,7 +53,7 @@ export const auth = betterAuth({
       await sendEmail(
         user.email,
         'Reset your password',
-        `Click the link to reset your password: ${url}`
+        `Click the link to reset your password: ${url}`,
       );
     },
     resetPasswordTokenExpiresIn: 10 * 60 * 1000,
@@ -54,6 +64,12 @@ export const auth = betterAuth({
     },
   },
   socialProviders: {
+    apple: {
+      clientId: process.env.APPLE_CLIENT_ID as string,
+      clientSecret: process.env.APPLE_CLIENT_SECRET as string,
+      // Optional
+      appBundleIdentifier: process.env.APPLE_APP_BUNDLE_IDENTIFIER as string,
+    },
     google: {
       prompt: 'select_account',
       clientId: process.env.GOOGLE_CLIENT_ID as string,
@@ -70,5 +86,6 @@ export const auth = betterAuth({
     'http://localhost:3000',
     'http://localhost:3002',
     'https://itrade.ihsueh.com',
+    'https://appleid.apple.com',
   ],
 });

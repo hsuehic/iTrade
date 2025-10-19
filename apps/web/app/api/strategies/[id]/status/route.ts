@@ -23,10 +23,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const id = parseInt(params.id);
 
     if (isNaN(id)) {
-      return NextResponse.json(
-        { error: 'Invalid strategy ID' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
     }
 
     const body = await request.json();
@@ -36,7 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!Object.values(StrategyStatus).includes(status)) {
       return NextResponse.json(
         { error: 'Invalid status. Must be: active, stopped, paused, or error' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -45,10 +42,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const strategy = await dataManager.getStrategy(id, { includeUser: true });
 
     if (!strategy) {
-      return NextResponse.json(
-        { error: 'Strategy not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });
     }
 
     // Check ownership
@@ -64,7 +58,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     console.error('Error updating strategy status:', error);
     return NextResponse.json(
       { error: 'Failed to update strategy status' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

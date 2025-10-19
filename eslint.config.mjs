@@ -28,6 +28,9 @@ export default defineConfig(
       parser: tseslint.parser,
       parserOptions: {
         projectService: true, // 自动识别每包 tsconfig.json
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        ecmaFeatures: { jsx: true }
       },
       globals: {
         ...globals.node,
@@ -48,6 +51,7 @@ export default defineConfig(
         'warn',
         { argsIgnorePattern: '^_' },
       ],
+      'no-undef': 'off',
       'no-console': 'off',
       'no-debugger': 'warn',
       'prettier/prettier': 'error',

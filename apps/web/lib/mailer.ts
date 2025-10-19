@@ -29,6 +29,6 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string) {
       <p>Click below to reset your password:</p>
       <a href="${resetUrl}">${resetUrl}</a>
       <p>This link will expire in 10 minutes.</p>
-    `
+    `,
   );
 }

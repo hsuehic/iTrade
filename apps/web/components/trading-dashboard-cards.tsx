@@ -69,12 +69,11 @@ export function TradingDashboardCards({
   refreshInterval = 5000,
 }: TradingDashboardCardsProps) {
   const [accountData, setAccountData] = useState<AccountSummary | null>(null);
-  const [_strategyData, setStrategyData] = useState<StrategySummary | null>(
-    null
-  );
+  const [_strategyData, setStrategyData] = useState<StrategySummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [balanceChangeData, setBalanceChangeData] =
-    useState<BalanceChangeData | null>(null);
+  const [balanceChangeData, setBalanceChangeData] = useState<BalanceChangeData | null>(
+    null,
+  );
   const [balanceChangePeriod, setBalanceChangePeriod] = useState<string>('1m');
 
   // Main account and strategy data
@@ -82,9 +81,7 @@ export function TradingDashboardCards({
     const fetchMainData = async () => {
       try {
         const [accountRes, strategyRes] = await Promise.all([
-          fetch(
-            `/api/analytics/account?period=30d&exchange=${selectedExchange}`
-          ),
+          fetch(`/api/analytics/account?period=30d&exchange=${selectedExchange}`),
           fetch('/api/analytics/strategies'),
         ]);
 
@@ -102,7 +99,7 @@ export function TradingDashboardCards({
               strategyJson.allStrategies?.reduce(
                 (sum: number, strategy: StrategyData) =>
                   sum + (strategy.realizedPnl || 0),
-                0
+                0,
               ) || 0;
 
             accountSummary.totalRealizedPnl = totalRealizedPnl;
@@ -129,7 +126,7 @@ export function TradingDashboardCards({
     const fetchBalanceChangeData = async () => {
       try {
         const balanceChangeRes = await fetch(
-          `/api/analytics/account?period=${balanceChangePeriod}&exchange=${selectedExchange}`
+          `/api/analytics/account?period=${balanceChangePeriod}&exchange=${selectedExchange}`,
         );
 
         if (balanceChangeRes.ok) {
@@ -155,8 +152,7 @@ export function TradingDashboardCards({
           // then previous = 1000/1.05 = 952.38, changeValue = 1000 - 952.38 = 47.62
           let changeValue = 0;
           if (changePercentage !== 0) {
-            const previousBalance =
-              currentBalance / (1 + changePercentage / 100);
+            const previousBalance = currentBalance / (1 + changePercentage / 100);
             changeValue = currentBalance - previousBalance;
           }
 
@@ -295,8 +291,7 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium items-center">
-            {balanceChangeData?.change === 0 &&
-            balanceChangeData?.changeValue === 0
+            {balanceChangeData?.change === 0 && balanceChangeData?.changeValue === 0
               ? 'No change'
               : (balanceChangeData?.changeValue || 0) >= 0
                 ? 'Balance increased'
@@ -392,9 +387,7 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {totalRealizedPnl >= 0
-              ? 'Closed profitable trades'
-              : 'Closed losing trades'}
+            {totalRealizedPnl >= 0 ? 'Closed profitable trades' : 'Closed losing trades'}
           </div>
           <div className="text-muted-foreground">
             Locked-in profits and losses from completed trades
@@ -441,9 +434,7 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {totalUnrealizedPnl >= 0
-              ? 'Profitable positions'
-              : 'Positions underwater'}
+            {totalUnrealizedPnl >= 0 ? 'Profitable positions' : 'Positions underwater'}
           </div>
           <div className="text-muted-foreground">
             {accountData?.totalPositions || 0} open position

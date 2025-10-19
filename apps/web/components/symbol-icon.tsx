@@ -7,11 +7,7 @@ interface SymbolIconProps {
   className?: string;
 }
 
-export function SymbolIcon({
-  symbol,
-  size = 'md',
-  className,
-}: SymbolIconProps) {
+export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) {
   // Extract base asset from symbol (e.g., BTC from BTC/USDT or BTCUSDT)
   const baseAsset =
     symbol.split('/')[0] || symbol.replace(/USDT|USD|EUR|BUSD|TUSD$/i, '');
@@ -38,7 +34,7 @@ export function SymbolIcon({
           sizeClasses[size],
           'flex items-center justify-center rounded-full bg-muted font-semibold',
           textSizeClasses[size],
-          className
+          className,
         )}
       >
         {baseAsset.charAt(0)}
@@ -59,7 +55,7 @@ export function SymbolIcon({
           parent.innerHTML = `<div class="${cn(
             sizeClasses[size],
             'flex items-center justify-center rounded-full bg-muted font-semibold',
-            textSizeClasses[size]
+            textSizeClasses[size],
           )}">${baseAsset.charAt(0)}</div>`;
         }
       }}

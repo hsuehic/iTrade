@@ -1,5 +1,5 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "emitDeclarationOnly": true,
     "noEmit": false,
@@ -8,8 +8,10 @@
     "noUnusedParameters": false,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "paths": {}
   },
-  "include": ["src/index.ts"],
+  "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
 }

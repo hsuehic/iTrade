@@ -26,7 +26,7 @@ type FormFieldContextValue<
 };
 
 const FormFieldContext = React.createContext<FormFieldContextValue>(
-  {} as FormFieldContextValue
+  {} as FormFieldContextValue,
 );
 
 const FormField = <
@@ -70,7 +70,7 @@ type FormItemContextValue = {
 };
 
 const FormItemContext = React.createContext<FormItemContextValue>(
-  {} as FormItemContextValue
+  {} as FormItemContextValue,
 );
 
 function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
@@ -78,11 +78,7 @@ function FormItem({ className, ...props }: React.ComponentProps<'div'>) {
 
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div
-        data-slot="form-item"
-        className={cn('grid gap-2', className)}
-        {...props}
-      />
+      <div data-slot="form-item" className={cn('grid gap-2', className)} {...props} />
     </FormItemContext.Provider>
   );
 }
@@ -105,17 +101,14 @@ function FormLabel({
 }
 
 function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
-  const { error, formItemId, formDescriptionId, formMessageId } =
-    useFormField();
+  const { error, formItemId, formDescriptionId, formMessageId } = useFormField();
 
   return (
     <Slot
       data-slot="form-control"
       id={formItemId}
       aria-describedby={
-        !error
-          ? `${formDescriptionId}`
-          : `${formDescriptionId} ${formMessageId}`
+        !error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`
       }
       aria-invalid={!!error}
       {...props}

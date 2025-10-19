@@ -20,6 +20,14 @@ import {
   ExchangeCredentials,
 } from '@itrade/core';
 
+export type OkxWsType = 'public' | 'private' | 'business';
+
+export const OKX_WS_URLS: Record<OkxWsType, string> = {
+  public: 'wss://ws.okx.com:8443/ws/v5/public',
+  private: 'wss://ws.okx.com:8443/ws/v5/private',
+  business: 'wss://ws.okx.com:8443/ws/v5/business',
+} as const;
+
 import { BaseExchange } from '../base/BaseExchange';
 
 export interface OKXCredentials extends ExchangeCredentials {
@@ -29,7 +37,7 @@ export interface OKXCredentials extends ExchangeCredentials {
 export class OKXExchange extends BaseExchange {
   private static readonly MAINNET_BASE_URL = 'https://www.okx.com';
   private static readonly TESTNET_BASE_URL = 'https://www.okx.com'; // OKX 使用同一个 URL，通过 demo trading 模式区分
-  private static readonly MAINNET_WS_URL = 'wss://ws.okx.com:8443/ws/v5/public';
+  private static readonly MAINNET_WS_URL_PUBLIC = OKX_WS_URLS.public;
   private static readonly TESTNET_WS_URL =
     'wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999'; // Demo trading
 
@@ -37,12 +45,10 @@ export class OKXExchange extends BaseExchange {
   private isDemo: boolean;
 
   constructor(isDemo = false) {
-    const baseUrl = isDemo
-      ? OKXExchange.TESTNET_BASE_URL
-      : OKXExchange.MAINNET_BASE_URL;
+    const baseUrl = isDemo ? OKXExchange.TESTNET_BASE_URL : OKXExchange.MAINNET_BASE_URL;
     const wsBaseUrl = isDemo
       ? OKXExchange.TESTNET_WS_URL
-      : OKXExchange.MAINNET_WS_URL;
+      : OKXExchange.MAINNET_WS_URL_PUBLIC;
 
     super('okx', baseUrl, wsBaseUrl);
     this.isDemo = isDemo;
@@ -135,7 +141,7 @@ export class OKXExchange extends BaseExchange {
     interval: string,
     startTime?: Date,
     endTime?: Date,
-    limit = 100
+    limit = 100,
   ): Promise<Kline[]> {
     const instId = this.normalizeSymbol(symbol);
     const bar = this.normalizeInterval(interval);
@@ -184,7 +190,7 @@ export class OKXExchange extends BaseExchange {
     price?: Decimal,
     stopPrice?: Decimal,
     _timeInForce: TimeInForce = TimeInForce.GTC,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
 
@@ -208,18 +214,10 @@ export class OKXExchange extends BaseExchange {
       orderData.clOrdId = clientOrderId;
     }
 
-    const signedData = this.signOKXRequest(
-      'POST',
-      '/api/v5/trade/order',
-      orderData
-    );
-    const response = await this.httpClient.post(
-      '/api/v5/trade/order',
-      orderData,
-      {
-        headers: signedData.headers,
-      }
-    );
+    const signedData = this.signOKXRequest('POST', '/api/v5/trade/order', orderData);
+    const response = await this.httpClient.post('/api/v5/trade/order', orderData, {
+      headers: signedData.headers,
+    });
 
     if (response.data.code !== '0') {
       throw new Error(`OKX API error: ${response.data.msg}`);
@@ -232,7 +230,7 @@ export class OKXExchange extends BaseExchange {
   public async cancelOrder(
     symbol: string,
     orderId: string,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
 
@@ -247,14 +245,14 @@ export class OKXExchange extends BaseExchange {
     const signedData = this.signOKXRequest(
       'POST',
       '/api/v5/trade/cancel-order',
-      cancelData
+      cancelData,
     );
     const response = await this.httpClient.post(
       '/api/v5/trade/cancel-order',
       cancelData,
       {
         headers: signedData.headers,
-      }
+      },
     );
 
     if (response.data.code !== '0') {
@@ -268,7 +266,7 @@ export class OKXExchange extends BaseExchange {
   public async getOrder(
     symbol: string,
     orderId: string,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
 
@@ -279,11 +277,7 @@ export class OKXExchange extends BaseExchange {
       params.ordId = orderId;
     }
 
-    const signedData = this.signOKXRequest(
-      'GET',
-      '/api/v5/trade/order',
-      params
-    );
+    const signedData = this.signOKXRequest('GET', '/api/v5/trade/order', params);
     const response = await this.httpClient.get('/api/v5/trade/order', {
       params,
       headers: signedData.headers,
@@ -300,7 +294,7 @@ export class OKXExchange extends BaseExchange {
       data.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
       this.transformOKXOrderType(data.ordType),
       this.formatDecimal(data.sz),
-      data.px ? this.formatDecimal(data.px) : undefined
+      data.px ? this.formatDecimal(data.px) : undefined,
     );
   }
 
@@ -310,11 +304,7 @@ export class OKXExchange extends BaseExchange {
       params.instId = this.normalizeSymbol(symbol);
     }
 
-    const signedData = this.signOKXRequest(
-      'GET',
-      '/api/v5/trade/orders-pending',
-      params
-    );
+    const signedData = this.signOKXRequest('GET', '/api/v5/trade/orders-pending', params);
     const response = await this.httpClient.get('/api/v5/trade/orders-pending', {
       params,
       headers: signedData.headers,
@@ -331,8 +321,8 @@ export class OKXExchange extends BaseExchange {
         order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
         this.transformOKXOrderType(order.ordType),
         this.formatDecimal(order.sz),
-        order.px ? this.formatDecimal(order.px) : undefined
-      )
+        order.px ? this.formatDecimal(order.px) : undefined,
+      ),
     );
   }
 
@@ -344,11 +334,7 @@ export class OKXExchange extends BaseExchange {
       params.instId = this.normalizeSymbol(symbol);
     }
 
-    const signedData = this.signOKXRequest(
-      'GET',
-      '/api/v5/trade/orders-history',
-      params
-    );
+    const signedData = this.signOKXRequest('GET', '/api/v5/trade/orders-history', params);
     const response = await this.httpClient.get('/api/v5/trade/orders-history', {
       params,
       headers: signedData.headers,
@@ -365,17 +351,13 @@ export class OKXExchange extends BaseExchange {
         order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
         this.transformOKXOrderType(order.ordType),
         this.formatDecimal(order.sz),
-        order.px ? this.formatDecimal(order.px) : undefined
-      )
+        order.px ? this.formatDecimal(order.px) : undefined,
+      ),
     );
   }
 
   public async getAccountInfo(): Promise<AccountInfo> {
-    const signedData = this.signOKXRequest(
-      'GET',
-      '/api/v5/account/balance',
-      {}
-    );
+    const signedData = this.signOKXRequest('GET', '/api/v5/account/balance', {});
     const response = await this.httpClient.get('/api/v5/account/balance', {
       headers: signedData.headers,
     });
@@ -413,11 +395,7 @@ export class OKXExchange extends BaseExchange {
   }
 
   public async getPositions(): Promise<Position[]> {
-    const signedData = this.signOKXRequest(
-      'GET',
-      '/api/v5/account/positions',
-      {}
-    );
+    const signedData = this.signOKXRequest('GET', '/api/v5/account/positions', {});
     const response = await this.httpClient.get('/api/v5/account/positions', {
       headers: signedData.headers,
     });
@@ -431,9 +409,7 @@ export class OKXExchange extends BaseExchange {
       side: pos.posSide === 'long' ? 'long' : 'short',
       quantity: this.formatDecimal((pos.pos ?? '0').toString()),
       avgPrice: this.formatDecimal((pos.avgPx ?? '0').toString()),
-      markPrice: this.formatDecimal(
-        (pos.markPx ?? pos.avgPx ?? '0').toString()
-      ),
+      markPrice: this.formatDecimal((pos.markPx ?? pos.avgPx ?? '0').toString()),
       unrealizedPnl: this.formatDecimal((pos.upl ?? '0').toString()),
       leverage: this.formatDecimal((pos.lever ?? '0').toString()),
       timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
@@ -496,35 +472,40 @@ export class OKXExchange extends BaseExchange {
     return upperSymbol.replace('/', '-');
   }
 
-  protected buildWebSocketUrl(): string {
+  private createWsConnect(key: OkxWsType) {
+    const wsUrl = this.buildWebSocketUrl(key);
+    const ws = new WebSocket(wsUrl);
+    return new Promise((resolve) => {
+      ws.on('open', () => {
+        this.emit('ws_connected', this.name);
+        resolve(void 0);
+      });
+    });
+  }
+
+  protected buildWebSocketUrl(key?: OkxWsType): string {
     // OKX WebSocket 不需要在 URL 中指定 streams
+    if (key) {
+      return OKX_WS_URLS[key];
+    }
     return this.wsBaseUrl;
   }
 
-  protected async sendWebSocketSubscription(
-    type: string,
-    symbol: string
-  ): Promise<void> {
-    const ws = this.wsConnections.get('market');
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      await this.createWebSocketConnection();
-      // 等待连接建立
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+  protected async sendWebSocketSubscription(type: string, symbol: string): Promise<void> {
+    const channel = this.getOKXChannel(type, symbol);
+    const subscribeMsg = {
+      op: 'subscribe',
+      args: [channel],
+    };
 
     const wsReady = this.wsConnections.get('market');
     if (wsReady && wsReady.readyState === WebSocket.OPEN) {
-      const channel = this.getOKXChannel(type, symbol);
-      const subscribeMsg = {
-        op: 'subscribe',
-        args: [channel],
-      };
-
       wsReady.send(JSON.stringify(subscribeMsg));
     }
   }
 
   protected handleWebSocketMessage(message: any): void {
+    console.log(message);
     // OKX 的消息格式
     if (message.event === 'subscribe') {
       this.emit('ws_subscribed', message.arg);
@@ -543,11 +524,7 @@ export class OKXExchange extends BaseExchange {
       if (channel === 'tickers') {
         this.emit('ticker', instId, this.transformOKXTicker(data, instId));
       } else if (channel === 'books5' || channel === 'books') {
-        this.emit(
-          'orderbook',
-          instId,
-          this.transformOKXOrderBook(data, instId)
-        );
+        this.emit('orderbook', instId, this.transformOKXOrderBook(data, instId));
       } else if (channel === 'trades') {
         this.emit('trade', instId, this.transformOKXTrade(data, instId));
       } else if (channel.startsWith('candle')) {
@@ -564,7 +541,7 @@ export class OKXExchange extends BaseExchange {
   private signOKXRequest(
     method: string,
     endpoint: string,
-    params: Record<string, any>
+    params: Record<string, any>,
   ): { headers: Record<string, string>; body?: string } {
     if (!this.credentials) {
       throw new Error('Exchange credentials not set');
@@ -718,7 +695,7 @@ export class OKXExchange extends BaseExchange {
     side: OrderSide,
     type: OrderType,
     quantity: Decimal,
-    price?: Decimal
+    price?: Decimal,
   ): Order {
     return {
       id: order.ordId || uuidv4(),
@@ -732,9 +709,7 @@ export class OKXExchange extends BaseExchange {
       timeInForce: 'GTC' as TimeInForce,
       timestamp: new Date(parseInt(order.cTime || order.uTime)),
       updateTime: new Date(parseInt(order.uTime)),
-      executedQuantity: order.accFillSz
-        ? this.formatDecimal(order.accFillSz)
-        : undefined,
+      executedQuantity: order.accFillSz ? this.formatDecimal(order.accFillSz) : undefined,
     };
   }
 
@@ -804,13 +779,14 @@ export class OKXExchange extends BaseExchange {
         return { channel: 'books5', instId };
       case 'trades':
         return { channel: 'trades', instId };
-      case 'klines':
+      case 'klines': {
         // symbol 格式: BTC-USDT@1m
         const [sym, interval] = symbol.split('@');
         return {
           channel: `candle${this.normalizeInterval(interval || '1m')}`,
           instId: this.normalizeSymbol(sym),
         };
+      }
       default:
         return { channel: 'tickers', instId };
     }

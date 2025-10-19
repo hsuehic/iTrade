@@ -85,11 +85,7 @@ export function ResetPasswordForm() {
           });
         }}
       >
-        {loading ? (
-          <Loader2 size={16} className="animate-spin" />
-        ) : (
-          'Reset Password'
-        )}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Reset Password'}
       </Button>
     </div>
   );

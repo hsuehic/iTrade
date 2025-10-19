@@ -12,10 +12,7 @@ import {
   IconClock,
   IconSettings,
 } from '@tabler/icons-react';
-import {
-  getStrategyDefaultParameters,
-  type StrategyTypeKey,
-} from '@itrade/core';
+import { getStrategyDefaultParameters, type StrategyTypeKey } from '@itrade/core';
 import {
   getImplementedStrategies,
   getAllStrategiesWithImplementationStatus,
@@ -86,9 +83,7 @@ export default function StrategyPage() {
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [strategyToDelete, setStrategyToDelete] = useState<Strategy | null>(
-    null
-  );
+  const [strategyToDelete, setStrategyToDelete] = useState<Strategy | null>(null);
   // 使用策略配置系统获取默认值
   const getDefaultStrategyType = (): StrategyTypeKey => {
     const implementedStrategies = getImplementedStrategies();
@@ -102,15 +97,12 @@ export default function StrategyPage() {
   };
 
   // 处理参数表单变化
-  const handleParametersChange = useCallback(
-    (parameters: Record<string, unknown>) => {
-      setFormData((prev) => ({
-        ...prev,
-        parameters: JSON.stringify(parameters, null, 2),
-      }));
-    },
-    []
-  );
+  const handleParametersChange = useCallback((parameters: Record<string, unknown>) => {
+    setFormData((prev) => ({
+      ...prev,
+      parameters: JSON.stringify(parameters, null, 2),
+    }));
+  }, []);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -121,7 +113,7 @@ export default function StrategyPage() {
     parameters: JSON.stringify(
       getDefaultParametersForType(getDefaultStrategyType()),
       null,
-      2
+      2,
     ),
   });
 
@@ -166,9 +158,7 @@ export default function StrategyPage() {
         return;
       }
 
-      const url = isEditing
-        ? `/api/strategies/${editingId}`
-        : '/api/strategies';
+      const url = isEditing ? `/api/strategies/${editingId}` : '/api/strategies';
       const method = isEditing ? 'PATCH' : 'POST';
 
       const response = await fetch(url, {
@@ -180,13 +170,11 @@ export default function StrategyPage() {
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
-          error.error || `Failed to ${isEditing ? 'update' : 'create'} strategy`
+          error.error || `Failed to ${isEditing ? 'update' : 'create'} strategy`,
         );
       }
 
-      toast.success(
-        `Strategy ${isEditing ? 'updated' : 'created'} successfully`
-      );
+      toast.success(`Strategy ${isEditing ? 'updated' : 'created'} successfully`);
       setIsCreateDialogOpen(false);
       resetForm();
       fetchStrategies();
@@ -217,11 +205,7 @@ export default function StrategyPage() {
       type: defaultType,
       exchange: 'coinbase',
       symbol: 'BTC/USDC:USDC',
-      parameters: JSON.stringify(
-        getDefaultParametersForType(defaultType),
-        null,
-        2
-      ),
+      parameters: JSON.stringify(getDefaultParametersForType(defaultType), null, 2),
     });
     setIsEditing(false);
     setEditingId(null);
@@ -238,9 +222,7 @@ export default function StrategyPage() {
 
       if (!response.ok) throw new Error('Failed to update strategy status');
 
-      toast.success(
-        `Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`
-      );
+      toast.success(`Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`);
       fetchStrategies();
     } catch (_error) {
       toast.error('Failed to update strategy status');
@@ -274,27 +256,19 @@ export default function StrategyPage() {
       fetchStrategies();
       closeDeleteDialog();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to delete strategy'
-      );
+      toast.error(error instanceof Error ? error.message : 'Failed to delete strategy');
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<
-      string,
-      'default' | 'secondary' | 'destructive' | 'outline'
-    > = {
-      active: 'default',
-      stopped: 'secondary',
-      paused: 'outline',
-      error: 'destructive',
-    };
-    return (
-      <Badge variant={variants[status] || 'default'}>
-        {status.toUpperCase()}
-      </Badge>
-    );
+    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> =
+      {
+        active: 'default',
+        stopped: 'secondary',
+        paused: 'outline',
+        error: 'destructive',
+      };
+    return <Badge variant={variants[status] || 'default'}>{status.toUpperCase()}</Badge>;
   };
 
   const getStatusColor = (status: string) => {
@@ -357,17 +331,14 @@ export default function StrategyPage() {
                       <Tabs defaultValue="basic" className="w-full">
                         <TabsList className="grid w-full grid-cols-2">
                           <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                          <TabsTrigger value="config">
-                            Configuration
-                          </TabsTrigger>
+                          <TabsTrigger value="config">Configuration</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="basic" className="space-y-4 mt-4">
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label htmlFor="name">
-                                Strategy Name{' '}
-                                <span className="text-red-500">*</span>
+                                Strategy Name <span className="text-red-500">*</span>
                               </Label>
                               <Input
                                 id="name"
@@ -384,8 +355,7 @@ export default function StrategyPage() {
                             </div>
                             <div className="space-y-2">
                               <Label htmlFor="type">
-                                Strategy Type{' '}
-                                <span className="text-red-500">*</span>
+                                Strategy Type <span className="text-red-500">*</span>
                               </Label>
                               <Select
                                 value={formData.type}
@@ -396,11 +366,7 @@ export default function StrategyPage() {
                                   setFormData({
                                     ...formData,
                                     type: value,
-                                    parameters: JSON.stringify(
-                                      newParameters,
-                                      null,
-                                      2
-                                    ),
+                                    parameters: JSON.stringify(newParameters, null, 2),
                                   });
                                   // 重置为表单模式以便用户看到新策略的参数
                                   setShowAdvancedMode(false);
@@ -431,7 +397,7 @@ export default function StrategyPage() {
                                           </div>
                                         </div>
                                       </SelectItem>
-                                    )
+                                    ),
                                   )}
                                 </SelectContent>
                               </Select>
@@ -447,8 +413,7 @@ export default function StrategyPage() {
                                 value={formData.exchange}
                                 onValueChange={(value) => {
                                   // Update exchange and set default trading pair for that exchange
-                                  const defaultTradingPair =
-                                    getDefaultTradingPair(value);
+                                  const defaultTradingPair = getDefaultTradingPair(value);
                                   setFormData({
                                     ...formData,
                                     exchange: value,
@@ -468,14 +433,9 @@ export default function StrategyPage() {
                                         ? exchange.logoUrl
                                         : undefined;
                                     const iconEmoji =
-                                      'iconEmoji' in exchange
-                                        ? exchange.iconEmoji
-                                        : '💱';
+                                      'iconEmoji' in exchange ? exchange.iconEmoji : '💱';
                                     return (
-                                      <SelectItem
-                                        key={exchange.id}
-                                        value={exchange.id}
-                                      >
+                                      <SelectItem key={exchange.id} value={exchange.id}>
                                         <div className="flex items-center gap-3">
                                           {logoUrl ? (
                                             <img
@@ -489,9 +449,7 @@ export default function StrategyPage() {
                                               }}
                                             />
                                           ) : (
-                                            <span className="text-base">
-                                              {iconEmoji}
-                                            </span>
+                                            <span className="text-base">{iconEmoji}</span>
                                           )}
                                           <div className="flex items-center gap-2">
                                             <span className="font-medium">
@@ -513,8 +471,7 @@ export default function StrategyPage() {
                             </div>
                             <div className="space-y-2">
                               <Label htmlFor="symbol">
-                                Trading Pair{' '}
-                                <span className="text-red-500">*</span>
+                                Trading Pair <span className="text-red-500">*</span>
                               </Label>
                               <Select
                                 value={formData.symbol}
@@ -526,42 +483,37 @@ export default function StrategyPage() {
                                   <SelectValue placeholder="Select trading pair" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getTradingPairsForExchange(
-                                    formData.exchange
-                                  ).map((pair) => (
-                                    <SelectItem
-                                      key={pair.symbol}
-                                      value={pair.symbol}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <img
-                                          src={getCryptoIconUrl(pair.base)}
-                                          alt={pair.base}
-                                          className="w-4 h-4 rounded-full"
-                                          onError={(e) => {
+                                  {getTradingPairsForExchange(formData.exchange).map(
+                                    (pair) => (
+                                      <SelectItem key={pair.symbol} value={pair.symbol}>
+                                        <div className="flex items-center gap-2">
+                                          <img
+                                            src={getCryptoIconUrl(pair.base)}
+                                            alt={pair.base}
+                                            className="w-4 h-4 rounded-full"
+                                            onError={(e) => {
+                                              (
+                                                e.target as HTMLImageElement
+                                              ).style.display = 'none';
+                                            }}
+                                          />
+                                          <span className="font-medium">{pair.name}</span>
+                                          <span className="text-xs text-muted-foreground">
                                             (
-                                              e.target as HTMLImageElement
-                                            ).style.display = 'none';
-                                          }}
-                                        />
-                                        <span className="font-medium">
-                                          {pair.name}
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">
-                                          (
-                                          {pair.type === 'perpetual'
-                                            ? '⚡ Perp'
-                                            : '💼 Spot'}
-                                          )
-                                        </span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
+                                            {pair.type === 'perpetual'
+                                              ? '⚡ Perp'
+                                              : '💼 Spot'}
+                                            )
+                                          </span>
+                                        </div>
+                                      </SelectItem>
+                                    ),
+                                  )}
                                 </SelectContent>
                               </Select>
                               <p className="text-xs text-muted-foreground">
-                                Format: {getSymbolFormatHint(formData.exchange)}{' '}
-                                • Backend normalizes automatically
+                                Format: {getSymbolFormatHint(formData.exchange)} • Backend
+                                normalizes automatically
                               </p>
                             </div>
                           </div>
@@ -600,9 +552,7 @@ export default function StrategyPage() {
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() =>
-                                setShowAdvancedMode(!showAdvancedMode)
-                              }
+                              onClick={() => setShowAdvancedMode(!showAdvancedMode)}
                             >
                               {showAdvancedMode ? (
                                 <>
@@ -630,16 +580,15 @@ export default function StrategyPage() {
                                 }
                                 placeholder={JSON.stringify(
                                   getDefaultParametersForType(
-                                    formData.type as StrategyTypeKey
+                                    formData.type as StrategyTypeKey,
                                   ),
                                   null,
-                                  2
+                                  2,
                                 )}
                               />
                               <p className="text-xs text-muted-foreground">
-                                Advanced mode: Edit parameters in JSON format.
-                                Switch to form mode for guided parameter
-                                configuration.
+                                Advanced mode: Edit parameters in JSON format. Switch to
+                                form mode for guided parameter configuration.
                               </p>
                             </div>
                           ) : (
@@ -661,17 +610,16 @@ export default function StrategyPage() {
                                 Short-term moving average period
                               </li>
                               <li>
-                                • <code className="font-mono">slowPeriod</code>:
-                                Long-term moving average period
+                                • <code className="font-mono">slowPeriod</code>: Long-term
+                                moving average period
                               </li>
                               <li>
-                                • <code className="font-mono">threshold</code>:
-                                Signal threshold (0.001 = 0.1%)
+                                • <code className="font-mono">threshold</code>: Signal
+                                threshold (0.001 = 0.1%)
                               </li>
                               <li>
-                                •{' '}
-                                <code className="font-mono">subscription</code>:
-                                Market data subscription config
+                                • <code className="font-mono">subscription</code>: Market
+                                data subscription config
                               </li>
                             </ul>
                           </div>
@@ -715,13 +663,10 @@ export default function StrategyPage() {
                       <div className="rounded-full bg-muted p-4 mb-4">
                         <IconChartLine className="h-8 w-8 text-muted-foreground" />
                       </div>
-                      <h3 className="text-lg font-semibold mb-2">
-                        No strategies yet
-                      </h3>
+                      <h3 className="text-lg font-semibold mb-2">No strategies yet</h3>
                       <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-                        Get started by creating your first automated trading
-                        strategy. Configure parameters, set your trading pair,
-                        and start trading.
+                        Get started by creating your first automated trading strategy.
+                        Configure parameters, set your trading pair, and start trading.
                       </p>
                       <Button onClick={() => setIsCreateDialogOpen(true)}>
                         <IconPlus className="mr-2 h-4 w-4" />
@@ -761,9 +706,7 @@ export default function StrategyPage() {
 
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">
-                                Exchange
-                              </span>
+                              <span className="text-muted-foreground">Exchange</span>
                               <Badge
                                 variant="outline"
                                 className="font-medium gap-1.5 flex items-center"
@@ -779,20 +722,13 @@ export default function StrategyPage() {
                               </Badge>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">
-                                Trading Pair
-                              </span>
+                              <span className="text-muted-foreground">Trading Pair</span>
                               <div className="flex items-center gap-2">
                                 {strategy.symbol && (
-                                  <SymbolIcon
-                                    symbol={strategy.symbol}
-                                    size="sm"
-                                  />
+                                  <SymbolIcon symbol={strategy.symbol} size="sm" />
                                 )}
                                 <span className="font-mono font-medium">
-                                  {strategy.normalizedSymbol ||
-                                    strategy.symbol ||
-                                    'N/A'}
+                                  {strategy.normalizedSymbol || strategy.symbol || 'N/A'}
                                 </span>
                                 {strategy.marketType &&
                                   strategy.marketType !== 'spot' && (
@@ -804,9 +740,7 @@ export default function StrategyPage() {
                                           : 'Futures'
                                       }
                                     >
-                                      {strategy.marketType === 'perpetual'
-                                        ? '⚡'
-                                        : '📈'}
+                                      {strategy.marketType === 'perpetual' ? '⚡' : '📈'}
                                     </span>
                                   )}
                               </div>
@@ -816,9 +750,7 @@ export default function StrategyPage() {
                                 <IconClock className="h-3 w-3" />
                                 <span>
                                   Last run:{' '}
-                                  {new Date(
-                                    strategy.lastExecutionTime
-                                  ).toLocaleString()}
+                                  {new Date(strategy.lastExecutionTime).toLocaleString()}
                                 </span>
                               </div>
                             )}
@@ -829,9 +761,7 @@ export default function StrategyPage() {
                             <Button
                               variant="outline"
                               className="flex-1"
-                              onClick={() =>
-                                updateStrategyStatus(strategy.id, 'stopped')
-                              }
+                              onClick={() => updateStrategyStatus(strategy.id, 'stopped')}
                             >
                               <IconPlayerPause className="h-4 w-4 mr-2" />
                               Stop
@@ -839,9 +769,7 @@ export default function StrategyPage() {
                           ) : (
                             <Button
                               className="flex-1"
-                              onClick={() =>
-                                updateStrategyStatus(strategy.id, 'active')
-                              }
+                              onClick={() => updateStrategyStatus(strategy.id, 'active')}
                             >
                               <IconPlayerPlay className="h-4 w-4 mr-2" />
                               Start
@@ -892,18 +820,14 @@ export default function StrategyPage() {
               <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Name:</span>
-                  <span className="text-sm font-semibold">
-                    {strategyToDelete.name}
-                  </span>
+                  <span className="text-sm font-semibold">{strategyToDelete.name}</span>
                 </div>
                 {strategyToDelete.symbol && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Symbol:</span>
                     <div className="flex items-center gap-2">
                       <SymbolIcon symbol={strategyToDelete.symbol} size="sm" />
-                      <span className="text-sm font-mono">
-                        {strategyToDelete.symbol}
-                      </span>
+                      <span className="text-sm font-mono">{strategyToDelete.symbol}</span>
                     </div>
                   </div>
                 )}
@@ -911,10 +835,7 @@ export default function StrategyPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Exchange:</span>
                     <div className="flex items-center gap-2">
-                      <ExchangeLogo
-                        exchange={strategyToDelete.exchange}
-                        size="sm"
-                      />
+                      <ExchangeLogo exchange={strategyToDelete.exchange} size="sm" />
                       <span className="text-sm capitalize">
                         {strategyToDelete.exchange}
                       </span>
@@ -923,8 +844,8 @@ export default function StrategyPage() {
                 )}
               </div>
               <p className="text-sm text-muted-foreground mt-4">
-                This action cannot be undone. This will permanently delete the
-                strategy and all associated data.
+                This action cannot be undone. This will permanently delete the strategy
+                and all associated data.
               </p>
             </div>
           )}

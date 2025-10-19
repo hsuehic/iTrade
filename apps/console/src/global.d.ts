@@ -7,8 +7,8 @@ namespace NodeJS {
     COINBASE_SECRET_KEY: string;
 
     OKX_API_KEY: string;
-    OKX_API_SECRET: string;
-    OKX_API_PASSPHRASE: string;
+    OKX_SECRET_KEY: string;
+    OKX_PASSPHRASE: string;
     OKX_API_IS_DEMO: string;
   }
 }

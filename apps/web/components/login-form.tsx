@@ -7,7 +7,7 @@ import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { IconGithub, IconGoogle } from '@/components/icons';
+import { IconApple, IconGithub, IconGoogle } from '@/components/icons';
 export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -80,11 +80,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
           />
         </div>
         {error && <p className="text-red-500">{error}</p>}
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={isPending || loading}
-        >
+        <Button type="submit" className="w-full" disabled={isPending || loading}>
           Login
         </Button>
         <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
@@ -92,7 +88,16 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             Or continue with
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-4 center">
+        <div className="grid grid-cols-3 gap-4 center">
+          <Button
+            variant="outline"
+            type="button"
+            className="w-full"
+            onClick={() => signIn.social({ provider: 'apple' })}
+          >
+            <IconApple />
+            <span className="sr-only">Login with Google</span>
+          </Button>
           <Button
             variant="outline"
             type="button"

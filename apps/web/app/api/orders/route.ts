@@ -32,10 +32,7 @@ export async function GET(request: NextRequest) {
     if (strategyId) {
       const id = parseInt(strategyId);
       if (isNaN(id)) {
-        return NextResponse.json(
-          { error: 'Invalid strategy ID' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
       }
       filters.strategyId = id;
     }
@@ -50,9 +47,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ orders });
   } catch (error) {
     console.error('Failed to fetch orders:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch orders' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
   }
 }

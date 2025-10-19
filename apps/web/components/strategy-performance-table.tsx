@@ -1,12 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  IconTrendingDown,
-  IconTrendingUp,
-  IconCheck,
-  IconX,
-} from '@tabler/icons-react';
+import { IconTrendingDown, IconTrendingUp, IconCheck, IconX } from '@tabler/icons-react';
 
 import {
   Card,
@@ -171,9 +166,7 @@ export function StrategyPerformanceTable() {
                   <TableBody>
                     {topStrategies.map((strategy) => (
                       <TableRow key={strategy.id}>
-                        <TableCell className="font-medium">
-                          {strategy.name}
-                        </TableCell>
+                        <TableCell className="font-medium">{strategy.name}</TableCell>
                         <TableCell>
                           <StrategySymbol strategy={strategy} />
                         </TableCell>
@@ -182,10 +175,7 @@ export function StrategyPerformanceTable() {
                             variant="outline"
                             className="flex items-center gap-1.5 w-fit capitalize"
                           >
-                            <ExchangeLogo
-                              exchange={strategy.exchange}
-                              size="sm"
-                            />
+                            <ExchangeLogo exchange={strategy.exchange} size="sm" />
                             {strategy.exchange}
                           </Badge>
                         </TableCell>
@@ -256,9 +246,7 @@ export function StrategyPerformanceTable() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Exchange</TableHead>
-                      <TableHead className="text-right">
-                        Total Strategies
-                      </TableHead>
+                      <TableHead className="text-right">Total Strategies</TableHead>
                       <TableHead className="text-right">Active</TableHead>
                       <TableHead className="text-right">Total P&L</TableHead>
                       <TableHead className="text-right">Avg P&L</TableHead>
@@ -274,10 +262,7 @@ export function StrategyPerformanceTable() {
                               variant="outline"
                               className="flex items-center gap-1.5 w-fit text-sm"
                             >
-                              <ExchangeLogo
-                                exchange={stat.exchange}
-                                size="sm"
-                              />
+                              <ExchangeLogo exchange={stat.exchange} size="sm" />
                               {stat.exchange}
                             </Badge>
                           </TableCell>
@@ -325,9 +310,7 @@ export function StrategyPerformanceTable() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Symbol</TableHead>
-                      <TableHead className="text-right">
-                        Total Strategies
-                      </TableHead>
+                      <TableHead className="text-right">Total Strategies</TableHead>
                       <TableHead className="text-right">Active</TableHead>
                       <TableHead className="text-right">Total P&L</TableHead>
                       <TableHead className="text-right">Avg P&L</TableHead>

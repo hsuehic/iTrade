@@ -26,8 +26,7 @@ export function SendResetPasswordLinkForm() {
       {sent ? (
         <div>
           We sent a password reset link to <i>{email}</i>. <br />
-          Please check your inbox and click the link to reset your password.{' '}
-          <br />
+          Please check your inbox and click the link to reset your password. <br />
           <Button
             type="button"
             className="mt-2"
@@ -39,8 +38,8 @@ export function SendResetPasswordLinkForm() {
       ) : (
         <>
           <p className="text-muted-foreground text-balance">
-            Please input your register email address, we will send a reset
-            password link to your email. Back to{' '}
+            Please input your register email address, we will send a reset password link
+            to your email. Back to{' '}
             <a href="/auth/sign-in" className="primary-text!">
               sign in
             </a>

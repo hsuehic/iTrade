@@ -23,10 +23,7 @@ export async function GET(request: NextRequest) {
       // Get PnL for specific strategy
       const id = parseInt(strategyId);
       if (isNaN(id)) {
-        return NextResponse.json(
-          { error: 'Invalid strategy ID' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid strategy ID' }, { status: 400 });
       }
 
       // Check ownership - need to include user for authorization
@@ -44,9 +41,6 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error fetching PnL:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch PnL data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch PnL data' }, { status: 500 });
   }
 }

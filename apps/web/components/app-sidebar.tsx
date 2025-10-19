@@ -16,9 +16,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-export async function AppSidebar({
-  ...props
-}: React.ComponentProps<typeof Sidebar>) {
+export async function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = (await headers()).get('x-current-pathname');
   return (
     <Sidebar collapsible="offcanvas" {...props}>

@@ -12,7 +12,7 @@ import { SidebarInset } from '@/components/ui/sidebar';
 // 可配置的刷新间隔（毫秒）
 // 1000 = 1秒, 5000 = 5秒, 10000 = 10秒
 const REFRESH_INTERVAL = parseInt(
-  process.env.NEXT_PUBLIC_DASHBOARD_REFRESH_INTERVAL || '5000'
+  process.env.NEXT_PUBLIC_DASHBOARD_REFRESH_INTERVAL || '5000',
 );
 
 export default function Page() {
@@ -27,9 +27,7 @@ export default function Page() {
         if (response.ok) {
           const data = await response.json();
           if (data.exchanges && data.exchanges.length > 0) {
-            const exchanges = data.exchanges.map(
-              (e: { exchange: string }) => e.exchange
-            );
+            const exchanges = data.exchanges.map((e: { exchange: string }) => e.exchange);
             setAvailableExchanges(exchanges);
           }
         }

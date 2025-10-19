@@ -89,9 +89,7 @@ export function StrategyParameterFormSimple({
           <Input
             type="number"
             value={(parameters.fastPeriod as number) || 12}
-            onChange={(e) =>
-              handleParameterChange('fastPeriod', Number(e.target.value))
-            }
+            onChange={(e) => handleParameterChange('fastPeriod', Number(e.target.value))}
             min={2}
             max={100}
           />
@@ -107,9 +105,7 @@ export function StrategyParameterFormSimple({
           <Input
             type="number"
             value={(parameters.slowPeriod as number) || 26}
-            onChange={(e) =>
-              handleParameterChange('slowPeriod', Number(e.target.value))
-            }
+            onChange={(e) => handleParameterChange('slowPeriod', Number(e.target.value))}
             min={3}
             max={200}
           />
@@ -124,9 +120,7 @@ export function StrategyParameterFormSimple({
         <Input
           type="number"
           value={(parameters.threshold as number) || 0.001}
-          onChange={(e) =>
-            handleParameterChange('threshold', Number(e.target.value))
-          }
+          onChange={(e) => handleParameterChange('threshold', Number(e.target.value))}
           min={0}
           max={0.1}
           step={0.001}
@@ -147,9 +141,7 @@ export function StrategyParameterFormSimple({
         <Input
           type="number"
           value={(parameters.period as number) || 14}
-          onChange={(e) =>
-            handleParameterChange('period', Number(e.target.value))
-          }
+          onChange={(e) => handleParameterChange('period', Number(e.target.value))}
           min={2}
           max={50}
         />
@@ -198,9 +190,7 @@ export function StrategyParameterFormSimple({
     <div className="space-y-4">
       <div className="text-center py-8 text-muted-foreground">
         <p>Custom strategy parameters can be configured in JSON mode</p>
-        <p className="text-xs mt-2">
-          Switch to JSON mode for advanced configuration
-        </p>
+        <p className="text-xs mt-2">Switch to JSON mode for advanced configuration</p>
       </div>
     </div>
   );
@@ -263,9 +253,7 @@ export function StrategyParameterFormSimple({
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />
               </div>
               <Switch
-                checked={Boolean(
-                  (parameters.subscription as SubscriptionConfig)?.ticker
-                )}
+                checked={Boolean((parameters.subscription as SubscriptionConfig)?.ticker)}
                 onCheckedChange={(checked: boolean) => {
                   const currentSub =
                     (parameters.subscription as SubscriptionConfig) || {};
@@ -283,9 +271,7 @@ export function StrategyParameterFormSimple({
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />
               </div>
               <Switch
-                checked={Boolean(
-                  (parameters.subscription as SubscriptionConfig)?.klines
-                )}
+                checked={Boolean((parameters.subscription as SubscriptionConfig)?.klines)}
                 onCheckedChange={(checked: boolean) => {
                   const currentSub =
                     (parameters.subscription as SubscriptionConfig) || {};
@@ -301,13 +287,9 @@ export function StrategyParameterFormSimple({
           <div className="space-y-2">
             <Label className="text-sm">Data Method</Label>
             <Select
-              value={
-                (parameters.subscription as SubscriptionConfig)?.method ||
-                'rest'
-              }
+              value={(parameters.subscription as SubscriptionConfig)?.method || 'rest'}
               onValueChange={(value) => {
-                const currentSub =
-                  (parameters.subscription as SubscriptionConfig) || {};
+                const currentSub = (parameters.subscription as SubscriptionConfig) || {};
                 handleParameterChange('subscription', {
                   ...currentSub,
                   method: value as 'rest' | 'websocket',
@@ -342,7 +324,7 @@ export function StrategyParameterFormSimple({
                       <span className="text-yellow-600 mt-0.5">•</span>
                       <span>{risk}</span>
                     </li>
-                  )
+                  ),
                 )}
               </ul>
             </div>

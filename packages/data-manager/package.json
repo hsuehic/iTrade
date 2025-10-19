@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --noEmit true && pkgroll --clean-dist; pkgroll",
+    "build": "tsc -p tsconfig.build.json --noEmit true && pkgroll --clean-dist --sourcemap  --tsconfig tsconfig.build.json",
     "sync-schema": "tsx sync-scheme-to-db.ts",
     "test": "vitest run",
     "test:watch": "vitest",

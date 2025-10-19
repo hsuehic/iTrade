@@ -221,7 +221,7 @@ export function extractBaseCurrency(symbol: string): string {
  */
 export function getTradingPairsForExchange(exchangeId: string) {
   return COMMON_TRADING_PAIRS.filter((pair) =>
-    pair.exchange.includes(exchangeId.toLowerCase())
+    pair.exchange.includes(exchangeId.toLowerCase()),
   );
 }
 
@@ -233,7 +233,7 @@ export function getDefaultTradingPair(exchangeId: string): string {
 
   // First try to find a perpetual BTC pair
   const btcPerp = exchangePairs.find(
-    (pair) => pair.base === 'BTC' && pair.type === 'perpetual'
+    (pair) => pair.base === 'BTC' && pair.type === 'perpetual',
   );
   if (btcPerp) return btcPerp.symbol;
 
@@ -252,10 +252,7 @@ export function getDefaultTradingPair(exchangeId: string): string {
  * Normalize symbol to exchange-specific format
  * This mirrors the backend normalizeSymbol logic
  */
-export function normalizeSymbolForExchange(
-  symbol: string,
-  exchangeId: string
-): string {
+export function normalizeSymbolForExchange(symbol: string, exchangeId: string): string {
   const upperSymbol = symbol.toUpperCase();
 
   switch (exchangeId.toLowerCase()) {

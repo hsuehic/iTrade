@@ -82,7 +82,7 @@ export function AccountBalanceChart({
 
       try {
         const response = await fetch(
-          `/api/analytics/account?period=${timeRange}&exchange=${selectedExchange}`
+          `/api/analytics/account?period=${timeRange}&exchange=${selectedExchange}`,
         );
         if (response.ok) {
           const data = await response.json();
@@ -105,13 +105,13 @@ export function AccountBalanceChart({
 
                 // Get the latest timestamp from previous data
                 const latestPrevTime = new Date(
-                  prevData[prevData.length - 1]?.date
+                  prevData[prevData.length - 1]?.date,
                 ).getTime();
 
                 // Find new data points that are newer than our latest
                 const newPoints = newChartData.filter(
                   (point: ChartDataPoint) =>
-                    new Date(point.date).getTime() > latestPrevTime
+                    new Date(point.date).getTime() > latestPrevTime,
                 );
 
                 if (newPoints.length === 0) {
@@ -135,7 +135,7 @@ export function AccountBalanceChart({
           // Extract exchange names from data
           if (data.chartData && data.chartData.length > 0) {
             const exchangeNames = Object.keys(data.chartData[0]).filter(
-              (key) => key !== 'date'
+              (key) => key !== 'date',
             );
             setExchanges(exchangeNames);
           }
@@ -247,9 +247,7 @@ export function AccountBalanceChart({
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Account Balance
-        </CardTitle>
+        <CardTitle className="flex items-center gap-2">Account Balance</CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
             {selectedExchange === 'all'
@@ -307,16 +305,11 @@ export function AccountBalanceChart({
           <div className="flex h-[450px] items-center justify-center text-muted-foreground">
             <div className="text-center space-y-2">
               <p className="text-lg font-medium">No data available</p>
-              <p className="text-sm">
-                Start trading to see your account balance history
-              </p>
+              <p className="text-sm">Start trading to see your account balance history</p>
             </div>
           </div>
         ) : (
-          <ChartContainer
-            config={chartConfig}
-            className="aspect-auto h-[450px] w-full"
-          >
+          <ChartContainer config={chartConfig} className="aspect-auto h-[450px] w-full">
             <AreaChart
               data={chartData}
               margin={{ top: 30, right: 40, left: 25, bottom: 25 }}
@@ -335,24 +328,24 @@ export function AccountBalanceChart({
                     <stop
                       offset="0%"
                       stopColor={
-                        chartConfig[exchange as keyof typeof chartConfig]
-                          ?.color || 'hsl(var(--primary))'
+                        chartConfig[exchange as keyof typeof chartConfig]?.color ||
+                        'hsl(var(--primary))'
                       }
                       stopOpacity={0.3}
                     />
                     <stop
                       offset="50%"
                       stopColor={
-                        chartConfig[exchange as keyof typeof chartConfig]
-                          ?.color || 'hsl(var(--primary))'
+                        chartConfig[exchange as keyof typeof chartConfig]?.color ||
+                        'hsl(var(--primary))'
                       }
                       stopOpacity={0.1}
                     />
                     <stop
                       offset="100%"
                       stopColor={
-                        chartConfig[exchange as keyof typeof chartConfig]
-                          ?.color || 'hsl(var(--primary))'
+                        chartConfig[exchange as keyof typeof chartConfig]?.color ||
+                        'hsl(var(--primary))'
                       }
                       stopOpacity={0.0}
                     />
@@ -453,11 +446,9 @@ export function AccountBalanceChart({
                         {payload.map((entry, index) => {
                           const exchangeName = entry.dataKey as string;
                           const displayName =
-                            chartConfig[
-                              exchangeName as keyof typeof chartConfig
-                            ]?.label ||
-                            exchangeName.charAt(0).toUpperCase() +
-                              exchangeName.slice(1);
+                            chartConfig[exchangeName as keyof typeof chartConfig]
+                              ?.label ||
+                            exchangeName.charAt(0).toUpperCase() + exchangeName.slice(1);
 
                           return (
                             <div
@@ -490,8 +481,8 @@ export function AccountBalanceChart({
                               {formatTooltipCurrency(
                                 payload.reduce(
                                   (sum, entry) => sum + (entry.value as number),
-                                  0
-                                )
+                                  0,
+                                ),
                               )}
                             </span>
                           </div>
@@ -506,9 +497,7 @@ export function AccountBalanceChart({
                   key={exchange}
                   type="monotone"
                   dataKey={exchange}
-                  stroke={
-                    chartConfig[exchange as keyof typeof chartConfig]?.color
-                  }
+                  stroke={chartConfig[exchange as keyof typeof chartConfig]?.color}
                   strokeWidth={1}
                   fill={`url(#gradient-${exchange})`}
                   fillOpacity={1}
@@ -519,8 +508,7 @@ export function AccountBalanceChart({
                           strokeWidth: 2,
                           fill: 'hsl(var(--background))',
                           stroke:
-                            chartConfig[exchange as keyof typeof chartConfig]
-                              ?.color,
+                            chartConfig[exchange as keyof typeof chartConfig]?.color,
                           filter: 'drop-shadow(0 2px 4px rgb(0 0 0 / 0.15))',
                         }
                       : false
@@ -528,8 +516,7 @@ export function AccountBalanceChart({
                   activeDot={{
                     r: 5,
                     strokeWidth: 2,
-                    fill: chartConfig[exchange as keyof typeof chartConfig]
-                      ?.color,
+                    fill: chartConfig[exchange as keyof typeof chartConfig]?.color,
                     stroke: 'hsl(var(--background))',
                     filter: 'drop-shadow(0 4px 8px rgb(0 0 0 / 0.2))',
                   }}

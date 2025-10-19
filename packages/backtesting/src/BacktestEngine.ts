@@ -1,13 +1,13 @@
 import { Decimal } from 'decimal.js';
 import {
+  BacktestConfig,
+  BacktestResult,
   IBacktestEngine,
   IStrategy,
   IDataManager,
-  BacktestConfig,
-  BacktestResult,
   BacktestTrade,
-  Kline,
   OrderSide,
+  Kline,
   StrategyResult,
 } from '@itrade/core';
 
@@ -23,7 +23,7 @@ export class BacktestEngine implements IBacktestEngine {
   public async runBacktest(
     strategy: IStrategy,
     config: BacktestConfig,
-    dataManager: IDataManager
+    dataManager: IDataManager,
   ): Promise<BacktestResult> {
     // Initialize backtest state
     this.trades = [];
@@ -53,14 +53,14 @@ export class BacktestEngine implements IBacktestEngine {
     symbol: string,
     strategy: IStrategy,
     config: BacktestConfig,
-    dataManager: IDataManager
+    dataManager: IDataManager,
   ): Promise<void> {
     // Get historical data
     const klines = await dataManager.getKlines(
       symbol,
       config.timeframe,
       config.startDate,
-      config.endDate
+      config.endDate,
     );
 
     // Process each kline
@@ -86,7 +86,7 @@ export class BacktestEngine implements IBacktestEngine {
     symbol: string,
     signal: StrategyResult,
     kline: Kline,
-    config: BacktestConfig
+    config: BacktestConfig,
   ): Promise<void> {
     if (!signal.quantity) return;
 
@@ -95,9 +95,7 @@ export class BacktestEngine implements IBacktestEngine {
       signal.action === 'hold'
         ? price
         : this.applySlippage(price, signal.action, config.slippage);
-    const commission = slippageAdjustedPrice
-      .mul(signal.quantity)
-      .mul(config.commission);
+    const commission = slippageAdjustedPrice.mul(signal.quantity).mul(config.commission);
 
     const currentPosition = this.positions.get(symbol);
 
@@ -135,9 +133,7 @@ export class BacktestEngine implements IBacktestEngine {
       currentPosition.quantity.gte(signal.quantity)
     ) {
       // Sell position
-      const proceeds = slippageAdjustedPrice
-        .mul(signal.quantity)
-        .sub(commission);
+      const proceeds = slippageAdjustedPrice.mul(signal.quantity).sub(commission);
       this.currentBalance = this.currentBalance.add(proceeds);
 
       // Calculate PnL
@@ -176,7 +172,7 @@ export class BacktestEngine implements IBacktestEngine {
   private applySlippage(
     price: Decimal,
     action: 'buy' | 'sell',
-    slippage?: Decimal
+    slippage?: Decimal,
   ): Decimal {
     if (!slippage || slippage.isZero()) {
       return price;
@@ -203,10 +199,7 @@ export class BacktestEngine implements IBacktestEngine {
     return totalValue;
   }
 
-  public calculateMetrics(
-    trades: any[],
-    initialBalance: Decimal
-  ): BacktestResult {
+  public calculateMetrics(trades: any[], initialBalance: Decimal): BacktestResult {
     if (trades.length === 0) {
       return {
         totalReturn: new Decimal(0),
@@ -223,8 +216,7 @@ export class BacktestEngine implements IBacktestEngine {
     }
 
     // Calculate returns
-    const finalBalance =
-      this.equity[this.equity.length - 1]?.value || initialBalance;
+    const finalBalance = this.equity[this.equity.length - 1]?.value || initialBalance;
     const totalReturn = finalBalance.sub(initialBalance).div(initialBalance);
 
     // Calculate win rate
@@ -240,9 +232,7 @@ export class BacktestEngine implements IBacktestEngine {
       .filter((trade) => trade.pnl.lt(0))
       .reduce((sum, trade) => sum.add(trade.pnl.abs()), new Decimal(0));
 
-    const profitFactor = grossLoss.isZero()
-      ? new Decimal(0)
-      : grossProfit.div(grossLoss);
+    const profitFactor = grossLoss.isZero() ? new Decimal(0) : grossProfit.div(grossLoss);
 
     // Calculate max drawdown
     let maxDrawdown = new Decimal(0);
@@ -264,8 +254,7 @@ export class BacktestEngine implements IBacktestEngine {
 
     // Calculate annualized return (simplified)
     const years = this.calculateTimeSpanInYears();
-    const annualizedReturn =
-      years > 0 ? totalReturn.div(years) : new Decimal(0);
+    const annualizedReturn = years > 0 ? totalReturn.div(years) : new Decimal(0);
 
     // Calculate Sharpe ratio (simplified - would need risk-free rate and volatility)
     const returns = this.calculateDailyReturns();
@@ -273,9 +262,7 @@ export class BacktestEngine implements IBacktestEngine {
       .reduce((sum, r) => sum.add(r), new Decimal(0))
       .div(returns.length);
     const volatility = this.calculateVolatility(returns, avgReturn);
-    const sharpeRatio = volatility.isZero()
-      ? new Decimal(0)
-      : avgReturn.div(volatility);
+    const sharpeRatio = volatility.isZero() ? new Decimal(0) : avgReturn.div(volatility);
 
     return {
       totalReturn,
@@ -350,7 +337,7 @@ ${result.trades
   .slice(0, 10)
   .map(
     (trade) =>
-      `${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${trade.pnl.toFixed(2)}`
+      `${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${trade.pnl.toFixed(2)}`,
   )
   .join('\n')}
 ${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trades` : ''}
@@ -363,7 +350,7 @@ ${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trade
     symbol: string,
     startTime: Date,
     endTime: Date,
-    timeframe: string
+    timeframe: string,
   ): AsyncGenerator<Kline> {
     // This is a placeholder implementation
     // In a real implementation, this would yield historical data in chronological order

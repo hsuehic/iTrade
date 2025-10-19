@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
 
+// Transform historical data for chart
+export interface ChartDataPoint {
+  date: string;
+  [exchange: string]: string | number; // exchange names as keys with balance values
+}
+
 /**
  * GET /api/analytics/account - 获取账户分析数据
  *
@@ -115,18 +121,12 @@ export async function GET(request: Request) {
           exchangeName,
           startTime,
           endTime,
-          period === '1h' || period === '1d' || period === '7d' ? 'hour' : 'day'
+          period === '1h' || period === '1d' || period === '7d' ? 'hour' : 'day',
         ),
       };
     });
 
     const historicalData = await Promise.all(historyPromises);
-
-    // Transform historical data for chart
-    interface ChartDataPoint {
-      date: string;
-      [exchange: string]: string | number; // exchange names as keys with balance values
-    }
 
     const chartData: { [key: string]: ChartDataPoint } = {};
 
@@ -159,9 +159,7 @@ export async function GET(request: Request) {
         if (!chartData[dateKey]) {
           chartData[dateKey] = {
             date:
-              period === '1h' || period === '1d' || period === '7d'
-                ? dateKey
-                : dateKey,
+              period === '1h' || period === '1d' || period === '7d' ? dateKey : dateKey,
           };
         }
         // Use the latest value if multiple points map to the same time slot
@@ -171,7 +169,7 @@ export async function GET(request: Request) {
 
     const chartDataArray = Object.values(chartData).sort(
       (a: ChartDataPoint, b: ChartDataPoint) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime()
+        new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
     // Fill missing exchange data with previous values to ensure all exchanges appear on chart
@@ -193,10 +191,7 @@ export async function GET(request: Request) {
     });
 
     // Calculate percentage changes
-    const calculateChange = (
-      current: number,
-      history: typeof chartDataArray
-    ) => {
+    const calculateChange = (current: number, history: typeof chartDataArray) => {
       if (history.length === 0) return 0;
 
       // For single data point, insufficient data for comparison
@@ -254,7 +249,7 @@ export async function GET(request: Request) {
     console.error('Account analytics error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch account analytics' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -59,9 +59,7 @@ export function ExchangeLogo({
           }}
         />
       ) : (
-        <span className={cn('flex-shrink-0', textSizeClasses[size])}>
-          {iconEmoji}
-        </span>
+        <span className={cn('flex-shrink-0', textSizeClasses[size])}>{iconEmoji}</span>
       )}
       {showName && (
         <span className={cn('font-medium capitalize', textSizeClasses[size])}>

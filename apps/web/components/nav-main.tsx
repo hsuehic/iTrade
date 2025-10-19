@@ -70,11 +70,7 @@ export function NavMain({ pathname }: { pathname?: string | null }) {
             const { title, url } = item;
             return (
               <SidebarMenuItem key={title}>
-                <SidebarMenuButton
-                  isActive={pathname === url}
-                  tooltip={title}
-                  asChild
-                >
+                <SidebarMenuButton isActive={pathname === url} tooltip={title} asChild>
                   <a href={url}>
                     {item.icon && <item.icon />}
                     <span>{title}</span>

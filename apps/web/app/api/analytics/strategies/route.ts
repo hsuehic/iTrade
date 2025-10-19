@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
 
+export interface ExchangeGroup {
+  exchange: string;
+  count: number;
+  totalPnl: number;
+  activeCount: number;
+}
+
+interface SymbolGroup {
+  symbol: string;
+  normalizedSymbol?: string;
+  marketType: string;
+  count: number;
+  totalPnl: number;
+  activeCount: number;
+}
+
 /**
  * GET /api/analytics/strategies - 获取策略分析数据
  */
@@ -46,7 +62,7 @@ export async function GET(request: Request) {
           createdAt: strategy.createdAt,
           updatedAt: strategy.updatedAt,
         };
-      })
+      }),
     );
 
     // Sort by PnL
@@ -55,80 +71,50 @@ export async function GET(request: Request) {
       .slice(0, limit);
 
     // Calculate summary statistics
-    const activeStrategies = strategyStats.filter(
-      (s) => s.status === 'active'
-    ).length;
+    const activeStrategies = strategyStats.filter((s) => s.status === 'active').length;
     const totalPnl = strategyStats.reduce((sum, s) => sum + s.totalPnl, 0);
-    const totalOrders = strategyStats.reduce(
-      (sum, s) => sum + s.totalOrders,
-      0
-    );
-    const totalFilledOrders = strategyStats.reduce(
-      (sum, s) => sum + s.filledOrders,
-      0
-    );
-
-    interface ExchangeGroup {
-      exchange: string;
-      count: number;
-      totalPnl: number;
-      activeCount: number;
-    }
+    const totalOrders = strategyStats.reduce((sum, s) => sum + s.totalOrders, 0);
+    const totalFilledOrders = strategyStats.reduce((sum, s) => sum + s.filledOrders, 0);
 
     // Group by exchange
-    const byExchange = strategyStats.reduce(
-      (acc: Record<string, ExchangeGroup>, s) => {
-        const exchange = s.exchange || 'unknown';
-        if (!acc[exchange]) {
-          acc[exchange] = {
-            exchange,
-            count: 0,
-            totalPnl: 0,
-            activeCount: 0,
-          };
-        }
-        acc[exchange].count++;
-        acc[exchange].totalPnl += s.totalPnl;
-        if (s.status === 'active') {
-          acc[exchange].activeCount++;
-        }
-        return acc;
-      },
-      {}
-    );
-
-    interface SymbolGroup {
-      symbol: string;
-      normalizedSymbol?: string;
-      marketType: string;
-      count: number;
-      totalPnl: number;
-      activeCount: number;
-    }
+    const byExchange = strategyStats.reduce((acc: Record<string, ExchangeGroup>, s) => {
+      const exchange = s.exchange || 'unknown';
+      if (!acc[exchange]) {
+        acc[exchange] = {
+          exchange,
+          count: 0,
+          totalPnl: 0,
+          activeCount: 0,
+        };
+      }
+      acc[exchange].count++;
+      acc[exchange].totalPnl += s.totalPnl;
+      if (s.status === 'active') {
+        acc[exchange].activeCount++;
+      }
+      return acc;
+    }, {});
 
     // Group by symbol
-    const bySymbol = strategyStats.reduce(
-      (acc: Record<string, SymbolGroup>, s) => {
-        const symbol = s.symbol || 'unknown';
-        if (!acc[symbol]) {
-          acc[symbol] = {
-            symbol,
-            normalizedSymbol: s.normalizedSymbol,
-            marketType: s.marketType,
-            count: 0,
-            totalPnl: 0,
-            activeCount: 0,
-          };
-        }
-        acc[symbol].count++;
-        acc[symbol].totalPnl += s.totalPnl;
-        if (s.status === 'active') {
-          acc[symbol].activeCount++;
-        }
-        return acc;
-      },
-      {}
-    );
+    const bySymbol = strategyStats.reduce((acc: Record<string, SymbolGroup>, s) => {
+      const symbol = s.symbol || 'unknown';
+      if (!acc[symbol]) {
+        acc[symbol] = {
+          symbol,
+          normalizedSymbol: s.normalizedSymbol,
+          marketType: s.marketType,
+          count: 0,
+          totalPnl: 0,
+          activeCount: 0,
+        };
+      }
+      acc[symbol].count++;
+      acc[symbol].totalPnl += s.totalPnl;
+      if (s.status === 'active') {
+        acc[symbol].activeCount++;
+      }
+      return acc;
+    }, {});
 
     return NextResponse.json({
       summary: {
@@ -139,16 +125,14 @@ export async function GET(request: Request) {
         totalOrders,
         totalFilledOrders,
         avgFillRate:
-          totalOrders > 0
-            ? ((totalFilledOrders / totalOrders) * 100).toFixed(2)
-            : '0.00',
+          totalOrders > 0 ? ((totalFilledOrders / totalOrders) * 100).toFixed(2) : '0.00',
       },
       topPerformers,
       byExchange: Object.values(byExchange).sort(
-        (a: ExchangeGroup, b: ExchangeGroup) => b.totalPnl - a.totalPnl
+        (a: ExchangeGroup, b: ExchangeGroup) => b.totalPnl - a.totalPnl,
       ),
       bySymbol: Object.values(bySymbol).sort(
-        (a: SymbolGroup, b: SymbolGroup) => b.totalPnl - a.totalPnl
+        (a: SymbolGroup, b: SymbolGroup) => b.totalPnl - a.totalPnl,
       ),
       allStrategies: strategyStats,
     });
@@ -156,7 +140,7 @@ export async function GET(request: Request) {
     console.error('Strategy analytics error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch strategy analytics' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -165,11 +165,7 @@ export function SignUpForm() {
           });
         }}
       >
-        {loading ? (
-          <Loader2 size={16} className="animate-spin" />
-        ) : (
-          'Create an account'
-        )}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create an account'}
       </Button>
     </div>
   );

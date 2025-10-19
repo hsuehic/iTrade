@@ -32,10 +32,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ strategies });
   } catch (error) {
     console.error('Error fetching strategies:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch strategies' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch strategies' }, { status: 500 });
   }
 }
 
@@ -56,16 +53,13 @@ export async function POST(request: NextRequest) {
     if (!name || !type || !symbol) {
       return NextResponse.json(
         { error: 'Missing required fields: name, type, symbol' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Validate strategy type
     if (!Object.values(StrategyType).includes(type)) {
-      return NextResponse.json(
-        { error: 'Invalid strategy type' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid strategy type' }, { status: 400 });
     }
 
     const dataManager = await getDataManager();
@@ -85,21 +79,13 @@ export async function POST(request: NextRequest) {
     console.error('Error creating strategy:', error);
 
     // Check for unique constraint violation
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === '23505'
-    ) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
       return NextResponse.json(
         { error: 'Strategy with this name already exists' },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
-    return NextResponse.json(
-      { error: 'Failed to create strategy' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create strategy' }, { status: 500 });
   }
 }
