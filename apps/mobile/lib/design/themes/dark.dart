@@ -4,6 +4,7 @@ import '../tokens/typography.dart';
 import '../extensions/spacing_extension.dart';
 
 final ThemeData darkTheme = ThemeData(
+  primaryColor: ColorTokens.darkPrimary,
   brightness: Brightness.dark,
   colorScheme: const ColorScheme(
     brightness: Brightness.dark,

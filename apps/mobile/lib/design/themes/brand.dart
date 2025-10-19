@@ -4,6 +4,7 @@ import '../tokens/typography.dart';
 import '../extensions/spacing_extension.dart';
 
 final ThemeData brandTheme = ThemeData(
+  primaryColor: ColorTokens.brandPrimary,
   brightness: Brightness.light,
   colorScheme: const ColorScheme(
     brightness: Brightness.light,

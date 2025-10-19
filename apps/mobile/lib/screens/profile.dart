@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
+import 'delete_account.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -111,6 +112,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 subtitle: 'Manage email notifications',
                 onTap: () {
                   // TODO: Navigate to email preferences
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSettingTile(
+                icon: Icons.delete_forever,
+                title: 'Delete Account',
+                subtitle: 'Delete your account and all data',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DeleteAccountScreen(
+                        userEmail: user.email,
+                        onConfirm: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          final result = await AuthService.instance
+                              .deleteAccount();
+                          if (result != null && result.success) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Delete account success! It\'s our honour to serve you. Hope to see you again.',
+                                ),
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary,
+
+                                duration: const Duration(seconds: 3),
+                                behavior: SnackBarBehavior.floating,
+                                margin: const EdgeInsets.only(
+                                  bottom: 28.0, // distance from bottom
+                                  left: 16.0,
+                                  right: 16.0,
+                                ),
+                              ),
+                            );
+                            if (!mounted) return;
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              '/login',
+                              (route) => false,
+                            );
+                          } else {
+                            if (result != null && result.message != null) {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Delete account failed: ${result.message}!',
+                                  ),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            } else {
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text('Delete account failed!'),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                    ),
+                  );
                 },
                 isDark: isDark,
               ),
@@ -452,7 +520,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Icon(
                 icon,
                 size: 20,
-                color: Theme.of(context).primaryColor,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(width: 12),

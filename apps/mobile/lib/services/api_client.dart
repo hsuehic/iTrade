@@ -124,6 +124,14 @@ class ApiClient {
     );
   }
 
+  Future<Response<T>> delete<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    _ensureInitialized();
+    return _dio.delete<T>(path, queryParameters: queryParameters);
+  }
+
   /// Clear all persisted cookies (e.g., to sign out or reset session).
   Future<void> clearCookies() async {
     if (_cookieJar != null) {

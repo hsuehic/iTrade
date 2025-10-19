@@ -4,6 +4,18 @@ import { Pool } from 'pg';
 import { sendEmail } from '@/lib/mailer';
 
 export const auth = betterAuth({
+  user: {
+    deleteUser: {
+      enabled: true,
+
+      beforeDelete: async (user) => {
+        console.log(user);
+      },
+      afterDelete: async (user) => {
+        console.log(user);
+      },
+    },
+  },
   advanced: {
     cookies: {
       state: {

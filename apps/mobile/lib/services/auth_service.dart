@@ -13,6 +13,13 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'api_client.dart';
 import 'config.dart';
 
+class OperationResult {
+  final bool success;
+  final String? message;
+
+  OperationResult({required this.success, this.message});
+}
+
 class User {
   final String? id;
   final String email;
@@ -204,6 +211,28 @@ class AuthService {
         error: e,
         stackTrace: st,
       );
+      return null;
+    }
+  }
+
+  Future<OperationResult?> deleteAccount() async {
+    try {
+      final result = await ApiClient.instance.delete<dynamic>(
+        '/api/mobile/delete-account',
+      );
+      if (result.data == null) {
+        return null;
+      }
+      if (result.data is! Map) {
+        return null;
+      }
+      final Map<String, dynamic> data = result.data;
+      return OperationResult(
+        success: data['success'] as bool,
+        message: data['message']?.toString(),
+      );
+    } catch (error) {
+      developer.debugger(when: true, message: error.toString());
       return null;
     }
   }
