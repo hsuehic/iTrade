@@ -13,7 +13,7 @@ export async function sendEmail(to: string, subject: string, text: string) {
   } as SMTPTransport.Options);
 
   await transporter.sendMail({
-    from: 'noreply@ihsueh.com',
+    from: 'support@ihsueh.com',
     to,
     subject,
     text,
