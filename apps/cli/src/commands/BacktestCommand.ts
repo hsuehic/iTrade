@@ -22,16 +22,12 @@ export class BacktestCommand {
       .description('Run backtests on trading strategies')
       .option(
         '-s, --strategy <strategy>',
-        'Strategy to backtest (e.g., "moving-average")'
+        'Strategy to backtest (e.g., "moving-average")',
       )
       .option('--symbol <symbol>', 'Symbol to backtest (e.g., "BTCUSDT")')
       .option('--start-date <date>', 'Start date for backtest (YYYY-MM-DD)')
       .option('--end-date <date>', 'End date for backtest (YYYY-MM-DD)')
-      .option(
-        '--initial-balance <amount>',
-        'Initial balance for backtest',
-        parseFloat
-      )
+      .option('--initial-balance <amount>', 'Initial balance for backtest', parseFloat)
       .option('-i, --interactive', 'Run in interactive mode')
       .action((options: BacktestOptions) => this.execute(options));
 
@@ -79,16 +75,14 @@ export class BacktestCommand {
         name: 'startDate',
         message: 'Enter start date (YYYY-MM-DD):',
         default: '2024-01-01',
-        validate: (input: string) =>
-          this.validateDate(input) || 'Invalid date format',
+        validate: (input: string) => this.validateDate(input) || 'Invalid date format',
       },
       {
         type: 'input',
         name: 'endDate',
         message: 'Enter end date (YYYY-MM-DD):',
         default: '2024-12-31',
-        validate: (input: string) =>
-          this.validateDate(input) || 'Invalid date format',
+        validate: (input: string) => this.validateDate(input) || 'Invalid date format',
       },
       {
         type: 'number',
@@ -120,8 +114,7 @@ export class BacktestCommand {
           name: 'threshold',
           message: 'Crossover threshold (0.001 = 0.1%):',
           default: 0.001,
-          validate: (input: number) =>
-            input >= 0 || 'Threshold must be non-negative',
+          validate: (input: number) => input >= 0 || 'Threshold must be non-negative',
         },
       ]);
 
@@ -187,7 +180,7 @@ export class BacktestCommand {
     const result = await backtestEngine.runBacktest(
       strategy,
       backtestConfig,
-      dataManager
+      dataManager,
     );
 
     // Display results
@@ -198,12 +191,7 @@ export class BacktestCommand {
     // This is a mock implementation
     // In a real application, this would connect to a database or data provider
     return {
-      async getKlines(
-        symbol: string,
-        interval: string,
-        startTime: Date,
-        endTime: Date
-      ) {
+      async getKlines(symbol: string, interval: string, startTime: Date, endTime: Date) {
         // Generate mock data for demonstration
         const klines = [];
         const duration = endTime.getTime() - startTime.getTime();
@@ -251,13 +239,9 @@ export class BacktestCommand {
     console.log('📈 PERFORMANCE SUMMARY');
     console.log('=====================');
     console.log(`Total Return: ${color(totalReturnPercent.toFixed(2))}%`);
-    console.log(
-      `Annualized Return: ${result.annualizedReturn.mul(100).toFixed(2)}%`
-    );
+    console.log(`Annualized Return: ${result.annualizedReturn.mul(100).toFixed(2)}%`);
     console.log(`Sharpe Ratio: ${result.sharpeRatio.toFixed(3)}`);
-    console.log(
-      `Max Drawdown: ${chalk.red(result.maxDrawdown.mul(100).toFixed(2))}%`
-    );
+    console.log(`Max Drawdown: ${chalk.red(result.maxDrawdown.mul(100).toFixed(2))}%`);
 
     console.log('\n📊 TRADING STATISTICS');
     console.log('=====================');
@@ -273,7 +257,7 @@ export class BacktestCommand {
       recentTrades.forEach((trade: any, index: number) => {
         const pnlColor = trade.pnl.isPositive() ? chalk.green : chalk.red;
         console.log(
-          `${index + 1}. ${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${pnlColor(trade.pnl.toFixed(2))}`
+          `${index + 1}. ${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${pnlColor(trade.pnl.toFixed(2))}`,
         );
       });
     }

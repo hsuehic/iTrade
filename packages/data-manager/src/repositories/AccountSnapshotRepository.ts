@@ -107,9 +107,7 @@ export class AccountSnapshotRepository {
   /**
    * 查询账户快照历史
    */
-  async query(
-    options: AccountSnapshotQueryOptions
-  ): Promise<AccountSnapshotData[]> {
+  async query(options: AccountSnapshotQueryOptions): Promise<AccountSnapshotData[]> {
     const queryBuilder = this.repository.createQueryBuilder('snapshot');
 
     if (options.exchange) {
@@ -146,7 +144,7 @@ export class AccountSnapshotRepository {
   async getHistory(
     exchange: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<AccountSnapshotData[]> {
     // Use QueryBuilder for better performance with indexes
     const entities = await this.repository
@@ -169,7 +167,7 @@ export class AccountSnapshotRepository {
   async getStatistics(
     exchange: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<{
     count: number;
     avgBalance: Decimal;
@@ -202,16 +200,10 @@ export class AccountSnapshotRepository {
       avgBalance: balances
         .reduce((sum, b) => sum.add(b), new Decimal(0))
         .div(balances.length),
-      maxBalance: balances.reduce(
-        (max, b) => (b.gt(max) ? b : max),
-        balances[0]
-      ),
-      minBalance: balances.reduce(
-        (min, b) => (b.lt(min) ? b : min),
-        balances[0]
-      ),
+      maxBalance: balances.reduce((max, b) => (b.gt(max) ? b : max), balances[0]),
+      minBalance: balances.reduce((min, b) => (b.lt(min) ? b : min), balances[0]),
       avgPositionCount: Math.round(
-        positionCounts.reduce((sum, c) => sum + c, 0) / positionCounts.length
+        positionCounts.reduce((sum, c) => sum + c, 0) / positionCounts.length,
       ),
       maxPositionCount: Math.max(...positionCounts),
       totalPnl: pnls.reduce((sum, p) => sum.add(p), new Decimal(0)),
@@ -255,7 +247,7 @@ export class AccountSnapshotRepository {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'hour' | 'day' | 'week' = 'day'
+    interval: 'hour' | 'day' | 'week' = 'day',
   ): Promise<Array<{ timestamp: Date; balance: Decimal }>> {
     // Determine PostgreSQL date_trunc interval and sampling strategy
     let truncInterval: string;
@@ -290,7 +282,7 @@ export class AccountSnapshotRepository {
       ORDER BY date_trunc($1, timestamp), timestamp DESC
       LIMIT $5
       `,
-      [truncInterval, exchange, startTime, endTime, maxPoints]
+      [truncInterval, exchange, startTime, endTime, maxPoints],
     );
 
     return rawResults.map((row: any) => ({

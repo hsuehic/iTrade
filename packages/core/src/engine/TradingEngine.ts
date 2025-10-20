@@ -48,7 +48,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   constructor(
     private riskManager: IRiskManager,
     private portfolioManager: IPortfolioManager,
-    private logger: ILogger
+    private logger: ILogger,
   ) {
     super();
     this._eventBus = EventBus.getInstance();
@@ -79,10 +79,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           await strategy.initialize(strategy.parameters);
           this.logger.info(`Strategy ${name} initialized successfully`);
         } catch (error) {
-          this.logger.error(
-            `Failed to initialize strategy ${name}`,
-            error as Error
-          );
+          this.logger.error(`Failed to initialize strategy ${name}`, error as Error);
           throw error;
         }
       }
@@ -106,7 +103,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         } catch (error) {
           this.logger.error(
             `Failed to subscribe data for strategy ${name}`,
-            error as Error
+            error as Error,
           );
           // Continue with other strategies
         }
@@ -138,10 +135,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           await strategy.cleanup();
           this.logger.info(`Strategy ${name} cleaned up successfully`);
         } catch (error) {
-          this.logger.error(
-            `Failed to cleanup strategy ${name}`,
-            error as Error
-          );
+          this.logger.error(`Failed to cleanup strategy ${name}`, error as Error);
         }
       }
 
@@ -218,7 +212,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   public async onTicker(
     symbol: string,
     ticker: Ticker,
-    exchangeName?: string
+    exchangeName?: string,
   ): Promise<void> {
     if (!this._isRunning) {
       return;
@@ -251,10 +245,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
-          this.logger.error(
-            `Error in strategy ${strategyName}`,
-            error as Error
-          );
+          this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
         }
       }
@@ -269,7 +260,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   public async onOrderBook(
     symbol: string,
     orderbook: OrderBook,
-    exchangeName?: string
+    exchangeName?: string,
   ): Promise<void> {
     if (!this._isRunning) {
       return;
@@ -301,10 +292,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
-          this.logger.error(
-            `Error in strategy ${strategyName}`,
-            error as Error
-          );
+          this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
         }
       }
@@ -319,7 +307,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   public async onTrades(
     symbol: string,
     trades: Trade[],
-    exchangeName?: string
+    exchangeName?: string,
   ): Promise<void> {
     if (!this._isRunning) {
       return;
@@ -353,10 +341,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
-          this.logger.error(
-            `Error in strategy ${strategyName}`,
-            error as Error
-          );
+          this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
         }
       }
@@ -371,7 +356,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   public async onKline(
     symbol: string,
     kline: Kline,
-    exchangeName?: string
+    exchangeName?: string,
   ): Promise<void> {
     if (!this._isRunning) {
       return;
@@ -403,10 +388,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
-          this.logger.error(
-            `Error in strategy ${strategyName}`,
-            error as Error
-          );
+          this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
         }
       }
@@ -422,7 +404,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   public async onMarketData(
     symbol: string,
     data: unknown,
-    exchangeName?: string
+    exchangeName?: string,
   ): Promise<void> {
     if (!this._isRunning) {
       return;
@@ -435,11 +417,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       return this.onOrderBook(symbol, data as OrderBook, exchangeName);
     } else if (this.isKline(data)) {
       return this.onKline(symbol, data as Kline, exchangeName);
-    } else if (
-      Array.isArray(data) &&
-      data.length > 0 &&
-      this.isTrade(data[0])
-    ) {
+    } else if (Array.isArray(data) && data.length > 0 && this.isTrade(data[0])) {
       return this.onTrades(symbol, data as Trade[], exchangeName);
     }
 
@@ -468,10 +446,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
-          this.logger.error(
-            `Error in strategy ${strategyName}`,
-            error as Error
-          );
+          this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
         }
       }
@@ -541,8 +516,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   public async executeOrder(params: ExecuteOrderParameters): Promise<Order> {
-    const { strategyName, symbol, side, quantity, type, price, stopPrice } =
-      params;
+    const { strategyName, symbol, side, quantity, type, price, stopPrice } = params;
     if (!this._isRunning) {
       throw new Error('Trading engine is not running');
     }
@@ -570,12 +544,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     const riskCheckPassed = await this.riskManager.checkOrderRisk(
       order,
       positions,
-      balances
+      balances,
     );
     if (!riskCheckPassed) {
-      const error = new Error(
-        `Order rejected by risk manager: ${JSON.stringify(order)}`
-      );
+      const error = new Error(`Order rejected by risk manager: ${JSON.stringify(order)}`);
       this.logger.error('Order rejected by risk manager', error, { order });
       throw error;
     }
@@ -585,14 +557,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     const isPointedExchange = !!exchangeName;
     // Find an available exchange to execute the order
-    const exchange = !!isPointedExchange
+    const exchange = isPointedExchange
       ? this._exchanges.get(exchangeName)
       : this.findExchangeForSymbol(symbol);
     if (!exchange) {
       throw new Error(
         isPointedExchange
           ? `Exchange ${exchangeName} not found`
-          : `No exchange available for symbol ${symbol}`
+          : `No exchange available for symbol ${symbol}`,
       );
     }
 
@@ -606,7 +578,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         price,
         stopPrice,
         'GTC' as TimeInForce,
-        order.clientOrderId
+        order.clientOrderId,
       );
 
       this._eventBus.emitOrderCreated({
@@ -634,7 +606,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private async executeStrategySignal(
     strategyName: string,
     symbol: string,
-    signal: StrategyResult
+    signal: StrategyResult,
   ): Promise<void> {
     if (signal.action === 'hold' || !signal.quantity) {
       return;
@@ -671,7 +643,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         {
           symbol,
           signal,
-        }
+        },
       );
     }
   }
@@ -696,7 +668,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     this._eventBus.onRiskLimitExceeded(async (data) => {
       this.logger.logRisk(
         'Risk limit exceeded',
-        data as unknown as Record<string, unknown>
+        data as unknown as Record<string, unknown>,
       );
 
       if (data.severity === 'critical') {
@@ -773,7 +745,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       } catch (error) {
         this.logger.error(
           `Error notifying strategy ${name} of order fill`,
-          error as Error
+          error as Error,
         );
       }
     }
@@ -784,7 +756,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   private async subscribeStrategyData(
     strategyName: string,
-    strategy: IStrategy
+    strategy: IStrategy,
   ): Promise<void> {
     const config = strategy.parameters.subscription;
     if (!config) {
@@ -794,15 +766,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     const symbol = strategy.parameters.symbol;
     if (!symbol) {
-      this.logger.warn(
-        `Strategy ${strategyName} has subscription config but no symbol`
-      );
+      this.logger.warn(`Strategy ${strategyName} has subscription config but no symbol`);
       return;
     }
 
     const exchanges = this.getTargetExchanges(strategy.parameters.exchange);
     this.logger.info(
-      `Auto-subscribing data for strategy ${strategyName} (symbol: ${symbol}, exchanges: ${exchanges.map((e) => e.name).join(', ')})`
+      `Auto-subscribing data for strategy ${strategyName} (symbol: ${symbol}, exchanges: ${exchanges.map((e) => e.name).join(', ')})`,
     );
 
     for (const exchange of exchanges) {
@@ -815,23 +785,20 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           symbol,
           'ticker',
           tickerParams as unknown as Record<string, SubscriptionParamValue>,
-          config.method
+          config.method,
         );
       }
 
       // Subscribe to orderbook
       if (config.orderbook) {
-        const orderbookParams = this.normalizeDataConfig(
-          'orderbook',
-          config.orderbook
-        );
+        const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
           symbol,
           'orderbook',
           orderbookParams as unknown as Record<string, SubscriptionParamValue>,
-          config.method
+          config.method,
         );
       }
 
@@ -844,7 +811,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           symbol,
           'trades',
           tradesParams as unknown as Record<string, SubscriptionParamValue>,
-          config.method
+          config.method,
         );
       }
 
@@ -857,7 +824,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           symbol,
           'klines',
           klinesParams as unknown as Record<string, SubscriptionParamValue>,
-          config.method
+          config.method,
         );
       }
     }
@@ -889,22 +856,19 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           exchange,
           symbol,
           'ticker',
-          tickerParams as unknown as Record<string, SubscriptionParamValue>
+          tickerParams as unknown as Record<string, SubscriptionParamValue>,
         );
       }
 
       // Unsubscribe from orderbook
       if (config.orderbook) {
-        const orderbookParams = this.normalizeDataConfig(
-          'orderbook',
-          config.orderbook
-        );
+        const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook);
         await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
           symbol,
           'orderbook',
-          orderbookParams as unknown as Record<string, SubscriptionParamValue>
+          orderbookParams as unknown as Record<string, SubscriptionParamValue>,
         );
       }
 
@@ -916,7 +880,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           exchange,
           symbol,
           'trades',
-          tradesParams as unknown as Record<string, SubscriptionParamValue>
+          tradesParams as unknown as Record<string, SubscriptionParamValue>,
         );
       }
 
@@ -928,7 +892,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           exchange,
           symbol,
           'klines',
-          klinesParams as unknown as Record<string, SubscriptionParamValue>
+          klinesParams as unknown as Record<string, SubscriptionParamValue>,
         );
       }
     }
@@ -941,9 +905,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     if (exchangeName) {
       const exchange = this._exchanges.get(exchangeName);
       if (!exchange) {
-        this.logger.warn(
-          `Exchange ${exchangeName} not found, using all exchanges`
-        );
+        this.logger.warn(`Exchange ${exchangeName} not found, using all exchanges`);
         return Array.from(this._exchanges.values());
       }
       return [exchange];
@@ -963,7 +925,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       | TickerSubscriptionConfig
       | OrderBookSubscriptionConfig
       | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig
+      | KlinesSubscriptionConfig,
   ): TickerSubscriptionConfig;
   private normalizeDataConfig(
     type: 'orderbook',
@@ -972,7 +934,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       | TickerSubscriptionConfig
       | OrderBookSubscriptionConfig
       | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig
+      | KlinesSubscriptionConfig,
   ): OrderBookSubscriptionConfig;
   private normalizeDataConfig(
     type: 'trades',
@@ -981,7 +943,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       | TickerSubscriptionConfig
       | OrderBookSubscriptionConfig
       | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig
+      | KlinesSubscriptionConfig,
   ): TradesSubscriptionConfig;
   private normalizeDataConfig(
     type: 'klines',
@@ -990,7 +952,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       | TickerSubscriptionConfig
       | OrderBookSubscriptionConfig
       | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig
+      | KlinesSubscriptionConfig,
   ): KlinesSubscriptionConfig;
   private normalizeDataConfig(
     type: DataType,
@@ -999,7 +961,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       | TickerSubscriptionConfig
       | OrderBookSubscriptionConfig
       | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig
+      | KlinesSubscriptionConfig,
   ):
     | TickerSubscriptionConfig
     | OrderBookSubscriptionConfig

@@ -17,7 +17,7 @@
     "clean:dev": "rm -rf .next-dev",
     "clean:staging": "rm -rf .next-staging",
     "clean:prod": "rm -rf .next-prod",
-    "lint": "eslint . --ext .ts,.tsx  --debug",
+    "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --fix --ext .ts,.tsx"
   },
   "dependencies": {

@@ -41,13 +41,11 @@ export interface AccountSnapshotData {
  */
 export interface IAccountDataManager {
   saveAccountSnapshot?(snapshot: AccountSnapshotData): Promise<void>;
-  getLatestAccountSnapshot?(
-    exchange: string
-  ): Promise<AccountSnapshotData | null>;
+  getLatestAccountSnapshot?(exchange: string): Promise<AccountSnapshotData | null>;
   getAccountSnapshotHistory?(
     exchange: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<AccountSnapshotData[]>;
 }
 
@@ -177,11 +175,7 @@ export class AccountPollingService extends EventEmitter {
         result.balances &&
         result.positions
       ) {
-        await this.saveSnapshot(
-          exchangeName,
-          result.balances,
-          result.positions
-        );
+        await this.saveSnapshot(exchangeName, result.balances, result.positions);
       }
     }
 
@@ -193,7 +187,7 @@ export class AccountPollingService extends EventEmitter {
    */
   private async pollExchange(
     exchangeName: string,
-    exchange: IExchange
+    exchange: IExchange,
   ): Promise<PollingResult> {
     const timestamp = new Date();
     let attempt = 0;
@@ -234,8 +228,7 @@ export class AccountPollingService extends EventEmitter {
         };
       } catch (error) {
         attempt++;
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
 
         this.logger?.error(
           'Exchange poll failed',
@@ -244,14 +237,12 @@ export class AccountPollingService extends EventEmitter {
             exchange: exchangeName,
             attempt,
             maxAttempts: this.config.retryAttempts,
-          }
+          },
         );
 
         if (attempt < this.config.retryAttempts) {
           // 等待后重试
-          await new Promise((resolve) =>
-            setTimeout(resolve, this.config.retryDelay)
-          );
+          await new Promise((resolve) => setTimeout(resolve, this.config.retryDelay));
         } else {
           // 达到最大重试次数
           this.emit('pollingError', {
@@ -285,7 +276,7 @@ export class AccountPollingService extends EventEmitter {
   private async saveSnapshot(
     exchange: string,
     balances: Balance[],
-    positions: Position[]
+    positions: Position[],
   ): Promise<void> {
     if (!this.dataManager) {
       this.logger?.warn('DataManager not set, skipping persistence');
@@ -294,25 +285,22 @@ export class AccountPollingService extends EventEmitter {
 
     try {
       // 计算统计数据
-      const totalBalance = balances.reduce(
-        (sum, b) => sum.add(b.total),
-        new Decimal(0)
-      );
+      const totalBalance = balances.reduce((sum, b) => sum.add(b.total), new Decimal(0));
       const availableBalance = balances.reduce(
         (sum, b) => sum.add(b.free),
-        new Decimal(0)
+        new Decimal(0),
       );
       const lockedBalance = balances.reduce(
         (sum, b) => sum.add(b.locked),
-        new Decimal(0)
+        new Decimal(0),
       );
       const totalPositionValue = positions.reduce(
         (sum, p) => sum.add(p.quantity.mul(p.markPrice)),
-        new Decimal(0)
+        new Decimal(0),
       );
       const unrealizedPnl = positions.reduce(
         (sum, p) => sum.add(p.unrealizedPnl || new Decimal(0)),
-        new Decimal(0)
+        new Decimal(0),
       );
 
       const snapshot: AccountSnapshotData = {
@@ -360,7 +348,7 @@ export class AccountPollingService extends EventEmitter {
         error instanceof Error ? error : new Error(String(error)),
         {
           exchange,
-        }
+        },
       );
 
       this.emit('snapshotError', {
@@ -402,11 +390,7 @@ export class AccountPollingService extends EventEmitter {
         result.balances &&
         result.positions
       ) {
-        await this.saveSnapshot(
-          exchangeName,
-          result.balances,
-          result.positions
-        );
+        await this.saveSnapshot(exchangeName, result.balances, result.positions);
       }
     }
 
@@ -416,9 +400,7 @@ export class AccountPollingService extends EventEmitter {
   /**
    * 获取最新的账户数据（从缓存）
    */
-  async getLatestSnapshot(
-    exchange: string
-  ): Promise<AccountSnapshotData | null> {
+  async getLatestSnapshot(exchange: string): Promise<AccountSnapshotData | null> {
     if (!this.dataManager || !this.dataManager.getLatestAccountSnapshot) {
       return null;
     }
@@ -431,7 +413,7 @@ export class AccountPollingService extends EventEmitter {
         error instanceof Error ? error : new Error(String(error)),
         {
           exchange,
-        }
+        },
       );
       return null;
     }
@@ -443,7 +425,7 @@ export class AccountPollingService extends EventEmitter {
   async getSnapshotHistory(
     exchange: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<AccountSnapshotData[]> {
     if (!this.dataManager || !this.dataManager.getAccountSnapshotHistory) {
       return [];
@@ -453,7 +435,7 @@ export class AccountPollingService extends EventEmitter {
       return await this.dataManager.getAccountSnapshotHistory(
         exchange,
         startTime,
-        endTime
+        endTime,
       );
     } catch (error) {
       this.logger?.error(
@@ -463,7 +445,7 @@ export class AccountPollingService extends EventEmitter {
           exchange,
           startTime,
           endTime,
-        }
+        },
       );
       return [];
     }

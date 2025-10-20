@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   IconTrendingUp,
@@ -78,21 +78,7 @@ export default function AnalyticsPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedStrategyId !== 'all') {
-      fetchStrategyPnL(parseInt(selectedStrategyId));
-      fetchOrders(parseInt(selectedStrategyId));
-    } else {
-      setStrategyPnL(null);
-      fetchOrders();
-    }
-  }, [selectedStrategyId]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [pnlResponse, strategiesResponse] = await Promise.all([
         fetch('/api/analytics/pnl'),
@@ -115,7 +101,21 @@ export default function AnalyticsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (selectedStrategyId !== 'all') {
+      fetchStrategyPnL(parseInt(selectedStrategyId));
+      fetchOrders(parseInt(selectedStrategyId));
+    } else {
+      setStrategyPnL(null);
+      fetchOrders();
+    }
+  }, [selectedStrategyId]);
 
   const fetchStrategyPnL = async (strategyId: number) => {
     try {

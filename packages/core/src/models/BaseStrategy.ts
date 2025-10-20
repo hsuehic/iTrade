@@ -2,11 +2,7 @@ import { EventEmitter } from 'events';
 
 import { Decimal } from 'decimal.js';
 
-import {
-  IStrategy,
-  StrategyStateSnapshot,
-  StrategyRecoveryContext,
-} from '../interfaces';
+import { IStrategy, StrategyStateSnapshot, StrategyRecoveryContext } from '../interfaces';
 import {
   StrategyParameters,
   StrategyResult,
@@ -32,7 +28,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
 
   constructor(
     public readonly name: string,
-    parameters: StrategyParameters = {}
+    parameters: StrategyParameters = {},
   ) {
     super();
     this._parameters = { ...parameters };
@@ -92,12 +88,10 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   }
 
   protected validateParameters(requiredParams: string[]): void {
-    const missing = requiredParams.filter(
-      (param) => !(param in this._parameters)
-    );
+    const missing = requiredParams.filter((param) => !(param in this._parameters));
     if (missing.length > 0) {
       throw new Error(
-        `Missing required parameters for strategy ${this.name}: ${missing.join(', ')}`
+        `Missing required parameters for strategy ${this.name}: ${missing.join(', ')}`,
       );
     }
   }
@@ -151,9 +145,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   /**
    * Set recovery context for strategy restart
    */
-  public async setRecoveryContext(
-    context: StrategyRecoveryContext
-  ): Promise<void> {
+  public async setRecoveryContext(context: StrategyRecoveryContext): Promise<void> {
     this._strategyId = context.strategyId;
 
     if (context.savedState) {
@@ -192,9 +184,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   /**
    * Override to restore custom internal state
    */
-  protected async setInternalState(
-    _state: Record<string, unknown>
-  ): Promise<void> {
+  protected async setInternalState(_state: Record<string, unknown>): Promise<void> {
     // Derived classes should implement custom state restoration
     // Base implementation is intentionally minimal
   }
@@ -212,18 +202,14 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   /**
    * Override to restore technical indicator data
    */
-  protected async setIndicatorData(
-    _data: Record<string, unknown>
-  ): Promise<void> {
+  protected async setIndicatorData(_data: Record<string, unknown>): Promise<void> {
     // Override in derived classes to restore indicator state
   }
 
   /**
    * Override to handle recovery context setup
    */
-  protected async onRecoveryContextSet(
-    _context: StrategyRecoveryContext
-  ): Promise<void> {
+  protected async onRecoveryContextSet(_context: StrategyRecoveryContext): Promise<void> {
     // Override in derived classes for custom recovery logic
   }
 

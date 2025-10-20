@@ -17,13 +17,9 @@ export class EquityPointEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(
-    () => BacktestResultEntity,
-    (r: BacktestResultEntity) => r.equity,
-    {
-      onDelete: 'CASCADE',
-    }
-  )
+  @ManyToOne(() => BacktestResultEntity, (r: BacktestResultEntity) => r.equity, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'resultId' })
   result!: BacktestResultEntity;
 

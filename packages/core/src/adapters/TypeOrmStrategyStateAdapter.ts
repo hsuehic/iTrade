@@ -36,7 +36,7 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
 
   async saveStrategyState(
     strategyId: number,
-    state: Partial<StrategyState>
+    state: Partial<StrategyState>,
   ): Promise<void> {
     // TODO: 实现策略状态保存逻辑
     console.log(`Saving strategy state for ${strategyId}:`, state);
@@ -62,8 +62,7 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
         status: order.status as OrderStatus,
         executedQuantity: order.executedQuantity?.toString() || '0',
         remainingQuantity: (
-          parseFloat(order.quantity || '0') -
-          parseFloat(order.executedQuantity || '0')
+          parseFloat(order.quantity || '0') - parseFloat(order.executedQuantity || '0')
         ).toString(),
         averagePrice: order.averagePrice?.toString(),
         lastUpdateTime: order.updatedAt || new Date(),
@@ -76,7 +75,7 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
 
   async syncOrderWithExchange(
     orderId: string,
-    exchangeName: string
+    exchangeName: string,
   ): Promise<OrderRecoveryInfo> {
     try {
       // TODO: 实现与交易所同步订单状态的逻辑
@@ -93,17 +92,13 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
         status: order.status as OrderStatus,
         executedQuantity: order.executedQuantity?.toString() || '0',
         remainingQuantity: (
-          parseFloat(order.quantity || '0') -
-          parseFloat(order.executedQuantity || '0')
+          parseFloat(order.quantity || '0') - parseFloat(order.executedQuantity || '0')
         ).toString(),
         averagePrice: order.averagePrice?.toString(),
         lastUpdateTime: new Date(),
       };
     } catch (error) {
-      console.error(
-        `Failed to sync order ${orderId} with ${exchangeName}:`,
-        error
-      );
+      console.error(`Failed to sync order ${orderId} with ${exchangeName}:`, error);
       throw error;
     }
   }

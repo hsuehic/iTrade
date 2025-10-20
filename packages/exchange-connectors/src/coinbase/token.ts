@@ -8,7 +8,7 @@ export function generateToken(
   requestMethod: string,
   requestPath: string,
   apiKey: string,
-  apiSecret: string
+  apiSecret: string,
 ): string {
   const uri = `${requestMethod} ${BASE_URL}${requestPath}`;
   const payload = {

@@ -87,12 +87,12 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(mockExchange.subscribeToTicker).toHaveBeenCalledWith('BTC/USDT');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Created new websocket subscription')
+        expect.stringContaining('Created new websocket subscription'),
       );
 
       const stats = coordinator.getStats();
@@ -109,11 +109,11 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'rest'
+        'rest',
       );
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Starting REST polling')
+        expect.stringContaining('Starting REST polling'),
       );
 
       const stats = coordinator.getStats();
@@ -128,12 +128,10 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'orderbook',
         { depth: 20 },
-        'websocket'
+        'websocket',
       );
 
-      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith(
-        'BTC/USDT'
-      );
+      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith('BTC/USDT');
     });
 
     it('should subscribe to trades', async () => {
@@ -143,7 +141,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'trades',
         { limit: 10 },
-        'websocket'
+        'websocket',
       );
 
       expect(mockExchange.subscribeToTrades).toHaveBeenCalledWith('BTC/USDT');
@@ -156,13 +154,10 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'klines',
         { interval: '1h' },
-        'websocket'
+        'websocket',
       );
 
-      expect(mockExchange.subscribeToKlines).toHaveBeenCalledWith(
-        'BTC/USDT',
-        '1h'
-      );
+      expect(mockExchange.subscribeToKlines).toHaveBeenCalledWith('BTC/USDT', '1h');
     });
   });
 
@@ -174,7 +169,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -183,7 +178,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       // Should only call exchange once
@@ -202,7 +197,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -211,16 +206,10 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
-      await coordinator.unsubscribe(
-        'strategy1',
-        mockExchange,
-        'BTC/USDT',
-        'ticker',
-        {}
-      );
+      await coordinator.unsubscribe('strategy1', mockExchange, 'BTC/USDT', 'ticker', {});
 
       const subscriptions = coordinator.getAllSubscriptions();
       expect(subscriptions.length).toBe(1);
@@ -236,7 +225,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -245,29 +234,17 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
-      await coordinator.unsubscribe(
-        'strategy1',
-        mockExchange,
-        'BTC/USDT',
-        'ticker',
-        {}
-      );
+      await coordinator.unsubscribe('strategy1', mockExchange, 'BTC/USDT', 'ticker', {});
 
-      await coordinator.unsubscribe(
-        'strategy2',
-        mockExchange,
-        'BTC/USDT',
-        'ticker',
-        {}
-      );
+      await coordinator.unsubscribe('strategy2', mockExchange, 'BTC/USDT', 'ticker', {});
 
       const subscriptions = coordinator.getAllSubscriptions();
       expect(subscriptions.length).toBe(0);
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Cancelled subscription')
+        expect.stringContaining('Cancelled subscription'),
       );
     });
 
@@ -278,7 +255,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'klines',
         { interval: '1m' },
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -287,7 +264,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'klines',
         { interval: '5m' },
-        'websocket'
+        'websocket',
       );
 
       const subscriptions = coordinator.getAllSubscriptions();
@@ -309,7 +286,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'auto'
+        'auto',
       );
 
       const stats = coordinator.getStats();
@@ -330,7 +307,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'auto'
+        'auto',
       );
 
       const stats = coordinator.getStats();
@@ -345,7 +322,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(mockExchange.subscribeToTicker).toHaveBeenCalled();
@@ -360,7 +337,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'rest'
+        'rest',
       );
 
       const stats = coordinator.getStats();
@@ -380,7 +357,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         { pollInterval: 1000 },
-        'rest'
+        'rest',
       );
 
       expect(mockExchange.getTicker).not.toHaveBeenCalled();
@@ -408,17 +385,13 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         { pollInterval: 1000 },
-        'rest'
+        'rest',
       );
 
       // Fast-forward time and run all pending promises
       await vi.advanceTimersByTimeAsync(1000);
 
-      expect(mockExchange.emit).toHaveBeenCalledWith(
-        'ticker',
-        'BTC/USDT',
-        mockTicker
-      );
+      expect(mockExchange.emit).toHaveBeenCalledWith('ticker', 'BTC/USDT', mockTicker);
     });
 
     it.skip('should stop polling when subscription is cancelled', async () => {
@@ -428,7 +401,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         { pollInterval: 1000 },
-        'rest'
+        'rest',
       );
 
       // Verify polling starts
@@ -436,13 +409,7 @@ describe('SubscriptionCoordinator', () => {
       expect(mockExchange.getTicker).toHaveBeenCalled();
 
       // Unsubscribe and verify it's removed
-      await coordinator.unsubscribe(
-        'strategy1',
-        mockExchange,
-        'BTC/USDT',
-        'ticker',
-        {}
-      );
+      await coordinator.unsubscribe('strategy1', mockExchange, 'BTC/USDT', 'ticker', {});
 
       // Verify subscription is gone
       const stats = coordinator.getStats();
@@ -457,7 +424,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'rest'
+        'rest',
       );
 
       vi.advanceTimersByTime(4999);
@@ -468,9 +435,7 @@ describe('SubscriptionCoordinator', () => {
     });
 
     it('should handle polling errors gracefully', async () => {
-      vi.mocked(mockExchange.getTicker).mockRejectedValue(
-        new Error('Network error')
-      );
+      vi.mocked(mockExchange.getTicker).mockRejectedValue(new Error('Network error'));
 
       await coordinator.subscribe(
         'strategy1',
@@ -478,21 +443,21 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         { pollInterval: 1000 },
-        'rest'
+        'rest',
       );
 
       await vi.advanceTimersByTimeAsync(1000);
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to poll'),
-        expect.any(Error)
+        expect.any(Error),
       );
 
       // Should continue polling after error
       await vi.advanceTimersByTimeAsync(1000);
-      expect(
-        vi.mocked(mockExchange.getTicker).mock.calls.length
-      ).toBeGreaterThanOrEqual(2);
+      expect(vi.mocked(mockExchange.getTicker).mock.calls.length).toBeGreaterThanOrEqual(
+        2,
+      );
     });
   });
 
@@ -508,7 +473,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(mockObserver.onSubscriptionCreated).toHaveBeenCalledWith(
@@ -517,7 +482,7 @@ describe('SubscriptionCoordinator', () => {
           symbol: 'BTC/USDT',
           type: 'ticker',
         }),
-        'websocket'
+        'websocket',
       );
     });
 
@@ -528,29 +493,23 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
-      await coordinator.unsubscribe(
-        'strategy1',
-        mockExchange,
-        'BTC/USDT',
-        'ticker',
-        {}
-      );
+      await coordinator.unsubscribe('strategy1', mockExchange, 'BTC/USDT', 'ticker', {});
 
       expect(mockObserver.onSubscriptionRemoved).toHaveBeenCalledWith(
         expect.objectContaining({
           exchange: 'test-exchange',
           symbol: 'BTC/USDT',
           type: 'ticker',
-        })
+        }),
       );
     });
 
     it('should notify observers of errors', async () => {
       vi.mocked(mockExchange.subscribeToTicker).mockRejectedValue(
-        new Error('WebSocket error')
+        new Error('WebSocket error'),
       );
 
       await expect(
@@ -560,8 +519,8 @@ describe('SubscriptionCoordinator', () => {
           'BTC/USDT',
           'ticker',
           {},
-          'websocket'
-        )
+          'websocket',
+        ),
       ).rejects.toThrow('WebSocket error');
 
       expect(mockObserver.onSubscriptionError).toHaveBeenCalledWith(
@@ -570,7 +529,7 @@ describe('SubscriptionCoordinator', () => {
           symbol: 'BTC/USDT',
           type: 'ticker',
         }),
-        expect.any(Error)
+        expect.any(Error),
       );
     });
 
@@ -583,7 +542,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(mockObserver.onSubscriptionCreated).not.toHaveBeenCalled();
@@ -598,7 +557,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -607,7 +566,7 @@ describe('SubscriptionCoordinator', () => {
         'ETH/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       const stats = coordinator.getStats();
@@ -621,7 +580,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -630,7 +589,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'orderbook',
         {},
-        'websocket'
+        'websocket',
       );
 
       const stats = coordinator.getStats();
@@ -647,7 +606,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -656,7 +615,7 @@ describe('SubscriptionCoordinator', () => {
         'ETH/USDT',
         'ticker',
         {},
-        'rest'
+        'rest',
       );
 
       const stats = coordinator.getStats();
@@ -676,7 +635,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -685,7 +644,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       const stats = coordinator.getStats();
@@ -702,7 +661,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -711,7 +670,7 @@ describe('SubscriptionCoordinator', () => {
         'ETH/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -720,7 +679,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       const strategy1Subs = coordinator.getStrategySubscriptions('strategy1');
@@ -746,7 +705,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(coordinator.hasSubscription(key)).toBe(true);
@@ -759,7 +718,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       await coordinator.subscribe(
@@ -768,7 +727,7 @@ describe('SubscriptionCoordinator', () => {
         'ETH/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       const allSubs = coordinator.getAllSubscriptions();
@@ -790,7 +749,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'rest'
+        'rest',
       );
 
       await coordinator.subscribe(
@@ -799,7 +758,7 @@ describe('SubscriptionCoordinator', () => {
         'ETH/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(coordinator.getStats().total).toBe(2);
@@ -819,7 +778,7 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         { pollInterval: 1000 },
-        'rest'
+        'rest',
       );
 
       await coordinator.clear();
@@ -833,7 +792,7 @@ describe('SubscriptionCoordinator', () => {
   describe('Error Handling', () => {
     it('should handle exchange subscription errors', async () => {
       vi.mocked(mockExchange.subscribeToTicker).mockRejectedValue(
-        new Error('Connection failed')
+        new Error('Connection failed'),
       );
 
       await expect(
@@ -843,13 +802,13 @@ describe('SubscriptionCoordinator', () => {
           'BTC/USDT',
           'ticker',
           {},
-          'websocket'
-        )
+          'websocket',
+        ),
       ).rejects.toThrow('Connection failed');
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to subscribe'),
-        expect.any(Error)
+        expect.any(Error),
       );
 
       // Subscription should not be created
@@ -857,16 +816,10 @@ describe('SubscriptionCoordinator', () => {
     });
 
     it('should handle unsubscribe from non-existent subscription', async () => {
-      await coordinator.unsubscribe(
-        'strategy1',
-        mockExchange,
-        'BTC/USDT',
-        'ticker',
-        {}
-      );
+      await coordinator.unsubscribe('strategy1', mockExchange, 'BTC/USDT', 'ticker', {});
 
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('non-existent subscription')
+        expect.stringContaining('non-existent subscription'),
       );
     });
 
@@ -888,12 +841,12 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Error notifying subscription observer',
-        expect.any(Error)
+        expect.any(Error),
       );
 
       // Subscription should still be created
@@ -911,19 +864,15 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       const afterCreate = new Date();
 
       const subs = coordinator.getAllSubscriptions();
       expect(subs[0].createdAt).toBeInstanceOf(Date);
-      expect(subs[0].createdAt.getTime()).toBeGreaterThanOrEqual(
-        beforeCreate.getTime()
-      );
-      expect(subs[0].createdAt.getTime()).toBeLessThanOrEqual(
-        afterCreate.getTime()
-      );
+      expect(subs[0].createdAt.getTime()).toBeGreaterThanOrEqual(beforeCreate.getTime());
+      expect(subs[0].createdAt.getTime()).toBeLessThanOrEqual(afterCreate.getTime());
 
       const firstUpdate = subs[0].lastUpdated;
 
@@ -934,12 +883,12 @@ describe('SubscriptionCoordinator', () => {
         'BTC/USDT',
         'ticker',
         {},
-        'websocket'
+        'websocket',
       );
 
       const updatedSubs = coordinator.getAllSubscriptions();
       expect(updatedSubs[0].lastUpdated.getTime()).toBeGreaterThanOrEqual(
-        firstUpdate.getTime()
+        firstUpdate.getTime(),
       );
     });
   });

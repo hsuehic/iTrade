@@ -92,10 +92,7 @@ export class OrderManager extends EventEmitter {
   }
 
   public getOpenOrders(symbol?: string): Order[] {
-    const openStatuses: OrderStatus[] = [
-      OrderStatus.NEW,
-      OrderStatus.PARTIALLY_FILLED,
-    ];
+    const openStatuses: OrderStatus[] = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED];
     let openOrders: Order[] = [];
 
     for (const status of openStatuses) {
@@ -119,14 +116,14 @@ export class OrderManager extends EventEmitter {
       .filter(
         (order) =>
           order.side === side &&
-          (order.status === 'NEW' || order.status === 'PARTIALLY_FILLED')
+          (order.status === 'NEW' || order.status === 'PARTIALLY_FILLED'),
       )
       .reduce((total, order) => total.add(order.quantity), new Decimal(0));
   }
 
   public getAveragePrice(symbol: string, side: OrderSide): Decimal | null {
     const orders = this.getOrdersBySymbol(symbol).filter(
-      (order) => order.side === side && order.status === 'FILLED' && order.price
+      (order) => order.side === side && order.status === 'FILLED' && order.price,
     );
 
     if (orders.length === 0) {
@@ -140,9 +137,7 @@ export class OrderManager extends EventEmitter {
       if (order.price) {
         const value = order.price.mul(order.executedQuantity || order.quantity);
         totalValue = totalValue.add(value);
-        totalQuantity = totalQuantity.add(
-          order.executedQuantity || order.quantity
-        );
+        totalQuantity = totalQuantity.add(order.executedQuantity || order.quantity);
       }
     }
 
@@ -175,9 +170,7 @@ export class OrderManager extends EventEmitter {
     totalVolume: Decimal;
     totalValue: Decimal;
   } {
-    const orders = symbol
-      ? this.getOrdersBySymbol(symbol)
-      : this.getAllOrders();
+    const orders = symbol ? this.getOrdersBySymbol(symbol) : this.getAllOrders();
 
     let open = 0;
     let filled = 0;

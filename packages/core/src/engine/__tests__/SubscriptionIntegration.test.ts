@@ -103,11 +103,7 @@ describe('Subscription Integration Tests', () => {
     } as unknown as IExchange;
 
     // Create engine
-    engine = new TradingEngine(
-      mockRiskManager,
-      mockPortfolioManager,
-      mockLogger
-    );
+    engine = new TradingEngine(mockRiskManager, mockPortfolioManager, mockLogger);
     engine.addExchange('test-exchange', mockExchange);
   });
 
@@ -137,7 +133,7 @@ describe('Subscription Integration Tests', () => {
       // Should subscribe to ticker
       expect(mockExchange.subscribeToTicker).toHaveBeenCalledWith('BTC/USDT');
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Auto-subscribing data')
+        expect.stringContaining('Auto-subscribing data'),
       );
     });
 
@@ -172,7 +168,7 @@ describe('Subscription Integration Tests', () => {
       await engine.removeStrategy('test-strategy');
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Auto-unsubscribing')
+        expect.stringContaining('Auto-unsubscribing'),
       );
     });
 
@@ -213,14 +209,9 @@ describe('Subscription Integration Tests', () => {
       await engine.addStrategy('test-strategy', mockStrategy);
 
       expect(mockExchange.subscribeToTicker).toHaveBeenCalledWith('BTC/USDT');
-      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith(
-        'BTC/USDT'
-      );
+      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith('BTC/USDT');
       expect(mockExchange.subscribeToTrades).toHaveBeenCalledWith('BTC/USDT');
-      expect(mockExchange.subscribeToKlines).toHaveBeenCalledWith(
-        'BTC/USDT',
-        '1m'
-      );
+      expect(mockExchange.subscribeToKlines).toHaveBeenCalledWith('BTC/USDT', '1m');
 
       const stats = engine.getSubscriptionStats();
       expect(stats.total).toBe(4);
@@ -398,11 +389,7 @@ describe('Subscription Integration Tests', () => {
       await Promise.resolve(); // Give time for async operations
 
       // Exchange should emit the data
-      expect(mockExchange.emit).toHaveBeenCalledWith(
-        'ticker',
-        'BTC/USDT',
-        mockTicker
-      );
+      expect(mockExchange.emit).toHaveBeenCalledWith('ticker', 'BTC/USDT', mockTicker);
     });
   });
 
@@ -454,7 +441,7 @@ describe('Subscription Integration Tests', () => {
   describe('Error Handling', () => {
     it.skip('should handle subscription errors gracefully', async () => {
       vi.mocked(mockExchange.subscribeToTicker).mockRejectedValue(
-        new Error('WebSocket connection failed')
+        new Error('WebSocket connection failed'),
       );
 
       mockStrategy = createMockStrategy('test-strategy', {
@@ -473,7 +460,7 @@ describe('Subscription Integration Tests', () => {
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining('Failed to subscribe'),
-        expect.any(Error)
+        expect.any(Error),
       );
     });
 
@@ -497,14 +484,12 @@ describe('Subscription Integration Tests', () => {
       });
 
       // Make subscription fail for invalid symbol
-      vi.mocked(mockExchange.subscribeToTicker).mockImplementation(
-        (symbol: string) => {
-          if (symbol === 'INVALID/SYMBOL') {
-            return Promise.reject(new Error('Invalid symbol'));
-          }
-          return Promise.resolve();
+      vi.mocked(mockExchange.subscribeToTicker).mockImplementation((symbol: string) => {
+        if (symbol === 'INVALID/SYMBOL') {
+          return Promise.reject(new Error('Invalid symbol'));
         }
-      );
+        return Promise.resolve();
+      });
 
       await engine.start();
       await engine.addStrategy('failing-strategy', failingStrategy);
@@ -550,10 +535,7 @@ describe('Subscription Integration Tests', () => {
 });
 
 // Helper function to create mock strategies
-function createMockStrategy(
-  name: string,
-  parameters: StrategyParameters
-): IStrategy {
+function createMockStrategy(name: string, parameters: StrategyParameters): IStrategy {
   return {
     name,
     parameters,

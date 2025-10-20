@@ -32,14 +32,12 @@ export class CoinbaseExchange extends BaseExchange {
   private publicHttpClient: AxiosInstance;
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
-  private static readonly MAINNET_WS_URL =
-    'wss://advanced-trade-ws.coinbase.com';
+  private static readonly MAINNET_WS_URL = 'wss://advanced-trade-ws.coinbase.com';
 
   constructor() {
     const envBase = process.env.COINBASE_BASE_URL;
     const useExchangeApi =
-      (process.env.COINBASE_USE_EXCHANGE_API || 'false').toLowerCase() ===
-      'true';
+      (process.env.COINBASE_USE_EXCHANGE_API || 'false').toLowerCase() === 'true';
     const base =
       envBase ||
       (useExchangeApi
@@ -69,7 +67,7 @@ export class CoinbaseExchange extends BaseExchange {
     const productId = this.normalizeSymbol(symbol);
     const resp = await this.publicHttpClient.get(
       // `/api/v3/brokerage/products/${productId}/ticker`
-      `/products/${productId}/ticker`
+      `/products/${productId}/ticker`,
     );
     const data = resp.data;
     return {
@@ -93,7 +91,7 @@ export class CoinbaseExchange extends BaseExchange {
       `/api/v3/brokerage/products/${productId}/book`,
       {
         params: { level: 2, limit },
-      }
+      },
     );
     const data = resp.data;
     return {
@@ -116,7 +114,7 @@ export class CoinbaseExchange extends BaseExchange {
       `/api/v3/brokerage/products/${productId}/trades`,
       {
         params: { limit },
-      }
+      },
     );
     const data = resp.data?.trades || resp.data || [];
     return data.map((t: any) => ({
@@ -136,7 +134,7 @@ export class CoinbaseExchange extends BaseExchange {
     interval: string,
     startTime?: Date,
     endTime?: Date,
-    limit = 300
+    limit = 300,
   ): Promise<Kline[]> {
     const productId = this.normalizeSymbol(symbol);
     const granularity = this.mapIntervalToGranularity(interval);
@@ -145,7 +143,7 @@ export class CoinbaseExchange extends BaseExchange {
     if (endTime) params.end = endTime.toISOString();
     const resp = await this.httpClient.get(
       `/api/v3/brokerage/products/${productId}/candles`,
-      { params }
+      { params },
     );
     console.log('resp:', resp);
     const data = resp.data?.candles || resp.data || [];
@@ -172,7 +170,7 @@ export class CoinbaseExchange extends BaseExchange {
     price?: Decimal,
     _stopPrice?: Decimal,
     timeInForce: TimeInForce = TimeInForce.GTC,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const productId = this.normalizeSymbol(symbol);
 
@@ -202,7 +200,7 @@ export class CoinbaseExchange extends BaseExchange {
 
     const resp = await this.httpClient.post('/api/v3/brokerage/orders', body);
     return this.transformOrder(
-      resp.data?.success_response?.order || resp.data?.order || body
+      resp.data?.success_response?.order || resp.data?.order || body,
     );
   }
 
@@ -217,37 +215,26 @@ export class CoinbaseExchange extends BaseExchange {
   public async getOrder(symbol: string, orderId: string): Promise<Order> {
     this.normalizeSymbol(symbol);
     const resp = await this.httpClient.get(
-      `/api/v3/brokerage/orders/historical/${orderId}`
+      `/api/v3/brokerage/orders/historical/${orderId}`,
     );
-    const order = resp.data?.orders
-      ? resp.data.orders[0]
-      : resp.data?.order || resp.data;
+    const order = resp.data?.orders ? resp.data.orders[0] : resp.data?.order || resp.data;
     return this.transformOrder(order);
   }
 
   public async getOpenOrders(_symbol?: string): Promise<Order[]> {
     const params: any = { order_status: 'OPEN' };
-    const resp = await this.httpClient.get(
-      '/api/v3/brokerage/orders/historical/batch',
-      {
-        params,
-      }
-    );
+    const resp = await this.httpClient.get('/api/v3/brokerage/orders/historical/batch', {
+      params,
+    });
     const orders = resp.data?.orders || [];
     return orders.map((o: any) => this.transformOrder(o));
   }
 
-  public async getOrderHistory(
-    _symbol?: string,
-    limit = 100
-  ): Promise<Order[]> {
+  public async getOrderHistory(_symbol?: string, limit = 100): Promise<Order[]> {
     const params: any = { limit, order_status: 'FILLED' };
-    const resp = await this.httpClient.get(
-      '/api/v3/brokerage/orders/historical/batch',
-      {
-        params,
-      }
-    );
+    const resp = await this.httpClient.get('/api/v3/brokerage/orders/historical/batch', {
+      params,
+    });
     const orders = resp.data?.orders || [];
     return orders.map((o: any) => this.transformOrder(o));
   }
@@ -285,9 +272,7 @@ export class CoinbaseExchange extends BaseExchange {
   public async getPositions(): Promise<Position[]> {
     try {
       // Step 1: Get all accounts to find perpetual portfolio IDs
-      const accountsResp = await this.httpClient.get(
-        '/api/v3/brokerage/accounts'
-      );
+      const accountsResp = await this.httpClient.get('/api/v3/brokerage/accounts');
       const accounts = accountsResp.data?.accounts || [];
 
       // Debug: Log all accounts to understand the structure (remove in production)
@@ -324,13 +309,12 @@ export class CoinbaseExchange extends BaseExchange {
 
       // Step 2: Get positions for each perpetual portfolio
       for (const account of perpetualAccounts) {
-        const portfolioUuid =
-          account.portfolio_uuid || account.retail_portfolio_id;
+        const portfolioUuid = account.portfolio_uuid || account.retail_portfolio_id;
         if (!portfolioUuid) continue;
 
         try {
           const positionsResp = await this.httpClient.get(
-            `/api/v3/brokerage/intx/positions/${portfolioUuid}`
+            `/api/v3/brokerage/intx/positions/${portfolioUuid}`,
           );
           const portfolioPositions = positionsResp.data?.positions || [];
 
@@ -341,8 +325,7 @@ export class CoinbaseExchange extends BaseExchange {
             const getDecimalValue = (field: any): string => {
               if (typeof field === 'string') return field;
               if (typeof field === 'number') return field.toString();
-              if (field && typeof field === 'object' && field.value)
-                return field.value;
+              if (field && typeof field === 'object' && field.value) return field.value;
               return '0';
             };
 
@@ -376,7 +359,7 @@ export class CoinbaseExchange extends BaseExchange {
           // For other errors, log and continue
           console.warn(
             `Failed to fetch positions for portfolio ${portfolioUuid}:`,
-            error.message
+            error.message,
           );
         }
       }
@@ -392,9 +375,7 @@ export class CoinbaseExchange extends BaseExchange {
   public async getExchangeInfo(): Promise<ExchangeInfo> {
     const resp = await this.httpClient.get('/api/v3/brokerage/products');
     const products = resp.data?.products || resp.data || [];
-    const symbols = products
-      .map((p: any) => p.product_id || p.id)
-      .filter(Boolean);
+    const symbols = products.map((p: any) => p.product_id || p.id).filter(Boolean);
     const minTradeSize: { [symbol: string]: Decimal } = {};
     products.forEach((p: any) => {
       const pid = p.product_id || p.id;
@@ -422,10 +403,7 @@ export class CoinbaseExchange extends BaseExchange {
     return this.wsBaseUrl;
   }
 
-  protected async sendWebSocketSubscription(
-    type: string,
-    key: string
-  ): Promise<void> {
+  protected async sendWebSocketSubscription(type: string, key: string): Promise<void> {
     const ws = this.wsConnections.get('market');
     if (!ws) return;
 
@@ -462,9 +440,7 @@ export class CoinbaseExchange extends BaseExchange {
               this.emit('ticker', t.product_id, {
                 symbol: t.product_id,
                 price: this.formatDecimal(t.price || t.best_ask || '0'),
-                volume: this.formatDecimal(
-                  t.volume_24_h || t.volume_24h || '0'
-                ),
+                volume: this.formatDecimal(t.volume_24_h || t.volume_24h || '0'),
                 timestamp: new Date(),
                 bid: t.best_bid ? this.formatDecimal(t.best_bid) : undefined,
                 ask: t.best_ask ? this.formatDecimal(t.best_ask) : undefined,
@@ -520,7 +496,7 @@ export class CoinbaseExchange extends BaseExchange {
                 interval: c.granularity?.toString() || '',
                 openTime: new Date(c.start),
                 closeTime: new Date(
-                  new Date(c.start).getTime() + (c.granularity || 60) * 1000
+                  new Date(c.start).getTime() + (c.granularity || 60) * 1000,
                 ),
                 open: this.formatDecimal(c.open),
                 high: this.formatDecimal(c.high),
@@ -571,9 +547,7 @@ export class CoinbaseExchange extends BaseExchange {
 
     // Merge config.params (if any) into the query string
     if (config.params) {
-      for (const [key, value] of Object.entries(
-        config.params as Record<string, any>
-      )) {
+      for (const [key, value] of Object.entries(config.params as Record<string, any>)) {
         if (value === undefined || value === null) continue;
         if (Array.isArray(value)) {
           for (const v of value) {
@@ -609,8 +583,7 @@ export class CoinbaseExchange extends BaseExchange {
     // Detect auth method based on secret key format and host
     const isExchangeHost = host.includes('api.exchange.coinbase.com');
     const isPemKey = this.credentials.secretKey.includes('-----BEGIN');
-    const forceJwt =
-      (process.env.COINBASE_FORCE_JWT || 'false').toLowerCase() === 'true';
+    const forceJwt = (process.env.COINBASE_FORCE_JWT || 'false').toLowerCase() === 'true';
 
     // Use JWT if: PEM key detected, Exchange host, or explicitly forced
     const useJwt = isPemKey || isExchangeHost || forceJwt;
@@ -622,7 +595,7 @@ export class CoinbaseExchange extends BaseExchange {
         method,
         pathname,
         this.credentials.apiKey,
-        this.credentials.secretKey
+        this.credentials.secretKey,
       );
 
       config.headers = {
@@ -639,7 +612,7 @@ export class CoinbaseExchange extends BaseExchange {
         (config.data ? JSON.stringify(config.data) : '');
       const hmac = crypto.createHmac(
         'sha256',
-        Buffer.from(this.credentials.secretKey, 'base64')
+        Buffer.from(this.credentials.secretKey, 'base64'),
       );
       const signature = hmac.update(prehash).digest('base64');
       config.headers = {
@@ -711,18 +684,13 @@ export class CoinbaseExchange extends BaseExchange {
       };
     }
 
-    const status = this.transformOrderStatus(
-      o.status || o.order_status || 'NEW'
-    );
+    const status = this.transformOrderStatus(o.status || o.order_status || 'NEW');
 
     return {
       id: o.order_id || o.id || uuidv4(),
       clientOrderId: o.client_order_id,
       symbol: o.product_id || 'UNKNOWN',
-      side:
-        (o.side?.toUpperCase() || 'BUY') === 'BUY'
-          ? OrderSide.BUY
-          : OrderSide.SELL,
+      side: (o.side?.toUpperCase() || 'BUY') === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformOrderType(o.order_type || o.type || 'LIMIT'),
       quantity: this.formatDecimal(o.quantity || o.base_size || '0'),
       price: o.price ? this.formatDecimal(o.price) : undefined,
@@ -730,9 +698,7 @@ export class CoinbaseExchange extends BaseExchange {
       timeInForce: (o.time_in_force as TimeInForce) || TimeInForce.GTC,
       timestamp: o.submitted_time ? new Date(o.submitted_time) : new Date(),
       updateTime: o.completion_time ? new Date(o.completion_time) : undefined,
-      executedQuantity: o.filled_size
-        ? this.formatDecimal(o.filled_size)
-        : undefined,
+      executedQuantity: o.filled_size ? this.formatDecimal(o.filled_size) : undefined,
       cummulativeQuoteQuantity: undefined,
       fills: undefined,
     };

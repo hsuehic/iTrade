@@ -16,7 +16,6 @@ const compat = new FlatCompat({
   baseDirectory: import.meta.dirname,
 });
 
-
 export default defineConfig(
   // 基础设置
   {
@@ -25,9 +24,9 @@ export default defineConfig(
       'dist',
       'build',
       '.next',
-      '.next-dev',
-      '.next-staging',
-      '.next-prod',
+      '**/.next/**',
+      '**/.next-*/**',
+      '.next-*',
       '**/coverage',
       '**/generated',
     ],
@@ -35,14 +34,15 @@ export default defineConfig(
 
   // 通用 JS/TS 规则
   {
-    files: ['**/*.{ts,tsx,js,jsx}'],
+    files: ['**/*.{ts,tsx,js,jsx,mjs}'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        projectService: true, // 自动识别每包 tsconfig.json
+        // projectService: true, // 自动识别每包 tsconfig.json
         ecmaVersion: 'latest',
         sourceType: 'module',
-        ecmaFeatures: { jsx: true }
+        ecmaFeatures: { jsx: true },
+        allowDefaultProject: true, // ✅ fallback for non-TS files
       },
       globals: {
         ...globals.node,
@@ -51,7 +51,7 @@ export default defineConfig(
     },
     plugins: {
       '@typescript-eslint': tseslint.plugin,
-      'prettier': prettierPlugin
+      prettier: prettierPlugin,
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -61,7 +61,7 @@ export default defineConfig(
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
-        { argsIgnorePattern: '^_' },
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
       'no-undef': 'off',
       'no-console': 'off',
@@ -89,18 +89,23 @@ export default defineConfig(
 
   // Next.js 前端应用配置
   // 将 Next.js 配置和 `compat` 兼容配置合并
-  ...compat.config({
-    extends: ['next/core-web-vitals'],
-    settings: {
-      // 在 compat.config 中设置 rootDir
-      next: {
-        rootDir: 'apps/web/',
+  ...compat
+    .config({
+      extends: ['next/core-web-vitals'],
+      settings: {
+        // 在 compat.config 中设置 rootDir
+        next: {
+          rootDir: 'apps/web/',
+        },
       },
-    },
-  }).map(config => ({
-    ...config,
-    files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
-  })),
+      rules: {
+        '@next/next/no-html-link-for-pages': 'off',
+      },
+    })
+    .map((config) => ({
+      ...config,
+      files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
+    })),
 
   // Node.js 控制台应用（apps/console）
   {
@@ -118,5 +123,5 @@ export default defineConfig(
   {
     files: ['**/*.{mjs,ts,tsx,js,jsx}'], // all JS/TS files in monorepo
     ...prettier,
-  }
+  },
 );

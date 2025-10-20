@@ -23,13 +23,9 @@ export class BacktestResultEntity implements BacktestResult {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(
-    () => BacktestConfigEntity,
-    (c: BacktestConfigEntity) => c.results,
-    {
-      onDelete: 'CASCADE',
-    }
-  )
+  @ManyToOne(() => BacktestConfigEntity, (c: BacktestConfigEntity) => c.results, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'configId' })
   config!: BacktestConfigEntity;
 

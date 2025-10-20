@@ -19,10 +19,7 @@ export class PnLRepository {
     const result = await this.repository
       .createQueryBuilder('order')
       .select('COUNT(*)', 'totalOrders')
-      .addSelect(
-        "COUNT(CASE WHEN order.status = 'FILLED' THEN 1 END)",
-        'filledOrders'
-      )
+      .addSelect("COUNT(CASE WHEN order.status = 'FILLED' THEN 1 END)", 'filledOrders')
       .addSelect('COALESCE(SUM(order.realizedPnl), 0)', 'realizedPnl')
       .addSelect('COALESCE(SUM(order.unrealizedPnl), 0)', 'unrealizedPnl')
       .where('order.strategyId = :strategyId', { strategyId })
@@ -82,17 +79,11 @@ export class PnLRepository {
       };
     });
 
-    const totalRealizedPnl = strategies.reduce(
-      (sum, s) => sum + s.realizedPnl,
-      0
-    );
-    const totalUnrealizedPnl = strategies.reduce(
-      (sum, s) => sum + s.unrealizedPnl,
-      0
-    );
+    const totalRealizedPnl = strategies.reduce((sum, s) => sum + s.realizedPnl, 0);
+    const totalUnrealizedPnl = strategies.reduce((sum, s) => sum + s.unrealizedPnl, 0);
     const totalOrders = strategyResults.reduce(
       (sum, row) => sum + parseInt(row.totalOrders || '0'),
-      0
+      0,
     );
 
     return {

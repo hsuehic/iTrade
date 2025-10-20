@@ -1,11 +1,5 @@
 import { Decimal } from 'decimal.js';
-import {
-  Column,
-  Entity,
-  JoinColumn,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
@@ -16,13 +10,9 @@ export class BacktestTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(
-    () => BacktestResultEntity,
-    (r: BacktestResultEntity) => r.trades,
-    {
-      onDelete: 'CASCADE',
-    }
-  )
+  @ManyToOne(() => BacktestResultEntity, (r: BacktestResultEntity) => r.trades, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'resultId' })
   result!: BacktestResultEntity;
 

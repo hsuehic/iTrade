@@ -13,7 +13,7 @@ export abstract class MarketDataExchange extends EventEmitter {
   constructor(
     public readonly name: string,
     protected readonly baseUrl: string,
-    protected readonly wsBaseUrl: string
+    protected readonly wsBaseUrl: string,
   ) {
     super();
     this.httpClient = axios.create({ baseURL: this.baseUrl, timeout: 30000 });
@@ -48,17 +48,14 @@ export abstract class MarketDataExchange extends EventEmitter {
 
   // Market Data
   public abstract getTicker(symbol: string): Promise<Ticker>;
-  public abstract getOrderBook(
-    symbol: string,
-    limit?: number
-  ): Promise<OrderBook>;
+  public abstract getOrderBook(symbol: string, limit?: number): Promise<OrderBook>;
   public abstract getTrades(symbol: string, limit?: number): Promise<Trade[]>;
   public abstract getKlines(
     symbol: string,
     interval: string,
     startTime?: Date,
     endTime?: Date,
-    limit?: number
+    limit?: number,
   ): Promise<Kline[]>;
 
   // WebSocket Subscriptions
@@ -74,16 +71,13 @@ export abstract class MarketDataExchange extends EventEmitter {
     await this.subscribe('trades', symbol);
   }
 
-  public async subscribeToKlines(
-    symbol: string,
-    interval: string
-  ): Promise<void> {
+  public async subscribeToKlines(symbol: string, interval: string): Promise<void> {
     await this.subscribe('klines', `${symbol}@${interval}`);
   }
 
   public async unsubscribe(
     symbol: string,
-    type: 'ticker' | 'orderbook' | 'trades' | 'klines'
+    type: 'ticker' | 'orderbook' | 'trades' | 'klines',
   ): Promise<void> {
     const key = type === 'klines' ? symbol : `${type}:${symbol}`;
     const subs = this.subscriptions.get(type);
@@ -104,7 +98,7 @@ export abstract class MarketDataExchange extends EventEmitter {
   protected abstract buildWebSocketUrl(): string;
   protected abstract sendWebSocketSubscription(
     type: string,
-    symbol: string
+    symbol: string,
   ): Promise<void>;
   protected abstract handleWebSocketMessage(message: unknown): void;
 
@@ -112,8 +106,7 @@ export abstract class MarketDataExchange extends EventEmitter {
     if (!this.subscriptions.has(type)) this.subscriptions.set(type, new Set());
     this.subscriptions.get(type)!.add(symbol);
 
-    if (!this.wsConnections.has('market'))
-      await this.createWebSocketConnection();
+    if (!this.wsConnections.has('market')) await this.createWebSocketConnection();
     await this.sendWebSocketSubscription(type, symbol);
   }
 
@@ -135,9 +128,7 @@ export abstract class MarketDataExchange extends EventEmitter {
       this.wsConnections.delete('market');
       if (this._isConnected && code !== 1000) {
         setTimeout(() => {
-          this.createWebSocketConnection().catch((error) =>
-            this.emit('ws_error', error)
-          );
+          this.createWebSocketConnection().catch((error) => this.emit('ws_error', error));
         }, 5000);
       }
     });

@@ -12,8 +12,8 @@
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint",
-    "lint:fix": "turbo run lint:fix",
+    "lint": "turbo run lint --no-cache",
+    "lint:fix": "turbo run lint:fix --no-cache",
     "test": "turbo run test",
     "clean": "find . -type d -name dist -o -name build | xargs rm -rf"
   },

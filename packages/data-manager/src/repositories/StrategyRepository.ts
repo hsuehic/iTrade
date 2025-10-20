@@ -27,7 +27,7 @@ export class StrategyRepository {
     if (entityData.symbol && entityData.exchange) {
       entityData.normalizedSymbol = normalizeSymbol(
         entityData.symbol,
-        entityData.exchange
+        entityData.exchange,
       );
       entityData.marketType = detectMarketType(entityData.symbol);
     }
@@ -41,7 +41,7 @@ export class StrategyRepository {
 
   async findById(
     id: number,
-    options?: { includeUser?: boolean }
+    options?: { includeUser?: boolean },
   ): Promise<StrategyEntity | null> {
     // Don't join by default - only if explicitly requested
     if (options?.includeUser) {
@@ -112,11 +112,7 @@ export class StrategyRepository {
     await this.repository.delete({ id });
   }
 
-  async updateStatus(
-    id: number,
-    status: string,
-    errorMessage?: string
-  ): Promise<void> {
+  async updateStatus(id: number, status: string, errorMessage?: string): Promise<void> {
     const updates: any = {
       status,
       lastExecutionTime: new Date(),

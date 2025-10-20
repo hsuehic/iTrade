@@ -115,10 +115,10 @@ export class OrderSyncService extends EventEmitter {
 
   private config: Required<OrderSyncConfig>;
 
-  constructor (
+  constructor(
     private exchanges: Map<string, IExchange>,
     private dataManager: IOrderDataManager,
-    config: OrderSyncConfig = {}
+    config: OrderSyncConfig = {},
   ) {
     super();
 
@@ -268,7 +268,7 @@ export class OrderSyncService extends EventEmitter {
       exchange?: string;
       symbol: string;
       clientOrderId?: string;
-    }>
+    }>,
   ): Map<
     string,
     Array<{
@@ -324,14 +324,11 @@ export class OrderSyncService extends EventEmitter {
       exchange?: string;
       symbol: string;
       clientOrderId?: string;
-    }>
+    }>,
   ): Promise<void> {
     const exchange = this.exchanges.get(exchangeName);
     if (!exchange || !exchange.isConnected) {
-      this.emit(
-        'warn',
-        `Exchange ${exchangeName} not available for order sync`
-      );
+      this.emit('warn', `Exchange ${exchangeName} not available for order sync`);
       return;
     }
 
@@ -339,9 +336,7 @@ export class OrderSyncService extends EventEmitter {
     const { batchSize } = this.config;
     for (let i = 0; i < orders.length; i += batchSize) {
       const batch = orders.slice(i, i + batchSize);
-      await Promise.all(
-        batch.map((order) => this.syncSingleOrder(exchange, order))
-      );
+      await Promise.all(batch.map((order) => this.syncSingleOrder(exchange, order)));
     }
   }
 
@@ -360,13 +355,13 @@ export class OrderSyncService extends EventEmitter {
       exchange?: string;
       symbol: string;
       clientOrderId?: string;
-    }
+    },
   ): Promise<void> {
     try {
       const exchangeOrder = await exchange.getOrder(
         dbOrder.symbol,
         dbOrder.id.toString(),
-        dbOrder.clientOrderId
+        dbOrder.clientOrderId,
       );
 
       const hasChanged = this.hasOrderChanged(dbOrder, exchangeOrder);
@@ -381,7 +376,7 @@ export class OrderSyncService extends EventEmitter {
       this.stats.ordersUpdated++;
       this.emit(
         'info',
-        `✅ Order ${dbOrder.id} synced: ${dbOrder.status} → ${exchangeOrder.status}`
+        `✅ Order ${dbOrder.id} synced: ${dbOrder.status} → ${exchangeOrder.status}`,
       );
     } catch (error) {
       this.addError({
@@ -392,7 +387,7 @@ export class OrderSyncService extends EventEmitter {
 
       this.emit(
         'debug',
-        `Failed to sync order ${dbOrder.id}: ${(error as Error).message}`
+        `Failed to sync order ${dbOrder.id}: ${(error as Error).message}`,
       );
     }
   }
@@ -408,8 +403,7 @@ export class OrderSyncService extends EventEmitter {
     const dbExecutedQty = dbOrder.executedQuantity
       ? new Decimal(dbOrder.executedQuantity)
       : new Decimal(0);
-    const exchangeExecutedQty =
-      exchangeOrder.executedQuantity || new Decimal(0);
+    const exchangeExecutedQty = exchangeOrder.executedQuantity || new Decimal(0);
 
     if (!dbExecutedQty.equals(exchangeExecutedQty)) {
       return true;
@@ -443,21 +437,17 @@ export class OrderSyncService extends EventEmitter {
       symbol: string;
       clientOrderId?: string;
     },
-    exchangeOrder: Order
+    exchangeOrder: Order,
   ): Promise<void> {
     try {
       await this.dataManager.updateOrder(dbOrder.id, {
         status: exchangeOrder.status,
         executedQuantity: exchangeOrder.executedQuantity?.toString(),
-        cummulativeQuoteQuantity:
-          exchangeOrder.cummulativeQuoteQuantity?.toString(),
+        cummulativeQuoteQuantity: exchangeOrder.cummulativeQuoteQuantity?.toString(),
         updatedAt: exchangeOrder.updateTime || new Date(),
       });
 
-      this.emit(
-        'debug',
-        `💾 Database updated for order ${dbOrder.id.toString()}`
-      );
+      this.emit('debug', `💾 Database updated for order ${dbOrder.id.toString()}`);
     } catch (error) {
       this.emit('error', error);
       throw error;
@@ -479,7 +469,7 @@ export class OrderSyncService extends EventEmitter {
       symbol: string;
       clientOrderId?: string;
     },
-    newOrder: Order
+    newOrder: Order,
   ): Promise<void> {
     const lastStatus = this.lastKnownStatuses.get(newOrder.id);
 
@@ -501,18 +491,12 @@ export class OrderSyncService extends EventEmitter {
         break;
 
       case OrderStatus.PARTIALLY_FILLED:
-        this.emit(
-          'info',
-          `📨 Emitting orderPartiallyFilled event for ${newOrder.id}`
-        );
+        this.emit('info', `📨 Emitting orderPartiallyFilled event for ${newOrder.id}`);
         this.eventBus.emitOrderPartiallyFilled(eventData);
         break;
 
       case OrderStatus.CANCELED:
-        this.emit(
-          'info',
-          `📨 Emitting orderCancelled event for ${newOrder.id}`
-        );
+        this.emit('info', `📨 Emitting orderCancelled event for ${newOrder.id}`);
         this.eventBus.emitOrderCancelled(eventData);
         break;
 
@@ -530,11 +514,7 @@ export class OrderSyncService extends EventEmitter {
   /**
    * 添加错误记录
    */
-  private addError(error: {
-    time: Date;
-    error: string;
-    orderId?: string;
-  }): void {
+  private addError(error: { time: Date; error: string; orderId?: string }): void {
     this.stats.errors.push(error);
 
     if (this.stats.errors.length > this.config.maxErrorRecords) {

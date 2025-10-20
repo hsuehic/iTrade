@@ -1,11 +1,5 @@
 import { Decimal } from 'decimal.js';
-import {
-  Column,
-  Entity,
-  Index,
-  ManyToOne,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, Index, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { OrderFill } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';

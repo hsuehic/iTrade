@@ -10,7 +10,7 @@ const program = new Command();
 program
   .name('iTrade@iHsueh')
   .description(
-    'iTrade@iHsueh is a intelligent and strategic trading platform for everyone'
+    'iTrade@iHsueh is a intelligent and strategic trading platform for everyone',
   )
   .version('0.1.0');
 

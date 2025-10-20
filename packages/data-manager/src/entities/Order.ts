@@ -10,13 +10,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import {
-  Order,
-  OrderSide,
-  OrderStatus,
-  OrderType,
-  TimeInForce,
-} from '@itrade/core';
+import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { PositionEntity } from './Position';

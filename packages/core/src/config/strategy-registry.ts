@@ -1,14 +1,6 @@
 export interface StrategyParameterDefinition {
   name: string;
-  type:
-    | 'number'
-    | 'string'
-    | 'boolean'
-    | 'object'
-    | 'date'
-    | 'enum'
-    | 'range'
-    | 'color';
+  type: 'number' | 'string' | 'boolean' | 'object' | 'date' | 'enum' | 'range' | 'color';
   description: string;
   defaultValue: string | number | boolean | object;
   required?: boolean;
@@ -345,8 +337,7 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
   custom: {
     type: 'custom',
     name: 'Custom Strategy',
-    description:
-      'User-defined custom trading strategy with advanced parameters',
+    description: 'User-defined custom trading strategy with advanced parameters',
     icon: '🛠️',
     implemented: false, // 🔄 实际实现状态由 @itrade/strategies 包动态确定
     category: 'custom',
@@ -470,8 +461,7 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
         'Highly customizable strategy with support for all parameter types. Demonstrates date pickers, color selectors, range sliders, enums, and more.',
       parameters:
         'Configure strategy using visual controls like sliders, date pickers, and color selectors. Advanced users can define custom logic in JSON format.',
-      signals:
-        'Signals depend on custom implementation and configured parameters.',
+      signals: 'Signals depend on custom implementation and configured parameters.',
       riskFactors: [
         'Risk profile depends on implementation',
         'Requires thorough testing before live trading',
@@ -494,9 +484,7 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
  * @deprecated 推荐使用 @itrade/strategies 包中的方法，它能提供真实的实现状态
  */
 export function getImplementedStrategies(): StrategyConfig[] {
-  return Object.values(STRATEGY_REGISTRY).filter(
-    (config) => config.implemented
-  );
+  return Object.values(STRATEGY_REGISTRY).filter((config) => config.implemented);
 }
 
 /** 获取所有策略类型 */
@@ -505,15 +493,13 @@ export function getAllStrategyTypes(): StrategyTypeKey[] {
 }
 
 /** 根据类型获取策略配置 */
-export function getStrategyConfig(
-  type: StrategyTypeKey
-): StrategyConfig | undefined {
+export function getStrategyConfig(type: StrategyTypeKey): StrategyConfig | undefined {
   return STRATEGY_REGISTRY[type];
 }
 
 /** 获取策略的默认参数 */
 export function getStrategyDefaultParameters(
-  type: StrategyTypeKey
+  type: StrategyTypeKey,
 ): Record<string, unknown> {
   return STRATEGY_REGISTRY[type]?.defaultParameters || {};
 }
@@ -525,10 +511,10 @@ export function isValidStrategyType(type: string): type is StrategyTypeKey {
 
 /** 按分类获取策略 */
 export function getStrategiesByCategory(
-  category: StrategyConfig['category']
+  category: StrategyConfig['category'],
 ): StrategyConfig[] {
   return Object.values(STRATEGY_REGISTRY).filter(
-    (config) => config.category === category
+    (config) => config.category === category,
   );
 }
 

@@ -224,7 +224,7 @@ export default function StrategyPage() {
 
       toast.success(`Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`);
       fetchStrategies();
-    } catch (_error) {
+    } catch {
       toast.error('Failed to update strategy status');
     }
   };

@@ -1,9 +1,5 @@
 import { ILogger } from '../interfaces';
-import {
-  SubscriptionKey,
-  SubscriptionInfo,
-  DataType,
-} from '../types/subscription';
+import { SubscriptionKey, SubscriptionInfo, DataType } from '../types/subscription';
 
 /**
  * Manages subscriptions with reference counting to avoid duplicate subscriptions
@@ -20,7 +16,7 @@ export class SubscriptionManager {
     strategyName: string,
     key: SubscriptionKey,
     method: 'websocket' | 'rest',
-    timerId?: NodeJS.Timeout
+    timerId?: NodeJS.Timeout,
   ): void {
     const subscriptionId = this.getSubscriptionId(key);
     const existing = this.subscriptions.get(subscriptionId);
@@ -30,7 +26,7 @@ export class SubscriptionManager {
       existing.refCount++;
       existing.strategies.add(strategyName);
       this.logger.debug(
-        `Strategy ${strategyName} reusing subscription: ${subscriptionId} (refCount: ${existing.refCount})`
+        `Strategy ${strategyName} reusing subscription: ${subscriptionId} (refCount: ${existing.refCount})`,
       );
     } else {
       // New subscription
@@ -42,7 +38,7 @@ export class SubscriptionManager {
         timerId,
       });
       this.logger.info(
-        `Created new subscription: ${subscriptionId} for strategy ${strategyName}`
+        `Created new subscription: ${subscriptionId} for strategy ${strategyName}`,
       );
     }
   }
@@ -53,14 +49,14 @@ export class SubscriptionManager {
    */
   public unsubscribe(
     strategyName: string,
-    key: SubscriptionKey
+    key: SubscriptionKey,
   ): { shouldCancel: boolean; timerId?: NodeJS.Timeout } {
     const subscriptionId = this.getSubscriptionId(key);
     const subscription = this.subscriptions.get(subscriptionId);
 
     if (!subscription) {
       this.logger.warn(
-        `Attempted to unsubscribe from non-existent subscription: ${subscriptionId}`
+        `Attempted to unsubscribe from non-existent subscription: ${subscriptionId}`,
       );
       return { shouldCancel: false };
     }
@@ -70,14 +66,14 @@ export class SubscriptionManager {
     subscription.refCount--;
 
     this.logger.debug(
-      `Strategy ${strategyName} unsubscribed from: ${subscriptionId} (refCount: ${subscription.refCount})`
+      `Strategy ${strategyName} unsubscribed from: ${subscriptionId} (refCount: ${subscription.refCount})`,
     );
 
     // If no strategies are using this subscription, cancel it
     if (subscription.refCount === 0) {
       this.subscriptions.delete(subscriptionId);
       this.logger.info(
-        `Cancelled subscription: ${subscriptionId} (no more strategies using it)`
+        `Cancelled subscription: ${subscriptionId} (no more strategies using it)`,
       );
       return { shouldCancel: true, timerId: subscription.timerId };
     }

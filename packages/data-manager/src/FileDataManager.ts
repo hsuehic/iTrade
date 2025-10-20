@@ -16,7 +16,7 @@ export class FileDataManager implements IDataManager {
     interval: string,
     startTime: Date,
     endTime: Date,
-    limit?: number
+    limit?: number,
   ): Promise<Kline[]> {
     const filename = `${symbol}_${interval}.json`;
     const filepath = join(this.dataPath, filename);
@@ -53,11 +53,7 @@ export class FileDataManager implements IDataManager {
     }
   }
 
-  async saveKlines(
-    symbol: string,
-    interval: string,
-    klines: Kline[]
-  ): Promise<void> {
+  async saveKlines(symbol: string, interval: string, klines: Kline[]): Promise<void> {
     const filename = `${symbol}_${interval}.json`;
     const filepath = join(this.dataPath, filename);
 
@@ -92,8 +88,8 @@ export class FileDataManager implements IDataManager {
       return (
         Array.isArray(klines) &&
         klines.length > 0 &&
-        klines[0].hasOwnProperty('open') &&
-        klines[0].hasOwnProperty('close')
+        Object.prototype.hasOwnProperty.call(klines[0], 'open') &&
+        Object.prototype.hasOwnProperty.call(klines[0], 'close')
       );
     } catch {
       return false;
@@ -101,18 +97,11 @@ export class FileDataManager implements IDataManager {
   }
 
   async cleanData(symbol: string, interval: string): Promise<number> {
-    const klines = await this.getKlines(
-      symbol,
-      interval,
-      new Date(0),
-      new Date()
-    );
+    const klines = await this.getKlines(symbol, interval, new Date(0), new Date());
 
     // Remove duplicates and sort by time
     const uniqueKlines = klines.reduce((acc: Kline[], current: Kline) => {
-      const exists = acc.some(
-        (k) => k.openTime.getTime() === current.openTime.getTime()
-      );
+      const exists = acc.some((k) => k.openTime.getTime() === current.openTime.getTime());
       if (!exists) {
         acc.push(current);
       }
@@ -120,7 +109,7 @@ export class FileDataManager implements IDataManager {
     }, []);
 
     const sortedKlines = uniqueKlines.sort(
-      (a, b) => a.openTime.getTime() - b.openTime.getTime()
+      (a, b) => a.openTime.getTime() - b.openTime.getTime(),
     );
 
     await this.saveKlines(symbol, interval, sortedKlines);
@@ -169,7 +158,7 @@ export class FileDataManager implements IDataManager {
   async saveTrades(symbol: string, trades: any[]): Promise<void> {
     // TODO: Implement trades storage for file-based data manager
     console.warn(
-      `saveTrades not yet implemented for FileDataManager. Symbol: ${symbol}, trades: ${trades.length}`
+      `saveTrades not yet implemented for FileDataManager. Symbol: ${symbol}, trades: ${trades.length}`,
     );
   }
 
@@ -177,11 +166,11 @@ export class FileDataManager implements IDataManager {
     symbol: string,
     startTime: Date,
     endTime: Date,
-    limit?: number
+    limit?: number,
   ): Promise<any[]> {
     // TODO: Implement trades retrieval for file-based data manager
     console.warn(
-      `getTrades not yet implemented for FileDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`
+      `getTrades not yet implemented for FileDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`,
     );
     return [];
   }

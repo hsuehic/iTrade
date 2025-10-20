@@ -1,14 +1,6 @@
 import { EventEmitter } from 'events';
 
-import {
-  Order,
-  Position,
-  Balance,
-  Ticker,
-  OrderBook,
-  Trade,
-  Kline,
-} from '../types';
+import { Order, Position, Balance, Ticker, OrderBook, Trade, Kline } from '../types';
 
 // Event names
 export const EVENTS = {
@@ -255,9 +247,7 @@ export class EventBus extends EventEmitter {
     return this.on(EVENTS.TICKER_UPDATE, callback);
   }
 
-  public onOrderBookUpdate(
-    callback: (data: OrderBookUpdateEvent) => void
-  ): this {
+  public onOrderBookUpdate(callback: (data: OrderBookUpdateEvent) => void): this {
     return this.on(EVENTS.ORDERBOOK_UPDATE, callback);
   }
 
@@ -277,9 +267,7 @@ export class EventBus extends EventEmitter {
     return this.on(EVENTS.ORDER_FILLED, callback);
   }
 
-  public onOrderPartiallyFilled(
-    callback: (data: OrderEventData) => void
-  ): this {
+  public onOrderPartiallyFilled(callback: (data: OrderEventData) => void): this {
     return this.on(EVENTS.ORDER_PARTIALLY_FILLED, callback);
   }
 
@@ -308,7 +296,7 @@ export class EventBus extends EventEmitter {
   }
 
   public onEmergencyStop(
-    callback: (data: { reason: string; timestamp: Date }) => void
+    callback: (data: { reason: string; timestamp: Date }) => void,
   ): this {
     return this.on(EVENTS.EMERGENCY_STOP, callback);
   }

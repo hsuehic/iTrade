@@ -45,7 +45,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     symbol: string,
     type: DataType,
     params: Record<string, SubscriptionParamValue>,
-    methodHint: SubscriptionMethod = 'auto'
+    methodHint: SubscriptionMethod = 'auto',
   ): Promise<void> {
     const key: SubscriptionKey = {
       exchange: exchange.name,
@@ -64,7 +64,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
       existing.lastUpdated = new Date();
 
       this.logger.debug(
-        `Strategy ${strategyName} reusing subscription: ${subscriptionId} (refCount: ${existing.refCount})`
+        `Strategy ${strategyName} reusing subscription: ${subscriptionId} (refCount: ${existing.refCount})`,
       );
       return;
     }
@@ -102,19 +102,14 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
 
       // Start REST polling if needed
       if (method === 'rest') {
-        const timerId = await this.startRESTPolling(
-          exchange,
-          symbol,
-          type,
-          params
-        );
+        const timerId = await this.startRESTPolling(exchange, symbol, type, params);
         subscription.timerId = timerId;
       }
 
       this.subscriptions.set(subscriptionId, subscription);
 
       this.logger.info(
-        `Created new ${method} subscription: ${subscriptionId} for strategy ${strategyName}`
+        `Created new ${method} subscription: ${subscriptionId} for strategy ${strategyName}`,
       );
 
       // Notify observers
@@ -122,7 +117,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     } catch (error) {
       this.logger.error(
         `Failed to subscribe ${strategyName} to ${subscriptionId}`,
-        error as Error
+        error as Error,
       );
       this.notifyObservers('error', key, undefined, error as Error);
       throw error;
@@ -137,7 +132,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     exchange: IExchange,
     symbol: string,
     type: DataType,
-    params: Record<string, SubscriptionParamValue>
+    params: Record<string, SubscriptionParamValue>,
   ): Promise<void> {
     const key: SubscriptionKey = {
       exchange: exchange.name,
@@ -151,7 +146,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
 
     if (!subscription) {
       this.logger.warn(
-        `Attempted to unsubscribe ${strategyName} from non-existent subscription: ${subscriptionId}`
+        `Attempted to unsubscribe ${strategyName} from non-existent subscription: ${subscriptionId}`,
       );
       return;
     }
@@ -162,7 +157,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     subscription.lastUpdated = new Date();
 
     this.logger.debug(
-      `Strategy ${strategyName} unsubscribed from: ${subscriptionId} (refCount: ${subscription.refCount})`
+      `Strategy ${strategyName} unsubscribed from: ${subscriptionId} (refCount: ${subscription.refCount})`,
     );
 
     // If no strategies are using this subscription, cancel it
@@ -171,7 +166,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
       this.subscriptions.delete(subscriptionId);
 
       this.logger.info(
-        `Cancelled subscription: ${subscriptionId} (no more strategies using it)`
+        `Cancelled subscription: ${subscriptionId} (no more strategies using it)`,
       );
 
       // Notify observers
@@ -199,7 +194,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
    */
   public getAllSubscriptions(): ISubscriptionInfo[] {
     return Array.from(this.subscriptions.values()).map((sub) =>
-      this.toPublicSubscriptionInfo(sub)
+      this.toPublicSubscriptionInfo(sub),
     );
   }
 
@@ -280,7 +275,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
    */
   private determineSubscriptionMethod(
     hint: SubscriptionMethod,
-    exchange: IExchange
+    exchange: IExchange,
   ): 'websocket' | 'rest' {
     if (hint === 'rest') {
       return 'rest';
@@ -305,7 +300,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     exchange: IExchange,
     symbol: string,
     type: DataType,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
   ): Promise<void> {
     try {
       switch (type) {
@@ -318,20 +313,18 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
         case 'trades':
           await exchange.subscribeToTrades(symbol);
           break;
-        case 'klines':
-          const interval =
-            (params.interval as string | undefined) || ('1m' as string);
+        case 'klines': {
+          const interval = (params.interval as string | undefined) || ('1m' as string);
           await exchange.subscribeToKlines(symbol, interval);
           break;
+        }
       }
 
-      this.logger.info(
-        `Subscribed via WebSocket: ${exchange.name} ${symbol} ${type}`
-      );
+      this.logger.info(`Subscribed via WebSocket: ${exchange.name} ${symbol} ${type}`);
     } catch (error) {
       this.logger.error(
         `Failed to subscribe via WebSocket: ${exchange.name} ${symbol} ${type}`,
-        error as Error
+        error as Error,
       );
       throw error;
     }
@@ -344,12 +337,12 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     exchange: IExchange,
     symbol: string,
     type: DataType,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
   ): Promise<NodeJS.Timeout> {
     const interval = this.getPollingInterval(type, params);
 
     this.logger.info(
-      `Starting REST polling: ${exchange.name} ${symbol} ${type} (interval: ${interval}ms)`
+      `Starting REST polling: ${exchange.name} ${symbol} ${type} (interval: ${interval}ms)`,
     );
 
     const timerId = setInterval(async () => {
@@ -377,15 +370,14 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
             break;
           }
           case 'klines': {
-            const klineInterval =
-              (params.interval as string | undefined) || '1m';
+            const klineInterval = (params.interval as string | undefined) || '1m';
             const klineLimit = (params.limit as number | undefined) || 1;
             const klines = await exchange.getKlines(
               symbol,
               klineInterval,
               undefined,
               undefined,
-              klineLimit
+              klineLimit,
             );
             if (klines.length > 0) {
               exchange.emit('kline', symbol, klines[0]);
@@ -396,7 +388,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
       } catch (error) {
         this.logger.error(
           `Failed to poll ${type} for ${symbol} on ${exchange.name}`,
-          error as Error
+          error as Error,
         );
       }
     }, interval);
@@ -409,7 +401,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
    */
   private async cancelSubscription(
     id: string,
-    subscription: InternalSubscriptionInfo
+    subscription: InternalSubscriptionInfo,
   ): Promise<void> {
     // Clear REST polling timer if exists
     if (subscription.timerId) {
@@ -440,18 +432,12 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
   /**
    * Get polling interval for REST
    */
-  private getPollingInterval(
-    type: DataType,
-    params: Record<string, unknown>
-  ): number {
+  private getPollingInterval(type: DataType, params: Record<string, unknown>): number {
     if (params.interval !== undefined && typeof params.interval === 'number') {
       return params.interval;
     }
 
-    if (
-      params.pollInterval !== undefined &&
-      typeof params.pollInterval === 'number'
-    ) {
+    if (params.pollInterval !== undefined && typeof params.pollInterval === 'number') {
       return params.pollInterval;
     }
 
@@ -477,7 +463,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     event: 'created' | 'removed' | 'error',
     key: SubscriptionKey,
     method?: SubscriptionMethod,
-    error?: Error
+    error?: Error,
   ): void {
     for (const observer of this.observers) {
       try {
@@ -495,10 +481,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
             break;
         }
       } catch (err) {
-        this.logger.error(
-          'Error notifying subscription observer',
-          err as Error
-        );
+        this.logger.error('Error notifying subscription observer', err as Error);
       }
     }
   }
@@ -507,7 +490,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
    * Convert internal subscription info to public interface
    */
   private toPublicSubscriptionInfo(
-    internal: InternalSubscriptionInfo
+    internal: InternalSubscriptionInfo,
   ): ISubscriptionInfo {
     return {
       key: internal.key,

@@ -9,7 +9,7 @@ const chain = (
   return (req: NextRequest) => {
     return middlewares.reduce(
       (res, middleware) => middleware(req, res),
-      NextResponse.next()
+      NextResponse.next(),
     );
   };
 };

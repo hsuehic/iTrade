@@ -21,11 +21,7 @@ export class CacheManager {
     this.maxSize = options.maxSize || 1000;
   }
 
-  private generateKey(
-    type: string,
-    symbol: string,
-    ...params: string[]
-  ): string {
+  private generateKey(type: string, symbol: string, ...params: string[]): string {
     return [type, symbol, ...params].join(':');
   }
 
@@ -111,12 +107,7 @@ export class CacheManager {
     return this.get<Trade[]>(key);
   }
 
-  setKlines(
-    symbol: string,
-    interval: string,
-    klines: Kline[],
-    ttl?: number
-  ): void {
+  setKlines(symbol: string, interval: string, klines: Kline[], ttl?: number): void {
     const key = this.generateKey('klines', symbol, interval);
     this.set(key, klines, ttl || 60000); // 1 minute for klines
   }

@@ -59,16 +59,13 @@ export interface StrategyRecoveryResult {
 
 // 数据管理器接口
 export interface IStrategyStateManager {
-  saveStrategyState(
-    strategyId: number,
-    state: Partial<StrategyState>
-  ): Promise<void>;
+  saveStrategyState(strategyId: number, state: Partial<StrategyState>): Promise<void>;
   getStrategyState(strategyId: number): Promise<StrategyState | null>;
   deleteStrategyState(strategyId: number): Promise<void>;
   getOrdersByStrategy(strategyId: number): Promise<OrderRecoveryInfo[]>;
   syncOrderWithExchange(
     orderId: string,
-    exchangeName: string
+    exchangeName: string,
   ): Promise<OrderRecoveryInfo>;
 }
 
@@ -83,7 +80,7 @@ export class StrategyStateManager extends EventEmitter {
       autosaveInterval?: number; // 自动保存间隔(ms)
       cacheTimeout?: number; // 缓存超时(ms)
       maxRecoveryTime?: number; // 最大恢复时间(ms)
-    } = {}
+    } = {},
   ) {
     super();
 
@@ -106,7 +103,7 @@ export class StrategyStateManager extends EventEmitter {
    */
   async saveStrategyState(
     strategyId: number,
-    partialState: Partial<StrategyState>
+    partialState: Partial<StrategyState>,
   ): Promise<void> {
     try {
       const currentState = this.stateCache.get(strategyId) || {
@@ -136,7 +133,7 @@ export class StrategyStateManager extends EventEmitter {
     } catch (error) {
       this.logger.error(
         `❌ Failed to save strategy ${strategyId} state:`,
-        error as Error
+        error as Error,
       );
       throw error;
     }
@@ -161,10 +158,7 @@ export class StrategyStateManager extends EventEmitter {
 
       return state;
     } catch (error) {
-      this.logger.error(
-        `❌ Failed to get strategy ${strategyId} state:`,
-        error as Error
-      );
+      this.logger.error(`❌ Failed to get strategy ${strategyId} state:`, error as Error);
       return null;
     }
   }
@@ -174,7 +168,7 @@ export class StrategyStateManager extends EventEmitter {
    */
   async recoverStrategyState(
     strategyId: number,
-    exchangeName?: string
+    exchangeName?: string,
   ): Promise<StrategyRecoveryResult> {
     const startTime = Date.now();
 
@@ -229,7 +223,7 @@ export class StrategyStateManager extends EventEmitter {
             if (exchangeName) {
               const syncedOrder = await this.dataManager.syncOrderWithExchange(
                 order.orderId,
-                exchangeName
+                exchangeName,
               );
               if (syncedOrder.status === OrderStatus.NEW) {
                 result.openOrders.push(syncedOrder);
@@ -273,7 +267,7 @@ export class StrategyStateManager extends EventEmitter {
           partialOrders: result.partialOrders.length,
           position: result.totalPosition,
           issues: result.issues.length,
-        }
+        },
       );
     } catch (error) {
       result.success = false;
@@ -290,10 +284,7 @@ export class StrategyStateManager extends EventEmitter {
         result,
       });
 
-      this.logger.error(
-        `❌ Strategy ${strategyId} recovery failed:`,
-        error as Error
-      );
+      this.logger.error(`❌ Strategy ${strategyId} recovery failed:`, error as Error);
     } finally {
       this.recoveryInProgress.delete(strategyId);
     }
@@ -314,7 +305,7 @@ export class StrategyStateManager extends EventEmitter {
     } catch (error) {
       this.logger.error(
         `❌ Failed to cleanup strategy ${strategyId} state:`,
-        error as Error
+        error as Error,
       );
       throw error;
     }
@@ -344,9 +335,7 @@ export class StrategyStateManager extends EventEmitter {
     setInterval(async () => {
       try {
         const activeStrategies = Array.from(this.stateCache.keys());
-        this.logger.debug(
-          `🔄 Autosaving ${activeStrategies.length} strategy states...`
-        );
+        this.logger.debug(`🔄 Autosaving ${activeStrategies.length} strategy states...`);
 
         for (const strategyId of activeStrategies) {
           const state = this.stateCache.get(strategyId);
@@ -419,8 +408,7 @@ export class StrategyStateManager extends EventEmitter {
     }
 
     // 检查未完成订单数量
-    const totalOpenOrders =
-      result.openOrders.length + result.partialOrders.length;
+    const totalOpenOrders = result.openOrders.length + result.partialOrders.length;
     if (totalOpenOrders > 10) {
       issues.push({
         type: 'warning',
@@ -446,9 +434,9 @@ export class StrategyStateManager extends EventEmitter {
           .catch((error) =>
             this.logger.error(
               `Failed to save state for strategy ${strategyId}:`,
-              error as Error
-            )
-          )
+              error as Error,
+            ),
+          ),
     );
 
     await Promise.allSettled(savePromises);

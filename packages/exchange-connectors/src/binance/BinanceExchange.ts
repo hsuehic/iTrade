@@ -33,12 +33,10 @@ export class BinanceExchange extends BaseExchange {
 
   // USDT-M Futures API URLs (Perpetual)
   private static readonly FUTURES_MAINNET_URL = 'https://fapi.binance.com';
-  private static readonly FUTURES_TESTNET_URL =
-    'https://testnet.binancefuture.com';
+  private static readonly FUTURES_TESTNET_URL = 'https://testnet.binancefuture.com';
   // WebSocket URLs for futures (reserved for future use)
   private static readonly _FUTURES_MAINNET_WS = 'wss://fstream.binance.com/ws/';
-  private static readonly _FUTURES_TESTNET_WS =
-    'wss://stream.binancefuture.com/ws/';
+  private static readonly _FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/ws/';
 
   private spotClient: AxiosInstance;
   private futuresClient: AxiosInstance;
@@ -158,7 +156,7 @@ export class BinanceExchange extends BaseExchange {
     interval: string,
     startTime?: Date,
     endTime?: Date,
-    limit = 500
+    limit = 500,
   ): Promise<Kline[]> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
@@ -195,7 +193,7 @@ export class BinanceExchange extends BaseExchange {
     price?: Decimal,
     stopPrice?: Decimal,
     timeInForce: TimeInForce = TimeInForce.GTC,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
@@ -220,7 +218,7 @@ export class BinanceExchange extends BaseExchange {
   public async cancelOrder(
     symbol: string,
     orderId: string,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
@@ -245,7 +243,7 @@ export class BinanceExchange extends BaseExchange {
   public async getOrder(
     symbol: string,
     orderId: string,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
@@ -301,9 +299,7 @@ export class BinanceExchange extends BaseExchange {
         asset: balance.asset,
         free: this.formatDecimal(balance.free),
         locked: this.formatDecimal(balance.locked),
-        total: this.formatDecimal(balance.free).add(
-          this.formatDecimal(balance.locked)
-        ),
+        total: this.formatDecimal(balance.free).add(this.formatDecimal(balance.locked)),
       })),
       canTrade: data.canTrade,
       canWithdraw: data.canWithdraw,
@@ -332,12 +328,10 @@ export class BinanceExchange extends BaseExchange {
 
     data.symbols.forEach((symbolInfo: any) => {
       const lotSizeFilter = symbolInfo.filters.find(
-        (filter: any) => filter.filterType === 'LOT_SIZE'
+        (filter: any) => filter.filterType === 'LOT_SIZE',
       );
       if (lotSizeFilter) {
-        minTradeSize[symbolInfo.symbol] = this.formatDecimal(
-          lotSizeFilter.minQty
-        );
+        minTradeSize[symbolInfo.symbol] = this.formatDecimal(lotSizeFilter.minQty);
       }
     });
 
@@ -385,17 +379,14 @@ export class BinanceExchange extends BaseExchange {
 
   protected async sendWebSocketSubscription(
     _type: string,
-    _symbol: string
+    _symbol: string,
   ): Promise<void> {
     // Binance uses combined streams, so we need to reconnect with new stream list
     const ws = this.wsConnections.get('market');
     if (ws) {
       // 只有在 OPEN 或 CONNECTING 状态时才关闭
       // 避免 "WebSocket was closed before the connection was established" 错误
-      if (
-        ws.readyState === WebSocket.OPEN ||
-        ws.readyState === WebSocket.CONNECTING
-      ) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
       this.wsConnections.delete('market');
@@ -414,33 +405,25 @@ export class BinanceExchange extends BaseExchange {
 
       switch (streamType) {
         case 'ticker':
-          this.emit(
-            'ticker',
-            symbol.toUpperCase(),
-            this.transformBinanceTicker(data)
-          );
+          this.emit('ticker', symbol.toUpperCase(), this.transformBinanceTicker(data));
           break;
         case 'depth':
           this.emit(
             'orderbook',
             symbol.toUpperCase(),
-            this.transformBinanceOrderBook(data, symbol)
+            this.transformBinanceOrderBook(data, symbol),
           );
           break;
         case 'trade':
           this.emit(
             'trade',
             symbol.toUpperCase(),
-            this.transformBinanceTrade(data, symbol)
+            this.transformBinanceTrade(data, symbol),
           );
           break;
         default:
           if (streamType.startsWith('kline')) {
-            this.emit(
-              'kline',
-              symbol.toUpperCase(),
-              this.transformBinanceKline(data.k)
-            );
+            this.emit('kline', symbol.toUpperCase(), this.transformBinanceKline(data.k));
           }
           break;
       }
@@ -537,22 +520,15 @@ export class BinanceExchange extends BaseExchange {
       id: order.orderId?.toString() || uuidv4(),
       clientOrderId: order.clientOrderId,
       symbol: order.symbol,
-      side:
-        order.side?.toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+      side: order.side?.toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformBinanceOrderType(order.type),
       quantity: this.formatDecimal(order.origQty || order.quantity || '0'),
       price: order.price ? this.formatDecimal(order.price) : undefined,
-      stopPrice: order.stopPrice
-        ? this.formatDecimal(order.stopPrice)
-        : undefined,
+      stopPrice: order.stopPrice ? this.formatDecimal(order.stopPrice) : undefined,
       status,
       timeInForce: (order.timeInForce as TimeInForce) || 'GTC',
-      timestamp: this.formatTimestamp(
-        order.time || order.transactTime || Date.now()
-      ),
-      updateTime: order.updateTime
-        ? this.formatTimestamp(order.updateTime)
-        : undefined,
+      timestamp: this.formatTimestamp(order.time || order.transactTime || Date.now()),
+      updateTime: order.updateTime ? this.formatTimestamp(order.updateTime) : undefined,
       executedQuantity: order.executedQty
         ? this.formatDecimal(order.executedQty)
         : undefined,

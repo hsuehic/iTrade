@@ -57,7 +57,7 @@ export class StrategyStateMonitor extends EventEmitter {
 
   constructor(
     private logger: ILogger,
-    config?: Partial<AlertConfig>
+    config?: Partial<AlertConfig>,
   ) {
     super();
     if (config) {
@@ -105,11 +105,7 @@ export class StrategyStateMonitor extends EventEmitter {
   /**
    * Record a successful recovery
    */
-  public recordRecoverySuccess(
-    strategyId: number,
-    startTime: Date,
-    endTime: Date
-  ): void {
+  public recordRecoverySuccess(strategyId: number, startTime: Date, endTime: Date): void {
     const recoveryTime = endTime.getTime() - startTime.getTime();
 
     this.metrics.successfulRecoveries++;
@@ -118,8 +114,7 @@ export class StrategyStateMonitor extends EventEmitter {
 
     // Update average recovery time
     this.metrics.averageRecoveryTime =
-      this.recoveryTimes.reduce((sum, time) => sum + time, 0) /
-      this.recoveryTimes.length;
+      this.recoveryTimes.reduce((sum, time) => sum + time, 0) / this.recoveryTimes.length;
 
     // Keep only last 100 recovery times for rolling average
     if (this.recoveryTimes.length > 100) {
@@ -130,13 +125,9 @@ export class StrategyStateMonitor extends EventEmitter {
     const health = this.getOrCreateHealthStatus(strategyId);
     health.isHealthy = true;
     health.lastHealthCheck = endTime;
-    health.issues = health.issues.filter(
-      (issue) => !issue.includes('recovery')
-    );
+    health.issues = health.issues.filter((issue) => !issue.includes('recovery'));
 
-    this.logger.info(
-      `✅ Strategy ${strategyId} recovery successful (${recoveryTime}ms)`
-    );
+    this.logger.info(`✅ Strategy ${strategyId} recovery successful (${recoveryTime}ms)`);
 
     // Check for slow recovery
     if (recoveryTime > this.config.maxRecoveryTime) {
@@ -184,9 +175,7 @@ export class StrategyStateMonitor extends EventEmitter {
     const health = this.getOrCreateHealthStatus(strategyId);
     health.isHealthy = false;
     health.issues.push(`State corruption: ${details}`);
-    health.recommendations.push(
-      'Consider rebuilding strategy state from orders'
-    );
+    health.recommendations.push('Consider rebuilding strategy state from orders');
 
     this.triggerAlert('state_corruption', {
       strategyId,
@@ -202,9 +191,7 @@ export class StrategyStateMonitor extends EventEmitter {
 
     const health = this.getOrCreateHealthStatus(strategyId);
     health.issues.push(`Data inconsistency: ${details}`);
-    health.recommendations.push(
-      'Verify order and position data synchronization'
-    );
+    health.recommendations.push('Verify order and position data synchronization');
 
     this.triggerAlert('data_inconsistency', {
       strategyId,
@@ -242,9 +229,7 @@ export class StrategyStateMonitor extends EventEmitter {
   /**
    * Get strategy health status
    */
-  public getStrategyHealth(
-    strategyId: number
-  ): StrategyHealthStatus | undefined {
+  public getStrategyHealth(strategyId: number): StrategyHealthStatus | undefined {
     return this.strategyHealth.get(strategyId);
   }
 
@@ -278,8 +263,7 @@ export class StrategyStateMonitor extends EventEmitter {
         unhealthyStrategies: strategies.length - healthyCount,
         successRate:
           this.metrics.totalRecoveryAttempts > 0
-            ? (this.metrics.successfulRecoveries /
-                this.metrics.totalRecoveryAttempts) *
+            ? (this.metrics.successfulRecoveries / this.metrics.totalRecoveryAttempts) *
               100
             : 100,
       },
@@ -314,8 +298,7 @@ export class StrategyStateMonitor extends EventEmitter {
     // In a real system, you'd track failure timestamps
     const health = this.strategyHealth.get(strategyId);
     return health
-      ? health.issues.filter((issue) => issue.includes('Recovery failed'))
-          .length
+      ? health.issues.filter((issue) => issue.includes('Recovery failed')).length
       : 0;
   }
 
@@ -333,9 +316,7 @@ export class StrategyStateMonitor extends EventEmitter {
         const maxBackupAge = 24 * 60 * 60 * 1000; // 24 hours
 
         if (backupAge > maxBackupAge) {
-          issues.push(
-            `Backup is ${Math.round(backupAge / (60 * 60 * 1000))} hours old`
-          );
+          issues.push(`Backup is ${Math.round(backupAge / (60 * 60 * 1000))} hours old`);
           recommendations.push('Check backup service and schedule');
         }
       } else {
@@ -352,10 +333,7 @@ export class StrategyStateMonitor extends EventEmitter {
       // Update health status
       if (issues.length > 0) {
         health.issues = [...health.issues, ...issues];
-        health.recommendations = [
-          ...health.recommendations,
-          ...recommendations,
-        ];
+        health.recommendations = [...health.recommendations, ...recommendations];
         health.isHealthy = false;
         issuesFound++;
       }
@@ -364,9 +342,7 @@ export class StrategyStateMonitor extends EventEmitter {
     }
 
     if (issuesFound > 0) {
-      this.logger.warn(
-        `⚠️  Health check found issues in ${issuesFound} strategies`
-      );
+      this.logger.warn(`⚠️  Health check found issues in ${issuesFound} strategies`);
     }
   }
 
@@ -376,10 +352,7 @@ export class StrategyStateMonitor extends EventEmitter {
     const lastAlert = this.lastAlerts.get(alertKey);
 
     // Check cooldown
-    if (
-      lastAlert &&
-      now.getTime() - lastAlert.getTime() < this.config.alertCooldown
-    ) {
+    if (lastAlert && now.getTime() - lastAlert.getTime() < this.config.alertCooldown) {
       return;
     }
 

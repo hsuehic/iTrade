@@ -36,7 +36,7 @@ export interface ISubscriptionCoordinator {
     symbol: string,
     type: DataType,
     params: Record<string, SubscriptionParamValue>,
-    methodHint?: SubscriptionMethod
+    methodHint?: SubscriptionMethod,
   ): Promise<void>;
 
   /**
@@ -53,7 +53,7 @@ export interface ISubscriptionCoordinator {
     exchange: IExchange,
     symbol: string,
     type: DataType,
-    params: Record<string, SubscriptionParamValue>
+    params: Record<string, SubscriptionParamValue>,
   ): Promise<void>;
 
   /**

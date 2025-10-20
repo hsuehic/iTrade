@@ -1,3 +1,4 @@
+/* eslint-disable no-prototype-builtins */
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 

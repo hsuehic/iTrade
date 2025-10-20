@@ -42,7 +42,7 @@ export interface IExchange extends EventEmitter {
     interval: string,
     startTime?: Date,
     endTime?: Date,
-    limit?: number
+    limit?: number,
   ): Promise<Kline[]>;
 
   // WebSocket Subscriptions
@@ -52,7 +52,7 @@ export interface IExchange extends EventEmitter {
   subscribeToKlines(symbol: string, interval: string): Promise<void>;
   unsubscribe(
     symbol: string,
-    type: 'ticker' | 'orderbook' | 'trades' | 'klines'
+    type: 'ticker' | 'orderbook' | 'trades' | 'klines',
   ): Promise<void>;
 
   // Trading
@@ -64,19 +64,11 @@ export interface IExchange extends EventEmitter {
     price?: Decimal,
     stopPrice?: Decimal,
     timeInForce?: TimeInForce,
-    clientOrderId?: string
+    clientOrderId?: string,
   ): Promise<Order>;
 
-  cancelOrder(
-    symbol: string,
-    orderId: string,
-    clientOrderId?: string
-  ): Promise<Order>;
-  getOrder(
-    symbol: string,
-    orderId: string,
-    clientOrderId?: string
-  ): Promise<Order>;
+  cancelOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order>;
+  getOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order>;
   getOpenOrders(symbol?: string): Promise<Order[]>;
   getOrderHistory(symbol?: string, limit?: number): Promise<Order[]>;
 
@@ -164,10 +156,7 @@ export interface ITradingEngine extends EventEmitter {
   getStrategy(name: string): IStrategy | undefined;
 
   // Market Data Handling
-  onMarketData(
-    symbol: string,
-    data: Ticker | OrderBook | Trade | Kline
-  ): Promise<void>;
+  onMarketData(symbol: string, data: Ticker | OrderBook | Trade | Kline): Promise<void>;
 
   // Order Management
   executeOrder(params: ExecuteOrderParameters): Promise<Order>;
@@ -186,7 +175,7 @@ export interface IDataManager {
     interval: string,
     startTime: Date,
     endTime: Date,
-    limit?: number
+    limit?: number,
   ): Promise<Kline[]>;
 
   saveTrades(symbol: string, trades: Trade[]): Promise<void>;
@@ -194,7 +183,7 @@ export interface IDataManager {
     symbol: string,
     startTime: Date,
     endTime: Date,
-    limit?: number
+    limit?: number,
   ): Promise<Trade[]>;
 
   // Real-time Data Cache
@@ -219,7 +208,7 @@ export interface IBacktestEngine {
   runBacktest(
     strategy: IStrategy,
     config: BacktestConfig,
-    dataManager: IDataManager
+    dataManager: IDataManager,
   ): Promise<BacktestResult>;
 
   // Performance Analysis
@@ -231,7 +220,7 @@ export interface IBacktestEngine {
     symbol: string,
     startTime: Date,
     endTime: Date,
-    timeframe: string
+    timeframe: string,
   ): AsyncGenerator<Kline>;
 }
 
@@ -243,15 +232,12 @@ export interface IRiskManager {
   checkOrderRisk(
     order: Order,
     currentPositions: Position[],
-    balances: Balance[]
+    balances: Balance[],
   ): Promise<boolean>;
   checkPositionRisk(position: Position, limits: RiskLimits): Promise<boolean>;
 
   // Risk Metrics
-  calculateRiskMetrics(
-    positions: Position[],
-    balances: Balance[]
-  ): Promise<RiskMetrics>;
+  calculateRiskMetrics(positions: Position[], balances: Balance[]): Promise<RiskMetrics>;
 
   // Risk Limits Management
   updateLimits(limits: Partial<RiskLimits>): void;
@@ -274,7 +260,7 @@ export interface IPortfolioManager {
     symbol: string,
     side: OrderSide,
     size: Decimal,
-    price: Decimal
+    price: Decimal,
   ): Promise<void>;
   closePosition(symbol: string): Promise<void>;
 
@@ -299,11 +285,7 @@ export interface ILogger {
   debug(message: string, metadata?: Record<string, unknown>): void;
   info(message: string, metadata?: Record<string, unknown>): void;
   warn(message: string, metadata?: Record<string, unknown>): void;
-  error(
-    message: string,
-    error?: Error,
-    metadata?: Record<string, unknown>
-  ): void;
+  error(message: string, error?: Error, metadata?: Record<string, unknown>): void;
 
   // Trading specific logging
   logOrder(message: string, data: Record<string, unknown>): void;

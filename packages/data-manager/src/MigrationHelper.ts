@@ -26,7 +26,7 @@ export class MigrationHelper {
 
   async migrateFromFiles(
     sourceDirectory: string,
-    options: MigrationOptions = {}
+    options: MigrationOptions = {},
   ): Promise<MigrationStats> {
     const {
       batchSize = 1000,
@@ -59,7 +59,7 @@ export class MigrationHelper {
             join(sourceDirectory, file),
             batchSize,
             skipExisting,
-            validateData
+            validateData,
           );
 
           stats.totalRecords += fileStats.totalRecords;
@@ -94,7 +94,7 @@ export class MigrationHelper {
       dateRange?: { start: string; end: string };
       batchSize?: number;
       onProgress?: (current: number, total: number, message: string) => void;
-    } = {}
+    } = {},
   ): Promise<MigrationStats> {
     const {
       symbols = [],
@@ -120,9 +120,7 @@ export class MigrationHelper {
     try {
       // Get symbols and intervals to migrate
       const symbolsToMigrate =
-        symbols.length > 0
-          ? symbols
-          : await sourceManager.getAvailableSymbols();
+        symbols.length > 0 ? symbols : await sourceManager.getAvailableSymbols();
 
       let totalOperations = 0;
       let completedOperations = 0;
@@ -148,23 +146,21 @@ export class MigrationHelper {
           onProgress?.(
             completedOperations,
             totalOperations,
-            `Migrating ${symbol} ${interval}`
+            `Migrating ${symbol} ${interval}`,
           );
 
           try {
             const startDate = dateRange?.start
               ? new Date(dateRange.start)
               : new Date('2020-01-01');
-            const endDate = dateRange?.end
-              ? new Date(dateRange.end)
-              : new Date();
+            const endDate = dateRange?.end ? new Date(dateRange.end) : new Date();
 
             // Get data from source
             const klines = await sourceManager.getKlines(
               symbol,
               interval,
               startDate,
-              endDate
+              endDate,
             );
             stats.totalRecords += klines.length;
 
@@ -172,11 +168,7 @@ export class MigrationHelper {
               // Save to target in batches
               for (let i = 0; i < klines.length; i += batchSize) {
                 const batch = klines.slice(i, i + batchSize);
-                await this.targetDataManager.saveKlines(
-                  symbol,
-                  interval,
-                  batch
-                );
+                await this.targetDataManager.saveKlines(symbol, interval, batch);
                 stats.migratedRecords += batch.length;
               }
             }
@@ -212,7 +204,7 @@ export class MigrationHelper {
     filePath: string,
     batchSize: number,
     skipExisting: boolean,
-    validateData: boolean
+    validateData: boolean,
   ): Promise<MigrationStats> {
     const stats: MigrationStats = {
       totalRecords: 0,
@@ -230,7 +222,7 @@ export class MigrationHelper {
 
       if (!match) {
         throw new Error(
-          `Invalid filename format: ${fileName}. Expected: SYMBOL_INTERVAL.json`
+          `Invalid filename format: ${fileName}. Expected: SYMBOL_INTERVAL.json`,
         );
       }
 
@@ -267,18 +259,13 @@ export class MigrationHelper {
         stats.errorRecords = klines.length - validKlines.length;
 
         if (stats.errorRecords > 0) {
-          stats.errors.push(
-            `${stats.errorRecords} invalid klines in ${fileName}`
-          );
+          stats.errors.push(`${stats.errorRecords} invalid klines in ${fileName}`);
         }
       }
 
       // Check if data already exists
       if (skipExisting) {
-        const existingData = await this.targetDataManager.validateData(
-          symbol,
-          interval
-        );
+        const existingData = await this.targetDataManager.validateData(symbol, interval);
         if (existingData) {
           stats.skippedRecords = stats.totalRecords;
           return stats;
@@ -329,7 +316,7 @@ export class MigrationHelper {
     sourceManager: TypeOrmDataManager,
     symbol: string,
     interval: string,
-    dateRange?: { start: Date; end: Date }
+    dateRange?: { start: Date; end: Date },
   ): Promise<{
     isValid: boolean;
     sourceCount: number;
@@ -348,7 +335,7 @@ export class MigrationHelper {
 
     if (sourceKlines.length !== targetKlines.length) {
       differences.push(
-        `Record count mismatch: source=${sourceKlines.length}, target=${targetKlines.length}`
+        `Record count mismatch: source=${sourceKlines.length}, target=${targetKlines.length}`,
       );
     }
 
@@ -361,12 +348,12 @@ export class MigrationHelper {
       if (source && target) {
         if (!source.open.eq(target.open)) {
           differences.push(
-            `Open price mismatch at index ${i}: ${source.open} vs ${target.open}`
+            `Open price mismatch at index ${i}: ${source.open} vs ${target.open}`,
           );
         }
         if (!source.close.eq(target.close)) {
           differences.push(
-            `Close price mismatch at index ${i}: ${source.close} vs ${target.close}`
+            `Close price mismatch at index ${i}: ${source.close} vs ${target.close}`,
           );
         }
       }
