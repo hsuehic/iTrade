@@ -1,5 +1,4 @@
 import { auth } from '@/lib/auth';
-import { headers } from 'next/headers';
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -7,17 +6,20 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { newPassword, currentPassword } = body;
-    if (!newPassword || !currentPassword) {
-      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+    const { name, image } = body;
+
+    if (!name) {
+      return Response.json({ error: 'Name is required' }, { status: 400 });
     }
-    const data = await auth.api.changePassword({
+
+    // Update user profile using better-auth
+    // Note: Email changes are not allowed for security reasons
+    const data = await auth.api.updateUser({
       body: {
-        newPassword,
-        currentPassword,
-        revokeOtherSessions: true,
+        name,
+        ...(image && { image }),
       },
-      headers: await headers(),
+      headers: req.headers,
     });
 
     return Response.json({ success: true, ...data });
@@ -29,3 +31,4 @@ export async function POST(req: Request) {
     });
   }
 }
+

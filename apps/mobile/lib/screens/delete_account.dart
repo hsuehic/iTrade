@@ -25,13 +25,18 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorOnError = Theme.of(context).colorScheme.onError;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Delete Account',
-          style: TextStyle(color: Theme.of(context).colorScheme.onError),
-        ),
+        title: Text('Delete Account', style: TextStyle(color: colorOnError)),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).colorScheme.errorContainer,
+        leading: IconButton(
+          icon: Icon(Icons.chevron_left, color: colorOnError),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24.0),

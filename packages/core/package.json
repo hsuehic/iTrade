@@ -32,7 +32,8 @@
     "tsdown": "^0.2.16"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "publishConfig": {
     "access": "restricted"

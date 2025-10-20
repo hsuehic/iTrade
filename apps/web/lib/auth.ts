@@ -2,6 +2,7 @@ import { User, betterAuth } from 'better-auth';
 import { Pool } from 'pg';
 
 import { sendEmail } from '@/lib/mailer';
+import { cleanupUserData } from '@/lib/init-user-data';
 
 export const auth = betterAuth({
   user: {
@@ -13,7 +14,12 @@ export const auth = betterAuth({
       },
       afterDelete: async (user) => {
         console.log(user);
+        // Clean up all user data (email preferences, etc.)
+        await cleanupUserData(user.id);
       },
+    },
+    additionalFields: {
+      // This ensures user.id is available in hooks
     },
   },
   advanced: {
@@ -74,6 +80,7 @@ export const auth = betterAuth({
       // your logic here
       console.log(`Password for user ${user.email} has been reset.`);
     },
+    requireEmailVerification: true,
   },
   socialProviders: {
     apple: {
@@ -100,4 +107,15 @@ export const auth = betterAuth({
     'https://itrade.ihsueh.com',
     'https://appleid.apple.com',
   ],
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url, token }, request) => {
+      await sendEmail(
+        user.email,
+        'Verify your email address',
+        `Click the link to verify your email: ${url}`
+      )
+    },
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+  }
 });

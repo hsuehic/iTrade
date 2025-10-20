@@ -11,7 +11,9 @@ export {
   StrategyRepository,
   OrderRepository,
   PnLRepository,
+  EmailPreferencesRepository,
 } from './repositories';
+export type { EmailPreferencesData } from './repositories';
 export { AccountSnapshotRepository } from './repositories/AccountSnapshotRepository';
 export type {
   AccountSnapshotData,
@@ -41,6 +43,7 @@ export { DryRunOrderEntity } from './entities/DryRunOrder';
 export { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
 export { DryRunTradeEntity } from './entities/DryRunTrade';
 export { DryRunResultEntity } from './entities/DryRunResult';
+export { EmailPreferencesEntity } from './entities/EmailPreferences';
 
 // Types and interfaces
 export type {

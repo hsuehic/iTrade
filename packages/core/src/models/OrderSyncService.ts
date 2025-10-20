@@ -60,7 +60,7 @@ export interface IOrderDataManager {
   getOrders(filters: { status?: OrderStatus }): Promise<
     Array<{
       id: number;
-      status: string;
+      status: OrderStatus;
       executedQuantity?: string;
       quantity?: string;
       averagePrice?: string;
@@ -115,7 +115,7 @@ export class OrderSyncService extends EventEmitter {
 
   private config: Required<OrderSyncConfig>;
 
-  constructor(
+  constructor (
     private exchanges: Map<string, IExchange>,
     private dataManager: IOrderDataManager,
     config: OrderSyncConfig = {}
@@ -260,7 +260,7 @@ export class OrderSyncService extends EventEmitter {
   private groupOrdersByExchange(
     orders: Array<{
       id: number;
-      status: string;
+      status: OrderStatus;
       executedQuantity?: string;
       quantity?: string;
       averagePrice?: string;
@@ -273,7 +273,7 @@ export class OrderSyncService extends EventEmitter {
     string,
     Array<{
       id: number;
-      status: string;
+      status: OrderStatus;
       executedQuantity?: string;
       quantity?: string;
       averagePrice?: string;
@@ -287,7 +287,7 @@ export class OrderSyncService extends EventEmitter {
       string,
       Array<{
         id: number;
-        status: string;
+        status: OrderStatus;
         executedQuantity?: string;
         quantity?: string;
         averagePrice?: string;
@@ -316,7 +316,7 @@ export class OrderSyncService extends EventEmitter {
     exchangeName: string,
     orders: Array<{
       id: number;
-      status: string;
+      status: OrderStatus;
       executedQuantity?: string;
       quantity?: string;
       averagePrice?: string;
@@ -352,7 +352,7 @@ export class OrderSyncService extends EventEmitter {
     exchange: IExchange,
     dbOrder: {
       id: number;
-      status: string;
+      status: OrderStatus;
       executedQuantity?: string;
       quantity?: string;
       averagePrice?: string;
@@ -451,7 +451,7 @@ export class OrderSyncService extends EventEmitter {
         executedQuantity: exchangeOrder.executedQuantity?.toString(),
         cummulativeQuoteQuantity:
           exchangeOrder.cummulativeQuoteQuantity?.toString(),
-        updateTime: exchangeOrder.updateTime || new Date(),
+        updatedAt: exchangeOrder.updateTime || new Date(),
       });
 
       this.emit(

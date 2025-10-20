@@ -6,7 +6,10 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
+import 'change_password.dart';
 import 'delete_account.dart';
+import 'edit_profile.dart';
+import 'email_preferences.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -90,8 +93,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.person_outline,
                 title: 'Edit Profile',
                 subtitle: 'Update your personal information',
+                trailing: Icons.chevron_right,
                 onTap: () {
-                  // TODO: Navigate to edit profile
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const EditProfileScreen(),
+                    ),
+                  );
                 },
                 isDark: isDark,
               ),
@@ -100,8 +109,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.key_outlined,
                 title: 'Change Password',
                 subtitle: 'Update your password',
+                trailing: Icons.chevron_right,
                 onTap: () {
-                  // TODO: Navigate to change password
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ChangePasswordScreen(),
+                    ),
+                  );
                 },
                 isDark: isDark,
               ),
@@ -110,8 +125,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.email_outlined,
                 title: 'Email Preferences',
                 subtitle: 'Manage email notifications',
+                trailing: Icons.chevron_right,
                 onTap: () {
-                  // TODO: Navigate to email preferences
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const EmailPreferencesScreen(),
+                    ),
+                  );
                 },
                 isDark: isDark,
               ),
@@ -120,6 +141,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.delete_forever,
                 title: 'Delete Account',
                 subtitle: 'Delete your account and all data',
+                trailing: Icons.chevron_right,
                 onTap: () {
                   Navigator.push(
                     context,

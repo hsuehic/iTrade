@@ -146,7 +146,6 @@ export function SignUpForm() {
             password,
             name: `${firstName} ${lastName}`,
             image: image ? await convertImageToBase64(image) : '',
-            callbackURL: '/dashboard',
             fetchOptions: {
               onResponse: () => {
                 setLoading(false);
@@ -158,8 +157,11 @@ export function SignUpForm() {
                 toast.error(ctx.error.message);
               },
               onSuccess: async () => {
-                toast.success('Account created successfully, please sign in.');
-                router.push('/dashboard');
+                toast.success('Account created successfully', {
+                  description:
+                    'A verification email has been sent to your email address, please check your email to verify your account.',
+                });
+                router.push('/auth/sign-in');
               },
             },
           });

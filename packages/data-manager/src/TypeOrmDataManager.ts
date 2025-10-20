@@ -23,6 +23,7 @@ import { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
 import { DryRunTradeEntity } from './entities/DryRunTrade';
 import { DryRunResultEntity } from './entities/DryRunResult';
 import { AccountSnapshotEntity } from './entities/AccountSnapshot';
+import { EmailPreferencesEntity } from './entities/EmailPreferences';
 import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
@@ -30,6 +31,7 @@ import {
   StrategyRepository,
   OrderRepository,
   PnLRepository,
+  EmailPreferencesRepository,
 } from './repositories';
 import {
   AccountSnapshotRepository,
@@ -45,21 +47,21 @@ export interface TypeOrmDataManagerConfig {
   database: string;
   ssl?: boolean;
   logging?:
-    | boolean
-    | 'all'
-    | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
+  | boolean
+  | 'all'
+  | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
   synchronize?: boolean;
   migrationsRun?: boolean;
   extra?: any;
   // Performance optimization options
   poolSize?: number;
   cache?:
-    | boolean
-    | {
-        type?: 'database' | 'redis';
-        duration?: number;
-        options?: any;
-      };
+  | boolean
+  | {
+    type?: 'database' | 'redis';
+    duration?: number;
+    options?: any;
+  };
   maxQueryExecutionTime?: number;
 }
 
@@ -74,12 +76,13 @@ export class TypeOrmDataManager implements IDataManager {
   private orderRepository!: OrderRepository;
   private pnlRepository!: PnLRepository;
   private accountSnapshotRepository!: AccountSnapshotRepository;
+  private emailPreferencesRepository!: EmailPreferencesRepository;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
   private isInitialized = false;
 
-  constructor(private config: TypeOrmDataManagerConfig) {}
+  constructor (private config: TypeOrmDataManagerConfig) { }
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -119,6 +122,7 @@ export class TypeOrmDataManager implements IDataManager {
         User,
         Account,
         Session,
+        EmailPreferencesEntity,
         // Dry Run entities
         DryRunSessionEntity,
         DryRunOrderEntity,
@@ -141,6 +145,9 @@ export class TypeOrmDataManager implements IDataManager {
     this.orderRepository = new OrderRepository(this.dataSource);
     this.pnlRepository = new PnLRepository(this.dataSource);
     this.accountSnapshotRepository = new AccountSnapshotRepository(
+      this.dataSource
+    );
+    this.emailPreferencesRepository = new EmailPreferencesRepository(
       this.dataSource
     );
 
@@ -663,7 +670,7 @@ export class TypeOrmDataManager implements IDataManager {
     const expectedCandles =
       Math.floor(
         (lastCandle.openTime.getTime() - firstCandle.openTime.getTime()) /
-          intervalMs
+        intervalMs
       ) + 1;
 
     const missingCandles = Math.max(0, expectedCandles - totalRecords);
@@ -927,5 +934,11 @@ export class TypeOrmDataManager implements IDataManager {
   getPnLRepository(): PnLRepository {
     this.ensureInitialized();
     return this.pnlRepository;
+  }
+
+  // Get EmailPreferencesRepository for advanced queries
+  getEmailPreferencesRepository(): EmailPreferencesRepository {
+    this.ensureInitialized();
+    return this.emailPreferencesRepository;
   }
 }
