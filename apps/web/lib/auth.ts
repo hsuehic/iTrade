@@ -10,12 +10,12 @@ export const auth = betterAuth({
       enabled: true,
 
       beforeDelete: async (user) => {
+        // Clean up all user data (email preferences, etc.)
+        await cleanupUserData(user.id);
         console.log(user);
       },
       afterDelete: async (user) => {
         console.log(user);
-        // Clean up all user data (email preferences, etc.)
-        await cleanupUserData(user.id);
       },
     },
     additionalFields: {
@@ -108,14 +108,14 @@ export const auth = betterAuth({
     'https://appleid.apple.com',
   ],
   emailVerification: {
-    sendVerificationEmail: async ({ user, url, token }, request) => {
+    sendVerificationEmail: async ({ user, url }) => {
       await sendEmail(
         user.email,
         'Verify your email address',
-        `Click the link to verify your email: ${url}`
-      )
+        `Click the link to verify your email: ${url}`,
+      );
     },
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
-  }
+  },
 });

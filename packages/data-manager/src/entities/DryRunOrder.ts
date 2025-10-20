@@ -10,13 +10,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import {
-  Order,
-  OrderSide,
-  OrderStatus,
-  OrderType,
-  TimeInForce,
-} from '@itrade/core';
+import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
 import { DryRunSessionEntity } from './DryRunSession';
@@ -107,13 +101,9 @@ export class DryRunOrderEntity implements Order {
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
-  @OneToMany(
-    () => DryRunOrderFillEntity,
-    (f: DryRunOrderFillEntity) => f.order,
-    {
-      cascade: true,
-    }
-  )
+  @OneToMany(() => DryRunOrderFillEntity, (f: DryRunOrderFillEntity) => f.order, {
+    cascade: true,
+  })
   fills?: DryRunOrderFillEntity[] | undefined;
 
   @CreateDateColumn()

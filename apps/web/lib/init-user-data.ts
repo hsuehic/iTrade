@@ -44,4 +44,3 @@ export async function cleanupUserData(userId: string): Promise<void> {
     console.error('❌ Error cleaning up user data:', error);
   }
 }
-

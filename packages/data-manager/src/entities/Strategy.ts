@@ -38,22 +38,20 @@ const validateStrategyTypeSync = () => {
   const enumTypes = Object.values(StrategyType);
 
   // 检查是否所有注册的策略类型都存在于枚举中
-  const missingInEnum = registryTypes.filter(
-    (type) => !enumTypes.includes(type as any)
-  );
+  const missingInEnum = registryTypes.filter((type) => !enumTypes.includes(type as any));
   if (missingInEnum.length > 0) {
     console.warn(
-      `⚠️ Strategy types missing in StrategyType enum: ${missingInEnum.join(', ')}`
+      `⚠️ Strategy types missing in StrategyType enum: ${missingInEnum.join(', ')}`,
     );
   }
 
   // 检查是否枚举中有未注册的类型
   const missingInRegistry = enumTypes.filter(
-    (type) => !registryTypes.includes(type as StrategyTypeKey)
+    (type) => !registryTypes.includes(type as StrategyTypeKey),
   );
   if (missingInRegistry.length > 0) {
     console.warn(
-      `⚠️ Strategy types missing in STRATEGY_REGISTRY: ${missingInRegistry.join(', ')}`
+      `⚠️ Strategy types missing in STRATEGY_REGISTRY: ${missingInRegistry.join(', ')}`,
     );
   }
 
@@ -131,10 +129,10 @@ export class StrategyEntity {
   @Column({ type: 'timestamp', nullable: true })
   lastExecutionTime?: Date;
 
-  @OneToMany(() => OrderEntity, (o: OrderEntity) => o.strategy)
+  @OneToMany(() => OrderEntity, (o: OrderEntity) => o.strategy, { onDelete: 'CASCADE' })
   orders?: OrderEntity[];
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

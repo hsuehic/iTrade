@@ -17,7 +17,7 @@ export class EmailPreferencesEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 
@@ -58,4 +58,3 @@ export class EmailPreferencesEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 }
-

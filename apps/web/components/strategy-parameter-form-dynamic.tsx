@@ -43,16 +43,6 @@ export function StrategyParameterFormDynamic({
     };
   });
 
-  useEffect(() => {
-    const newDefaultParameters = strategyConfig?.defaultParameters || {};
-    const newParameters = {
-      ...newDefaultParameters,
-      ...initialParameters,
-    };
-    setParameters(newParameters);
-    onParametersChange(newParameters);
-  }, [strategyType, initialParameters]);
-
   if (!strategyConfig) {
     return (
       <Card>

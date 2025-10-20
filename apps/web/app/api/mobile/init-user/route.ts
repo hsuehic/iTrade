@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'User data initialized successfully'
+      message: 'User data initialized successfully',
     });
   } catch (error) {
     console.error('Error initializing user data:', error);
@@ -33,10 +33,9 @@ export async function POST(req: NextRequest) {
       {
         success: false,
         error: 'Failed to initialize user data',
-        message: (error as Error).message
+        message: (error as Error).message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

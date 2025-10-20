@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { getExchangeInfo, type ExchangeInfo } from '@/lib/exchanges';
 import { cn } from '@/lib/utils';
 
@@ -45,7 +46,7 @@ export function ExchangeLogo({
   return (
     <div className={cn('flex items-center gap-2', className)}>
       {logoUrl ? (
-        <img
+        <Image
           src={logoUrl}
           alt={name}
           className={cn('rounded-full flex-shrink-0', sizeClasses[size])}

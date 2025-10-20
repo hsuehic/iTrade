@@ -110,7 +110,7 @@ export default function AnalyticsPage() {
       }
 
       await fetchOrders();
-    } catch (_error) {
+    } catch {
       toast.error('Failed to load analytics data');
     } finally {
       setLoading(false);
@@ -124,7 +124,7 @@ export default function AnalyticsPage() {
         const data = await response.json();
         setStrategyPnL(data.pnl);
       }
-    } catch (_error) {
+    } catch {
       toast.error('Failed to load strategy PnL');
     }
   };
@@ -137,7 +137,7 @@ export default function AnalyticsPage() {
         const data = await response.json();
         setOrders(data.orders);
       }
-    } catch (_error) {
+    } catch {
       toast.error('Failed to load orders');
     }
   };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { IconCheck, IconX, IconWand } from '@tabler/icons-react';
 
 import { Textarea } from '@/components/ui/textarea';
@@ -23,11 +23,6 @@ export function JsonEditor({
   const [isValid, setIsValid] = useState(true);
   const [error, setError] = useState<string>('');
   const [localValue, setLocalValue] = useState(value);
-
-  useEffect(() => {
-    setLocalValue(value);
-    validateJson(value);
-  }, [value]);
 
   const validateJson = (jsonString: string) => {
     if (!jsonString.trim()) {

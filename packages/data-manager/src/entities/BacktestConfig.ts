@@ -58,10 +58,12 @@ export class BacktestConfigEntity implements BacktestConfig {
   @Column({ type: 'character varying', length: 10 })
   timeframe!: string;
 
-  @OneToMany(() => BacktestResultEntity, (r: BacktestResultEntity) => r.config)
+  @OneToMany(() => BacktestResultEntity, (r: BacktestResultEntity) => r.config, {
+    onDelete: 'CASCADE',
+  })
   results?: BacktestResultEntity[];
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }
