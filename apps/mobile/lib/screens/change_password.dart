@@ -375,6 +375,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           obscureText: obscureText,
           validator: validator,
           decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 10,
+              horizontal: 12,
+            ),
             hintText: hint,
             prefixIcon: Icon(
               Icons.lock_outline,

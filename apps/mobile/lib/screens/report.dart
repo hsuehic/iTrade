@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
+import '../widgets/user_avatar.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -54,8 +53,6 @@ class _RportScreenState extends State<ReportScreen> {
                 // 使用 LayoutBuilder 获取当前高度，从而计算收缩比例 t
                 flexibleSpace: LayoutBuilder(
                   builder: (context, constraints) {
-                    final user = _authService.user!;
-                    final image = user.image;
                     final double currentHeight = constraints.biggest.height;
                     // t: 0.0(完全收起) ~ 1.0(完全展开)
                     final double t =
@@ -79,37 +76,10 @@ class _RportScreenState extends State<ReportScreen> {
                           'https://picsum.photos/800/800',
                           fit: BoxFit.fitWidth,
                         ),
-                        if (t > 0.5)
-                          CircleAvatar(
-                            backgroundImage: image != null
-                                ? image.startsWith('data:image/')
-                                      ? MemoryImage(
-                                          Uint8List.fromList(
-                                            base64Decode(image.split(',').last),
-                                          ),
-                                        )
-                                      : NetworkImage(_authService.user!.image!)
-                                : null,
-                            child: image == null
-                                ? const Icon(Icons.person)
-                                : null,
-                          ),
+                        if (t > 0.5) UserAvatar(),
 
                         ListTile(
-                          leading: CircleAvatar(
-                            backgroundImage: image != null
-                                ? image.startsWith('data:image/')
-                                      ? MemoryImage(
-                                          Uint8List.fromList(
-                                            base64Decode(image.split(',').last),
-                                          ),
-                                        )
-                                      : NetworkImage(_authService.user!.image!)
-                                : null,
-                            child: image == null
-                                ? const Icon(Icons.person)
-                                : null,
-                          ),
+                          leading: UserAvatar(),
                           title: Text(_authService.user?.name ?? 'User'),
                           subtitle: Text(
                             _authService.user?.email ?? 'Signed in',

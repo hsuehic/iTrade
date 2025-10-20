@@ -1,8 +1,7 @@
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../widgets/user_avatar.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -17,8 +16,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _emailController = TextEditingController();
 
   bool _isLoading = false;
-  Uint8List? _imageBytes;
-  String? _imageBase64;
 
   @override
   void initState() {
@@ -31,17 +28,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (user != null) {
       _nameController.text = user.name;
       _emailController.text = user.email;
-
-      // Load existing image if available
-      if (user.image != null && user.image!.startsWith('data:image/')) {
-        try {
-          final base64String = user.image!.split(',').last;
-          _imageBytes = Uint8List.fromList(base64Decode(base64String));
-          _imageBase64 = user.image;
-        } catch (e) {
-          // Ignore decode error
-        }
-      }
     }
   }
 
@@ -76,10 +62,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final response = await ApiClient.instance.postJson(
         '/api/mobile/update-profile',
-        data: {
-          'name': _nameController.text.trim(),
-          if (_imageBase64 != null) 'image': _imageBase64,
-        },
+        data: {'name': _nameController.text.trim()},
       );
 
       if (!mounted) return;
@@ -89,6 +72,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (success) {
         if (!mounted) return;
+
+        // Refetch user info after successful update
+        await AuthService.instance.getUser();
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -104,7 +90,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         );
 
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(true);
       } else {
         final message = data['message'] ?? 'Failed to update profile';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -163,15 +149,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Center(
                 child: Stack(
                   children: [
-                    CircleAvatar(
+                    UserAvatar(
                       radius: 60,
-                      backgroundImage: _imageBytes != null
-                          ? MemoryImage(_imageBytes!)
-                          : null,
-                      backgroundColor: primaryColor.withValues(alpha: 0.2),
-                      child: _imageBytes == null
-                          ? Icon(Icons.person, size: 60, color: primaryColor)
-                          : null,
+                      backgroundColor: primaryColor.withOpacity(0.2),
+                      icon: Icons.person,
+                      iconColor: primaryColor,
+                      iconSize: 60,
                     ),
                     Positioned(
                       bottom: 0,
@@ -387,6 +370,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           keyboardType: keyboardType,
           enabled: enabled,
           decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 10,
+              horizontal: 12,
+            ),
             hintText: hint,
             prefixIcon: Icon(
               icon,

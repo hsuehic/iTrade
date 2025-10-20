@@ -1,10 +1,9 @@
-import 'dart:typed_data';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
 import '../services/api_client.dart';
+import 'user_avatar.dart';
 
 class QuickMenuDrawer extends StatefulWidget {
   const QuickMenuDrawer({super.key});
@@ -247,15 +246,6 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
   }
 
   Widget _buildUserCard(dynamic user, String? image, bool isDark) {
-    Uint8List? imageBytes;
-    if (image != null && image.startsWith('data:image/')) {
-      try {
-        imageBytes = Uint8List.fromList(base64Decode(image.split(',').last));
-      } catch (e) {
-        // Ignore decode error
-      }
-    }
-
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Container(
@@ -270,15 +260,12 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
       ),
       child: Row(
         children: [
-          CircleAvatar(
+          UserAvatar(
             radius: 28,
-            backgroundImage: imageBytes != null
-                ? MemoryImage(imageBytes)
-                : null,
-            backgroundColor: Colors.white.withValues(alpha: 0.3),
-            child: imageBytes == null
-                ? const Icon(Icons.person, size: 32, color: Colors.white)
-                : null,
+            backgroundColor: Colors.white.withOpacity(0.3),
+            icon: Icons.person,
+            iconColor: Colors.white,
+            iconSize: 32,
           ),
           const SizedBox(width: 16),
           Expanded(

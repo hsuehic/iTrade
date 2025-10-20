@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../services/api_client.dart';
@@ -10,6 +8,7 @@ import 'change_password.dart';
 import 'delete_account.dart';
 import 'edit_profile.dart';
 import 'email_preferences.dart';
+import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -94,13 +93,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: 'Edit Profile',
                 subtitle: 'Update your personal information',
                 trailing: Icons.chevron_right,
-                onTap: () {
-                  Navigator.push(
+                onTap: () async {
+                  final updated = await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const EditProfileScreen(),
                     ),
                   );
+                  if (updated == true && mounted) {
+                    setState(() {}); // rebuild with latest info
+                  }
                 },
                 isDark: isDark,
               ),
@@ -409,29 +411,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildUserCard(User user, String? image, bool isDark) {
-    Uint8List? imageBytes;
-    if (image != null && image.startsWith('data:image/')) {
-      try {
-        imageBytes = Uint8List.fromList(base64Decode(image.split(',').last));
-      } catch (e) {
-        // Ignore decode error
-      }
-    }
-
-    final primaryColor = Theme.of(context).colorScheme.primary;
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [primaryColor.withValues(alpha: 0.8), primaryColor],
+          colors: [
+            Theme.of(context).colorScheme.primary.withOpacity(0.8),
+            Theme.of(context).colorScheme.primary,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: primaryColor.withValues(alpha: 0.3),
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
             blurRadius: 15,
             spreadRadius: 2,
             offset: const Offset(0, 4),
@@ -441,19 +435,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         children: [
           // Avatar
-          CircleAvatar(
+          UserAvatar(
             radius: 32,
-            backgroundImage: imageBytes != null
-                ? MemoryImage(imageBytes)
-                : null,
-            backgroundColor: Colors.white.withValues(alpha: 0.3),
-            child: imageBytes == null
-                ? Icon(
-                    Icons.person,
-                    size: 36,
-                    color: Colors.white.withValues(alpha: 0.9),
-                  )
-                : null,
+            backgroundColor: Colors.white.withOpacity(0.3),
+            icon: Icons.person,
+            iconColor: Colors.white.withOpacity(0.9),
+            iconSize: 36,
           ),
           const SizedBox(width: 16),
           // User info
@@ -472,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   user.email,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
+                    color: Colors.white.withOpacity(0.9),
                   ),
                 ),
               ],
@@ -504,12 +491,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5),
+        color: isDark ? Colors.grey[900] : Colors.white.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark
-              ? Colors.grey[850]!
-              : Colors.grey.withValues(alpha: 0.08),
+          color: isDark ? Colors.grey[850]! : Colors.grey.withOpacity(0.08),
         ),
       ),
       child: Column(children: children),
@@ -534,9 +519,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.grey[800]
-                    : Colors.grey.withValues(alpha: 0.1),
+                color: isDark ? Colors.grey[800] : Colors.grey.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -591,9 +574,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.grey[800]
-                  : Colors.grey.withValues(alpha: 0.1),
+              color: isDark ? Colors.grey[800] : Colors.grey.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, size: 20, color: Theme.of(context).primaryColor),
@@ -631,7 +612,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 1,
       thickness: 0.5,
       indent: 68,
-      color: isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.15),
+      color: isDark ? Colors.grey[850] : Colors.grey.withOpacity(0.15),
     );
   }
 
