@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { getCryptoIconUrl } from '@/lib/exchanges';
 
@@ -43,7 +44,7 @@ export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) 
   }
 
   return (
-    <img
+    <Image
       src={iconUrl}
       alt={baseAsset}
       className={cn(sizeClasses[size], 'rounded-full flex-shrink-0', className)}

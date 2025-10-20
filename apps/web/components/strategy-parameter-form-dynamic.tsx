@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { InfoIcon, AlertTriangleIcon } from 'lucide-react';
 import {
   getStrategyConfig,
