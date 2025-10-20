@@ -16,7 +16,7 @@ export interface EmailPreferencesData {
 export class EmailPreferencesRepository {
   private repository: Repository<EmailPreferencesEntity>;
 
-  constructor (dataSource: DataSource) {
+  constructor(dataSource: DataSource) {
     this.repository = dataSource.getRepository(EmailPreferencesEntity);
   }
 
@@ -43,7 +43,7 @@ export class EmailPreferencesRepository {
    */
   async create(
     userId: string,
-    data: EmailPreferencesData = {}
+    data: EmailPreferencesData = {},
   ): Promise<EmailPreferencesEntity> {
     // Check if preferences already exist
     const existing = await this.repository.findOne({
@@ -75,15 +75,16 @@ export class EmailPreferencesRepository {
    */
   async update(
     userId: string,
-    data: EmailPreferencesData
+    data: EmailPreferencesData,
   ): Promise<EmailPreferencesEntity> {
     // Get existing preferences (creates if doesn't exist)
-    const existing = await this.getByUserId(userId);
+    await this.getByUserId(userId);
 
-    // Update with new values
-    const updated = this.repository.merge(existing, data);
+    // Update with new values using direct update
+    await this.repository.update({ userId }, data);
 
-    return await this.repository.save(updated);
+    // Return the updated entity
+    return await this.getByUserId(userId);
   }
 
   /**
@@ -98,10 +99,9 @@ export class EmailPreferencesRepository {
    */
   async isPreferenceEnabled(
     userId: string,
-    preference: keyof EmailPreferencesData
+    preference: keyof EmailPreferencesData,
   ): Promise<boolean> {
     const preferences = await this.getByUserId(userId);
     return preferences[preference] ?? false;
   }
 }
-
