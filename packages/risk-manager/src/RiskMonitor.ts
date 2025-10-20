@@ -123,9 +123,7 @@ export class RiskMonitor extends EventEmitter {
 
   // Risk Check Methods
   private async checkPortfolioRisk(snapshot: RiskSnapshot): Promise<void> {
-    const portfolioVarPercent = snapshot.var95
-      .div(snapshot.portfolioValue)
-      .mul(100);
+    const portfolioVarPercent = snapshot.var95.div(snapshot.portfolioValue).mul(100);
 
     if (portfolioVarPercent.gt(this.config.portfolioVarLimit)) {
       await this.emitAlert({
@@ -297,9 +295,7 @@ export class RiskMonitor extends EventEmitter {
     };
   }
 
-  calculateStressTest(
-    stressScenarios: Map<string, Decimal>
-  ): Map<string, Decimal> {
+  calculateStressTest(stressScenarios: Map<string, Decimal>): Map<string, Decimal> {
     const results = new Map<string, Decimal>();
 
     for (const [scenario, shockPercent] of stressScenarios) {
@@ -307,7 +303,7 @@ export class RiskMonitor extends EventEmitter {
       const latestSnapshot = this.snapshots[this.snapshots.length - 1];
       if (latestSnapshot) {
         const stressedValue = latestSnapshot.portfolioValue.mul(
-          new Decimal(1).add(shockPercent.div(100))
+          new Decimal(1).add(shockPercent.div(100)),
         );
         const portfolioLoss = latestSnapshot.portfolioValue.sub(stressedValue);
         results.set(scenario, portfolioLoss);
@@ -368,9 +364,7 @@ export class RiskMonitor extends EventEmitter {
     }
 
     if (snapshot.drawdown.gt(10)) {
-      recommendations.push(
-        'Review risk management rules - drawdown is elevated'
-      );
+      recommendations.push('Review risk management rules - drawdown is elevated');
     }
 
     if (snapshot.correlationRisk.gt(60)) {

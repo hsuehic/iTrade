@@ -154,7 +154,7 @@ export class ValidationUtils {
   static isValidPercentage(
     percentage: Decimal | string | number,
     min = 0,
-    max = 100
+    max = 100,
   ): boolean {
     try {
       const decimal = new Decimal(percentage);
@@ -196,10 +196,7 @@ export class ValidationUtils {
     return this.isArray(array) && array.length <= maxLength;
   }
 
-  static allItemsValid<T>(
-    array: T[],
-    validator: (item: T) => boolean
-  ): boolean {
+  static allItemsValid<T>(array: T[], validator: (item: T) => boolean): boolean {
     return this.isArray(array) && array.every(validator);
   }
 
@@ -211,7 +208,7 @@ export class ValidationUtils {
   static isDecimalInRange(
     value: Decimal | string | number,
     min: Decimal,
-    max: Decimal
+    max: Decimal,
   ): boolean {
     try {
       const decimal = new Decimal(value);
@@ -240,28 +237,23 @@ export class ValidationUtils {
 
   // Object Validation
   static hasProperty(obj: any, property: string): boolean {
-    return (
-      this.isObject(obj) && Object.prototype.hasOwnProperty.call(obj, property)
-    );
+    return this.isObject(obj) && Object.prototype.hasOwnProperty.call(obj, property);
   }
 
   static hasAllProperties(obj: any, properties: string[]): boolean {
-    return (
-      this.isObject(obj) &&
-      properties.every((prop) => this.hasProperty(obj, prop))
-    );
+    return this.isObject(obj) && properties.every((prop) => this.hasProperty(obj, prop));
   }
 
   static hasRequiredProperties<T extends object>(
     obj: any,
-    requiredProps: (keyof T)[]
+    requiredProps: (keyof T)[],
   ): obj is T {
     return (
       this.isObject(obj) &&
       requiredProps.every(
         (prop) =>
           this.hasProperty(obj, prop as string) &&
-          !this.isNullOrUndefined((obj as T)[prop])
+          !this.isNullOrUndefined((obj as T)[prop]),
       )
     );
   }
@@ -269,7 +261,7 @@ export class ValidationUtils {
   // Schema Validation
   static validateSchema<T extends object>(
     obj: any,
-    schema: Record<keyof T, (value: any) => boolean>
+    schema: Record<keyof T, (value: any) => boolean>,
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -296,24 +288,15 @@ export class ValidationUtils {
   } {
     const errors: string[] = [];
 
-    if (
-      !this.hasProperty(orderData, 'symbol') ||
-      !this.isValidSymbol(orderData.symbol)
-    ) {
+    if (!this.hasProperty(orderData, 'symbol') || !this.isValidSymbol(orderData.symbol)) {
       errors.push('Invalid or missing symbol');
     }
 
-    if (
-      !this.hasProperty(orderData, 'side') ||
-      !this.isValidOrderSide(orderData.side)
-    ) {
+    if (!this.hasProperty(orderData, 'side') || !this.isValidOrderSide(orderData.side)) {
       errors.push('Invalid or missing order side');
     }
 
-    if (
-      !this.hasProperty(orderData, 'type') ||
-      !this.isValidOrderType(orderData.type)
-    ) {
+    if (!this.hasProperty(orderData, 'type') || !this.isValidOrderType(orderData.type)) {
       errors.push('Invalid or missing order type');
     }
 
@@ -326,8 +309,7 @@ export class ValidationUtils {
 
     if (
       orderData.type === 'LIMIT' &&
-      (!this.hasProperty(orderData, 'price') ||
-        !this.isValidPrice(orderData.price))
+      (!this.hasProperty(orderData, 'price') || !this.isValidPrice(orderData.price))
     ) {
       errors.push('Limit orders require a valid price');
     }
@@ -378,10 +360,7 @@ export class ValidationUtils {
       }
     }
 
-    if (
-      this.hasProperty(kline, 'volume') &&
-      !this.isNonNegativeDecimal(kline.volume)
-    ) {
+    if (this.hasProperty(kline, 'volume') && !this.isNonNegativeDecimal(kline.volume)) {
       errors.push('Invalid volume');
     }
 
@@ -408,7 +387,7 @@ export class ValidationUtils {
   static validateOrDefault<T>(
     value: any,
     validator: (value: any) => value is T,
-    defaultValue: T
+    defaultValue: T,
   ): T {
     return validator(value) ? value : defaultValue;
   }

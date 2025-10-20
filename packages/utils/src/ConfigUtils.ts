@@ -17,27 +17,19 @@ export class ConfigUtils {
     return value;
   }
 
-  static getEnvAsNumber(
-    key: string,
-    defaultValue?: number
-  ): number | undefined {
+  static getEnvAsNumber(key: string, defaultValue?: number): number | undefined {
     const value = process.env[key];
     if (!value) return defaultValue;
 
     const parsed = parseFloat(value);
     if (isNaN(parsed)) {
-      throw new Error(
-        `Environment variable ${key} is not a valid number: ${value}`
-      );
+      throw new Error(`Environment variable ${key} is not a valid number: ${value}`);
     }
 
     return parsed;
   }
 
-  static getEnvAsBoolean(
-    key: string,
-    defaultValue?: boolean
-  ): boolean | undefined {
+  static getEnvAsBoolean(key: string, defaultValue?: boolean): boolean | undefined {
     const value = process.env[key];
     if (!value) return defaultValue;
 
@@ -45,15 +37,13 @@ export class ConfigUtils {
     if (lower === 'true' || lower === '1' || lower === 'yes') return true;
     if (lower === 'false' || lower === '0' || lower === 'no') return false;
 
-    throw new Error(
-      `Environment variable ${key} is not a valid boolean: ${value}`
-    );
+    throw new Error(`Environment variable ${key} is not a valid boolean: ${value}`);
   }
 
   static getEnvAsArray(
     key: string,
     separator: string = ',',
-    defaultValue?: string[]
+    defaultValue?: string[],
   ): string[] | undefined {
     const value = process.env[key];
     if (!value) return defaultValue;
@@ -84,9 +74,7 @@ export class ConfigUtils {
 
       return config;
     } catch (error) {
-      throw new Error(
-        `Failed to load configuration from ${configPath}: ${error}`
-      );
+      throw new Error(`Failed to load configuration from ${configPath}: ${error}`);
     }
   }
 
@@ -98,9 +86,7 @@ export class ConfigUtils {
       // Update cache
       this.configCache.set(configPath, config);
     } catch (error) {
-      throw new Error(
-        `Failed to save configuration to ${configPath}: ${error}`
-      );
+      throw new Error(`Failed to save configuration to ${configPath}: ${error}`);
     }
   }
 
@@ -159,7 +145,7 @@ export class ConfigUtils {
   // Configuration Validation
   static validateConfig<T extends object>(
     config: any,
-    schema: Record<keyof T, (value: any) => boolean>
+    schema: Record<keyof T, (value: any) => boolean>,
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -188,16 +174,13 @@ export class ConfigUtils {
   static getOptionalConfig<T>(
     config: any,
     key: keyof T,
-    defaultValue: T[keyof T]
+    defaultValue: T[keyof T],
   ): T[keyof T] {
     return config.hasOwnProperty(key) ? config[key] : defaultValue;
   }
 
   // Exchange Configuration Helpers
-  static loadExchangeConfig(
-    exchangeName: string,
-    configDir: string = './config'
-  ): any {
+  static loadExchangeConfig(exchangeName: string, configDir: string = './config'): any {
     const configPath = join(configDir, `${exchangeName.toLowerCase()}.json`);
     return this.loadConfig(configPath);
   }
@@ -210,20 +193,13 @@ export class ConfigUtils {
     const errors: string[] = [];
 
     for (const key of requiredKeys) {
-      if (
-        !config[key] ||
-        typeof config[key] !== 'string' ||
-        config[key].trim() === ''
-      ) {
+      if (!config[key] || typeof config[key] !== 'string' || config[key].trim() === '') {
         errors.push(`Missing or invalid ${key}`);
       }
     }
 
     // Validate testnet flag
-    if (
-      config.hasOwnProperty('testnet') &&
-      typeof config.testnet !== 'boolean'
-    ) {
+    if (config.hasOwnProperty('testnet') && typeof config.testnet !== 'boolean') {
       errors.push('testnet must be a boolean value');
     }
 
@@ -252,7 +228,7 @@ export class ConfigUtils {
 
     // Remove undefined values
     const cleanOverrides = Object.fromEntries(
-      Object.entries(envOverrides).filter(([_, value]) => value !== undefined)
+      Object.entries(envOverrides).filter(([_, value]) => value !== undefined),
     );
 
     return this.mergeConfigs(config, cleanOverrides);
@@ -265,10 +241,8 @@ export class ConfigUtils {
     const schema = {
       maxPositionSize: (value: any) =>
         typeof value === 'number' && value > 0 && value <= 100,
-      maxDailyLoss: (value: any) =>
-        typeof value === 'number' && value > 0 && value <= 50,
-      riskPerTrade: (value: any) =>
-        typeof value === 'number' && value > 0 && value <= 10,
+      maxDailyLoss: (value: any) => typeof value === 'number' && value > 0 && value <= 50,
+      riskPerTrade: (value: any) => typeof value === 'number' && value > 0 && value <= 10,
       enableTrading: (value: any) => typeof value === 'boolean',
       symbols: (value: any) => Array.isArray(value) && value.length > 0,
     };
@@ -277,9 +251,7 @@ export class ConfigUtils {
   }
 
   // Database Configuration
-  static getDatabaseConfig(
-    type: 'sqlite' | 'postgres' | 'mysql' = 'sqlite'
-  ): any {
+  static getDatabaseConfig(type: 'sqlite' | 'postgres' | 'mysql' = 'sqlite'): any {
     switch (type) {
       case 'sqlite':
         return {
@@ -393,7 +365,7 @@ export class ConfigUtils {
   // Config file generation
   static generateConfigFile(
     configPath: string,
-    type: 'exchange' | 'trading' | 'logging'
+    type: 'exchange' | 'trading' | 'logging',
   ): void {
     const defaultConfig = this.createDefaultConfig(type);
     this.saveConfig(configPath, defaultConfig);

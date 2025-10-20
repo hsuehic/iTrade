@@ -6,10 +6,7 @@ import {
   OrderSide,
   BacktestResult,
 } from '@itrade/core';
-import {
-  TypeOrmDataManager,
-  TypeOrmDataManagerConfig,
-} from '@itrade/data-manager';
+import { TypeOrmDataManager, TypeOrmDataManagerConfig } from '@itrade/data-manager';
 import { DryRunOrderEntity, DryRunTradeEntity } from '@itrade/data-manager';
 
 export interface DryRunRunOptions {
@@ -38,7 +35,7 @@ export class DryRunEngine {
       commission: Decimal;
       slippage?: Decimal;
     },
-    options: DryRunRunOptions
+    options: DryRunRunOptions,
   ): Promise<BacktestResult> {
     await this.dataManager.initialize();
 
@@ -71,7 +68,7 @@ export class DryRunEngine {
         symbol,
         params.timeframe,
         params.startDate,
-        params.endDate
+        params.endDate,
       );
 
       for (const k of klines) {
@@ -144,9 +141,7 @@ export class DryRunEngine {
 
     // Compute simple metrics
     const result: BacktestResult = {
-      totalReturn: balance
-        .sub(params.initialBalance)
-        .div(params.initialBalance),
+      totalReturn: balance.sub(params.initialBalance).div(params.initialBalance),
       annualizedReturn: new Decimal(0),
       sharpeRatio: new Decimal(0),
       maxDrawdown: new Decimal(0),

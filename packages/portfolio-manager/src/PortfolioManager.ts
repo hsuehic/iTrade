@@ -11,10 +11,7 @@ import {
 } from '@itrade/core';
 import { Decimal } from 'decimal.js';
 
-export class PortfolioManager
-  extends EventEmitter
-  implements IPortfolioManager
-{
+export class PortfolioManager extends EventEmitter implements IPortfolioManager {
   private positions: Map<string, Position> = new Map();
   private balances: Map<string, Balance> = new Map();
   private totalValue: Decimal = new Decimal(0);
@@ -46,9 +43,7 @@ export class PortfolioManager
   getUnrealizedPnl(): Promise<Decimal> {
     throw new Error('Method not implemented.');
   }
-  getRealizedPnl(
-    period?: { start: Date; end: Date } | undefined
-  ): Promise<Decimal> {
+  getRealizedPnl(period?: { start: Date; end: Date } | undefined): Promise<Decimal> {
     console.log(period);
     throw new Error('Method not implemented.');
   }
@@ -72,14 +67,12 @@ export class PortfolioManager
     symbol: string,
     side: OrderSide,
     size: Decimal,
-    price: Decimal
+    price: Decimal,
   ): Promise<void> {
     const position = this.positions.get(symbol);
     if (position) {
       const newQuantity = position.quantity.add(size);
-      const totalCost = position.quantity
-        .mul(position.avgPrice)
-        .add(size.mul(price));
+      const totalCost = position.quantity.mul(position.avgPrice).add(size.mul(price));
       const newAvgPrice = totalCost.div(newQuantity);
       position.quantity = newQuantity;
       position.avgPrice = newAvgPrice;
@@ -99,11 +92,7 @@ export class PortfolioManager
     this.emit('positionUpdated', symbol, this.positions.get(symbol));
   }
 
-  calculateUnrealizedPnl(
-    symbol: string,
-    quantity: Decimal,
-    avgPrice: Decimal
-  ): Decimal {
+  calculateUnrealizedPnl(symbol: string, quantity: Decimal, avgPrice: Decimal): Decimal {
     // This would typically use current market prices
     // For now, return zero as a placeholder
     console.log(symbol, quantity, avgPrice);
@@ -172,10 +161,7 @@ export class PortfolioManager
     if (this.initialValue.eq(0)) {
       return new Decimal(0);
     }
-    return this.totalValue
-      .sub(this.initialValue)
-      .div(this.initialValue)
-      .mul(100);
+    return this.totalValue.sub(this.initialValue).div(this.initialValue).mul(100);
   }
 
   // Snapshot Management
@@ -234,9 +220,7 @@ export class PortfolioManager
       totalReturn,
       annualizedReturn: this.annualizeReturn(totalReturn),
       volatility,
-      sharpeRatio: volatility.eq(0)
-        ? new Decimal(0)
-        : totalReturn.div(volatility),
+      sharpeRatio: volatility.eq(0) ? new Decimal(0) : totalReturn.div(volatility),
       maxDrawdown,
       winRate: new Decimal(0), // Would need trade data
       profitFactor: new Decimal(0), // Would need trade data
@@ -325,7 +309,7 @@ export class PortfolioManager
     const exposures = Array.from(this.getExposure().values());
     const maxExposure = exposures.reduce(
       (max, exp) => (exp.gt(max) ? exp : max),
-      new Decimal(0)
+      new Decimal(0),
     );
 
     return maxExposure.div(this.totalValue);
@@ -338,7 +322,7 @@ export class PortfolioManager
       order.symbol,
       order.side,
       order.executedQuantity!,
-      order.price!
+      order.price!,
     );
 
     // Update balances (simplified logic)
@@ -354,7 +338,7 @@ export class PortfolioManager
   private updateBalanceAfterTrade(
     asset: string,
     amount: Decimal,
-    lockedChange: Decimal
+    lockedChange: Decimal,
   ): void {
     const currentBalance = this.getBalance(asset);
     if (currentBalance) {

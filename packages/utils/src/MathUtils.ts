@@ -94,9 +94,7 @@ export class MathUtils {
 
     if (stdDev.eq(0)) return new Decimal(0);
 
-    const cubedDeviations = values.map((val) =>
-      val.sub(mean).div(stdDev).pow(3)
-    );
+    const cubedDeviations = values.map((val) => val.sub(mean).div(stdDev).pow(3));
 
     return this.mean(cubedDeviations);
   }
@@ -109,9 +107,7 @@ export class MathUtils {
 
     if (stdDev.eq(0)) return new Decimal(0);
 
-    const fourthPowerDeviations = values.map((val) =>
-      val.sub(mean).div(stdDev).pow(4)
-    );
+    const fourthPowerDeviations = values.map((val) => val.sub(mean).div(stdDev).pow(4));
 
     return this.mean(fourthPowerDeviations).sub(3); // Excess kurtosis
   }
@@ -141,9 +137,7 @@ export class MathUtils {
     const xMean = this.mean(xValues);
     const yMean = this.mean(yValues);
 
-    const products = xValues.map((x, i) =>
-      x.sub(xMean).mul(yValues[i].sub(yMean))
-    );
+    const products = xValues.map((x, i) => x.sub(xMean).mul(yValues[i].sub(yMean)));
 
     return products
       .reduce((acc, val) => acc.add(val), new Decimal(0))
@@ -266,7 +260,7 @@ export class MathUtils {
   static annualizeReturn(
     totalReturn: Decimal,
     periods: number,
-    periodsPerYear: number = 365
+    periodsPerYear: number = 365,
   ): Decimal {
     if (periods === 0 || totalReturn.eq(-100)) return new Decimal(0);
 
@@ -281,7 +275,7 @@ export class MathUtils {
 
   static sharpeRatio(
     returns: Decimal[],
-    riskFreeRate: Decimal = new Decimal(0)
+    riskFreeRate: Decimal = new Decimal(0),
   ): Decimal {
     if (returns.length < 2) return new Decimal(0);
 
@@ -295,10 +289,7 @@ export class MathUtils {
   }
 
   static beta(assetReturns: Decimal[], marketReturns: Decimal[]): Decimal {
-    if (
-      assetReturns.length !== marketReturns.length ||
-      assetReturns.length < 2
-    ) {
+    if (assetReturns.length !== marketReturns.length || assetReturns.length < 2) {
       return new Decimal(1); // Market beta
     }
 

@@ -44,7 +44,7 @@ export class FileLogger implements ILogger {
   private formatLogEntry(
     level: LogLevel,
     message: string,
-    meta?: Record<string, unknown>
+    meta?: Record<string, unknown>,
   ): string {
     const timestamp = new Date().toISOString();
     const logEntry = {

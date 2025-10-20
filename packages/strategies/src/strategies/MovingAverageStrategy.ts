@@ -117,8 +117,7 @@ export class MovingAverageStrategy extends BaseStrategy {
       price: currentPrice,
       confidence,
       reason:
-        reason ||
-        `Fast MA: ${fastValue.toFixed(2)}, Slow MA: ${slowValue.toFixed(2)}`,
+        reason || `Fast MA: ${fastValue.toFixed(2)}, Slow MA: ${slowValue.toFixed(2)}`,
     };
   }
 
@@ -128,10 +127,7 @@ export class MovingAverageStrategy extends BaseStrategy {
     }
 
     const relevantPrices = this.priceHistory.slice(-period);
-    const sum = relevantPrices.reduce(
-      (acc, price) => acc.add(price),
-      new Decimal(0)
-    );
+    const sum = relevantPrices.reduce((acc, price) => acc.add(price), new Decimal(0));
 
     return sum.div(period);
   }
@@ -183,9 +179,7 @@ export class MovingAverageStrategy extends BaseStrategy {
   /**
    * Restore internal state for MovingAverage strategy
    */
-  protected async setInternalState(
-    state: Record<string, unknown>
-  ): Promise<void> {
+  protected async setInternalState(state: Record<string, unknown>): Promise<void> {
     await super.setInternalState(state);
 
     if (state.position && typeof state.position === 'string') {
@@ -210,14 +204,12 @@ export class MovingAverageStrategy extends BaseStrategy {
   /**
    * Restore technical indicator data for MovingAverage strategy
    */
-  protected async setIndicatorData(
-    data: Record<string, unknown>
-  ): Promise<void> {
+  protected async setIndicatorData(data: Record<string, unknown>): Promise<void> {
     try {
       // Restore price history
       if (data.priceHistory && Array.isArray(data.priceHistory)) {
         this.priceHistory = (data.priceHistory as string[]).map(
-          (price) => new Decimal(price)
+          (price) => new Decimal(price),
         );
       }
 
@@ -251,9 +243,7 @@ export class MovingAverageStrategy extends BaseStrategy {
   /**
    * Handle recovery context setup specific to MovingAverage strategy
    */
-  protected async onRecoveryContextSet(
-    context: StrategyRecoveryContext
-  ): Promise<void> {
+  protected async onRecoveryContextSet(context: StrategyRecoveryContext): Promise<void> {
     const { openOrders, totalPosition } = context;
 
     // Log recovery information
@@ -272,8 +262,7 @@ export class MovingAverageStrategy extends BaseStrategy {
     if (this.priceHistory.length < slowPeriod) {
       this.emit('recoveryWarning', {
         message: `Insufficient price history (${this.priceHistory.length}/${slowPeriod}). Strategy may need to rebuild indicators.`,
-        recommendation:
-          'Consider fetching recent price data to rebuild indicators',
+        recommendation: 'Consider fetching recent price data to rebuild indicators',
       });
     }
 

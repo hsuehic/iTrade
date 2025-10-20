@@ -79,12 +79,7 @@ export class PositionSizer {
     } = params;
 
     // Validate inputs
-    if (
-      portfolioValue.lte(0) ||
-      avgLoss.lte(0) ||
-      winRate.lt(0) ||
-      winRate.gt(100)
-    ) {
+    if (portfolioValue.lte(0) || avgLoss.lte(0) || winRate.lt(0) || winRate.gt(100)) {
       return new Decimal(0);
     }
 
@@ -120,18 +115,12 @@ export class PositionSizer {
     } = params;
 
     // Validate inputs
-    if (
-      portfolioValue.lte(0) ||
-      assetVolatility.lte(0) ||
-      targetVolatility.lte(0)
-    ) {
+    if (portfolioValue.lte(0) || assetVolatility.lte(0) || targetVolatility.lte(0)) {
       return new Decimal(0);
     }
 
     // Adjust for correlation (simplified approach)
-    const adjustedVolatility = assetVolatility.mul(
-      new Decimal(1).add(correlation.abs())
-    );
+    const adjustedVolatility = assetVolatility.mul(new Decimal(1).add(correlation.abs()));
 
     // Calculate position size as percentage of portfolio
     const positionPercent = targetVolatility.div(adjustedVolatility);
@@ -147,7 +136,7 @@ export class PositionSizer {
     portfolioValue: Decimal,
     targetRisk: Decimal, // Target risk contribution as % of portfolio
     assetVolatility: Decimal,
-    maxPositionSize?: Decimal
+    maxPositionSize?: Decimal,
   ): Decimal {
     const maxSize = maxPositionSize || this.defaultMaxPositionSize;
 
@@ -166,7 +155,7 @@ export class PositionSizer {
   calculateOptimalF(
     portfolioValue: Decimal,
     tradeOutcomes: Decimal[], // Historical trade outcomes
-    maxPositionSize?: Decimal
+    maxPositionSize?: Decimal,
   ): Decimal {
     const maxSize = maxPositionSize || this.defaultMaxPositionSize;
 
@@ -176,10 +165,7 @@ export class PositionSizer {
 
     // Find the largest loss
     const largestLoss = tradeOutcomes
-      .reduce(
-        (min, outcome) => (outcome.lt(min) ? outcome : min),
-        new Decimal(0)
-      )
+      .reduce((min, outcome) => (outcome.lt(min) ? outcome : min), new Decimal(0))
       .abs();
 
     if (largestLoss.eq(0)) {
@@ -193,11 +179,7 @@ export class PositionSizer {
     // Test different f values from 0.01 to maxPositionSize
     for (let fPercent = 1; fPercent <= maxSize.toNumber(); fPercent++) {
       const f = new Decimal(fPercent).div(100);
-      const geomean = this.calculateGeometricMean(
-        tradeOutcomes,
-        f,
-        largestLoss
-      );
+      const geomean = this.calculateGeometricMean(tradeOutcomes, f, largestLoss);
 
       if (geomean.gt(bestGeomean)) {
         bestGeomean = geomean;
@@ -211,7 +193,7 @@ export class PositionSizer {
   private calculateGeometricMean(
     outcomes: Decimal[],
     f: Decimal,
-    largestLoss: Decimal
+    largestLoss: Decimal,
   ): Decimal {
     let product = new Decimal(1);
 
@@ -236,7 +218,7 @@ export class PositionSizer {
     riskPerTrade: Decimal,
     atr: Decimal,
     atrMultiplier: Decimal = new Decimal(2),
-    maxPositionSize?: Decimal
+    maxPositionSize?: Decimal,
   ): Decimal {
     const maxSize = maxPositionSize || this.defaultMaxPositionSize;
 
@@ -259,7 +241,7 @@ export class PositionSizer {
     volatility: Decimal,
     timeHorizon: number, // in days
     confidenceLevel: Decimal = new Decimal(95), // 95%
-    maxPositionSize?: Decimal
+    maxPositionSize?: Decimal,
   ): Decimal {
     const maxSize = maxPositionSize || this.defaultMaxPositionSize;
 
@@ -302,7 +284,7 @@ export class PositionSizer {
     basePositionSize: Decimal,
     existingPositions: Position[],
     newAssetCorrelations: Map<string, Decimal>,
-    maxTotalCorrelatedExposure: Decimal = new Decimal(50) // 50% max
+    maxTotalCorrelatedExposure: Decimal = new Decimal(50), // 50% max
   ): Decimal {
     if (existingPositions.length === 0) {
       return basePositionSize;
@@ -312,23 +294,20 @@ export class PositionSizer {
     let correlatedExposure = new Decimal(0);
 
     for (const position of existingPositions) {
-      const correlation =
-        newAssetCorrelations.get(position.symbol) || new Decimal(0);
+      const correlation = newAssetCorrelations.get(position.symbol) || new Decimal(0);
       const positionValue = position.quantity.mul(position.avgPrice);
-      correlatedExposure = correlatedExposure.add(
-        positionValue.mul(correlation.abs())
-      );
+      correlatedExposure = correlatedExposure.add(positionValue.mul(correlation.abs()));
     }
 
     // Adjust position size based on correlation exposure
     const maxCorrelatedValue = correlatedExposure.mul(
-      maxTotalCorrelatedExposure.div(100)
+      maxTotalCorrelatedExposure.div(100),
     );
 
     if (correlatedExposure.gte(maxCorrelatedValue)) {
       // Reduce position size proportionally
       const reductionFactor = maxCorrelatedValue.div(
-        correlatedExposure.add(basePositionSize)
+        correlatedExposure.add(basePositionSize),
       );
       return basePositionSize.mul(reductionFactor);
     }
@@ -340,7 +319,7 @@ export class PositionSizer {
   calculateRiskReward(
     entryPrice: Decimal,
     stopLoss: Decimal,
-    takeProfit: Decimal
+    takeProfit: Decimal,
   ): Decimal {
     if (entryPrice.eq(stopLoss) || entryPrice.eq(takeProfit)) {
       return new Decimal(0);
@@ -355,7 +334,7 @@ export class PositionSizer {
   validatePositionSize(
     positionSize: Decimal,
     portfolioValue: Decimal,
-    maxPositionPercent: Decimal = this.defaultMaxPositionSize
+    maxPositionPercent: Decimal = this.defaultMaxPositionSize,
   ): boolean {
     if (portfolioValue.lte(0) || positionSize.lte(0)) {
       return false;

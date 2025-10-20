@@ -13,7 +13,7 @@ export function retry<T, Args extends any[]>(
     maxDelay?: number;
     shouldRetry?: (error: Error, attempt: number) => boolean;
     till?: (result: T, attempt: number) => boolean;
-  } = {}
+  } = {},
 ): (...args: Args) => Promise<T> {
   const {
     maxAttempts = 3,
@@ -39,7 +39,7 @@ export function retry<T, Args extends any[]>(
         if (error instanceof Error) {
           console.error(
             `Attempt ${attempt} failed with error:`,
-            error.stack || error.message
+            error.stack || error.message,
           );
         } else {
           console.error(`Attempt ${attempt} failed with non-Error:`, error);
@@ -53,7 +53,7 @@ export function retry<T, Args extends any[]>(
         const calculateNextDelay = (
           delay: number,
           attempt: number,
-          backoff: string
+          backoff: string,
         ): number => {
           switch (backoff) {
             case 'linear':
@@ -84,7 +84,7 @@ export function retry<T, Args extends any[]>(
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number,
-  immediate = false
+  immediate = false,
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
 
@@ -110,7 +110,7 @@ export function debounce<T extends (...args: any[]) => any>(
 
 export function throttle<T extends (...args: any[]) => any>(
   func: T,
-  limit: number
+  limit: number,
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean = false;
 
@@ -126,7 +126,7 @@ export function throttle<T extends (...args: any[]) => any>(
 export async function timeout<T>(
   promise: Promise<T>,
   ms: number,
-  errorMessage = 'Operation timed out'
+  errorMessage = 'Operation timed out',
 ): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => reject(new Error(errorMessage)), ms);
@@ -137,7 +137,7 @@ export async function timeout<T>(
 
 export async function parallel<T>(
   tasks: (() => Promise<T>)[],
-  concurrency = Infinity
+  concurrency = Infinity,
 ): Promise<T[]> {
   if (concurrency >= tasks.length) {
     return Promise.all(tasks.map((task) => task()));
@@ -200,7 +200,7 @@ export async function sequential<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
 
 export async function waterfall<T>(
   tasks: ((prev: any) => Promise<T>)[],
-  initialValue: any = undefined
+  initialValue: any = undefined,
 ): Promise<T> {
   let result = initialValue;
 
@@ -214,7 +214,7 @@ export async function waterfall<T>(
 export function memoize<T extends (...args: any[]) => Promise<any>>(
   fn: T,
   keyGenerator?: (...args: Parameters<T>) => string,
-  ttl?: number
+  ttl?: number,
 ): T {
   const cache = new Map<string, { value: any; timestamp: number }>();
 
@@ -253,11 +253,7 @@ export class AsyncQueue<T> {
   }
 
   private async process(): Promise<void> {
-    if (
-      this.processing ||
-      this.running >= this.concurrency ||
-      this.queue.length === 0
-    ) {
+    if (this.processing || this.running >= this.concurrency || this.queue.length === 0) {
       return;
     }
 

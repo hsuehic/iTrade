@@ -135,9 +135,7 @@ export function detectMarketType(symbol: string): MarketType {
 /**
  * Check if symbol is for futures/perpetual market
  */
-export function isFuturesMarket(
-  symbolOrMarketType: string | MarketType
-): boolean {
+export function isFuturesMarket(symbolOrMarketType: string | MarketType): boolean {
   const marketType =
     typeof symbolOrMarketType === 'string' &&
     (symbolOrMarketType === 'spot' ||

@@ -3,24 +3,15 @@ import 'moment-timezone';
 
 export class DateUtils {
   // Date Formatting
-  static formatTimestamp(
-    date: Date | number,
-    format = 'YYYY-MM-DD HH:mm:ss'
-  ): string {
+  static formatTimestamp(date: Date | number, format = 'YYYY-MM-DD HH:mm:ss'): string {
     return moment(date).format(format);
   }
 
-  static formatUTC(
-    date: Date | number,
-    format = 'YYYY-MM-DD HH:mm:ss'
-  ): string {
+  static formatUTC(date: Date | number, format = 'YYYY-MM-DD HH:mm:ss'): string {
     return moment(date).utc().format(format);
   }
 
-  static formatTimestampMs(
-    timestampMs: number,
-    format = 'YYYY-MM-DD HH:mm:ss'
-  ): string {
+  static formatTimestampMs(timestampMs: number, format = 'YYYY-MM-DD HH:mm:ss'): string {
     return moment(timestampMs).format(format);
   }
 
@@ -127,7 +118,7 @@ export class DateUtils {
   static generateDateRange(
     startDate: Date,
     endDate: Date,
-    interval: 'day' | 'hour' | 'minute' = 'day'
+    interval: 'day' | 'hour' | 'minute' = 'day',
   ): Date[] {
     const dates: Date[] = [];
     let current = moment(startDate);
@@ -143,7 +134,7 @@ export class DateUtils {
 
   static generateTradingDateRange(startDate: Date, endDate: Date): Date[] {
     return this.generateDateRange(startDate, endDate, 'day').filter((date) =>
-      this.isWeekday(date)
+      this.isWeekday(date),
     );
   }
 

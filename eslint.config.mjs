@@ -25,6 +25,9 @@ export default defineConfig(
       'dist',
       'build',
       '.next',
+      '.next-dev',
+      '.next-staging',
+      '.next-prod',
       '**/coverage',
       '**/generated',
     ],
@@ -113,7 +116,7 @@ export default defineConfig(
 
   // 最后应用 Prettier
   {
-    files: ['**/*.{ts,tsx,js,jsx}'], // all JS/TS files in monorepo
+    files: ['**/*.{mjs,ts,tsx,js,jsx}'], // all JS/TS files in monorepo
     ...prettier,
   }
 );

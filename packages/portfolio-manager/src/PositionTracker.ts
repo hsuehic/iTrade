@@ -40,7 +40,7 @@ export class PositionTracker extends EventEmitter {
     quantity: Decimal,
     price: Decimal,
     side: OrderSide,
-    orderId?: string
+    orderId?: string,
   ): void {
     const update: PositionUpdate = {
       symbol,
@@ -72,14 +72,12 @@ export class PositionTracker extends EventEmitter {
     position: Position,
     quantity: Decimal,
     price: Decimal,
-    side: OrderSide
+    side: OrderSide,
   ): void {
     if (side === OrderSide.BUY) {
       // Increase position
       const totalQuantity = position.quantity.add(quantity);
-      const totalCost = position.quantity
-        .mul(position.avgPrice)
-        .add(quantity.mul(price));
+      const totalCost = position.quantity.mul(position.avgPrice).add(quantity.mul(price));
       const newAvgPrice = totalCost.div(totalQuantity);
 
       position.quantity = totalQuantity;
@@ -112,7 +110,7 @@ export class PositionTracker extends EventEmitter {
     symbol: string,
     quantity: Decimal,
     price: Decimal,
-    side: OrderSide
+    side: OrderSide,
   ): void {
     const newPosition: Position = {
       symbol,
@@ -143,9 +141,7 @@ export class PositionTracker extends EventEmitter {
   private updateUnrealizedPnl(position: Position): void {
     const marketPrice = this.marketPrices.get(position.symbol);
     if (marketPrice) {
-      const unrealizedPnl = marketPrice
-        .sub(position.avgPrice)
-        .mul(position.quantity);
+      const unrealizedPnl = marketPrice.sub(position.avgPrice).mul(position.quantity);
       position.unrealizedPnl = unrealizedPnl;
       this.emit('unrealizedPnlUpdated', position.symbol, unrealizedPnl);
     }
@@ -164,8 +160,7 @@ export class PositionTracker extends EventEmitter {
     const summaries: PositionSummary[] = [];
 
     for (const position of this.positions.values()) {
-      const marketPrice =
-        this.marketPrices.get(position.symbol) || position.avgPrice;
+      const marketPrice = this.marketPrices.get(position.symbol) || position.avgPrice;
       const totalValue = position.quantity.mul(marketPrice);
       const percentOfPortfolio = this.totalPortfolioValue.gt(0)
         ? totalValue.div(this.totalPortfolioValue).mul(100)
@@ -194,7 +189,7 @@ export class PositionTracker extends EventEmitter {
   getTotalUnrealizedPnl(): Decimal {
     return Array.from(this.positions.values()).reduce(
       (total, position) => total.add(position.unrealizedPnl || new Decimal(0)),
-      new Decimal(0)
+      new Decimal(0),
     );
   }
 
@@ -202,8 +197,7 @@ export class PositionTracker extends EventEmitter {
     let totalValue = new Decimal(0);
 
     for (const position of this.positions.values()) {
-      const marketPrice =
-        this.marketPrices.get(position.symbol) || position.avgPrice;
+      const marketPrice = this.marketPrices.get(position.symbol) || position.avgPrice;
       const positionValue = position.quantity.mul(marketPrice);
       totalValue = totalValue.add(positionValue);
     }
@@ -216,8 +210,7 @@ export class PositionTracker extends EventEmitter {
     const totalValue = this.getTotalPositionValue();
 
     for (const position of this.positions.values()) {
-      const marketPrice =
-        this.marketPrices.get(position.symbol) || position.avgPrice;
+      const marketPrice = this.marketPrices.get(position.symbol) || position.avgPrice;
       const positionValue = position.quantity.mul(marketPrice);
       const exposure = totalValue.gt(0)
         ? positionValue.div(totalValue).mul(100)
@@ -232,10 +225,7 @@ export class PositionTracker extends EventEmitter {
   getConcentrationRisk(): Decimal {
     const exposures = Array.from(this.getExposureBreakdown().values());
     return exposures.length > 0
-      ? exposures.reduce(
-          (max, exp) => (exp.gt(max) ? exp : max),
-          new Decimal(0)
-        )
+      ? exposures.reduce((max, exp) => (exp.gt(max) ? exp : max), new Decimal(0))
       : new Decimal(0);
   }
 
@@ -269,7 +259,7 @@ export class PositionTracker extends EventEmitter {
         order.executedQuantity,
         order.price!,
         order.side,
-        order.id
+        order.id,
       );
     }
   }
@@ -293,8 +283,7 @@ export class PositionTracker extends EventEmitter {
     let netExposure = new Decimal(0);
 
     for (const position of this.positions.values()) {
-      const marketPrice =
-        this.marketPrices.get(position.symbol) || position.avgPrice;
+      const marketPrice = this.marketPrices.get(position.symbol) || position.avgPrice;
       const positionValue = position.quantity.mul(marketPrice);
 
       if (position.side === 'long') {

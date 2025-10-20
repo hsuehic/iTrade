@@ -17,8 +17,8 @@
     "clean:dev": "rm -rf .next-dev",
     "clean:staging": "rm -rf .next-staging",
     "clean:prod": "rm -rf .next-prod",
-    "lint": "BUILD_MODE=prod next lint",
-    "lint:fix": "BUILD_MODE=prod next lint --fix"
+    "lint": "eslint . --ext .ts,.tsx  --debug",
+    "lint:fix": "eslint . --fix --ext .ts,.tsx"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -27,7 +27,7 @@ export class ConsoleLogger implements ILogger {
   private formatMessage(
     level: LogLevel,
     message: string,
-    meta?: Record<string, unknown>
+    meta?: Record<string, unknown>,
   ): string {
     const timestamp = new Date().toISOString();
     const color = this.colors[level];
@@ -63,7 +63,7 @@ export class ConsoleLogger implements ILogger {
             error: error.message,
             stack: error.stack,
             name: error.name,
-          })
+          }),
         );
       } else {
         console.error(this.formatMessage(LogLevel.ERROR, message, error));

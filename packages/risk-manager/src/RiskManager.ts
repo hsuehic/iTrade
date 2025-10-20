@@ -52,7 +52,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   checkOrderRisk(
     order: Order,
     currentPositions: Position[],
-    balances: Balance[]
+    balances: Balance[],
   ): Promise<boolean> {
     console.log(order, currentPositions, balances);
     throw new Error('Method not implemented.');
@@ -61,10 +61,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     console.log(position, limits);
     throw new Error('Method not implemented.');
   }
-  calculateRiskMetrics(
-    positions: Position[],
-    balances: Balance[]
-  ): Promise<RiskMetrics> {
+  calculateRiskMetrics(positions: Position[], balances: Balance[]): Promise<RiskMetrics> {
     console.log(positions, balances);
     throw new Error('Method not implemented.');
   }
@@ -86,7 +83,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   async validateOrder(
     order: any,
     portfolioValue: Decimal,
-    positions: Position[]
+    positions: Position[],
   ): Promise<boolean> {
     const checks = [
       this.checkPositionSize(order, portfolioValue),
@@ -110,10 +107,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     return passed;
   }
 
-  private async checkPositionSize(
-    order: any,
-    portfolioValue: Decimal
-  ): Promise<boolean> {
+  private async checkPositionSize(order: any, portfolioValue: Decimal): Promise<boolean> {
     if (portfolioValue.eq(0)) return false;
 
     const orderValue = order.quantity.mul(order.price || new Decimal(0));
@@ -173,7 +167,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   private async checkLeverage(
     order: any,
     portfolioValue: Decimal,
-    positions: Position[]
+    positions: Position[],
   ): Promise<boolean> {
     // Calculate current leverage
     const totalExposure = this.calculateTotalExposure(positions);
@@ -225,7 +219,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     portfolioValue: Decimal,
     riskPerTrade: Decimal,
     entryPrice: Decimal,
-    stopLoss: Decimal
+    stopLoss: Decimal,
   ): Decimal {
     if (stopLoss.eq(0) || entryPrice.eq(stopLoss)) {
       return new Decimal(0);
@@ -236,9 +230,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     const positionSize = riskAmount.div(riskPerUnit);
 
     // Apply position size limit
-    const maxPositionValue = portfolioValue.mul(
-      this.config.maxPositionSize.div(100)
-    );
+    const maxPositionValue = portfolioValue.mul(this.config.maxPositionSize.div(100));
     const maxPositionSize = maxPositionValue.div(entryPrice);
 
     return Decimal.min(positionSize, maxPositionSize);
@@ -248,7 +240,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     portfolioValue: Decimal,
     winRate: Decimal,
     avgWin: Decimal,
-    avgLoss: Decimal
+    avgLoss: Decimal,
   ): Decimal {
     console.log(portfolioValue);
     if (avgLoss.eq(0)) return new Decimal(0);
@@ -269,17 +261,14 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
     // Ensure it doesn't exceed position size limits
     const maxFraction = this.config.maxPositionSize.div(100);
-    return Decimal.min(
-      Decimal.max(fractionalKelly, new Decimal(0)),
-      maxFraction
-    );
+    return Decimal.min(Decimal.max(fractionalKelly, new Decimal(0)), maxFraction);
   }
 
   // Risk Monitoring
   updatePortfolioMetrics(
     currentValue: Decimal,
     positions: Position[],
-    dailyPnl?: Decimal
+    dailyPnl?: Decimal,
   ): RiskAlert {
     // Update peak value and drawdown
     if (currentValue.gt(this.peakValue)) {
@@ -310,10 +299,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
           : new Decimal(0),
         positionCount: positions.length,
         largestPosition: this.getLargestPositionSize(positions, currentValue),
-        concentrationRisk: this.calculateConcentrationRisk(
-          positions,
-          currentValue
-        ),
+        concentrationRisk: this.calculateConcentrationRisk(positions, currentValue),
         dailyPnl: this.dailyPnl,
         emergencyMode: this.emergencyMode,
       },
@@ -332,7 +318,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
   private getLargestPositionSize(
     positions: Position[],
-    portfolioValue: Decimal
+    portfolioValue: Decimal,
   ): Decimal {
     if (positions.length === 0 || portfolioValue.eq(0)) {
       return new Decimal(0);
@@ -348,7 +334,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
   private calculateConcentrationRisk(
     positions: Position[],
-    portfolioValue: Decimal
+    portfolioValue: Decimal,
   ): Decimal {
     if (positions.length === 0 || portfolioValue.eq(0)) {
       return new Decimal(0);
@@ -360,10 +346,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
       return positionValue.div(portfolioValue);
     });
 
-    const hhi = weights.reduce(
-      (sum, weight) => sum.add(weight.pow(2)),
-      new Decimal(0)
-    );
+    const hhi = weights.reduce((sum, weight) => sum.add(weight.pow(2)), new Decimal(0));
     return hhi.mul(100); // Convert to percentage
   }
 
@@ -372,7 +355,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     entryPrice: Decimal,
     currentPrice: Decimal,
     atr: Decimal,
-    side: 'BUY' | 'SELL'
+    side: 'BUY' | 'SELL',
   ): Decimal {
     const atrMultiplier = new Decimal(2); // 2x ATR for stop loss
     const buffer = this.config.stopLossBuffer.div(100);

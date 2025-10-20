@@ -30,8 +30,8 @@ export class TradingLogger implements ILogger {
             format.colorize(),
             format.printf(
               (info) =>
-                `${info.timestamp} ${info.level}: ${info.message} ${info.metadata ? JSON.stringify(info.metadata) : ''}`
-            )
+                `${info.timestamp} ${info.level}: ${info.message} ${info.metadata ? JSON.stringify(info.metadata) : ''}`,
+            ),
           )
         : format.combine(format.timestamp(), format.json());
 
@@ -41,7 +41,7 @@ export class TradingLogger implements ILogger {
       loggerTransports.push(
         new transports.Console({
           format: logFormat,
-        })
+        }),
       );
     }
 
@@ -53,7 +53,7 @@ export class TradingLogger implements ILogger {
           zippedArchive: true,
           maxSize: options.maxSize || '20m',
           maxFiles: options.maxFiles || '14d',
-        })
+        }),
       );
     }
 
@@ -77,11 +77,7 @@ export class TradingLogger implements ILogger {
     this.logger.warn(message, metadata);
   }
 
-  error(
-    message: string,
-    error?: Error,
-    metadata?: Record<string, unknown>
-  ): void {
+  error(message: string, error?: Error, metadata?: Record<string, unknown>): void {
     this.logger.error(message, { error, ...metadata });
   }
 
@@ -113,7 +109,7 @@ export class TradingLogger implements ILogger {
       (transport) =>
         new Promise<void>((resolve) => {
           transport.once('finish', () => resolve());
-        })
+        }),
     );
     this.logger.end();
     await Promise.all(flushPromises);
@@ -144,7 +140,7 @@ export class ConsoleLogger implements ILogger {
   error(
     message: string,
     error?: Error | Record<string, unknown>,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): void {
     if (this.shouldLog(LogLevel.ERROR)) {
       if (error instanceof Error) {
@@ -152,7 +148,7 @@ export class ConsoleLogger implements ILogger {
           this.formatMessage(LogLevel.ERROR, message, {
             ...metadata,
             error: error.stack,
-          })
+          }),
         );
       } else {
         console.error(this.formatMessage(LogLevel.ERROR, message, error));
@@ -189,7 +185,7 @@ export class ConsoleLogger implements ILogger {
   private formatMessage(
     level: LogLevel,
     message: string,
-    meta?: Record<string, unknown>
+    meta?: Record<string, unknown>,
   ): string {
     const timestamp = new Date().toISOString();
     let formattedMeta = '';
@@ -229,11 +225,7 @@ export class FileLogger implements ILogger {
     this.logger.warn(message, metadata);
   }
 
-  error(
-    message: string,
-    error?: Error,
-    metadata?: Record<string, unknown>
-  ): void {
+  error(message: string, error?: Error, metadata?: Record<string, unknown>): void {
     this.logger.error(message, { error, ...metadata });
   }
 
@@ -255,7 +247,7 @@ export class FileLogger implements ILogger {
 
   async flush(): Promise<void> {
     const flushPromise = new Promise<void>((resolve) =>
-      this.logger.on('finish', resolve)
+      this.logger.on('finish', resolve),
     );
     this.logger.end();
     return flushPromise;

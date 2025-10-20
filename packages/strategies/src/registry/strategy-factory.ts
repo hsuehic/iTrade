@@ -62,9 +62,7 @@ export interface StrategyImplementationInfo extends StrategyConfig {
  * 这个方法会检查策略的实际实现状态，而不是仅仅依赖配置文件
  */
 export function getImplementedStrategies(): StrategyImplementationInfo[] {
-  const implementedTypes = Object.keys(
-    IMPLEMENTED_STRATEGIES
-  ) as StrategyTypeKey[];
+  const implementedTypes = Object.keys(IMPLEMENTED_STRATEGIES) as StrategyTypeKey[];
 
   return implementedTypes
     .map((type) => {
@@ -73,7 +71,7 @@ export function getImplementedStrategies(): StrategyImplementationInfo[] {
 
       if (!config || !constructor) {
         console.warn(
-          `⚠️ Strategy ${type} has incomplete implementation or configuration`
+          `⚠️ Strategy ${type} has incomplete implementation or configuration`,
         );
         return null;
       }
@@ -108,7 +106,7 @@ export function isStrategyImplemented(type: StrategyTypeKey): boolean {
  * 🔍 获取策略构造函数
  */
 export function getStrategyConstructor(
-  type: StrategyTypeKey
+  type: StrategyTypeKey,
 ): StrategyConstructor | undefined {
   return IMPLEMENTED_STRATEGIES[type];
 }
@@ -125,7 +123,7 @@ export function createStrategyInstance(
     symbol?: string;
     exchange?: string;
     logger?: any;
-  } = {}
+  } = {},
 ): IStrategy {
   const { symbol, exchange, logger } = options;
 
@@ -133,14 +131,14 @@ export function createStrategyInstance(
   const strategyConfig = getStrategyConfig(type);
   if (!strategyConfig) {
     throw new Error(
-      `Unknown strategy type: ${type}. Please check STRATEGY_REGISTRY configuration.`
+      `Unknown strategy type: ${type}. Please check STRATEGY_REGISTRY configuration.`,
     );
   }
 
   // 🔍 验证策略实现
   if (!isStrategyImplemented(type)) {
     throw new Error(
-      `Strategy type '${type}' (${strategyConfig.name}) is not yet implemented.`
+      `Strategy type '${type}' (${strategyConfig.name}) is not yet implemented.`,
     );
   }
 
@@ -169,14 +167,11 @@ export function createStrategyInstance(
   }
 
   if (logger) {
-    logger.debug(
-      `Creating strategy instance: ${strategyConfig.name} (${type})`,
-      {
-        symbol,
-        exchange,
-        parametersKeys: Object.keys(fullParameters),
-      }
-    );
+    logger.debug(`Creating strategy instance: ${strategyConfig.name} (${type})`, {
+      symbol,
+      exchange,
+      parametersKeys: Object.keys(fullParameters),
+    });
   }
 
   // 🎯 创建策略实例
@@ -185,10 +180,7 @@ export function createStrategyInstance(
   } catch (error) {
     const errorMsg = `Failed to instantiate strategy '${type}': ${(error as Error).message}`;
     if (logger) {
-      logger.error(
-        `Failed to create strategy instance for ${type}:`,
-        error as Error
-      );
+      logger.error(`Failed to create strategy instance for ${type}:`, error as Error);
     }
     throw new Error(errorMsg);
   }
@@ -252,7 +244,7 @@ export function validateStrategyImplementations(): {
     const config = getStrategyConfig(type as StrategyTypeKey);
     if (!config) {
       issues.push(
-        `Strategy '${type}' is implemented but missing configuration in STRATEGY_REGISTRY`
+        `Strategy '${type}' is implemented but missing configuration in STRATEGY_REGISTRY`,
       );
     }
   });
@@ -261,7 +253,7 @@ export function validateStrategyImplementations(): {
   Object.values(STRATEGY_REGISTRY).forEach((config) => {
     if (config.implemented && !isStrategyImplemented(config.type)) {
       issues.push(
-        `Strategy '${config.type}' is marked as implemented in config but not found in IMPLEMENTED_STRATEGIES`
+        `Strategy '${config.type}' is marked as implemented in config but not found in IMPLEMENTED_STRATEGIES`,
       );
     }
   });
@@ -276,14 +268,11 @@ export function validateStrategyImplementations(): {
 if (process.env.NODE_ENV === 'development') {
   const validation = validateStrategyImplementations();
   if (!validation.valid) {
-    console.warn(
-      '⚠️ Strategy implementation validation issues:',
-      validation.issues
-    );
+    console.warn('⚠️ Strategy implementation validation issues:', validation.issues);
   }
 
   const stats = getImplementationStats();
   console.info(
-    `📊 Strategy Implementation Stats: ${stats.implemented}/${stats.total} (${stats.implementationRate}%)`
+    `📊 Strategy Implementation Stats: ${stats.implemented}/${stats.total} (${stats.implementationRate}%)`,
   );
 }

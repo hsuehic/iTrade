@@ -4,9 +4,4 @@ export { PositionSizer } from './PositionSizer';
 export { RiskMonitor } from './RiskMonitor';
 
 // Types and interfaces
-export type {
-  IRiskManager,
-  RiskLimits,
-  RiskMetrics,
-  RiskAlert,
-} from '@itrade/core';
+export type { IRiskManager, RiskLimits, RiskMetrics, RiskAlert } from '@itrade/core';

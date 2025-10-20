@@ -29,7 +29,7 @@ export interface RiskMetrics {
 export class PerformanceAnalyzer {
   calculatePerformanceMetrics(
     snapshots: PortfolioSnapshot[],
-    riskFreeRate = 0.02 // 2% annual risk-free rate
+    riskFreeRate = 0.02, // 2% annual risk-free rate
   ): PerformanceMetrics & RiskMetrics {
     if (snapshots.length < 2) {
       return this.getEmptyMetrics();
@@ -58,7 +58,7 @@ export class PerformanceAnalyzer {
       maxDrawdownDuration: this.calculateMaxDrawdownDuration(snapshots),
       sortinoRatio,
       calmarRatio: annualizedReturn.div(
-        maxDrawdown.eq(0) ? new Decimal(0.001) : maxDrawdown
+        maxDrawdown.eq(0) ? new Decimal(0.001) : maxDrawdown,
       ),
       beta: new Decimal(1), // Would need benchmark data
       var95: this.calculateVaR(returns, 0.95),
@@ -85,35 +85,26 @@ export class PerformanceAnalyzer {
     }
 
     const winningTrades = completedTrades.filter((trade) =>
-      this.calculateTradePnL(trade).gt(0)
+      this.calculateTradePnL(trade).gt(0),
     );
     const losingTrades = completedTrades.filter((trade) =>
-      this.calculateTradePnL(trade).lt(0)
+      this.calculateTradePnL(trade).lt(0),
     );
 
     const wins = winningTrades.map((trade) => this.calculateTradePnL(trade));
-    const losses = losingTrades.map((trade) =>
-      this.calculateTradePnL(trade).abs()
-    );
+    const losses = losingTrades.map((trade) => this.calculateTradePnL(trade).abs());
 
     const grossProfit = wins.reduce((sum, win) => sum.add(win), new Decimal(0));
-    const grossLoss = losses.reduce(
-      (sum, loss) => sum.add(loss),
-      new Decimal(0)
-    );
+    const grossLoss = losses.reduce((sum, loss) => sum.add(loss), new Decimal(0));
 
     return {
       totalTrades: completedTrades.length,
       winningTrades: winningTrades.length,
       losingTrades: losingTrades.length,
       winRate: new Decimal(winningTrades.length).div(completedTrades.length),
-      profitFactor: grossLoss.eq(0)
-        ? new Decimal(0)
-        : grossProfit.div(grossLoss),
-      averageWin:
-        wins.length > 0 ? grossProfit.div(wins.length) : new Decimal(0),
-      averageLoss:
-        losses.length > 0 ? grossLoss.div(losses.length) : new Decimal(0),
+      profitFactor: grossLoss.eq(0) ? new Decimal(0) : grossProfit.div(grossLoss),
+      averageWin: wins.length > 0 ? grossProfit.div(wins.length) : new Decimal(0),
+      averageLoss: losses.length > 0 ? grossLoss.div(losses.length) : new Decimal(0),
       largestWin:
         wins.length > 0
           ? wins.reduce((max, win) => (win.gt(max) ? win : max))
@@ -237,10 +228,7 @@ export class PerformanceAnalyzer {
     return Math.round(maxDuration);
   }
 
-  private calculateSharpeRatio(
-    returns: Decimal[],
-    riskFreeRate: number
-  ): Decimal {
+  private calculateSharpeRatio(returns: Decimal[], riskFreeRate: number): Decimal {
     if (returns.length === 0) return new Decimal(0);
 
     const avgReturn = returns
@@ -254,10 +242,7 @@ export class PerformanceAnalyzer {
     return excessReturn.div(volatility.div(100));
   }
 
-  private calculateSortinoRatio(
-    returns: Decimal[],
-    riskFreeRate: number
-  ): Decimal {
+  private calculateSortinoRatio(returns: Decimal[], riskFreeRate: number): Decimal {
     const negativeReturns = returns.filter((r) => r.lt(0));
 
     if (negativeReturns.length === 0) return new Decimal(0);

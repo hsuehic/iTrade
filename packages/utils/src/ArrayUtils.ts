@@ -18,7 +18,7 @@ export class FixedLengthList<T> {
    */
   constructor(
     private readonly maxLength: number,
-    initialItems?: T[]
+    initialItems?: T[],
   ) {
     if (maxLength <= 0) {
       throw new Error('Max length must be greater than 0');
@@ -169,10 +169,7 @@ export class FixedLengthList<T> {
   /**
    * Reduce the list to a single value
    */
-  reduce<U>(
-    reducer: (accumulator: U, item: T, index: number) => U,
-    initialValue: U
-  ): U {
+  reduce<U>(reducer: (accumulator: U, item: T, index: number) => U, initialValue: U): U {
     return this.list.reduce(reducer, initialValue);
   }
 
@@ -251,7 +248,7 @@ export class ArrayUtils {
    */
   static groupBy<T, K extends string | number | symbol>(
     array: T[],
-    keyFn: (item: T) => K
+    keyFn: (item: T) => K,
   ): Record<K, T[]> {
     return array.reduce(
       (groups, item) => {
@@ -262,7 +259,7 @@ export class ArrayUtils {
         groups[key].push(item);
         return groups;
       },
-      {} as Record<K, T[]>
+      {} as Record<K, T[]>,
     );
   }
 

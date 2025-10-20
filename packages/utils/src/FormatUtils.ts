@@ -2,10 +2,7 @@ import { Decimal } from 'decimal.js';
 
 export class FormatUtils {
   // Number Formatting
-  static formatDecimal(
-    value: Decimal | string | number,
-    decimals: number = 2
-  ): string {
+  static formatDecimal(value: Decimal | string | number, decimals: number = 2): string {
     try {
       const decimal = new Decimal(value);
       return decimal.toFixed(decimals);
@@ -14,10 +11,7 @@ export class FormatUtils {
     }
   }
 
-  static formatPrice(
-    price: Decimal | string | number,
-    decimals: number = 2
-  ): string {
+  static formatPrice(price: Decimal | string | number, decimals: number = 2): string {
     try {
       const decimal = new Decimal(price);
       return decimal.toFixed(decimals);
@@ -29,7 +23,7 @@ export class FormatUtils {
   static formatCurrency(
     amount: Decimal | string | number,
     currency: string = 'USD',
-    decimals: number = 2
+    decimals: number = 2,
   ): string {
     try {
       const decimal = new Decimal(amount);
@@ -47,7 +41,7 @@ export class FormatUtils {
 
   static formatPercentage(
     value: Decimal | string | number,
-    decimals: number = 2
+    decimals: number = 2,
   ): string {
     try {
       const decimal = new Decimal(value);
@@ -59,7 +53,7 @@ export class FormatUtils {
 
   static formatQuantity(
     quantity: Decimal | string | number,
-    decimals: number = 8
+    decimals: number = 8,
   ): string {
     try {
       const decimal = new Decimal(quantity);
@@ -79,7 +73,7 @@ export class FormatUtils {
   // Large Number Formatting
   static formatLargeNumber(
     value: Decimal | string | number,
-    decimals: number = 2
+    decimals: number = 2,
   ): string {
     try {
       const decimal = new Decimal(value);
@@ -123,7 +117,7 @@ export class FormatUtils {
   // Scientific Notation
   static formatScientific(
     value: Decimal | string | number,
-    decimals: number = 2
+    decimals: number = 2,
   ): string {
     try {
       const decimal = new Decimal(value);
@@ -142,11 +136,7 @@ export class FormatUtils {
     return str.padEnd(length, char);
   }
 
-  static truncate(
-    str: string,
-    maxLength: number,
-    suffix: string = '...'
-  ): string {
+  static truncate(str: string, maxLength: number, suffix: string = '...'): string {
     if (str.length <= maxLength) return str;
     return str.slice(0, maxLength - suffix.length) + suffix;
   }
@@ -181,7 +171,7 @@ export class FormatUtils {
   // Date Formatting (basic - DateUtils has more comprehensive date formatting)
   static formatTimestamp(
     timestamp: number | Date,
-    format: 'short' | 'medium' | 'long' = 'medium'
+    format: 'short' | 'medium' | 'long' = 'medium',
   ): string {
     const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
 
@@ -264,10 +254,7 @@ export class FormatUtils {
   }
 
   // Table Formatting
-  static formatTableRow(
-    values: (string | number | Decimal)[],
-    widths: number[]
-  ): string {
+  static formatTableRow(values: (string | number | Decimal)[], widths: number[]): string {
     return values
       .map((value, index) => {
         const str = typeof value === 'string' ? value : String(value);
@@ -311,7 +298,7 @@ export class FormatUtils {
   static formatAddress(
     address: string,
     startLength: number = 6,
-    endLength: number = 4
+    endLength: number = 4,
   ): string {
     if (!address || address.length <= startLength + endLength) {
       return address;
@@ -326,11 +313,7 @@ export class FormatUtils {
   }
 
   // Progress Bar
-  static formatProgressBar(
-    current: number,
-    total: number,
-    width: number = 20
-  ): string {
+  static formatProgressBar(current: number, total: number, width: number = 20): string {
     const progress = Math.min(current / total, 1);
     const filled = Math.floor(progress * width);
     const empty = width - filled;
@@ -366,10 +349,7 @@ export class FormatUtils {
     return numStr.replace(/\.?0+$/, '');
   }
 
-  static addThousandsSeparator(
-    numStr: string,
-    separator: string = ','
-  ): string {
+  static addThousandsSeparator(numStr: string, separator: string = ','): string {
     const parts = numStr.split('.');
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, separator);
     return parts.join('.');

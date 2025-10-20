@@ -64,7 +64,7 @@ export class CryptoUtils {
 
   static generateRandomString(
     length: number = 32,
-    charset: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    charset: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
   ): string {
     let result = '';
     const bytes = randomBytes(length);
@@ -89,10 +89,7 @@ export class CryptoUtils {
   // API Signature Generation (Common Patterns)
 
   // Binance-style signature
-  static generateBinanceSignature(
-    queryString: string,
-    secretKey: string
-  ): string {
+  static generateBinanceSignature(queryString: string, secretKey: string): string {
     return this.hmacSha256(queryString, secretKey);
   }
 
@@ -100,7 +97,7 @@ export class CryptoUtils {
   static signQueryString(
     params: Record<string, any>,
     secretKey: string,
-    algorithm: 'sha256' | 'sha512' = 'sha256'
+    algorithm: 'sha256' | 'sha512' = 'sha256',
   ): string {
     const queryString = this.buildQueryString(params);
 
@@ -118,7 +115,7 @@ export class CryptoUtils {
   static generateJWTSignature(
     header: object,
     payload: object,
-    secretKey: string
+    secretKey: string,
   ): string {
     const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
     const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
@@ -162,7 +159,7 @@ export class CryptoUtils {
   // Data Integrity
   static calculateChecksum(
     data: string | Buffer,
-    algorithm: 'md5' | 'sha256' = 'sha256'
+    algorithm: 'md5' | 'sha256' = 'sha256',
   ): string {
     switch (algorithm) {
       case 'md5':
@@ -177,7 +174,7 @@ export class CryptoUtils {
   static verifyChecksum(
     data: string | Buffer,
     expectedChecksum: string,
-    algorithm: 'md5' | 'sha256' = 'sha256'
+    algorithm: 'md5' | 'sha256' = 'sha256',
   ): boolean {
     const actualChecksum = this.calculateChecksum(data, algorithm);
     return actualChecksum.toLowerCase() === expectedChecksum.toLowerCase();
@@ -205,7 +202,7 @@ export class CryptoUtils {
     method: string,
     requestPath: string,
     body: string,
-    secretKey: string
+    secretKey: string,
   ): string {
     const message = timestamp + method.toUpperCase() + requestPath + body;
     const decodedSecret = Buffer.from(secretKey, 'base64');
@@ -217,7 +214,7 @@ export class CryptoUtils {
     urlPath: string,
     nonce: string,
     postData: string,
-    secretKey: string
+    secretKey: string,
   ): string {
     const decodedSecret = Buffer.from(secretKey, 'base64');
     const hash = createHash('sha256')
@@ -237,7 +234,7 @@ export class CryptoUtils {
     hostname: string,
     path: string,
     params: Record<string, any>,
-    secretKey: string
+    secretKey: string,
   ): string {
     const sortedParams = Object.keys(params)
       .sort()
@@ -246,7 +243,7 @@ export class CryptoUtils {
           acc[key] = params[key];
           return acc;
         },
-        {} as Record<string, any>
+        {} as Record<string, any>,
       );
 
     const queryString = this.buildQueryString(sortedParams);
@@ -261,7 +258,7 @@ export class CryptoUtils {
     method: string,
     requestPath: string,
     body: string,
-    secretKey: string
+    secretKey: string,
   ): string {
     const message = timestamp + method.toUpperCase() + requestPath + body;
     return this.base64Encode(this.hmacSha256(message, secretKey));
@@ -272,17 +269,13 @@ export class CryptoUtils {
     // Basic validation for hex signatures
     const hexRegex = /^[a-fA-F0-9]+$/;
     return (
-      typeof signature === 'string' &&
-      signature.length > 0 &&
-      hexRegex.test(signature)
+      typeof signature === 'string' && signature.length > 0 && hexRegex.test(signature)
     );
   }
 
   static isValidApiKey(apiKey: string): boolean {
     // Basic validation - should be non-empty string with reasonable length
-    return (
-      typeof apiKey === 'string' && apiKey.length >= 8 && apiKey.length <= 128
-    );
+    return typeof apiKey === 'string' && apiKey.length >= 8 && apiKey.length <= 128;
   }
 
   static maskApiKey(apiKey: string, visibleChars: number = 4): string {
@@ -317,7 +310,7 @@ export class CryptoUtils {
   static buildApiUrl(
     baseUrl: string,
     endpoint: string,
-    params?: Record<string, any>
+    params?: Record<string, any>,
   ): string {
     const url = new URL(endpoint, baseUrl);
 
