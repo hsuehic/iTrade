@@ -285,7 +285,7 @@ class _StrategyScreenState extends State<StrategyScreen>
                               const SizedBox(height: 8),
                               Text(
                                 _searchQuery.isEmpty
-                                    ? 'Create your first strategy to get started'
+                                    ? 'Create your first strategy using web manager to get started'
                                     : 'Try a different search term',
                                 style: TextStyle(
                                   fontSize: 14,
