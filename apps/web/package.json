@@ -5,11 +5,11 @@
   "scripts": {
     "dev": "BUILD_MODE=dev next dev",
     "dev:clean": "BUILD_MODE=dev next dev",
-    "build": "next build",
+    "build": "BUILD_MODE=prod next build",
     "build:dev": "BUILD_MODE=dev next build",
     "build:staging": "BUILD_MODE=staging next build",
     "build:prod": "BUILD_MODE=prod next build",
-    "start": "next start --port 3002",
+    "start": "BUILD_MODE=prod next start --port 3002",
     "start:dev": "BUILD_MODE=dev next start --port 3002",
     "start:staging": "BUILD_MODE=staging next start --port 3003",
     "start:prod": "BUILD_MODE=prod next start --port 3004",
@@ -17,8 +17,8 @@
     "clean:dev": "rm -rf .next-dev",
     "clean:staging": "rm -rf .next-staging",
     "clean:prod": "rm -rf .next-prod",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix"
+    "lint": "BUILD_MODE=prod next lint",
+    "lint:fix": "BUILD_MODE=prod next lint --fix"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

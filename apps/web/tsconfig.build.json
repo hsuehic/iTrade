@@ -1,10 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@/lib/*": ["./lib/*"],
-      "@/components/*": ["./components/*"],
-      "@/*": ["./*"]
+      "@/lib/*": [
+        "./lib/*"
+      ],
+      "@/components/*": [
+        "./components/*"
+      ],
+      "@/*": [
+        "./*"
+      ]
     },
     "plugins": [
       {
@@ -12,5 +18,13 @@
       }
     ],
     "composite": false
-  }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "next-env.d.ts",
+    ".next-dev/types/**/*.ts",
+    ".next-prod/types/**/*.ts"
+  ]
 }

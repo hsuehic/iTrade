@@ -1,12 +1,7 @@
 {
-  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -16,7 +11,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "incremental": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "plugins": [
@@ -26,66 +20,29 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@itrade/core": [
-        "packages/core/src"
-      ],
-      "@itrade/core/*": [
-        "packages/core/src/*"
-      ],
-      "@itrade/utils": [
-        "packages/utils/src"
-      ],
-      "@itrade/utils/*": [
-        "packages/utils/src/*"
-      ],
-      "@itrade/logger": [
-        "packages/logger/src"
-      ],
-      "@itrade/logger/*": [
-        "packages/logger/src/*"
-      ],
-      "@itrade/exchange-connectors": [
-        "packages/exchange-connectors/src"
-      ],
-      "@itrade/exchange-connectors/*": [
-        "packages/exchange-connectors/src/*"
-      ],
-      "@itrade/strategies": [
-        "packages/strategies/src"
-      ],
-      "@itrade/strategies/*": [
-        "packages/strategies/src/*"
-      ],
-      "@itrade/data-manager": [
-        "packages/data-manager/src"
-      ],
-      "@itrade/data-manager/*": [
-        "packages/data-manager/src/*"
-      ],
-      "@itrade/risk-manager": [
-        "packages/risk-manager/src"
-      ],
-      "@itrade/risk-manager/*": [
-        "packages/risk-manager/src/*"
-      ],
-      "@itrade/portfolio-manager": [
-        "packages/portfolio-manager/src"
-      ],
-      "@itrade/portfolio-manager/*": [
-        "packages/portfolio-manager/src/*"
-      ],
-      "@/lib/*": [
-        "./lib/*"
-      ],
-      "@/components/*": [
-        "./components/*"
-      ],
-      "@/*": [
-        "./*"
-      ]
+      "@itrade/core": ["../../packages/core/src"],
+      "@itrade/core/*": ["../../packages/core/src/*"],
+      "@itrade/utils": ["../../packages/utils/src"],
+      "@itrade/utils/*": ["../../packages/utils/src/*"],
+      "@itrade/logger": ["../../packages/logger/src"],
+      "@itrade/logger/*": ["../../packages/logger/src/*"],
+      "@itrade/exchange-connectors": ["../../packages/exchange-connectors/src"],
+      "@itrade/exchange-connectors/*": ["../../packages/exchange-connectors/src/*"],
+      "@itrade/strategies": ["../../packages/strategies/src"],
+      "@itrade/strategies/*": ["../../packages/strategies/src/*"],
+      "@itrade/data-manager": ["../../packages/data-manager/src/index.ts"],
+      "@itrade/data-manager/*": ["../../packages/data-manager/src/*"],
+      "@itrade/risk-manager": ["../../packages/risk-manager/src"],
+      "@itrade/risk-manager/*": ["../../packages/risk-manager/src/*"],
+      "@itrade/portfolio-manager": ["../../packages/portfolio-manager/src"],
+      "@itrade/portfolio-manager/*": ["../../packages/portfolio-manager/src/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/components/*": ["./components/*"],
+      "@/*": ["./*"]
     },
     "composite": true,
-    "noEmit": true
+    "noEmit": false,
+    "incremental": true
   },
   "include": [
     "**/*.ts",
@@ -94,7 +51,5 @@
     "next-env.d.ts",
     ".next-dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules"]
 }

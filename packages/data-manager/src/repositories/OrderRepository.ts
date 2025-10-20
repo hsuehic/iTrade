@@ -15,12 +15,12 @@ export class OrderRepository {
   }
 
   async update(id: string, updates: Partial<OrderEntity>): Promise<void> {
-    await this.repository.update({ id }, updates);
+    await this.repository.update({ id }, updates as any);
   }
 
   async findById(
     id: string,
-    options?: { includeStrategy?: boolean; includeFills?: boolean }
+    options?: { includeStrategy?: boolean; includeFills?: boolean },
   ): Promise<OrderEntity | null> {
     const relations: string[] = [];
 

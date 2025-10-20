@@ -22,7 +22,10 @@
     "declarationMap": true,
     "sourceMap": true,
     "baseUrl": ".",
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@itrade/*": ["packages/*/src"]
+    }
   },
   "include": ["packages/*/src/**/*", "apps/**/*"],
   "exclude": ["node_modules", "dist", "build"],

@@ -1,10 +1,11 @@
+import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 
 import { LoginForm } from '@/components/login-form';
 import { auth } from '@/lib/auth';
 
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Sign up',
 };
 

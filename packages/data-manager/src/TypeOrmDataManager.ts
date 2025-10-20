@@ -47,21 +47,21 @@ export interface TypeOrmDataManagerConfig {
   database: string;
   ssl?: boolean;
   logging?:
-  | boolean
-  | 'all'
-  | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
+    | boolean
+    | 'all'
+    | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
   synchronize?: boolean;
   migrationsRun?: boolean;
   extra?: any;
   // Performance optimization options
   poolSize?: number;
   cache?:
-  | boolean
-  | {
-    type?: 'database' | 'redis';
-    duration?: number;
-    options?: any;
-  };
+    | boolean
+    | {
+        type?: 'database' | 'redis';
+        duration?: number;
+        options?: any;
+      };
   maxQueryExecutionTime?: number;
 }
 
@@ -82,7 +82,7 @@ export class TypeOrmDataManager implements IDataManager {
   // Using inline repository lookups to avoid expanding class members excessively
   private isInitialized = false;
 
-  constructor (private config: TypeOrmDataManagerConfig) { }
+  constructor(private config: TypeOrmDataManagerConfig) {}
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -137,19 +137,14 @@ export class TypeOrmDataManager implements IDataManager {
 
     this.klineRepository = this.dataSource.getRepository(KlineEntity);
     this.symbolRepository = this.dataSource.getRepository(SymbolEntity);
-    this.dataQualityRepository =
-      this.dataSource.getRepository(DataQualityEntity);
+    this.dataQualityRepository = this.dataSource.getRepository(DataQualityEntity);
 
     // Initialize domain repositories
     this.strategyRepository = new StrategyRepository(this.dataSource);
     this.orderRepository = new OrderRepository(this.dataSource);
     this.pnlRepository = new PnLRepository(this.dataSource);
-    this.accountSnapshotRepository = new AccountSnapshotRepository(
-      this.dataSource
-    );
-    this.emailPreferencesRepository = new EmailPreferencesRepository(
-      this.dataSource
-    );
+    this.accountSnapshotRepository = new AccountSnapshotRepository(this.dataSource);
+    this.emailPreferencesRepository = new EmailPreferencesRepository(this.dataSource);
 
     this.isInitialized = true;
   }
@@ -166,7 +161,7 @@ export class TypeOrmDataManager implements IDataManager {
     interval: string,
     startTime: Date,
     endTime: Date,
-    limit?: number
+    limit?: number,
   ): Promise<Kline[]> {
     this.ensureInitialized();
 
@@ -187,11 +182,7 @@ export class TypeOrmDataManager implements IDataManager {
     return entities.map((entity) => this.entityToKline(entity));
   }
 
-  async saveKlines(
-    symbol: string,
-    interval: string,
-    klines: Kline[]
-  ): Promise<void> {
+  async saveKlines(symbol: string, interval: string, klines: Kline[]): Promise<void> {
     if (klines.length === 0) return;
 
     this.ensureInitialized();
@@ -209,7 +200,7 @@ export class TypeOrmDataManager implements IDataManager {
   }
 
   async batchSaveKlines(
-    klinesData: { symbol: string; interval: string; klines: Kline[] }[]
+    klinesData: { symbol: string; interval: string; klines: Kline[] }[],
   ): Promise<void> {
     this.ensureInitialized();
 
@@ -218,11 +209,7 @@ export class TypeOrmDataManager implements IDataManager {
     await queryRunner.startTransaction();
 
     try {
-      for (const {
-        symbol: _symbol,
-        interval: _interval,
-        klines,
-      } of klinesData) {
+      for (const { symbol: _symbol, interval: _interval, klines } of klinesData) {
         if (klines.length === 0) continue;
 
         const entities = klines.map((kline) => this.klineToEntity(kline));
@@ -250,7 +237,7 @@ export class TypeOrmDataManager implements IDataManager {
   async getLatestKlines(
     symbols: string[],
     interval: string,
-    limit: number = 1
+    limit: number = 1,
   ): Promise<Map<string, Kline[]>> {
     this.ensureInitialized();
 
@@ -265,7 +252,7 @@ export class TypeOrmDataManager implements IDataManager {
 
       results.set(
         symbol,
-        entities.map((entity) => this.entityToKline(entity))
+        entities.map((entity) => this.entityToKline(entity)),
       );
     }
 
@@ -350,9 +337,7 @@ export class TypeOrmDataManager implements IDataManager {
       quoteAssetPrecision: symbolData.quoteAssetPrecision || 8,
       orderTypes: symbolData.orderTypes,
       timeInForces: symbolData.timeInForces,
-      filters: symbolData.filters
-        ? JSON.stringify(symbolData.filters)
-        : undefined,
+      filters: symbolData.filters ? JSON.stringify(symbolData.filters) : undefined,
     });
 
     await this.symbolRepository.save(entity);
@@ -360,7 +345,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async getDataQualityMetrics(
     symbol: string,
-    interval: string
+    interval: string,
   ): Promise<{
     totalRecords: number;
     missingCandles: number;
@@ -402,7 +387,7 @@ export class TypeOrmDataManager implements IDataManager {
   async saveTrades(symbol: string, trades: any[]): Promise<void> {
     // TODO: Implement trades storage with TypeORM entity
     console.warn(
-      `saveTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, trades: ${trades.length}`
+      `saveTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, trades: ${trades.length}`,
     );
   }
 
@@ -410,11 +395,11 @@ export class TypeOrmDataManager implements IDataManager {
     symbol: string,
     startTime: Date,
     endTime: Date,
-    limit?: number
+    limit?: number,
   ): Promise<any[]> {
     // TODO: Implement trades retrieval with TypeORM entity
     console.warn(
-      `getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`
+      `getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`,
     );
     return [];
   }
@@ -463,24 +448,21 @@ export class TypeOrmDataManager implements IDataManager {
   async completeDryRunSession(
     sessionId: number,
     endTime: Date,
-    status: 'completed' | 'failed' | 'canceled' = 'completed'
+    status: 'completed' | 'failed' | 'canceled' = 'completed',
   ): Promise<void> {
     this.ensureInitialized();
     const repo = this.dataSource.getRepository(DryRunSessionEntity);
     await repo.update(
       { id: sessionId },
-      { endTime, status: status as unknown as DryRunSessionEntity['status'] }
+      { endTime, status: status as unknown as DryRunSessionEntity['status'] },
     );
   }
 
   async saveDryRunOrders(
     sessionId: number,
     orders: Array<
-      Omit<
-        DryRunOrderEntity,
-        'internalId' | 'session' | 'createdAt' | 'updatedAt'
-      >
-    >
+      Omit<DryRunOrderEntity, 'internalId' | 'session' | 'createdAt' | 'updatedAt'>
+    >,
   ): Promise<void> {
     this.ensureInitialized();
     if (orders.length === 0) return;
@@ -494,9 +476,7 @@ export class TypeOrmDataManager implements IDataManager {
   }
 
   async saveDryRunOrderFills(
-    fills: Array<
-      Omit<DryRunOrderFillEntity, 'internalId' | 'createdAt' | 'updatedAt'>
-    >
+    fills: Array<Omit<DryRunOrderFillEntity, 'internalId' | 'createdAt' | 'updatedAt'>>,
   ): Promise<void> {
     this.ensureInitialized();
     if (fills.length === 0) return;
@@ -507,7 +487,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async saveDryRunTrades(
     sessionId: number,
-    trades: Array<Omit<DryRunTradeEntity, 'id' | 'session'>>
+    trades: Array<Omit<DryRunTradeEntity, 'id' | 'session'>>,
   ): Promise<void> {
     this.ensureInitialized();
     if (trades.length === 0) return;
@@ -522,7 +502,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async saveDryRunResult(
     sessionId: number,
-    result: Omit<DryRunResultEntity, 'id' | 'session' | 'createdAt'>
+    result: Omit<DryRunResultEntity, 'id' | 'session' | 'createdAt'>,
   ): Promise<DryRunResultEntity> {
     this.ensureInitialized();
     const repo = this.dataSource.getRepository(DryRunResultEntity);
@@ -536,7 +516,7 @@ export class TypeOrmDataManager implements IDataManager {
   async deleteOldData(
     symbol: string,
     interval: string,
-    olderThan: Date
+    olderThan: Date,
   ): Promise<number> {
     this.ensureInitialized();
 
@@ -559,20 +539,19 @@ export class TypeOrmDataManager implements IDataManager {
   }> {
     this.ensureInitialized();
 
-    const [totalRecords, symbols, intervals, oldest, newest] =
-      await Promise.all([
-        this.klineRepository.count(),
-        this.klineRepository
-          .createQueryBuilder('kline')
-          .select('COUNT(DISTINCT kline.symbol)', 'count')
-          .getRawOne(),
-        this.klineRepository
-          .createQueryBuilder('kline')
-          .select('COUNT(DISTINCT kline.interval)', 'count')
-          .getRawOne(),
-        this.klineRepository.findOne({ order: { openTime: 'ASC' } }),
-        this.klineRepository.findOne({ order: { openTime: 'DESC' } }),
-      ]);
+    const [totalRecords, symbols, intervals, oldest, newest] = await Promise.all([
+      this.klineRepository.count(),
+      this.klineRepository
+        .createQueryBuilder('kline')
+        .select('COUNT(DISTINCT kline.symbol)', 'count')
+        .getRawOne(),
+      this.klineRepository
+        .createQueryBuilder('kline')
+        .select('COUNT(DISTINCT kline.interval)', 'count')
+        .getRawOne(),
+      this.klineRepository.findOne({ order: { openTime: 'ASC' } }),
+      this.klineRepository.findOne({ order: { openTime: 'DESC' } }),
+    ]);
 
     return {
       totalRecords,
@@ -585,9 +564,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   private ensureInitialized(): void {
     if (!this.isInitialized) {
-      throw new Error(
-        'TypeOrmDataManager not initialized. Call initialize() first.'
-      );
+      throw new Error('TypeOrmDataManager not initialized. Call initialize() first.');
     }
   }
 
@@ -627,10 +604,7 @@ export class TypeOrmDataManager implements IDataManager {
     };
   }
 
-  private async updateDataQuality(
-    symbol: string,
-    interval: string
-  ): Promise<void> {
+  private async updateDataQuality(symbol: string, interval: string): Promise<void> {
     const stats = await this.calculateDataQualityStats(symbol, interval);
 
     await this.dataQualityRepository.upsert(
@@ -639,13 +613,13 @@ export class TypeOrmDataManager implements IDataManager {
         interval,
         ...stats,
       },
-      ['symbol', 'interval']
+      ['symbol', 'interval'],
     );
   }
 
   private async calculateDataQualityStats(
     symbol: string,
-    interval: string
+    interval: string,
   ): Promise<Partial<DataQualityEntity>> {
     const klines = await this.klineRepository.find({
       where: { symbol, interval },
@@ -669,8 +643,7 @@ export class TypeOrmDataManager implements IDataManager {
     const intervalMs = this.intervalToMilliseconds(interval);
     const expectedCandles =
       Math.floor(
-        (lastCandle.openTime.getTime() - firstCandle.openTime.getTime()) /
-        intervalMs
+        (lastCandle.openTime.getTime() - firstCandle.openTime.getTime()) / intervalMs,
       ) + 1;
 
     const missingCandles = Math.max(0, expectedCandles - totalRecords);
@@ -690,9 +663,7 @@ export class TypeOrmDataManager implements IDataManager {
     }
 
     const avgGapMinutes =
-      gaps.length > 0
-        ? Math.floor(gaps.reduce((a, b) => a + b, 0) / gaps.length)
-        : 0;
+      gaps.length > 0 ? Math.floor(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 0;
     const maxGapMinutes = gaps.length > 0 ? Math.max(...gaps) : 0;
 
     return {
@@ -756,7 +727,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async getStrategy(
     id: number,
-    options?: { includeUser?: boolean }
+    options?: { includeUser?: boolean },
   ): Promise<StrategyEntity | null> {
     this.ensureInitialized();
     return await this.strategyRepository.findById(id, options);
@@ -772,10 +743,7 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.strategyRepository.findAll(filters);
   }
 
-  async updateStrategy(
-    id: number,
-    updates: Partial<StrategyEntity>
-  ): Promise<void> {
+  async updateStrategy(id: number, updates: Partial<StrategyEntity>): Promise<void> {
     this.ensureInitialized();
     await this.strategyRepository.update(id, updates);
   }
@@ -788,7 +756,7 @@ export class TypeOrmDataManager implements IDataManager {
   async updateStrategyStatus(
     id: number,
     status: string,
-    errorMessage?: string
+    errorMessage?: string,
   ): Promise<void> {
     this.ensureInitialized();
     await this.strategyRepository.updateStatus(id, status, errorMessage);
@@ -864,9 +832,7 @@ export class TypeOrmDataManager implements IDataManager {
     await this.accountSnapshotRepository.save(data);
   }
 
-  async getLatestAccountSnapshot(
-    exchange: string
-  ): Promise<AccountSnapshotData | null> {
+  async getLatestAccountSnapshot(exchange: string): Promise<AccountSnapshotData | null> {
     this.ensureInitialized();
     return await this.accountSnapshotRepository.getLatest(exchange);
   }
@@ -874,26 +840,18 @@ export class TypeOrmDataManager implements IDataManager {
   async getAccountSnapshotHistory(
     exchange: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
   ): Promise<AccountSnapshotData[]> {
     this.ensureInitialized();
-    return await this.accountSnapshotRepository.getHistory(
-      exchange,
-      startTime,
-      endTime
-    );
+    return await this.accountSnapshotRepository.getHistory(exchange, startTime, endTime);
   }
 
-  async getAccountSnapshotStatistics(
-    exchange: string,
-    startTime: Date,
-    endTime: Date
-  ) {
+  async getAccountSnapshotStatistics(exchange: string, startTime: Date, endTime: Date) {
     this.ensureInitialized();
     return await this.accountSnapshotRepository.getStatistics(
       exchange,
       startTime,
-      endTime
+      endTime,
     );
   }
 
@@ -901,14 +859,14 @@ export class TypeOrmDataManager implements IDataManager {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'hour' | 'day' | 'week' = 'day'
+    interval: 'hour' | 'day' | 'week' = 'day',
   ) {
     this.ensureInitialized();
     return await this.accountSnapshotRepository.getBalanceTimeSeries(
       exchange,
       startTime,
       endTime,
-      interval
+      interval,
     );
   }
 

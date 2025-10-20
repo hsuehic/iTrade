@@ -6,7 +6,16 @@ import prettier from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
-import nextPlugin from '@next/eslint-plugin-next';
+
+// 导入 FlatCompat 以处理遗留的配置
+import { FlatCompat } from '@eslint/eslintrc';
+
+// 实例化 FlatCompat，并指定 monorepo 的根目录
+// 这对于在子目录中找到 Next.js 实例至关重要
+const compat = new FlatCompat({
+  baseDirectory: import.meta.dirname,
+});
+
 
 export default defineConfig(
   // 基础设置
@@ -64,7 +73,6 @@ export default defineConfig(
     plugins: {
       react,
       'react-hooks': reactHooks,
-      '@next/next': nextPlugin,
     },
     settings: {
       react: { version: 'detect' },
@@ -72,10 +80,24 @@ export default defineConfig(
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      ...nextPlugin.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
     },
   },
+
+  // Next.js 前端应用配置
+  // 将 Next.js 配置和 `compat` 兼容配置合并
+  ...compat.config({
+    extends: ['next/core-web-vitals'],
+    settings: {
+      // 在 compat.config 中设置 rootDir
+      next: {
+        rootDir: 'apps/web/',
+      },
+    },
+  }).map(config => ({
+    ...config,
+    files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
+  })),
 
   // Node.js 控制台应用（apps/console）
   {

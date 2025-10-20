@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     const dataManager = await getDataManager();
     const strategies = await dataManager.getStrategies({
-      // userId: session.user.id,
+      userId: session.user.id,
       status,
       exchange,
     });
