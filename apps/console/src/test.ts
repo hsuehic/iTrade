@@ -12,18 +12,18 @@ const main = async () => {
     secretKey: process.env.OKX_SECRET_KEY,
     passphrase: process.env.OKX_PASSPHRASE,
   });
-  const ticker = await okxExchange.getTicker('BTC-USDT');
-  console.log(ticker);
+  // const ticker = await okxExchange.getTicker('BTC-USDT');
+  // console.log(ticker);
 
-  // okxExchange.subscribeToTicker('BTC-USDT-SWAP');
-  okxExchange.subscribeToKlines('BTC-USDT', '1m');
-  okxExchange.subscribeToKlines('BTC-USDT-SWAP', '1m');
-  // okxExchange.on('ticker', (...args) => {
-  //   console.log(args);
-  // });
+  okxExchange.subscribeToTicker('BTC-USDT-SWAP');
   okxExchange.on('kline', (...args) => {
     console.log(args);
   });
+  // okxExchange.subscribeToKlines('BTC-USDT', '1m');
+  // okxExchange.subscribeToKlines('BTC-USDT-SWAP', '1m');
+  // okxExchange.on('ticker', (...args) => {
+  //   console.log(args);
+  // });
 };
 
 main();

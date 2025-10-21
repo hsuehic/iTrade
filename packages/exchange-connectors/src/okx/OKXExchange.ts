@@ -23,9 +23,9 @@ import {
 export type OkxWsType = 'public' | 'private' | 'business';
 
 export const OKX_WS_URLS: Record<OkxWsType, string> = {
-  public: 'wss://ws.okx.com:8443/ws/v5/public',
-  private: 'wss://ws.okx.com:8443/ws/v5/private',
-  business: 'wss://ws.okx.com:8443/ws/v5/business',
+  public: 'wss://ws.okx.com/ws/v5/public',
+  private: 'wss://ws.okx.com/ws/v5/private',
+  business: 'wss://ws.okx.com/ws/v5/business',
 } as const;
 
 import { BaseExchange } from '../base/BaseExchange';

@@ -178,41 +178,45 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
   }
 
   protected async createWebSocketConnection(): Promise<void> {
-    const wsUrl = this.buildWebSocketUrl();
-    const ws = new WebSocket(wsUrl);
+    const promise = new Promise((resolve) => {
+      const wsUrl = this.buildWebSocketUrl();
+      const ws = new WebSocket(wsUrl);
 
-    ws.on('open', () => {
-      this.emit('ws_connected', this.name);
-    });
+      ws.on('open', () => {
+        this.emit('ws_connected', this.name);
+        resolve(void 0);
+      });
 
-    ws.on('message', (data: string) => {
-      try {
-        const message = JSON.parse(data);
-        this.handleWebSocketMessage(message);
-      } catch (error) {
+      ws.on('message', (data: string) => {
+        try {
+          const message = JSON.parse(data);
+          this.handleWebSocketMessage(message);
+        } catch (error) {
+          this.emit('ws_error', error);
+        }
+      });
+
+      ws.on('close', (code: number, reason: string) => {
+        this.emit('ws_disconnected', this.name, code, reason);
+        this.wsConnections.delete('market');
+
+        // Reconnect if connection was not deliberately closed
+        if (this._isConnected && code !== 1000) {
+          setTimeout(() => {
+            this.createWebSocketConnection().catch((error) => {
+              this.emit('ws_error', error);
+            });
+          }, 5000);
+        }
+      });
+
+      ws.on('error', (error: Error) => {
         this.emit('ws_error', error);
-      }
+      });
+
+      this.wsConnections.set('market', ws);
     });
-
-    ws.on('close', (code: number, reason: string) => {
-      this.emit('ws_disconnected', this.name, code, reason);
-      this.wsConnections.delete('market');
-
-      // Reconnect if connection was not deliberately closed
-      if (this._isConnected && code !== 1000) {
-        setTimeout(() => {
-          this.createWebSocketConnection().catch((error) => {
-            this.emit('ws_error', error);
-          });
-        }, 5000);
-      }
-    });
-
-    ws.on('error', (error: Error) => {
-      this.emit('ws_error', error);
-    });
-
-    this.wsConnections.set('market', ws);
+    await promise;
   }
 
   protected abstract buildWebSocketUrl(): string;
