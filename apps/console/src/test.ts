@@ -3,7 +3,7 @@ import { OKXExchange, BinanceWebsocket } from '@itrade/exchange-connectors';
 
 config();
 
-console.log(process.env);
+// console.log(process.env);
 
 const main = async () => {
   // const okxExchange = new OKXExchange();
@@ -29,17 +29,27 @@ const main = async () => {
     network: 'mainnet',
   });
   await websocket.start();
-  websocket.on('data', (data) => {
-    console.log(data);
-  });
+  // websocket.on('data', (data) => {
+  //   console.log(data);
+  // });
   websocket.subscribe('futures', 'btcusdt@kline_1m', 'MA 2', ({ data }) => {
     if (data.k?.x) {
-      console.log('callback');
+      console.log('futures');
       console.log(data);
     }
   });
   websocket.on('futures:btcusdt@kline_1m', (data) => {
-    console.log('subscribe');
+    console.log('futures');
+    console.log(data);
+  });
+  websocket.subscribe('spot', 'btcusdt@kline_1m', 'MA 2', ({ data }) => {
+    if (data.k?.x) {
+      console.log('spot');
+      console.log(data);
+    }
+  });
+  websocket.on('spot:btcusdt@kline_1m', (data) => {
+    console.log('spot');
     console.log(data);
   });
 };

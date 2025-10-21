@@ -121,7 +121,7 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       if (isSpot)
         return net === 'testnet'
           ? `wss://testnet.binance.vision/ws/${listenKey}`
-          : `wss://stream.binance.com:9443/ws/${listenKey}`;
+          : `wss://stream.binance.com/ws/${listenKey}`;
       else
         return net === 'testnet'
           ? `wss://stream.binancefuture.com/ws/${listenKey}`
@@ -131,11 +131,13 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     if (isSpot)
       return net === 'testnet'
         ? 'wss://testnet.binance.vision/ws'
-        : 'wss://stream.binance.com:9443/stream';
+        : // 'wss://itrade.ihsueh.com/spots/stream';
+          'wss://stream.binance.com/stream';
     else
       return net === 'testnet'
         ? 'wss://stream.binancefuture.com/stream'
-        : 'wss://fstream.binance.com/stream';
+        : // 'wss://itrade.ihsueh.com/futures/stream';
+          'wss://fstream.binance.com/stream';
   }
 
   /** ==================== User Data Stream ==================== */
@@ -158,7 +160,7 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       const key = resp.data.listenKey;
       this.listenKeyMap.set(market, key);
 
-      const interval = market === 'spot' ? 30 * 60 * 1000 : 60 * 60 * 1000;
+      const interval = market === 'spot' ? 20 * 60 * 1000 : 30 * 60 * 1000;
       const timer = setInterval(() => this.keepAliveListenKey(market), interval);
       this.keepAliveTimers.set(market, timer);
 
@@ -191,6 +193,7 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
   /** ==================== WebSocket Connect ==================== */
   private connectMarket(market: MarketType, listenKey?: string) {
     const wsUrl = this.getWsUrl(market, listenKey);
+    console.log(market, ':', wsUrl);
     const ws = new WebSocket(wsUrl);
     this.wsMap.set(market, ws);
 
