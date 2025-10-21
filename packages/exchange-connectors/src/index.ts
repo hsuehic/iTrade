@@ -4,6 +4,8 @@ export { MarketDataExchange } from './base/MarketDataExchange';
 
 // Exchange implementations
 export { BinanceExchange } from './binance/BinanceExchange';
+export { BinanceWebsocket } from './binance/BinanceWebsocket';
+export type { BinanceWebsocketEventMap } from './binance/BinanceWebsocket';
 export { CoinbaseExchange } from './coinbase/CoinbaseExchange';
 export { OKXExchange, type OKXCredentials } from './okx/OKXExchange';
 

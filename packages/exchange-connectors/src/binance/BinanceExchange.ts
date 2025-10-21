@@ -28,7 +28,7 @@ export class BinanceExchange extends BaseExchange {
   // Spot API URLs
   private static readonly SPOT_MAINNET_URL = 'https://api.binance.com';
   private static readonly SPOT_TESTNET_URL = 'https://testnet.binance.vision';
-  private static readonly SPOT_MAINNET_WS = 'wss://stream.binance.com:9443/ws/';
+  private static readonly SPOT_MAINNET_WS = 'wss://stream.binance.com/ws/';
   private static readonly SPOT_TESTNET_WS = 'wss://testnet.binance.vision/ws/';
 
   // USDT-M Futures API URLs (Perpetual)
@@ -82,7 +82,7 @@ export class BinanceExchange extends BaseExchange {
   /**
    * Check if market type is futures/perpetual (reserved for future use)
    */
-  private _isFuturesMarket(marketType?: string): boolean {
+  private _isFuturesMarket(marketType?: BinanceMarketType): boolean {
     return marketType === 'futures' || marketType === 'perpetual';
   }
 
