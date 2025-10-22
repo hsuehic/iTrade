@@ -49,7 +49,9 @@ async function main() {
   } finally {
     try {
       await dataManager.close();
-    } catch (_) {}
+    } catch (err) {
+      console.log(err);
+    }
   }
 }
 
