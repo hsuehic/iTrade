@@ -1,11 +1,11 @@
 'use client';
 
-import { motion, useAnimation } from 'framer-motion';
+import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { cn } from '@/lib/utils';
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 
 export interface TickerData {
   symbol: string;
@@ -24,16 +24,33 @@ interface TickerCardProps {
   onVisibilityChange?: (visible: boolean) => void;
 }
 
-// Component with flash animation on price update
+// Component with flash animation and number roll on price update
 const TickerCardComponent = ({ ticker, index, onVisibilityChange }: TickerCardProps) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const controls = useAnimation();
   const prevPriceRef = useRef<number>(ticker.price);
+  const isInitialMount = useRef(true);
+  const [priceState, setPriceState] = useState<{
+    value: number;
+    direction: 'up' | 'down' | null;
+  }>({
+    value: ticker.price,
+    direction: null,
+  });
 
-  // Flash animation when price changes
+  // Flash animation and number roll when price changes
   useEffect(() => {
+    // Skip animation on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevPriceRef.current = ticker.price;
+      return;
+    }
+
     if (prevPriceRef.current !== ticker.price && ticker.price > 0) {
       const priceIncreased = ticker.price > prevPriceRef.current;
+
+      // Trigger flash animation
       controls
         .start({
           backgroundColor: priceIncreased
@@ -47,7 +64,17 @@ const TickerCardComponent = ({ ticker, index, onVisibilityChange }: TickerCardPr
             transition: { duration: 0.5 },
           });
         });
-      prevPriceRef.current = ticker.price;
+
+      // Update display price after a brief delay to allow exit animation
+      const timeoutId = setTimeout(() => {
+        setPriceState({
+          value: ticker.price,
+          direction: priceIncreased ? 'up' : 'down',
+        });
+        prevPriceRef.current = ticker.price;
+      }, 150);
+
+      return () => clearTimeout(timeoutId);
     }
   }, [ticker.price, controls]);
 
@@ -99,21 +126,46 @@ const TickerCardComponent = ({ ticker, index, onVisibilityChange }: TickerCardPr
             </div>
           </div>
 
-          {/* Price */}
-          <div className="mb-2">
-            <motion.div
-              key={ticker.price}
-              initial={{ scale: 1.1 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.2 }}
-              className="text-2xl font-bold"
-            >
-              $
-              {ticker.price.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </motion.div>
+          {/* Price with Slide Animation */}
+          <div className="mb-2 relative h-8 overflow-hidden">
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={priceState.value}
+                initial={{
+                  y:
+                    priceState.direction === 'up'
+                      ? 32
+                      : priceState.direction === 'down'
+                        ? -32
+                        : 0,
+                  opacity: priceState.direction ? 0 : 1,
+                }}
+                animate={{
+                  y: 0,
+                  opacity: 1,
+                }}
+                exit={{
+                  y:
+                    priceState.direction === 'up'
+                      ? -32
+                      : priceState.direction === 'down'
+                        ? 32
+                        : 0,
+                  opacity: 0,
+                }}
+                transition={{
+                  duration: 0.35,
+                  ease: [0.4, 0, 0.2, 1], // Smooth easing curve
+                }}
+                className="text-2xl font-bold absolute inset-0"
+              >
+                $
+                {priceState.value.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           {/* 24h Change */}
