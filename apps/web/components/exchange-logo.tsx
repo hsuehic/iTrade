@@ -36,6 +36,13 @@ export function ExchangeLogo({
     lg: 'w-6 h-6',
   };
 
+  const sizes = {
+    xs: 12,
+    sm: 16,
+    md: 20,
+    lg: 24,
+  };
+
   const textSizeClasses = {
     xs: 'text-xs',
     sm: 'text-sm',
@@ -47,6 +54,8 @@ export function ExchangeLogo({
     <div className={cn('flex items-center gap-2', className)}>
       {logoUrl ? (
         <Image
+          width={sizes[size]}
+          height={sizes[size]}
           src={logoUrl}
           alt={name}
           className={cn('rounded-full flex-shrink-0', sizeClasses[size])}

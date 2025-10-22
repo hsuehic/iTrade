@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import Image from 'next/image';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -11,7 +12,7 @@ interface SymbolIconProps {
   className?: string;
 }
 
-export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) {
+export const SymbolIcon = memo(({ symbol, size = 'md', className }: SymbolIconProps) => {
   // Extract base asset from symbol (e.g., BTC from BTC/USDT or BTCUSDT)
   const baseAsset =
     symbol.split('/')[0] || symbol.replace(/USDT|USD|EUR|BUSD|TUSD$/i, '');
@@ -62,9 +63,8 @@ export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) 
       height={sizePixels[size]}
       className={cn(sizeClasses[size], 'rounded-full flex-shrink-0', className)}
       onError={() => setImageError(true)}
-      unoptimized={false}
       priority={false}
       loading="lazy"
     />
   );
-}
+});

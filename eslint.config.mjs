@@ -100,6 +100,7 @@ export default defineConfig(
       },
       rules: {
         '@next/next/no-html-link-for-pages': 'off',
+        'react/display-name': 'off',
       },
     })
     .map((config) => ({

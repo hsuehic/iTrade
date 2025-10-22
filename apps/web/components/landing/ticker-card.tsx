@@ -25,7 +25,7 @@ interface TickerCardProps {
 }
 
 // Component with flash animation and number roll on price update
-const TickerCardComponent = ({ ticker, index, onVisibilityChange }: TickerCardProps) => {
+export const TickerCard = ({ ticker, index, onVisibilityChange }: TickerCardProps) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const controls = useAnimation();
   const prevPriceRef = useRef<number>(ticker.price);
@@ -223,6 +223,3 @@ const TickerCardComponent = ({ ticker, index, onVisibilityChange }: TickerCardPr
     </motion.div>
   );
 };
-
-// Export without memo to test if that's blocking updates
-export const TickerCard = TickerCardComponent;

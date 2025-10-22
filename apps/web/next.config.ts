@@ -9,6 +9,7 @@ let tsconfigPath = './tsconfig.json';
 
 if (buildMode === 'dev') {
   distDir = '.next-dev';
+  tsconfigPath = './tsconfig.build.json';
 } else if (buildMode === 'staging') {
   distDir = '.next-staging';
   tsconfigPath = './tsconfig.build.json';
@@ -17,6 +18,7 @@ if (buildMode === 'dev') {
   tsconfigPath = './tsconfig.build.json';
 } else if (isDevelopment) {
   distDir = '.next-dev';
+  tsconfigPath = './tsconfig.build.json';
 }
 const nextConfig: NextConfig = {
   eslint: {
