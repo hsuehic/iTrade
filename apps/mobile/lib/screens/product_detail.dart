@@ -21,11 +21,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   List<OKXKline> _klines = [];
   OKXTicker? _ticker;
   late final Timer _timer;
+  bool _isLoading = false;
   @override
   void initState() {
     super.initState();
     _okxService = OKXDataService();
-    _loadData();
+
+    // Defer loading candlesticks until after the first frame is rendered
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+    });
+
     _timer = Timer.periodic(const Duration(seconds: 60), (_) {
       _loadData();
     });
@@ -43,13 +49,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _loadData() async {
+    if (_klines.isEmpty) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
     final klines = await _okxService.getHistoricalKlines(
       widget.productId,
       bar: '15m',
-      limit: 100,
+      limit: 30,
     );
+
     setState(() {
       _klines = klines.reversed.toList();
+      _isLoading = false;
     });
   }
 
@@ -198,7 +212,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           SizedBox(height: 16),
           SizedBox(
             height: 300,
-            child: _klines.isEmpty
+            child: _isLoading || _klines.isEmpty
                 ? Container()
                 : Echarts(
                     option: jsonEncode(option),
