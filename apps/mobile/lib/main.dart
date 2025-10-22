@@ -8,7 +8,6 @@ import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
-import 'package:uni_links/uni_links.dart';
 import 'constant/network.dart';
 import 'design/themes/theme.dart';
 
@@ -265,7 +264,6 @@ class _MyHomePageState extends State<MyHomePage> {
       const StatisticsScreen(),
       const ProfileScreen(),
     ];
-    _initDeepLinks();
   }
 
   @override
@@ -298,81 +296,5 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     _linkSubscription?.cancel();
     super.dispose();
-  }
-
-  Future<void> _initDeepLinks() async {
-    try {
-      final Uri? initial = await getInitialUri();
-      if (initial != null) {
-        _handleIncomingUri(initial);
-      }
-    } on PlatformException catch (e, st) {
-      developer.log(
-        'Failed to get initial uri',
-        name: 'DeepLinks',
-        error: e,
-        stackTrace: st,
-      );
-    } on FormatException catch (e, st) {
-      developer.log(
-        'Malformed initial uri',
-        name: 'DeepLinks',
-        error: e,
-        stackTrace: st,
-      );
-    }
-
-    _linkSubscription = uriLinkStream.listen(
-      (Uri? uri) {
-        if (uri != null) {
-          _handleIncomingUri(uri);
-        }
-      },
-      onError: (Object err, StackTrace st) {
-        developer.log(
-          'uriLinkStream error',
-          name: 'DeepLinks',
-          error: err,
-          stackTrace: st,
-        );
-      },
-    );
-  }
-
-  void _handleIncomingUri(Uri uri) {
-    if (!mounted) return;
-    final String scheme = uri.scheme.toLowerCase();
-    final String path = uri.path.isEmpty ? '/' : uri.path;
-
-    // For custom scheme without path, interpret host as path segment, e.g. imining://profile
-    final bool isCustomScheme = scheme == 'imining';
-    final String effectivePath =
-        (isCustomScheme &&
-            uri.host.isNotEmpty &&
-            (uri.path.isEmpty || uri.path == '/'))
-        ? '/${uri.host}'
-        : path;
-
-    if (effectivePath == '/scan-qr') {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        Navigator.of(context).pushNamed('/scan-qr');
-      });
-      return;
-    }
-
-    const Map<String, int> routeToIndex = {
-      '/': 0,
-      '/portfolio': 0,
-      '/strategy': 1,
-      '/product': 2,
-      '/statistics': 3,
-      '/profile': 4,
-    };
-
-    final int? targetIndex = routeToIndex[effectivePath];
-    if (targetIndex != null) {
-      setState(() => _pageIndex = targetIndex.clamp(0, _pages.length - 1));
-    }
   }
 }
