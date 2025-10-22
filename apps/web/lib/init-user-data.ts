@@ -1,11 +1,11 @@
-import { getDataManager } from './data-manager';
-
 /**
  * Initialize user data after sign-up
  * This creates default email preferences for new users
  */
 export async function initializeUserData(userId: string): Promise<void> {
   try {
+    // Dynamic import to avoid webpack bundling issues with TypeORM entities
+    const { getDataManager } = await import('./data-manager');
     const dataManager = await getDataManager();
     const emailPrefsRepo = dataManager.getEmailPreferencesRepository();
 
@@ -33,6 +33,8 @@ export async function initializeUserData(userId: string): Promise<void> {
  */
 export async function cleanupUserData(userId: string): Promise<void> {
   try {
+    // Dynamic import to avoid webpack bundling issues with TypeORM entities
+    const { getDataManager } = await import('./data-manager');
     const dataManager = await getDataManager();
     const emailPrefsRepo = dataManager.getEmailPreferencesRepository();
 

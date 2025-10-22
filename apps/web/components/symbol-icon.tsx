@@ -1,4 +1,7 @@
+'use client';
+
 import Image from 'next/image';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getCryptoIconUrl } from '@/lib/exchanges';
 
@@ -13,6 +16,8 @@ export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) 
   const baseAsset =
     symbol.split('/')[0] || symbol.replace(/USDT|USD|EUR|BUSD|TUSD$/i, '');
 
+  const [imageError, setImageError] = useState(false);
+
   const sizeClasses = {
     sm: 'size-4',
     md: 'size-5',
@@ -25,9 +30,15 @@ export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) 
     lg: 'text-base',
   };
 
+  const sizePixels = {
+    sm: 16,
+    md: 20,
+    lg: 24,
+  };
+
   const iconUrl = getCryptoIconUrl(baseAsset);
 
-  if (!iconUrl) {
+  if (!iconUrl || imageError) {
     // Fallback: show first letter
     return (
       <div
@@ -47,19 +58,13 @@ export function SymbolIcon({ symbol, size = 'md', className }: SymbolIconProps) 
     <Image
       src={iconUrl}
       alt={baseAsset}
+      width={sizePixels[size]}
+      height={sizePixels[size]}
       className={cn(sizeClasses[size], 'rounded-full flex-shrink-0', className)}
-      onError={(e) => {
-        const target = e.target as HTMLImageElement;
-        // Fallback: replace with letter
-        const parent = target.parentElement;
-        if (parent) {
-          parent.innerHTML = `<div class="${cn(
-            sizeClasses[size],
-            'flex items-center justify-center rounded-full bg-muted font-semibold',
-            textSizeClasses[size],
-          )}">${baseAsset.charAt(0)}</div>`;
-        }
-      }}
+      onError={() => setImageError(true)}
+      unoptimized={false}
+      priority={false}
+      loading="lazy"
     />
   );
 }

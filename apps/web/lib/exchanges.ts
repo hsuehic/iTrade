@@ -200,12 +200,12 @@ export const COMMON_TRADING_PAIRS = [
 ] as const;
 
 /**
- * Get crypto icon URL from CoinGecko or similar service
+ * Get crypto icon URL from local public directory
  */
 export function getCryptoIconUrl(symbol: string): string {
   const symbolLower = symbol.toLowerCase();
-  // Using CoinGecko API for crypto logos
-  return `https://assets.coincap.io/assets/icons/${symbolLower}@2x.png`;
+  // Using local crypto icons stored in /public/crypto-icons/
+  return `/crypto-icons/${symbolLower}@2x.png`;
 }
 
 /**

@@ -93,16 +93,20 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             variant="outline"
             type="button"
             className="w-full"
-            onClick={() => signIn.social({ provider: 'apple' })}
+            onClick={() =>
+              signIn.social({ provider: 'apple', callbackURL: '/dashboard' })
+            }
           >
             <IconApple />
-            <span className="sr-only">Login with Google</span>
+            <span className="sr-only">Login with Apple</span>
           </Button>
           <Button
             variant="outline"
             type="button"
             className="w-full"
-            onClick={() => signIn.social({ provider: 'google' })}
+            onClick={() =>
+              signIn.social({ provider: 'google', callbackURL: '/dashboard' })
+            }
           >
             <IconGoogle />
             <span className="sr-only">Login with Google</span>
@@ -111,7 +115,9 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             variant="outline"
             type="button"
             className="w-full"
-            onClick={() => signIn.social({ provider: 'github' })}
+            onClick={() =>
+              signIn.social({ provider: 'github', callbackURL: '/dashboard' })
+            }
           >
             <IconGithub />
             <span className="sr-only">Login with Github</span>

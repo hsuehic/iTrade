@@ -32,12 +32,50 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const pathname = (await headers()).get('x-current-pathname') || '';
-  const isNotAuth = !pathname!.startsWith('/auth');
+  const isAuth = pathname.startsWith('/auth');
+  const isLandingPage = pathname === '' || pathname === '/' || pathname === '/landing';
+  // Dashboard has its own layout with SidebarProvider
+  const hasSeparateLayout = pathname.startsWith('/dashboard');
+  const needsSidebar = !isAuth && !isLandingPage && !hasSeparateLayout;
   const session = await auth.api.getSession({
     headers: await headers(),
   });
 
   console.log('pathname', pathname);
+
+  // For landing page, don't add extra layout - page.tsx handles everything
+  if (isLandingPage) {
+    return (
+      <html lang="en" suppressHydrationWarning>
+        <head>
+          <meta charSet="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </head>
+        <body
+          className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        >
+          <SessionProvider session={session}>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="dark"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+              <Toaster
+                position="top-center"
+                richColors={true}
+                toastOptions={{
+                  duration: 3000,
+                }}
+              />
+            </ThemeProvider>
+          </SessionProvider>
+        </body>
+      </html>
+    );
+  }
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -50,11 +88,11 @@ export default async function RootLayout({
         <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"
-            defaultTheme="light"
+            defaultTheme="dark"
             enableSystem
             disableTransitionOnChange
           >
-            {isNotAuth ? (
+            {needsSidebar ? (
               <SidebarProvider
                 style={
                   {
@@ -70,10 +108,10 @@ export default async function RootLayout({
               children
             )}
             <Toaster
-              position="top-center" // 默认位置，可选: top-left, top-center, top-right, bottom-left, bottom-center, bottom-right
-              richColors={true} // 使用丰富颜色，false 使用系统主题颜色
+              position="top-center"
+              richColors={true}
               toastOptions={{
-                duration: 3000, // 默认显示时间
+                duration: 3000,
               }}
             />
           </ThemeProvider>

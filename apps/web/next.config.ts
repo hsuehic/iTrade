@@ -29,6 +29,13 @@ const nextConfig: NextConfig = {
     tsconfigPath: tsconfigPath,
   },
 
+  // Image configuration - using local crypto icons
+  images: {
+    remotePatterns: [
+      // No external patterns needed - all crypto icons are served locally
+    ],
+  },
+
   // In Next.js 15.5+, use serverExternalPackages instead of experimental.serverComponentsExternalPackages
   serverExternalPackages: [
     'typeorm',
