@@ -5,14 +5,11 @@ import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { headers } from 'next/headers';
 
-import { AppSidebar } from '@/components/app-sidebar';
 import { SessionProvider } from '@/components/session-provider';
-import { SidebarProvider } from '@/components/ui/sidebar';
-import './globals.css';
 import { auth } from '@/lib/auth';
+import './globals.css';
 
 const geistSans = GeistSans;
-
 const geistMono = GeistMono;
 
 export const metadata: Metadata = {
@@ -26,55 +23,31 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Root Layout
+ *
+ * Provides global providers and structure for the entire application:
+ *
+ * 1. **HTML Structure**: Base HTML, meta tags, fonts
+ * 2. **SessionProvider**: Global authentication state (needed everywhere)
+ * 3. **ThemeProvider**: Light/dark mode switching
+ * 4. **Toaster**: Global toast notifications
+ *
+ * Route-specific UI (sidebars, headers, etc.) are handled by nested layouts:
+ * - `/` → Landing page with custom header (in page.tsx)
+ * - `/auth/*` → app/auth/layout.tsx (centered card layout)
+ * - `/dashboard/*` → app/dashboard/layout.tsx (sidebar navigation)
+ * - Other routes → Use nested layouts as needed
+ */
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const pathname = (await headers()).get('x-current-pathname') || '';
-  const isAuth = pathname.startsWith('/auth');
-  const isLandingPage = pathname === '' || pathname === '/' || pathname === '/landing';
-  // Dashboard has its own layout with SidebarProvider
-  const hasSeparateLayout = pathname.startsWith('/dashboard');
-  const needsSidebar = !isAuth && !isLandingPage && !hasSeparateLayout;
+  // Get session once at the root level
   const session = await auth.api.getSession({
     headers: await headers(),
   });
-
-  console.log('pathname', pathname);
-
-  // For landing page, don't add extra layout - page.tsx handles everything
-  if (isLandingPage) {
-    return (
-      <html lang="en" suppressHydrationWarning>
-        <head>
-          <meta charSet="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-        </head>
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
-        >
-          <SessionProvider session={session}>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="dark"
-              enableSystem
-              disableTransitionOnChange
-            >
-              {children}
-              <Toaster
-                position="top-center"
-                richColors={true}
-                toastOptions={{
-                  duration: 3000,
-                }}
-              />
-            </ThemeProvider>
-          </SessionProvider>
-        </body>
-      </html>
-    );
-  }
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -85,6 +58,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
+        {/* Global Providers */}
         <SessionProvider session={session}>
           <ThemeProvider
             attribute="class"
@@ -92,21 +66,10 @@ export default async function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            {needsSidebar ? (
-              <SidebarProvider
-                style={
-                  {
-                    '--sidebar-width': 'calc(var(--spacing) * 72)',
-                    '--header-height': 'calc(var(--spacing) * 12)',
-                  } as React.CSSProperties
-                }
-              >
-                <AppSidebar variant="inset" />
-                {children}
-              </SidebarProvider>
-            ) : (
-              children
-            )}
+            {/* Route-specific layouts handle their own structure */}
+            {children}
+
+            {/* Global Notifications */}
             <Toaster
               position="top-center"
               richColors={true}

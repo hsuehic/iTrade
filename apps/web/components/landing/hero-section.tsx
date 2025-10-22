@@ -11,9 +11,10 @@ interface HeroSectionProps {
 
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-background via-background to-muted/20 py-20 sm:py-32">
+    <section className="relative min-h-[600px] overflow-hidden py-20 sm:py-32">
       {/* Background decoration */}
       <div className="absolute inset-0 -z-10">
+        {/* Gradient overlay */}
         <div className="absolute left-1/2 top-0 -translate-x-1/2 opacity-30 dark:opacity-20">
           <div className="h-[600px] w-[600px] rounded-full bg-primary/20 blur-3xl" />
         </div>
@@ -40,16 +41,8 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
           >
             Markets thrive on{' '}
-            <span className="relative">
-              <span className="relative z-10 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                chaos
-              </span>
-              <motion.span
-                initial={{ scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{ duration: 0.8, delay: 0.5 }}
-                className="absolute inset-x-0 -bottom-2 h-3 bg-primary/20 -z-10 origin-left"
-              />
+            <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+              chaos
             </span>
           </motion.h1>
 

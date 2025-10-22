@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chart Background Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a0a;
+            color: white;
+            font-family: system-ui;
+        }
+        .container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(to bottom, #0a0a0a, #1a1a1a);
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.4;
+            filter: blur(2px);
+        }
+        .content {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            flex-direction: column;
+            gap: 20px;
+        }
+        h1 {
+            font-size: 48px;
+            font-weight: bold;
+        }
+        .status {
+            padding: 10px 20px;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid #10b981;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <canvas id="chart"></canvas>
+        <div class="content">
+            <h1>Candlestick Chart Background Test</h1>
+            <div class="status" id="status">Initializing...</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+
+        function updateStatus(msg) {
+            statusEl.textContent = msg;
+            console.log('[ChartTest]', msg);
+        }
+
+        // Set canvas size
+        function updateSize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            updateStatus(`Canvas: ${window.innerWidth}x${window.innerHeight}, DPR: ${dpr}`);
+        }
+
+        updateSize();
+        window.addEventListener('resize', updateSize);
+
+        // Chart data
+        const candleWidth = 10;
+        const candleGap = 5;
+        let candles = [];
+        let currentPrice = 50000;
+        let scrollOffset = 0;
+
+        // Generate candle
+        function generateCandle(x) {
+            const change = (Math.random() - 0.5) * 0.04;
+            const open = currentPrice;
+            const close = currentPrice * (1 + change);
+            const high = Math.max(open, close) * (1 + Math.random() * 0.01);
+            const low = Math.min(open, close) * (1 - Math.random() * 0.01);
+            currentPrice = close;
+
+            return {
+                x,
+                open,
+                close,
+                high,
+                low,
+                color: close > open ? '#10b981' : '#ef4444'
+            };
+        }
+
+        // Initialize
+        for (let i = 0; i < 80; i++) {
+            candles.push(generateCandle(i * (candleWidth + candleGap)));
+        }
+
+        updateStatus('✅ Chart initialized with ' + candles.length + ' candles');
+
+        // Animation
+        function draw() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // Get price range
+            const prices = candles.flatMap(c => [c.open, c.close, c.high, c.low]);
+            const minPrice = Math.min(...prices);
+            const maxPrice = Math.max(...prices);
+            const priceRange = maxPrice - minPrice;
+            const padding = priceRange * 0.15;
+
+            function scaleY(price) {
+                return height - ((price - minPrice + padding) / (priceRange + padding * 2)) * height;
+            }
+
+            // Grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const y = (height / 5) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+
+            // Candles
+            candles.forEach(candle => {
+                const x = candle.x - scrollOffset;
+                if (x < -candleWidth * 2 || x > width + candleWidth * 2) return;
+
+                const openY = scaleY(candle.open);
+                const closeY = scaleY(candle.close);
+                const highY = scaleY(candle.high);
+                const lowY = scaleY(candle.low);
+
+                // Wick
+                ctx.strokeStyle = candle.color;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.4;
+                ctx.beginPath();
+                ctx.moveTo(x + candleWidth / 2, highY);
+                ctx.lineTo(x + candleWidth / 2, lowY);
+                ctx.stroke();
+
+                // Body
+                ctx.fillStyle = candle.color;
+                ctx.globalAlpha = 0.5;
+                const bodyY = Math.min(openY, closeY);
+                const bodyHeight = Math.abs(closeY - openY);
+                ctx.fillRect(x, bodyY, candleWidth, Math.max(bodyHeight, 2));
+            });
+
+            ctx.globalAlpha = 1;
+        }
+
+        function animate() {
+            scrollOffset += 0.6;
+
+            // Add new candle
+            const last = candles[candles.length - 1];
+            if (last.x - scrollOffset < window.innerWidth - (candleWidth + candleGap) * 3) {
+                candles.push(generateCandle(last.x + candleWidth + candleGap));
+            }
+
+            // Remove old candles
+            candles = candles.filter(c => c.x - scrollOffset > -candleWidth * 5);
+
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+        updateStatus('✅ Animation running - ' + candles.length + ' candles visible');
+    </script>
+</body>
+</html>
+
