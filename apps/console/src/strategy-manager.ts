@@ -44,7 +44,7 @@ export class StrategyManager {
   constructor(
     private engine: TradingEngine,
     private dataManager: TypeOrmDataManager,
-    private logger: ILogger
+    private logger: ILogger,
   ) {
     this.eventBus = EventBus.getInstance();
     const stateAdapter = new TypeOrmStrategyStateAdapter(dataManager);
@@ -59,7 +59,7 @@ export class StrategyManager {
     // 📊 显示策略实现统计信息
     const implementedStrategies = getImplementedStrategies();
     this.logger.info(
-      `📈 Available strategy implementations: ${implementedStrategies.length}`
+      `📈 Available strategy implementations: ${implementedStrategies.length}`,
     );
     implementedStrategies.forEach((strategy: StrategyImplementationInfo) => {
       this.logger.debug(`  ✅ ${strategy.name} (${strategy.type})`);
@@ -90,7 +90,7 @@ export class StrategyManager {
     }, this.STATE_BACKUP_INTERVAL_MS);
 
     this.logger.info(
-      `Strategy Manager started (sync every ${this.SYNC_INTERVAL_MS / 1000}s, report every ${this.REPORT_INTERVAL_MS / 1000}s, backup every ${this.STATE_BACKUP_INTERVAL_MS / 1000}s)`
+      `Strategy Manager started (sync every ${this.SYNC_INTERVAL_MS / 1000}s, report every ${this.REPORT_INTERVAL_MS / 1000}s, backup every ${this.STATE_BACKUP_INTERVAL_MS / 1000}s)`,
     );
   }
 
@@ -139,15 +139,12 @@ export class StrategyManager {
         try {
           await this.addStrategy(dbStrategy.id);
         } catch (error) {
-          this.logger.error(
-            `Failed to load strategy ${dbStrategy.name}`,
-            error as Error
-          );
+          this.logger.error(`Failed to load strategy ${dbStrategy.name}`, error as Error);
           // Mark strategy as error in database
           await this.dataManager.updateStrategyStatus(
             dbStrategy.id,
             StrategyStatus.ERROR,
-            (error as Error).message
+            (error as Error).message,
           );
         }
       }
@@ -170,7 +167,7 @@ export class StrategyManager {
       });
       const activeStrategyIds = new Set(activeStrategies.map((s) => s.id));
       this.logger.info(
-        `🔄 [SYNC] Active strategies: ${JSON.stringify(activeStrategyIds, null, 2)}`
+        `🔄 [SYNC] Active strategies: ${JSON.stringify(activeStrategyIds, null, 2)}`,
       );
 
       let addedCount = 0;
@@ -180,7 +177,7 @@ export class StrategyManager {
       for (const dbStrategy of activeStrategies) {
         if (!this.strategies.has(dbStrategy.id)) {
           this.logger.info(
-            `🔄 [SYNC] Adding strategy to TradeEngine: ${dbStrategy.name} (ID: ${dbStrategy.id})`
+            `🔄 [SYNC] Adding strategy to TradeEngine: ${dbStrategy.name} (ID: ${dbStrategy.id})`,
           );
           try {
             await this.addStrategy(dbStrategy.id);
@@ -188,7 +185,7 @@ export class StrategyManager {
           } catch (error) {
             this.logger.error(
               `Failed to add strategy ${dbStrategy.id} during sync`,
-              error as Error
+              error as Error,
             );
           }
         }
@@ -200,7 +197,7 @@ export class StrategyManager {
         if (!activeStrategyIds.has(id)) {
           const strategyName = this.strategies.get(id)?.name;
           this.logger.info(
-            `🔄 [SYNC] Removing strategy from TradeEngine: ${strategyName} (ID: ${id}, Reason: Not ACTIVE or deleted)`
+            `🔄 [SYNC] Removing strategy from TradeEngine: ${strategyName} (ID: ${id}, Reason: Not ACTIVE or deleted)`,
           );
           await this.removeStrategy(id);
           removedCount++;
@@ -210,14 +207,11 @@ export class StrategyManager {
       // Log sync summary if there were changes
       if (addedCount > 0 || removedCount > 0) {
         this.logger.info(
-          `🔄 [SYNC] Complete: +${addedCount} added, -${removedCount} removed. Active in TradeEngine: ${this.strategies.size}`
+          `🔄 [SYNC] Complete: +${addedCount} added, -${removedCount} removed. Active in TradeEngine: ${this.strategies.size}`,
         );
       }
     } catch (error) {
-      this.logger.error(
-        'Error syncing strategies with database',
-        error as Error
-      );
+      this.logger.error('Error syncing strategies with database', error as Error);
     }
   }
 
@@ -236,19 +230,18 @@ export class StrategyManager {
       this.stateMonitor.recordRecoveryAttempt(strategyId, recoveryStartTime);
 
       try {
-        const recoveryResult =
-          await this.stateManager.recoverStrategyState(strategyId);
+        const recoveryResult = await this.stateManager.recoverStrategyState(strategyId);
         const recoveryEndTime = new Date();
 
         if (recoveryResult.recovered) {
           this.stateMonitor.recordRecoverySuccess(
             strategyId,
             recoveryStartTime,
-            recoveryEndTime
+            recoveryEndTime,
           );
 
           this.logger.info(
-            `🔄 Strategy state recovered for ${dbStrategy.name} (ID: ${strategyId})`
+            `🔄 Strategy state recovered for ${dbStrategy.name} (ID: ${strategyId})`,
           );
 
           if (recoveryResult.warnings && recoveryResult.warnings.length > 0) {
@@ -260,30 +253,29 @@ export class StrategyManager {
           this.stateMonitor.recordRecoverySuccess(
             strategyId,
             recoveryStartTime,
-            recoveryEndTime
+            recoveryEndTime,
           );
 
           this.logger.info(
-            `🆕 No previous state found for ${dbStrategy.name} (ID: ${strategyId}) - starting fresh`
+            `🆕 No previous state found for ${dbStrategy.name} (ID: ${strategyId}) - starting fresh`,
           );
         }
 
         // Log recovery metrics
         if (recoveryResult.metrics) {
-          const { savedStates, openOrders, totalPosition } =
-            recoveryResult.metrics;
+          const { savedStates, openOrders, totalPosition } = recoveryResult.metrics;
           this.logger.debug(
-            `📊 Recovery metrics - States: ${savedStates}, Open Orders: ${openOrders}, Position: ${totalPosition}`
+            `📊 Recovery metrics - States: ${savedStates}, Open Orders: ${openOrders}, Position: ${totalPosition}`,
           );
         }
       } catch (recoveryError) {
         this.stateMonitor.recordRecoveryFailure(
           strategyId,
-          (recoveryError as Error).message
+          (recoveryError as Error).message,
         );
 
         this.logger.error(
-          `❌ State recovery failed for strategy ${strategyId}: ${(recoveryError as Error).message}`
+          `❌ State recovery failed for strategy ${strategyId}: ${(recoveryError as Error).message}`,
         );
         this.logger.warn('🔄 Strategy will start with fresh state');
 
@@ -315,14 +307,12 @@ export class StrategyManager {
         errors: 0,
       });
 
-      this.logger.info(
-        `✅ Added strategy: ${dbStrategy.name} (ID: ${strategyId})`
-      );
+      this.logger.info(`✅ Added strategy: ${dbStrategy.name} (ID: ${strategyId})`);
       // Use normalizedSymbol from database (auto-computed)
       const displaySymbol =
         (dbStrategy as any).normalizedSymbol || dbStrategy.symbol || 'N/A';
       this.logger.info(
-        `   Type: ${dbStrategy.type}, Symbol: ${displaySymbol}, Exchange: ${dbStrategy.exchange || 'default'}`
+        `   Type: ${dbStrategy.type}, Symbol: ${displaySymbol}, Exchange: ${dbStrategy.exchange || 'default'}`,
       );
     } catch (error) {
       this.logger.error(`Failed to add strategy ${strategyId}`, error as Error);
@@ -341,7 +331,7 @@ export class StrategyManager {
         const runTime = Date.now() - metrics.startTime.getTime();
         const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
         this.logger.info(
-          `📊 Final metrics for ${strategy.name}: ${metrics.totalSignals} signals, ${metrics.totalOrders} orders in ${hours}h`
+          `📊 Final metrics for ${strategy.name}: ${metrics.totalSignals} signals, ${metrics.totalOrders} orders in ${hours}h`,
         );
       }
 
@@ -352,36 +342,24 @@ export class StrategyManager {
       this.strategies.delete(strategyId);
       this.strategyMetrics.delete(strategyId);
 
-      this.logger.info(
-        `❌ Removed strategy: ${strategy.name} (ID: ${strategyId})`
-      );
+      this.logger.info(`❌ Removed strategy: ${strategy.name} (ID: ${strategyId})`);
     } catch (error) {
-      this.logger.error(
-        `Failed to remove strategy ${strategyId}`,
-        error as Error
-      );
+      this.logger.error(`Failed to remove strategy ${strategyId}`, error as Error);
     }
   }
 
   private createStrategyInstance(dbStrategy: any): IStrategy {
     const { type, symbol, parameters, exchange } = dbStrategy;
 
-    // 🎯 使用策略包提供的工厂方法创建实例
-    // 这个方法包含了完整的验证、配置合并和实例化逻辑
-    try {
-      return createStrategyInstance(
-        type as StrategyTypeKey,
-        parameters, // 用户自定义参数
-        {
-          symbol,
-          exchange,
-          logger: this.logger,
-        }
-      );
-    } catch (error) {
-      // 重新抛出错误，保持错误信息的完整性
-      throw error;
-    }
+    return createStrategyInstance(
+      type as StrategyTypeKey,
+      parameters, // 用户自定义参数
+      {
+        symbol,
+        exchange,
+        logger: this.logger,
+      },
+    );
   }
 
   private setupEventListeners(): void {
@@ -438,7 +416,7 @@ export class StrategyManager {
 
       if (metrics.lastSignalTime) {
         const lastSignalAgo = Math.round(
-          (Date.now() - metrics.lastSignalTime.getTime()) / 1000
+          (Date.now() - metrics.lastSignalTime.getTime()) / 1000,
         );
         this.logger.info(`   Last signal: ${lastSignalAgo}s ago`);
       } else {
@@ -447,7 +425,7 @@ export class StrategyManager {
 
       if (metrics.lastOrderTime) {
         const lastOrderAgo = Math.round(
-          (Date.now() - metrics.lastOrderTime.getTime()) / 1000
+          (Date.now() - metrics.lastOrderTime.getTime()) / 1000,
         );
         this.logger.info(`   Last order: ${lastOrderAgo}s ago`);
       } else {
@@ -460,7 +438,7 @@ export class StrategyManager {
 
       // Get PnL data from database
       this.getPnLForStrategy(strategyId).catch((err) =>
-        this.logger.error(`Failed to get PnL for strategy ${strategyId}`, err)
+        this.logger.error(`Failed to get PnL for strategy ${strategyId}`, err),
       );
     }
 
@@ -473,7 +451,7 @@ export class StrategyManager {
       this.logger.info(`   💰 Total PnL: ${pnl.totalPnl.toFixed(2)}`);
       this.logger.info(`   💵 Realized PnL: ${pnl.realizedPnl.toFixed(2)}`);
       this.logger.info(
-        `   📊 Total Orders: ${pnl.totalOrders} (${pnl.filledOrders} filled)`
+        `   📊 Total Orders: ${pnl.totalOrders} (${pnl.filledOrders} filled)`,
       );
     } catch (_error) {
       // PnL data might not be available yet, that's ok
@@ -501,20 +479,14 @@ export class StrategyManager {
 
     for (const [strategyId, { instance }] of this.strategies) {
       try {
-        await this.stateManager.saveStrategyState(
-          strategyId,
-          await instance.saveState()
-        );
+        await this.stateManager.saveStrategyState(strategyId, await instance.saveState());
         this.stateMonitor.recordBackupSuccess(strategyId);
         successCount++;
       } catch (error) {
-        this.stateMonitor.recordBackupFailure(
-          strategyId,
-          (error as Error).message
-        );
+        this.stateMonitor.recordBackupFailure(strategyId, (error as Error).message);
         errorCount++;
         this.logger.error(
-          `Failed to backup state for strategy ${strategyId}: ${(error as Error).message}`
+          `Failed to backup state for strategy ${strategyId}: ${(error as Error).message}`,
         );
 
         // Emit backup failure event for monitoring
@@ -527,13 +499,13 @@ export class StrategyManager {
 
     if (successCount > 0) {
       this.logger.debug(
-        `💾 Strategy state backup completed: ${successCount} successful, ${errorCount} failed`
+        `💾 Strategy state backup completed: ${successCount} successful, ${errorCount} failed`,
       );
     }
 
     if (errorCount > 0) {
       this.logger.warn(
-        `⚠️  Strategy state backup had ${errorCount} failures out of ${this.strategies.size} strategies`
+        `⚠️  Strategy state backup had ${errorCount} failures out of ${this.strategies.size} strategies`,
       );
     }
   }
@@ -555,7 +527,7 @@ export class StrategyManager {
     // Setup strategy event listeners for monitoring
     this.eventBus.on('strategyRecoveryFailed', (data) => {
       this.logger.error(
-        `🚨 Strategy recovery failed: ${data.strategyName} (ID: ${data.strategyId})`
+        `🚨 Strategy recovery failed: ${data.strategyName} (ID: ${data.strategyId})`,
       );
     });
 
@@ -573,34 +545,31 @@ export class StrategyManager {
     switch (type) {
       case 'excessive_failures':
         this.logger.error(
-          `🚨 CRITICAL: Strategy ${strategyId} has ${alert.failures} recovery failures (threshold: ${alert.threshold})`
+          `🚨 CRITICAL: Strategy ${strategyId} has ${alert.failures} recovery failures (threshold: ${alert.threshold})`,
         );
         // Could integrate with external alerting system here
         break;
 
       case 'slow_recovery':
         this.logger.warn(
-          `⚠️  PERFORMANCE: Strategy ${strategyId} recovery took ${alert.recoveryTime}ms (threshold: ${alert.threshold}ms)`
+          `⚠️  PERFORMANCE: Strategy ${strategyId} recovery took ${alert.recoveryTime}ms (threshold: ${alert.threshold}ms)`,
         );
         break;
 
       case 'state_corruption':
         this.logger.error(
-          `🚨 CORRUPTION: Strategy ${strategyId} state corruption detected: ${alert.details}`
+          `🚨 CORRUPTION: Strategy ${strategyId} state corruption detected: ${alert.details}`,
         );
         break;
 
       case 'data_inconsistency':
         this.logger.warn(
-          `⚠️  INCONSISTENCY: Strategy ${strategyId} data inconsistency: ${alert.details}`
+          `⚠️  INCONSISTENCY: Strategy ${strategyId} data inconsistency: ${alert.details}`,
         );
         break;
 
       default:
-        this.logger.warn(
-          `🚨 UNKNOWN ALERT [${type}]: Strategy ${strategyId}`,
-          alert
-        );
+        this.logger.warn(`🚨 UNKNOWN ALERT [${type}]: Strategy ${strategyId}`, alert);
     }
   }
 

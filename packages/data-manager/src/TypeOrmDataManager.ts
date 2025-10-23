@@ -96,7 +96,7 @@ export class TypeOrmDataManager implements IDataManager {
       database: this.config.database,
       ssl: this.config.ssl,
       synchronize: this.config.synchronize ?? false,
-      migrationsRun: this.config.migrationsRun ?? true,
+      migrationsRun: this.config.migrationsRun ?? false,
       logging: this.config.logging ?? false,
       poolSize: this.config.poolSize,
       cache: this.config.cache,

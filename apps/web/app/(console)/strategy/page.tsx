@@ -441,6 +441,8 @@ export default function StrategyPage() {
                                             <Image
                                               src={logoUrl}
                                               alt={exchange.name}
+                                              width={20}
+                                              height={20}
                                               className="w-5 h-5 rounded-full"
                                               onError={(e) => {
                                                 (
@@ -490,6 +492,8 @@ export default function StrategyPage() {
                                           <Image
                                             src={getCryptoIconUrl(pair.base)}
                                             alt={pair.base}
+                                            width={16}
+                                            height={16}
                                             className="w-4 h-4 rounded-full"
                                             onError={(e) => {
                                               (

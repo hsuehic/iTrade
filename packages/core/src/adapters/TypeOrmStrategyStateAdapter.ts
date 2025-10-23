@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import {
   IStrategyStateManager,
   StrategyState,
@@ -11,19 +12,19 @@ import { OrderStatus } from '../types';
 interface IDataManager {
   getOrders(filter: { strategyId: number }): Promise<
     Array<{
-      id: number;
+      id: string;
       status: string;
-      executedQuantity?: string;
-      quantity?: string;
-      averagePrice?: string;
+      executedQuantity?: string | Decimal;
+      quantity?: string | Decimal;
+      averagePrice?: string | Decimal;
       updatedAt?: Date;
     }>
   >;
-  getOrder(id: number): Promise<{
+  getOrder(id: string): Promise<{
     status: string;
-    executedQuantity?: string;
-    quantity?: string;
-    averagePrice?: string;
+    executedQuantity?: string | Decimal;
+    quantity?: string | Decimal;
+    averagePrice?: string | Decimal;
   } | null>;
 }
 
@@ -62,7 +63,8 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
         status: order.status as OrderStatus,
         executedQuantity: order.executedQuantity?.toString() || '0',
         remainingQuantity: (
-          parseFloat(order.quantity || '0') - parseFloat(order.executedQuantity || '0')
+          parseFloat(order.quantity?.toString() || '0') -
+          parseFloat(order.executedQuantity?.toString() || '0')
         ).toString(),
         averagePrice: order.averagePrice?.toString(),
         lastUpdateTime: order.updatedAt || new Date(),
@@ -81,7 +83,7 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
       // TODO: 实现与交易所同步订单状态的逻辑
       // 这里应该调用相应的交易所API来获取最新的订单状态
 
-      const order = await this.dataManager.getOrder(parseInt(orderId));
+      const order = await this.dataManager.getOrder(orderId);
 
       if (!order) {
         throw new Error(`Order ${orderId} not found`);
@@ -92,7 +94,8 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
         status: order.status as OrderStatus,
         executedQuantity: order.executedQuantity?.toString() || '0',
         remainingQuantity: (
-          parseFloat(order.quantity || '0') - parseFloat(order.executedQuantity || '0')
+          parseFloat(order.quantity?.toString() || '0') -
+          parseFloat(order.executedQuantity?.toString() || '0')
         ).toString(),
         averagePrice: order.averagePrice?.toString(),
         lastUpdateTime: new Date(),

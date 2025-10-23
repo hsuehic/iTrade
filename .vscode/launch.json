@@ -25,6 +25,35 @@
     {
       "type": "node",
       "request": "launch",
+      "name": "Debug console with ts-node",
+      "cwd": "${workspaceFolder}/apps/console",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-r", "ts-node/register",
+        "-r", "tsconfig-paths/register",
+        "-r", "reflect-metadata"
+      ],
+      "env": {
+        "NODE_ENV": "development",
+        "TS_NODE_PROJECT": "tsconfig.build.json",
+        "TS_NODE_FILES": "true",
+        "NODE_OPTIONS": "--conditions=source",
+        "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
+      },
+      "args": ["${workspaceFolder}/apps/console/src/main.ts"],
+      "sourceMaps": true,
+      "stopOnEntry": false,
+      "smartStep": true,
+      "skipFiles": ["<node_internals>/**"],
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/**",
+        "!**/node_modules/**"
+      ],
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
       "name": "Debug console with tsx",
       "runtimeExecutable": "tsx",
       "args": ["${file}"],
@@ -35,7 +64,12 @@
         "NODE_ENV": "development",
         "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
       },
-      "runtimeArgs": ["-r", "tsconfig-paths/register"]
+      "runtimeArgs": [
+        "--tsconfig",
+        "tsconfig.build.json",
+        "-r",
+        "tsconfig-paths/register"
+      ]
     },
     {
       "type": "node",

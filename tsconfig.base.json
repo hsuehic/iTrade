@@ -13,6 +13,11 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
 
+    /* === Decorator support (required for TypeORM) === */
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+
     /* === Path aliases for IDE autocomplete === */
     "baseUrl": ".",
     "paths": {

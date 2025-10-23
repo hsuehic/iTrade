@@ -11,13 +11,12 @@ import {
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
 import * as dotenv from 'dotenv';
-
-import { StrategyManager } from './strategy-manager';
+import { MovingAverageStrategy } from '@itrade/strategies';
 
 // Load environment variables from .env file
 dotenv.config();
 
-const logger = new ConsoleLogger(LogLevel.ERROR);
+const logger = new ConsoleLogger(LogLevel.INFO);
 
 async function main() {
   // Initialize database connection
@@ -30,7 +29,7 @@ async function main() {
     password: process.env.DB_PASSWORD || 'postgres',
     database: process.env.DB_DB || 'itrade',
     ssl: process.env.DB_SSL === 'true',
-    logging: ['error'],
+    logging: 'all',
     synchronize: false,
   });
 
@@ -48,12 +47,7 @@ async function main() {
   // Create engine
   const engine = new TradingEngine(riskManager, portfolioManager, logger);
 
-  // Initialize Strategy Manager
-  const strategyManager = new StrategyManager(engine, dataManager, logger);
-
-  logger.info(
-    '📊 iTrade Console started with database-driven strategy management'
-  );
+  logger.info('📊 iTrade Console started with database-driven strategy management');
 
   // Initialize exchanges dynamically based on database strategies
   const exchanges = new Map<string, any>();
@@ -118,14 +112,29 @@ async function main() {
   }
 
   logger.info(
-    `📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`
+    `📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`,
   );
 
   // Start trading engine
   await engine.start();
 
-  // Start strategy manager (loads strategies from database)
-  await strategyManager.start();
+  await engine.addStrategy(
+    'Ma',
+    new MovingAverageStrategy({
+      symbol: 'BTC/USDT',
+      exchange: 'okx',
+      fastPeriod: 10,
+      slowPeriod: 30,
+      threshold: 0.001,
+      subscription: {
+        ticker: true,
+        orderbook: true,
+        trades: false,
+        klines: false,
+        method: 'websocket',
+      },
+    }),
+  );
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('🚀 iTrade Trading System is LIVE');
@@ -138,7 +147,7 @@ async function main() {
   logger.info(
     '💰 Account polling service active (polling interval: ' +
       parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000') / 1000 +
-      's)'
+      's)',
   );
   logger.info('🛡️  Protection against WebSocket failures enabled');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -150,18 +159,16 @@ async function main() {
   // Track strategy signals with enhanced logging
   eventBus.onStrategySignal((signal) => {
     logger.info(
-      `🎯 SIGNAL: ${signal.strategyName} - ${signal.action} ${signal.symbol} @ ${signal.price}`
+      `🎯 SIGNAL: ${signal.strategyName} - ${signal.action} ${signal.symbol} @ ${signal.price}`,
     );
-    logger.info(
-      `   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`
-    );
+    logger.info(`   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`);
     logger.info(`   💭 Reason: ${signal.reason}`);
   });
 
   // Track order lifecycle
   eventBus.onOrderCreated((data) => {
     logger.info(
-      `📝 ORDER CREATED: ${data.order.side} ${data.order.quantity} ${data.order.symbol} @ ${data.order.price || 'MARKET'}`
+      `📝 ORDER CREATED: ${data.order.side} ${data.order.quantity} ${data.order.symbol} @ ${data.order.price || 'MARKET'}`,
     );
     logger.info(`   Order ID: ${data.order.id}`);
   });
@@ -169,13 +176,13 @@ async function main() {
   eventBus.onOrderFilled((data) => {
     logger.info(`✅ ORDER FILLED: ${data.order.id}`);
     logger.info(
-      `   Executed: ${data.order.executedQuantity} @ avg ${data.order.cummulativeQuoteQuantity?.div(data.order.executedQuantity || 1)}`
+      `   Executed: ${data.order.executedQuantity} @ avg ${data.order.cummulativeQuoteQuantity?.div(data.order.executedQuantity || 1)}`,
     );
   });
 
   eventBus.onOrderPartiallyFilled((data) => {
     logger.info(
-      `⏳ ORDER PARTIAL FILL: ${data.order.id} - ${data.order.executedQuantity}/${data.order.quantity}`
+      `⏳ ORDER PARTIAL FILL: ${data.order.id} - ${data.order.executedQuantity}/${data.order.quantity}`,
     );
   });
 
@@ -194,9 +201,6 @@ async function main() {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     try {
-      await strategyManager.stop();
-      logger.info('✅ Strategy manager stopped');
-
       await engine.stop();
       logger.info('✅ Trading engine stopped');
 
@@ -236,6 +240,20 @@ async function main() {
 
   process.on('unhandledRejection', (reason) => {
     logger.error('Unhandled rejection:', reason as Error);
+  });
+  eventBus.onTickerUpdate((data) => {
+    logger.info(`🔍 TICKER: ${data.symbol} - ${data.ticker.price.toString()}`);
+  });
+  eventBus.onOrderBookUpdate((data) => {
+    logger.info(
+      `🔍 ORDER BOOK: ${data.symbol} - ${data.orderbook.asks[0][0].toString()}`,
+    );
+  });
+  eventBus.onTradeUpdate((data) => {
+    logger.info(`🔍 TRADE: ${data.symbol} - ${data.trade.price}`);
+  });
+  eventBus.onKlineUpdate((data) => {
+    logger.info(`🔍 KLINE: ${data.symbol} - ${data.kline.close}`);
   });
 }
 

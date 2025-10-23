@@ -51,5 +51,15 @@
     "next-env.d.ts",
     ".next-dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/strategies" },
+    { "path": "../../packages/utils" },
+    { "path": "../../packages/logger" },
+    { "path": "../../packages/exchange-connectors" },
+    { "path": "../../packages/data-manager" },
+    { "path": "../../packages/risk-manager" },
+    { "path": "../../packages/portfolio-manager" }
+  ]
 }

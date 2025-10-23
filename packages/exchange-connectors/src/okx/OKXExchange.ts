@@ -38,8 +38,7 @@ export class OKXExchange extends BaseExchange {
   private static readonly MAINNET_BASE_URL = 'https://www.okx.com';
   private static readonly TESTNET_BASE_URL = 'https://www.okx.com'; // OKX 使用同一个 URL，通过 demo trading 模式区分
   private static readonly MAINNET_WS_URL_PUBLIC = OKX_WS_URLS.public;
-  private static readonly TESTNET_WS_URL =
-    'wss://wspap.okx.com:8443/ws/v5/public?brokerId=9999'; // Demo trading
+  private static readonly TESTNET_WS_URL = 'wss://wspap.okx.com/ws/v5/public'; // Demo trading
 
   private passphrase?: string;
   private isDemo: boolean;
@@ -475,6 +474,30 @@ export class OKXExchange extends BaseExchange {
   private createWsConnect(key: OkxWsType) {
     const wsUrl = this.buildWebSocketUrl(key);
     const ws = new WebSocket(wsUrl);
+    ws.on('ping', () => ws.pong());
+    ws.on('message', (data: string) => {
+      try {
+        const message = JSON.parse(data);
+        this.handleWebSocketMessage(message);
+      } catch (error) {
+        this.emit('ws_error', error);
+      }
+    });
+    ws.on('close', (reason) => {
+      this.emit('ws_disconnected', this.name);
+      this.wsConnections.delete('market');
+      if (reason !== 1000) {
+        setTimeout(() => {
+          this.createWsConnect(key).catch((error) => {
+            this.emit('ws_error', error);
+          });
+        }, 5000);
+      }
+    });
+    ws.on('error', (error: Error) => {
+      this.emit('ws_error', error);
+    });
+    this.wsConnections.set(key, ws);
     return new Promise((resolve) => {
       ws.on('open', () => {
         this.emit('ws_connected', this.name);
@@ -497,6 +520,8 @@ export class OKXExchange extends BaseExchange {
       op: 'subscribe',
       args: [channel],
     };
+
+    console.log(subscribeMsg);
 
     const wsReady = this.wsConnections.get('market');
     if (wsReady && wsReady.readyState === WebSocket.OPEN) {
