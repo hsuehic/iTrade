@@ -71,13 +71,15 @@ class DesignBottomNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           for (int i = 0; i < items.length; i++)
-            _NavItem(
-              spec: items[i],
-              selected: i == currentIndex,
-              onTap: () => onTap(i),
-              iconSize: iconSize,
-              labelSize: labelSize,
-              labelWeight: labelWeight,
+            Expanded(
+              child: _NavItem(
+                spec: items[i],
+                selected: i == currentIndex,
+                onTap: () => onTap(i),
+                iconSize: iconSize,
+                labelSize: labelSize,
+                labelWeight: labelWeight,
+              ),
             ),
         ],
       ),
@@ -132,6 +134,10 @@ class _NavItem extends StatelessWidget {
                 fontWeight: labelWeight,
                 letterSpacing: 0.1,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              softWrap: false,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
