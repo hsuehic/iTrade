@@ -15,6 +15,7 @@
         android:normalScreens="true"
         android:largeScreens="false"
         android:xlargeScreens="false"
+        android:resizeable="false"
         android:anyDensity="true" />
     <application
         android:label="iTrade"
