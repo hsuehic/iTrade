@@ -36,6 +36,7 @@ import {
   SubscriptionParamValue,
 } from '../types';
 import { EventBus } from '../events';
+import { PrecisionUtils } from '../utils/PrecisionUtils';
 
 import { SubscriptionCoordinator } from './SubscriptionCoordinator';
 
@@ -544,37 +545,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       throw new Error('Trading engine is not running');
     }
 
-    // Get current positions and balances for risk checking
-    const positions = await this.portfolioManager.getPositions();
-    const balances = await this.portfolioManager.getBalances();
-
-    // Create order object for risk checking
-    const order: Order = {
-      id: uuidv4(),
-      clientOrderId: `${strategyName}_${Date.now()}`,
-      symbol,
-      side,
-      type,
-      quantity,
-      price,
-      stopPrice,
-      status: 'NEW' as OrderStatus,
-      timeInForce: 'GTC' as TimeInForce,
-      timestamp: new Date(),
-    };
-
-    // Check risk limits
-    const riskCheckPassed = await this.riskManager.checkOrderRisk(
-      order,
-      positions,
-      balances,
-    );
-    if (!riskCheckPassed) {
-      const error = new Error(`Order rejected by risk manager: ${JSON.stringify(order)}`);
-      this.logger.error('Order rejected by risk manager', error, { order });
-      throw error;
-    }
-
     const strategy = this._strategies.get(strategyName);
     const exchangeConfig = strategy?.parameters.exchange;
 
@@ -597,14 +567,115 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
-      // Execute the order
+      // Fetch symbol info to get precision requirements
+      const symbolInfo = await exchange.getSymbolInfo(symbol);
+
+      // Apply precision to quantity
+      let adjustedQuantity = PrecisionUtils.roundQuantity(
+        quantity,
+        symbolInfo.stepSize,
+        symbolInfo.quantityPrecision,
+      );
+
+      // Validate quantity meets exchange requirements
+      PrecisionUtils.validateQuantity(
+        adjustedQuantity,
+        symbolInfo.minQuantity,
+        symbolInfo.maxQuantity,
+        symbolInfo.stepSize,
+      );
+
+      // Apply precision to price (if provided)
+      let adjustedPrice = price;
+      if (price) {
+        adjustedPrice = PrecisionUtils.roundPrice(
+          price,
+          symbolInfo.tickSize,
+          symbolInfo.pricePrecision,
+        );
+
+        // Validate price
+        PrecisionUtils.validatePrice(adjustedPrice, symbolInfo.tickSize);
+
+        // Validate notional value (quantity * price)
+        PrecisionUtils.validateNotional(
+          adjustedQuantity,
+          adjustedPrice,
+          symbolInfo.minNotional,
+        );
+      }
+
+      // Apply precision to stop price (if provided)
+      let adjustedStopPrice = stopPrice;
+      if (stopPrice) {
+        adjustedStopPrice = PrecisionUtils.roundPrice(
+          stopPrice,
+          symbolInfo.tickSize,
+          symbolInfo.pricePrecision,
+        );
+
+        // Validate stop price
+        PrecisionUtils.validatePrice(adjustedStopPrice, symbolInfo.tickSize);
+      }
+
+      // Log precision adjustments if any changes were made
+      if (!adjustedQuantity.equals(quantity)) {
+        this.logger.info(
+          `Adjusted quantity for ${symbol}: ${quantity.toString()} → ${adjustedQuantity.toString()}`,
+        );
+      }
+      if (price && adjustedPrice && !adjustedPrice.equals(price)) {
+        this.logger.info(
+          `Adjusted price for ${symbol}: ${price.toString()} → ${adjustedPrice.toString()}`,
+        );
+      }
+      if (stopPrice && adjustedStopPrice && !adjustedStopPrice.equals(stopPrice)) {
+        this.logger.info(
+          `Adjusted stop price for ${symbol}: ${stopPrice.toString()} → ${adjustedStopPrice.toString()}`,
+        );
+      }
+
+      // Get current positions and balances for risk checking
+      const positions = await this.portfolioManager.getPositions();
+      const balances = await this.portfolioManager.getBalances();
+
+      // Create order object for risk checking (with adjusted values)
+      const order: Order = {
+        id: uuidv4(),
+        clientOrderId: `${strategyName}_${Date.now()}`,
+        symbol,
+        side,
+        type,
+        quantity: adjustedQuantity,
+        price: adjustedPrice,
+        stopPrice: adjustedStopPrice,
+        status: 'NEW' as OrderStatus,
+        timeInForce: 'GTC' as TimeInForce,
+        timestamp: new Date(),
+      };
+
+      // Check risk limits
+      const riskCheckPassed = await this.riskManager.checkOrderRisk(
+        order,
+        positions,
+        balances,
+      );
+      if (!riskCheckPassed) {
+        const error = new Error(
+          `Order rejected by risk manager: ${JSON.stringify(order)}`,
+        );
+        this.logger.error('Order rejected by risk manager', error, { order });
+        throw error;
+      }
+
+      // Execute the order with adjusted values
       const executedOrder = await exchange.createOrder(
         symbol,
         side,
         type,
-        quantity,
-        price,
-        stopPrice,
+        adjustedQuantity,
+        adjustedPrice,
+        adjustedStopPrice,
         'GTC' as TimeInForce,
         order.clientOrderId,
       );
@@ -617,7 +688,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this.logger.logTrade('Order executed', { order: executedOrder });
       return executedOrder;
     } catch (error) {
-      this.logger.error('Failed to execute order', error as Error, { order });
+      this.logger.error('Failed to execute order', error as Error, { params });
       throw error;
     }
   }

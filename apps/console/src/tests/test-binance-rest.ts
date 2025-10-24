@@ -78,6 +78,30 @@ class BinanceRESTTest extends BaseRESTTest {
     } catch (error) {
       this.logger.error('  ❌ getKlines failed:', error as Error);
     }
+
+    // Test SymbolInfo
+    try {
+      this.logger.info(`\n🔍 Testing getSymbolInfo for ${spotSymbol}...`);
+      const symbolInfo = await binance.getSymbolInfo(spotSymbol);
+      if (symbolInfo) {
+        this.logger.info(`  ✅ Symbol: ${symbolInfo.symbol}`);
+        this.logger.info(
+          `  ✅ Base: ${symbolInfo.baseAsset}, Quote: ${symbolInfo.quoteAsset}`,
+        );
+        this.logger.info(
+          `  ✅ Price Precision: ${symbolInfo.pricePrecision}, Quantity Precision: ${symbolInfo.quantityPrecision}`,
+        );
+        this.logger.info(
+          `  ✅ Min Quantity: ${symbolInfo.minQuantity.toString()}, Tick Size: ${symbolInfo.tickSize.toString()}`,
+        );
+        this.logger.info(
+          `  ✅ Market: ${symbolInfo.market}, Status: ${symbolInfo.status}`,
+        );
+        this.results.marketData.symbolInfo = true;
+      }
+    } catch (error) {
+      this.logger.error('  ❌ getSymbolInfo failed:', error as Error);
+    }
   }
 
   protected async testAccountData(exchange: IExchange): Promise<void> {

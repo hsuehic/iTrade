@@ -17,6 +17,7 @@ import {
   Balance,
   Position,
   ExchangeInfo,
+  SymbolInfo,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -367,6 +368,91 @@ export class BinanceExchange extends BaseExchange {
   public async getSymbols(): Promise<string[]> {
     const exchangeInfo = await this.getExchangeInfo();
     return exchangeInfo.symbols;
+  }
+
+  public async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
+    // Normalize symbol to Binance format
+    const binanceSymbol = this.normalizeSymbol(symbol);
+
+    // Fetch exchange info
+    const response = await this.httpClient.get('/api/v3/exchangeInfo', {
+      params: { symbol: binanceSymbol },
+    });
+
+    const symbolData = response.data.symbols?.[0];
+    if (!symbolData) {
+      throw new Error(`Symbol ${symbol} not found on Binance`);
+    }
+
+    // Extract precision and filters
+    const baseAssetPrecision = symbolData.baseAssetPrecision || 8;
+    const quotePrecision = symbolData.quotePrecision || 8;
+
+    // Parse filters
+    let minQuantity = new Decimal(0);
+    let maxQuantity: Decimal | undefined;
+    let minNotional = new Decimal(0);
+    let stepSize = new Decimal(0);
+    let tickSize = new Decimal(0);
+
+    for (const filter of symbolData.filters || []) {
+      switch (filter.filterType) {
+        case 'LOT_SIZE':
+          minQuantity = new Decimal(filter.minQty || 0);
+          maxQuantity = filter.maxQty ? new Decimal(filter.maxQty) : undefined;
+          stepSize = new Decimal(filter.stepSize || 0);
+          break;
+        case 'PRICE_FILTER':
+          tickSize = new Decimal(filter.tickSize || 0);
+          break;
+        case 'MIN_NOTIONAL':
+        case 'NOTIONAL':
+          minNotional = new Decimal(filter.minNotional || filter.notional || 0);
+          break;
+      }
+    }
+
+    // Determine market type (spot by default)
+    const market =
+      binanceSymbol.includes('_PERP') || binanceSymbol.includes('_SWAP')
+        ? 'futures'
+        : 'spot';
+
+    // Denormalize symbol back to unified format
+    const unifiedSymbol = this.denormalizeSymbol(binanceSymbol, market);
+
+    return {
+      symbol: unifiedSymbol,
+      nativeSymbol: binanceSymbol,
+      baseAsset: symbolData.baseAsset,
+      quoteAsset: symbolData.quoteAsset,
+      pricePrecision: quotePrecision,
+      quantityPrecision: baseAssetPrecision,
+      minQuantity,
+      maxQuantity,
+      minNotional,
+      stepSize,
+      tickSize,
+      status: this.mapBinanceStatus(symbolData.status),
+      market,
+    };
+  }
+
+  private mapBinanceStatus(
+    status: string,
+  ): 'active' | 'inactive' | 'pre_trading' | 'post_trading' {
+    switch (status) {
+      case 'TRADING':
+        return 'active';
+      case 'PRE_TRADING':
+        return 'pre_trading';
+      case 'POST_TRADING':
+        return 'post_trading';
+      case 'HALT':
+      case 'BREAK':
+      default:
+        return 'inactive';
+    }
   }
 
   /**

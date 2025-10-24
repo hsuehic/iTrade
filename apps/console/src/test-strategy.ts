@@ -7,15 +7,15 @@ async function main() {
     'MovingWindowGrids',
     new MovingWindowGridsStrategy({
       exchange: 'okx',
-      symbol: 'BTC/USDT',
+      symbol: 'WLD/USDT:USDT',
       windowSize: 10,
       gridSize: 10,
       gridCount: 10,
       subscription: {
         ticker: false,
         klines: {
-          enabled: false,
-          interval: '15m',
+          enabled: true,
+          interval: '5m',
         },
         trades: false,
         orderbook: {

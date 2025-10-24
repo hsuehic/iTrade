@@ -17,6 +17,7 @@ import {
   Balance,
   Position,
   ExchangeInfo,
+  SymbolInfo,
   ExchangeCredentials,
 } from '@itrade/core';
 
@@ -498,6 +499,93 @@ export class OKXExchange extends BaseExchange {
     return exchangeInfo.symbols;
   }
 
+  public async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
+    // Normalize symbol to OKX format
+    const okxSymbol = this.normalizeSymbol(symbol);
+
+    // Determine instrument type
+    let instType = 'SPOT';
+    if (okxSymbol.endsWith('-SWAP')) {
+      instType = 'SWAP';
+    } else if (okxSymbol.match(/-\d{6}$/)) {
+      instType = 'FUTURES';
+    }
+
+    // Fetch instrument info
+    const response = await this.httpClient.get('/api/v5/public/instruments', {
+      params: { instType, instId: okxSymbol },
+    });
+
+    const instrumentData = response.data.data?.[0];
+    if (!instrumentData) {
+      throw new Error(`Symbol ${symbol} not found on OKX`);
+    }
+
+    // Extract precision from lotSz and tickSz
+    const lotSz = instrumentData.lotSz || '1';
+    const tickSz = instrumentData.tickSz || '0.01';
+    const minSz = instrumentData.minSz || lotSz;
+
+    // Calculate precision from tick/lot size
+    const quantityPrecision = this.calculatePrecision(lotSz);
+    const pricePrecision = this.calculatePrecision(tickSz);
+
+    // Parse min notional (minSz * price)
+    const minQuantity = new Decimal(minSz);
+    const stepSize = new Decimal(lotSz);
+    const tickSize = new Decimal(tickSz);
+
+    // OKX doesn't provide minNotional directly, estimate from minSz
+    const minNotional = new Decimal(instrumentData.minSz || '10');
+
+    // Determine market type
+    const market =
+      instType === 'SPOT' ? 'spot' : instType === 'SWAP' ? 'swap' : 'futures';
+
+    // Denormalize symbol back to unified format
+    const unifiedSymbol = this.denormalizeSymbol(okxSymbol);
+
+    return {
+      symbol: unifiedSymbol,
+      nativeSymbol: okxSymbol,
+      baseAsset: instrumentData.baseCcy || '',
+      quoteAsset: instrumentData.quoteCcy || instrumentData.settleCcy || '',
+      pricePrecision,
+      quantityPrecision,
+      minQuantity,
+      maxQuantity: instrumentData.maxMktSz
+        ? new Decimal(instrumentData.maxMktSz)
+        : undefined,
+      minNotional,
+      stepSize,
+      tickSize,
+      status: this.mapOKXStatus(instrumentData.state),
+      market,
+    };
+  }
+
+  private calculatePrecision(sizeString: string): number {
+    // Calculate decimal places from a string like "0.01" -> 2, "0.001" -> 3
+    const parts = sizeString.split('.');
+    if (parts.length === 1) return 0;
+    return parts[1].length;
+  }
+
+  private mapOKXStatus(
+    state: string,
+  ): 'active' | 'inactive' | 'pre_trading' | 'post_trading' {
+    switch (state) {
+      case 'live':
+        return 'active';
+      case 'preopen':
+        return 'pre_trading';
+      case 'suspend':
+      case 'expired':
+      default:
+        return 'inactive';
+    }
+  }
+
   protected normalizeSymbol(symbol: string): string {
     // Convert common formats to OKX format
     // Spot: BTC/USDT -> BTC-USDT
@@ -699,7 +787,13 @@ export class OKXExchange extends BaseExchange {
       } else if (channel === 'trades') {
         this.emit('trade', originalSymbol, this.transformOKXTrade(data, instId));
       } else if (channel.startsWith('candle')) {
-        this.emit('kline', originalSymbol, this.transformOKXKline(data, instId));
+        // Extract interval from channel name (e.g., "candle5m" -> "5m")
+        const interval = channel.replace('candle', '');
+        this.emit(
+          'kline',
+          originalSymbol,
+          this.transformOKXKline(data, instId, interval),
+        );
       } else if (channel === 'orders') {
         const order = this.transformOKXPrivateOrder(data);
         this.emit('orderUpdate', order.symbol, order);
@@ -935,15 +1029,28 @@ export class OKXExchange extends BaseExchange {
     };
   }
 
-  private transformOKXKline(data: any, symbol: string): Kline {
+  private transformOKXKline(data: any, symbol: string, interval: string = '1m'): Kline {
     // OKX kline data format: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
     // Index 8 (confirm field): "0" = K line is uncompleted, "1" = K line is completed
     // Reference: https://www.okx.com/docs-v5/en/#websocket-api-public-channel-candlesticks-channel
+
+    // Debug: Log RAW kline data when closed
+    if (data[8] === '1') {
+      console.log(
+        `[OKX] RAW CLOSED KLINE: ts=${data[0]}, o=${data[1]}, h=${data[2]}, l=${data[3]}, c=${data[4]}, confirm=${data[8]}, interval=${interval}`,
+      );
+    }
+
+    // Calculate closeTime based on openTime + interval duration
+    const openTime = parseInt(data[0]);
+    const intervalMs = this.getIntervalMs(interval);
+    const closeTime = openTime + intervalMs;
+
     return {
       symbol: symbol,
-      interval: data.bar || '1m',
-      openTime: new Date(parseInt(data[0])),
-      closeTime: new Date(parseInt(data[0]) + 60000),
+      interval: interval,
+      openTime: new Date(openTime),
+      closeTime: new Date(closeTime),
       open: this.formatDecimal(data[1]),
       high: this.formatDecimal(data[2]),
       low: this.formatDecimal(data[3]),

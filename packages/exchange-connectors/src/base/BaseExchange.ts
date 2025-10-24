@@ -18,6 +18,7 @@ import {
   Position,
   ExchangeCredentials,
   ExchangeInfo,
+  SymbolInfo,
 } from '@itrade/core';
 
 export abstract class BaseExchange extends EventEmitter implements IExchange {
@@ -114,6 +115,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
 
   public abstract getExchangeInfo(): Promise<ExchangeInfo>;
   public abstract getSymbols(): Promise<string[]>;
+  public abstract getSymbolInfo(symbol: string): Promise<SymbolInfo>;
 
   // WebSocket subscription methods - must be implemented per exchange
   public abstract subscribeToTicker(symbol: string): Promise<void>;

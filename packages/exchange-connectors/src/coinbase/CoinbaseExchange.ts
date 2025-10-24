@@ -17,6 +17,7 @@ import {
   Balance,
   Position,
   ExchangeInfo,
+  SymbolInfo,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -459,6 +460,83 @@ export class CoinbaseExchange extends BaseExchange {
   public async getSymbols(): Promise<string[]> {
     const info = await this.getExchangeInfo();
     return info.symbols;
+  }
+
+  public async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
+    // Normalize symbol to Coinbase format
+    const coinbaseSymbol = this.normalizeSymbol(symbol);
+
+    // Fetch product info
+    const response = await this.httpClient.get(
+      `/api/v3/brokerage/products/${coinbaseSymbol}`,
+    );
+
+    const product = response.data;
+    if (!product) {
+      throw new Error(`Symbol ${symbol} not found on Coinbase`);
+    }
+
+    // Extract precision from quote/base increment
+    const baseIncrement = product.base_increment || '0.01';
+    const quoteIncrement = product.quote_increment || '0.01';
+
+    const quantityPrecision = this.calculatePrecision(baseIncrement);
+    const pricePrecision = this.calculatePrecision(quoteIncrement);
+
+    // Parse min/max values
+    const minQuantity = new Decimal(product.base_min_size || '0');
+    const maxQuantity = product.base_max_size
+      ? new Decimal(product.base_max_size)
+      : undefined;
+    const minNotional = new Decimal(product.quote_min_size || '0');
+    const stepSize = new Decimal(baseIncrement);
+    const tickSize = new Decimal(quoteIncrement);
+
+    // Determine market type
+    const market = coinbaseSymbol.includes('-PERP-INTX') ? 'swap' : 'spot';
+
+    // Denormalize symbol back to unified format
+    const unifiedSymbol = this.denormalizeSymbol(coinbaseSymbol);
+
+    // Extract base and quote currency
+    const baseAsset = product.base_currency_id || product.base_name || '';
+    const quoteAsset = product.quote_currency_id || product.quote_name || '';
+
+    return {
+      symbol: unifiedSymbol,
+      nativeSymbol: coinbaseSymbol,
+      baseAsset,
+      quoteAsset,
+      pricePrecision,
+      quantityPrecision,
+      minQuantity,
+      maxQuantity,
+      minNotional,
+      stepSize,
+      tickSize,
+      status: this.mapCoinbaseStatus(product.status),
+      market,
+    };
+  }
+
+  private calculatePrecision(sizeString: string): number {
+    // Calculate decimal places from a string like "0.01" -> 2, "0.001" -> 3
+    const parts = sizeString.split('.');
+    if (parts.length === 1) return 0;
+    return parts[1].length;
+  }
+
+  private mapCoinbaseStatus(
+    status: string,
+  ): 'active' | 'inactive' | 'pre_trading' | 'post_trading' {
+    switch (status?.toUpperCase()) {
+      case 'ONLINE':
+        return 'active';
+      case 'OFFLINE':
+        return 'inactive';
+      default:
+        return 'inactive';
+    }
   }
 
   /**

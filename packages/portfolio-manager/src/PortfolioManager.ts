@@ -27,14 +27,15 @@ export class PortfolioManager extends EventEmitter implements IPortfolioManager 
       this.setBalance('USDC', initialBalance, new Decimal(0));
     }
   }
-  getPortfolioValue(): Promise<Decimal> {
-    throw new Error('Method not implemented.');
+  async getPortfolioValue(): Promise<Decimal> {
+    await this.updateTotalValue();
+    return this.getTotalValue();
   }
-  getPositions(): Promise<Position[]> {
-    throw new Error('Method not implemented.');
+  async getPositions(): Promise<Position[]> {
+    return this.getAllPositions();
   }
-  getBalances(): Promise<Balance[]> {
-    throw new Error('Method not implemented.');
+  async getBalances(): Promise<Balance[]> {
+    return this.getAllBalances();
   }
   closePosition(symbol: string): Promise<void> {
     console.log(symbol);

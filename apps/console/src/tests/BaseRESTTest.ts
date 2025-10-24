@@ -19,6 +19,7 @@ export interface RESTTestMetrics {
     orderbook: boolean;
     trades: boolean;
     klines: boolean;
+    symbolInfo: boolean;
   };
   accountData: {
     accountInfo: boolean;
@@ -54,6 +55,7 @@ export abstract class BaseRESTTest {
         orderbook: false,
         trades: false,
         klines: false,
+        symbolInfo: false,
       },
       accountData: {
         accountInfo: false,
@@ -104,16 +106,19 @@ export abstract class BaseRESTTest {
     // Market Data
     this.logger.info('\n📈 MARKET DATA:');
     this.logger.info(
-      `  Ticker:    ${this.results.marketData.ticker ? '✅ PASS' : '❌ FAIL'}`,
+      `  Ticker:     ${this.results.marketData.ticker ? '✅ PASS' : '❌ FAIL'}`,
     );
     this.logger.info(
-      `  OrderBook: ${this.results.marketData.orderbook ? '✅ PASS' : '❌ FAIL'}`,
+      `  OrderBook:  ${this.results.marketData.orderbook ? '✅ PASS' : '❌ FAIL'}`,
     );
     this.logger.info(
-      `  Trades:    ${this.results.marketData.trades ? '✅ PASS' : '❌ FAIL'}`,
+      `  Trades:     ${this.results.marketData.trades ? '✅ PASS' : '❌ FAIL'}`,
     );
     this.logger.info(
-      `  Klines:    ${this.results.marketData.klines ? '✅ PASS' : '❌ FAIL'}`,
+      `  Klines:     ${this.results.marketData.klines ? '✅ PASS' : '❌ FAIL'}`,
+    );
+    this.logger.info(
+      `  SymbolInfo: ${this.results.marketData.symbolInfo ? '✅ PASS' : '❌ FAIL'}`,
     );
 
     // Account Data
@@ -137,7 +142,7 @@ export abstract class BaseRESTTest {
     }
 
     // Calculate totals
-    const totalMarketDataTests = 4;
+    const totalMarketDataTests = 5; // ticker, orderbook, trades, klines, symbolInfo
     const totalAccountDataTests = hasCredentials ? 4 : 0;
     const totalTests = totalMarketDataTests + totalAccountDataTests;
 

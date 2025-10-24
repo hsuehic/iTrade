@@ -73,3 +73,6 @@ export type { StrategyRecoveryResult } from './models/StrategyStateManager';
 // Subscription Management
 export { SubscriptionCoordinator } from './engine/SubscriptionCoordinator';
 export { SubscriptionManager } from './engine/SubscriptionManager'; // Legacy
+
+// Utilities
+export { PrecisionUtils } from './utils/PrecisionUtils';

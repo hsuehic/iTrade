@@ -178,6 +178,23 @@ export interface ExchangeInfo {
   };
 }
 
+// Symbol/Product Precision Information
+export interface SymbolInfo {
+  symbol: string; // Unified format (e.g., BTC/USDT)
+  nativeSymbol: string; // Exchange-specific format (e.g., BTCUSDT, BTC-USDT)
+  baseAsset: string; // e.g., BTC
+  quoteAsset: string; // e.g., USDT
+  pricePrecision: number; // Number of decimal places for price
+  quantityPrecision: number; // Number of decimal places for quantity
+  minQuantity: Decimal; // Minimum order quantity
+  maxQuantity?: Decimal; // Maximum order quantity (optional)
+  minNotional: Decimal; // Minimum order value (quantity * price)
+  stepSize: Decimal; // Quantity increment (e.g., 0.01)
+  tickSize: Decimal; // Price increment (e.g., 0.01)
+  status: 'active' | 'inactive' | 'pre_trading' | 'post_trading';
+  market: 'spot' | 'futures' | 'swap' | 'option';
+}
+
 // Event Types
 export interface MarketDataEvent {
   type: 'ticker' | 'orderbook' | 'trade' | 'kline';

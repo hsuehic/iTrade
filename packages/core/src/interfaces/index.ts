@@ -16,6 +16,7 @@ import {
   Position,
   ExchangeCredentials,
   ExchangeInfo,
+  SymbolInfo,
   StrategyParameters,
   StrategyResult,
   BacktestConfig,
@@ -81,6 +82,7 @@ export interface IExchange extends EventEmitter {
   // Exchange Info
   getExchangeInfo(): Promise<ExchangeInfo>;
   getSymbols(): Promise<string[]>;
+  getSymbolInfo(symbol: string): Promise<SymbolInfo>;
 }
 
 // Strategy State Management Types
