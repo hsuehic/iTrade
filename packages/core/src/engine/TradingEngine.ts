@@ -185,13 +185,26 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     return this._strategies.get(name);
   }
 
-  public addExchange(name: string, exchange: IExchange): void {
+  public async addExchange(name: string, exchange: IExchange): Promise<void> {
     if (this._exchanges.has(name)) {
       throw new Error(`Exchange ${name} already exists`);
     }
 
     this._exchanges.set(name, exchange);
     this.setupExchangeListeners(exchange);
+
+    // Auto-subscribe to user data if exchange has credentials
+    if (exchange.isConnected) {
+      try {
+        await exchange.subscribeToUserData();
+        this.logger.info(`✅ Subscribed to user data for exchange: ${name}`);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to subscribe to user data for ${name}: ${(error as Error).message}`,
+        );
+      }
+    }
+
     this.logger.info(`Added exchange: ${name}`);
   }
 
@@ -745,6 +758,44 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         timestamp: new Date(),
       });
       this.onKline(symbol, kline, exchangeName);
+    });
+
+    // Listen for user data updates
+    exchange.on('orderUpdate', (symbol: string, order: Order) => {
+      this.logger.info(
+        `📦 Order Update from ${exchangeName}: ${symbol} - ${order.status}`,
+      );
+      // Emit order event based on status
+      switch (order.status) {
+        case 'FILLED':
+          this._eventBus.emitOrderFilled({ order, timestamp: new Date() });
+          break;
+        case 'PARTIALLY_FILLED':
+          this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
+          break;
+        case 'CANCELED':
+          this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
+          break;
+        case 'REJECTED':
+          this._eventBus.emitOrderRejected({ order, timestamp: new Date() });
+          break;
+        default:
+          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+      }
+    });
+
+    exchange.on('accountUpdate', (exchangeId: string, balances: any[]) => {
+      this.logger.info(
+        `💰 Account Update from ${exchangeName}: ${balances.length} balances`,
+      );
+      this._eventBus.emitBalanceUpdate({ balances, timestamp: new Date() });
+    });
+
+    exchange.on('positionUpdate', (exchangeId: string, positions: Position[]) => {
+      this.logger.info(
+        `📊 Position Update from ${exchangeName}: ${positions.length} positions`,
+      );
+      this._eventBus.emitPositionUpdate({ positions, timestamp: new Date() });
     });
   }
 

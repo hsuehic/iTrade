@@ -65,7 +65,7 @@ async function main() {
         secretKey: process.env.BINANCE_SECRET_KEY || '',
         sandbox: !USE_MAINNET_FOR_DATA,
       });
-      engine.addExchange('binance', binance);
+      await engine.addExchange('binance', binance);
       exchanges.set('binance', binance);
       logger.info('✅ Binance exchange initialized');
     } catch (error) {
@@ -81,7 +81,7 @@ async function main() {
         secretKey: process.env.COINBASE_SECRET_KEY,
         sandbox: !USE_MAINNET_FOR_DATA,
       });
-      engine.addExchange('coinbase', coinbase);
+      await engine.addExchange('coinbase', coinbase);
       exchanges.set('coinbase', coinbase);
       logger.info('✅ Coinbase exchange initialized');
     } catch (error) {
@@ -103,7 +103,7 @@ async function main() {
         passphrase: process.env.OKX_PASSPHRASE,
         sandbox: !USE_MAINNET_FOR_DATA,
       });
-      engine.addExchange('okx', okx);
+      await engine.addExchange('okx', okx);
       exchanges.set('okx', okx);
       logger.info('✅ OKX exchange initialized');
     } catch (error) {
@@ -117,48 +117,61 @@ async function main() {
 
   // Start trading engine
   await engine.start();
+  const ma1 = new MovingAverageStrategy({
+    symbol: 'BTC/USDT',
+    exchange: 'binance',
+    fastPeriod: 10,
+    slowPeriod: 30,
+    threshold: 0.001,
+    subscription: {
+      ticker: true,
+      orderbook: true,
+      trades: true,
+      klines: true,
+      method: 'websocket',
+    },
+  });
 
-  await engine.addStrategy(
-    'Ma 1',
-    new MovingAverageStrategy({
-      symbol: 'BTC/USDT',
-      exchange: 'binance',
-      fastPeriod: 10,
-      slowPeriod: 30,
-      threshold: 0.001,
-      subscription: {
-        ticker: true,
-        orderbook: true,
-        trades: true,
-        klines: true,
-        method: 'websocket',
-      },
-    }),
-  );
+  const ma2 = new MovingAverageStrategy({
+    symbol: 'BTC/USDT:USDT', // Futures symbol to test futures WebSocket endpoint
+    exchange: 'binance',
+    fastPeriod: 10,
+    slowPeriod: 30,
+    threshold: 0.001,
+    subscription: {
+      ticker: true,
+      orderbook: true,
+      trades: true,
+      klines: true,
+      method: 'websocket',
+    },
+  });
 
-  await engine.addStrategy(
-    'Ma 2',
-    new MovingAverageStrategy({
-      symbol: 'BTC/USDT:USDT', // Futures symbol to test futures WebSocket endpoint
-      exchange: 'binance',
-      fastPeriod: 10,
-      slowPeriod: 30,
-      threshold: 0.001,
-      subscription: {
-        ticker: true,
-        orderbook: true,
-        trades: true,
-        klines: true,
-        method: 'websocket',
-      },
-    }),
-  );
+  // await engine.addStrategy('Ma 1', ma1);
 
-  // Uncomment to test strategy removal and keep-alive behavior
-  setTimeout(async () => {
-    await engine.removeStrategy('Ma 1');
-    await engine.removeStrategy('Ma 2');
-  }, 5000);
+  // await engine.addStrategy('Ma 2', ma2);
+
+  // // Uncomment to test strategy removal and keep-alive behavior
+  // setTimeout(async () => {
+  //   await engine.removeStrategy('Ma 1');
+  //   await engine.removeStrategy('Ma 2');
+  // }, 5000);
+
+  // setTimeout(async () => {
+  //   await engine.addStrategy('Ma 1', ma1);
+  // }, 10000);
+
+  // setTimeout(async () => {
+  //   await engine.addStrategy('Ma 2', ma2);
+  // }, 15000);
+
+  // setTimeout(async () => {
+  //   await engine.removeStrategy('Ma 2');
+  // }, 20000);
+
+  // setTimeout(async () => {
+  //   await engine.removeStrategy('Ma 1');
+  // }, 25000);
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('🚀 iTrade Trading System is LIVE');
@@ -266,17 +279,21 @@ async function main() {
     logger.error('Unhandled rejection:', reason as Error);
   });
   eventBus.onTickerUpdate((data) => {
+    console.log(data);
     logger.info(`🔍 TICKER: ${data.symbol} - ${data.ticker.price.toString()}`);
   });
   eventBus.onOrderBookUpdate((data) => {
+    console.log(data);
     logger.info(
       `🔍 ORDER BOOK: ${data.symbol} - ${data.orderbook.asks[0][0].toString()}`,
     );
   });
   eventBus.onTradeUpdate((data) => {
+    console.log(data);
     logger.info(`🔍 TRADE: ${data.symbol} - ${data.trade.price}`);
   });
   eventBus.onKlineUpdate((data) => {
+    console.log(data);
     logger.info(`🔍 KLINE: ${data.symbol} - ${data.kline.close}`);
   });
 }

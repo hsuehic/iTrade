@@ -50,6 +50,7 @@ export interface IExchange extends EventEmitter {
   subscribeToOrderBook(symbol: string): Promise<void>;
   subscribeToTrades(symbol: string): Promise<void>;
   subscribeToKlines(symbol: string, interval: string): Promise<void>;
+  subscribeToUserData(): Promise<void>;
   unsubscribe(
     symbol: string,
     type: 'ticker' | 'orderbook' | 'trades' | 'klines',
@@ -154,6 +155,10 @@ export interface ITradingEngine extends EventEmitter {
   addStrategy(name: string, strategy: IStrategy): void;
   removeStrategy(name: string): void;
   getStrategy(name: string): IStrategy | undefined;
+
+  // Exchange Management
+  addExchange(name: string, exchange: IExchange): Promise<void>;
+  removeExchange(name: string): void;
 
   // Market Data Handling
   onMarketData(symbol: string, data: Ticker | OrderBook | Trade | Kline): Promise<void>;

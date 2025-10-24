@@ -577,16 +577,25 @@ export class OKXExchange extends BaseExchange {
     // OKX 的消息格式
     if (message.event === 'subscribe') {
       this.emit('ws_subscribed', message.arg);
+      console.log(`[OKX] Subscription confirmed:`, message.arg);
       return;
     }
 
     if (message.event === 'error') {
+      console.error(`[OKX] WebSocket error:`, message.msg, message);
       this.emit('ws_error', new Error(message.msg));
       return;
     }
 
     if (message.event === 'login') {
       // Private login ack
+      if (message.code === '0') {
+        console.log('[OKX] Private WebSocket login successful');
+        this.okxPrivateAuthenticated = true;
+      } else {
+        console.error('[OKX] Private WebSocket login failed:', message.msg);
+        this.okxPrivateAuthenticated = false;
+      }
       return;
     }
 
@@ -609,6 +618,10 @@ export class OKXExchange extends BaseExchange {
         const { balances, positions } = this.transformOKXBalanceAndPosition(data);
         if (balances.length) this.emit('accountUpdate', 'okx', balances);
         if (positions.length) this.emit('positionUpdate', 'okx', positions);
+      } else if (channel === 'account') {
+        // Handle account channel (spot balance updates)
+        const balances = this.transformOKXAccount(data);
+        if (balances.length) this.emit('accountUpdate', 'okx', balances);
       }
     }
   }
@@ -907,6 +920,26 @@ export class OKXExchange extends BaseExchange {
     return { balances, positions };
   }
 
+  private transformOKXAccount(data: any): Balance[] {
+    // Transform OKX account channel data (spot balances)
+    const balances: Balance[] = [];
+
+    if (Array.isArray(data.details)) {
+      for (const detail of data.details) {
+        const free = this.formatDecimal(detail.availBal || '0');
+        const locked = this.formatDecimal(detail.frozenBal || '0');
+        balances.push({
+          asset: detail.ccy,
+          free,
+          locked,
+          total: free.add(locked),
+        });
+      }
+    }
+
+    return balances;
+  }
+
   private getOKXChannel(type: string, symbol: string): any {
     const instId = this.normalizeSymbol(symbol);
 
@@ -1028,9 +1061,87 @@ export class OKXExchange extends BaseExchange {
   }
 
   // ================= User Data Subscription (Private WS) =================
+  /**
+   * Subscribe to user data streams (orders, account balance, positions)
+   * OKX requires authentication on the private WebSocket endpoint
+   */
   public async subscribeToUserData(): Promise<void> {
+    if (!this.credentials || !this.passphrase) {
+      throw new Error('OKX credentials required for user data subscription');
+    }
+
+    console.log('[OKX] Subscribing to user data streams...');
+
     // Create private connection and authenticate
     await this.createWsConnect('private');
+
+    // Wait for authentication
+    if (!this.okxPrivateAuthenticated) {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('OKX private WebSocket authentication timeout'));
+        }, 10000);
+
+        const checkAuth = () => {
+          if (this.okxPrivateAuthenticated) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(checkAuth, 100);
+          }
+        };
+        checkAuth();
+      });
+    }
+
+    console.log('[OKX] Private WebSocket authenticated, subscribing to channels...');
+
+    const ws = this.wsConnections.get('private');
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('OKX private WebSocket not connected');
+    }
+
+    // Subscribe to orders channel (all instruments, all order types)
+    const ordersSubscription = {
+      op: 'subscribe',
+      args: [
+        {
+          channel: 'orders',
+          instType: 'ANY', // Subscribe to all instrument types (SPOT, SWAP, FUTURES, OPTION)
+        },
+      ],
+    };
+
+    console.log('[OKX] Subscribing to orders channel...');
+    ws.send(JSON.stringify(ordersSubscription));
+
+    // Subscribe to balance and position channel
+    const balanceAndPositionSubscription = {
+      op: 'subscribe',
+      args: [
+        {
+          channel: 'balance_and_position',
+        },
+      ],
+    };
+
+    console.log('[OKX] Subscribing to balance_and_position channel...');
+    ws.send(JSON.stringify(balanceAndPositionSubscription));
+
+    // Subscribe to account channel (for spot balance updates)
+    const accountSubscription = {
+      op: 'subscribe',
+      args: [
+        {
+          channel: 'account',
+        },
+      ],
+    };
+
+    console.log('[OKX] Subscribing to account channel...');
+    ws.send(JSON.stringify(accountSubscription));
+
+    console.log('[OKX] User data subscription requests sent');
   }
 
   private signOkxWsLogin(): {
@@ -1040,7 +1151,9 @@ export class OKXExchange extends BaseExchange {
     sign: string;
   } {
     if (!this.credentials || !this.passphrase) throw new Error('Missing OKX credentials');
-    const timestamp = new Date().toISOString();
+    // OKX requires timestamp in seconds with decimal (Unix epoch)
+    // Use 1 decimal place for sub-second precision
+    const timestamp = (Date.now() / 1000).toFixed(1);
     const prehash = timestamp + 'GET' + '/users/self/verify';
     const sign = crypto
       .createHmac('sha256', this.credentials.secretKey)
@@ -1058,7 +1171,13 @@ export class OKXExchange extends BaseExchange {
     key: OkxWsType,
     ws: WebSocket,
   ): Promise<void> {
-    if (key !== 'private' || this.okxPrivateAuthenticated) return;
+    if (key !== 'private') return;
+    if (this.okxPrivateAuthenticated) {
+      console.log('[OKX] Private WebSocket already authenticated');
+      return;
+    }
+
+    console.log('[OKX] Authenticating private WebSocket...');
     const login = this.signOkxWsLogin();
     ws.send(
       JSON.stringify({
@@ -1073,16 +1192,6 @@ export class OKXExchange extends BaseExchange {
         ],
       }),
     );
-    this.okxPrivateAuthenticated = true;
-    // After login, subscribe to user-data channels
-    const wsPriv = this.wsConnections.get('private');
-    if (wsPriv && wsPriv.readyState === WebSocket.OPEN) {
-      const sub = (channel: string, instType?: string) => {
-        const args: any = instType ? { channel, instType } : { channel };
-        wsPriv.send(JSON.stringify({ op: 'subscribe', args: [args] }));
-      };
-      sub('orders');
-      sub('balance_and_position');
-    }
+    // Note: okxPrivateAuthenticated will be set to true when we receive the login response
   }
 }
