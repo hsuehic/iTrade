@@ -231,14 +231,33 @@ export class CoinbaseExchange extends BaseExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    _stopPrice?: Decimal,
+    stopLoss?: Decimal,
     timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
+    options?: {
+      tradeMode?: 'cash' | 'isolated' | 'cross';
+      leverage?: number;
+      takeProfitPrice?: Decimal;
+    },
   ): Promise<Order> {
     const productId = this.normalizeSymbol(symbol);
 
+    // Detect if this is a perpetual futures order
+    // Coinbase perpetuals: product_type=FUTURE with contract_expiry_type=PERPETUAL
+    const isPerpetual = productId.includes('-PERP') || symbol.includes(':');
+
     const order_configuration: any = {};
-    if (type === OrderType.LIMIT) {
+
+    // If take profit is provided, use stop limit order
+    if (options?.takeProfitPrice) {
+      order_configuration.stop_limit_stop_limit_gtc = {
+        base_size: quantity.toString(),
+        limit_price: price?.toString() || options.takeProfitPrice.toString(),
+        stop_price: options.takeProfitPrice.toString(),
+        stop_direction:
+          side === OrderSide.BUY ? 'STOP_DIRECTION_STOP_DOWN' : 'STOP_DIRECTION_STOP_UP',
+      };
+    } else if (type === OrderType.LIMIT) {
       order_configuration.limit_limit_gtc = {
         base_size: quantity.toString(),
         limit_price: price?.toString() || '0',
@@ -260,6 +279,19 @@ export class CoinbaseExchange extends BaseExchange {
       side: side === OrderSide.BUY ? 'BUY' : 'SELL',
       order_configuration,
     };
+
+    // Add leverage for perpetual futures (up to 10x)
+    if (isPerpetual && options?.leverage) {
+      body.leverage = options.leverage.toString();
+      console.log(
+        `[Coinbase] Setting leverage ${options.leverage}x for perpetual ${productId}`,
+      );
+    }
+
+    // Add margin type if specified (for perpetual futures)
+    if (isPerpetual && options?.tradeMode && options.tradeMode !== 'cash') {
+      body.margin_type = options.tradeMode.toUpperCase(); // ISOLATED or CROSS
+    }
 
     const resp = await this.httpClient.post('/api/v3/brokerage/orders', body);
     return this.transformOrder(

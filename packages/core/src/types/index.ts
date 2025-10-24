@@ -3,6 +3,50 @@ import { Decimal } from 'decimal.js';
 // Re-export subscription types
 export * from './subscription';
 
+// Initial Data Configuration Types
+export interface InitialKlineConfig {
+  interval: string; // e.g., '1m', '5m', '15m', '1h'
+  limit: number; // Number of klines to fetch (e.g., 20, 50, 100)
+}
+
+export interface InitialDataConfig {
+  // Historical kline data
+  klines?: InitialKlineConfig[];
+
+  // Account data
+  fetchPositions?: boolean; // Fetch current positions for the symbol
+  fetchOpenOrders?: boolean; // Fetch open orders for the symbol
+  fetchBalance?: boolean; // Fetch account balance
+  fetchAccountInfo?: boolean; // Fetch full account info
+
+  // Market data snapshot
+  fetchTicker?: boolean; // Fetch current ticker
+  fetchOrderBook?: {
+    enabled: boolean;
+    depth?: number; // Order book depth (default: 20)
+  };
+}
+
+export interface InitialDataResult {
+  // Historical data
+  klines?: Record<string, Kline[]>; // interval -> klines[]
+
+  // Account data
+  positions?: Position[];
+  openOrders?: Order[];
+  balance?: Balance[];
+  accountInfo?: AccountInfo;
+
+  // Market data
+  ticker?: Ticker;
+  orderBook?: OrderBook;
+
+  // Metadata
+  symbol: string;
+  exchange: string;
+  timestamp: Date;
+}
+
 // Market Data Types
 export interface Ticker {
   symbol: string;
@@ -93,7 +137,7 @@ export interface Order {
   type: OrderType;
   quantity: Decimal;
   price?: Decimal;
-  stopPrice?: Decimal;
+  stopLoss?: Decimal;
   status: OrderStatus;
   timeInForce: TimeInForce;
   timestamp: Date;
@@ -145,6 +189,8 @@ export interface StrategyParameters {
   symbol?: string; // Trading symbol
   exchange?: string | string[]; // Single exchange or multiple exchanges
   subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
+  initialData?: InitialDataConfig; // 🆕 Initial data configuration
+  loadedInitialData?: InitialDataResult; // 🆕 Loaded initial data (populated by TradingEngine)
   [key: string]: unknown; // Allow additional custom parameters
 }
 
@@ -156,6 +202,9 @@ export interface StrategyResult {
   takeProfit?: Decimal;
   confidence?: number;
   reason?: string;
+  // Trading mode and leverage (for futures/margin)
+  tradeMode?: 'cash' | 'isolated' | 'cross'; // cash=spot, isolated/cross=margin/futures
+  leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)
 }
 
 // Exchange Types

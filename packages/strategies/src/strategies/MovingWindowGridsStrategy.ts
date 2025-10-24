@@ -11,6 +11,7 @@ import {
   Position,
   OrderBook,
   Trade,
+  InitialDataResult,
   // StrategyRecoveryContext, // to support state recovery in the future
 } from '@itrade/core';
 import Decimal from 'decimal.js';
@@ -37,9 +38,75 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
 
   constructor(parameters: MovingWindowGridsParameters) {
     super('MovingWindowGrids', parameters);
+
+    // Initialize parameters
     this.windowSize = parameters.windowSize;
     this.gridSize = parameters.gridSize;
     this.gridCount = parameters.gridCount;
+
+    // 🆕 Process loaded initial data if available
+    if (parameters.loadedInitialData) {
+      this.processInitialData(parameters.loadedInitialData);
+    }
+
+    // Strategy-specific initialization logic (if needed)
+    // No need to call this.initialize() - it's optional now
+  }
+
+  /**
+   * 🆕 Process initial data loaded by TradingEngine
+   * Called from constructor if initialData was configured
+   */
+  private processInitialData(initialData: InitialDataResult): void {
+    console.log(`📊 [${this.name}] Processing initial data for ${initialData.symbol}`);
+
+    // Load historical klines into strategy buffer
+    if (initialData.klines) {
+      Object.entries(initialData.klines).forEach(([interval, klines]) => {
+        console.log(`  📈 Loaded ${klines.length} klines for interval ${interval}`);
+        // Store last N klines for analysis
+        klines.forEach((kline) => this.klines.push(kline));
+      });
+    }
+
+    // Load current positions
+    if (initialData.positions && initialData.positions.length > 0) {
+      this.positions = initialData.positions;
+      console.log(`  💼 Loaded ${initialData.positions.length} position(s)`);
+      // Determine strategy state based on positions
+      const totalSize = initialData.positions.reduce(
+        (sum, p) => sum + parseFloat(p.quantity.toString()),
+        0,
+      );
+      if (totalSize > 0) {
+        this.position = 'long';
+        this.size = totalSize;
+      } else if (totalSize < 0) {
+        this.position = 'short';
+        this.size = Math.abs(totalSize);
+      }
+      console.log(`  📍 Position state: ${this.position}, size: ${this.size}`);
+    }
+
+    // Load open orders
+    if (initialData.openOrders && initialData.openOrders.length > 0) {
+      this.orders = initialData.openOrders;
+      console.log(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
+    }
+
+    // Load account balance
+    if (initialData.balance) {
+      this.balances = initialData.balance;
+      console.log(`  💰 Loaded balance for ${initialData.balance.length} asset(s)`);
+    }
+
+    // Load current ticker
+    if (initialData.ticker) {
+      this.tickers.push(initialData.ticker);
+      console.log(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
+    }
+
+    console.log(`✅ [${this.name}] Initial data processed successfully`);
   }
 
   protected async onInitialize(): Promise<void> {
@@ -64,19 +131,32 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     const klines = marketData?.klines;
     if (!!klines && klines.length > 0) {
       const kline = klines[klines.length - 1];
+      const range = kline.high.minus(kline.low).toNumber();
       const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
       console.log(
-        `[Strategy] isClosed=${kline.isClosed}, vol=${(volatility * 100).toFixed(2)}%, threshold=0.6%`,
+        'volatility:',
+        volatility,
+        'range:',
+        range,
+        'isClosed:',
+        kline.isClosed,
       );
-      if (kline.isClosed && kline.high.minus(kline.low).dividedBy(kline.open).gt(0.006)) {
+      if (kline.isClosed && volatility >= 0.005) {
+        console.log(
+          `✅ analyze: Kline is closed and volatility(${volatility}) is >0.5%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
+        );
         const price = kline.open.add(kline.close).dividedBy(2);
-        console.log('✅ analyze: BUY signal!');
-        return {
-          action: 'buy',
-          price,
-          quantity: new Decimal(this.baseSize),
-          takeProfit: price.mul(1.01),
-        };
+        if (kline.close.gt(kline.open)) {
+          console.log('✅ analyze: BUY signal!');
+          return {
+            action: 'buy',
+            price,
+            quantity: new Decimal(this.baseSize),
+            takeProfit: new Decimal(price.mul(1.012)),
+            leverage: 10,
+            tradeMode: 'isolated',
+          };
+        }
       }
     }
 

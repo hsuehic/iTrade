@@ -91,9 +91,14 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopPrice?: Decimal,
+    stopLoss?: Decimal,
     timeInForce?: TimeInForce,
     clientOrderId?: string,
+    options?: {
+      tradeMode?: 'cash' | 'isolated' | 'cross';
+      leverage?: number;
+      takeProfitPrice?: Decimal;
+    },
   ): Promise<Order>;
 
   public abstract cancelOrder(

@@ -34,6 +34,8 @@ import {
   TradesSubscriptionConfig,
   KlinesSubscriptionConfig,
   SubscriptionParamValue,
+  InitialDataConfig,
+  InitialDataResult,
 } from '../types';
 import { EventBus } from '../events';
 import { PrecisionUtils } from '../utils/PrecisionUtils';
@@ -84,16 +86,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     try {
       this.logger.info('Starting trading engine...');
 
-      // Initialize all strategies
-      for (const [name, strategy] of this._strategies) {
-        try {
-          await strategy.initialize(strategy.parameters);
-          this.logger.info(`Strategy ${name} initialized successfully`);
-        } catch (error) {
-          this.logger.error(`Failed to initialize strategy ${name}`, error as Error);
-          throw error;
-        }
-      }
+      // Strategies are already initialized in their constructors
 
       // Connect to all exchanges
       for (const [name, exchange] of this._exchanges) {
@@ -167,9 +160,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     if (this._strategies.has(name)) {
       throw new Error(`Strategy ${name} already exists`);
     }
-
-    // Initialize the strategy before adding it
-    await strategy.initialize(strategy.parameters);
 
     this._strategies.set(name, strategy);
     this.logger.info(`Added strategy: ${name}`);
@@ -540,7 +530,18 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   public async executeOrder(params: ExecuteOrderParameters): Promise<Order> {
-    const { strategyName, symbol, side, quantity, type, price, stopPrice } = params;
+    const {
+      strategyName,
+      symbol,
+      side,
+      quantity,
+      type,
+      price,
+      stopLoss,
+      takeProfit,
+      tradeMode,
+      leverage,
+    } = params;
     if (!this._isRunning) {
       throw new Error('Trading engine is not running');
     }
@@ -605,17 +606,17 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         );
       }
 
-      // Apply precision to stop price (if provided)
-      let adjustedStopPrice = stopPrice;
-      if (stopPrice) {
-        adjustedStopPrice = PrecisionUtils.roundPrice(
-          stopPrice,
+      // Apply precision to stop loss price (if provided)
+      let adjustedStopLoss = stopLoss;
+      if (stopLoss) {
+        adjustedStopLoss = PrecisionUtils.roundPrice(
+          stopLoss,
           symbolInfo.tickSize,
           symbolInfo.pricePrecision,
         );
 
-        // Validate stop price
-        PrecisionUtils.validatePrice(adjustedStopPrice, symbolInfo.tickSize);
+        // Validate stop loss price
+        PrecisionUtils.validatePrice(adjustedStopLoss, symbolInfo.tickSize);
       }
 
       // Log precision adjustments if any changes were made
@@ -629,9 +630,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           `Adjusted price for ${symbol}: ${price.toString()} → ${adjustedPrice.toString()}`,
         );
       }
-      if (stopPrice && adjustedStopPrice && !adjustedStopPrice.equals(stopPrice)) {
+      if (stopLoss && adjustedStopLoss && !adjustedStopLoss.equals(stopLoss)) {
         this.logger.info(
-          `Adjusted stop price for ${symbol}: ${stopPrice.toString()} → ${adjustedStopPrice.toString()}`,
+          `Adjusted stop loss for ${symbol}: ${stopLoss.toString()} → ${adjustedStopLoss.toString()}`,
         );
       }
 
@@ -648,7 +649,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type,
         quantity: adjustedQuantity,
         price: adjustedPrice,
-        stopPrice: adjustedStopPrice,
+        stopLoss: adjustedStopLoss,
         status: 'NEW' as OrderStatus,
         timeInForce: 'GTC' as TimeInForce,
         timestamp: new Date(),
@@ -675,9 +676,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type,
         adjustedQuantity,
         adjustedPrice,
-        adjustedStopPrice,
+        adjustedStopLoss,
         'GTC' as TimeInForce,
         order.clientOrderId,
+        {
+          tradeMode,
+          leverage,
+          takeProfitPrice: takeProfit,
+        },
       );
 
       this._eventBus.emitOrderCreated({
@@ -723,7 +729,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         quantity: signal.quantity,
         type: orderType,
         price: signal.price,
-        stopPrice: signal.stopLoss,
+        stopLoss: signal.stopLoss,
+        takeProfit: signal.takeProfit,
+        tradeMode: signal.tradeMode,
+        leverage: signal.leverage,
       });
 
       this.logger.logStrategy('Executed signal', {

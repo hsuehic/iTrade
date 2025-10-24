@@ -49,6 +49,7 @@ export class BinanceExchange extends BaseExchange {
   private orderbookDepthMap = new Map<string, number>(); // symbol_marketType -> depth
   private userWs?: BinanceWebsocket;
   private _messageDebugCount = 0;
+  private leverageCache = new Map<string, number>(); // symbol -> leverage mapping
 
   constructor(isTestnet = false) {
     const baseUrl = isTestnet
@@ -210,11 +211,29 @@ export class BinanceExchange extends BaseExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopPrice?: Decimal,
+    stopLoss?: Decimal,
     timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
+    options?: {
+      tradeMode?: 'cash' | 'isolated' | 'cross';
+      leverage?: number;
+      takeProfitPrice?: Decimal;
+    },
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    // Determine if this is a futures order
+    const isFutures = normalizedSymbol.includes('USDT') && !symbol.includes('/');
+
+    // Set leverage for futures if provided and different from current
+    if (isFutures && options?.leverage) {
+      const currentLeverage = this.leverageCache.get(normalizedSymbol);
+      if (currentLeverage !== options.leverage) {
+        await this.setLeverage(normalizedSymbol, options.leverage, options.tradeMode);
+        this.leverageCache.set(normalizedSymbol, options.leverage);
+      }
+    }
+
     const params: any = {
       symbol: normalizedSymbol,
       side: side.toUpperCase(),
@@ -224,7 +243,21 @@ export class BinanceExchange extends BaseExchange {
     };
 
     if (price) params.price = price.toString();
-    if (stopPrice) params.stopPrice = stopPrice.toString();
+    if (stopLoss) params.stopPrice = stopLoss.toString();
+
+    // Binance supports take profit through stopPrice for TAKE_PROFIT orders
+    // If takeProfitPrice is provided, treat as TAKE_PROFIT_LIMIT order
+    if (options?.takeProfitPrice) {
+      params.stopPrice = options.takeProfitPrice.toString();
+      // If price is provided, use TAKE_PROFIT_LIMIT, otherwise TAKE_PROFIT
+      if (price) {
+        params.type = 'TAKE_PROFIT_LIMIT';
+        params.price = price.toString();
+      } else {
+        params.type = 'TAKE_PROFIT';
+      }
+    }
+
     if (timeInForce !== 'GTC') params.timeInForce = timeInForce;
     if (clientOrderId) params.newClientOrderId = clientOrderId;
 
@@ -232,6 +265,74 @@ export class BinanceExchange extends BaseExchange {
     const response = await this.httpClient.post('/api/v3/order', signedParams);
 
     return this.transformBinanceOrder(response.data);
+  }
+
+  /**
+   * Set leverage for futures trading
+   * Binance requires setting leverage before placing orders
+   */
+  private async setLeverage(
+    symbol: string,
+    leverage: number,
+    marginType?: 'cash' | 'isolated' | 'cross',
+  ): Promise<void> {
+    try {
+      // First, set margin type if specified (isolated or cross)
+      if (marginType && marginType !== 'cash') {
+        await this.setMarginType(symbol, marginType);
+      }
+
+      // Set leverage
+      const params = {
+        symbol,
+        leverage,
+        timestamp: Date.now(),
+      };
+
+      const signedParams = this.signRequest(params);
+      await this.futuresClient.post('/fapi/v1/leverage', signedParams);
+
+      console.log(
+        `[Binance] Set leverage for ${symbol}: ${leverage}x (${marginType || 'default'})`,
+      );
+    } catch (error: any) {
+      // If error is "No need to change leverage" or similar, ignore it
+      if (error.response?.data?.code === -4028 || error.response?.data?.code === -4046) {
+        // Leverage already set, no action needed
+      } else {
+        console.error(`[Binance] Failed to set leverage for ${symbol}:`, error.message);
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Set margin type (ISOLATED or CROSSED) for futures trading
+   */
+  private async setMarginType(
+    symbol: string,
+    marginType: 'isolated' | 'cross',
+  ): Promise<void> {
+    try {
+      const params = {
+        symbol,
+        marginType: marginType.toUpperCase(),
+        timestamp: Date.now(),
+      };
+
+      const signedParams = this.signRequest(params);
+      await this.futuresClient.post('/fapi/v1/marginType', signedParams);
+
+      console.log(`[Binance] Set margin type for ${symbol}: ${marginType}`);
+    } catch (error: any) {
+      // If error is "No need to change margin type", ignore it
+      if (error.response?.data?.code === -4046) {
+        // Margin type already set, no action needed
+      } else {
+        console.warn(`[Binance] Failed to set margin type for ${symbol}:`, error.message);
+        // Don't throw - margin type is optional
+      }
+    }
   }
 
   public async cancelOrder(
@@ -866,7 +967,7 @@ export class BinanceExchange extends BaseExchange {
         type,
         quantity: qty,
         price,
-        stopPrice: data.P ? this.formatDecimal(data.P) : undefined,
+        stopLoss: data.P ? this.formatDecimal(data.P) : undefined,
         status: this.transformBinanceOrderStatus(data.X || data.x || 'NEW'),
         timeInForce: (data.f as TimeInForce) || 'GTC',
         timestamp: this.formatTimestamp(data.T || Date.now()),
@@ -891,7 +992,7 @@ export class BinanceExchange extends BaseExchange {
         type,
         quantity: qty,
         price,
-        stopPrice: o.sp ? this.formatDecimal(o.sp) : undefined,
+        stopLoss: o.sp ? this.formatDecimal(o.sp) : undefined,
         status: this.transformBinanceOrderStatus(o.X || 'NEW'),
         timeInForce: (o.f as TimeInForce) || 'GTC',
         timestamp: this.formatTimestamp(o.T || Date.now()),
@@ -979,7 +1080,7 @@ export class BinanceExchange extends BaseExchange {
       type: this.transformBinanceOrderType(order.type),
       quantity: this.formatDecimal(order.origQty || order.quantity || '0'),
       price: order.price ? this.formatDecimal(order.price) : undefined,
-      stopPrice: order.stopPrice ? this.formatDecimal(order.stopPrice) : undefined,
+      stopLoss: order.stopPrice ? this.formatDecimal(order.stopPrice) : undefined,
       status,
       timeInForce: (order.timeInForce as TimeInForce) || 'GTC',
       timestamp: this.formatTimestamp(order.time || order.transactTime || Date.now()),

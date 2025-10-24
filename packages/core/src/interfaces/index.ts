@@ -23,6 +23,7 @@ import {
   BacktestResult,
   RiskLimits,
   RiskMetrics,
+  InitialDataResult,
 } from '../types';
 
 // Exchange Interface
@@ -64,9 +65,14 @@ export interface IExchange extends EventEmitter {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopPrice?: Decimal,
+    stopLoss?: Decimal,
     timeInForce?: TimeInForce,
     clientOrderId?: string,
+    options?: {
+      tradeMode?: 'cash' | 'isolated' | 'cross';
+      leverage?: number;
+      takeProfitPrice?: Decimal;
+    },
   ): Promise<Order>;
 
   cancelOrder(symbol: string, orderId: string, clientOrderId?: string): Promise<Order>;
@@ -115,6 +121,7 @@ export interface IStrategy {
   readonly parameters: StrategyParameters;
 
   initialize(parameters: StrategyParameters): Promise<void>;
+
   analyze(marketData: {
     // Market Data
     ticker?: Ticker;
@@ -146,7 +153,10 @@ export interface ExecuteOrderParameters {
   quantity: Decimal;
   type: OrderType;
   price?: Decimal;
-  stopPrice?: Decimal;
+  stopLoss?: Decimal;
+  takeProfit?: Decimal;
+  tradeMode?: 'cash' | 'isolated' | 'cross'; // Trading mode for margin/futures
+  leverage?: number; // Leverage multiplier
 }
 
 // Trading Engine Interface

@@ -48,13 +48,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { JsonEditor } from '@/components/json-editor';
 import { StrategyParameterFormDynamic } from '@/components/strategy-parameter-form-dynamic';
 import { ExchangeLogo } from '@/components/exchange-logo';
 import { SymbolIcon } from '@/components/symbol-icon';
+import {
+  InitialDataConfigForm,
+  type InitialDataConfig,
+} from '@/components/strategy/InitialDataConfigForm';
+import { SubscriptionConfigForm } from '@/components/strategy/SubscriptionConfigForm';
 import {
   SUPPORTED_EXCHANGES,
   getSymbolFormatHint,
@@ -139,6 +143,126 @@ export default function StrategyPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showAdvancedMode, setShowAdvancedMode] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [canSubmit, setCanSubmit] = useState(false);
+  const [nameAvailable, setNameAvailable] = useState(true);
+  const [checkingName, setCheckingName] = useState(false);
+  const [nameError, setNameError] = useState('');
+
+  const steps = [
+    { id: 'basic', label: 'Basic Info', description: 'Name, type, and trading pair' },
+    { id: 'parameters', label: 'Parameters', description: 'Strategy configuration' },
+    {
+      id: 'initial-data',
+      label: 'Initial Data',
+      description: 'Historical data (optional)',
+    },
+    {
+      id: 'subscriptions',
+      label: 'Subscriptions',
+      description: 'Real-time data (optional)',
+    },
+  ];
+
+  // Check if strategy name is available
+  const checkNameAvailability = useCallback(
+    async (name: string) => {
+      if (!name || name.trim() === '') {
+        setNameAvailable(true);
+        setNameError('');
+        return;
+      }
+
+      setCheckingName(true);
+      setNameError('');
+
+      try {
+        const url = new URL('/api/strategies/check-name', window.location.origin);
+        url.searchParams.set('name', name.trim());
+        if (editingId) {
+          url.searchParams.set('excludeId', editingId.toString());
+        }
+
+        const response = await fetch(url.toString());
+        const data = await response.json();
+
+        if (response.ok) {
+          setNameAvailable(data.available);
+          if (!data.available) {
+            setNameError('Strategy name already exists');
+          }
+        } else {
+          setNameError('Failed to check name availability');
+          setNameAvailable(false);
+        }
+      } catch (error) {
+        console.error('Error checking name:', error);
+        setNameError('Failed to check name availability');
+        setNameAvailable(false);
+      } finally {
+        setCheckingName(false);
+      }
+    },
+    [editingId],
+  );
+
+  // Validate current step
+  const validateStep = (step: number): boolean => {
+    switch (step) {
+      case 0: // Basic Info
+        return !!(
+          formData.name &&
+          formData.type &&
+          formData.exchange &&
+          formData.symbol &&
+          nameAvailable &&
+          !checkingName
+        );
+      case 1: // Parameters
+        try {
+          JSON.parse(formData.parameters);
+          return true;
+        } catch {
+          return false;
+        }
+      case 2: // Initial Data (optional)
+        return true;
+      case 3: // Subscriptions (optional)
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const canProceedToNextStep = validateStep(currentStep);
+
+  const handleNext = () => {
+    if (canProceedToNextStep && currentStep < steps.length - 1) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // Handle submit button enabling with delay on step 4
+  useEffect(() => {
+    if (currentStep === 3) {
+      // Step 4 (index 3) - disable submit initially, enable after 5 seconds
+      setCanSubmit(false);
+      const timer = setTimeout(() => {
+        setCanSubmit(true);
+      }, 5000); // 5 seconds delay
+
+      return () => clearTimeout(timer);
+    } else {
+      // Other steps - disable submit button
+      setCanSubmit(false);
+    }
+  }, [currentStep]);
 
   useEffect(() => {
     fetchStrategies();
@@ -220,6 +344,10 @@ export default function StrategyPage() {
     setIsEditing(false);
     setEditingId(null);
     setShowAdvancedMode(false);
+    setCurrentStep(0); // Reset to first step
+    setNameAvailable(true); // Reset name validation
+    setCheckingName(false);
+    setNameError('');
   };
 
   const updateStrategyStatus = async (id: number, newStatus: string) => {
@@ -338,146 +466,291 @@ export default function StrategyPage() {
                       </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={createStrategy} className="space-y-6">
-                      <Tabs defaultValue="basic" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                          <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                          <TabsTrigger value="config">Configuration</TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="basic" className="space-y-4 mt-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="name">
-                                Strategy Name <span className="text-red-500">*</span>
-                              </Label>
-                              <Input
-                                id="name"
-                                placeholder="e.g., BTC MA Cross"
-                                value={formData.name}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    name: e.target.value,
-                                  })
-                                }
-                                required
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="type">
-                                Strategy Type <span className="text-red-500">*</span>
-                              </Label>
-                              <Select
-                                value={formData.type}
-                                onValueChange={(value: StrategyTypeKey) => {
-                                  // 当策略类型改变时，自动更新默认参数
-                                  const newParameters =
-                                    getDefaultParametersForType(value);
-                                  setFormData({
-                                    ...formData,
-                                    type: value,
-                                    parameters: JSON.stringify(newParameters, null, 2),
-                                  });
-                                  // 重置为表单模式以便用户看到新策略的参数
-                                  setShowAdvancedMode(false);
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {getAllStrategiesWithImplementationStatus().map(
-                                    (strategy) => (
-                                      <SelectItem
-                                        key={strategy.type}
-                                        value={strategy.type}
-                                        disabled={!strategy.implemented}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <span>{strategy.icon}</span>
-                                          <div className="flex flex-col">
-                                            <span className="font-medium">
-                                              {strategy.name}
-                                            </span>
-                                            {!strategy.implemented && (
-                                              <span className="text-xs text-muted-foreground">
-                                                Coming Soon
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </SelectItem>
-                                    ),
+                      {/* Step Indicator */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          {steps.map((step, index) => (
+                            <div key={step.id} className="flex-1 flex items-center">
+                              <div className="flex flex-col items-center flex-1">
+                                <div
+                                  className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors ${
+                                    index < currentStep
+                                      ? 'bg-green-500 border-green-500 text-white'
+                                      : index === currentStep
+                                        ? 'bg-blue-500 border-blue-500 text-white'
+                                        : 'bg-muted border-muted-foreground/20 text-muted-foreground'
+                                  }`}
+                                >
+                                  {index < currentStep ? (
+                                    <svg
+                                      className="w-5 h-5"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                  ) : (
+                                    <span className="text-sm font-semibold">
+                                      {index + 1}
+                                    </span>
                                   )}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <Label htmlFor="exchange">
-                                  Exchange(s) <span className="text-red-500">*</span>
-                                </Label>
-                                <div className="flex items-center space-x-2">
-                                  <Checkbox
-                                    id="multiple-exchanges"
-                                    checked={useMultipleExchanges}
-                                    onCheckedChange={(checked) => {
-                                      setUseMultipleExchanges(checked as boolean);
-                                      if (checked) {
-                                        // Convert to array
-                                        setFormData({
-                                          ...formData,
-                                          exchange: Array.isArray(formData.exchange)
-                                            ? formData.exchange
-                                            : [formData.exchange as string],
-                                        });
-                                      } else {
-                                        // Convert to string (use first exchange)
-                                        setFormData({
-                                          ...formData,
-                                          exchange: Array.isArray(formData.exchange)
-                                            ? formData.exchange[0] || 'coinbase'
-                                            : formData.exchange,
-                                        });
-                                      }
-                                    }}
-                                  />
-                                  <label
-                                    htmlFor="multiple-exchanges"
-                                    className="text-sm text-muted-foreground cursor-pointer"
+                                </div>
+                                <div className="mt-2 text-center">
+                                  <div
+                                    className={`text-sm font-medium ${
+                                      index === currentStep
+                                        ? 'text-foreground'
+                                        : 'text-muted-foreground'
+                                    }`}
                                   >
-                                    Multiple
-                                  </label>
+                                    {step.label}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground mt-0.5">
+                                    {step.description}
+                                  </div>
                                 </div>
                               </div>
+                              {index < steps.length - 1 && (
+                                <div
+                                  className={`h-0.5 flex-1 mx-2 transition-colors ${
+                                    index < currentStep
+                                      ? 'bg-green-500'
+                                      : 'bg-muted-foreground/20'
+                                  }`}
+                                  style={{ marginTop: '-40px' }}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
 
-                              {!useMultipleExchanges ? (
-                                <Select
-                                  value={
-                                    Array.isArray(formData.exchange)
-                                      ? formData.exchange[0]
-                                      : formData.exchange
-                                  }
-                                  onValueChange={(value) => {
-                                    const defaultTradingPair =
-                                      getDefaultTradingPair(value);
+                      {/* Step Content */}
+                      <div className="min-h-[400px]">
+                        {currentStep === 0 && (
+                          <div className="space-y-4 mt-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="name">
+                                  Strategy Name <span className="text-red-500">*</span>
+                                </Label>
+                                <Input
+                                  id="name"
+                                  placeholder="e.g., BTC MA Cross"
+                                  value={formData.name}
+                                  onChange={(e) => {
                                     setFormData({
                                       ...formData,
-                                      exchange: value,
-                                      symbol: isEditing
-                                        ? formData.symbol
-                                        : defaultTradingPair,
+                                      name: e.target.value,
                                     });
+                                    // Reset error when typing
+                                    if (nameError) {
+                                      setNameError('');
+                                      setNameAvailable(true);
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    // Check name availability when input loses focus
+                                    checkNameAvailability(e.target.value);
+                                  }}
+                                  required
+                                  className={nameError ? 'border-red-500' : ''}
+                                />
+                                {checkingName && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Checking name availability...
+                                  </p>
+                                )}
+                                {nameError && (
+                                  <p className="text-xs text-red-500">{nameError}</p>
+                                )}
+                                {!checkingName &&
+                                  !nameError &&
+                                  formData.name &&
+                                  nameAvailable && (
+                                    <p className="text-xs text-green-600">
+                                      ✓ Name is available
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="type">
+                                  Strategy Type <span className="text-red-500">*</span>
+                                </Label>
+                                <Select
+                                  value={formData.type}
+                                  onValueChange={(value: StrategyTypeKey) => {
+                                    // 当策略类型改变时，自动更新默认参数
+                                    const newParameters =
+                                      getDefaultParametersForType(value);
+                                    setFormData({
+                                      ...formData,
+                                      type: value,
+                                      parameters: JSON.stringify(newParameters, null, 2),
+                                    });
+                                    // 重置为表单模式以便用户看到新策略的参数
+                                    setShowAdvancedMode(false);
                                   }}
                                 >
                                   <SelectTrigger>
-                                    <SelectValue placeholder="Select exchange" />
+                                    <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
+                                    {getAllStrategiesWithImplementationStatus().map(
+                                      (strategy) => (
+                                        <SelectItem
+                                          key={strategy.type}
+                                          value={strategy.type}
+                                          disabled={!strategy.implemented}
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <span>{strategy.icon}</span>
+                                            <div className="flex flex-col">
+                                              <span className="font-medium">
+                                                {strategy.name}
+                                              </span>
+                                              {!strategy.implemented && (
+                                                <span className="text-xs text-muted-foreground">
+                                                  Coming Soon
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </SelectItem>
+                                      ),
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Label htmlFor="exchange">
+                                    Exchange(s) <span className="text-red-500">*</span>
+                                  </Label>
+                                  <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                      id="multiple-exchanges"
+                                      checked={useMultipleExchanges}
+                                      onCheckedChange={(checked) => {
+                                        setUseMultipleExchanges(checked as boolean);
+                                        if (checked) {
+                                          // Convert to array
+                                          setFormData({
+                                            ...formData,
+                                            exchange: Array.isArray(formData.exchange)
+                                              ? formData.exchange
+                                              : [formData.exchange as string],
+                                          });
+                                        } else {
+                                          // Convert to string (use first exchange)
+                                          setFormData({
+                                            ...formData,
+                                            exchange: Array.isArray(formData.exchange)
+                                              ? formData.exchange[0] || 'coinbase'
+                                              : formData.exchange,
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    <label
+                                      htmlFor="multiple-exchanges"
+                                      className="text-sm text-muted-foreground cursor-pointer"
+                                    >
+                                      Multiple
+                                    </label>
+                                  </div>
+                                </div>
+
+                                {!useMultipleExchanges ? (
+                                  <Select
+                                    value={
+                                      Array.isArray(formData.exchange)
+                                        ? formData.exchange[0]
+                                        : formData.exchange
+                                    }
+                                    onValueChange={(value) => {
+                                      const defaultTradingPair =
+                                        getDefaultTradingPair(value);
+                                      setFormData({
+                                        ...formData,
+                                        exchange: value,
+                                        symbol: isEditing
+                                          ? formData.symbol
+                                          : defaultTradingPair,
+                                      });
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select exchange" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {SUPPORTED_EXCHANGES.map((exchange) => {
+                                        const logoUrl =
+                                          'logoUrl' in exchange
+                                            ? exchange.logoUrl
+                                            : undefined;
+                                        const iconEmoji =
+                                          'iconEmoji' in exchange
+                                            ? exchange.iconEmoji
+                                            : '💱';
+                                        return (
+                                          <SelectItem
+                                            key={exchange.id}
+                                            value={exchange.id}
+                                          >
+                                            <div className="flex items-center gap-3">
+                                              {logoUrl ? (
+                                                <Image
+                                                  src={logoUrl}
+                                                  alt={exchange.name}
+                                                  width={20}
+                                                  height={20}
+                                                  className="w-5 h-5 rounded-full"
+                                                  onError={(e) => {
+                                                    (
+                                                      e.target as HTMLImageElement
+                                                    ).style.display = 'none';
+                                                  }}
+                                                />
+                                              ) : (
+                                                <span className="text-base">
+                                                  {iconEmoji}
+                                                </span>
+                                              )}
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-medium">
+                                                  {exchange.name}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">
+                                                  ({exchange.description})
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </SelectItem>
+                                        );
+                                      })}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <div className="space-y-2 border rounded-md p-3">
                                     {SUPPORTED_EXCHANGES.map((exchange) => {
+                                      const selectedExchanges = Array.isArray(
+                                        formData.exchange,
+                                      )
+                                        ? formData.exchange
+                                        : [formData.exchange];
+                                      const isSelected = selectedExchanges.includes(
+                                        exchange.id,
+                                      );
                                       const logoUrl =
                                         'logoUrl' in exchange
                                           ? exchange.logoUrl
@@ -486,16 +759,54 @@ export default function StrategyPage() {
                                         'iconEmoji' in exchange
                                           ? exchange.iconEmoji
                                           : '💱';
+
                                       return (
-                                        <SelectItem key={exchange.id} value={exchange.id}>
-                                          <div className="flex items-center gap-3">
+                                        <div
+                                          key={exchange.id}
+                                          className="flex items-center space-x-2"
+                                        >
+                                          <Checkbox
+                                            id={`exchange-${exchange.id}`}
+                                            checked={isSelected}
+                                            onCheckedChange={(checked) => {
+                                              const currentExchanges = Array.isArray(
+                                                formData.exchange,
+                                              )
+                                                ? formData.exchange
+                                                : [formData.exchange as string];
+
+                                              let newExchanges: string[];
+                                              if (checked) {
+                                                newExchanges = [
+                                                  ...currentExchanges,
+                                                  exchange.id,
+                                                ];
+                                              } else {
+                                                newExchanges = currentExchanges.filter(
+                                                  (e) => e !== exchange.id,
+                                                );
+                                              }
+
+                                              setFormData({
+                                                ...formData,
+                                                exchange:
+                                                  newExchanges.length > 0
+                                                    ? newExchanges
+                                                    : ['coinbase'],
+                                              });
+                                            }}
+                                          />
+                                          <label
+                                            htmlFor={`exchange-${exchange.id}`}
+                                            className="flex items-center gap-2 cursor-pointer flex-1"
+                                          >
                                             {logoUrl ? (
                                               <Image
                                                 src={logoUrl}
                                                 alt={exchange.name}
-                                                width={20}
-                                                height={20}
-                                                className="w-5 h-5 rounded-full"
+                                                width={16}
+                                                height={16}
+                                                className="w-4 h-4 rounded-full"
                                                 onError={(e) => {
                                                   (
                                                     e.target as HTMLImageElement
@@ -503,288 +814,244 @@ export default function StrategyPage() {
                                                 }}
                                               />
                                             ) : (
-                                              <span className="text-base">
-                                                {iconEmoji}
-                                              </span>
+                                              <span className="text-sm">{iconEmoji}</span>
                                             )}
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-medium">
-                                                {exchange.name}
-                                              </span>
-                                              <span className="text-xs text-muted-foreground">
-                                                ({exchange.description})
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </SelectItem>
+                                            <span className="text-sm font-medium">
+                                              {exchange.name}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                              ({exchange.description})
+                                            </span>
+                                          </label>
+                                        </div>
                                       );
                                     })}
+                                  </div>
+                                )}
+
+                                <p className="text-xs text-muted-foreground">
+                                  {useMultipleExchanges
+                                    ? 'Select multiple exchanges for cross-exchange strategies'
+                                    : 'Select your trading platform'}
+                                </p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="symbol">
+                                  Trading Pair <span className="text-red-500">*</span>
+                                </Label>
+                                <Select
+                                  value={formData.symbol}
+                                  onValueChange={(value) =>
+                                    setFormData({ ...formData, symbol: value })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select trading pair" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {getTradingPairsForExchange(
+                                      Array.isArray(formData.exchange)
+                                        ? formData.exchange[0]
+                                        : formData.exchange,
+                                    ).map((pair) => (
+                                      <SelectItem key={pair.symbol} value={pair.symbol}>
+                                        <div className="flex items-center gap-2">
+                                          <Image
+                                            src={getCryptoIconUrl(pair.base)}
+                                            alt={pair.base}
+                                            width={16}
+                                            height={16}
+                                            className="w-4 h-4 rounded-full"
+                                            onError={(e) => {
+                                              (
+                                                e.target as HTMLImageElement
+                                              ).style.display = 'none';
+                                            }}
+                                          />
+                                          <span className="font-medium">{pair.name}</span>
+                                          <span className="text-xs text-muted-foreground">
+                                            (
+                                            {pair.type === 'perpetual'
+                                              ? '⚡ Perp'
+                                              : '💼 Spot'}
+                                            )
+                                          </span>
+                                        </div>
+                                      </SelectItem>
+                                    ))}
                                   </SelectContent>
                                 </Select>
-                              ) : (
-                                <div className="space-y-2 border rounded-md p-3">
-                                  {SUPPORTED_EXCHANGES.map((exchange) => {
-                                    const selectedExchanges = Array.isArray(
-                                      formData.exchange,
-                                    )
-                                      ? formData.exchange
-                                      : [formData.exchange];
-                                    const isSelected = selectedExchanges.includes(
-                                      exchange.id,
-                                    );
-                                    const logoUrl =
-                                      'logoUrl' in exchange
-                                        ? exchange.logoUrl
-                                        : undefined;
-                                    const iconEmoji =
-                                      'iconEmoji' in exchange ? exchange.iconEmoji : '💱';
-
-                                    return (
-                                      <div
-                                        key={exchange.id}
-                                        className="flex items-center space-x-2"
-                                      >
-                                        <Checkbox
-                                          id={`exchange-${exchange.id}`}
-                                          checked={isSelected}
-                                          onCheckedChange={(checked) => {
-                                            const currentExchanges = Array.isArray(
-                                              formData.exchange,
-                                            )
-                                              ? formData.exchange
-                                              : [formData.exchange as string];
-
-                                            let newExchanges: string[];
-                                            if (checked) {
-                                              newExchanges = [
-                                                ...currentExchanges,
-                                                exchange.id,
-                                              ];
-                                            } else {
-                                              newExchanges = currentExchanges.filter(
-                                                (e) => e !== exchange.id,
-                                              );
-                                            }
-
-                                            setFormData({
-                                              ...formData,
-                                              exchange:
-                                                newExchanges.length > 0
-                                                  ? newExchanges
-                                                  : ['coinbase'],
-                                            });
-                                          }}
-                                        />
-                                        <label
-                                          htmlFor={`exchange-${exchange.id}`}
-                                          className="flex items-center gap-2 cursor-pointer flex-1"
-                                        >
-                                          {logoUrl ? (
-                                            <Image
-                                              src={logoUrl}
-                                              alt={exchange.name}
-                                              width={16}
-                                              height={16}
-                                              className="w-4 h-4 rounded-full"
-                                              onError={(e) => {
-                                                (
-                                                  e.target as HTMLImageElement
-                                                ).style.display = 'none';
-                                              }}
-                                            />
-                                          ) : (
-                                            <span className="text-sm">{iconEmoji}</span>
-                                          )}
-                                          <span className="text-sm font-medium">
-                                            {exchange.name}
-                                          </span>
-                                          <span className="text-xs text-muted-foreground">
-                                            ({exchange.description})
-                                          </span>
-                                        </label>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-
-                              <p className="text-xs text-muted-foreground">
-                                {useMultipleExchanges
-                                  ? 'Select multiple exchanges for cross-exchange strategies'
-                                  : 'Select your trading platform'}
-                              </p>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="symbol">
-                                Trading Pair <span className="text-red-500">*</span>
-                              </Label>
-                              <Select
-                                value={formData.symbol}
-                                onValueChange={(value) =>
-                                  setFormData({ ...formData, symbol: value })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select trading pair" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {getTradingPairsForExchange(
+                                <p className="text-xs text-muted-foreground">
+                                  Format:{' '}
+                                  {getSymbolFormatHint(
                                     Array.isArray(formData.exchange)
                                       ? formData.exchange[0]
                                       : formData.exchange,
-                                  ).map((pair) => (
-                                    <SelectItem key={pair.symbol} value={pair.symbol}>
-                                      <div className="flex items-center gap-2">
-                                        <Image
-                                          src={getCryptoIconUrl(pair.base)}
-                                          alt={pair.base}
-                                          width={16}
-                                          height={16}
-                                          className="w-4 h-4 rounded-full"
-                                          onError={(e) => {
-                                            (e.target as HTMLImageElement).style.display =
-                                              'none';
-                                          }}
-                                        />
-                                        <span className="font-medium">{pair.name}</span>
-                                        <span className="text-xs text-muted-foreground">
-                                          (
-                                          {pair.type === 'perpetual'
-                                            ? '⚡ Perp'
-                                            : '💼 Spot'}
-                                          )
-                                        </span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <p className="text-xs text-muted-foreground">
-                                Format:{' '}
-                                {getSymbolFormatHint(
-                                  Array.isArray(formData.exchange)
-                                    ? formData.exchange[0]
-                                    : formData.exchange,
-                                )}{' '}
-                                • Backend normalizes automatically
-                                {useMultipleExchanges && (
-                                  <span className="block text-yellow-600 mt-1">
-                                    ⚠️ Using first exchange for symbol format
-                                  </span>
-                                )}
-                              </p>
+                                  )}{' '}
+                                  • Backend normalizes automatically
+                                  {useMultipleExchanges && (
+                                    <span className="block text-yellow-600 mt-1">
+                                      ⚠️ Using first exchange for symbol format
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
                             </div>
-                          </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor="description">Description</Label>
-                            <Textarea
-                              id="description"
-                              placeholder="Describe your strategy's approach and goals..."
-                              value={formData.description}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  description: e.target.value,
-                                })
-                              }
-                              rows={3}
-                            />
-                          </div>
-                        </TabsContent>
-
-                        <TabsContent value="config" className="space-y-4 mt-4">
-                          <div className="flex items-center justify-between mb-4">
-                            <div>
-                              <Label className="text-base font-medium">
-                                Strategy Parameters{' '}
-                                <span className="text-red-500">*</span>
-                              </Label>
-                              <p className="text-sm text-muted-foreground">
-                                {showAdvancedMode
-                                  ? 'Configure parameters using JSON format'
-                                  : 'Configure parameters using form inputs'}
-                              </p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setShowAdvancedMode(!showAdvancedMode)}
-                            >
-                              {showAdvancedMode ? (
-                                <>
-                                  <IconSettings className="h-4 w-4 mr-2" />
-                                  Form Mode
-                                </>
-                              ) : (
-                                <>
-                                  <IconClock className="h-4 w-4 mr-2" />
-                                  JSON Mode
-                                </>
-                              )}
-                            </Button>
-                          </div>
-
-                          {showAdvancedMode ? (
                             <div className="space-y-2">
-                              <JsonEditor
-                                value={formData.parameters}
-                                onChange={(value) =>
+                              <Label htmlFor="description">Description</Label>
+                              <Textarea
+                                id="description"
+                                placeholder="Describe your strategy's approach and goals..."
+                                value={formData.description}
+                                onChange={(e) =>
                                   setFormData({
                                     ...formData,
-                                    parameters: value,
+                                    description: e.target.value,
                                   })
                                 }
-                                placeholder={JSON.stringify(
-                                  getDefaultParametersForType(
-                                    formData.type as StrategyTypeKey,
-                                  ),
-                                  null,
-                                  2,
-                                )}
+                                rows={3}
                               />
-                              <p className="text-xs text-muted-foreground">
-                                Advanced mode: Edit parameters in JSON format. Switch to
-                                form mode for guided parameter configuration.
-                              </p>
                             </div>
-                          ) : (
-                            <StrategyParameterFormDynamic
-                              strategyType={formData.type as StrategyTypeKey}
-                              initialParameters={memoizedInitialParameters}
-                              onParametersChange={handleParametersChange}
-                            />
-                          )}
-
-                          <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
-                            <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                              <IconSettings className="h-4 w-4" />
-                              Common Parameters
-                            </h4>
-                            <ul className="text-xs text-muted-foreground space-y-1">
-                              <li>
-                                • <code className="font-mono">fastPeriod</code>:
-                                Short-term moving average period
-                              </li>
-                              <li>
-                                • <code className="font-mono">slowPeriod</code>: Long-term
-                                moving average period
-                              </li>
-                              <li>
-                                • <code className="font-mono">threshold</code>: Signal
-                                threshold (0.001 = 0.1%)
-                              </li>
-                              <li>
-                                • <code className="font-mono">subscription</code>: Market
-                                data subscription config
-                              </li>
-                            </ul>
                           </div>
-                        </TabsContent>
-                      </Tabs>
+                        )}
+
+                        {currentStep === 1 && (
+                          <div className="space-y-4 mt-4">
+                            <div className="flex items-center justify-between mb-4">
+                              <div>
+                                <Label className="text-base font-medium">
+                                  Strategy Parameters{' '}
+                                  <span className="text-red-500">*</span>
+                                </Label>
+                                <p className="text-sm text-muted-foreground">
+                                  {showAdvancedMode
+                                    ? 'Configure parameters using JSON format'
+                                    : 'Configure parameters using form inputs'}
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowAdvancedMode(!showAdvancedMode)}
+                              >
+                                {showAdvancedMode ? (
+                                  <>
+                                    <IconSettings className="h-4 w-4 mr-2" />
+                                    Form Mode
+                                  </>
+                                ) : (
+                                  <>
+                                    <IconClock className="h-4 w-4 mr-2" />
+                                    JSON Mode
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+
+                            {showAdvancedMode ? (
+                              <div className="space-y-2">
+                                <JsonEditor
+                                  value={formData.parameters}
+                                  onChange={(value) =>
+                                    setFormData({
+                                      ...formData,
+                                      parameters: value,
+                                    })
+                                  }
+                                  placeholder={JSON.stringify(
+                                    getDefaultParametersForType(
+                                      formData.type as StrategyTypeKey,
+                                    ),
+                                    null,
+                                    2,
+                                  )}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Advanced mode: Edit parameters in JSON format. Switch to
+                                  form mode for guided parameter configuration.
+                                </p>
+                              </div>
+                            ) : (
+                              <StrategyParameterFormDynamic
+                                strategyType={formData.type as StrategyTypeKey}
+                                initialParameters={memoizedInitialParameters}
+                                onParametersChange={handleParametersChange}
+                              />
+                            )}
+
+                            <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
+                              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                <IconSettings className="h-4 w-4" />
+                                Common Parameters
+                              </h4>
+                              <ul className="text-xs text-muted-foreground space-y-1">
+                                <li>
+                                  • <code className="font-mono">fastPeriod</code>:
+                                  Short-term moving average period
+                                </li>
+                                <li>
+                                  • <code className="font-mono">slowPeriod</code>:
+                                  Long-term moving average period
+                                </li>
+                                <li>
+                                  • <code className="font-mono">threshold</code>: Signal
+                                  threshold (0.001 = 0.1%)
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        )}
+
+                        {currentStep === 2 && (
+                          <div className="space-y-4 mt-4">
+                            <InitialDataConfigForm
+                              value={
+                                (memoizedInitialParameters?.initialData as InitialDataConfig) ||
+                                {}
+                              }
+                              onChange={(initialData) => {
+                                const updatedParams = {
+                                  ...memoizedInitialParameters,
+                                  initialData,
+                                };
+                                setFormData({
+                                  ...formData,
+                                  parameters: JSON.stringify(updatedParams, null, 2),
+                                });
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {currentStep === 3 && (
+                          <div className="space-y-4 mt-4">
+                            <SubscriptionConfigForm
+                              value={
+                                (memoizedInitialParameters?.subscription as Record<
+                                  string,
+                                  unknown
+                                >) || {}
+                              }
+                              onChange={(subscription) => {
+                                const updatedParams = {
+                                  ...memoizedInitialParameters,
+                                  subscription,
+                                };
+                                setFormData({
+                                  ...formData,
+                                  parameters: JSON.stringify(updatedParams, null, 2),
+                                });
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Navigation Buttons */}
                       <Separator />
-                      <div className="flex justify-end gap-2 pt-2">
+                      <div className="flex justify-between gap-2 pt-2">
                         <Button
                           type="button"
                           variant="outline"
@@ -795,9 +1062,33 @@ export default function StrategyPage() {
                         >
                           Cancel
                         </Button>
-                        <Button type="submit">
-                          {isEditing ? 'Update Strategy' : 'Create Strategy'}
-                        </Button>
+                        <div className="flex gap-2">
+                          {currentStep > 0 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handlePrevious}
+                            >
+                              Previous
+                            </Button>
+                          )}
+                          {currentStep < steps.length - 1 ? (
+                            <Button
+                              type="button"
+                              onClick={handleNext}
+                              disabled={!canProceedToNextStep}
+                            >
+                              Next
+                            </Button>
+                          ) : (
+                            <Button
+                              type="submit"
+                              disabled={!canProceedToNextStep || !canSubmit}
+                            >
+                              {isEditing ? 'Update Strategy' : 'Create Strategy'}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </form>
                   </DialogContent>

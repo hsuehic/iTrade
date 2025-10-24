@@ -196,31 +196,79 @@ export class OKXExchange extends BaseExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopPrice?: Decimal,
+    stopLoss?: Decimal,
     _timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
+    options?: {
+      tradeMode?: 'cash' | 'isolated' | 'cross';
+      leverage?: number;
+      takeProfitPrice?: Decimal;
+    },
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
 
-    const orderData: any = {
+    // Determine instrument type from OKX instId
+    const isSwap = instId.endsWith('-SWAP') || /-\d{6}$/.test(instId);
+
+    // Determine tdMode: use option if provided, else default
+    // SPOT: cash (non-margin trading)
+    // SWAP/FUTURES: isolated (safer than cross), or cross if specified
+    let tdMode = options?.tradeMode;
+    if (!tdMode) {
+      tdMode = isSwap ? 'isolated' : 'cash';
+    }
+
+    const orderData: Record<string, string> = {
       instId,
-      tdMode: 'cash', // 现货模式
+      tdMode, // cash=spot, isolated=isolated margin, cross=cross margin
       side: side.toLowerCase(),
       ordType: this.normalizeOrderType(type),
       sz: quantity.toString(),
     };
 
+    // Set leverage and posSide for SWAP/FUTURES (OKX requires these for margin trading)
+    if (isSwap) {
+      if (options?.leverage) {
+        orderData.lever = options.leverage.toString();
+      }
+      // posSide: For dual-direction mode: 'long' for BUY, 'short' for SELL
+      // For net mode (one-way): 'net'
+      // Using dual-direction mode by default (more common for trading)
+      orderData.posSide = side === OrderSide.BUY ? 'long' : 'short';
+    }
+
     if (price) {
       orderData.px = price.toString();
     }
 
-    if (stopPrice) {
-      orderData.slTriggerPx = stopPrice.toString();
+    // Stop loss trigger price (OKX uses slTriggerPx)
+    if (stopLoss) {
+      orderData.slTriggerPx = stopLoss.toString();
+      // For stop loss with limit price, use slOrdPx
+      if (price) {
+        orderData.slOrdPx = price.toString();
+      }
+    }
+
+    // Take profit trigger price (OKX uses tpTriggerPx)
+    if (options?.takeProfitPrice) {
+      orderData.tpTriggerPx = options.takeProfitPrice.toString();
+      // For take profit with limit price, use tpOrdPx
+      if (price) {
+        orderData.tpOrdPx = price.toString();
+      }
     }
 
     if (clientOrderId) {
       orderData.clOrdId = clientOrderId;
     }
+
+    // Clean up undefined values (OKX API doesn't accept undefined)
+    Object.keys(orderData).forEach((key) => {
+      if (orderData[key] === undefined || orderData[key] === null) {
+        delete orderData[key];
+      }
+    });
 
     const signedData = this.signOKXRequest('POST', '/api/v5/trade/order', orderData);
     const response = await this.httpClient.post('/api/v5/trade/order', orderData, {
@@ -228,7 +276,12 @@ export class OKXExchange extends BaseExchange {
     });
 
     if (response.data.code !== '0') {
-      throw new Error(`OKX API error: ${response.data.msg}`);
+      const details = Array.isArray(response.data.data)
+        ? JSON.stringify(response.data.data[0] || {})
+        : '';
+      throw new Error(
+        `OKX API error [${response.data.code}]: ${response.data.msg} ${details}`,
+      );
     }
 
     const data = response.data.data[0];
@@ -242,13 +295,20 @@ export class OKXExchange extends BaseExchange {
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
 
-    const cancelData: any = { instId };
+    const cancelData: Record<string, string> = { instId };
 
     if (clientOrderId) {
       cancelData.clOrdId = clientOrderId;
     } else {
       cancelData.ordId = orderId;
     }
+
+    // Clean up undefined values
+    Object.keys(cancelData).forEach((key) => {
+      if (cancelData[key] === undefined || cancelData[key] === null) {
+        delete cancelData[key];
+      }
+    });
 
     const signedData = this.signOKXRequest(
       'POST',
@@ -286,8 +346,7 @@ export class OKXExchange extends BaseExchange {
     }
 
     const signedData = this.signOKXRequest('GET', '/api/v5/trade/order', params);
-    const response = await this.httpClient.get('/api/v5/trade/order', {
-      params,
+    const response = await this.httpClient.get(signedData.endpoint, {
       headers: signedData.headers,
     });
 
@@ -308,13 +367,28 @@ export class OKXExchange extends BaseExchange {
 
   public async getOpenOrders(symbol?: string): Promise<Order[]> {
     const params: any = {};
+
     if (symbol) {
-      params.instId = this.normalizeSymbol(symbol);
+      const instId = this.normalizeSymbol(symbol);
+      params.instId = instId;
+
+      // Determine instType from symbol format
+      if (instId.endsWith('-SWAP')) {
+        params.instType = 'SWAP';
+      } else if (/-\d{6}$/.test(instId)) {
+        params.instType = 'FUTURES';
+      } else {
+        params.instType = 'SPOT';
+      }
+    } else {
+      // If no symbol, need to specify instType or query all types
+      // For now, query SWAP (most common for trading)
+      params.instType = 'SWAP';
     }
 
     const signedData = this.signOKXRequest('GET', '/api/v5/trade/orders-pending', params);
-    const response = await this.httpClient.get('/api/v5/trade/orders-pending', {
-      params,
+    // For GET requests, use the endpoint with query string from signedData
+    const response = await this.httpClient.get(signedData.endpoint, {
       headers: signedData.headers,
     });
 
@@ -371,8 +445,7 @@ export class OKXExchange extends BaseExchange {
           '/api/v5/trade/orders-history',
           params,
         );
-        const response = await this.httpClient.get('/api/v5/trade/orders-history', {
-          params,
+        const response = await this.httpClient.get(signedData.endpoint, {
           headers: signedData.headers,
         });
 
@@ -409,7 +482,7 @@ export class OKXExchange extends BaseExchange {
 
   public async getAccountInfo(): Promise<AccountInfo> {
     const signedData = this.signOKXRequest('GET', '/api/v5/account/balance', {});
-    const response = await this.httpClient.get('/api/v5/account/balance', {
+    const response = await this.httpClient.get(signedData.endpoint, {
       headers: signedData.headers,
     });
 
@@ -447,7 +520,7 @@ export class OKXExchange extends BaseExchange {
 
   public async getPositions(): Promise<Position[]> {
     const signedData = this.signOKXRequest('GET', '/api/v5/account/positions', {});
-    const response = await this.httpClient.get('/api/v5/account/positions', {
+    const response = await this.httpClient.get(signedData.endpoint, {
       headers: signedData.headers,
     });
 
@@ -818,7 +891,7 @@ export class OKXExchange extends BaseExchange {
     method: string,
     endpoint: string,
     params: Record<string, any>,
-  ): { headers: Record<string, string>; body?: string } {
+  ): { headers: Record<string, string>; body?: string; endpoint: string } {
     if (!this.credentials) {
       throw new Error('Exchange credentials not set');
     }
@@ -851,7 +924,7 @@ export class OKXExchange extends BaseExchange {
       headers['x-simulated-trading'] = '1';
     }
 
-    return { headers, body };
+    return { headers, body, endpoint };
   }
 
   protected addAuthentication(config: any): any {
@@ -1033,13 +1106,6 @@ export class OKXExchange extends BaseExchange {
     // OKX kline data format: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
     // Index 8 (confirm field): "0" = K line is uncompleted, "1" = K line is completed
     // Reference: https://www.okx.com/docs-v5/en/#websocket-api-public-channel-candlesticks-channel
-
-    // Debug: Log RAW kline data when closed
-    if (data[8] === '1') {
-      console.log(
-        `[OKX] RAW CLOSED KLINE: ts=${data[0]}, o=${data[1]}, h=${data[2]}, l=${data[3]}, c=${data[4]}, confirm=${data[8]}, interval=${interval}`,
-      );
-    }
 
     // Calculate closeTime based on openTime + interval duration
     const openTime = parseInt(data[0]);
