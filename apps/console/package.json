@@ -4,7 +4,16 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx src/main.ts"
+    "dev": "tsx src/main.ts",
+    "test:binance": "tsx src/tests/test-binance-ws.ts",
+    "test:okx": "tsx src/tests/test-okx-ws.ts",
+    "test:coinbase": "tsx src/tests/test-coinbase-ws.ts",
+    "test:binance-rest": "tsx src/tests/test-binance-rest.ts",
+    "test:okx-rest": "tsx src/tests/test-okx-rest.ts",
+    "test:coinbase-rest": "tsx src/tests/test-coinbase-rest.ts",
+    "test:all-ws": "npm run test:binance && npm run test:okx && npm run test:coinbase",
+    "test:all-rest": "npm run test:binance-rest && npm run test:okx-rest && npm run test:coinbase-rest",
+    "test:all-exchanges": "npm run test:all-ws && npm run test:all-rest"
   },
   "author": "xiaoweihsueh@gmail.com",
   "license": "MIT",

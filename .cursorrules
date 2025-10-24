@@ -1297,3 +1297,209 @@ All functionality verified and working correctly. ✅
 4. **Complete the full loop** - Make change → Build → Run → Verify user's original problem is solved.
 
 **Remember**: Untested code is broken code. Verification is not optional—it's a fundamental part of professional software development. 🧪✅
+
+---
+
+## 🧪 Test Execution Rules
+
+### Mandatory Test Execution
+
+**AI agents MUST execute all test files/cases that were written or modified during the task.**
+
+#### When to Execute Tests
+
+Tests MUST be executed when:
+
+1. **New test files are created** - Run the new test immediately after creation
+2. **Test files are modified** - Re-run the modified test to verify changes
+3. **Source code is modified** - Run related tests to verify no regressions
+4. **Completing a task** - Run all relevant tests before marking complete
+
+#### Test Execution Protocol
+
+**For Exchange Connector Tests:**
+
+```bash
+# After writing/modifying WebSocket tests
+npm run test:binance        # Binance WebSocket test
+npm run test:okx            # OKX WebSocket test
+npm run test:coinbase       # Coinbase WebSocket test
+
+# After writing/modifying REST API tests
+npm run test:binance-rest   # Binance REST API test
+npm run test:okx-rest       # OKX REST API test
+npm run test:coinbase-rest  # Coinbase REST API test
+
+# Run all tests
+npm run test:all-exchanges  # Complete test suite
+```
+
+**For Other Tests:**
+
+- Execute using appropriate test command
+- Verify exit codes (0 = pass, non-zero = fail)
+- Review test output for failures
+
+#### Test Execution Requirements
+
+1. ✅ **Execute IMMEDIATELY after writing** - Don't wait for user to ask
+2. ✅ **Verify test passes** - Check exit code and output
+3. ✅ **Fix failures before proceeding** - Never leave failing tests
+4. ✅ **Report results to user** - Show pass/fail summary
+5. ✅ **Document any known limitations** - E.g., "Requires credentials"
+
+#### Handling Test Failures
+
+**When tests fail:**
+
+1. **Read the error output carefully**
+2. **Identify the root cause** (not just symptoms)
+3. **Fix the issue** in source or test code
+4. **Rebuild if necessary** (`pnpm build`)
+5. **Re-run the test** to verify fix
+6. **Repeat until all tests pass**
+
+#### Known Test Limitations
+
+**Document and accept these limitations:**
+
+- **Coinbase REST API** - Requires authentication for all endpoints (public + private)
+- **User Data Tests** - Require API credentials in `.env` file
+- **Network Tests** - May fail due to rate limits or network issues
+
+#### Example Test Execution Workflow
+
+```markdown
+**Step 1: Write test file**
+- Created `test-binance-rest.ts`
+
+**Step 2: Verify types**
+```bash
+npx tsc --noEmit src/tests/test-binance-rest.ts
+✅ Types pass
+```
+
+**Step 3: Execute test**
+```bash
+npm run test:binance-rest
+✅ 9/9 tests passed (0.9s)
+```
+
+**Step 4: Report to user**
+✅ Binance REST API test created and verified!
+- All market data endpoints working
+- Account endpoints require credentials
+- Test completes in <1 second
+```
+
+#### AI Agent Test Execution Responsibilities
+
+**The AI agent MUST:**
+
+1. ✅ **Execute ALL new/modified tests** before task completion
+2. ✅ **Verify tests pass** (or document known failures)
+3. ✅ **Fix any test failures** before marking task complete
+4. ✅ **Report test results** clearly to user
+5. ✅ **Document test coverage** for the implementation
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Skip test execution** to save time
+2. ❌ **Mark tasks complete** without running tests
+3. ❌ **Leave failing tests** for the user to fix
+4. ❌ **Create tests without executing them**
+
+### Summary: Test Execution is Mandatory
+
+> **Every test written MUST be executed. Every test modified MUST be re-run. Test failures MUST be fixed. The AI agent is responsible for ensuring tests pass, not the user.**
+
+**Critical Rule**: If you write a test, you MUST run it immediately and verify it passes! 🧪✅
+
+---
+
+## 🚀 Running Console Application (main.ts)
+
+### Mandatory Execution Method
+
+**When running `apps/console/src/main.ts` for testing or verification, AI agents MUST use the same settings as configured in `.vscode/launch.json` debugger configuration.**
+
+#### Required Execution Command
+
+```bash
+cd apps/console && \
+NODE_ENV=development \
+TS_NODE_PROJECT=tsconfig.build.json \
+TS_NODE_FILES=true \
+NODE_OPTIONS="--conditions=source" \
+node -r ts-node/register \
+     -r tsconfig-paths/register \
+     -r reflect-metadata \
+     src/main.ts
+```
+
+#### Why These Settings?
+
+1. **`ts-node/register`** - Enables TypeScript execution without pre-compilation
+2. **`tsconfig-paths/register`** - Resolves `@itrade/*` path aliases correctly
+3. **`reflect-metadata`** - Required for TypeORM decorators
+4. **`TS_NODE_PROJECT=tsconfig.build.json`** - Uses the correct TypeScript configuration
+5. **`NODE_OPTIONS="--conditions=source"`** - Ensures source maps work correctly
+
+#### When to Run main.ts
+
+Run `main.ts` when:
+
+1. **Verifying TradingEngine integration** after exchange connector changes
+2. **Testing user data subscriptions** for all exchanges
+3. **Verifying strategy subscriptions** work correctly
+4. **Checking EventBus emissions** from exchanges
+5. **Validating database connectivity** and entity persistence
+6. **Testing graceful shutdown** and cleanup
+
+#### Running with Timeout
+
+For automated testing (non-interactive):
+
+```bash
+cd apps/console && \
+(NODE_ENV=development \
+ TS_NODE_PROJECT=tsconfig.build.json \
+ TS_NODE_FILES=true \
+ NODE_OPTIONS="--conditions=source" \
+ node -r ts-node/register \
+      -r tsconfig-paths/register \
+      -r reflect-metadata \
+      src/main.ts 2>&1 & PID=$!; \
+ sleep 15; \
+ kill $PID 2>/dev/null; \
+ wait $PID 2>/dev/null) | grep -E "✅|📡|🔍|Balance|Position|Order"
+```
+
+#### Expected Output
+
+When running successfully, you should see:
+
+- ✅ Database connected
+- ✅ Exchange(s) initialized (Binance, OKX, Coinbase)
+- ✅ Subscribed to user data for each exchange
+- 📊 Position/Balance/Order updates (if available)
+- 🚀 Trading System is LIVE
+
+#### Known Issues
+
+- **Binance 401 Unauthorized**: API key permissions or IP whitelisting issue (external config, not code bug)
+- **OKX Invalid Timestamp**: Incorrect timestamp format (should be fixed in code)
+- **Coinbase 401 Unauthorized**: Requires valid credentials for REST API (WebSocket public data doesn't require auth)
+- **TypeORM Decorator Error**: Packages need to be rebuilt (`pnpm build --filter "./packages/*"`)
+
+#### Critical Rules
+
+1. ❌ **NEVER use `npm run dev`** - It uses `tsx` which has different module resolution
+2. ❌ **NEVER use `tsx src/main.ts`** - It bypasses required registrations
+3. ✅ **ALWAYS use the command above** - It matches the debugger configuration
+4. ✅ **ALWAYS rebuild packages first** if you get "Cannot find module" errors
+5. ✅ **ALWAYS verify exchanges connect** and user data subscriptions work
+
+### Summary: Use Debugger Settings for main.ts
+
+> **When running `main.ts`, ALWAYS use the exact same settings as `.vscode/launch.json` to ensure consistent behavior between AI testing and user debugging.**

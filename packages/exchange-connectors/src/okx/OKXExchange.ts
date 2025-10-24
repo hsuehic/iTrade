@@ -49,6 +49,7 @@ export class OKXExchange extends BaseExchange {
   private okxReconnectTimers: Partial<Record<OkxWsType, NodeJS.Timeout>> = {};
   private okxSubscriptions = new Map<string, Set<string>>();
   private okxPrivateAuthenticated = false;
+  private symbolMap = new Map<string, string>(); // OKX instId -> original symbol mapping
 
   constructor(isDemo = false) {
     const baseUrl = isDemo ? OKXExchange.TESTNET_BASE_URL : OKXExchange.MAINNET_BASE_URL;
@@ -603,14 +604,17 @@ export class OKXExchange extends BaseExchange {
       const { channel, instId } = message.arg;
       const data = message.data[0];
 
+      // Look up original symbol format from mapping
+      const originalSymbol = this.symbolMap.get(instId) || instId;
+
       if (channel === 'tickers') {
-        this.emit('ticker', instId, this.transformOKXTicker(data, instId));
+        this.emit('ticker', originalSymbol, this.transformOKXTicker(data, instId));
       } else if (channel === 'books5' || channel === 'books') {
-        this.emit('orderbook', instId, this.transformOKXOrderBook(data, instId));
+        this.emit('orderbook', originalSymbol, this.transformOKXOrderBook(data, instId));
       } else if (channel === 'trades') {
-        this.emit('trade', instId, this.transformOKXTrade(data, instId));
+        this.emit('trade', originalSymbol, this.transformOKXTrade(data, instId));
       } else if (channel.startsWith('candle')) {
-        this.emit('kline', instId, this.transformOKXKline(data, instId));
+        this.emit('kline', originalSymbol, this.transformOKXKline(data, instId));
       } else if (channel === 'orders') {
         const order = this.transformOKXPrivateOrder(data);
         this.emit('orderUpdate', order.symbol, order);
@@ -952,9 +956,12 @@ export class OKXExchange extends BaseExchange {
         return { channel: 'trades', instId };
       case 'klines': {
         // symbol 格式: BTC-USDT@1m
+        // OKX WebSocket uses format: { channel: "candle1m", instId: "BTC-USDT" }
         const [sym, interval] = symbol.split('@');
+        const bar = this.normalizeInterval(interval || '1m');
+        // Ensure lowercase for channel name (e.g., candle1m, candle1h)
         return {
-          channel: `candle${this.normalizeInterval(interval || '1m')}`,
+          channel: `candle${bar.toLowerCase()}`,
           instId: this.normalizeSymbol(sym),
         };
       }
@@ -964,8 +971,9 @@ export class OKXExchange extends BaseExchange {
   }
 
   private resolveWsTypeForChannel(channel: string): OkxWsType {
-    // Only full L2 TBT requires business; most public streams are on public
+    // Business endpoint channels (require /business WebSocket URL)
     if (channel === 'books-l2-tbt') return 'business';
+    if (channel.startsWith('candle')) return 'business'; // All candle/kline data
     // Default market data → public
     return 'public';
   }
@@ -1039,6 +1047,16 @@ export class OKXExchange extends BaseExchange {
   private async okxSubscribe(type: string, symbol: string): Promise<void> {
     if (!this.okxSubscriptions.has(type)) this.okxSubscriptions.set(type, new Set());
     this.okxSubscriptions.get(type)!.add(symbol);
+
+    // Store symbol mapping (OKX instId -> original symbol)
+    // For klines, strip the @interval part
+    let baseSymbol = symbol;
+    if (type === 'klines' && symbol.includes('@')) {
+      baseSymbol = symbol.split('@')[0];
+    }
+    const instId = this.normalizeSymbol(baseSymbol);
+    this.symbolMap.set(instId, baseSymbol);
+
     await this.sendWebSocketSubscription(type, symbol);
   }
 

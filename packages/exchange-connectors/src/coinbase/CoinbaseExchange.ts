@@ -20,6 +20,7 @@ import {
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
+import { CoinbaseWebSocketManager } from './CoinbaseWebSocketManager';
 
 import { generateToken } from './token';
 /**
@@ -30,6 +31,8 @@ import { generateToken } from './token';
  */
 export class CoinbaseExchange extends BaseExchange {
   private publicHttpClient: AxiosInstance;
+  private wsManager: CoinbaseWebSocketManager;
+  private symbolMap = new Map<string, string>(); // Coinbase product_id -> original symbol mapping
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
   private static readonly MAINNET_WS_URL = 'wss://advanced-trade-ws.coinbase.com';
@@ -49,6 +52,64 @@ export class CoinbaseExchange extends BaseExchange {
       baseURL: CoinbaseExchange.PUBLIC_BASE_URL,
       timeout: 30000,
     });
+
+    // Initialize WebSocket Manager
+    this.wsManager = new CoinbaseWebSocketManager(CoinbaseExchange.MAINNET_WS_URL);
+    this.setupWebSocketManagerListeners();
+  }
+
+  /**
+   * Setup WebSocket Manager event listeners
+   */
+  private setupWebSocketManagerListeners(): void {
+    this.wsManager.on('connected', () => {
+      console.log('[Coinbase] WebSocket Manager connected');
+    });
+
+    this.wsManager.on('disconnected', (code: number) => {
+      console.log(`[Coinbase] WebSocket Manager disconnected: ${code}`);
+    });
+
+    this.wsManager.on('error', (error: Error) => {
+      console.error('[Coinbase] WebSocket Manager error:', error.message);
+    });
+
+    this.wsManager.on('data', (message: any) => {
+      this.handleWebSocketMessage(message);
+    });
+  }
+
+  /**
+   * Generate JWT token for user data authentication
+   */
+  private generateJWT(): string {
+    if (!this.credentials) {
+      throw new Error('Coinbase credentials required for JWT generation');
+    }
+
+    const header = {
+      alg: 'ES256',
+      kid: this.credentials.apiKey,
+      nonce: Math.floor(Date.now() / 1000).toString(),
+    };
+
+    const payload = {
+      sub: this.credentials.apiKey,
+      iss: 'coinbase-cloud',
+      nbf: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 120, // 2 minutes
+      aud: ['retail_rest_api_proxy'],
+    };
+
+    // Generate JWT using the token utility
+    const token = generateToken(
+      'GET',
+      '/',
+      this.credentials.apiKey,
+      this.credentials.secretKey,
+    );
+
+    return token;
   }
 
   protected async testConnection(): Promise<void> {
@@ -399,33 +460,19 @@ export class CoinbaseExchange extends BaseExchange {
     return info.symbols;
   }
 
+  /**
+   * Build WebSocket URL (for compatibility)
+   */
   protected buildWebSocketUrl(): string {
+    console.log('[Coinbase] Using WebSocket Manager for connections');
     return this.wsBaseUrl;
   }
 
-  protected async sendWebSocketSubscription(type: string, key: string): Promise<void> {
-    const ws = this.wsConnections.get('market');
-    if (!ws) return;
-
-    const message: any = {
-      type: 'subscribe',
-      product_ids: [] as string[],
-      channel: '',
-    };
-
-    if (type === 'klines') {
-      const [productId, interval] = key.split('@');
-      message.product_ids = [productId];
-      message.channel = 'candles';
-      message.granularity = this.mapIntervalToGranularity(interval);
-    } else {
-      message.product_ids = [key];
-      if (type === 'ticker') message.channel = 'ticker';
-      if (type === 'orderbook') message.channel = 'level2';
-      if (type === 'trades') message.channel = 'market_trades';
-    }
-
-    ws.send(JSON.stringify(message));
+  /**
+   * Legacy method - now handled by WebSocket Manager
+   */
+  protected async sendWebSocketSubscription(_type: string, _key: string): Promise<void> {
+    console.log('[Coinbase] WebSocket subscriptions managed by CoinbaseWebSocketManager');
   }
 
   protected handleWebSocketMessage(msg: any): void {
@@ -437,8 +484,9 @@ export class CoinbaseExchange extends BaseExchange {
         if (msg.events) {
           for (const e of msg.events) {
             for (const t of e.tickers || []) {
-              this.emit('ticker', t.product_id, {
-                symbol: t.product_id,
+              const originalSymbol = this.symbolMap.get(t.product_id) || t.product_id;
+              this.emit('ticker', originalSymbol, {
+                symbol: originalSymbol,
                 price: this.formatDecimal(t.price || t.best_ask || '0'),
                 volume: this.formatDecimal(t.volume_24_h || t.volume_24h || '0'),
                 timestamp: new Date(),
@@ -453,6 +501,7 @@ export class CoinbaseExchange extends BaseExchange {
         if (msg.events) {
           for (const e of msg.events) {
             for (const ob of e.level2 || []) {
+              const originalSymbol = this.symbolMap.get(ob.product_id) || ob.product_id;
               const bids = (ob.bids || []).map((b: any) => [
                 this.formatDecimal(b.price_level || b[0] || '0'),
                 this.formatDecimal(b.new_quantity || b[1] || '0'),
@@ -461,8 +510,8 @@ export class CoinbaseExchange extends BaseExchange {
                 this.formatDecimal(a.price_level || a[0] || '0'),
                 this.formatDecimal(a.new_quantity || a[1] || '0'),
               ]);
-              this.emit('orderbook', ob.product_id, {
-                symbol: ob.product_id,
+              this.emit('orderbook', originalSymbol, {
+                symbol: originalSymbol,
                 timestamp: new Date(),
                 bids,
                 asks,
@@ -475,9 +524,10 @@ export class CoinbaseExchange extends BaseExchange {
         if (msg.events) {
           for (const e of msg.events) {
             for (const tr of e.trades || []) {
-              this.emit('trade', tr.product_id, {
+              const originalSymbol = this.symbolMap.get(tr.product_id) || tr.product_id;
+              this.emit('trade', originalSymbol, {
                 id: tr.trade_id?.toString() || uuidv4(),
-                symbol: tr.product_id,
+                symbol: originalSymbol,
                 price: this.formatDecimal(tr.price),
                 quantity: this.formatDecimal(tr.size || '0'),
                 side: tr.side?.toLowerCase() === 'buy' ? 'buy' : 'sell',
@@ -491,8 +541,9 @@ export class CoinbaseExchange extends BaseExchange {
         if (msg.events) {
           for (const e of msg.events) {
             for (const c of e.candles || []) {
-              this.emit('kline', c.product_id, {
-                symbol: c.product_id,
+              const originalSymbol = this.symbolMap.get(c.product_id) || c.product_id;
+              this.emit('kline', originalSymbol, {
+                symbol: originalSymbol,
                 interval: c.granularity?.toString() || '',
                 openTime: new Date(c.start),
                 closeTime: new Date(
@@ -510,32 +561,146 @@ export class CoinbaseExchange extends BaseExchange {
           }
         }
         break;
+      case 'user':
+        // Handle user data (orders, balances)
+        if (msg.events) {
+          for (const e of msg.events) {
+            if (e.orders) {
+              for (const orderData of e.orders) {
+                const order = this.transformCoinbaseUserOrder(orderData);
+                console.log(
+                  `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
+                );
+                this.emit('orderUpdate', order.symbol, order);
+              }
+            }
+          }
+        }
+        break;
       default:
         break;
     }
   }
 
-  // Satisfy BaseExchange abstract subscription APIs (no-op WS for now)
-  public async subscribeToTicker(_symbol: string): Promise<void> {
-    // TODO: Implement when Coinbase WS is integrated in this connector
+  /**
+   * Subscribe to ticker updates
+   */
+  public async subscribeToTicker(symbol: string): Promise<void> {
+    const productId = this.normalizeSymbol(symbol);
+    this.symbolMap.set(productId, symbol); // Store mapping
+    console.log(`[Coinbase] Subscribing to ticker: ${productId}`);
+    this.wsManager.subscribe('ticker', [productId]);
   }
-  public async subscribeToOrderBook(_symbol: string): Promise<void> {
-    // TODO: Implement when Coinbase WS is integrated in this connector
+
+  /**
+   * Subscribe to order book updates
+   */
+  public async subscribeToOrderBook(symbol: string): Promise<void> {
+    const productId = this.normalizeSymbol(symbol);
+    this.symbolMap.set(productId, symbol); // Store mapping
+    console.log(`[Coinbase] Subscribing to orderbook: ${productId}`);
+    this.wsManager.subscribe('level2', [productId]);
   }
-  public async subscribeToTrades(_symbol: string): Promise<void> {
-    // TODO: Implement when Coinbase WS is integrated in this connector
+
+  /**
+   * Subscribe to trades
+   */
+  public async subscribeToTrades(symbol: string): Promise<void> {
+    const productId = this.normalizeSymbol(symbol);
+    this.symbolMap.set(productId, symbol); // Store mapping
+    console.log(`[Coinbase] Subscribing to trades: ${productId}`);
+    this.wsManager.subscribe('market_trades', [productId]);
   }
-  public async subscribeToKlines(_symbol: string, _interval: string): Promise<void> {
-    // TODO: Implement when Coinbase WS is integrated in this connector
+
+  /**
+   * Subscribe to klines/candles
+   */
+  public async subscribeToKlines(symbol: string, interval: string): Promise<void> {
+    const productId = this.normalizeSymbol(symbol);
+    this.symbolMap.set(productId, symbol); // Store mapping
+    const granularity = this.mapIntervalToGranularity(interval);
+    console.log(`[Coinbase] Subscribing to klines: ${productId} @ ${interval}`);
+    this.wsManager.subscribe('candles', [productId], { granularity });
   }
+
+  /**
+   * Unsubscribe from a data type
+   */
   public async unsubscribe(
-    _symbol: string,
-    _type: 'ticker' | 'orderbook' | 'trades' | 'klines',
+    symbol: string,
+    type: 'ticker' | 'orderbook' | 'trades' | 'klines',
   ): Promise<void> {
-    // TODO: Implement when Coinbase WS is integrated in this connector
+    const productId = this.normalizeSymbol(symbol);
+    const channelMap = {
+      ticker: 'ticker',
+      orderbook: 'level2',
+      trades: 'market_trades',
+      klines: 'candles',
+    };
+    const channel = channelMap[type];
+    console.log(`[Coinbase] Unsubscribing from ${type}: ${productId}`);
+    this.wsManager.unsubscribe(channel, [productId]);
   }
+
+  /**
+   * Subscribe to user data streams (orders, balances)
+   */
   public async subscribeToUserData(): Promise<void> {
-    // TODO: Implement Coinbase private WS
+    if (!this.credentials) {
+      throw new Error('Coinbase credentials required for user data subscription');
+    }
+
+    console.log('[Coinbase] Subscribing to user data streams...');
+
+    // Set JWT generator callback
+    this.wsManager.setJWTGenerator(() => this.generateJWT());
+
+    // Subscribe to user channel (all products)
+    // Note: Coinbase user channel doesn't require specific product_ids
+    // It will send updates for all user's products
+    this.wsManager.subscribe('user', ['*']);
+
+    console.log('[Coinbase] User data subscription requests sent');
+  }
+
+  /**
+   * Disconnect and cleanup
+   */
+  public async disconnect(): Promise<void> {
+    console.log('[Coinbase] Disconnecting...');
+    this.wsManager.closeConnection();
+    await super.disconnect();
+  }
+
+  /**
+   * Transform Coinbase user order data to iTrade Order format
+   */
+  private transformCoinbaseUserOrder(orderData: any): Order {
+    const order: Order = {
+      id: orderData.order_id || orderData.id || uuidv4(),
+      clientOrderId: orderData.client_order_id,
+      symbol: orderData.product_id || 'UNKNOWN',
+      side:
+        (orderData.side?.toUpperCase() || 'BUY') === 'BUY'
+          ? OrderSide.BUY
+          : OrderSide.SELL,
+      type: this.transformOrderType(orderData.order_type || orderData.type || 'LIMIT'),
+      quantity: this.formatDecimal(orderData.size || orderData.base_size || '0'),
+      price: orderData.price ? this.formatDecimal(orderData.price) : undefined,
+      status: this.transformOrderStatus(orderData.status || 'NEW'),
+      timeInForce: (orderData.time_in_force as TimeInForce) || TimeInForce.GTC,
+      timestamp: orderData.created_at ? new Date(orderData.created_at) : new Date(),
+      updateTime: orderData.updated_at ? new Date(orderData.updated_at) : undefined,
+      executedQuantity: orderData.filled_size
+        ? this.formatDecimal(orderData.filled_size)
+        : undefined,
+      cummulativeQuoteQuantity: orderData.filled_value
+        ? this.formatDecimal(orderData.filled_value)
+        : undefined,
+      fills: undefined,
+    };
+
+    return order;
   }
 
   protected signRequest(params: Record<string, any>): Record<string, any> {

@@ -44,8 +44,9 @@ export class BinanceExchange extends BaseExchange {
   private futuresClient: AxiosInstance;
   private _isTestnet: boolean;
   private wsManager: BinanceWebSocketManager;
-  private symbolMap = new Map<string, string>(); // normalized -> original symbol mapping
+  private symbolMap = new Map<string, string>(); // normalized_marketType -> original symbol mapping
   private userWs?: BinanceWebsocket;
+  private _messageDebugCount = 0;
 
   constructor(isTestnet = false) {
     const baseUrl = isTestnet
@@ -386,8 +387,8 @@ export class BinanceExchange extends BaseExchange {
       this.emit('ws_error', error);
     });
 
-    this.wsManager.on('data', (_marketType: BinanceMarketType, message: any) => {
-      this.handleWebSocketMessage(message);
+    this.wsManager.on('data', (marketType: BinanceMarketType, message: any) => {
+      this.handleWebSocketMessage(message, marketType);
     });
 
     this.wsManager.on(
@@ -450,8 +451,15 @@ export class BinanceExchange extends BaseExchange {
     console.log(`[Binance] Subscribing to ${type}:${symbol} (${marketType})`);
 
     // Store normalized -> original symbol mapping for later lookup
-    const normalized = this.normalizeSymbol(symbol).toLowerCase();
-    this.symbolMap.set(normalized, symbol);
+    // For klines, strip the @interval part for mapping
+    let baseSymbol = symbol;
+    if (type === 'klines' && symbol.includes('@')) {
+      baseSymbol = symbol.split('@')[0];
+    }
+    const normalized = this.normalizeSymbol(baseSymbol).toLowerCase();
+    // Use market type in the key to avoid spot/futures collision
+    const mapKey = `${normalized}_${marketType}`;
+    this.symbolMap.set(mapKey, baseSymbol);
 
     // Build stream name
     const streamName = this.buildStreamName(type, symbol);
@@ -492,7 +500,7 @@ export class BinanceExchange extends BaseExchange {
     console.log('[Binance] Using WebSocket Manager for connections');
   }
 
-  protected handleWebSocketMessage(message: any): void {
+  protected handleWebSocketMessage(message: any, marketType?: BinanceMarketType): void {
     // Handle market data messages (single stream format)
     if (message.e) {
       // Direct stream format (e.g., {"e":"trade","s":"BTCUSDT",...})
@@ -500,8 +508,9 @@ export class BinanceExchange extends BaseExchange {
       const symbol = message.s; // Normalized symbol from Binance
       const normalizedSymbol = symbol.toLowerCase();
 
-      // Look up original symbol format
-      const originalSymbol = this.symbolMap.get(normalizedSymbol) || symbol.toUpperCase();
+      // Look up original symbol format using market type
+      const mapKey = marketType ? `${normalizedSymbol}_${marketType}` : normalizedSymbol;
+      let originalSymbol = this.symbolMap.get(mapKey) || symbol.toUpperCase();
 
       switch (eventType) {
         case '24hrTicker':

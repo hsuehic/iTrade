@@ -117,35 +117,26 @@ async function main() {
 
   // Start trading engine
   await engine.start();
-  const ma1 = new MovingAverageStrategy({
-    symbol: 'BTC/USDT',
-    exchange: 'binance',
-    fastPeriod: 10,
-    slowPeriod: 30,
-    threshold: 0.001,
-    subscription: {
-      ticker: true,
-      orderbook: true,
-      trades: true,
-      klines: true,
-      method: 'websocket',
-    },
-  });
 
-  const ma2 = new MovingAverageStrategy({
-    symbol: 'BTC/USDT:USDT', // Futures symbol to test futures WebSocket endpoint
-    exchange: 'binance',
-    fastPeriod: 10,
-    slowPeriod: 30,
-    threshold: 0.001,
-    subscription: {
-      ticker: true,
-      orderbook: true,
-      trades: true,
-      klines: true,
-      method: 'websocket',
-    },
-  });
+  for (let symbol in ['BTC/USDT', 'BTC/USDT:USDT']) {
+    for (let exchange in ['binance', 'okx', 'coinbase']) {
+      const strategy = new MovingAverageStrategy({
+        symbol: 'BTC/USDT',
+        exchange: 'binance',
+        fastPeriod: 10,
+        slowPeriod: 30,
+        threshold: 0.001,
+        subscription: {
+          ticker: true,
+          orderbook: true,
+          trades: true,
+          klines: true,
+          method: 'websocket',
+        },
+      });
+      await engine.addStrategy(`Ma-${symbol}-${exchange}`, strategy);
+    }
+  }
 
   // await engine.addStrategy('Ma 1', ma1);
 
