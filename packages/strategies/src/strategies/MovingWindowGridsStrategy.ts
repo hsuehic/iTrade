@@ -1,4 +1,5 @@
 //import { Decimal } from 'decimal.js';
+import { FixedLengthList } from '@itrade/utils';
 import {
   BaseStrategy,
   StrategyResult,
@@ -6,6 +7,10 @@ import {
   Ticker,
   Kline,
   Order,
+  Balance,
+  Position,
+  OrderBook,
+  Trade,
   // StrategyRecoveryContext, // to support state recovery in the future
 } from '@itrade/core';
 
@@ -20,6 +25,11 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   private gridSize: number;
   private gridCount: number;
   private position: 'long' | 'short' | 'none' = 'none';
+  private positions: Position[] = [];
+  private orders: Order[] = [];
+  private balances: Balance[] = [];
+  private tickers: FixedLengthList<Ticker> = new FixedLengthList<Ticker>(15);
+  private klines: FixedLengthList<Kline> = new FixedLengthList<Kline>(15);
 
   constructor(parameters: MovingWindowGridsParameters) {
     super('MovingWindowGrids', parameters);
@@ -36,8 +46,15 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   }
 
   public override async analyze(marketData: {
+    // Market Data
     ticker?: Ticker;
     klines?: Kline[];
+    orderbook?: OrderBook;
+    trades?: Trade[];
+    // Account Data
+    positions?: Position[];
+    orders?: Order[];
+    balances?: Balance[];
   }): Promise<StrategyResult> {
     console.log('analyze: MovingWindowGridsStrategy');
     console.log(marketData);
@@ -45,6 +62,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     if (!marketData.klines) {
       return { action: 'hold', reason: 'No klines data available' };
     } else {
+      this.klines.push(...marketData.klines);
       return { action: 'hold', reason: 'No klines data available' };
     }
   }

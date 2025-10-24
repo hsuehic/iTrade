@@ -622,6 +622,42 @@ export class BinanceExchange extends BaseExchange {
     return upperSymbol.replace('/', '').replace('-', '');
   }
 
+  /**
+   * Denormalize symbol from Binance format to unified format
+   * Binance → Unified
+   * @param symbol Binance symbol (e.g., BTCUSDT)
+   * @param market Market type to determine format
+   */
+  protected denormalizeSymbol(symbol: string, market: 'spot' | 'futures'): string {
+    const upper = symbol.toUpperCase();
+
+    // For futures, convert to perpetual format
+    if (market === 'futures') {
+      // BTCUSDT → BTC/USDT:USDT
+      // Common perpetual pairs end with USDT, USDC, USD, BUSD
+      const commonQuotes = ['USDT', 'USDC', 'USD', 'BUSD', 'BTC', 'ETH'];
+      for (const quote of commonQuotes) {
+        if (upper.endsWith(quote)) {
+          const base = upper.substring(0, upper.length - quote.length);
+          return `${base}/${quote}:${quote}`;
+        }
+      }
+    }
+
+    // For spot, convert to spot format
+    // BTCUSDT → BTC/USDT
+    const commonQuotes = ['USDT', 'USDC', 'USD', 'BUSD', 'BTC', 'ETH', 'BNB'];
+    for (const quote of commonQuotes) {
+      if (upper.endsWith(quote)) {
+        const base = upper.substring(0, upper.length - quote.length);
+        return `${base}/${quote}`;
+      }
+    }
+
+    // Fallback: return as is if can't parse
+    return symbol;
+  }
+
   private normalizeInterval(interval: string): string {
     // Convert standard intervals to Binance format
     const intervalMap: { [key: string]: string } = {
@@ -725,10 +761,12 @@ export class BinanceExchange extends BaseExchange {
     }
   }
 
-  private normalizeBinanceOrderUpdate(data: any, market: string): Order {
+  private normalizeBinanceOrderUpdate(data: any, market: 'spot' | 'futures'): Order {
     // Supports spot executionReport and futures ORDER_TRADE_UPDATE
     if (data.e === 'executionReport') {
-      const symbol = data.s as string;
+      const nativeSymbol = data.s as string;
+      // Denormalize: BTCUSDT → BTC/USDT or BTC/USDT:USDT
+      const symbol = this.denormalizeSymbol(nativeSymbol, market);
       const side =
         (data.S || '').toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL;
       const type = this.transformBinanceOrderType(data.o || 'LIMIT');
@@ -752,7 +790,9 @@ export class BinanceExchange extends BaseExchange {
     }
     if (data.e === 'ORDER_TRADE_UPDATE' && data.o) {
       const o = data.o;
-      const symbol = o.s as string;
+      const nativeSymbol = o.s as string;
+      // Denormalize: BTCUSDT → BTC/USDT:USDT (futures)
+      const symbol = this.denormalizeSymbol(nativeSymbol, market);
       const side = (o.S || '').toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL;
       const type = this.transformBinanceOrderType(o.o || 'LIMIT');
       const qty = this.formatDecimal(o.q || '0');
@@ -774,10 +814,12 @@ export class BinanceExchange extends BaseExchange {
       };
     }
     // Fallback minimal
+    const nativeSymbol = (data.s || data.o?.s || '').toString();
+    const symbol = nativeSymbol ? this.denormalizeSymbol(nativeSymbol, market) : '';
     return {
       id: uuidv4(),
       clientOrderId: undefined,
-      symbol: (data.s || data.o?.s || '').toString(),
+      symbol,
       side: OrderSide.BUY,
       type: OrderType.LIMIT,
       quantity: this.formatDecimal('0'),
@@ -819,8 +861,10 @@ export class BinanceExchange extends BaseExchange {
       }
       if (Array.isArray(a.P)) {
         for (const p of a.P) {
+          // Denormalize symbol: BTCUSDT → BTC/USDT:USDT (futures perpetual)
+          const unifiedSymbol = this.denormalizeSymbol(p.s, 'futures');
           positions.push({
-            symbol: p.s,
+            symbol: unifiedSymbol,
             side: (p.ps || 'LONG').toLowerCase() === 'long' ? 'long' : 'short',
             quantity: this.formatDecimal(p.pa || '0'),
             avgPrice: this.formatDecimal(p.ep || '0'),
@@ -838,11 +882,13 @@ export class BinanceExchange extends BaseExchange {
 
   private transformBinanceOrder(order: any): Order {
     const status = this.transformBinanceOrderStatus(order.status);
+    // REST API orders are spot, denormalize: BTCUSDT → BTC/USDT
+    const symbol = this.denormalizeSymbol(order.symbol, 'spot');
 
     return {
       id: order.orderId?.toString() || uuidv4(),
       clientOrderId: order.clientOrderId,
-      symbol: order.symbol,
+      symbol,
       side: order.side?.toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformBinanceOrderType(order.type),
       quantity: this.formatDecimal(order.origQty || order.quantity || '0'),

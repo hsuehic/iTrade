@@ -18,6 +18,7 @@ import {
   OrderStatus,
   TimeInForce,
   Position,
+  Balance,
   StrategyResult,
   Ticker,
   OrderBook,
@@ -44,6 +45,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private readonly _exchanges = new Map<string, IExchange>();
   private _eventBus: EventBus;
   private subscriptionCoordinator: SubscriptionCoordinator;
+
+  // Account state tracking (keyed by exchange name)
+  private readonly _positions = new Map<string, Position[]>();
+  private readonly _orders = new Map<string, Order[]>();
+  private readonly _balances = new Map<string, Balance[]>();
 
   constructor(
     private riskManager: IRiskManager,
@@ -774,6 +780,19 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this.logger.info(
         `📦 Order Update from ${exchangeName}: ${symbol} - ${order.status}`,
       );
+
+      // Store/update order in the orders map
+      const orders = this._orders.get(exchangeName) || [];
+      const existingOrderIndex = orders.findIndex((o) => o.id === order.id);
+      if (existingOrderIndex >= 0) {
+        // Update existing order
+        orders[existingOrderIndex] = order;
+      } else {
+        // Add new order
+        orders.push(order);
+      }
+      this._orders.set(exchangeName, orders);
+
       // Emit order event based on status
       switch (order.status) {
         case 'FILLED':
@@ -791,21 +810,117 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         default:
           this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
       }
+
+      // Notify strategies of specific order update
+      this.notifyStrategiesAccountUpdate({ orders: [order] });
     });
 
-    exchange.on('accountUpdate', (exchangeId: string, balances: any[]) => {
+    // Balance Update Event
+    // Exchanges MUST normalize balance data to Balance[] format:
+    // { asset: string, free: Decimal, locked: Decimal, total: Decimal }
+    exchange.on('accountUpdate', (exchangeId: string, balances: Balance[]) => {
       this.logger.info(
         `💰 Account Update from ${exchangeName}: ${balances.length} balances`,
       );
+      // Store balances for this exchange
+      this._balances.set(exchangeName, balances);
       this._eventBus.emitBalanceUpdate({ balances, timestamp: new Date() });
+
+      // Notify strategies of specific balance update (push data only)
+      this.notifyStrategiesAccountUpdate({ balances });
     });
 
     exchange.on('positionUpdate', (exchangeId: string, positions: Position[]) => {
       this.logger.info(
         `📊 Position Update from ${exchangeName}: ${positions.length} positions`,
       );
+      // Store positions for this exchange
+      this._positions.set(exchangeName, positions);
       this._eventBus.emitPositionUpdate({ positions, timestamp: new Date() });
+
+      // Notify strategies of specific position update
+      this.notifyStrategiesAccountUpdate({ positions });
     });
+  }
+
+  /**
+   * Get aggregated account data from all exchanges
+   */
+  private getAccountData(): {
+    positions: Position[];
+    orders: Order[];
+    balances: Balance[];
+  } {
+    const allPositions: Position[] = [];
+    const allOrders: Order[] = [];
+    const allBalances: Balance[] = [];
+
+    // Aggregate positions from all exchanges
+    for (const positions of this._positions.values()) {
+      allPositions.push(...positions);
+    }
+
+    // Aggregate orders from all exchanges
+    for (const orders of this._orders.values()) {
+      allOrders.push(...orders);
+    }
+
+    // Aggregate balances from all exchanges
+    for (const balances of this._balances.values()) {
+      allBalances.push(...balances);
+    }
+
+    return {
+      positions: allPositions,
+      orders: allOrders,
+      balances: allBalances,
+    };
+  }
+
+  /**
+   * Notify strategies with specific account data updates (pushed data only)
+   * Only passes the data that was actually pushed, not all account data
+   */
+  private async notifyStrategiesAccountUpdate(accountData: {
+    positions?: Position[];
+    orders?: Order[];
+    balances?: Balance[];
+  }): Promise<void> {
+    try {
+      // Process account data update with all strategies
+      for (const [strategyName, strategy] of this._strategies) {
+        try {
+          const result = await strategy.analyze(accountData);
+
+          if (result.action !== 'hold') {
+            // Account data changes might trigger trading signals
+            // Note: symbol should come from the strategy's parameters
+            const symbol = strategy.parameters.symbol || '';
+            this._eventBus.emitStrategySignal({
+              strategyName,
+              symbol,
+              action: result.action,
+              quantity: result.quantity?.toNumber(),
+              price: result.price?.toNumber(),
+              confidence: result.confidence,
+              reason: result.reason || 'Account data update',
+              timestamp: new Date(),
+            });
+
+            // Note: We don't auto-execute orders from account updates
+            // Strategies should explicitly request execution if needed
+          }
+        } catch (error) {
+          this.logger.error(
+            `Error in strategy ${strategyName} (account update)`,
+            error as Error,
+          );
+          this._eventBus.emitStrategyError(strategyName, error as Error);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error processing account data update', error as Error);
+    }
   }
 
   private async notifyStrategiesOrderFilled(order: Order): Promise<void> {
@@ -860,8 +975,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Subscribe to orderbook
-      if (config.orderbook) {
-        const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook);
+      if (this.isSubscriptionEnabled(config.orderbook)) {
+        const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook!);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -873,8 +988,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Subscribe to trades
-      if (config.trades) {
-        const tradesParams = this.normalizeDataConfig('trades', config.trades);
+      if (this.isSubscriptionEnabled(config.trades)) {
+        const tradesParams = this.normalizeDataConfig('trades', config.trades!);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -886,8 +1001,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Subscribe to klines
-      if (config.klines) {
-        const klinesParams = this.normalizeDataConfig('klines', config.klines);
+      if (this.isSubscriptionEnabled(config.klines)) {
+        const klinesParams = this.normalizeDataConfig('klines', config.klines!);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -931,8 +1046,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Unsubscribe from orderbook
-      if (config.orderbook) {
-        const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook);
+      if (this.isSubscriptionEnabled(config.orderbook)) {
+        const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook!);
         await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
@@ -943,8 +1058,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Unsubscribe from trades
-      if (config.trades) {
-        const tradesParams = this.normalizeDataConfig('trades', config.trades);
+      if (this.isSubscriptionEnabled(config.trades)) {
+        const tradesParams = this.normalizeDataConfig('trades', config.trades!);
         await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
@@ -955,8 +1070,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Unsubscribe from klines
-      if (config.klines) {
-        const klinesParams = this.normalizeDataConfig('klines', config.klines);
+      if (this.isSubscriptionEnabled(config.klines)) {
+        const klinesParams = this.normalizeDataConfig('klines', config.klines!);
         await this.subscriptionCoordinator.unsubscribe(
           strategyName,
           exchange,
@@ -1017,39 +1132,19 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   private normalizeDataConfig(
     type: 'ticker',
-    config:
-      | boolean
-      | TickerSubscriptionConfig
-      | OrderBookSubscriptionConfig
-      | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig,
+    config: boolean | TickerSubscriptionConfig,
   ): TickerSubscriptionConfig;
   private normalizeDataConfig(
     type: 'orderbook',
-    config:
-      | boolean
-      | TickerSubscriptionConfig
-      | OrderBookSubscriptionConfig
-      | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig,
+    config: boolean | OrderBookSubscriptionConfig,
   ): OrderBookSubscriptionConfig;
   private normalizeDataConfig(
     type: 'trades',
-    config:
-      | boolean
-      | TickerSubscriptionConfig
-      | OrderBookSubscriptionConfig
-      | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig,
+    config: boolean | TradesSubscriptionConfig,
   ): TradesSubscriptionConfig;
   private normalizeDataConfig(
     type: 'klines',
-    config:
-      | boolean
-      | TickerSubscriptionConfig
-      | OrderBookSubscriptionConfig
-      | TradesSubscriptionConfig
-      | KlinesSubscriptionConfig,
+    config: boolean | KlinesSubscriptionConfig,
   ): KlinesSubscriptionConfig;
   private normalizeDataConfig(
     type: DataType,
@@ -1079,6 +1174,31 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     return config;
+  }
+
+  /**
+   * Check if a subscription is enabled
+   * Handles both boolean and object config formats
+   */
+  private isSubscriptionEnabled(
+    config?:
+      | boolean
+      | TickerSubscriptionConfig
+      | OrderBookSubscriptionConfig
+      | TradesSubscriptionConfig
+      | KlinesSubscriptionConfig,
+  ): boolean {
+    if (!config) {
+      return false;
+    }
+
+    if (typeof config === 'boolean') {
+      return config;
+    }
+
+    // For object configs, check the 'enabled' property
+    // If 'enabled' is not present or is true, subscription is enabled
+    return config.enabled !== false;
   }
 
   /**

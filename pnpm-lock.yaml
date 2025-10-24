@@ -599,6 +599,9 @@ importers:
       '@itrade/core':
         specifier: workspace:*
         version: link:../core
+      '@itrade/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@types/uuid':
         specifier: ^9.0.8
         version: 9.0.8

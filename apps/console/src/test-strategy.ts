@@ -14,12 +14,12 @@ async function main() {
       subscription: {
         ticker: false,
         klines: {
-          enabled: true,
+          enabled: false,
           interval: '15m',
         },
         trades: false,
         orderbook: {
-          enabled: true,
+          enabled: false,
           depth: 5,
         },
         method: 'websocket',

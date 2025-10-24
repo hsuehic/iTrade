@@ -114,10 +114,15 @@ export interface IStrategy {
 
   initialize(parameters: StrategyParameters): Promise<void>;
   analyze(marketData: {
+    // Market Data
     ticker?: Ticker;
     orderbook?: OrderBook;
     trades?: Trade[];
     klines?: Kline[];
+    // Account Data
+    positions?: Position[];
+    orders?: Order[];
+    balances?: Balance[];
   }): Promise<StrategyResult>;
 
   onOrderFilled(order: Order): Promise<void>;

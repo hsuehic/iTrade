@@ -8,6 +8,7 @@ import {
   StrategyResult,
   Order,
   Position,
+  Balance,
   Ticker,
   OrderBook,
   Trade,
@@ -46,10 +47,15 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   }
 
   public abstract analyze(marketData: {
+    // Market Data
     ticker?: Ticker;
     orderbook?: OrderBook;
     trades?: Trade[];
     klines?: Kline[];
+    // Account Data
+    positions?: Position[];
+    orders?: Order[];
+    balances?: Balance[];
   }): Promise<StrategyResult>;
 
   public async onOrderFilled(order: Order): Promise<void> {

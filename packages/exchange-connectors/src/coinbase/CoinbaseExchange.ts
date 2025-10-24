@@ -689,10 +689,15 @@ export class CoinbaseExchange extends BaseExchange {
    * Transform Coinbase user order data to iTrade Order format
    */
   private transformCoinbaseUserOrder(orderData: any): Order {
+    // Denormalize symbol: BTC-USDC → BTC/USDC, BTC-PERP-INTX → BTC/USDC:USDC
+    const productId = orderData.product_id || 'UNKNOWN';
+    const symbol =
+      productId !== 'UNKNOWN' ? this.denormalizeSymbol(productId) : productId;
+
     const order: Order = {
       id: orderData.order_id || orderData.id || uuidv4(),
       clientOrderId: orderData.client_order_id,
-      symbol: orderData.product_id || 'UNKNOWN',
+      symbol,
       side:
         (orderData.side?.toUpperCase() || 'BUY') === 'BUY'
           ? OrderSide.BUY
@@ -852,6 +857,34 @@ export class CoinbaseExchange extends BaseExchange {
 
     // Spot format: BTC/USDC -> BTC-USDC
     return upperSymbol.replace('/', '-');
+  }
+
+  /**
+   * Denormalize symbol from Coinbase format to unified format
+   * Coinbase → Unified
+   * BTC-USDC → BTC/USDC (spot)
+   * BTC-PERP-INTX → BTC/USDC:USDC (perpetual)
+   */
+  protected denormalizeSymbol(productId: string): string {
+    const upper = productId.toUpperCase();
+
+    // Check if it's a perpetual
+    if (upper.endsWith('-PERP-INTX')) {
+      // BTC-PERP-INTX → BTC/USDC:USDC
+      const base = upper.replace('-PERP-INTX', '');
+      return `${base}/USDC:USDC`; // Coinbase perps are USDC settled
+    }
+
+    // Spot format: BTC-USDC → BTC/USDC
+    const parts = upper.split('-');
+    if (parts.length >= 2) {
+      const quote = parts[parts.length - 1];
+      const base = parts.slice(0, -1).join('-');
+      return `${base}/${quote}`;
+    }
+
+    // Fallback: return as is
+    return productId;
   }
 
   private mapIntervalToGranularity(interval: string): string {

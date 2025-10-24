@@ -522,6 +522,44 @@ export class OKXExchange extends BaseExchange {
     return upperSymbol.replace('/', '-');
   }
 
+  /**
+   * Denormalize symbol from OKX format to unified format
+   * OKX → Unified
+   * BTC-USDT → BTC/USDT (spot)
+   * BTC-USDT-SWAP → BTC/USDT:USDT (perpetual)
+   * APT-USDT-SWAP → APT/USDT:USDT (perpetual)
+   */
+  protected denormalizeSymbol(instId: string): string {
+    const upper = instId.toUpperCase();
+
+    // Check if it's a perpetual swap
+    if (upper.endsWith('-SWAP')) {
+      // BTC-USDT-SWAP → BTC/USDT:USDT
+      const withoutSwap = upper.replace('-SWAP', '');
+      const parts = withoutSwap.split('-');
+      if (parts.length >= 2) {
+        const quote = parts[parts.length - 1];
+        const base = parts.slice(0, -1).join('-');
+        return `${base}/${quote}:${quote}`;
+      }
+    }
+
+    // Check if it's a dated futures contract
+    if (upper.match(/-\d{6}$/)) {
+      // BTC-USDT-250328 → BTC/USDT:250328
+      const parts = upper.split('-');
+      if (parts.length >= 3) {
+        const date = parts[parts.length - 1];
+        const quote = parts[parts.length - 2];
+        const base = parts.slice(0, -2).join('-');
+        return `${base}/${quote}:${date}`;
+      }
+    }
+
+    // Default: spot format BTC-USDT → BTC/USDT
+    return upper.replace('-', '/');
+  }
+
   private async createWsConnect(key: OkxWsType) {
     // Clear scheduled reconnect
     if (this.okxReconnectTimers[key]) {
@@ -919,6 +957,8 @@ export class OKXExchange extends BaseExchange {
 
   private transformOKXPrivateOrder(data: any): Order {
     // OKX private orders push format: ref docs v5 (orders channel)
+    // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
+    const symbol = this.denormalizeSymbol(data.instId);
     const side = (data.side || 'buy') === 'buy' ? OrderSide.BUY : OrderSide.SELL;
     const type = this.transformOKXOrderType(data.ordType || 'limit');
     const qty = this.formatDecimal(data.sz || '0');
@@ -926,7 +966,7 @@ export class OKXExchange extends BaseExchange {
     return {
       id: (data.ordId || uuidv4()).toString(),
       clientOrderId: data.clOrdId,
-      symbol: data.instId,
+      symbol,
       side,
       type,
       quantity: qty,
@@ -959,8 +999,10 @@ export class OKXExchange extends BaseExchange {
 
     if (Array.isArray(data.posData)) {
       for (const p of data.posData) {
+        // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
+        const unifiedSymbol = this.denormalizeSymbol(p.instId);
         positions.push({
-          symbol: p.instId,
+          symbol: unifiedSymbol,
           side: (p.posSide || 'long').toLowerCase() === 'long' ? 'long' : 'short',
           quantity: this.formatDecimal(p.pos || '0'),
           avgPrice: this.formatDecimal(p.avgPx || '0'),

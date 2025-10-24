@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@itrade/core": "workspace:*",
+    "@itrade/utils": "workspace:*",
     "@types/uuid": "^9.0.8",
     "decimal.js": "^10.4.3",
     "uuid": "^9.0.1"
