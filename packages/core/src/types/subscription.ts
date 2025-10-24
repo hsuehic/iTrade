@@ -60,8 +60,11 @@ export interface SubscriptionConfig {
   // Subscription method
   method?: SubscriptionMethod;
 
-  // Target exchange (if not specified, subscribe to all connected exchanges)
-  exchange?: string;
+  // Target exchange(s)
+  // - Single exchange: 'binance'
+  // - Multiple exchanges: ['binance', 'okx', 'coinbase']
+  // - All exchanges: undefined or []
+  exchange?: string | string[];
 }
 
 /**

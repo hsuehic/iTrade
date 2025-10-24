@@ -78,7 +78,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating strategy:', error);
 
-    // Check for unique constraint violation
+    // Log full error details for debugging
+    if (error && typeof error === 'object') {
+      console.error('Error details:', JSON.stringify(error, null, 2));
+    }
+
+    // Check for unique constraint violation (PostgreSQL error code 23505)
     if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
       return NextResponse.json(
         { error: 'Strategy with this name already exists' },
@@ -86,6 +91,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ error: 'Failed to create strategy' }, { status: 500 });
+    // Check for duplicate key error message (alternative check)
+    if (
+      error &&
+      typeof error === 'object' &&
+      'message' in error &&
+      typeof error.message === 'string' &&
+      error.message.includes('duplicate key value')
+    ) {
+      return NextResponse.json(
+        { error: 'Strategy with this name already exists' },
+        { status: 409 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Failed to create strategy',
+        details:
+          process.env.NODE_ENV === 'development' &&
+          error &&
+          typeof error === 'object' &&
+          'message' in error
+            ? error.message
+            : undefined,
+      },
+      { status: 500 },
+    );
   }
 }

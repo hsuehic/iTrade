@@ -307,9 +307,11 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
         case 'ticker':
           await exchange.subscribeToTicker(symbol);
           break;
-        case 'orderbook':
-          await exchange.subscribeToOrderBook(symbol);
+        case 'orderbook': {
+          const depth = params.depth as number | undefined;
+          await exchange.subscribeToOrderBook(symbol, depth);
           break;
+        }
         case 'trades':
           await exchange.subscribeToTrades(symbol);
           break;
@@ -438,7 +440,17 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     try {
       switch (type) {
         case 'ticker':
-        case 'orderbook':
+          await exchange.unsubscribe(symbol, type);
+          break;
+        case 'orderbook': {
+          // For orderbook, we need to pass depth info for proper unsubscribe
+          // Store depth in subscription key, retrieve it here
+          const depth = params.depth as number | undefined;
+          // Note: Exchange implementations should handle depth internally
+          // For now, pass symbol with depth metadata if needed
+          await exchange.unsubscribe(symbol, type);
+          break;
+        }
         case 'trades':
           await exchange.unsubscribe(symbol, type);
           break;

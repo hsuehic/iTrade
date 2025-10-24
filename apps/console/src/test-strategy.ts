@@ -6,7 +6,7 @@ async function main() {
   strategies.set(
     'MovingWindowGrids',
     new MovingWindowGridsStrategy({
-      exchange: 'binance',
+      exchange: 'okx',
       symbol: 'BTC/USDT',
       windowSize: 10,
       gridSize: 10,
@@ -18,7 +18,10 @@ async function main() {
           interval: '15m',
         },
         trades: false,
-        orderbook: false,
+        orderbook: {
+          enabled: true,
+          depth: 5,
+        },
         method: 'websocket',
         exchange: 'binance',
       },

@@ -117,7 +117,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
 
   // WebSocket subscription methods - must be implemented per exchange
   public abstract subscribeToTicker(symbol: string): Promise<void>;
-  public abstract subscribeToOrderBook(symbol: string): Promise<void>;
+  public abstract subscribeToOrderBook(symbol: string, depth?: number): Promise<void>;
   public abstract subscribeToTrades(symbol: string): Promise<void>;
   public abstract subscribeToKlines(symbol: string, interval: string): Promise<void>;
   public abstract unsubscribe(

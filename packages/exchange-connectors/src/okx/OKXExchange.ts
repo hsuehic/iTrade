@@ -598,8 +598,12 @@ export class OKXExchange extends BaseExchange {
     // no-op for OKX
   }
 
-  protected async sendWebSocketSubscription(type: string, symbol: string): Promise<void> {
-    const channel = this.getOKXChannel(type, symbol);
+  protected async sendWebSocketSubscription(
+    type: string,
+    symbol: string,
+    depthOrInterval?: number | string,
+  ): Promise<void> {
+    const channel = this.getOKXChannel(type, symbol, depthOrInterval);
     const targetKey: OkxWsType = this.resolveWsTypeForChannel(channel.channel);
     const subscribeMsg = { op: 'subscribe', args: [channel] };
 
@@ -991,14 +995,31 @@ export class OKXExchange extends BaseExchange {
     return balances;
   }
 
-  private getOKXChannel(type: string, symbol: string): any {
+  private getOKXChannel(
+    type: string,
+    symbol: string,
+    depthOrInterval?: number | string,
+  ): any {
     const instId = this.normalizeSymbol(symbol);
 
     switch (type) {
       case 'ticker':
         return { channel: 'tickers', instId };
-      case 'orderbook':
+      case 'orderbook': {
+        const depth = depthOrInterval as number | undefined;
+        // OKX supports:
+        // - books5: 5 levels (most efficient, default)
+        // - books: 400 levels
+        // - bbo-tbt: Best bid/offer tick-by-tick
+        // - books-l2-tbt: Full L2 tick-by-tick (requires business endpoint)
+        if (depth && depth <= 5) {
+          return { channel: 'books5', instId };
+        } else if (depth && depth > 5 && depth <= 400) {
+          return { channel: 'books', instId };
+        }
+        // Default: books5 (most efficient)
         return { channel: 'books5', instId };
+      }
       case 'trades':
         return { channel: 'trades', instId };
       case 'klines': {
@@ -1057,8 +1078,8 @@ export class OKXExchange extends BaseExchange {
     await this.okxSubscribe('ticker', symbol);
   }
 
-  public async subscribeToOrderBook(symbol: string): Promise<void> {
-    await this.okxSubscribe('orderbook', symbol);
+  public async subscribeToOrderBook(symbol: string, depth?: number): Promise<void> {
+    await this.okxSubscribe('orderbook', symbol, depth);
   }
 
   public async subscribeToTrades(symbol: string): Promise<void> {
@@ -1091,7 +1112,11 @@ export class OKXExchange extends BaseExchange {
     }
   }
 
-  private async okxSubscribe(type: string, symbol: string): Promise<void> {
+  private async okxSubscribe(
+    type: string,
+    symbol: string,
+    depthOrInterval?: number | string,
+  ): Promise<void> {
     if (!this.okxSubscriptions.has(type)) this.okxSubscriptions.set(type, new Set());
     this.okxSubscriptions.get(type)!.add(symbol);
 
@@ -1104,7 +1129,7 @@ export class OKXExchange extends BaseExchange {
     const instId = this.normalizeSymbol(baseSymbol);
     this.symbolMap.set(instId, baseSymbol);
 
-    await this.sendWebSocketSubscription(type, symbol);
+    await this.sendWebSocketSubscription(type, symbol, depthOrInterval);
   }
 
   private stopOkxHeartbeat(key: OkxWsType): void {

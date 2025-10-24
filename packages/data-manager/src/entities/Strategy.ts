@@ -29,6 +29,7 @@ export enum StrategyType {
   RSI = 'rsi',
   MACD = 'macd',
   BOLLINGER_BANDS = 'bollinger_bands',
+  MOVING_WINDOW_GRIDS = 'moving_window_grids',
   CUSTOM = 'custom',
 }
 

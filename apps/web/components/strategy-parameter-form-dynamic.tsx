@@ -11,6 +11,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
+import { SUPPORTED_EXCHANGES } from '@/lib/exchanges';
 
 interface StrategyParameterFormDynamicProps {
   strategyType: StrategyTypeKey;
@@ -383,7 +385,10 @@ export function StrategyParameterFormDynamic({
         {/* Market Data Subscription */}
         <div className="space-y-4 border-t pt-4">
           <h4 className="font-medium text-sm">Market Data Subscription</h4>
+
+          {/* Data Type Toggles */}
           <div className="grid grid-cols-2 gap-4">
+            {/* Ticker Data */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-sm">Ticker Data</Label>
@@ -404,12 +409,94 @@ export function StrategyParameterFormDynamic({
               </div>
             </div>
 
+            {/* Order Book */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Order Book</Label>
+                <Switch
+                  checked={Boolean(
+                    (
+                      parameters.subscription as
+                        | { orderbook?: boolean | object }
+                        | undefined
+                    )?.orderbook ?? false,
+                  )}
+                  onCheckedChange={(checked) => {
+                    const currentSub =
+                      (parameters.subscription as Record<string, unknown>) || {};
+                    handleParameterChange('subscription', {
+                      ...currentSub,
+                      orderbook: checked ? { enabled: true, depth: 20 } : false,
+                    });
+                  }}
+                />
+              </div>
+              {/* Show depth selector when orderbook is enabled */}
+              {(parameters.subscription as { orderbook?: boolean | object } | undefined)
+                ?.orderbook && (
+                <div className="mt-2">
+                  <Label className="text-xs text-muted-foreground">Depth</Label>
+                  <Select
+                    value={
+                      typeof (parameters.subscription as any)?.orderbook === 'object'
+                        ? String((parameters.subscription as any).orderbook.depth || 20)
+                        : '20'
+                    }
+                    onValueChange={(value) => {
+                      const currentSub =
+                        (parameters.subscription as Record<string, unknown>) || {};
+                      handleParameterChange('subscription', {
+                        ...currentSub,
+                        orderbook: {
+                          enabled: true,
+                          depth: Number(value),
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5 levels</SelectItem>
+                      <SelectItem value="10">10 levels</SelectItem>
+                      <SelectItem value="20">20 levels</SelectItem>
+                      <SelectItem value="50">50 levels</SelectItem>
+                      <SelectItem value="100">100 levels</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+
+            {/* Trades */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Trades</Label>
+                <Switch
+                  checked={Boolean(
+                    (parameters.subscription as { trades?: boolean } | undefined)
+                      ?.trades ?? false,
+                  )}
+                  onCheckedChange={(checked) => {
+                    const currentSub =
+                      (parameters.subscription as Record<string, unknown>) || {};
+                    handleParameterChange('subscription', {
+                      ...currentSub,
+                      trades: checked,
+                    });
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Kline Data */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-sm">Kline Data</Label>
                 <Switch
                   checked={Boolean(
-                    (parameters.subscription as { klines?: boolean } | undefined)
+                    (parameters.subscription as { klines?: boolean | object } | undefined)
                       ?.klines ?? true,
                   )}
                   onCheckedChange={(checked) => {
@@ -417,20 +504,135 @@ export function StrategyParameterFormDynamic({
                       (parameters.subscription as Record<string, unknown>) || {};
                     handleParameterChange('subscription', {
                       ...currentSub,
-                      klines: checked,
+                      klines: checked ? { enabled: true, interval: '15m' } : false,
                     });
                   }}
                 />
               </div>
+              {/* Show interval selector when klines is enabled */}
+              {(parameters.subscription as { klines?: boolean | object } | undefined)
+                ?.klines && (
+                <div className="mt-2">
+                  <Label className="text-xs text-muted-foreground">Interval</Label>
+                  <Select
+                    value={
+                      typeof (parameters.subscription as any)?.klines === 'object'
+                        ? (parameters.subscription as any).klines.interval || '15m'
+                        : '15m'
+                    }
+                    onValueChange={(value) => {
+                      const currentSub =
+                        (parameters.subscription as Record<string, unknown>) || {};
+                      handleParameterChange('subscription', {
+                        ...currentSub,
+                        klines: {
+                          enabled: true,
+                          interval: value,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1m">1 minute</SelectItem>
+                      <SelectItem value="3m">3 minutes</SelectItem>
+                      <SelectItem value="5m">5 minutes</SelectItem>
+                      <SelectItem value="15m">15 minutes</SelectItem>
+                      <SelectItem value="30m">30 minutes</SelectItem>
+                      <SelectItem value="1h">1 hour</SelectItem>
+                      <SelectItem value="2h">2 hours</SelectItem>
+                      <SelectItem value="4h">4 hours</SelectItem>
+                      <SelectItem value="6h">6 hours</SelectItem>
+                      <SelectItem value="8h">8 hours</SelectItem>
+                      <SelectItem value="12h">12 hours</SelectItem>
+                      <SelectItem value="1d">1 day</SelectItem>
+                      <SelectItem value="3d">3 days</SelectItem>
+                      <SelectItem value="1w">1 week</SelectItem>
+                      <SelectItem value="1M">1 month</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Exchange Selection for Subscriptions */}
+          <div className="space-y-2">
+            <Label className="text-sm">Subscribe to Exchanges</Label>
+            <div className="space-y-2 border rounded-md p-3">
+              <div className="text-xs text-muted-foreground mb-2">
+                Select which exchanges to subscribe to (leave all unchecked to use all)
+              </div>
+              {SUPPORTED_EXCHANGES.map((exchange) => {
+                const currentSub =
+                  (parameters.subscription as { exchange?: string | string[] }) || {};
+                const selectedExchanges = currentSub.exchange
+                  ? Array.isArray(currentSub.exchange)
+                    ? currentSub.exchange
+                    : [currentSub.exchange]
+                  : [];
+                const isSelected =
+                  selectedExchanges.length === 0 ||
+                  selectedExchanges.includes(exchange.id);
+
+                return (
+                  <div key={exchange.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`sub-exchange-${exchange.id}`}
+                      checked={isSelected && selectedExchanges.length > 0}
+                      onCheckedChange={(checked) => {
+                        const currentSub =
+                          (parameters.subscription as Record<string, unknown>) || {};
+
+                        // Get current selected exchanges
+                        let currentExchanges = selectedExchanges;
+
+                        let newExchanges: string[];
+                        if (checked) {
+                          // Add exchange
+                          if (currentExchanges.length === 0) {
+                            // First selection, only select this one
+                            newExchanges = [exchange.id];
+                          } else {
+                            newExchanges = [...currentExchanges, exchange.id];
+                          }
+                        } else {
+                          // Remove exchange
+                          newExchanges = currentExchanges.filter(
+                            (e) => e !== exchange.id,
+                          );
+                        }
+
+                        handleParameterChange('subscription', {
+                          ...currentSub,
+                          exchange: newExchanges.length > 0 ? newExchanges : undefined,
+                        });
+                      }}
+                    />
+                    <label
+                      htmlFor={`sub-exchange-${exchange.id}`}
+                      className="text-sm cursor-pointer flex-1"
+                    >
+                      {exchange.name}
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              If no exchanges selected, will subscribe to all connected exchanges
+            </p>
+          </div>
+
+          {/* Data Method */}
           <div className="space-y-2">
             <Label className="text-sm">Data Method</Label>
             <Select
               value={
                 ((parameters.subscription as { method?: string } | undefined)?.method ||
-                  'rest') as string
+                  'websocket') as string
               }
               onValueChange={(value) => {
                 const currentSub =

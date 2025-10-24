@@ -47,7 +47,7 @@ export interface IExchange extends EventEmitter {
 
   // WebSocket Subscriptions
   subscribeToTicker(symbol: string): Promise<void>;
-  subscribeToOrderBook(symbol: string): Promise<void>;
+  subscribeToOrderBook(symbol: string, depth?: number): Promise<void>;
   subscribeToTrades(symbol: string): Promise<void>;
   subscribeToKlines(symbol: string, interval: string): Promise<void>;
   subscribeToUserData(): Promise<void>;

@@ -977,6 +977,181 @@ cd apps/web && pnpm build
 
 ---
 
+## 🗄️ Database Schema Synchronization Rules
+
+### When to Sync Database Schema
+
+**After ANY modification to database entity definitions under `packages/data-manager/src/entities/`, AI agents MUST synchronize the database schema.**
+
+#### Core Principle
+
+> **"Entity Modified → Schema Synced → Verified"**
+>
+> When modifying TypeORM entities, AI agents MUST:
+>
+> 1. ✅ **Modify the entity** (e.g., add fields, update enums)
+> 2. ✅ **Rebuild the data-manager package**
+> 3. ✅ **Run schema sync** to update the database
+> 4. ✅ **Verify the change** works in the application
+
+#### When Schema Sync is REQUIRED
+
+Schema synchronization is MANDATORY when:
+
+1. **Adding/Modifying Entity Fields**
+   - Adding new columns to entities
+   - Changing column types or constraints
+   - Adding/removing indexes
+   - Modifying relationships (foreign keys)
+
+2. **Enum Changes**
+   - Adding new enum values (e.g., `StrategyType`, `StrategyStatus`)
+   - Removing enum values (caution: may break existing data)
+   - Renaming enum values
+
+3. **New Entities**
+   - Creating new entity classes
+   - New tables that need to be created
+
+4. **Entity Refactoring**
+   - Renaming entities (creates new table)
+   - Splitting/merging entities
+
+#### Schema Sync Command
+
+```bash
+cd packages/data-manager && pnpm run sync-schema
+```
+
+**What this does:**
+- Connects to the PostgreSQL database
+- Compares current schema with entity definitions
+- Creates/updates tables automatically
+- Adds/updates all indexes
+- Updates enum types
+- Creates foreign key relationships
+- Updates the query-result-cache table
+
+#### Complete Workflow
+
+```bash
+# Step 1: Modify entity (e.g., add new enum value to Strategy.ts)
+# Edit: packages/data-manager/src/entities/Strategy.ts
+# Added: MOVING_WINDOW_GRIDS = 'moving_window_grids' to StrategyType enum
+
+# Step 2: Rebuild data-manager package
+cd packages/data-manager
+pnpm build
+
+# Step 3: Sync database schema
+pnpm run sync-schema
+
+# Step 4: Verify in application
+# Test that the new enum value works via API/UI
+
+# Step 5: Rebuild web application
+cd ../../apps/web
+pnpm build
+```
+
+#### AI Agent Instructions for Schema Sync
+
+1. **ALWAYS sync schema** after modifying entities
+2. **NEVER skip this step** - database will be out of sync with code
+3. **ALWAYS verify** the sync completed successfully
+4. **Check for errors** in the sync output
+5. **Report sync status** to the user
+
+#### Common Scenarios
+
+**Adding a New Strategy Type:**
+
+```typescript
+// 1. Add to StrategyType enum in Strategy.ts
+export enum StrategyType {
+  MOVING_AVERAGE = 'moving_average',
+  RSI = 'rsi',
+  NEW_STRATEGY = 'new_strategy', // Added
+}
+
+// 2. Run sync-schema
+// cd packages/data-manager && pnpm run sync-schema
+
+// 3. Verify it works
+// Try creating a strategy with type='new_strategy'
+```
+
+**Adding a New Entity Field:**
+
+```typescript
+// 1. Add field to entity
+@Column({ type: 'text', nullable: true })
+newField?: string;
+
+// 2. Rebuild package
+// cd packages/data-manager && pnpm build
+
+// 3. Sync schema
+// pnpm run sync-schema
+```
+
+#### Error Handling
+
+**If sync-schema fails:**
+
+1. **Check database connection**
+   - Verify PostgreSQL is running
+   - Check `.env` file has correct credentials
+   - Ensure database exists
+
+2. **Check for syntax errors**
+   - Verify entity decorators are correct
+   - Check enum syntax
+   - Validate column types
+
+3. **Check for conflicts**
+   - Existing data may conflict with new constraints
+   - Manual migration may be needed for complex changes
+
+#### Skip Conditions
+
+Schema sync may be skipped ONLY when:
+
+- Only modifying repository logic (no entity changes)
+- Only modifying non-entity TypeScript files
+- Only updating documentation
+- User explicitly requests to skip (rare, not recommended)
+
+**Default behavior: ALWAYS sync schema after entity modifications.**
+
+#### Production Considerations
+
+**For production environments:**
+- Consider using TypeORM migrations instead of automatic sync
+- Test schema changes in development first
+- Backup database before major schema changes
+- Document all schema modifications
+
+#### Quick Reference
+
+```bash
+# Standard workflow after entity modification
+cd packages/data-manager
+pnpm build
+pnpm run sync-schema
+
+# Verify database updated
+# Check application works with new schema
+
+# Rebuild web if needed
+cd ../../apps/web
+pnpm build
+```
+
+**Critical Rule**: ALWAYS run `pnpm run sync-schema` after modifying entity definitions! 🗄️✅
+
+---
+
 ## 🧪 Verification and Testing Rules
 
 ### Mandatory Verification After Changes

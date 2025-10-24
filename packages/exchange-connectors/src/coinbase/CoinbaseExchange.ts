@@ -602,11 +602,16 @@ export class CoinbaseExchange extends BaseExchange {
 
   /**
    * Subscribe to order book updates
+   * @param depth - Not used for Coinbase (level2 channel provides full order book)
+   * Note: Coinbase's level2 channel does not support configurable depth levels.
+   * It always provides the full order book snapshot and updates.
    */
-  public async subscribeToOrderBook(symbol: string): Promise<void> {
+  public async subscribeToOrderBook(symbol: string, depth?: number): Promise<void> {
     const productId = this.normalizeSymbol(symbol);
     this.symbolMap.set(productId, symbol); // Store mapping
-    console.log(`[Coinbase] Subscribing to orderbook: ${productId}`);
+    console.log(
+      `[Coinbase] Subscribing to orderbook: ${productId}${depth ? ` (depth=${depth} - not configurable, using full book)` : ''}`,
+    );
     this.wsManager.subscribe('level2', [productId]);
   }
 

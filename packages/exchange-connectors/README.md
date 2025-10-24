@@ -16,14 +16,23 @@ This package provides standardized connectors for cryptocurrency exchanges, offe
 
 ### ✅ Currently Implemented
 
-- **Binance** - Spot trading with testnet support
+- **Binance** - Spot and futures trading with testnet support
+  - WebSocket: ✅ Full depth support (`@depth5`, `@depth10`, `@depth20`)
+  - All standard kline intervals
+  
+- **OKX** - Spot and derivatives trading
+  - WebSocket: ✅ Efficient `books5` (5 levels) and `books` (400 levels)
+  - All standard kline intervals
+  
+- **Coinbase Advanced Trade** - Spot and perpetual trading
+  - WebSocket: ⚠️ Full order book only (depth not configurable)
+  - Supports 1-second kline interval
+  - Note: Authentication required for all REST endpoints
 
 ### 🚧 Planned
 
-- Coinbase Pro
 - Kraken  
 - Bybit
-- OKX
 
 ## Installation
 
@@ -365,6 +374,22 @@ EXCHANGE_TESTNET=true pnpm test
 # Integration tests
 pnpm test:integration
 ```
+
+## Documentation
+
+### Exchange Capabilities
+
+- **[Market Data Subscription Capabilities](./docs/MARKET_DATA_SUBSCRIPTION_CAPABILITIES.md)** - Comprehensive guide to market data subscriptions
+  - WebSocket vs REST API comparison
+  - Exchange-specific features and limitations
+  - Order book depth options by exchange
+  - Kline interval support
+  - Multi-exchange subscription examples
+
+### Exchange-Specific Documentation
+
+- **[OKX WebSocket Endpoints](./docs/OKX_WEBSOCKET_ENDPOINTS.md)** - OKX WebSocket architecture and channels
+- **[Coinbase WebSocket Implementation](./src/coinbase/WEBSOCKET_IMPLEMENTATION.md)** - Coinbase Advanced Trade WebSocket details
 
 ## Contributing
 

@@ -60,6 +60,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     return this._isRunning;
   }
 
+  public get eventBus(): EventBus {
+    return this._eventBus;
+  }
+
   public get strategies(): Map<string, IStrategy> {
     return new Map(this._strategies);
   }
@@ -566,7 +570,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     const strategy = this._strategies.get(strategyName);
-    const exchangeName = strategy?.parameters.exchange;
+    const exchangeConfig = strategy?.parameters.exchange;
+
+    // For order execution, use the first exchange if array is provided
+    const exchangeName = Array.isArray(exchangeConfig)
+      ? exchangeConfig[0]
+      : exchangeConfig;
 
     const isPointedExchange = !!exchangeName;
     // Find an available exchange to execute the order
@@ -961,19 +970,46 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
   /**
    * Get target exchanges based on config
+   * @param exchangeConfig - Single exchange name, array of exchange names, or undefined
+   * @returns Array of exchange instances
    */
-  private getTargetExchanges(exchangeName?: string): IExchange[] {
-    if (exchangeName) {
-      const exchange = this._exchanges.get(exchangeName);
+  private getTargetExchanges(exchangeConfig?: string | string[]): IExchange[] {
+    // No exchange specified or empty array, use all connected exchanges
+    if (
+      !exchangeConfig ||
+      (Array.isArray(exchangeConfig) && exchangeConfig.length === 0)
+    ) {
+      return Array.from(this._exchanges.values());
+    }
+
+    // Single exchange name
+    if (typeof exchangeConfig === 'string') {
+      const exchange = this._exchanges.get(exchangeConfig);
       if (!exchange) {
-        this.logger.warn(`Exchange ${exchangeName} not found, using all exchanges`);
+        this.logger.warn(`Exchange ${exchangeConfig} not found, using all exchanges`);
         return Array.from(this._exchanges.values());
       }
       return [exchange];
     }
 
-    // No specific exchange, use all connected exchanges
-    return Array.from(this._exchanges.values());
+    // Multiple exchange names
+    const exchanges: IExchange[] = [];
+    for (const exchangeName of exchangeConfig) {
+      const exchange = this._exchanges.get(exchangeName);
+      if (exchange) {
+        exchanges.push(exchange);
+      } else {
+        this.logger.warn(`Exchange ${exchangeName} not found, skipping`);
+      }
+    }
+
+    // If no valid exchanges found, fallback to all exchanges
+    if (exchanges.length === 0) {
+      this.logger.warn('No valid exchanges found in config, using all exchanges');
+      return Array.from(this._exchanges.values());
+    }
+
+    return exchanges;
   }
 
   /**

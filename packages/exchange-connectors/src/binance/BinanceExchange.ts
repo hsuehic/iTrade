@@ -45,6 +45,7 @@ export class BinanceExchange extends BaseExchange {
   private _isTestnet: boolean;
   private wsManager: BinanceWebSocketManager;
   private symbolMap = new Map<string, string>(); // normalized_marketType -> original symbol mapping
+  private orderbookDepthMap = new Map<string, number>(); // symbol_marketType -> depth
   private userWs?: BinanceWebsocket;
   private _messageDebugCount = 0;
 
@@ -412,8 +413,9 @@ export class BinanceExchange extends BaseExchange {
     await this.subscribe('ticker', symbol);
   }
 
-  public async subscribeToOrderBook(symbol: string): Promise<void> {
-    await this.subscribe('orderbook', symbol);
+  public async subscribeToOrderBook(symbol: string, depth?: number): Promise<void> {
+    // Pass depth as extra parameter
+    await this.subscribe('orderbook', symbol, depth);
   }
 
   public async subscribeToTrades(symbol: string): Promise<void> {
@@ -433,18 +435,33 @@ export class BinanceExchange extends BaseExchange {
     // Determine market type
     const marketType = this.wsManager.getMarketType(symbol);
 
-    // Build stream name
-    const streamName = this.buildStreamName(type, symbol);
+    const normalized = this.normalizeSymbol(symbol).toLowerCase();
+    const mapKey = `${normalized}_${marketType}`;
+
+    // For orderbook, retrieve the stored depth to build correct stream name
+    let depthOrInterval: number | string | undefined;
+    if (type === 'orderbook') {
+      depthOrInterval = this.orderbookDepthMap.get(mapKey);
+    }
+
+    // Build stream name (with depth for orderbook if available)
+    const streamName = this.buildStreamName(type, symbol, depthOrInterval);
 
     // Unsubscribe via WebSocket Manager
     await this.wsManager.unsubscribe(marketType, type, symbol, streamName);
 
-    // Remove symbol mapping
-    const normalized = this.normalizeSymbol(symbol).toLowerCase();
-    this.symbolMap.delete(normalized);
+    // Remove symbol mapping and depth tracking
+    this.symbolMap.delete(mapKey);
+    if (type === 'orderbook') {
+      this.orderbookDepthMap.delete(mapKey);
+    }
   }
 
-  private async subscribe(type: string, symbol: string): Promise<void> {
+  private async subscribe(
+    type: string,
+    symbol: string,
+    depthOrInterval?: number | string,
+  ): Promise<void> {
     // Determine market type from symbol
     const marketType = this.wsManager.getMarketType(symbol);
 
@@ -461,8 +478,13 @@ export class BinanceExchange extends BaseExchange {
     const mapKey = `${normalized}_${marketType}`;
     this.symbolMap.set(mapKey, baseSymbol);
 
-    // Build stream name
-    const streamName = this.buildStreamName(type, symbol);
+    // For orderbook, store the depth used
+    if (type === 'orderbook' && typeof depthOrInterval === 'number') {
+      this.orderbookDepthMap.set(mapKey, depthOrInterval);
+    }
+
+    // Build stream name (pass depth for orderbook)
+    const streamName = this.buildStreamName(type, symbol, depthOrInterval);
 
     // Subscribe via WebSocket Manager
     await this.wsManager.subscribe(marketType, type, symbol, streamName);
@@ -470,15 +492,27 @@ export class BinanceExchange extends BaseExchange {
 
   /**
    * Build Binance stream name from type and symbol
+   * @param depthOrInterval - For orderbook: depth (5, 10, 20); For klines: not used here
    */
-  private buildStreamName(type: string, symbol: string): string {
+  private buildStreamName(
+    type: string,
+    symbol: string,
+    depthOrInterval?: number | string,
+  ): string {
     const normalizedSymbol = this.normalizeSymbol(symbol);
 
     switch (type) {
       case 'ticker':
         return `${normalizedSymbol.toLowerCase()}@ticker`;
-      case 'orderbook':
+      case 'orderbook': {
+        const depth = depthOrInterval as number | undefined;
+        // Binance supports @depth (full), @depth5, @depth10, @depth20
+        if (depth === 5 || depth === 10 || depth === 20) {
+          return `${normalizedSymbol.toLowerCase()}@depth${depth}`;
+        }
+        // Default: full depth updates
         return `${normalizedSymbol.toLowerCase()}@depth`;
+      }
       case 'trades':
         return `${normalizedSymbol.toLowerCase()}@trade`;
       case 'klines': {
@@ -517,6 +551,8 @@ export class BinanceExchange extends BaseExchange {
           this.emit('ticker', originalSymbol, this.transformBinanceTicker(message));
           break;
         case 'depthUpdate':
+        case 'depthSnapshot':
+          // Handle both depthUpdate (from @depth) and depthSnapshot (from @depth5/10/20)
           this.emit(
             'orderbook',
             originalSymbol,
@@ -877,14 +913,20 @@ export class BinanceExchange extends BaseExchange {
   }
 
   private transformBinanceOrderBook(data: any, symbol: string): OrderBook {
+    // Handle both formats:
+    // - depthUpdate: { e: 'depthUpdate', b: [...], a: [...] }
+    // - depthSnapshot: { e: 'depthSnapshot', bids: [...], asks: [...] }
+    const bids = data.b || data.bids || [];
+    const asks = data.a || data.asks || [];
+
     return {
       symbol: symbol.toUpperCase(),
       timestamp: new Date(),
-      bids: data.b.map((bid: string[]) => [
+      bids: bids.map((bid: string[]) => [
         this.formatDecimal(bid[0]),
         this.formatDecimal(bid[1]),
       ]),
-      asks: data.a.map((ask: string[]) => [
+      asks: asks.map((ask: string[]) => [
         this.formatDecimal(ask[0]),
         this.formatDecimal(ask[1]),
       ]),

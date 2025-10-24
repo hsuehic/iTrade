@@ -95,31 +95,9 @@ export async function run(strategies: Map<string, IStrategy>) {
     `📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`,
   );
 
-  // Start trading engine
-  await engine.start();
-  for (let [name, strategy] of strategies) {
-    engine.addStrategy(name, strategy);
-  }
-
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logger.info('🚀 iTrade Trading System is LIVE');
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logger.info('📊 Active strategies are loaded from database');
-  logger.info('🔄 Monitoring for strategy updates every second');
-  logger.info('📈 Performance reports every 60 seconds');
-  logger.info('💼 Orders will be tracked and saved to database');
-  logger.info('🔄 Order sync running every 5 seconds for reliability');
-  logger.info(
-    '💰 Account polling service active (polling interval: ' +
-      parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000') / 1000 +
-      's)',
-  );
-  logger.info('🛡️  Protection against WebSocket failures enabled');
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
-  // Setup enhanced event monitoring
-  const { EventBus } = await import('@itrade/core');
-  const eventBus = EventBus.getInstance();
+  // Setup enhanced event monitoring BEFORE starting engine
+  // IMPORTANT: Use the EventBus instance from the engine, not a separate getInstance()
+  const eventBus = engine.eventBus;
 
   // Track strategy signals with enhanced logging
   eventBus.onStrategySignal((signal) => {
@@ -204,21 +182,42 @@ export async function run(strategies: Map<string, IStrategy>) {
     logger.error('Unhandled rejection:', reason as Error);
   });
   eventBus.onTickerUpdate((data) => {
-    console.log(data);
     logger.info(`🔍 TICKER: ${data.symbol} - ${data.ticker.price.toString()}`);
   });
+
   eventBus.onOrderBookUpdate((data) => {
-    console.log(data);
     logger.info(
       `🔍 ORDER BOOK: ${data.symbol} - ${data.orderbook.asks[0][0].toString()}`,
     );
   });
+
   eventBus.onTradeUpdate((data) => {
-    console.log(data);
     logger.info(`🔍 TRADE: ${data.symbol} - ${data.trade.price}`);
   });
+
   eventBus.onKlineUpdate((data) => {
-    console.log(data);
     logger.info(`🔍 KLINE: ${data.symbol} - ${data.kline.close}`);
   });
+
+  // Start trading engine AFTER EventBus listeners are set up
+  await engine.start();
+  for (let [name, strategy] of strategies) {
+    engine.addStrategy(name, strategy);
+  }
+
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('🚀 iTrade Trading System is LIVE');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('📊 Active strategies are loaded from database');
+  logger.info('🔄 Monitoring for strategy updates every second');
+  logger.info('📈 Performance reports every 60 seconds');
+  logger.info('💼 Orders will be tracked and saved to database');
+  logger.info('🔄 Order sync running every 5 seconds for reliability');
+  logger.info(
+    '💰 Account polling service active (polling interval: ' +
+      parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '60000') / 1000 +
+      's)',
+  );
+  logger.info('🛡️  Protection against WebSocket failures enabled');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 }

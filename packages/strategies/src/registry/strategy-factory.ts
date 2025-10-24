@@ -16,6 +16,7 @@ import {
 } from '@itrade/core';
 
 import { MovingAverageStrategy } from '../strategies/MovingAverageStrategy';
+import { MovingWindowGridsStrategy } from '../strategies/MovingWindowGridsStrategy';
 
 /**
  * 策略构造函数类型
@@ -36,6 +37,7 @@ export const IMPLEMENTED_STRATEGIES: Partial<
 > = {
   // ✅ 已实现的策略
   moving_average: MovingAverageStrategy,
+  moving_window_grids: MovingWindowGridsStrategy,
   custom: MovingAverageStrategy, // Custom可以复用MovingAverage的基础实现
 
   // 🚧 待实现的策略 - 实现后请移动到上面
@@ -160,9 +162,11 @@ export function createStrategyInstance(
   // 🔧 确保必要的 subscription 配置
   if (!fullParameters.subscription) {
     fullParameters.subscription = {
-      ticker: true,
-      klines: true,
-      method: 'rest', // Use REST polling by default
+      ticker: false,
+      klines: false,
+      trades: false,
+      orderbook: false,
+      method: 'websocket', // Use WebSocket by default
     };
   }
 

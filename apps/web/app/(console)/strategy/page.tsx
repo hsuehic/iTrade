@@ -50,6 +50,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
 import { JsonEditor } from '@/components/json-editor';
 import { StrategyParameterFormDynamic } from '@/components/strategy-parameter-form-dynamic';
 import { ExchangeLogo } from '@/components/exchange-logo';
@@ -104,7 +105,14 @@ export default function StrategyPage() {
     }));
   }, []);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    type: StrategyTypeKey;
+    exchange: string | string[];
+    symbol: string;
+    parameters: string;
+  }>({
     name: '',
     description: '',
     type: getDefaultStrategyType(),
@@ -116,6 +124,8 @@ export default function StrategyPage() {
       2,
     ),
   });
+
+  const [useMultipleExchanges, setUseMultipleExchanges] = useState(false);
 
   // 使用useMemo稳定initialParameters引用，避免无限循环
   const memoizedInitialParameters = useMemo(() => {
@@ -406,44 +416,176 @@ export default function StrategyPage() {
 
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                              <Label htmlFor="exchange">
-                                Exchange <span className="text-red-500">*</span>
-                              </Label>
-                              <Select
-                                value={formData.exchange}
-                                onValueChange={(value) => {
-                                  // Update exchange and set default trading pair for that exchange
-                                  const defaultTradingPair = getDefaultTradingPair(value);
-                                  setFormData({
-                                    ...formData,
-                                    exchange: value,
-                                    symbol: isEditing
-                                      ? formData.symbol
-                                      : defaultTradingPair,
-                                  });
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select exchange" />
-                                </SelectTrigger>
-                                <SelectContent>
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor="exchange">
+                                  Exchange(s) <span className="text-red-500">*</span>
+                                </Label>
+                                <div className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id="multiple-exchanges"
+                                    checked={useMultipleExchanges}
+                                    onCheckedChange={(checked) => {
+                                      setUseMultipleExchanges(checked as boolean);
+                                      if (checked) {
+                                        // Convert to array
+                                        setFormData({
+                                          ...formData,
+                                          exchange: Array.isArray(formData.exchange)
+                                            ? formData.exchange
+                                            : [formData.exchange as string],
+                                        });
+                                      } else {
+                                        // Convert to string (use first exchange)
+                                        setFormData({
+                                          ...formData,
+                                          exchange: Array.isArray(formData.exchange)
+                                            ? formData.exchange[0] || 'coinbase'
+                                            : formData.exchange,
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  <label
+                                    htmlFor="multiple-exchanges"
+                                    className="text-sm text-muted-foreground cursor-pointer"
+                                  >
+                                    Multiple
+                                  </label>
+                                </div>
+                              </div>
+
+                              {!useMultipleExchanges ? (
+                                <Select
+                                  value={
+                                    Array.isArray(formData.exchange)
+                                      ? formData.exchange[0]
+                                      : formData.exchange
+                                  }
+                                  onValueChange={(value) => {
+                                    const defaultTradingPair =
+                                      getDefaultTradingPair(value);
+                                    setFormData({
+                                      ...formData,
+                                      exchange: value,
+                                      symbol: isEditing
+                                        ? formData.symbol
+                                        : defaultTradingPair,
+                                    });
+                                  }}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select exchange" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {SUPPORTED_EXCHANGES.map((exchange) => {
+                                      const logoUrl =
+                                        'logoUrl' in exchange
+                                          ? exchange.logoUrl
+                                          : undefined;
+                                      const iconEmoji =
+                                        'iconEmoji' in exchange
+                                          ? exchange.iconEmoji
+                                          : '💱';
+                                      return (
+                                        <SelectItem key={exchange.id} value={exchange.id}>
+                                          <div className="flex items-center gap-3">
+                                            {logoUrl ? (
+                                              <Image
+                                                src={logoUrl}
+                                                alt={exchange.name}
+                                                width={20}
+                                                height={20}
+                                                className="w-5 h-5 rounded-full"
+                                                onError={(e) => {
+                                                  (
+                                                    e.target as HTMLImageElement
+                                                  ).style.display = 'none';
+                                                }}
+                                              />
+                                            ) : (
+                                              <span className="text-base">
+                                                {iconEmoji}
+                                              </span>
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-medium">
+                                                {exchange.name}
+                                              </span>
+                                              <span className="text-xs text-muted-foreground">
+                                                ({exchange.description})
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <div className="space-y-2 border rounded-md p-3">
                                   {SUPPORTED_EXCHANGES.map((exchange) => {
+                                    const selectedExchanges = Array.isArray(
+                                      formData.exchange,
+                                    )
+                                      ? formData.exchange
+                                      : [formData.exchange];
+                                    const isSelected = selectedExchanges.includes(
+                                      exchange.id,
+                                    );
                                     const logoUrl =
                                       'logoUrl' in exchange
                                         ? exchange.logoUrl
                                         : undefined;
                                     const iconEmoji =
                                       'iconEmoji' in exchange ? exchange.iconEmoji : '💱';
+
                                     return (
-                                      <SelectItem key={exchange.id} value={exchange.id}>
-                                        <div className="flex items-center gap-3">
+                                      <div
+                                        key={exchange.id}
+                                        className="flex items-center space-x-2"
+                                      >
+                                        <Checkbox
+                                          id={`exchange-${exchange.id}`}
+                                          checked={isSelected}
+                                          onCheckedChange={(checked) => {
+                                            const currentExchanges = Array.isArray(
+                                              formData.exchange,
+                                            )
+                                              ? formData.exchange
+                                              : [formData.exchange as string];
+
+                                            let newExchanges: string[];
+                                            if (checked) {
+                                              newExchanges = [
+                                                ...currentExchanges,
+                                                exchange.id,
+                                              ];
+                                            } else {
+                                              newExchanges = currentExchanges.filter(
+                                                (e) => e !== exchange.id,
+                                              );
+                                            }
+
+                                            setFormData({
+                                              ...formData,
+                                              exchange:
+                                                newExchanges.length > 0
+                                                  ? newExchanges
+                                                  : ['coinbase'],
+                                            });
+                                          }}
+                                        />
+                                        <label
+                                          htmlFor={`exchange-${exchange.id}`}
+                                          className="flex items-center gap-2 cursor-pointer flex-1"
+                                        >
                                           {logoUrl ? (
                                             <Image
                                               src={logoUrl}
                                               alt={exchange.name}
-                                              width={20}
-                                              height={20}
-                                              className="w-5 h-5 rounded-full"
+                                              width={16}
+                                              height={16}
+                                              className="w-4 h-4 rounded-full"
                                               onError={(e) => {
                                                 (
                                                   e.target as HTMLImageElement
@@ -451,24 +593,25 @@ export default function StrategyPage() {
                                               }}
                                             />
                                           ) : (
-                                            <span className="text-base">{iconEmoji}</span>
+                                            <span className="text-sm">{iconEmoji}</span>
                                           )}
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-medium">
-                                              {exchange.name}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                              ({exchange.description})
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </SelectItem>
+                                          <span className="text-sm font-medium">
+                                            {exchange.name}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground">
+                                            ({exchange.description})
+                                          </span>
+                                        </label>
+                                      </div>
                                     );
                                   })}
-                                </SelectContent>
-                              </Select>
+                                </div>
+                              )}
+
                               <p className="text-xs text-muted-foreground">
-                                Select your trading platform
+                                {useMultipleExchanges
+                                  ? 'Select multiple exchanges for cross-exchange strategies'
+                                  : 'Select your trading platform'}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -485,39 +628,50 @@ export default function StrategyPage() {
                                   <SelectValue placeholder="Select trading pair" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getTradingPairsForExchange(formData.exchange).map(
-                                    (pair) => (
-                                      <SelectItem key={pair.symbol} value={pair.symbol}>
-                                        <div className="flex items-center gap-2">
-                                          <Image
-                                            src={getCryptoIconUrl(pair.base)}
-                                            alt={pair.base}
-                                            width={16}
-                                            height={16}
-                                            className="w-4 h-4 rounded-full"
-                                            onError={(e) => {
-                                              (
-                                                e.target as HTMLImageElement
-                                              ).style.display = 'none';
-                                            }}
-                                          />
-                                          <span className="font-medium">{pair.name}</span>
-                                          <span className="text-xs text-muted-foreground">
-                                            (
-                                            {pair.type === 'perpetual'
-                                              ? '⚡ Perp'
-                                              : '💼 Spot'}
-                                            )
-                                          </span>
-                                        </div>
-                                      </SelectItem>
-                                    ),
-                                  )}
+                                  {getTradingPairsForExchange(
+                                    Array.isArray(formData.exchange)
+                                      ? formData.exchange[0]
+                                      : formData.exchange,
+                                  ).map((pair) => (
+                                    <SelectItem key={pair.symbol} value={pair.symbol}>
+                                      <div className="flex items-center gap-2">
+                                        <Image
+                                          src={getCryptoIconUrl(pair.base)}
+                                          alt={pair.base}
+                                          width={16}
+                                          height={16}
+                                          className="w-4 h-4 rounded-full"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).style.display =
+                                              'none';
+                                          }}
+                                        />
+                                        <span className="font-medium">{pair.name}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          (
+                                          {pair.type === 'perpetual'
+                                            ? '⚡ Perp'
+                                            : '💼 Spot'}
+                                          )
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
                                 </SelectContent>
                               </Select>
                               <p className="text-xs text-muted-foreground">
-                                Format: {getSymbolFormatHint(formData.exchange)} • Backend
-                                normalizes automatically
+                                Format:{' '}
+                                {getSymbolFormatHint(
+                                  Array.isArray(formData.exchange)
+                                    ? formData.exchange[0]
+                                    : formData.exchange,
+                                )}{' '}
+                                • Backend normalizes automatically
+                                {useMultipleExchanges && (
+                                  <span className="block text-yellow-600 mt-1">
+                                    ⚠️ Using first exchange for symbol format
+                                  </span>
+                                )}
                               </p>
                             </div>
                           </div>

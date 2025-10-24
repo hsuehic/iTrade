@@ -51,7 +51,7 @@ export type StrategyTypeKey =
   | 'rsi'
   | 'macd'
   | 'bollinger_bands'
-  | 'window_grids'
+  | 'moving_window_grids'
   | 'custom';
 
 /**
@@ -286,12 +286,12 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
       ],
     },
   },
-  window_grids: {
-    type: 'window_grids',
-    name: 'Window Grids',
+  moving_window_grids: {
+    type: 'moving_window_grids',
+    name: 'Moving Window Grids',
     description: 'Window-based grids strategy',
     icon: '📊',
-    implemented: true, // 🚧 待实现🚧 待实现
+    implemented: true,
     category: 'volatility',
     defaultParameters: {
       windowSize: 20,
@@ -305,12 +305,13 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
     parameterDefinitions: [
       {
         name: 'period',
-        type: 'number',
-        description: 'Moving average period for middle band',
-        defaultValue: 20,
+        type: 'enum',
+        description: 'Grid candlestick period',
+        defaultValue: '15m',
         required: true,
-        min: 5,
-        max: 100,
+        validation: {
+          options: ['1m', '5m', '15m', '30m', '1h', '6h', '1d'],
+        },
       },
       {
         name: 'stdDev',

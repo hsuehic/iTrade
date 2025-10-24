@@ -63,7 +63,9 @@ export abstract class MarketDataExchange extends EventEmitter {
     await this.subscribe('ticker', symbol);
   }
 
-  public async subscribeToOrderBook(symbol: string): Promise<void> {
+  public async subscribeToOrderBook(symbol: string, _depth?: number): Promise<void> {
+    // Note: _depth parameter is accepted but not used in this base implementation
+    // Specific exchanges may override this method to support depth configuration
     await this.subscribe('orderbook', symbol);
   }
 

@@ -12,6 +12,7 @@ export type BinanceMarketType = 'spot' | 'futures';
 interface WebSocketState {
   ws: WebSocket;
   subscriptions: Map<string, Set<string>>; // type -> symbols
+  streamToSymbol: Map<string, string>; // streamName -> symbol (for depth snapshots)
   reconnectAttempts: number;
   heartbeatTimer?: NodeJS.Timeout;
 }
@@ -82,6 +83,7 @@ export class BinanceWebSocketManager extends EventEmitter {
     const state: WebSocketState = {
       ws,
       subscriptions: new Map(),
+      streamToSymbol: new Map(),
       reconnectAttempts: 0,
     };
 
@@ -147,8 +149,35 @@ export class BinanceWebSocketManager extends EventEmitter {
 
     // Handle data messages
     if (message.e) {
+      // Regular event messages (depthUpdate, trade, kline, etc.)
       this.emit('data', marketType, message);
+    } else if (message.lastUpdateId && message.bids && message.asks) {
+      // Depth snapshot messages (@depth5/@depth10/@depth20)
+      // These don't have an event type or symbol, but have lastUpdateId, bids, asks
+      // Find the symbol from active orderbook subscriptions
+      const state = this.connections.get(marketType);
+      if (state) {
+        const orderbookSubs = state.subscriptions.get('orderbook');
+        if (orderbookSubs && orderbookSubs.size > 0) {
+          // Use the first (or only) orderbook subscription
+          const symbol = Array.from(orderbookSubs)[0];
+          // Inject event type and symbol for consistent handling
+          const enrichedMessage = {
+            ...message,
+            e: 'depthSnapshot',
+            s: this.normalizeSymbol(symbol).toUpperCase(), // Add symbol in Binance format
+          };
+          this.emit('data', marketType, enrichedMessage);
+        }
+      }
     }
+  }
+
+  /**
+   * Normalize symbol to Binance format
+   */
+  private normalizeSymbol(symbol: string): string {
+    return symbol.toUpperCase().replace('/', '').replace('-', '').replace(':', '');
   }
 
   /**
@@ -172,6 +201,9 @@ export class BinanceWebSocketManager extends EventEmitter {
       state.subscriptions.set(type, new Set());
     }
     state.subscriptions.get(type)!.add(symbol);
+
+    // Store stream-to-symbol mapping for depth snapshots
+    state.streamToSymbol.set(streamName, symbol);
 
     // Send SUBSCRIBE message
     if (state.ws.readyState === WebSocket.OPEN) {
@@ -215,6 +247,9 @@ export class BinanceWebSocketManager extends EventEmitter {
         state.subscriptions.delete(type);
       }
     }
+
+    // Remove stream-to-symbol mapping
+    state.streamToSymbol.delete(streamName);
 
     // Send UNSUBSCRIBE message
     if (state.ws.readyState === WebSocket.OPEN) {
