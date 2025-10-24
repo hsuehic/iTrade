@@ -974,3 +974,326 @@ cd apps/web && pnpm build
 ```
 
 **Critical Rule**: ALWAYS finish with `cd apps/web && pnpm build` to verify integration! 🏗️✅
+
+---
+
+## 🧪 Verification and Testing Rules
+
+### Mandatory Verification After Changes
+
+**AI agents MUST verify that their modifications work correctly before considering a task complete. The agent is responsible for identifying and resolving issues independently.**
+
+#### Core Principle
+
+> **"Modify → Verify → Resolve Issues Independently"**
+>
+> When making ANY code modifications, AI agents MUST:
+>
+> 1. ✅ **Make the modification**
+> 2. ✅ **Verify it works correctly** through appropriate testing
+> 3. ✅ **Identify any issues** through testing/logs
+> 4. ✅ **Resolve all issues independently** without requiring user intervention
+> 5. ✅ **Re-verify** after fixes until everything works
+>
+> **NEVER mark a task as complete without verification. NEVER leave issues unresolved.**
+
+#### When Verification is REQUIRED
+
+Verification is MANDATORY for:
+
+1. **WebSocket/Network Changes**
+   - Exchange connector modifications
+   - Subscription/unsubscription logic
+   - Real-time data streams
+   - API endpoint changes
+
+2. **Core Logic Changes**
+   - Trading engine modifications
+   - Strategy implementations
+   - Order management
+   - Risk management
+
+3. **Data Processing Changes**
+   - Data normalization/transformation
+   - Event handling
+   - Message parsing
+   - Symbol mapping
+
+4. **UI/Frontend Changes**
+   - Component behavior
+   - Real-time data display
+   - User interactions
+   - State management
+
+5. **Database/Persistence Changes**
+   - Entity modifications
+   - Repository updates
+   - Migration scripts
+   - Data queries
+
+#### Verification Methods
+
+**1. For Backend/Console Applications:**
+
+```bash
+# Run the application and verify behavior
+cd apps/console
+pnpm dev
+# OR use the debugger
+# Debug console with ts-node (from launch.json)
+
+# Check logs for:
+# - ✅ Successful connections
+# - ✅ Expected data flow
+# - ✅ No errors or warnings
+# - ✅ Correct behavior
+```
+
+**2. For WebSocket/Exchange Changes:**
+
+```bash
+# Create a test script if needed
+# Example: test-binance-ws.js
+
+# Run the test
+node test-script.js
+
+# Verify:
+# - ✅ Connection established
+# - ✅ Subscriptions confirmed
+# - ✅ Data received correctly
+# - ✅ Unsubscribe works
+# - ✅ No connection leaks
+```
+
+**3. For Web Application:**
+
+```bash
+# Build and run the web app
+cd apps/web
+pnpm build  # Must pass without errors
+pnpm dev    # Verify in browser
+
+# Check:
+# - ✅ No build errors
+# - ✅ UI renders correctly
+# - ✅ Real-time updates work
+# - ✅ No console errors
+```
+
+**4. For API/REST Endpoints:**
+
+```bash
+# Test with curl or similar
+curl -X GET http://localhost:3000/api/endpoint
+
+# Verify:
+# - ✅ Correct response status
+# - ✅ Expected data format
+# - ✅ No errors in logs
+```
+
+#### Issue Resolution Protocol
+
+**When issues are found during verification:**
+
+1. **IDENTIFY the root cause**
+   - Read error messages carefully
+   - Check logs for patterns
+   - Understand the failure point
+   - Trace through code flow
+
+2. **ANALYZE the problem**
+   - Is it a logic error?
+   - Is it a configuration issue?
+   - Is it a timing/async issue?
+   - Is it a format/data mismatch?
+
+3. **IMPLEMENT a fix**
+   - Make targeted changes
+   - Follow coding standards
+   - Add logging if needed for debugging
+   - Consider edge cases
+
+4. **RE-VERIFY the fix**
+   - Rebuild if necessary
+   - Run the same verification test
+   - Confirm the issue is resolved
+   - Check for new issues introduced
+
+5. **REPEAT until all issues are resolved**
+   - Don't stop at the first fix
+   - Verify comprehensively
+   - Ensure stability
+   - Clean up debug code if appropriate
+
+#### AI Agent Responsibilities
+
+**The AI agent MUST:**
+
+1. ✅ **Test every modification** before claiming completion
+2. ✅ **Verify the ORIGINAL issue is resolved** - Not just that the code compiles
+3. ✅ **Read and analyze logs** to identify issues
+4. ✅ **Resolve all issues independently** without asking the user to debug
+5. ✅ **Re-test after fixes** to confirm resolution
+6. ✅ **Add debug logging temporarily** if needed to diagnose issues
+7. ✅ **Remove temporary debug code** after verification (unless useful long-term)
+8. ✅ **Report test results** clearly to the user
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Mark tasks complete without verification**
+2. ❌ **Ask the user to test** unless explicitly requested
+3. ❌ **Leave issues unresolved** for the user to fix
+4. ❌ **Make blind changes** without understanding the problem
+5. ❌ **Ignore error messages** or warnings in logs
+6. ❌ **Skip verification** to save time
+7. ❌ **Assume code works** without evidence
+
+#### Verification Checklist
+
+Before marking a task as complete, verify:
+
+- [ ] **Code compiles** without errors (`pnpm build`)
+- [ ] **Linting passes** without errors (`pnpm lint`)
+- [ ] **Application runs** without crashes
+- [ ] **Expected behavior works** as intended
+- [ ] **No error messages** in logs during normal operation
+- [ ] **Edge cases handled** appropriately
+- [ ] **No regressions** introduced in existing functionality
+- [ ] **Performance acceptable** (no obvious degradation)
+- [ ] **Resource cleanup** (connections closed, memory freed)
+
+#### Example Verification Workflow
+
+```markdown
+### Scenario: Modified Binance WebSocket subscription logic
+
+**Step 1: Make the modification**
+- Updated BinanceExchange.ts to use dynamic subscribe/unsubscribe
+- Changed WebSocket URL format
+- Modified message handling
+
+**Step 2: Rebuild packages**
+```bash
+cd packages/exchange-connectors && pnpm build
+cd ../core && pnpm build
+```
+
+**Step 3: Create test script**
+```javascript
+// test-binance-ws.js
+const { BinanceExchange } = require('./dist/index.js');
+// ... test subscription/unsubscription
+```
+
+**Step 4: Run test and observe**
+```bash
+node test-binance-ws.js
+```
+
+**Step 5: Analyze logs**
+```
+✅ Binance WebSocket connected
+✅ Subscription confirmed
+✅ Ticker data received
+✅ Unsubscribe successful
+✅ TEST PASSED
+```
+
+**Step 6: Test in console app**
+```bash
+# Run console app with debugger
+# Verify:
+# - EventBus listeners receive data
+# - No continuous logging after unsubscribe
+# - No memory leaks
+```
+
+**Step 7: Fix any issues found**
+- Added missing symbol mapping
+- Fixed event type handling
+- Corrected normalization logic
+
+**Step 8: Re-verify**
+- All tests pass
+- No errors in logs
+- Expected behavior confirmed
+
+**Step 9: Clean up**
+- Remove test script
+- Remove excessive debug logging (keep useful logs)
+- Report success to user
+```
+
+#### Time Expectations
+
+Verification should be factored into task estimates:
+
+- Simple changes: **+2-5 minutes** for verification
+- Medium changes: **+5-15 minutes** for verification
+- Complex changes: **+15-30 minutes** for verification
+- Critical changes: **+30-60 minutes** for comprehensive testing
+
+**Verification time is NOT optional. It is part of completing the task correctly.**
+
+#### Continuous Verification During Development
+
+For large/complex tasks:
+
+1. **Verify incrementally** after each logical step
+2. **Don't wait until the end** to test everything
+3. **Catch issues early** when they're easier to fix
+4. **Build confidence** that the approach is correct
+5. **Adjust course** if verification reveals problems
+
+#### Reporting to User
+
+**Good reporting includes:**
+
+```markdown
+✅ **VERIFICATION COMPLETE**
+
+**Changes Made:**
+- Modified BinanceExchange WebSocket handling
+- Implemented dynamic subscribe/unsubscribe
+- Updated message parsing
+
+**Verification Performed:**
+- ✅ Built packages successfully
+- ✅ Created and ran test script
+- ✅ Verified subscription works
+- ✅ Verified unsubscription works
+- ✅ Tested in console app
+- ✅ Confirmed EventBus receives data
+- ✅ No errors in logs
+
+**Issues Found & Resolved:**
+1. Symbol mapping was missing → Added symbolMap
+2. Event format incorrect → Updated handleWebSocketMessage
+3. Unsubscribe not sending message → Added UNSUBSCRIBE logic
+
+**Final Status:**
+All functionality verified and working correctly. ✅
+```
+
+**Bad reporting:**
+
+```markdown
+❌ I've made the changes. Please test it.
+❌ The code should work now.
+❌ I think this will fix the issue.
+```
+
+### Summary: Verification is Mandatory
+
+> **Every modification MUST be verified. Every issue MUST be resolved. The ORIGINAL user request MUST be confirmed working. The AI agent is responsible for ensuring correctness, not the user.**
+
+**Critical Rules:**
+
+1. **Always verify the ORIGINAL issue** - If the user reported "push data callbacks not showing", verify that push data callbacks ARE now showing, not just that the code builds.
+2. **Run the actual application** - Don't assume fixes work without running the real application the user will use.
+3. **Check the user's perspective** - Verify from the user's point of view, not just the code's point of view.
+4. **Complete the full loop** - Make change → Build → Run → Verify user's original problem is solved.
+
+**Remember**: Untested code is broken code. Verification is not optional—it's a fundamental part of professional software development. 🧪✅

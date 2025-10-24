@@ -44,5 +44,18 @@
     "declaration": true,
     "declarationMap": true,
     "composite": true
-  }
+  },
+
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/strategies" },
+    { "path": "packages/exchange-connectors" },
+    { "path": "packages/data-manager" },
+    { "path": "packages/risk-manager" },
+    { "path": "packages/portfolio-manager" },
+    { "path": "packages/logger" },
+    { "path": "packages/utils" },
+    { "path": "apps/console" },
+    { "path": "apps/web" }
+  ]
 }

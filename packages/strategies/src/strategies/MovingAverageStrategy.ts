@@ -44,8 +44,6 @@ export class MovingAverageStrategy extends BaseStrategy {
   }): Promise<StrategyResult> {
     this.ensureInitialized();
 
-    console.log(marketData);
-
     let currentPrice: Decimal;
 
     // Get current price from available data

@@ -2,6 +2,9 @@
 export { MovingAverageStrategy } from './strategies/MovingAverageStrategy';
 export type { MovingAverageParameters } from './strategies/MovingAverageStrategy';
 
+export { MovingWindowGridsStrategy } from './strategies/MovingWindowGridsStrategy';
+export type { MovingWindowGridsParameters } from './strategies/MovingWindowGridsStrategy';
+
 // Strategy Factory & Registry - 策略工厂和注册表
 export {
   getImplementedStrategies,

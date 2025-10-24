@@ -122,25 +122,7 @@ async function main() {
     'Ma 1',
     new MovingAverageStrategy({
       symbol: 'BTC/USDT',
-      exchange: 'okx',
-      fastPeriod: 10,
-      slowPeriod: 30,
-      threshold: 0.001,
-      subscription: {
-        ticker: true,
-        orderbook: true,
-        trades: false,
-        klines: false,
-        method: 'websocket',
-      },
-    }),
-  );
-
-  await engine.addStrategy(
-    'Ma 2',
-    new MovingAverageStrategy({
-      symbol: 'BTC/USDT',
-      exchange: 'okx',
+      exchange: 'binance',
       fastPeriod: 10,
       slowPeriod: 30,
       threshold: 0.001,
@@ -153,6 +135,42 @@ async function main() {
       },
     }),
   );
+
+  await engine.addStrategy(
+    'Ma 2',
+    new MovingAverageStrategy({
+      symbol: 'BTC/USDT:USDT', // Futures symbol to test futures WebSocket endpoint
+      exchange: 'binance',
+      fastPeriod: 10,
+      slowPeriod: 30,
+      threshold: 0.001,
+      subscription: {
+        ticker: true,
+        orderbook: true,
+        trades: true,
+        klines: true,
+        method: 'websocket',
+      },
+    }),
+  );
+
+  // Test unsubscription by removing strategies after 8 seconds
+  setTimeout(async () => {
+    console.log('\n🧪 TEST: Removing strategies to verify unsubscription...\n');
+    await engine.removeStrategy('Ma 1');
+    await engine.removeStrategy('Ma 2');
+    console.log(
+      '\n🧪 TEST: Strategies removed. Waiting 3 seconds to verify no more data...\n',
+    );
+
+    // Wait 3 seconds to verify no more data is coming
+    setTimeout(() => {
+      console.log(
+        '\n✅ TEST COMPLETE: If no data appeared above, unsubscription works!\n',
+      );
+      process.exit(0);
+    }, 3000);
+  }, 8000);
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('🚀 iTrade Trading System is LIVE');

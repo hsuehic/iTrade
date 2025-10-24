@@ -408,11 +408,56 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
       clearInterval(subscription.timerId);
     }
 
-    // Note: Most exchanges don't support WebSocket unsubscribe
-    // The exchange will stop sending data when connection closes
-    // Or when a new subscription list is sent
+    // Call exchange unsubscribe for WebSocket subscriptions
+    if (subscription.method === 'websocket') {
+      try {
+        const { symbol, type, params } = subscription.key;
+        await this.unsubscribeViaWebSocket(
+          subscription.exchange,
+          symbol,
+          type,
+          params || {},
+        );
+      } catch (error) {
+        this.logger.error(`Failed to unsubscribe from ${id}`, error as Error);
+      }
+    }
 
     this.logger.debug(`Cancelled subscription: ${id}`);
+  }
+
+  /**
+   * Unsubscribe via WebSocket
+   */
+  private async unsubscribeViaWebSocket(
+    exchange: IExchange,
+    symbol: string,
+    type: DataType,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      switch (type) {
+        case 'ticker':
+        case 'orderbook':
+        case 'trades':
+          await exchange.unsubscribe(symbol, type);
+          break;
+        case 'klines': {
+          const interval = (params.interval as string | undefined) || ('1m' as string);
+          const klinesSymbol = `${symbol}@${interval}`;
+          await exchange.unsubscribe(klinesSymbol, type);
+          break;
+        }
+      }
+
+      this.logger.info(`Unsubscribed via WebSocket: ${exchange.name} ${symbol} ${type}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to unsubscribe via WebSocket: ${exchange.name} ${symbol} ${type}`,
+        error as Error,
+      );
+      throw error;
+    }
   }
 
   /**

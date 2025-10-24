@@ -931,14 +931,9 @@ export class OKXExchange extends BaseExchange {
   }
 
   private resolveWsTypeForChannel(channel: string): OkxWsType {
-    // OKX routes some market data to business WS (e.g. order book full-depth)
-    // books/books5/books50/books-l2-tbt → business
-    // trades → business
-    // candle* → business
-    if (channel.startsWith('books')) return 'business';
-    if (channel === 'trades') return 'business';
-    if (channel.startsWith('candle')) return 'business';
-    // private/user events would go to 'private' when implemented
+    // Only full L2 TBT requires business; most public streams are on public
+    if (channel === 'books-l2-tbt') return 'business';
+    // Default market data → public
     return 'public';
   }
 
@@ -990,11 +985,21 @@ export class OKXExchange extends BaseExchange {
     symbol: string,
     type: 'ticker' | 'orderbook' | 'trades' | 'klines',
   ): Promise<void> {
-    const key = type === 'klines' ? symbol : `${type}:${symbol}`;
+    // symbol for klines should be `${sym}@${interval}` as used in subscribe
+    const keyForMap = type === 'klines' ? symbol : symbol;
     const subs = this.okxSubscriptions.get(type);
     if (subs) {
-      subs.delete(key);
+      subs.delete(keyForMap);
       if (subs.size === 0) this.okxSubscriptions.delete(type);
+    }
+
+    // Build channel and send unsubscribe to the correct socket
+    const channel = this.getOKXChannel(type, symbol);
+    const targetKey: OkxWsType = this.resolveWsTypeForChannel(channel.channel);
+    const ws = this.wsConnections.get(targetKey);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const msg = { op: 'unsubscribe', args: [channel] };
+      ws.send(JSON.stringify(msg));
     }
   }
 

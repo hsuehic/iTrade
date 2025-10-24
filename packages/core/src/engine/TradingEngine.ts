@@ -729,11 +729,21 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     });
 
     exchange.on('trade', (symbol: string, trade: Trade) => {
+      this._eventBus.emitTradeUpdate({
+        symbol,
+        trade,
+        timestamp: new Date(),
+      });
       // Single trade event - wrap in array for consistency
       this.onTrades(symbol, [trade], exchangeName);
     });
 
     exchange.on('kline', (symbol: string, kline: Kline) => {
+      this._eventBus.emitKlineUpdate({
+        symbol,
+        kline,
+        timestamp: new Date(),
+      });
       this.onKline(symbol, kline, exchangeName);
     });
   }

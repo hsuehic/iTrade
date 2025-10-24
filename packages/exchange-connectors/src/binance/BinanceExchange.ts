@@ -3,7 +3,6 @@ import crypto from 'crypto';
 import axios, { AxiosInstance } from 'axios';
 import { Decimal } from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
-import WebSocket from 'ws';
 import {
   Order,
   OrderSide,
@@ -22,27 +21,30 @@ import {
 
 import { BaseExchange } from '../base/BaseExchange';
 import { BinanceWebsocket } from './BinanceWebsocket';
-
-export type BinanceMarketType = 'spot' | 'futures' | 'perpetual';
+import {
+  BinanceWebSocketManager,
+  type BinanceMarketType,
+} from './BinanceWebSocketManager';
 
 export class BinanceExchange extends BaseExchange {
   // Spot API URLs
   private static readonly SPOT_MAINNET_URL = 'https://api.binance.com';
   private static readonly SPOT_TESTNET_URL = 'https://testnet.binance.vision';
-  private static readonly SPOT_MAINNET_WS = 'wss://stream.binance.com/ws/';
-  private static readonly SPOT_TESTNET_WS = 'wss://testnet.binance.vision/ws/';
+  private static readonly SPOT_MAINNET_WS = 'wss://stream.binance.com/ws';
+  private static readonly SPOT_TESTNET_WS = 'wss://testnet.binance.vision/ws';
 
   // USDT-M Futures API URLs (Perpetual)
   private static readonly FUTURES_MAINNET_URL = 'https://fapi.binance.com';
   private static readonly FUTURES_TESTNET_URL = 'https://testnet.binancefuture.com';
   // WebSocket URLs for futures (reserved for future use)
-  private static readonly _FUTURES_MAINNET_WS = 'wss://fstream.binance.com/ws/';
-  private static readonly _FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/ws/';
+  private static readonly _FUTURES_MAINNET_WS = 'wss://fstream.binance.com/ws';
+  private static readonly _FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/ws';
 
   private spotClient: AxiosInstance;
   private futuresClient: AxiosInstance;
   private _isTestnet: boolean;
-  private subscriptions = new Map<string, Set<string>>();
+  private wsManager: BinanceWebSocketManager;
+  private symbolMap = new Map<string, string>(); // normalized -> original symbol mapping
   private userWs?: BinanceWebsocket;
 
   constructor(isTestnet = false) {
@@ -56,6 +58,17 @@ export class BinanceExchange extends BaseExchange {
     super('binance', baseUrl, wsBaseUrl);
 
     this._isTestnet = isTestnet;
+
+    // Initialize WebSocket Manager
+    this.wsManager = new BinanceWebSocketManager({
+      spotUrl: wsBaseUrl,
+      futuresUrl: isTestnet
+        ? BinanceExchange._FUTURES_TESTNET_WS
+        : BinanceExchange._FUTURES_MAINNET_WS,
+    });
+
+    // Setup WebSocket Manager event handlers
+    this.setupWebSocketManagerListeners();
 
     // Initialize Spot API client
     this.spotClient = axios.create({
@@ -78,7 +91,7 @@ export class BinanceExchange extends BaseExchange {
    * Get the appropriate API client based on market type (reserved for future use)
    */
   private _getClient(marketType?: string): AxiosInstance {
-    const isFutures = marketType === 'futures' || marketType === 'perpetual';
+    const isFutures = marketType === 'futures';
     return isFutures ? this.futuresClient : this.spotClient;
   }
 
@@ -86,7 +99,7 @@ export class BinanceExchange extends BaseExchange {
    * Check if market type is futures/perpetual (reserved for future use)
    */
   private _isFuturesMarket(marketType?: BinanceMarketType): boolean {
-    return marketType === 'futures' || marketType === 'perpetual';
+    return marketType === 'futures';
   }
 
   protected async testConnection(): Promise<void> {
@@ -354,30 +367,44 @@ export class BinanceExchange extends BaseExchange {
     return exchangeInfo.symbols;
   }
 
+  /**
+   * Setup WebSocket Manager event listeners
+   */
+  private setupWebSocketManagerListeners(): void {
+    this.wsManager.on('connected', (marketType: BinanceMarketType) => {
+      console.log(`[Binance] ${marketType} WebSocket connected`);
+      this.emit('ws_connected', this.name);
+    });
+
+    this.wsManager.on('disconnected', (marketType: BinanceMarketType) => {
+      console.log(`[Binance] ${marketType} WebSocket disconnected`);
+      this.emit('ws_disconnected', this.name);
+    });
+
+    this.wsManager.on('error', (marketType: BinanceMarketType, error: Error) => {
+      console.error(`[Binance] ${marketType} WebSocket error:`, error.message);
+      this.emit('ws_error', error);
+    });
+
+    this.wsManager.on('data', (_marketType: BinanceMarketType, message: any) => {
+      this.handleWebSocketMessage(message);
+    });
+
+    this.wsManager.on(
+      'resubscribe_needed',
+      (marketType: BinanceMarketType, type: string, symbol: string) => {
+        // Auto-resubscribe after reconnection
+        console.log(`[Binance] Resubscribing to ${type}:${symbol} on ${marketType}`);
+        this.subscribe(type, symbol).catch((err) => {
+          console.error(`[Binance] Resubscribe failed:`, err);
+        });
+      },
+    );
+  }
+
   protected buildWebSocketUrl(): string {
-    const streams = [];
-
-    // Build stream names based on subscriptions
-    for (const [type, symbols] of this.subscriptions) {
-      for (const symbol of symbols) {
-        switch (type) {
-          case 'ticker':
-            streams.push(`${symbol.toLowerCase()}@ticker`);
-            break;
-          case 'orderbook':
-            streams.push(`${symbol.toLowerCase()}@depth`);
-            break;
-          case 'trades':
-            streams.push(`${symbol.toLowerCase()}@trade`);
-            break;
-          case 'klines':
-            streams.push(`${symbol.toLowerCase()}`); // symbol already includes interval
-            break;
-        }
-      }
-    }
-
-    return `${this.wsBaseUrl}${streams.join('/')}`;
+    // This is called by parent class, return spot URL
+    return this.wsBaseUrl;
   }
 
   public async subscribeToTicker(symbol: string): Promise<void> {
@@ -400,108 +427,105 @@ export class BinanceExchange extends BaseExchange {
     symbol: string,
     type: 'ticker' | 'orderbook' | 'trades' | 'klines',
   ): Promise<void> {
-    const key = type === 'klines' ? symbol : `${type}:${symbol}`;
-    const subs = this.subscriptions.get(type);
-    if (subs) {
-      subs.delete(key);
-      if (subs.size === 0) this.subscriptions.delete(type);
-    }
-    if (this.subscriptions.size === 0) {
-      const ws = this.wsConnections.get('market');
-      if (
-        ws &&
-        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
-      ) {
-        ws.close();
-      }
-      this.wsConnections.delete('market');
-    }
+    console.log(`[Binance] Unsubscribing from ${type}:${symbol}`);
+
+    // Determine market type
+    const marketType = this.wsManager.getMarketType(symbol);
+
+    // Build stream name
+    const streamName = this.buildStreamName(type, symbol);
+
+    // Unsubscribe via WebSocket Manager
+    await this.wsManager.unsubscribe(marketType, type, symbol, streamName);
+
+    // Remove symbol mapping
+    const normalized = this.normalizeSymbol(symbol).toLowerCase();
+    this.symbolMap.delete(normalized);
   }
 
   private async subscribe(type: string, symbol: string): Promise<void> {
-    if (!this.subscriptions.has(type)) this.subscriptions.set(type, new Set());
-    this.subscriptions.get(type)!.add(symbol);
+    // Determine market type from symbol
+    const marketType = this.wsManager.getMarketType(symbol);
 
-    if (!this.wsConnections.has('market')) {
-      await this.createWebSocketConnection();
+    console.log(`[Binance] Subscribing to ${type}:${symbol} (${marketType})`);
+
+    // Store normalized -> original symbol mapping for later lookup
+    const normalized = this.normalizeSymbol(symbol).toLowerCase();
+    this.symbolMap.set(normalized, symbol);
+
+    // Build stream name
+    const streamName = this.buildStreamName(type, symbol);
+
+    // Subscribe via WebSocket Manager
+    await this.wsManager.subscribe(marketType, type, symbol, streamName);
+  }
+
+  /**
+   * Build Binance stream name from type and symbol
+   */
+  private buildStreamName(type: string, symbol: string): string {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+
+    switch (type) {
+      case 'ticker':
+        return `${normalizedSymbol.toLowerCase()}@ticker`;
+      case 'orderbook':
+        return `${normalizedSymbol.toLowerCase()}@depth`;
+      case 'trades':
+        return `${normalizedSymbol.toLowerCase()}@trade`;
+      case 'klines': {
+        // For klines, symbol includes interval: BTC/USDT@1m
+        if (symbol.includes('@')) {
+          const [baseSym, interval] = symbol.split('@');
+          const normalized = this.normalizeSymbol(baseSym);
+          return `${normalized.toLowerCase()}@kline_${interval}`;
+        }
+        return `${normalizedSymbol.toLowerCase()}@kline_1m`;
+      }
+      default:
+        throw new Error(`Unknown subscription type: ${type}`);
     }
-    await this.sendWebSocketSubscription(type, symbol);
   }
 
   protected async createWebSocketConnection(): Promise<void> {
-    const wsUrl = this.buildWebSocketUrl();
-    const ws = new WebSocket(wsUrl);
-    this.wsConnections.set('market', ws);
-    await new Promise((resolve) => {
-      ws.on('open', () => {
-        this.emit('ws_connected', this.name);
-        resolve(void 0);
-      });
-      ws.on('message', (data: string) => {
-        try {
-          const message = JSON.parse(data);
-          this.handleWebSocketMessage(message);
-        } catch (error) {
-          this.emit('ws_error', error);
-        }
-      });
-      ws.on('close', () => {
-        this.emit('ws_disconnected', this.name);
-        this.wsConnections.delete('market');
-      });
-      ws.on('error', (err: Error) => this.emit('ws_error', err));
-    });
-  }
-
-  protected async sendWebSocketSubscription(
-    _type: string,
-    _symbol: string,
-  ): Promise<void> {
-    // Binance uses combined streams, so we need to reconnect with new stream list
-    const ws = this.wsConnections.get('market');
-    if (ws) {
-      // 只有在 OPEN 或 CONNECTING 状态时才关闭
-      // 避免 "WebSocket was closed before the connection was established" 错误
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
-      }
-      this.wsConnections.delete('market');
-    }
-
-    // 等待一小段时间，确保旧连接完全关闭
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    await this.createWebSocketConnection();
+    // Not used directly anymore, WebSocket Manager handles connections
+    console.log('[Binance] Using WebSocket Manager for connections');
   }
 
   protected handleWebSocketMessage(message: any): void {
-    if (message.stream) {
-      const [symbol, streamType] = message.stream.split('@');
-      const data = message.data;
+    // Handle market data messages (single stream format)
+    if (message.e) {
+      // Direct stream format (e.g., {"e":"trade","s":"BTCUSDT",...})
+      const eventType = message.e;
+      const symbol = message.s; // Normalized symbol from Binance
+      const normalizedSymbol = symbol.toLowerCase();
 
-      switch (streamType) {
-        case 'ticker':
-          this.emit('ticker', symbol.toUpperCase(), this.transformBinanceTicker(data));
+      // Look up original symbol format
+      const originalSymbol = this.symbolMap.get(normalizedSymbol) || symbol.toUpperCase();
+
+      switch (eventType) {
+        case '24hrTicker':
+          this.emit('ticker', originalSymbol, this.transformBinanceTicker(message));
           break;
-        case 'depth':
+        case 'depthUpdate':
           this.emit(
             'orderbook',
-            symbol.toUpperCase(),
-            this.transformBinanceOrderBook(data, symbol),
+            originalSymbol,
+            this.transformBinanceOrderBook(message, normalizedSymbol),
           );
           break;
         case 'trade':
           this.emit(
             'trade',
-            symbol.toUpperCase(),
-            this.transformBinanceTrade(data, symbol),
+            originalSymbol,
+            this.transformBinanceTrade(message, normalizedSymbol),
           );
           break;
-        default:
-          if (streamType.startsWith('kline')) {
-            this.emit('kline', symbol.toUpperCase(), this.transformBinanceKline(data.k));
-          }
+        case 'kline':
+          this.emit('kline', originalSymbol, this.transformBinanceKline(message.k));
           break;
+        default:
+          console.warn(`[Binance] Unknown event type: ${eventType}`);
       }
     }
   }
