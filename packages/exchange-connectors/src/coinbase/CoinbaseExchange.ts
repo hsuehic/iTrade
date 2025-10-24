@@ -220,6 +220,7 @@ export class CoinbaseExchange extends BaseExchange {
       volume: this.formatDecimal(c.volume || c.v || '0'),
       quoteVolume: this.formatDecimal(c.quote_volume || '0'),
       trades: c.num_trades || 0,
+      isClosed: true, // Historical klines from REST API are always closed
     }));
   }
 
@@ -542,13 +543,19 @@ export class CoinbaseExchange extends BaseExchange {
           for (const e of msg.events) {
             for (const c of e.candles || []) {
               const originalSymbol = this.symbolMap.get(c.product_id) || c.product_id;
+              const closeTime = new Date(
+                new Date(c.start).getTime() + (c.granularity || 60) * 1000,
+              );
+              // Coinbase doesn't have explicit isClosed field, so we determine it by comparing with current time
+              // If current time is past the expected close time, the candle is closed
+              const now = Date.now();
+              const isClosed = now >= closeTime.getTime();
+
               this.emit('kline', originalSymbol, {
                 symbol: originalSymbol,
                 interval: c.granularity?.toString() || '',
                 openTime: new Date(c.start),
-                closeTime: new Date(
-                  new Date(c.start).getTime() + (c.granularity || 60) * 1000,
-                ),
+                closeTime: closeTime,
                 open: this.formatDecimal(c.open),
                 high: this.formatDecimal(c.high),
                 low: this.formatDecimal(c.low),
@@ -556,6 +563,7 @@ export class CoinbaseExchange extends BaseExchange {
                 volume: this.formatDecimal(c.volume || '0'),
                 quoteVolume: this.formatDecimal('0'),
                 trades: 0,
+                isClosed: isClosed, // Determined by comparing current time with close time
               } as Kline);
             }
           }

@@ -5,6 +5,7 @@ import {
   StrategyParameters,
   Ticker,
   Kline,
+  Order,
   // StrategyRecoveryContext, // to support state recovery in the future
 } from '@itrade/core';
 
@@ -34,17 +35,22 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     this.gridCount = this.getParameter('gridCount');
   }
 
-  public async analyze(marketData: {
+  public override async analyze(marketData: {
     ticker?: Ticker;
     klines?: Kline[];
   }): Promise<StrategyResult> {
-    console.log('analyze', marketData);
+    console.log('analyze: MovingWindowGridsStrategy');
+    console.log(marketData);
     this.ensureInitialized();
     if (!marketData.klines) {
       return { action: 'hold', reason: 'No klines data available' };
     } else {
       return { action: 'hold', reason: 'No klines data available' };
     }
+  }
+
+  public override async onOrderFilled(order: Order): Promise<void> {
+    console.log('on order:', order);
   }
 
   protected async onCleanup(): Promise<void> {

@@ -915,6 +915,7 @@ export class BinanceExchange extends BaseExchange {
       volume: this.formatDecimal(data.v),
       quoteVolume: this.formatDecimal(data.q),
       trades: data.n,
+      isClosed: data.x, // Binance field 'x' indicates if the kline is closed
     };
   }
 }

@@ -894,6 +894,9 @@ export class OKXExchange extends BaseExchange {
   }
 
   private transformOKXKline(data: any, symbol: string): Kline {
+    // OKX kline data format: [ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm]
+    // Index 8 (confirm field): "0" = K line is uncompleted, "1" = K line is completed
+    // Reference: https://www.okx.com/docs-v5/en/#websocket-api-public-channel-candlesticks-channel
     return {
       symbol: symbol,
       interval: data.bar || '1m',
@@ -906,6 +909,7 @@ export class OKXExchange extends BaseExchange {
       volume: this.formatDecimal(data[5]),
       quoteVolume: this.formatDecimal(data[6]),
       trades: 0,
+      isClosed: data[8] === '1', // OKX index 8: "1" = completed, "0" = uncompleted
     };
   }
 

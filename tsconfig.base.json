@@ -54,8 +54,6 @@
     { "path": "packages/risk-manager" },
     { "path": "packages/portfolio-manager" },
     { "path": "packages/logger" },
-    { "path": "packages/utils" },
-    { "path": "apps/console" },
-    { "path": "apps/web" }
+    { "path": "packages/utils" }
   ]
 }

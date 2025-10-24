@@ -51,6 +51,7 @@ export interface Kline {
   trades: number;
   takerBuyBaseVolume?: Decimal;
   takerBuyQuoteVolume?: Decimal;
+  isClosed?: boolean; // Whether the kline is closed (true) or still forming (false)
   exchange?: string; // 交易所名称，用于区分多交易所数据
 }
 
