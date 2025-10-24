@@ -22,12 +22,6 @@ import {
 
 export type OkxWsType = 'public' | 'private' | 'business';
 
-export const OKX_WS_URLS: Record<OkxWsType, string> = {
-  public: 'wss://ws.okx.com/ws/v5/public',
-  private: 'wss://ws.okx.com/ws/v5/private',
-  business: 'wss://ws.okx.com/ws/v5/business',
-} as const;
-
 import { BaseExchange } from '../base/BaseExchange';
 
 export interface OKXCredentials extends ExchangeCredentials {
@@ -37,16 +31,29 @@ export interface OKXCredentials extends ExchangeCredentials {
 export class OKXExchange extends BaseExchange {
   private static readonly MAINNET_BASE_URL = 'https://www.okx.com';
   private static readonly TESTNET_BASE_URL = 'https://www.okx.com'; // OKX 使用同一个 URL，通过 demo trading 模式区分
-  private static readonly MAINNET_WS_URL_PUBLIC = OKX_WS_URLS.public;
-  private static readonly TESTNET_WS_URL = 'wss://wspap.okx.com/ws/v5/public'; // Demo trading
+  private static readonly MAINNET_WS_URL_PUBLIC = 'wss://ws.okx.com/ws/v5/public';
+  private static readonly MAINNET_WS_URL_PRIVATE = 'wss://ws.okx.com/ws/v5/private';
+  private static readonly MAINNET_WS_URL_BUSINESS = 'wss://ws.okx.com/ws/v5/business';
+  private static readonly TESTNET_WS_URL_PUBLIC = 'wss://wspap.okx.com/ws/v5/public'; // Demo trading
+  private static readonly TESTNET_WS_URL_PRIVATE = 'wss://wspap.okx.com/ws/v5/private';
+  private static readonly TESTNET_WS_URL_BUSINESS = 'wss://wspap.okx.com/ws/v5/business';
 
   private passphrase?: string;
   private isDemo: boolean;
+  private okxReconnectAttemptsMap: Record<OkxWsType, number> = {
+    public: 0,
+    private: 0,
+    business: 0,
+  };
+  private okxHeartbeatTimers: Partial<Record<OkxWsType, NodeJS.Timeout>> = {};
+  private okxReconnectTimers: Partial<Record<OkxWsType, NodeJS.Timeout>> = {};
+  private okxSubscriptions = new Map<string, Set<string>>();
+  private okxPrivateAuthenticated = false;
 
   constructor(isDemo = false) {
     const baseUrl = isDemo ? OKXExchange.TESTNET_BASE_URL : OKXExchange.MAINNET_BASE_URL;
     const wsBaseUrl = isDemo
-      ? OKXExchange.TESTNET_WS_URL
+      ? OKXExchange.TESTNET_WS_URL_PUBLIC
       : OKXExchange.MAINNET_WS_URL_PUBLIC;
 
     super('okx', baseUrl, wsBaseUrl);
@@ -471,9 +478,25 @@ export class OKXExchange extends BaseExchange {
     return upperSymbol.replace('/', '-');
   }
 
-  private createWsConnect(key: OkxWsType) {
+  private async createWsConnect(key: OkxWsType) {
+    // Clear scheduled reconnect
+    if (this.okxReconnectTimers[key]) {
+      clearTimeout(this.okxReconnectTimers[key]!);
+      this.okxReconnectTimers[key] = undefined;
+    }
+
     const wsUrl = this.buildWebSocketUrl(key);
     const ws = new WebSocket(wsUrl);
+    this.wsConnections.set(key, ws);
+
+    ws.on('open', () => {
+      this.emit('ws_connected', `${this.name}:${key}`);
+      this.okxReconnectAttemptsMap[key] = 0;
+      this.startOkxHeartbeat(key, ws);
+      this.authenticatePrivateIfNeeded(key, ws).catch((e) => this.emit('ws_error', e));
+      this.resubscribeForKey(key).catch((e) => this.emit('ws_error', e));
+    });
+
     ws.on('ping', () => ws.pong());
     ws.on('message', (data: string) => {
       try {
@@ -483,54 +506,74 @@ export class OKXExchange extends BaseExchange {
         this.emit('ws_error', error);
       }
     });
-    ws.on('close', (reason) => {
-      this.emit('ws_disconnected', this.name);
-      this.wsConnections.delete('market');
-      if (reason !== 1000) {
-        setTimeout(() => {
-          this.createWsConnect(key).catch((error) => {
-            this.emit('ws_error', error);
-          });
-        }, 5000);
+    ws.on('close', (code) => {
+      this.emit('ws_disconnected', `${this.name}:${key}`, code, '');
+      this.wsConnections.delete(key);
+      this.stopOkxHeartbeat(key);
+      if (code !== 1000) {
+        this.scheduleOkxReconnect(key);
       }
     });
     ws.on('error', (error: Error) => {
       this.emit('ws_error', error);
     });
-    this.wsConnections.set(key, ws);
     return new Promise((resolve) => {
-      ws.on('open', () => {
-        this.emit('ws_connected', this.name);
-        resolve(void 0);
-      });
+      ws.on('open', () => resolve(void 0));
     });
   }
 
   protected buildWebSocketUrl(key?: OkxWsType): string {
-    // OKX WebSocket 不需要在 URL 中指定 streams
-    if (key) {
-      return OKX_WS_URLS[key];
+    // Return appropriate WS URL for demo vs mainnet and endpoint type
+    if (key === 'public' || (!key && !this.isDemo)) {
+      return this.isDemo
+        ? OKXExchange.TESTNET_WS_URL_PUBLIC
+        : OKXExchange.MAINNET_WS_URL_PUBLIC;
+    }
+    if (key === 'private') {
+      return this.isDemo
+        ? OKXExchange.TESTNET_WS_URL_PRIVATE
+        : OKXExchange.MAINNET_WS_URL_PRIVATE;
+    }
+    if (key === 'business') {
+      return this.isDemo
+        ? OKXExchange.TESTNET_WS_URL_BUSINESS
+        : OKXExchange.MAINNET_WS_URL_BUSINESS;
     }
     return this.wsBaseUrl;
   }
 
+  // Ensure BaseExchange 'market' connection exists by pointing to public WS
+  protected async createWebSocketConnection(): Promise<void> {
+    await this.createWsConnect('public');
+    const ws = this.wsConnections.get('public');
+    if (ws) this.wsConnections.set('market', ws);
+  }
+
+  // Avoid BaseExchange auto-resubscribe since OKX handles per-connection resubscribe
+  protected async onWebSocketOpen(): Promise<void> {
+    // no-op for OKX
+  }
+
   protected async sendWebSocketSubscription(type: string, symbol: string): Promise<void> {
     const channel = this.getOKXChannel(type, symbol);
-    const subscribeMsg = {
-      op: 'subscribe',
-      args: [channel],
-    };
+    const targetKey: OkxWsType = this.resolveWsTypeForChannel(channel.channel);
+    const subscribeMsg = { op: 'subscribe', args: [channel] };
 
-    console.log(subscribeMsg);
-
-    const wsReady = this.wsConnections.get('market');
-    if (wsReady && wsReady.readyState === WebSocket.OPEN) {
-      wsReady.send(JSON.stringify(subscribeMsg));
+    let ws = this.wsConnections.get(targetKey);
+    if (
+      !ws ||
+      ws.readyState === WebSocket.CLOSING ||
+      ws.readyState === WebSocket.CLOSED
+    ) {
+      await this.createWsConnect(targetKey);
+      ws = this.wsConnections.get(targetKey);
+    }
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(subscribeMsg));
     }
   }
 
   protected handleWebSocketMessage(message: any): void {
-    console.log(message);
     // OKX 的消息格式
     if (message.event === 'subscribe') {
       this.emit('ws_subscribed', message.arg);
@@ -539,6 +582,11 @@ export class OKXExchange extends BaseExchange {
 
     if (message.event === 'error') {
       this.emit('ws_error', new Error(message.msg));
+      return;
+    }
+
+    if (message.event === 'login') {
+      // Private login ack
       return;
     }
 
@@ -554,6 +602,13 @@ export class OKXExchange extends BaseExchange {
         this.emit('trade', instId, this.transformOKXTrade(data, instId));
       } else if (channel.startsWith('candle')) {
         this.emit('kline', instId, this.transformOKXKline(data, instId));
+      } else if (channel === 'orders') {
+        const order = this.transformOKXPrivateOrder(data);
+        this.emit('orderUpdate', order.symbol, order);
+      } else if (channel === 'balance_and_position') {
+        const { balances, positions } = this.transformOKXBalanceAndPosition(data);
+        if (balances.length) this.emit('accountUpdate', 'okx', balances);
+        if (positions.length) this.emit('positionUpdate', 'okx', positions);
       }
     }
   }
@@ -794,6 +849,64 @@ export class OKXExchange extends BaseExchange {
     };
   }
 
+  private transformOKXPrivateOrder(data: any): Order {
+    // OKX private orders push format: ref docs v5 (orders channel)
+    const side = (data.side || 'buy') === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+    const type = this.transformOKXOrderType(data.ordType || 'limit');
+    const qty = this.formatDecimal(data.sz || '0');
+    const price = data.px ? this.formatDecimal(data.px) : undefined;
+    return {
+      id: (data.ordId || uuidv4()).toString(),
+      clientOrderId: data.clOrdId,
+      symbol: data.instId,
+      side,
+      type,
+      quantity: qty,
+      price,
+      status: this.transformOKXOrderStatus(data.state || 'live'),
+      timeInForce: 'GTC' as TimeInForce,
+      timestamp: data.cTime ? new Date(parseInt(data.cTime)) : new Date(),
+      updateTime: data.uTime ? new Date(parseInt(data.uTime)) : undefined,
+      executedQuantity: data.accFillSz ? this.formatDecimal(data.accFillSz) : undefined,
+    };
+  }
+
+  private transformOKXBalanceAndPosition(data: any): {
+    balances: Balance[];
+    positions: Position[];
+  } {
+    const balances: Balance[] = [];
+    const positions: Position[] = [];
+
+    if (Array.isArray(data.balData)) {
+      for (const b of data.balData) {
+        balances.push({
+          asset: b.ccy,
+          free: this.formatDecimal(b.cashBal || '0'),
+          locked: this.formatDecimal('0'),
+          total: this.formatDecimal(b.cashBal || '0'),
+        });
+      }
+    }
+
+    if (Array.isArray(data.posData)) {
+      for (const p of data.posData) {
+        positions.push({
+          symbol: p.instId,
+          side: (p.posSide || 'long').toLowerCase() === 'long' ? 'long' : 'short',
+          quantity: this.formatDecimal(p.pos || '0'),
+          avgPrice: this.formatDecimal(p.avgPx || '0'),
+          markPrice: this.formatDecimal(p.markPx || '0'),
+          unrealizedPnl: this.formatDecimal(p.upl || '0'),
+          leverage: this.formatDecimal(p.lever || '0'),
+          timestamp: new Date(),
+        });
+      }
+    }
+
+    return { balances, positions };
+  }
+
   private getOKXChannel(type: string, symbol: string): any {
     const instId = this.normalizeSymbol(symbol);
 
@@ -814,6 +927,157 @@ export class OKXExchange extends BaseExchange {
       }
       default:
         return { channel: 'tickers', instId };
+    }
+  }
+
+  private resolveWsTypeForChannel(channel: string): OkxWsType {
+    // OKX routes some market data to business WS (e.g. order book full-depth)
+    // books/books5/books50/books-l2-tbt → business
+    // trades → business
+    // candle* → business
+    if (channel.startsWith('books')) return 'business';
+    if (channel === 'trades') return 'business';
+    if (channel.startsWith('candle')) return 'business';
+    // private/user events would go to 'private' when implemented
+    return 'public';
+  }
+
+  private async resubscribeForKey(key: OkxWsType): Promise<void> {
+    // Iterate current subscriptions and send those that belong to this key
+    for (const [type, symbols] of this.okxSubscriptions) {
+      for (const symbol of symbols) {
+        const channel = this.getOKXChannel(type, symbol);
+        const targetKey = this.resolveWsTypeForChannel(channel.channel);
+        if (targetKey !== key) continue;
+        const ws = this.wsConnections.get(key);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ op: 'subscribe', args: [channel] }));
+        }
+      }
+    }
+  }
+
+  private startOkxHeartbeat(key: OkxWsType, ws: WebSocket): void {
+    this.stopOkxHeartbeat(key);
+    this.okxHeartbeatTimers[key] = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.ping();
+        } catch (_) {
+          // ignore
+        }
+      }
+    }, 20000);
+  }
+
+  public async subscribeToTicker(symbol: string): Promise<void> {
+    await this.okxSubscribe('ticker', symbol);
+  }
+
+  public async subscribeToOrderBook(symbol: string): Promise<void> {
+    await this.okxSubscribe('orderbook', symbol);
+  }
+
+  public async subscribeToTrades(symbol: string): Promise<void> {
+    await this.okxSubscribe('trades', symbol);
+  }
+
+  public async subscribeToKlines(symbol: string, interval: string): Promise<void> {
+    await this.okxSubscribe('klines', `${symbol}@${interval}`);
+  }
+
+  public async unsubscribe(
+    symbol: string,
+    type: 'ticker' | 'orderbook' | 'trades' | 'klines',
+  ): Promise<void> {
+    const key = type === 'klines' ? symbol : `${type}:${symbol}`;
+    const subs = this.okxSubscriptions.get(type);
+    if (subs) {
+      subs.delete(key);
+      if (subs.size === 0) this.okxSubscriptions.delete(type);
+    }
+  }
+
+  private async okxSubscribe(type: string, symbol: string): Promise<void> {
+    if (!this.okxSubscriptions.has(type)) this.okxSubscriptions.set(type, new Set());
+    this.okxSubscriptions.get(type)!.add(symbol);
+    await this.sendWebSocketSubscription(type, symbol);
+  }
+
+  private stopOkxHeartbeat(key: OkxWsType): void {
+    const timer = this.okxHeartbeatTimers[key];
+    if (timer) clearInterval(timer);
+    this.okxHeartbeatTimers[key] = undefined;
+  }
+
+  private scheduleOkxReconnect(key: OkxWsType): void {
+    const attempts = this.okxReconnectAttemptsMap[key] ?? 0;
+    const baseDelay = Math.min(30000, 1000 * Math.pow(2, attempts));
+    const jitter = Math.floor(Math.random() * 1000);
+    const delay = Math.max(1000, baseDelay) + jitter;
+    this.okxReconnectAttemptsMap[key] = attempts + 1;
+    if (this.okxReconnectTimers[key]) clearTimeout(this.okxReconnectTimers[key]!);
+    this.okxReconnectTimers[key] = setTimeout(() => {
+      this.createWsConnect(key).catch((e) => this.emit('ws_error', e));
+    }, delay);
+  }
+
+  // ================= User Data Subscription (Private WS) =================
+  public async subscribeToUserData(): Promise<void> {
+    // Create private connection and authenticate
+    await this.createWsConnect('private');
+  }
+
+  private signOkxWsLogin(): {
+    apiKey: string;
+    passphrase: string;
+    timestamp: string;
+    sign: string;
+  } {
+    if (!this.credentials || !this.passphrase) throw new Error('Missing OKX credentials');
+    const timestamp = new Date().toISOString();
+    const prehash = timestamp + 'GET' + '/users/self/verify';
+    const sign = crypto
+      .createHmac('sha256', this.credentials.secretKey)
+      .update(prehash)
+      .digest('base64');
+    return {
+      apiKey: this.credentials.apiKey,
+      passphrase: this.passphrase,
+      timestamp,
+      sign,
+    };
+  }
+
+  private async authenticatePrivateIfNeeded(
+    key: OkxWsType,
+    ws: WebSocket,
+  ): Promise<void> {
+    if (key !== 'private' || this.okxPrivateAuthenticated) return;
+    const login = this.signOkxWsLogin();
+    ws.send(
+      JSON.stringify({
+        op: 'login',
+        args: [
+          {
+            apiKey: login.apiKey,
+            passphrase: login.passphrase,
+            timestamp: login.timestamp,
+            sign: login.sign,
+          },
+        ],
+      }),
+    );
+    this.okxPrivateAuthenticated = true;
+    // After login, subscribe to user-data channels
+    const wsPriv = this.wsConnections.get('private');
+    if (wsPriv && wsPriv.readyState === WebSocket.OPEN) {
+      const sub = (channel: string, instType?: string) => {
+        const args: any = instType ? { channel, instType } : { channel };
+        wsPriv.send(JSON.stringify({ op: 'subscribe', args: [args] }));
+      };
+      sub('orders');
+      sub('balance_and_position');
     }
   }
 }

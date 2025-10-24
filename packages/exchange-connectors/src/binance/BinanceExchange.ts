@@ -21,6 +21,7 @@ import {
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
+import { BinanceWebsocket } from './BinanceWebsocket';
 
 export type BinanceMarketType = 'spot' | 'futures' | 'perpetual';
 
@@ -41,6 +42,8 @@ export class BinanceExchange extends BaseExchange {
   private spotClient: AxiosInstance;
   private futuresClient: AxiosInstance;
   private _isTestnet: boolean;
+  private subscriptions = new Map<string, Set<string>>();
+  private userWs?: BinanceWebsocket;
 
   constructor(isTestnet = false) {
     const baseUrl = isTestnet
@@ -377,6 +380,79 @@ export class BinanceExchange extends BaseExchange {
     return `${this.wsBaseUrl}${streams.join('/')}`;
   }
 
+  public async subscribeToTicker(symbol: string): Promise<void> {
+    await this.subscribe('ticker', symbol);
+  }
+
+  public async subscribeToOrderBook(symbol: string): Promise<void> {
+    await this.subscribe('orderbook', symbol);
+  }
+
+  public async subscribeToTrades(symbol: string): Promise<void> {
+    await this.subscribe('trades', symbol);
+  }
+
+  public async subscribeToKlines(symbol: string, interval: string): Promise<void> {
+    await this.subscribe('klines', `${symbol}@${interval}`);
+  }
+
+  public async unsubscribe(
+    symbol: string,
+    type: 'ticker' | 'orderbook' | 'trades' | 'klines',
+  ): Promise<void> {
+    const key = type === 'klines' ? symbol : `${type}:${symbol}`;
+    const subs = this.subscriptions.get(type);
+    if (subs) {
+      subs.delete(key);
+      if (subs.size === 0) this.subscriptions.delete(type);
+    }
+    if (this.subscriptions.size === 0) {
+      const ws = this.wsConnections.get('market');
+      if (
+        ws &&
+        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
+      ) {
+        ws.close();
+      }
+      this.wsConnections.delete('market');
+    }
+  }
+
+  private async subscribe(type: string, symbol: string): Promise<void> {
+    if (!this.subscriptions.has(type)) this.subscriptions.set(type, new Set());
+    this.subscriptions.get(type)!.add(symbol);
+
+    if (!this.wsConnections.has('market')) {
+      await this.createWebSocketConnection();
+    }
+    await this.sendWebSocketSubscription(type, symbol);
+  }
+
+  protected async createWebSocketConnection(): Promise<void> {
+    const wsUrl = this.buildWebSocketUrl();
+    const ws = new WebSocket(wsUrl);
+    this.wsConnections.set('market', ws);
+    await new Promise((resolve) => {
+      ws.on('open', () => {
+        this.emit('ws_connected', this.name);
+        resolve(void 0);
+      });
+      ws.on('message', (data: string) => {
+        try {
+          const message = JSON.parse(data);
+          this.handleWebSocketMessage(message);
+        } catch (error) {
+          this.emit('ws_error', error);
+        }
+      });
+      ws.on('close', () => {
+        this.emit('ws_disconnected', this.name);
+        this.wsConnections.delete('market');
+      });
+      ws.on('error', (err: Error) => this.emit('ws_error', err));
+    });
+  }
+
   protected async sendWebSocketSubscription(
     _type: string,
     _symbol: string,
@@ -511,6 +587,146 @@ export class BinanceExchange extends BaseExchange {
     };
 
     return typeMap[type] || 'LIMIT';
+  }
+
+  // ================= User Data Subscription =================
+  public async subscribeToUserData(): Promise<void> {
+    if (!this.credentials) throw new Error('Exchange credentials not set');
+    if (this.userWs) return; // already started
+    this.userWs = new BinanceWebsocket({
+      apiKey: this.credentials.apiKey,
+      network: this._isTestnet ? 'testnet' : 'mainnet',
+      autoReconnect: true,
+    });
+    this.userWs.on('spot:orderUpdate', (raw) => {
+      const normalized = this.normalizeBinanceOrderUpdate(raw, 'spot');
+      this.emit('orderUpdate', normalized.symbol, normalized);
+    });
+    this.userWs.on('futures:orderUpdate', (raw) => {
+      const normalized = this.normalizeBinanceOrderUpdate(raw, 'futures');
+      this.emit('orderUpdate', normalized.symbol, normalized);
+    });
+    this.userWs.on('spot:accountUpdate', (raw) => {
+      const { balances } = this.normalizeBinanceAccountUpdate(raw, 'spot');
+      this.emit('accountUpdate', 'spot', balances);
+    });
+    this.userWs.on('futures:accountUpdate', (raw) => {
+      const { balances, positions } = this.normalizeBinanceAccountUpdate(raw, 'futures');
+      if (balances.length) this.emit('accountUpdate', 'futures', balances);
+      if (positions.length) this.emit('positionUpdate', 'futures', positions);
+    });
+    await this.userWs.start();
+  }
+
+  private normalizeBinanceOrderUpdate(data: any, market: string): Order {
+    // Supports spot executionReport and futures ORDER_TRADE_UPDATE
+    if (data.e === 'executionReport') {
+      const symbol = data.s as string;
+      const side =
+        (data.S || '').toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+      const type = this.transformBinanceOrderType(data.o || 'LIMIT');
+      const qty = this.formatDecimal(data.q || '0');
+      const price = data.p ? this.formatDecimal(data.p) : undefined;
+      return {
+        id: (data.i ?? data.c ?? uuidv4()).toString(),
+        clientOrderId: data.c,
+        symbol,
+        side,
+        type,
+        quantity: qty,
+        price,
+        stopPrice: data.P ? this.formatDecimal(data.P) : undefined,
+        status: this.transformBinanceOrderStatus(data.X || data.x || 'NEW'),
+        timeInForce: (data.f as TimeInForce) || 'GTC',
+        timestamp: this.formatTimestamp(data.T || Date.now()),
+        updateTime: data.T ? this.formatTimestamp(data.T) : undefined,
+        executedQuantity: data.z ? this.formatDecimal(data.z) : undefined,
+      };
+    }
+    if (data.e === 'ORDER_TRADE_UPDATE' && data.o) {
+      const o = data.o;
+      const symbol = o.s as string;
+      const side = (o.S || '').toLowerCase() === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+      const type = this.transformBinanceOrderType(o.o || 'LIMIT');
+      const qty = this.formatDecimal(o.q || '0');
+      const price = o.p ? this.formatDecimal(o.p) : undefined;
+      return {
+        id: (o.i ?? o.c ?? uuidv4()).toString(),
+        clientOrderId: o.c,
+        symbol,
+        side,
+        type,
+        quantity: qty,
+        price,
+        stopPrice: o.sp ? this.formatDecimal(o.sp) : undefined,
+        status: this.transformBinanceOrderStatus(o.X || 'NEW'),
+        timeInForce: (o.f as TimeInForce) || 'GTC',
+        timestamp: this.formatTimestamp(o.T || Date.now()),
+        updateTime: o.T ? this.formatTimestamp(o.T) : undefined,
+        executedQuantity: o.z ? this.formatDecimal(o.z) : undefined,
+      };
+    }
+    // Fallback minimal
+    return {
+      id: uuidv4(),
+      clientOrderId: undefined,
+      symbol: (data.s || data.o?.s || '').toString(),
+      side: OrderSide.BUY,
+      type: OrderType.LIMIT,
+      quantity: this.formatDecimal('0'),
+      status: this.transformBinanceOrderStatus('NEW'),
+      timeInForce: 'GTC',
+      timestamp: new Date(),
+    } as Order;
+  }
+
+  private normalizeBinanceAccountUpdate(
+    data: any,
+    market: 'spot' | 'futures',
+  ): { balances: Balance[]; positions: Position[] } {
+    const balances: Balance[] = [];
+    const positions: Position[] = [];
+
+    if (market === 'spot' && data.e === 'outboundAccountPosition') {
+      const list = data.B || [];
+      for (const b of list) {
+        balances.push({
+          asset: b.a,
+          free: this.formatDecimal(b.f || '0'),
+          locked: this.formatDecimal(b.l || '0'),
+          total: this.formatDecimal(b.f || '0').add(this.formatDecimal(b.l || '0')),
+        });
+      }
+    }
+    if (market === 'futures' && data.e === 'ACCOUNT_UPDATE' && data.a) {
+      const a = data.a;
+      if (Array.isArray(a.B)) {
+        for (const b of a.B) {
+          balances.push({
+            asset: b.a,
+            free: this.formatDecimal(b.wb || '0'),
+            locked: this.formatDecimal('0'),
+            total: this.formatDecimal(b.wb || '0'),
+          });
+        }
+      }
+      if (Array.isArray(a.P)) {
+        for (const p of a.P) {
+          positions.push({
+            symbol: p.s,
+            side: (p.ps || 'LONG').toLowerCase() === 'long' ? 'long' : 'short',
+            quantity: this.formatDecimal(p.pa || '0'),
+            avgPrice: this.formatDecimal(p.ep || '0'),
+            markPrice: this.formatDecimal('0'),
+            unrealizedPnl: this.formatDecimal(p.up || '0'),
+            leverage: this.formatDecimal(p.l || '0'),
+            timestamp: new Date(),
+          });
+        }
+      }
+    }
+
+    return { balances, positions };
   }
 
   private transformBinanceOrder(order: any): Order {

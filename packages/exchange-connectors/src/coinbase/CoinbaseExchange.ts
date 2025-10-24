@@ -515,6 +515,29 @@ export class CoinbaseExchange extends BaseExchange {
     }
   }
 
+  // Satisfy BaseExchange abstract subscription APIs (no-op WS for now)
+  public async subscribeToTicker(_symbol: string): Promise<void> {
+    // TODO: Implement when Coinbase WS is integrated in this connector
+  }
+  public async subscribeToOrderBook(_symbol: string): Promise<void> {
+    // TODO: Implement when Coinbase WS is integrated in this connector
+  }
+  public async subscribeToTrades(_symbol: string): Promise<void> {
+    // TODO: Implement when Coinbase WS is integrated in this connector
+  }
+  public async subscribeToKlines(_symbol: string, _interval: string): Promise<void> {
+    // TODO: Implement when Coinbase WS is integrated in this connector
+  }
+  public async unsubscribe(
+    _symbol: string,
+    _type: 'ticker' | 'orderbook' | 'trades' | 'klines',
+  ): Promise<void> {
+    // TODO: Implement when Coinbase WS is integrated in this connector
+  }
+  public async subscribeToUserData(): Promise<void> {
+    // TODO: Implement Coinbase private WS
+  }
+
   protected signRequest(params: Record<string, any>): Record<string, any> {
     // Coinbase uses signed headers; params are unchanged
     return params;

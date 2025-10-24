@@ -119,7 +119,7 @@ async function main() {
   await engine.start();
 
   await engine.addStrategy(
-    'Ma',
+    'Ma 1',
     new MovingAverageStrategy({
       symbol: 'BTC/USDT',
       exchange: 'okx',
@@ -131,6 +131,24 @@ async function main() {
         orderbook: true,
         trades: false,
         klines: false,
+        method: 'websocket',
+      },
+    }),
+  );
+
+  await engine.addStrategy(
+    'Ma 2',
+    new MovingAverageStrategy({
+      symbol: 'BTC/USDT',
+      exchange: 'okx',
+      fastPeriod: 10,
+      slowPeriod: 30,
+      threshold: 0.001,
+      subscription: {
+        ticker: true,
+        orderbook: true,
+        trades: true,
+        klines: true,
         method: 'websocket',
       },
     }),
