@@ -337,38 +337,63 @@ export class OKXExchange extends BaseExchange {
     // Note: OKX's orders-history endpoint requires Trade permission on API key
     // If you get 401 errors, check API key permissions on OKX website
     try {
-      const params: any = {
-        instType: 'SPOT', // Required by OKX API
-        limit: Math.min(limit, 100).toString(),
-      };
+      // Determine instType based on symbol, or query both if no symbol provided
+      const instTypes: string[] = [];
+
       if (symbol) {
-        params.instId = this.normalizeSymbol(symbol);
+        // Determine instType from symbol format
+        // Perpetual/Swap: BTC/USDT:USDT or contains "SWAP"
+        if (symbol.includes(':') || symbol.toUpperCase().includes('SWAP')) {
+          instTypes.push('SWAP');
+        } else {
+          instTypes.push('SPOT');
+        }
+      } else {
+        // No symbol specified, query both SPOT and SWAP
+        instTypes.push('SPOT', 'SWAP');
       }
 
-      const signedData = this.signOKXRequest(
-        'GET',
-        '/api/v5/trade/orders-history',
-        params,
-      );
-      const response = await this.httpClient.get('/api/v5/trade/orders-history', {
-        params,
-        headers: signedData.headers,
-      });
+      const allOrders: Order[] = [];
 
-      if (response.data.code !== '0') {
-        throw new Error(`OKX API error: ${response.data.msg}`);
+      // Query each instType
+      for (const instType of instTypes) {
+        const params: any = {
+          instType,
+          limit: Math.min(limit, 100).toString(),
+        };
+        if (symbol) {
+          params.instId = this.normalizeSymbol(symbol);
+        }
+
+        const signedData = this.signOKXRequest(
+          'GET',
+          '/api/v5/trade/orders-history',
+          params,
+        );
+        const response = await this.httpClient.get('/api/v5/trade/orders-history', {
+          params,
+          headers: signedData.headers,
+        });
+
+        if (response.data.code !== '0') {
+          throw new Error(`OKX API error: ${response.data.msg}`);
+        }
+
+        const orders = response.data.data.map((order: any) =>
+          this.transformOKXOrder(
+            order,
+            order.instId,
+            order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+            this.transformOKXOrderType(order.ordType),
+            this.formatDecimal(order.sz),
+            order.px ? this.formatDecimal(order.px) : undefined,
+          ),
+        );
+
+        allOrders.push(...orders);
       }
 
-      return response.data.data.map((order: any) =>
-        this.transformOKXOrder(
-          order,
-          order.instId,
-          order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-          this.transformOKXOrderType(order.ordType),
-          this.formatDecimal(order.sz),
-          order.px ? this.formatDecimal(order.px) : undefined,
-        ),
-      );
+      return allOrders;
     } catch (error: any) {
       // If 401 Unauthorized, it's likely due to insufficient API key permissions
       if (error.response?.status === 401) {
