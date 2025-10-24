@@ -377,6 +377,15 @@ pnpm test:integration
 
 ## Documentation
 
+### Core Concepts
+
+- **[Symbol Normalization & Denormalization](./docs/SYMBOL_NORMALIZATION.md)** - Unified symbol format and conversion
+  - CCXT-style symbol convention (`BTC/USDT`, `BTC/USDT:USDT`)
+  - Exchange-specific format mappings
+  - Architecture and design decisions
+  - Implementation guide for new exchanges
+  - Best practices and common pitfalls
+
 ### Exchange Capabilities
 
 - **[Market Data Subscription Capabilities](./docs/MARKET_DATA_SUBSCRIPTION_CAPABILITIES.md)** - Comprehensive guide to market data subscriptions
