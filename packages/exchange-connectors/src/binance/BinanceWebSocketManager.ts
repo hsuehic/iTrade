@@ -228,12 +228,12 @@ export class BinanceWebSocketManager extends EventEmitter {
       state.ws.send(JSON.stringify(unsubscribeMsg));
     }
 
-    // Close connection if no more subscriptions
+    // Keep connection alive even with no subscriptions
+    // This allows for faster re-subscription and maintains the heartbeat
     if (state.subscriptions.size === 0) {
       console.log(
-        `[BinanceWS] No more subscriptions for ${marketType}, closing connection`,
+        `[BinanceWS] No more subscriptions for ${marketType}, but keeping connection alive`,
       );
-      this.closeConnection(marketType);
     }
   }
 
@@ -343,14 +343,37 @@ export class BinanceWebSocketManager extends EventEmitter {
   }
 
   /**
-   * Close all connections
+   * Close all connections (called during shutdown)
    */
   public closeAll(): void {
-    console.log(`[BinanceWS] Closing all connections`);
+    console.log(`[BinanceWS] Closing all connections for shutdown`);
     for (const marketType of this.connections.keys()) {
       this.closeConnection(marketType);
     }
     this.symbolToMarketType.clear();
+  }
+
+  /**
+   * Get connection status
+   */
+  public getConnectionStatus(marketType: BinanceMarketType): {
+    connected: boolean;
+    subscriptionCount: number;
+  } {
+    const state = this.connections.get(marketType);
+    if (!state) {
+      return { connected: false, subscriptionCount: 0 };
+    }
+
+    let subscriptionCount = 0;
+    for (const symbols of state.subscriptions.values()) {
+      subscriptionCount += symbols.size;
+    }
+
+    return {
+      connected: state.ws.readyState === WebSocket.OPEN,
+      subscriptionCount,
+    };
   }
 
   /**

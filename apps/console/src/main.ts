@@ -154,23 +154,11 @@ async function main() {
     }),
   );
 
-  // Test unsubscription by removing strategies after 8 seconds
+  // Uncomment to test strategy removal and keep-alive behavior
   setTimeout(async () => {
-    console.log('\n🧪 TEST: Removing strategies to verify unsubscription...\n');
     await engine.removeStrategy('Ma 1');
     await engine.removeStrategy('Ma 2');
-    console.log(
-      '\n🧪 TEST: Strategies removed. Waiting 3 seconds to verify no more data...\n',
-    );
-
-    // Wait 3 seconds to verify no more data is coming
-    setTimeout(() => {
-      console.log(
-        '\n✅ TEST COMPLETE: If no data appeared above, unsubscription works!\n',
-      );
-      process.exit(0);
-    }, 3000);
-  }, 8000);
+  }, 5000);
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('🚀 iTrade Trading System is LIVE');
