@@ -224,6 +224,7 @@ export abstract class BaseExchangeTest {
     }
 
     this.logger.info('\n🔌 Closing WebSocket connections...');
+    process.exit(0);
   }
 
   /**

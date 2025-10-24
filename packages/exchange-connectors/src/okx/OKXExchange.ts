@@ -334,33 +334,51 @@ export class OKXExchange extends BaseExchange {
   }
 
   public async getOrderHistory(symbol?: string, limit = 100): Promise<Order[]> {
-    const params: any = {
-      limit: Math.min(limit, 100).toString(),
-    };
-    if (symbol) {
-      params.instId = this.normalizeSymbol(symbol);
+    // Note: OKX's orders-history endpoint requires Trade permission on API key
+    // If you get 401 errors, check API key permissions on OKX website
+    try {
+      const params: any = {
+        instType: 'SPOT', // Required by OKX API
+        limit: Math.min(limit, 100).toString(),
+      };
+      if (symbol) {
+        params.instId = this.normalizeSymbol(symbol);
+      }
+
+      const signedData = this.signOKXRequest(
+        'GET',
+        '/api/v5/trade/orders-history',
+        params,
+      );
+      const response = await this.httpClient.get('/api/v5/trade/orders-history', {
+        params,
+        headers: signedData.headers,
+      });
+
+      if (response.data.code !== '0') {
+        throw new Error(`OKX API error: ${response.data.msg}`);
+      }
+
+      return response.data.data.map((order: any) =>
+        this.transformOKXOrder(
+          order,
+          order.instId,
+          order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+          this.transformOKXOrderType(order.ordType),
+          this.formatDecimal(order.sz),
+          order.px ? this.formatDecimal(order.px) : undefined,
+        ),
+      );
+    } catch (error: any) {
+      // If 401 Unauthorized, it's likely due to insufficient API key permissions
+      if (error.response?.status === 401) {
+        console.warn(
+          '[OKX] getOrderHistory requires Trade permission on API key. Returning empty array.',
+        );
+        return [];
+      }
+      throw error;
     }
-
-    const signedData = this.signOKXRequest('GET', '/api/v5/trade/orders-history', params);
-    const response = await this.httpClient.get('/api/v5/trade/orders-history', {
-      params,
-      headers: signedData.headers,
-    });
-
-    if (response.data.code !== '0') {
-      throw new Error(`OKX API error: ${response.data.msg}`);
-    }
-
-    return response.data.data.map((order: any) =>
-      this.transformOKXOrder(
-        order,
-        order.instId,
-        order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-        this.transformOKXOrderType(order.ordType),
-        this.formatDecimal(order.sz),
-        order.px ? this.formatDecimal(order.px) : undefined,
-      ),
-    );
   }
 
   public async getAccountInfo(): Promise<AccountInfo> {

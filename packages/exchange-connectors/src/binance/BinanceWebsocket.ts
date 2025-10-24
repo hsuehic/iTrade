@@ -177,8 +177,12 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
 
     const url =
       market === 'spot'
-        ? `https://api.binance.com/api/v3/userDataStream?listenKey=${key}`
-        : `https://fapi.binance.com/fapi/v1/listenKey?listenKey=${key}`;
+        ? this.config.network === 'testnet'
+          ? `https://testnet.binance.vision/api/v3/userDataStream?listenKey=${key}`
+          : `https://api.binance.com/api/v3/userDataStream?listenKey=${key}`
+        : this.config.network === 'testnet'
+          ? `https://testnet.binancefuture.com/fapi/v1/listenKey?listenKey=${key}`
+          : `https://fapi.binance.com/fapi/v1/listenKey?listenKey=${key}`;
 
     try {
       await axios.put(url, undefined, {
@@ -256,8 +260,44 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
 
     this.emit('data', data);
 
-    if (data.e === 'executionReport' || data.e === 'ORDER_TRADE_UPDATE') {
+    // Handle user data stream events
+    const eventType = data.e;
+
+    // Debug logging for user data events
+    if (eventType) {
+      this.logger.debug?.(`[WS][${market}] Received event: ${eventType}`);
+    }
+
+    // Order updates
+    if (eventType === 'executionReport' || eventType === 'ORDER_TRADE_UPDATE') {
+      this.logger.info(`[WS][${market}] 📦 Order update received: ${eventType}`);
       this.emit(`${market}:orderUpdate`, data);
+    }
+    // Spot account balance updates
+    else if (eventType === 'outboundAccountPosition') {
+      this.logger.info(
+        `[WS][${market}] 💰 Account balance update received (${data.B?.length || 0} assets)`,
+      );
+      this.emit(`${market}:accountUpdate`, data);
+    }
+    // Spot individual balance changes
+    else if (eventType === 'balanceUpdate') {
+      this.logger.info(`[WS][${market}] 💰 Balance update received for ${data.a}`);
+      this.emit(`${market}:accountUpdate`, data);
+    }
+    // Futures account updates (includes both balance and positions)
+    else if (eventType === 'ACCOUNT_UPDATE') {
+      this.logger.info(
+        `[WS][${market}] 💰 Account update received (${data.a?.B?.length || 0} balances, ${data.a?.P?.length || 0} positions)`,
+      );
+      this.emit(`${market}:accountUpdate`, data);
+    }
+    // Listen key expired warning
+    else if (eventType === 'listenKeyExpired') {
+      this.logger.warn?.(`[WS][${market}] Listen key expired! Reinitializing...`);
+      this.initUserDataStream(market).catch((err) => {
+        this.logger.error(`[WS][${market}] Failed to reinitialize user data stream`, err);
+      });
     }
 
     const stream = data.stream;

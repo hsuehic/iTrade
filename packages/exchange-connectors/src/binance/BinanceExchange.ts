@@ -626,6 +626,8 @@ export class BinanceExchange extends BaseExchange {
   public async subscribeToUserData(): Promise<void> {
     if (!this.credentials) throw new Error('Exchange credentials not set');
     if (this.userWs) return; // already started
+
+    // Setup WebSocket for real-time updates
     this.userWs = new BinanceWebsocket({
       apiKey: this.credentials.apiKey,
       network: this._isTestnet ? 'testnet' : 'mainnet',
@@ -649,6 +651,42 @@ export class BinanceExchange extends BaseExchange {
       if (positions.length) this.emit('positionUpdate', 'futures', positions);
     });
     await this.userWs.start();
+
+    // Fetch and emit initial account state
+    // Note: Binance user data streams only push changes, not initial snapshots
+    // So we need to fetch initial state via REST API
+    try {
+      // Get spot account balances
+      const accountInfo = await this.getAccountInfo();
+      if (accountInfo.balances.length > 0) {
+        this.emit('accountUpdate', 'spot', accountInfo.balances);
+      }
+
+      // Get open orders
+      try {
+        const openOrders = await this.getOpenOrders();
+        if (openOrders.length > 0) {
+          // Emit each open order
+          openOrders.forEach((order) => {
+            this.emit('orderUpdate', order.symbol, order);
+          });
+        }
+      } catch (error) {
+        console.warn('[Binance] Failed to fetch open orders:', error);
+      }
+
+      // Get futures positions (if available)
+      try {
+        const positions = await this.getPositions();
+        if (positions.length > 0) {
+          this.emit('positionUpdate', 'futures', positions);
+        }
+      } catch {
+        // Futures might not be enabled, ignore error
+      }
+    } catch (error) {
+      console.warn('[Binance] Failed to fetch initial account state:', error);
+    }
   }
 
   private normalizeBinanceOrderUpdate(data: any, market: string): Order {
