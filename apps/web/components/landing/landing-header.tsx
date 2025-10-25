@@ -4,13 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { ThemeSwitcher } from '@/components/theme-switcher';
-import { Apple, Play } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 
 interface LandingHeaderProps {
   isAuthenticated: boolean;
@@ -34,32 +27,10 @@ export function LandingHeader({ isAuthenticated }: LandingHeaderProps) {
 
         {/* Navigation */}
         <nav className="flex items-center gap-2 sm:gap-4">
-          {/* Mobile Download Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="hidden focus:ring-0 focus:ring-offset-0 sm:flex"
-              >
-                Mobile App
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem asChild>
-                <Link href="#mobile-download" className="flex items-center gap-2">
-                  <Apple className="size-4" />
-                  <span>iOS App</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="#mobile-download" className="flex items-center gap-2">
-                  <Play className="size-4" />
-                  <span>Android App</span>
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Mobile Download Link */}
+          <Button asChild variant="ghost" size="sm" className="hidden sm:flex">
+            <Link href="#mobile-download">Mobile App</Link>
+          </Button>
 
           <ThemeSwitcher />
 

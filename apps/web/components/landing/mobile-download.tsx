@@ -57,7 +57,12 @@ export function MobileDownload() {
                 variant="outline"
                 className="group h-auto w-full justify-start gap-4 p-4 sm:w-auto"
               >
-                <Link href="#" className="flex items-center gap-4">
+                <Link
+                  href="https://apps.apple.com/sg/app/itrade-ihsueh/id6753905284"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-4"
+                >
                   <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 transition-colors group-hover:bg-primary/20">
                     <Apple className="size-7" />
                   </div>
@@ -75,7 +80,12 @@ export function MobileDownload() {
                 variant="outline"
                 className="group h-auto w-full justify-start gap-4 p-4 sm:w-auto"
               >
-                <Link href="#" className="flex items-center gap-4">
+                <Link
+                  href="https://play.google.com/store/apps/details?id=com.ihsueh.itrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-4"
+                >
                   <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 transition-colors group-hover:bg-primary/20">
                     <Play className="size-7" />
                   </div>
@@ -87,8 +97,42 @@ export function MobileDownload() {
               </Button>
             </div>
 
+            {/* QR Codes */}
+            <div className="mt-8 rounded-xl border bg-background/50 p-6 backdrop-blur-sm">
+              <div className="mb-4 flex items-center gap-2 text-sm font-medium">
+                <QrCode className="size-4 text-primary" />
+                <span>Scan to Download</span>
+              </div>
+              <div className="flex gap-6">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="rounded-lg border bg-white p-2">
+                    <Image
+                      src="/qr-ios.png"
+                      alt="iOS App QR Code"
+                      width={120}
+                      height={120}
+                      className="size-[120px]"
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground">iOS</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <div className="rounded-lg border bg-white p-2">
+                    <Image
+                      src="/qr-android.png"
+                      alt="Android App QR Code"
+                      width={120}
+                      height={120}
+                      className="size-[120px]"
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground">Android</span>
+                </div>
+              </div>
+            </div>
+
             {/* Features List */}
-            <div className="mt-8 grid grid-cols-2 gap-4 text-sm">
+            <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-primary" />
                 <span>Real-time Prices</span>
