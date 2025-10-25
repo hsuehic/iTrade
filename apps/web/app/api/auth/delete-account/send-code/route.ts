@@ -16,17 +16,19 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
-    // Verify email and password first by attempting to sign in
+    // Verify email and password first by signing in (creates session)
+    let signInResponse: Response;
     try {
-      const signInResult = await auth.api.signInEmail({
+      signInResponse = await auth.api.signInEmail({
         body: {
           email,
           password,
         },
         headers: await headers(),
+        asResponse: true, // Get full Response with session cookies
       });
 
-      if (!signInResult) {
+      if (!signInResponse.ok) {
         return Response.json({ error: 'Invalid email or password' }, { status: 401 });
       }
     } catch (error) {
@@ -57,7 +59,6 @@ export async function POST(req: Request) {
       console.log(`[DELETE ACCOUNT] Verification code sent to ${email}`);
     } catch (emailError) {
       console.error('[DELETE ACCOUNT] Failed to send email:', emailError);
-      // Return error if email fails - user won't receive the code
       return Response.json(
         {
           error: 'Failed to send verification email. Please try again later.',
@@ -73,20 +74,22 @@ export async function POST(req: Request) {
       `[DELETE ACCOUNT] Code expires at: ${new Date(verificationData.expiresAt).toISOString()}`,
     );
 
-    // In development, return the code in the response for easier testing
-    // Remove this in production!
-    if (process.env.NODE_ENV === 'development') {
-      return Response.json({
-        success: true,
-        message: 'Verification code sent to your email',
-        devCode: code, // Only for development - remove in production!
-      });
-    }
-
-    return Response.json({
+    // Build response with session cookies from sign-in
+    const responseBody = {
       success: true,
       message: 'Verification code sent to your email',
+      ...(process.env.NODE_ENV === 'development' && { devCode: code }),
+    };
+
+    const response = Response.json(responseBody);
+
+    // Copy session cookies from sign-in response to our response
+    const sessionCookies = signInResponse.headers.getSetCookie();
+    sessionCookies.forEach((cookie) => {
+      response.headers.append('Set-Cookie', cookie);
     });
+
+    return response;
   } catch (error) {
     console.error('[DELETE ACCOUNT] Send code error:', error);
     return Response.json(

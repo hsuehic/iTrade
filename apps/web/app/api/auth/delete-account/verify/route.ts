@@ -1,15 +1,14 @@
 import { auth } from '@/lib/auth';
-import { headers } from 'next/headers';
 import { cookies } from 'next/headers';
 import { DELETE_ACCOUNT_VERIFICATION_COOKIE } from '@/lib/verification-codes';
 
 export async function DELETE(req: Request) {
   try {
-    const { email, code, password } = await req.json();
+    const { email, code } = await req.json();
 
-    if (!email || !code || !password) {
+    if (!email || !code) {
       return Response.json(
-        { error: 'Email, verification code, and password are required' },
+        { error: 'Email and verification code are required' },
         { status: 400 },
       );
     }
@@ -64,30 +63,25 @@ export async function DELETE(req: Request) {
       return Response.json({ error: 'Invalid verification code' }, { status: 400 });
     }
 
-    // Verify password by signing in
-    let signInResult;
-    try {
-      signInResult = await auth.api.signInEmail({
-        body: {
-          email,
-          password,
-        },
-        headers: await headers(),
-      });
-
-      if (!signInResult) {
-        return Response.json({ error: 'Invalid password' }, { status: 401 });
-      }
-    } catch (error) {
-      console.error('[DELETE ACCOUNT] Password verification error:', error);
-      return Response.json({ error: 'Invalid password' }, { status: 401 });
+    // Verify user still has valid session (from send-code endpoint)
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (!session) {
+      return Response.json(
+        { error: 'Session expired, please try again' },
+        { status: 401 },
+      );
     }
 
-    // All verifications passed - delete the account
+    // Verify session user matches the email
+    if (session.user.email !== email) {
+      return Response.json({ error: 'Session user does not match' }, { status: 401 });
+    }
+
+    // All verifications passed - delete the account using better-auth
     try {
-      // Get the session from the sign-in result to delete the user
+      // Use existing session from req.headers (same pattern as mobile/delete-account)
       await auth.api.deleteUser({
-        headers: await headers(),
+        headers: req.headers,
         body: {},
       });
 

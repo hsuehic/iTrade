@@ -77,7 +77,7 @@ export function DeleteAccountForm() {
       const response = await fetch('/api/auth/delete-account/verify', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: verificationCode, password }),
+        body: JSON.stringify({ email, code: verificationCode }),
       });
 
       const data = await response.json();
