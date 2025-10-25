@@ -140,6 +140,48 @@ export default function StrategyPage() {
     }
   }, [formData.parameters, formData.type]);
 
+  // 🔄 Convert initialData from strategy config format to form format
+  const convertInitialDataToFormFormat = useCallback(
+    (initialData: unknown): InitialDataConfig => {
+      if (!initialData || typeof initialData !== 'object') {
+        return {};
+      }
+
+      const data = initialData as Record<string, unknown>;
+      const formData: InitialDataConfig = { ...data };
+
+      // Convert klines from object format { '15m': 20 } to array format
+      if (data.klines && typeof data.klines === 'object' && !Array.isArray(data.klines)) {
+        const klinesObj = data.klines as Record<string, number>;
+        formData.klines = Object.entries(klinesObj).map(([interval, limit]) => ({
+          interval,
+          limit,
+        }));
+      }
+
+      return formData;
+    },
+    [],
+  );
+
+  // 🔄 Convert initialData from form format back to strategy config format
+  const convertInitialDataToConfigFormat = useCallback((formData: InitialDataConfig) => {
+    const configData: Record<string, unknown> = { ...formData };
+
+    // Convert klines array back to object format for storage
+    if (formData.klines && Array.isArray(formData.klines) && formData.klines.length > 0) {
+      const klinesObj: Record<string, number> = {};
+      formData.klines.forEach((kline) => {
+        klinesObj[kline.interval] = kline.limit;
+      });
+      configData.klines = klinesObj;
+    } else {
+      delete configData.klines;
+    }
+
+    return configData;
+  }, []);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showAdvancedMode, setShowAdvancedMode] = useState(false);
@@ -1007,14 +1049,14 @@ export default function StrategyPage() {
                         {currentStep === 2 && (
                           <div className="space-y-4 mt-4">
                             <InitialDataConfigForm
-                              value={
-                                (memoizedInitialParameters?.initialData as InitialDataConfig) ||
-                                {}
-                              }
+                              value={convertInitialDataToFormFormat(
+                                memoizedInitialParameters?.initialData,
+                              )}
                               onChange={(initialData) => {
                                 const updatedParams = {
                                   ...memoizedInitialParameters,
-                                  initialData,
+                                  initialData:
+                                    convertInitialDataToConfigFormat(initialData),
                                 };
                                 setFormData({
                                   ...formData,

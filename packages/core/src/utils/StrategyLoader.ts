@@ -165,4 +165,3 @@ export class StrategyLoader {
     return parameters;
   }
 }
-

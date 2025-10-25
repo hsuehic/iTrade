@@ -30,6 +30,7 @@ export enum StrategyType {
   MACD = 'macd',
   BOLLINGER_BANDS = 'bollinger_bands',
   MOVING_WINDOW_GRIDS = 'moving_window_grids',
+  HAMMER_CHANNEL = 'hammer_channel',
   CUSTOM = 'custom',
 }
 

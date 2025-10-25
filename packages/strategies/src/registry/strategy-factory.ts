@@ -17,6 +17,7 @@ import {
 
 import { MovingAverageStrategy } from '../strategies/MovingAverageStrategy';
 import { MovingWindowGridsStrategy } from '../strategies/MovingWindowGridsStrategy';
+import { HammerChannelStrategy } from '../strategies/HammerChannelStrategy';
 
 /**
  * 策略构造函数类型
@@ -38,6 +39,7 @@ export const IMPLEMENTED_STRATEGIES: Partial<
   // ✅ 已实现的策略
   moving_average: MovingAverageStrategy,
   moving_window_grids: MovingWindowGridsStrategy,
+  hammer_channel: HammerChannelStrategy,
   custom: MovingAverageStrategy, // Custom可以复用MovingAverage的基础实现
 
   // 🚧 待实现的策略 - 实现后请移动到上面

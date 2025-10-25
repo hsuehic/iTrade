@@ -5,6 +5,9 @@ export type { MovingAverageParameters } from './strategies/MovingAverageStrategy
 export { MovingWindowGridsStrategy } from './strategies/MovingWindowGridsStrategy';
 export type { MovingWindowGridsParameters } from './strategies/MovingWindowGridsStrategy';
 
+export { HammerChannelStrategy } from './strategies/HammerChannelStrategy';
+export type { HammerChannelParameters } from './strategies/HammerChannelStrategy';
+
 // Strategy Factory & Registry - 策略工厂和注册表
 export {
   getImplementedStrategies,

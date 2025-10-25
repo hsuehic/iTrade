@@ -131,6 +131,37 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     const klines = marketData?.klines;
     if (!!klines && klines.length > 0) {
       const kline = klines[klines.length - 1];
+
+      // 🔍 Validate symbol match
+      const strategySymbol = this.getParameter('symbol');
+      if (strategySymbol && kline.symbol !== strategySymbol) {
+        return {
+          action: 'hold',
+          reason: `Symbol mismatch: expected ${strategySymbol}, got ${kline.symbol}`,
+        };
+      }
+
+      // 🔍 Validate exchange match
+      const strategyExchange = this.getParameter('exchange');
+      if (strategyExchange && kline.exchange) {
+        // Handle both single exchange and array of exchanges
+        const exchanges = Array.isArray(strategyExchange)
+          ? strategyExchange
+          : [strategyExchange];
+        if (!exchanges.includes(kline.exchange)) {
+          return {
+            action: 'hold',
+            reason: `Exchange mismatch: expected ${exchanges.join(',')}, got ${kline.exchange}`,
+          };
+        }
+      }
+
+      // 🔍 Only process closed klines
+      if (!kline.isClosed) {
+        return { action: 'hold', reason: 'Waiting for kline to close' };
+      }
+
+      // ✅ Process validated and closed kline
       const range = kline.high.minus(kline.low).toNumber();
       const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
       console.log(
@@ -141,7 +172,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
         'isClosed:',
         kline.isClosed,
       );
-      if (kline.isClosed && volatility >= 0.005) {
+      if (volatility >= 0.005) {
         console.log(
           `✅ analyze: Kline is closed and volatility(${volatility}) is >0.5%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
         );

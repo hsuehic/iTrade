@@ -52,6 +52,7 @@ export type StrategyTypeKey =
   | 'macd'
   | 'bollinger_bands'
   | 'moving_window_grids'
+  | 'hammer_channel'
   | 'custom';
 
 /**
@@ -331,6 +332,109 @@ export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyConfig> = {
       riskFactors: [
         'Assumes mean reversion behavior',
         'May fail during strong breakout moves',
+      ],
+    },
+  },
+
+  hammer_channel: {
+    type: 'hammer_channel',
+    name: 'Hammer Channel Strategy',
+    description:
+      'Identifies hammer candlestick patterns and generates signals based on channel position',
+    icon: '🔨',
+    implemented: true,
+    category: 'momentum',
+    defaultParameters: {
+      windowSize: 15,
+      lowerShadowToBody: 2,
+      upperShadowToBody: 0.3,
+      bodyToRange: 0.35,
+      highThreshold: 0.9,
+      lowThreshold: 0.1,
+      subscription: {
+        ticker: false,
+        klines: { '15m': true },
+        method: 'websocket',
+      },
+      initialData: {
+        klines: { '15m': 20 },
+      },
+    },
+    parameterDefinitions: [
+      {
+        name: 'windowSize',
+        type: 'number',
+        description: 'Number of candles to analyze for channel calculation',
+        defaultValue: 15,
+        required: true,
+        min: 5,
+        max: 100,
+      },
+      {
+        name: 'lowerShadowToBody',
+        type: 'number',
+        description: 'Minimum ratio of lower shadow to body for hammer detection',
+        defaultValue: 2,
+        required: true,
+        min: 1,
+        max: 5,
+        step: 0.1,
+      },
+      {
+        name: 'upperShadowToBody',
+        type: 'number',
+        description: 'Maximum ratio of upper shadow to body for hammer detection',
+        defaultValue: 0.3,
+        required: true,
+        min: 0,
+        max: 1,
+        step: 0.05,
+      },
+      {
+        name: 'bodyToRange',
+        type: 'number',
+        description: 'Maximum ratio of body to total range for hammer detection',
+        defaultValue: 0.35,
+        required: true,
+        min: 0.1,
+        max: 0.5,
+        step: 0.05,
+      },
+      {
+        name: 'highThreshold',
+        type: 'range',
+        description: 'High channel threshold for sell signals (0-1)',
+        defaultValue: 0.9,
+        required: true,
+        min: 0.5,
+        max: 1,
+        step: 0.05,
+        unit: '',
+      },
+      {
+        name: 'lowThreshold',
+        type: 'range',
+        description: 'Low channel threshold for buy signals (0-1)',
+        defaultValue: 0.1,
+        required: true,
+        min: 0,
+        max: 0.5,
+        step: 0.05,
+        unit: '',
+      },
+    ],
+    documentation: {
+      overview:
+        'Detects hammer candlestick patterns and evaluates their position within a recent price channel. Generates buy signals for bearish hammers at channel lows (reversal up) and sell signals for bullish hammers at channel highs (reversal down).',
+      parameters:
+        'windowSize determines the lookback period. Hammer detection uses three ratios: lowerShadowToBody (minimum 2x), upperShadowToBody (maximum 0.3x), and bodyToRange (maximum 0.35). Channel thresholds define extreme positions (default: low=0.1, high=0.9).',
+      signals:
+        'BUY: Bearish hammer (red candle) detected at or below lowThreshold position in channel. SELL: Bullish hammer (green candle) detected at or above highThreshold position in channel.',
+      riskFactors: [
+        'Hammer patterns can be subjective and context-dependent',
+        'May generate false signals in strong trending markets',
+        'Requires closed candles, causing delayed entry timing',
+        'Channel position is relative to recent data, not absolute support/resistance',
       ],
     },
   },
