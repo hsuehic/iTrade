@@ -124,10 +124,10 @@ export function createStrategyInstance(
   type: StrategyTypeKey,
   customParameters: Partial<StrategyParameters> = {},
   options: {
-    symbol?: string;
-    exchange?: string;
+    symbol: string;
+    exchange: string;
     logger?: any;
-  } = {},
+  },
 ): IStrategy {
   const { symbol, exchange, logger } = options;
 
