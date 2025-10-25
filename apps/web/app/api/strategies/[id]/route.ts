@@ -87,7 +87,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       status?: StrategyStatus;
       exchange?: string;
       symbol?: string;
-      parameters?: Record<string, unknown>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parameters?: any;
     }
 
     const updates: StrategyUpdates = {};
