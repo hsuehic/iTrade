@@ -20,6 +20,8 @@ export interface MovingWindowGridsParameters extends StrategyParameters {
   windowSize: number;
   gridSize: number;
   gridCount: number;
+  minVolatility: number;
+  takeProfitRatio: number;
 }
 
 export class MovingWindowGridsStrategy extends BaseStrategy {
@@ -35,6 +37,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   private baseSize: number = 100;
   private maxSize: number = 1000;
   private size: number = 0;
+  private minVolatility: number;
+  private takeProfitRatio: number;
 
   constructor(parameters: MovingWindowGridsParameters) {
     super('MovingWindowGrids', parameters);
@@ -43,6 +47,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     this.windowSize = parameters.windowSize;
     this.gridSize = parameters.gridSize;
     this.gridCount = parameters.gridCount;
+    this.minVolatility = parameters.minVolatility;
+    this.takeProfitRatio = parameters.takeProfitRatio;
 
     // 🆕 Process loaded initial data if available
     if (parameters.loadedInitialData) {
@@ -131,7 +137,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     const klines = marketData?.klines;
     if (!!klines && klines.length > 0) {
       const kline = klines[klines.length - 1];
-
       // 🔍 Validate symbol match
       const strategySymbol = this.getParameter('symbol');
       if (strategySymbol && kline.symbol !== strategySymbol) {
@@ -161,6 +166,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
         return { action: 'hold', reason: 'Waiting for kline to close' };
       }
 
+      const { minVolatility, takeProfitRatio } = this;
       // ✅ Process validated and closed kline
       const range = kline.high.minus(kline.low).toNumber();
       const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
@@ -172,9 +178,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
         'isClosed:',
         kline.isClosed,
       );
-      if (volatility >= 0.005) {
+      if (volatility >= minVolatility) {
         console.log(
-          `✅ analyze: Kline is closed and volatility(${volatility}) is >0.5%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
+          `✅ analyze: Kline is closed and volatility(${volatility}) is >${minVolatility * 100}%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
         );
         const price = kline.open.add(kline.close).dividedBy(2);
         if (kline.close.gt(kline.open)) {
@@ -183,7 +189,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
             action: 'buy',
             price,
             quantity: new Decimal(this.baseSize),
-            takeProfit: new Decimal(price.mul(1.012)),
+            takeProfit: new Decimal(price.mul(1 + takeProfitRatio)),
             leverage: 10,
             tradeMode: 'isolated',
           };

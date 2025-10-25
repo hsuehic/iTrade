@@ -156,7 +156,7 @@ export class HammerChannelStrategy extends BaseStrategy {
   /**
    * Initialize strategy
    */
-  protected async onInitialize(): Promise<void> {
+  protected override async onInitialize(): Promise<void> {
     this.validateParameters([
       'windowSize',
       'lowerShadowToBody',

@@ -13,7 +13,7 @@ import * as dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
-const logger = new ConsoleLogger(LogLevel.INFO);
+const logger = new ConsoleLogger(LogLevel.WARN);
 
 export async function run(strategies: Map<string, IStrategy>) {
   // Initialize components

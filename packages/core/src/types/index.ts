@@ -138,6 +138,7 @@ export interface Order {
   quantity: Decimal;
   price?: Decimal;
   stopLoss?: Decimal;
+  takeProfit?: Decimal;
   status: OrderStatus;
   timeInForce: TimeInForce;
   timestamp: Date;
@@ -186,8 +187,8 @@ export interface AccountInfo {
 
 // Strategy Types
 export interface StrategyParameters {
-  symbol?: string; // Trading symbol
-  exchange?: string | string[]; // Single exchange or multiple exchanges
+  symbol: string; // Trading symbol
+  exchange: string | string[]; // Single exchange or multiple exchanges
   subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
   initialData?: InitialDataConfig; // 🆕 Initial data configuration
   loadedInitialData?: InitialDataResult; // 🆕 Loaded initial data (populated by TradingEngine)

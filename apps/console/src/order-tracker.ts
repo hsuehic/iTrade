@@ -12,7 +12,7 @@ export class OrderTracker {
 
   constructor(
     private dataManager: TypeOrmDataManager,
-    private logger: ILogger
+    private logger: ILogger,
   ) {
     this.eventBus = EventBus.getInstance();
     this.startTime = new Date();
@@ -42,9 +42,7 @@ export class OrderTracker {
       this.handleOrderRejected(data.order);
     });
 
-    this.logger.info(
-      '✅ Order Tracker started - All orders will be saved to database'
-    );
+    this.logger.info('✅ Order Tracker started - All orders will be saved to database');
   }
 
   async stop(): Promise<void> {
@@ -78,7 +76,8 @@ export class OrderTracker {
         type: order.type,
         quantity: order.quantity,
         price: order.price,
-        stopPrice: order.stopPrice,
+        stopLoss: order.stopLoss,
+        takeProfit: order.takeProfit,
         status: order.status,
         timeInForce: order.timeInForce,
         timestamp: order.timestamp,
@@ -88,7 +87,7 @@ export class OrderTracker {
       });
 
       this.logger.info(
-        `💾 Order saved to database: ${order.id} (Strategy ID: ${strategyId || 'none'})`
+        `💾 Order saved to database: ${order.id} (Strategy ID: ${strategyId || 'none'})`,
       );
     } catch (error) {
       this.logger.error('❌ Failed to save order to database', error as Error);
@@ -100,8 +99,7 @@ export class OrderTracker {
       this.totalFilled++;
 
       // Calculate PnL
-      const { realizedPnl, unrealizedPnl, averagePrice } =
-        await this.calculatePnL(order);
+      const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
 
       // Update order in database
       await this.dataManager.updateOrder(order.id, {
@@ -121,7 +119,7 @@ export class OrderTracker {
           : 'PnL: N/A';
 
       this.logger.info(
-        `💾 Order filled and updated: ${order.id}, ${pnlStr}, Avg Price: ${averagePrice?.toFixed(8) || 'N/A'}`
+        `💾 Order filled and updated: ${order.id}, ${pnlStr}, Avg Price: ${averagePrice?.toFixed(8) || 'N/A'}`,
       );
     } catch (error) {
       this.logger.error('❌ Failed to update filled order', error as Error);
@@ -132,8 +130,7 @@ export class OrderTracker {
     try {
       this.logger.info(`Order partially filled: ${order.id}`);
 
-      const { realizedPnl, unrealizedPnl, averagePrice } =
-        await this.calculatePnL(order);
+      const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
 
       await this.dataManager.updateOrder(order.id, {
         status: order.status,
@@ -145,10 +142,7 @@ export class OrderTracker {
         averagePrice,
       });
     } catch (error) {
-      this.logger.error(
-        'Failed to update partially filled order',
-        error as Error
-      );
+      this.logger.error('Failed to update partially filled order', error as Error);
     }
   }
 
@@ -191,9 +185,7 @@ export class OrderTracker {
       // Calculate average fill price
       let averagePrice: Decimal | undefined;
       if (order.executedQuantity && order.cummulativeQuoteQuantity) {
-        averagePrice = order.cummulativeQuoteQuantity.div(
-          order.executedQuantity
-        );
+        averagePrice = order.cummulativeQuoteQuantity.div(order.executedQuantity);
       }
 
       // Get previous orders for this symbol to calculate PnL
@@ -216,9 +208,7 @@ export class OrderTracker {
 
         const oppositeOrders = previousOrders.filter(
           (o) =>
-            o.symbol === order.symbol &&
-            o.side !== order.side &&
-            o.status === 'FILLED'
+            o.symbol === order.symbol && o.side !== order.side && o.status === 'FILLED',
         );
 
         if (oppositeOrders.length > 0) {

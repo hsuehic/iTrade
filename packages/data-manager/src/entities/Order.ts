@@ -64,7 +64,16 @@ export class OrderEntity implements Order {
     nullable: true,
     transformer: new DecimalTransformer(),
   })
-  stopPrice?: Decimal | undefined;
+  stopLoss?: Decimal | undefined;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: new DecimalTransformer(),
+  })
+  takeProfit?: Decimal | undefined;
 
   @Column({ type: 'enum', enum: OrderStatus })
   status!: OrderStatus;

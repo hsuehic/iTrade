@@ -641,9 +641,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const balances = await this.portfolioManager.getBalances();
 
       // Create order object for risk checking (with adjusted values)
+      // OKX API requires clOrdId to be alphanumeric only (no special chars) and max 32 chars
+      // Format: strategyName + timestamp (no underscore or dash)
+      const clientOrderId = `${strategyName}${Date.now()}`.slice(0, 32);
       const order: Order = {
         id: uuidv4(),
-        clientOrderId: `${strategyName}_${Date.now()}`,
+        clientOrderId,
         symbol,
         side,
         type,

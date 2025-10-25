@@ -196,30 +196,41 @@ export class BinanceWebSocketManager extends EventEmitter {
 
     const state = this.connections.get(marketType)!;
 
-    // Add to subscriptions tracking
+    // ✅ Check if already subscribed to avoid duplicate subscriptions
     if (!state.subscriptions.has(type)) {
       state.subscriptions.set(type, new Set());
     }
-    state.subscriptions.get(type)!.add(symbol);
+
+    const subscriptions = state.subscriptions.get(type)!;
+    const alreadySubscribed = subscriptions.has(symbol);
+
+    // Add to subscriptions tracking
+    subscriptions.add(symbol);
 
     // Store stream-to-symbol mapping for depth snapshots
     state.streamToSymbol.set(streamName, symbol);
 
-    // Send SUBSCRIBE message
-    if (state.ws.readyState === WebSocket.OPEN) {
-      const subscribeMsg = {
-        method: 'SUBSCRIBE',
-        params: [streamName],
-        id: ++this.subscriptionIdCounter,
-      };
+    // ✅ Only send SUBSCRIBE message if not already subscribed
+    if (!alreadySubscribed) {
+      if (state.ws.readyState === WebSocket.OPEN) {
+        const subscribeMsg = {
+          method: 'SUBSCRIBE',
+          params: [streamName],
+          id: ++this.subscriptionIdCounter,
+        };
 
-      console.log(
-        `[BinanceWS] Subscribing: ${streamName} on ${marketType} (ID: ${subscribeMsg.id})`,
-      );
-      state.ws.send(JSON.stringify(subscribeMsg));
+        console.log(
+          `[BinanceWS] Subscribing: ${streamName} on ${marketType} (ID: ${subscribeMsg.id})`,
+        );
+        state.ws.send(JSON.stringify(subscribeMsg));
+      } else {
+        console.warn(
+          `[BinanceWS] Cannot subscribe to ${streamName}, ${marketType} WebSocket not open`,
+        );
+      }
     } else {
-      console.warn(
-        `[BinanceWS] Cannot subscribe to ${streamName}, ${marketType} WebSocket not open`,
+      console.log(
+        `[BinanceWS] Already subscribed to ${type} ${symbol}, skipping duplicate subscription`,
       );
     }
   }

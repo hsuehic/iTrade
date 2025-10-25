@@ -16,7 +16,7 @@ import {
 } from '../types';
 
 export abstract class BaseStrategy extends EventEmitter implements IStrategy {
-  protected _parameters: StrategyParameters = {};
+  protected _parameters: StrategyParameters;
   protected _isInitialized = false;
 
   // 🆕 State Management Properties
@@ -29,7 +29,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
 
   constructor(
     public readonly name: string,
-    parameters: StrategyParameters = {},
+    parameters: StrategyParameters,
   ) {
     super();
     this._parameters = { ...parameters };
@@ -102,9 +102,9 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
     }
   }
 
-  protected ensureInitialized(): void {
+  protected async ensureInitialized(): Promise<void> {
     if (!this._isInitialized) {
-      throw new Error(`Strategy ${this.name} is not initialized`);
+      await this.initialize(this._parameters);
     }
   }
 

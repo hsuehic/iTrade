@@ -728,6 +728,20 @@ export class OKXExchange extends BaseExchange {
       this.okxReconnectTimers[key] = undefined;
     }
 
+    // ✅ Close and remove old WebSocket connection if exists
+    const existingWs = this.wsConnections.get(key);
+    if (existingWs) {
+      // Remove all listeners to prevent duplicate message handling
+      existingWs.removeAllListeners();
+      if (
+        existingWs.readyState === WebSocket.OPEN ||
+        existingWs.readyState === WebSocket.CONNECTING
+      ) {
+        existingWs.close();
+      }
+      this.wsConnections.delete(key);
+    }
+
     const wsUrl = this.buildWebSocketUrl(key);
     const ws = new WebSocket(wsUrl);
     this.wsConnections.set(key, ws);
@@ -807,21 +821,24 @@ export class OKXExchange extends BaseExchange {
     const subscribeMsg = { op: 'subscribe', args: [channel] };
 
     let ws = this.wsConnections.get(targetKey);
-    if (
-      !ws ||
-      ws.readyState === WebSocket.CLOSING ||
-      ws.readyState === WebSocket.CLOSED
-    ) {
+    const needsNewConnection =
+      !ws || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED;
+
+    if (needsNewConnection) {
+      // ✅ Create new connection - resubscribeForKey will handle sending subscriptions
       await this.createWsConnect(targetKey);
-      ws = this.wsConnections.get(targetKey);
+      // Don't send subscription here - resubscribeForKey (called on 'open' event) will handle it
+      return;
     }
+
+    // ✅ Connection already exists and is ready - send subscription immediately
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(subscribeMsg));
     }
   }
 
   protected handleWebSocketMessage(message: any): void {
-    // OKX 的消息格式
+    // OKX message format
     if (message.event === 'subscribe') {
       this.emit('ws_subscribed', message.arg);
       console.log(`[OKX] Subscription confirmed:`, message.arg);
@@ -854,30 +871,56 @@ export class OKXExchange extends BaseExchange {
       const originalSymbol = this.symbolMap.get(instId) || instId;
 
       if (channel === 'tickers') {
-        this.emit('ticker', originalSymbol, this.transformOKXTicker(data, instId));
+        this.emit(
+          'ticker',
+          originalSymbol,
+          this.transformOKXTicker(data, originalSymbol),
+        );
       } else if (channel === 'books5' || channel === 'books') {
-        this.emit('orderbook', originalSymbol, this.transformOKXOrderBook(data, instId));
+        this.emit(
+          'orderbook',
+          originalSymbol,
+          this.transformOKXOrderBook(data, originalSymbol),
+        );
       } else if (channel === 'trades') {
-        this.emit('trade', originalSymbol, this.transformOKXTrade(data, instId));
+        this.emit('trade', originalSymbol, this.transformOKXTrade(data, originalSymbol));
       } else if (channel.startsWith('candle')) {
         // Extract interval from channel name (e.g., "candle5m" -> "5m")
         const interval = channel.replace('candle', '');
         this.emit(
           'kline',
           originalSymbol,
-          this.transformOKXKline(data, instId, interval),
+          this.transformOKXKline(data, originalSymbol, interval),
         );
       } else if (channel === 'orders') {
-        const order = this.transformOKXPrivateOrder(data);
-        this.emit('orderUpdate', order.symbol, order);
+        try {
+          const order = this.transformOKXPrivateOrder(data);
+          this.emit('orderUpdate', order.symbol, order);
+        } catch (error) {
+          console.error('[OKX] Error transforming order data:', error);
+          console.error('[OKX] Raw order data:', JSON.stringify(data, null, 2));
+        }
       } else if (channel === 'balance_and_position') {
-        const { balances, positions } = this.transformOKXBalanceAndPosition(data);
-        if (balances.length) this.emit('accountUpdate', 'okx', balances);
-        if (positions.length) this.emit('positionUpdate', 'okx', positions);
+        try {
+          const { balances, positions } = this.transformOKXBalanceAndPosition(data);
+          if (balances.length) this.emit('accountUpdate', 'okx', balances);
+          if (positions.length) this.emit('positionUpdate', 'okx', positions);
+        } catch (error) {
+          console.error('[OKX] Error transforming balance_and_position data:', error);
+          console.error(
+            '[OKX] Raw balance_and_position data:',
+            JSON.stringify(data, null, 2),
+          );
+        }
       } else if (channel === 'account') {
         // Handle account channel (spot balance updates)
-        const balances = this.transformOKXAccount(data);
-        if (balances.length) this.emit('accountUpdate', 'okx', balances);
+        try {
+          const balances = this.transformOKXAccount(data);
+          if (balances.length) this.emit('accountUpdate', 'okx', balances);
+        } catch (error) {
+          console.error('[OKX] Error transforming account data:', error);
+          console.error('[OKX] Raw account data:', JSON.stringify(data, null, 2));
+        }
       }
     }
   }
@@ -1194,8 +1237,30 @@ export class OKXExchange extends BaseExchange {
     // Transform OKX account channel data (spot balances)
     const balances: Balance[] = [];
 
-    if (Array.isArray(data.details)) {
-      for (const detail of data.details) {
+    // Handle different possible data structures
+    if (!data) {
+      console.warn('[OKX] transformOKXAccount received null/undefined data');
+      return balances;
+    }
+
+    // Check if data has details array
+    const details = data.details || data;
+    if (!Array.isArray(details)) {
+      console.warn('[OKX] transformOKXAccount: details is not an array', {
+        dataType: typeof data,
+        hasDetails: 'details' in data,
+        detailsType: typeof details,
+      });
+      return balances;
+    }
+
+    for (const detail of details) {
+      try {
+        if (!detail || !detail.ccy) {
+          console.warn('[OKX] Skipping invalid account detail:', detail);
+          continue;
+        }
+
         const free = this.formatDecimal(detail.availBal || '0');
         const locked = this.formatDecimal(detail.frozenBal || '0');
         balances.push({
@@ -1204,6 +1269,8 @@ export class OKXExchange extends BaseExchange {
           locked,
           total: free.add(locked),
         });
+      } catch (error) {
+        console.error('[OKX] Error transforming account detail:', error, detail);
       }
     }
 
@@ -1332,8 +1399,16 @@ export class OKXExchange extends BaseExchange {
     symbol: string,
     depthOrInterval?: number | string,
   ): Promise<void> {
-    if (!this.okxSubscriptions.has(type)) this.okxSubscriptions.set(type, new Set());
-    this.okxSubscriptions.get(type)!.add(symbol);
+    // ✅ Check if already subscribed to avoid duplicate subscriptions
+    if (!this.okxSubscriptions.has(type)) {
+      this.okxSubscriptions.set(type, new Set());
+    }
+
+    const subscriptions = this.okxSubscriptions.get(type)!;
+    const alreadySubscribed = subscriptions.has(symbol);
+
+    // Add to subscription set
+    subscriptions.add(symbol);
 
     // Store symbol mapping (OKX instId -> original symbol)
     // For klines, strip the @interval part
@@ -1344,7 +1419,14 @@ export class OKXExchange extends BaseExchange {
     const instId = this.normalizeSymbol(baseSymbol);
     this.symbolMap.set(instId, baseSymbol);
 
-    await this.sendWebSocketSubscription(type, symbol, depthOrInterval);
+    // ✅ Only send WebSocket subscription if not already subscribed
+    if (!alreadySubscribed) {
+      await this.sendWebSocketSubscription(type, symbol, depthOrInterval);
+    } else {
+      console.log(
+        `[OKX] Already subscribed to ${type} ${symbol}, skipping duplicate subscription`,
+      );
+    }
   }
 
   private stopOkxHeartbeat(key: OkxWsType): void {

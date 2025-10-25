@@ -11,6 +11,8 @@ async function main() {
       windowSize: 10,
       gridSize: 10,
       gridCount: 10,
+      minVolatility: 0.008,
+      takeProfitRatio: 0.006,
       subscription: {
         ticker: false,
         klines: {
