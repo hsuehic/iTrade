@@ -66,7 +66,7 @@ export interface TypeOrmDataManagerConfig {
 }
 
 export class TypeOrmDataManager implements IDataManager {
-  private dataSource!: DataSource;
+  public dataSource!: DataSource;
   private klineRepository!: Repository<KlineEntity>;
   private symbolRepository!: Repository<SymbolEntity>;
   private dataQualityRepository!: Repository<DataQualityEntity>;

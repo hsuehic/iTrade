@@ -87,7 +87,7 @@ export class HammerChannelStrategy extends BaseStrategy {
   private tickers: FixedLengthList<Ticker>;
 
   constructor(parameters: HammerChannelParameters) {
-    super('HammerChannel', parameters);
+    super('HammerChannelStrategy', parameters);
 
     // Initialize parameters with defaults
     this.windowSize = parameters.windowSize ?? 15;
@@ -112,7 +112,9 @@ export class HammerChannelStrategy extends BaseStrategy {
    * Called from constructor if initialData was configured
    */
   private processInitialData(initialData: InitialDataResult): void {
-    console.log(`📊 [${this.name}] Processing initial data for ${initialData.symbol}`);
+    console.log(
+      `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
+    );
 
     // Load historical klines into strategy buffer
     if (initialData.klines) {
@@ -150,7 +152,7 @@ export class HammerChannelStrategy extends BaseStrategy {
       console.log(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
     }
 
-    console.log(`✅ [${this.name}] Initial data processed successfully`);
+    console.log(`✅ [${this.strategyType}] Initial data processed successfully`);
   }
 
   /**
@@ -410,7 +412,7 @@ export class HammerChannelStrategy extends BaseStrategy {
   public getStrategyState() {
     return {
       strategyId: this.getStrategyId(),
-      name: this.name,
+      strategyType: this.strategyType,
       candleCount: this.candles.length,
       windowSize: this.windowSize,
       positions: this.positions.length,

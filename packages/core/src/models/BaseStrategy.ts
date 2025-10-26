@@ -33,6 +33,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
 
   // 🆕 State Management Properties
   protected _strategyId?: number;
+  protected _strategyName?: string; // User-defined name from database
   protected _currentPosition = new Decimal(0);
   protected _averagePrice?: Decimal;
   protected _lastSignal?: string;
@@ -41,13 +42,15 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   protected _logger: ILogger;
 
   constructor(
-    public readonly name: string,
+    public readonly strategyType: string, // Strategy class name (e.g., "MovingAverageStrategy")
     parameters: StrategyParameters,
   ) {
     super();
     this._parameters = { ...parameters };
-    const { exchange, symbol, logger } = parameters;
+    const { strategyId, strategyName, exchange, symbol, logger } = parameters;
     this._logger = logger ? logger : new ConsoleLogger();
+    this._strategyId = strategyId; // Initialize strategyId from parameters
+    this._strategyName = strategyName; // Initialize user-defined name from parameters
     this._exchangeName = Array.isArray(exchange) ? exchange[0] : exchange;
     this._symbol = symbol;
     const parts = symbol.split(/[/:]/).filter(Boolean);
@@ -64,7 +67,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
     this._parameters = { ...parameters };
     await this.onInitialize();
     this._isInitialized = true;
-    this.emit('initialized', this.name);
+    this.emit('initialized', this.strategyType);
   }
 
   public abstract analyze(marketData: DataUpdate): Promise<StrategyResult>;
@@ -82,7 +85,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   public async cleanup(): Promise<void> {
     this._isInitialized = false;
     await this.onCleanup();
-    this.emit('cleanup', this.name);
+    this.emit('cleanup', this.strategyType);
   }
 
   // Protected methods for derived classes to override
@@ -108,7 +111,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
     const missing = requiredParams.filter((param) => !(param in this._parameters));
     if (missing.length > 0) {
       throw new Error(
-        `Missing required parameters for strategy ${this.name}: ${missing.join(', ')}`,
+        `Missing required parameters for strategy ${this.strategyType}: ${missing.join(', ')}`,
       );
     }
   }
@@ -183,6 +186,23 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
    */
   public getStateVersion(): string {
     return this._stateVersion;
+  }
+
+  // Strategy Name (user-defined)
+  public get strategyName(): string | undefined {
+    return this._strategyName;
+  }
+
+  public setStrategyName(name: string): void {
+    this._strategyName = name;
+  }
+
+  public setStrategyId(id: number): void {
+    this._strategyId = id;
+  }
+
+  public getStrategyId(): number | undefined {
+    return this._strategyId;
   }
 
   // 🔧 Protected methods for derived classes to override
@@ -277,19 +297,5 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
       signal: this._lastSignal,
       time: this._lastSignalTime,
     };
-  }
-
-  /**
-   * Set strategy ID (usually called by StrategyManager)
-   */
-  public setStrategyId(id: number): void {
-    this._strategyId = id;
-  }
-
-  /**
-   * Get strategy ID
-   */
-  public getStrategyId(): number | undefined {
-    return this._strategyId;
   }
 }

@@ -535,9 +535,13 @@ describe('Subscription Integration Tests', () => {
 });
 
 // Helper function to create mock strategies
-function createMockStrategy(name: string, parameters: StrategyParameters): IStrategy {
+function createMockStrategy(
+  strategyType: string,
+  parameters: StrategyParameters,
+): IStrategy {
   return {
-    name,
+    strategyType, // Strategy class name
+    strategyName: parameters.strategyName, // User-defined name
     parameters,
     initialize: vi.fn().mockResolvedValue(undefined),
     analyze: vi.fn().mockResolvedValue({
@@ -545,6 +549,9 @@ function createMockStrategy(name: string, parameters: StrategyParameters): IStra
     } as StrategyResult),
     onOrderFilled: vi.fn().mockResolvedValue(undefined),
     onPositionChanged: vi.fn().mockResolvedValue(undefined),
+    setStrategyName: vi.fn(),
+    setStrategyId: vi.fn(),
+    getStrategyId: vi.fn().mockReturnValue(undefined),
     saveState: vi.fn().mockResolvedValue({
       internalState: {},
       indicatorData: {},

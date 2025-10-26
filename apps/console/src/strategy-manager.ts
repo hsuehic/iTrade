@@ -349,12 +349,14 @@ export class StrategyManager {
   }
 
   private createStrategyInstance(dbStrategy: any): IStrategy {
-    const { type, symbol, parameters, exchange } = dbStrategy;
+    const { id, name, type, symbol, parameters, exchange } = dbStrategy;
 
     return createStrategyInstance(
       type as StrategyTypeKey,
       parameters, // 用户自定义参数
       {
+        strategyId: id, // Strategy ID from database
+        strategyName: name, // 🆕 User-defined strategy name from database
         symbol,
         exchange,
         logger: this.logger,

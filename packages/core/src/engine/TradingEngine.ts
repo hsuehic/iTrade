@@ -526,6 +526,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   public async executeOrder(params: ExecuteOrderParameters): Promise<Order> {
     const {
       strategyName,
+      strategyId: paramsStrategyId,
       symbol,
       side,
       quantity,
@@ -542,6 +543,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     const strategy = this._strategies.get(strategyName);
     const exchangeConfig = strategy?.parameters.exchange;
+
+    // 🆕 Get strategy metadata
+    const strategyId =
+      paramsStrategyId ?? strategy?.getStrategyId() ?? strategy?.parameters.strategyId;
+    const strategyType = strategy?.strategyType; // Strategy class name
+    const userDefinedName = strategy?.strategyName || strategy?.parameters.strategyName; // User-defined name
 
     // For order execution, use the first exchange if array is provided
     const exchangeName = Array.isArray(exchangeConfig)
@@ -634,10 +641,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const positions = await this.portfolioManager.getPositions();
       const balances = await this.portfolioManager.getBalances();
 
+      // 🆕 Create clientOrderId with compact format
+      // Format: s-{strategyId|"id"}-{timestamp} (max 32 chars for OKX)
+      // Uses hyphen (-) which is supported by all exchanges (OKX, Binance, Coinbase)
+      const timestamp = Date.now();
+      const idPart = strategyId ? String(strategyId) : 'id';
+      const clientOrderId = `s-${idPart}-${timestamp}`.slice(0, 32);
+
       // Create order object for risk checking (with adjusted values)
-      // OKX API requires clOrdId to be alphanumeric only (no special chars) and max 32 chars
-      // Format: strategyName + timestamp (no underscore or dash)
-      const clientOrderId = `${strategyName}${Date.now()}`.slice(0, 32);
       const order: Order = {
         id: uuidv4(),
         clientOrderId,
@@ -647,9 +658,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         quantity: adjustedQuantity,
         price: adjustedPrice,
         stopLoss: adjustedStopLoss,
+        takeProfit,
         status: 'NEW' as OrderStatus,
         timeInForce: 'GTC' as TimeInForce,
         timestamp: new Date(),
+
+        // 🆕 Add strategy and exchange association
+        exchange: exchangeName,
+        strategyId: strategyId,
+        strategyType: strategyType, // Strategy type/class (e.g., "MovingAverage")
+        strategyName: userDefinedName, // User-defined name (e.g., "MA_1")
       };
 
       // Check risk limits
@@ -683,12 +701,24 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         },
       );
 
+      // 🆕 Ensure executedOrder contains association metadata
+      executedOrder.exchange = exchangeName;
+      executedOrder.strategyId = strategyId;
+      executedOrder.strategyType = strategyType; // Strategy type/class
+      executedOrder.strategyName = userDefinedName; // User-defined name
+
       this._eventBus.emitOrderCreated({
         order: executedOrder,
         timestamp: new Date(),
       });
 
-      this.logger.logTrade('Order executed', { order: executedOrder });
+      this.logger.logTrade('Order executed', {
+        order: executedOrder,
+        strategyId,
+        strategyType, // Strategy type/class
+        strategyName: userDefinedName, // User-defined name
+        exchange: exchangeName,
+      });
       return executedOrder;
     } catch (error) {
       this.logger.error('Failed to execute order', error as Error, { params });

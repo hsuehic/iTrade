@@ -138,8 +138,8 @@ export interface Order {
   type: OrderType;
   quantity: Decimal;
   price?: Decimal;
-  stopLoss?: Decimal;
-  takeProfit?: Decimal;
+  stopLoss?: Decimal; // Stop loss trigger price (not execution price)
+  takeProfit?: Decimal; // Take profit trigger price (not execution price)
   status: OrderStatus;
   timeInForce: TimeInForce;
   timestamp: Date;
@@ -147,6 +147,19 @@ export interface Order {
   executedQuantity?: Decimal;
   cummulativeQuoteQuantity?: Decimal;
   fills?: OrderFill[];
+
+  // 🆕 Strategy and exchange association (application layer only, not sent to exchange API)
+  exchange?: string; // Exchange name (e.g., 'binance', 'okx', 'coinbase')
+  strategyId?: number; // Strategy ID for database association
+  strategyType?: string; // Strategy type/class (e.g., "MovingAverage", "RSI") - for analytics
+  strategyName?: string; // User-defined strategy name (e.g., "MA_1") - for display and logging
+
+  // Futures/Margin specific fields (from exchange responses)
+  realizedPnl?: Decimal;
+  unrealizedPnl?: Decimal;
+  averagePrice?: Decimal;
+  commission?: Decimal;
+  commissionAsset?: string;
 }
 
 export interface OrderFill {
@@ -188,6 +201,8 @@ export interface AccountInfo {
 
 // Strategy Types
 export interface StrategyParameters {
+  strategyId?: number; // Strategy ID from database (optional, for order tracking)
+  strategyName?: string; // User-defined strategy name from database (e.g., "MA_1", "My BTC Strategy")
   symbol: string; // Trading symbol
   exchange: string | string[]; // Single exchange or multiple exchanges
   subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration

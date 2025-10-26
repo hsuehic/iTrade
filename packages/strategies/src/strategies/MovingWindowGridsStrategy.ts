@@ -41,7 +41,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   private takeProfitRatio: number;
 
   constructor(parameters: MovingWindowGridsParameters) {
-    super('MovingWindowGrids', parameters);
+    super('MovingWindowGridsStrategy', parameters);
 
     // Initialize parameters
     this.windowSize = parameters.windowSize;
@@ -64,7 +64,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
    * Called from constructor if initialData was configured
    */
   private processInitialData(initialData: InitialDataResult): void {
-    console.log(`📊 [${this.name}] Processing initial data for ${initialData.symbol}`);
+    console.log(
+      `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
+    );
 
     // Load historical klines into strategy buffer
     if (initialData.klines) {
@@ -112,7 +114,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
       console.log(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
     }
 
-    console.log(`✅ [${this.name}] Initial data processed successfully`);
+    console.log(`✅ [${this.strategyType}] Initial data processed successfully`);
   }
 
   protected async onInitialize(): Promise<void> {
@@ -211,7 +213,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   public getStrategyState() {
     return {
       strategyId: this.getStrategyId(),
-      name: this.name,
+      strategyType: this.strategyType,
       state: this.position,
     };
   }

@@ -136,7 +136,8 @@ export type DataUpdate = MarketDataUpdate & AccountDataUpdate;
 
 // Strategy Interface
 export interface IStrategy {
-  readonly name: string;
+  readonly strategyType: string; // Strategy class name (e.g., "MovingAverageStrategy", "RSIStrategy")
+  readonly strategyName?: string; // User-defined strategy name (e.g., "MA_1", "My BTC Strategy")
   readonly parameters: StrategyParameters;
 
   initialize(parameters: StrategyParameters): Promise<void>;
@@ -145,6 +146,13 @@ export interface IStrategy {
 
   onOrderFilled(order: Order): Promise<void>;
   onPositionChanged(position: Position): Promise<void>;
+
+  // 🆕 Strategy Name Management
+  setStrategyName(name: string): void; // Set user-defined strategy name from database
+
+  // 🆕 Strategy ID Management
+  setStrategyId(id: number): void; // Set strategy ID from database
+  getStrategyId(): number | undefined; // Get strategy ID
 
   // 🆕 State Management Methods
   saveState(): Promise<StrategyStateSnapshot>;
@@ -157,6 +165,7 @@ export interface IStrategy {
 
 export interface ExecuteOrderParameters {
   strategyName: string;
+  strategyId?: number; // 🆕 Strategy ID for order tracking (optional)
   symbol: string;
   side: OrderSide;
   quantity: Decimal;

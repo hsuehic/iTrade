@@ -1,5 +1,5 @@
-import { TradingEngine, LogLevel, IStrategy } from '@itrade/core';
-import { ConsoleLogger } from '@itrade/logger';
+import { ConsoleLogger, TradingEngine, LogLevel, IStrategy } from '@itrade/core';
+
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
 import {

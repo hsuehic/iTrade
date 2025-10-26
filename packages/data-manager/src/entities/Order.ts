@@ -108,6 +108,17 @@ export class OrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   exchange?: string;
 
+  // 🆕 Strategy association metadata (application layer only, not persisted separately)
+  // Note: strategyId is managed by TypeORM via @JoinColumn below
+  // We declare it here for type compatibility with Order interface
+  strategyId?: number;
+
+  @Column({ type: 'text', nullable: true })
+  strategyType?: string; // Strategy type/class (e.g., "MovingAverage", "RSI") - for analytics
+
+  @Column({ type: 'text', nullable: true })
+  strategyName?: string; // User-defined strategy name (e.g., "MA_1") - for display
+
   @Column({
     type: 'decimal',
     precision: 28,
@@ -150,6 +161,7 @@ export class OrderEntity implements Order {
   @OneToMany(() => OrderFillEntity, (f) => f.order, { cascade: true })
   fills?: OrderFillEntity[];
 
+  // TypeORM relation - this automatically creates/manages strategyId column in database
   @ManyToOne(() => StrategyEntity, (s) => s.orders, { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;

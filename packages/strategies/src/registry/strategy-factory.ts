@@ -36,16 +36,10 @@ export type StrategyConstructor = new (parameters: any) => IStrategy;
 export const IMPLEMENTED_STRATEGIES: Partial<
   Record<StrategyTypeKey, StrategyConstructor>
 > = {
-  // ✅ 已实现的策略
-  moving_average: MovingAverageStrategy,
-  moving_window_grids: MovingWindowGridsStrategy,
-  hammer_channel: HammerChannelStrategy,
-  custom: MovingAverageStrategy, // Custom可以复用MovingAverage的基础实现
-
-  // 🚧 待实现的策略 - 实现后请移动到上面
-  // rsi: RSIStrategy,
-  // macd: MACDStrategy,
-  // bollinger_bands: BollingerBandsStrategy,
+  // ✅ Implemented strategies - use class names as keys
+  MovingAverageStrategy: MovingAverageStrategy,
+  MovingWindowGridsStrategy: MovingWindowGridsStrategy,
+  HammerChannelStrategy: HammerChannelStrategy,
 };
 
 /**
@@ -124,12 +118,14 @@ export function createStrategyInstance(
   type: StrategyTypeKey,
   customParameters: Partial<StrategyParameters> = {},
   options: {
+    strategyId?: number;
+    strategyName?: string;
     symbol: string;
     exchange: string;
     logger?: any;
   },
 ): IStrategy {
-  const { symbol, exchange, logger } = options;
+  const { strategyId, strategyName, symbol, exchange, logger } = options;
 
   // 🔍 验证策略配置
   const strategyConfig = getStrategyConfig(type);
@@ -157,6 +153,8 @@ export function createStrategyInstance(
   const fullParameters: StrategyParameters = {
     ...defaultParameters, // 来自策略配置的默认参数
     ...customParameters, // 用户自定义参数覆盖默认参数
+    strategyId, // 🆕 Strategy ID from database
+    strategyName, // 🆕 User-defined strategy name from database
     symbol,
     exchange,
   };

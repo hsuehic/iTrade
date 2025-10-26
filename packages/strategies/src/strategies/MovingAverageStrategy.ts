@@ -21,7 +21,7 @@ export class MovingAverageStrategy extends BaseStrategy {
   private position: 'long' | 'short' | 'none' = 'none';
 
   constructor(parameters: MovingAverageParameters) {
-    super('MovingAverage', parameters);
+    super('MovingAverageStrategy', parameters);
   }
 
   protected async onInitialize(): Promise<void> {
@@ -308,7 +308,6 @@ export class MovingAverageStrategy extends BaseStrategy {
   public getStrategyState() {
     return {
       strategyId: this.getStrategyId(),
-      name: this.name,
       position: this.position,
       priceHistoryLength: this.priceHistory.length,
       fastMA: this.fastMA.toString(),

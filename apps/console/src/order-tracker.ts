@@ -64,8 +64,9 @@ export class OrderTracker {
     try {
       this.totalOrders++;
 
-      // Extract strategy ID from clientOrderId (format: strategy_{id}_{timestamp})
-      const strategyId = this.extractStrategyId(order.clientOrderId);
+      // 🆕 Directly read strategyId and exchange from order object
+      const strategyId = order.strategyId;
+      const exchange = order.exchange;
 
       // Save order to database
       await this.dataManager.saveOrder({
@@ -83,11 +84,12 @@ export class OrderTracker {
         timestamp: order.timestamp,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
+        exchange: exchange, // 🆕 Save exchange association
         strategy: strategyId ? ({ id: strategyId } as any) : undefined,
       });
 
       this.logger.info(
-        `💾 Order saved to database: ${order.id} (Strategy ID: ${strategyId || 'none'})`,
+        `💾 Order saved: ${order.id} | Strategy: ${order.strategyName || 'none'} (ID: ${strategyId || 'N/A'}) | Exchange: ${exchange || 'unknown'}`,
       );
     } catch (error) {
       this.logger.error('❌ Failed to save order to database', error as Error);
@@ -234,11 +236,17 @@ export class OrderTracker {
     }
   }
 
+  // 🗑️ No longer needed! strategyId is now directly available in order.strategyId
+  // Keeping this method for backward compatibility with old orders
   private extractStrategyId(clientOrderId?: string): number | undefined {
     if (!clientOrderId) return undefined;
 
-    // Format: strategy_{id}_{timestamp}
-    const match = clientOrderId.match(/^strategy_(\d+)_/);
-    return match ? parseInt(match[1]) : undefined;
+    // New format: s-{id}-{timestamp}
+    const newMatch = clientOrderId.match(/^s-(\d+)-/);
+    if (newMatch) return parseInt(newMatch[1]);
+
+    // Old format (backward compatibility): strategy_{id}_{timestamp}
+    const oldMatch = clientOrderId.match(/^strategy_(\d+)_/);
+    return oldMatch ? parseInt(oldMatch[1]) : undefined;
   }
 }

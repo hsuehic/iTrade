@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { StrategyType, StrategyStatus } from '@itrade/data-manager';
+import { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { auth } from '@/lib/auth';
@@ -57,10 +57,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate strategy type
-    if (!Object.values(StrategyType).includes(type)) {
-      return NextResponse.json({ error: 'Invalid strategy type' }, { status: 400 });
-    }
+    // Type is now a free-form string (strategy class name)
+    // No validation needed as TypeORM will store any valid string
 
     const dataManager = await getDataManager();
     const strategy = await dataManager.createStrategy({

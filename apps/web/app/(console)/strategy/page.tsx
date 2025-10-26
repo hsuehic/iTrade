@@ -94,7 +94,7 @@ export default function StrategyPage() {
     const implementedStrategies = getImplementedStrategies();
     return implementedStrategies.length > 0
       ? implementedStrategies[0].type
-      : 'moving_average';
+      : 'MovingAverageStrategy';
   };
 
   const getDefaultParametersForType = (type: StrategyTypeKey) => {

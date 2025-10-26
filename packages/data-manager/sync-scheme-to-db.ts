@@ -42,9 +42,9 @@ const dataManager = new TypeOrmDataManager(configuration);
 async function main() {
   try {
     await dataManager.initialize();
-    console.log('Database schema synchronized successfully.');
+    console.log('✅ Database schema synchronized successfully.');
   } catch (err) {
-    console.error('Failed to synchronize schema:', err);
+    console.error('❌ Failed to synchronize schema:', err);
     process.exitCode = 1;
   } finally {
     try {
