@@ -8,12 +8,22 @@ import {
   Order,
   Balance,
   Position,
-  OrderBook,
-  Trade,
   InitialDataResult,
+  DataUpdate,
+  StrategyParameters,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
-import type { MovingWindowGridsParameters } from '../registry/strategy-factory';
+
+/**
+ * 📊 MovingWindowGridsStrategy 参数
+ */
+export interface MovingWindowGridsParameters extends StrategyParameters {
+  windowSize: number;
+  gridSize: number;
+  gridCount: number;
+  minVolatility: number;
+  takeProfitRatio: number;
+}
 
 export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
   private windowSize!: number;
@@ -110,19 +120,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.gridCount = this.getParameter('gridCount') as number;
   }
 
-  public override async analyze(marketData: {
-    // Market Data
-    ticker?: Ticker;
-    klines?: Kline[];
-    orderbook?: OrderBook;
-    trades?: Trade[];
-    // Account Data
-    positions?: Position[];
-    orders?: Order[];
-    balances?: Balance[];
-  }): Promise<StrategyResult> {
+  public override async analyze({ klines }: DataUpdate): Promise<StrategyResult> {
     this.ensureInitialized();
-    const klines = marketData?.klines;
     if (!!klines && klines.length > 0) {
       const kline = klines[klines.length - 1];
       // 🔍 Validate symbol match
@@ -177,7 +176,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             action: 'buy',
             price,
             quantity: new Decimal(this.baseSize),
-            takeProfit: new Decimal(price.mul(1 + takeProfitRatio)),
             leverage: 10,
             tradeMode: 'isolated',
           };

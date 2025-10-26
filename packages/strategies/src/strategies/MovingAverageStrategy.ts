@@ -3,11 +3,19 @@ import {
   BaseStrategy,
   StrategyResult,
   StrategyConfig,
-  Ticker,
-  Kline,
   StrategyRecoveryContext,
+  DataUpdate,
+  StrategyParameters,
 } from '@itrade/core';
-import type { MovingAverageParameters } from '../registry/strategy-factory';
+
+/**
+ * 📊 MovingAverageStrategy 参数
+ */
+export interface MovingAverageParameters extends StrategyParameters {
+  fastPeriod: number;
+  slowPeriod: number;
+  threshold: number;
+}
 
 type MovingAverageConfig = StrategyConfig<MovingAverageParameters>;
 
@@ -35,19 +43,16 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     this.position = 'none';
   }
 
-  public async analyze(marketData: {
-    ticker?: Ticker;
-    klines?: Kline[];
-  }): Promise<StrategyResult> {
+  public async analyze({ ticker, klines }: DataUpdate): Promise<StrategyResult> {
     this.ensureInitialized();
 
     let currentPrice: Decimal;
 
     // Get current price from available data
-    if (marketData.ticker) {
-      currentPrice = marketData.ticker.price;
-    } else if (marketData.klines && marketData.klines.length > 0) {
-      const latestKline = marketData.klines[marketData.klines.length - 1];
+    if (ticker) {
+      currentPrice = ticker.price;
+    } else if (klines && klines.length > 0) {
+      const latestKline = klines[klines.length - 1];
       currentPrice = latestKline.close;
     } else {
       return { action: 'hold', reason: 'No price data available' };

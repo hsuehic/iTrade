@@ -11,9 +11,9 @@ import {
   OrderBook,
   Trade,
   InitialDataResult,
+  StrategyParameters,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
-import type { HammerChannelParameters } from '../registry/strategy-factory';
 
 /**
  * Hammer detection parameters
@@ -22,6 +22,25 @@ interface HammerDetectionParams {
   lowerShadowToBody: number;
   upperShadowToBody: number;
   bodyToRange: number;
+}
+
+/**
+ * Hammer Channel Strategy Parameters
+ * Detects hammer candlestick patterns and generates signals based on channel position
+ */
+export interface HammerChannelParameters extends StrategyParameters {
+  /** Number of candles to analyze for channel calculation (e.g., 15) */
+  windowSize: number;
+  /** Minimum ratio of lower shadow to body for hammer detection (e.g., 2 = lower shadow must be 2x body) */
+  lowerShadowToBody: number;
+  /** Maximum ratio of upper shadow to body for hammer detection (e.g., 0.3 = upper shadow must be <30% of body) */
+  upperShadowToBody: number;
+  /** Maximum ratio of body to total range for hammer detection (e.g., 0.35 = body must be <35% of range) */
+  bodyToRange: number;
+  /** High position threshold for sell signals (e.g., 0.9 = top 10% of channel) */
+  highThreshold: number;
+  /** Low position threshold for buy signals (e.g., 0.1 = bottom 10% of channel) */
+  lowThreshold: number;
 }
 
 /**
@@ -309,8 +328,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
         action: 'buy',
         price,
         quantity,
-        takeProfit: price.mul(1.02), // 2% profit target
-        stopLoss: price.mul(0.98), // 2% stop loss
         leverage: 1,
         tradeMode: 'isolated',
       };

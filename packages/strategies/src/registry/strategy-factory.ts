@@ -17,38 +17,6 @@ import { HammerChannelStrategy } from '../strategies/HammerChannelStrategy';
 // 策略参数接口定义
 // ============================================================================
 
-/**
- * 📊 MovingAverageStrategy 参数
- */
-export interface MovingAverageParameters extends StrategyParameters {
-  fastPeriod: number;
-  slowPeriod: number;
-  threshold: number;
-}
-
-/**
- * 📊 MovingWindowGridsStrategy 参数
- */
-export interface MovingWindowGridsParameters extends StrategyParameters {
-  windowSize: number;
-  gridSize: number;
-  gridCount: number;
-  minVolatility: number;
-  takeProfitRatio: number;
-}
-
-/**
- * 📊 HammerChannelStrategy 参数
- */
-export interface HammerChannelParameters extends StrategyParameters {
-  windowSize: number;
-  lowerShadowToBody: number;
-  upperShadowToBody: number;
-  bodyToRange: number;
-  highThreshold: number;
-  lowThreshold: number;
-}
-
 // ============================================================================
 // 策略类型键
 // ============================================================================

@@ -216,8 +216,6 @@ export interface StrategyResult {
   action: 'buy' | 'sell' | 'hold';
   quantity?: Decimal;
   price?: Decimal;
-  stopLoss?: Decimal;
-  takeProfit?: Decimal;
   confidence?: number;
   reason?: string;
   // Trading mode and leverage (for futures/margin)
