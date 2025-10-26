@@ -42,7 +42,7 @@ class BinanceAuthDiagnostic {
     test: string,
     status: 'PASS' | 'FAIL' | 'WARN',
     message: string,
-    details?: any
+    details?: any,
   ) {
     this.results.push({ test, status, message, details });
 
@@ -86,20 +86,12 @@ class BinanceAuthDiagnostic {
 
   private async checkEnvironmentVariables(): Promise<void> {
     if (!this.apiKey || this.apiKey === 'your_binance_api_key_here') {
-      this.addResult(
-        '环境变量检查',
-        'FAIL',
-        'BINANCE_API_KEY 未设置或使用默认值'
-      );
+      this.addResult('环境变量检查', 'FAIL', 'BINANCE_API_KEY 未设置或使用默认值');
       return;
     }
 
     if (!this.secretKey || this.secretKey === 'your_binance_secret_key_here') {
-      this.addResult(
-        '环境变量检查',
-        'FAIL',
-        'BINANCE_SECRET_KEY 未设置或使用默认值'
-      );
+      this.addResult('环境变量检查', 'FAIL', 'BINANCE_SECRET_KEY 未设置或使用默认值');
       return;
     }
 
@@ -107,7 +99,7 @@ class BinanceAuthDiagnostic {
       this.addResult(
         '环境变量检查',
         'WARN',
-        'API Key 长度异常，可能不是有效的 Binance API Key'
+        'API Key 长度异常，可能不是有效的 Binance API Key',
       );
       return;
     }
@@ -118,29 +110,23 @@ class BinanceAuthDiagnostic {
   private async checkNetworkConnectivity(): Promise<void> {
     try {
       // 测试主网连接
-      const mainnetResponse = await axios.get(
-        `${BINANCE_MAINNET_URL}/api/v3/ping`,
-        { timeout: 5000 }
-      );
+      const mainnetResponse = await axios.get(`${BINANCE_MAINNET_URL}/api/v3/ping`, {
+        timeout: 5000,
+      });
       if (mainnetResponse.status === 200) {
         this.addResult('网络连接测试', 'PASS', '主网连接正常');
       }
 
       // 测试测试网连接
       try {
-        const testnetResponse = await axios.get(
-          `${BINANCE_TESTNET_URL}/api/v3/ping`,
-          { timeout: 5000 }
-        );
+        const testnetResponse = await axios.get(`${BINANCE_TESTNET_URL}/api/v3/ping`, {
+          timeout: 5000,
+        });
         if (testnetResponse.status === 200) {
           this.addResult('网络连接测试', 'PASS', '测试网连接正常');
         }
       } catch (testnetError) {
-        this.addResult(
-          '网络连接测试',
-          'WARN',
-          '测试网连接失败（这通常不影响主网使用）'
-        );
+        this.addResult('网络连接测试', 'WARN', '测试网连接失败（这通常不影响主网使用）');
       }
     } catch (error: any) {
       this.addResult('网络连接测试', 'FAIL', '无法连接到 Binance API', {
@@ -167,26 +153,17 @@ class BinanceAuthDiagnostic {
             serverTime: new Date(serverTime).toISOString(),
             localTime: new Date(localTime).toISOString(),
             difference: timeDiff,
-          }
+          },
         );
       } else if (timeDiff > 1000) {
         // 超过1秒
-        this.addResult(
-          '时间同步检查',
-          'WARN',
-          `本地时间与服务器时间相差 ${timeDiff}ms`,
-          {
-            serverTime: new Date(serverTime).toISOString(),
-            localTime: new Date(localTime).toISOString(),
-            difference: timeDiff,
-          }
-        );
+        this.addResult('时间同步检查', 'WARN', `本地时间与服务器时间相差 ${timeDiff}ms`, {
+          serverTime: new Date(serverTime).toISOString(),
+          localTime: new Date(localTime).toISOString(),
+          difference: timeDiff,
+        });
       } else {
-        this.addResult(
-          '时间同步检查',
-          'PASS',
-          `时间同步正常 (相差${timeDiff}ms)`
-        );
+        this.addResult('时间同步检查', 'PASS', `时间同步正常 (相差${timeDiff}ms)`);
       }
     } catch (error: any) {
       this.addResult('时间同步检查', 'FAIL', '无法获取服务器时间', {
@@ -201,29 +178,21 @@ class BinanceAuthDiagnostic {
       const timestamp = Date.now();
       const params = this.signRequest({ timestamp });
 
-      const response = await axios.get(
-        `${BINANCE_MAINNET_URL}/api/v3/account`,
-        {
-          params,
-          headers: {
-            'X-MBX-APIKEY': this.apiKey,
-          },
-          timeout: 10000,
-        }
-      );
+      const response = await axios.get(`${BINANCE_MAINNET_URL}/api/v3/account`, {
+        params,
+        headers: {
+          'X-MBX-APIKEY': this.apiKey,
+        },
+        timeout: 10000,
+      });
 
       if (response.status === 200) {
-        this.addResult(
-          'API密钥有效性',
-          'PASS',
-          'API 密钥有效且具有账户访问权限',
-          {
-            canTrade: response.data.canTrade,
-            canWithdraw: response.data.canWithdraw,
-            canDeposit: response.data.canDeposit,
-            balanceCount: response.data.balances?.length || 0,
-          }
-        );
+        this.addResult('API密钥有效性', 'PASS', 'API 密钥有效且具有账户访问权限', {
+          canTrade: response.data.canTrade,
+          canWithdraw: response.data.canWithdraw,
+          canDeposit: response.data.canDeposit,
+          balanceCount: response.data.balances?.length || 0,
+        });
         return;
       }
     } catch (error: any) {
@@ -239,15 +208,10 @@ class BinanceAuthDiagnostic {
           errorMsg: error.response.data?.msg,
         });
       } else {
-        this.addResult(
-          'API密钥有效性',
-          'FAIL',
-          `API 请求失败: ${error.message}`,
-          {
-            status: error.response?.status,
-            data: error.response?.data,
-          }
-        );
+        this.addResult('API密钥有效性', 'FAIL', `API 请求失败: ${error.message}`, {
+          status: error.response?.status,
+          data: error.response?.data,
+        });
       }
     }
   }
@@ -278,14 +242,14 @@ class BinanceAuthDiagnostic {
 
           const response = await axios.get(
             `${BINANCE_MAINNET_URL}${endpoint.path}`,
-            config
+            config,
           );
 
           if (response.status === 200) {
             this.addResult(
               `权限测试-${endpoint.name}`,
               'PASS',
-              `可以访问 ${endpoint.name}`
+              `可以访问 ${endpoint.name}`,
             );
           }
         } catch (error: any) {
@@ -296,7 +260,7 @@ class BinanceAuthDiagnostic {
               `无权限访问 ${endpoint.name}`,
               {
                 errorMsg: error.response.data?.msg,
-              }
+              },
             );
           } else {
             this.addResult(
@@ -305,7 +269,7 @@ class BinanceAuthDiagnostic {
               `访问 ${endpoint.name} 时出错`,
               {
                 error: error.message,
-              }
+              },
             );
           }
         }
@@ -331,9 +295,7 @@ class BinanceAuthDiagnostic {
 
     if (failCount === 0) {
       console.log('\n🎉 恭喜！所有测试都通过了，您的 API 配置应该是正确的。');
-      console.log(
-        '如果仍然遇到 401 错误，可能是临时网络问题或 Binance 服务器问题。'
-      );
+      console.log('如果仍然遇到 401 错误，可能是临时网络问题或 Binance 服务器问题。');
     } else {
       console.log('\n🔧 需要修复的问题:');
       this.results
@@ -344,32 +306,22 @@ class BinanceAuthDiagnostic {
 
       console.log('\n💡 建议解决方案:');
 
-      if (
-        this.results.some(
-          (r) => r.test === '环境变量检查' && r.status === 'FAIL'
-        )
-      ) {
+      if (this.results.some((r) => r.test === '环境变量检查' && r.status === 'FAIL')) {
         console.log(
-          '1. 检查 .env 文件中的 BINANCE_API_KEY 和 BINANCE_SECRET_KEY 是否正确设置'
+          '1. 检查 .env 文件中的 BINANCE_API_KEY 和 BINANCE_SECRET_KEY 是否正确设置',
         );
         console.log('2. 确保没有多余的空格或换行符');
         console.log('3. 重新生成 API 密钥并替换现有密钥');
       }
 
-      if (
-        this.results.some(
-          (r) => r.test.includes('时间同步') && r.status === 'FAIL'
-        )
-      ) {
+      if (this.results.some((r) => r.test.includes('时间同步') && r.status === 'FAIL')) {
         console.log('4. 同步系统时间：');
         console.log('   - Windows: w32tm /resync');
         console.log('   - macOS: sudo sntp -sS time.apple.com');
         console.log('   - Linux: sudo ntpdate -s time.nist.gov');
       }
 
-      if (
-        this.results.some((r) => r.test.includes('权限') && r.status === 'FAIL')
-      ) {
+      if (this.results.some((r) => r.test.includes('权限') && r.status === 'FAIL')) {
         console.log('5. 检查 API 密钥权限设置：');
         console.log('   - 登录 Binance 账户');
         console.log('   - 进入 API 管理页面');

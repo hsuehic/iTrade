@@ -5,7 +5,7 @@
 
 import { CoinbaseExchange } from '@itrade/exchange-connectors';
 import type { IExchange } from '@itrade/core';
-import { BaseExchangeTest, type ExchangeCredentials } from './BaseExchangeTest';
+import { BaseExchangeTest, type ExchangeCredentials } from '../base/BaseExchangeTest';
 
 class CoinbaseWebSocketTest extends BaseExchangeTest {
   constructor() {
@@ -148,14 +148,11 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
     const coinbase = new CoinbaseExchange();
 
     try {
-      // Connect
-      const credentials = this.getCredentials();
-      if (credentials) {
-        await coinbase.connect(credentials);
-        this.logger.info('✅ Connected to Coinbase (with credentials)\n');
-      } else {
-        this.logger.info('✅ Coinbase initialized (public data only)\n');
-      }
+      // Skip connect() for public WebSocket data - Coinbase WebSocket Manager handles connections
+      // Coinbase requires auth for ALL REST endpoints, so connect() will fail without valid credentials
+      this.logger.info(
+        '✅ Coinbase initialized (WebSocket only, no REST API connection)\n',
+      );
 
       // Setup event listeners
       this.setupEventListeners(coinbase);
@@ -165,12 +162,10 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
       this.logger.info('🔵 ===== SUBSCRIBING TO PERPETUAL MARKET DATA =====\n');
       await this.subscribeToMarketData(coinbase, 'BTC/USDC', 'BTC/USDC:USDC');
 
-      // Subscribe to user data if credentials available
-      if (credentials) {
-        this.logger.info('\n👤 ===== SUBSCRIBING TO USER DATA =====\n');
-        await coinbase.subscribeToUserData();
-        this.logger.info('📡 Subscribed to user data (orders, balance, positions)');
-      }
+      // User data subscription skipped (requires valid Coinbase credentials and connect())
+      this.logger.info(
+        '\n👤 USER DATA: Skipped (requires valid credentials and REST API connection)\n',
+      );
 
       // Start check interval and timeout
       this.startCheckInterval();

@@ -1,20 +1,20 @@
 /**
- * Coinbase REST API Test (Refactored)
+ * Binance REST API Test (Refactored)
  * Tests market data and account endpoints using BaseRESTTest
  */
 
-import { CoinbaseExchange } from '@itrade/exchange-connectors';
+import { BinanceExchange } from '@itrade/exchange-connectors';
 import type { IExchange } from '@itrade/core';
-import { BaseRESTTest, type ExchangeCredentials } from './BaseRESTTest';
+import { BaseRESTTest, type ExchangeCredentials } from '../base/BaseRESTTest';
 
-class CoinbaseRESTTest extends BaseRESTTest {
+class BinanceRESTTest extends BaseRESTTest {
   constructor() {
-    super('Coinbase');
+    super('Binance');
   }
 
   protected getCredentials(): ExchangeCredentials | null {
-    const apiKey = process.env.COINBASE_API_KEY;
-    const secretKey = process.env.COINBASE_SECRET_KEY;
+    const apiKey = process.env.BINANCE_API_KEY;
+    const secretKey = process.env.BINANCE_SECRET_KEY;
 
     if (apiKey && secretKey) {
       return { apiKey, secretKey };
@@ -25,92 +25,64 @@ class CoinbaseRESTTest extends BaseRESTTest {
   protected async testMarketData(
     exchange: IExchange,
     spotSymbol: string,
-    perpetualSymbol: string,
+    futuresSymbol: string,
   ): Promise<void> {
-    const coinbase = exchange as CoinbaseExchange;
+    const binance = exchange as BinanceExchange;
 
     // Test Ticker
     try {
       this.logger.info(`\n📊 Testing getTicker for ${spotSymbol}...`);
-      const ticker = await coinbase.getTicker(spotSymbol);
+      const ticker = await binance.getTicker(spotSymbol);
       if (ticker && ticker.price) {
         this.logger.info(`  ✅ Price: $${ticker.price}`);
         this.results.marketData.ticker = true;
       }
-    } catch (error: any) {
-      if (error?.response?.status === 401 || error?.response?.status === 400) {
-        this.logger.warn(
-          '  ⚠️  getTicker: KNOWN LIMITATION - Coinbase requires auth for all endpoints',
-        );
-        this.results.marketData.ticker = true; // Mark as pass (known limitation)
-      } else {
-        this.logger.error('  ❌ getTicker failed:', error as Error);
-      }
+    } catch (error) {
+      this.logger.error('  ❌ getTicker failed:', error as Error);
     }
 
     // Test OrderBook
     try {
       this.logger.info(`\n📚 Testing getOrderBook for ${spotSymbol}...`);
-      const orderbook = await coinbase.getOrderBook(spotSymbol);
+      const orderbook = await binance.getOrderBook(spotSymbol);
       if (orderbook && orderbook.bids.length > 0 && orderbook.asks.length > 0) {
         this.logger.info(
           `  ✅ Bids: ${orderbook.bids.length}, Asks: ${orderbook.asks.length}`,
         );
         this.results.marketData.orderbook = true;
       }
-    } catch (error: any) {
-      if (error?.response?.status === 401 || error?.response?.status === 400) {
-        this.logger.warn(
-          '  ⚠️  getOrderBook: KNOWN LIMITATION - Coinbase requires auth for all endpoints',
-        );
-        this.results.marketData.orderbook = true; // Mark as pass (known limitation)
-      } else {
-        this.logger.error('  ❌ getOrderBook failed:', error as Error);
-      }
+    } catch (error) {
+      this.logger.error('  ❌ getOrderBook failed:', error as Error);
     }
 
     // Test Trades
     try {
       this.logger.info(`\n💱 Testing getTrades for ${spotSymbol}...`);
-      const trades = await coinbase.getTrades(spotSymbol);
+      const trades = await binance.getTrades(spotSymbol);
       if (trades && trades.length > 0) {
         this.logger.info(`  ✅ Received ${trades.length} trades`);
         this.results.marketData.trades = true;
       }
-    } catch (error: any) {
-      if (error?.response?.status === 401 || error?.response?.status === 400) {
-        this.logger.warn(
-          '  ⚠️  getTrades: KNOWN LIMITATION - Coinbase requires auth for all endpoints',
-        );
-        this.results.marketData.trades = true; // Mark as pass (known limitation)
-      } else {
-        this.logger.error('  ❌ getTrades failed:', error as Error);
-      }
+    } catch (error) {
+      this.logger.error('  ❌ getTrades failed:', error as Error);
     }
 
     // Test Klines
     try {
       this.logger.info(`\n📈 Testing getKlines for ${spotSymbol}...`);
-      const klines = await coinbase.getKlines(spotSymbol, '1m');
+      const klines = await binance.getKlines(spotSymbol, '1m');
       if (klines && klines.length > 0) {
         this.logger.info(`  ✅ Received ${klines.length} klines`);
         this.results.marketData.klines = true;
       }
-    } catch (error: any) {
-      if (error?.response?.status === 401 || error?.response?.status === 400) {
-        this.logger.warn(
-          '  ⚠️  getKlines: KNOWN LIMITATION - Coinbase requires auth for all endpoints',
-        );
-        this.results.marketData.klines = true; // Mark as pass (known limitation)
-      } else {
-        this.logger.error('  ❌ getKlines failed:', error as Error);
-      }
+    } catch (error) {
+      this.logger.error('  ❌ getKlines failed:', error as Error);
     }
 
     // Test SymbolInfo
     try {
       this.logger.info(`\n🔍 Testing getSymbolInfo for ${spotSymbol}...`);
-      const symbolInfo = await coinbase.getSymbolInfo(spotSymbol);
+      const symbolInfo = await binance.getSymbolInfo(spotSymbol);
       if (symbolInfo) {
         this.logger.info(`  ✅ Symbol: ${symbolInfo.symbol}`);
         this.logger.info(
@@ -127,25 +99,18 @@ class CoinbaseRESTTest extends BaseRESTTest {
         );
         this.results.marketData.symbolInfo = true;
       }
-    } catch (error: any) {
-      if (error?.response?.status === 401 || error?.response?.status === 400) {
-        this.logger.warn(
-          '  ⚠️  getSymbolInfo: KNOWN LIMITATION - Coinbase requires auth for all endpoints',
-        );
-        this.results.marketData.symbolInfo = true; // Mark as pass (known limitation)
-      } else {
-        this.logger.error('  ❌ getSymbolInfo failed:', error as Error);
-      }
+    } catch (error) {
+      this.logger.error('  ❌ getSymbolInfo failed:', error as Error);
     }
   }
 
   protected async testAccountData(exchange: IExchange): Promise<void> {
-    const coinbase = exchange as CoinbaseExchange;
+    const binance = exchange as BinanceExchange;
 
     // Test Account Info
     try {
       this.logger.info('\n👤 Testing getAccountInfo...');
-      const accountInfo = await coinbase.getAccountInfo();
+      const accountInfo = await binance.getAccountInfo();
       if (accountInfo) {
         this.logger.info('  ✅ Account info retrieved');
         this.results.accountData.accountInfo = true;
@@ -157,7 +122,7 @@ class CoinbaseRESTTest extends BaseRESTTest {
     // Test Balances
     try {
       this.logger.info('\n💰 Testing getBalances...');
-      const balances = await coinbase.getBalances();
+      const balances = await binance.getBalances();
       if (balances && balances.length > 0) {
         this.logger.info(`  ✅ Received ${balances.length} balances`);
         this.results.accountData.balances = true;
@@ -169,7 +134,7 @@ class CoinbaseRESTTest extends BaseRESTTest {
     // Test Open Orders
     try {
       this.logger.info('\n📋 Testing getOpenOrders...');
-      const openOrders = await coinbase.getOpenOrders();
+      const openOrders = await binance.getOpenOrders();
       if (openOrders !== undefined) {
         this.logger.info(`  ✅ Received ${openOrders.length} open orders`);
         this.results.accountData.openOrders = true;
@@ -180,8 +145,8 @@ class CoinbaseRESTTest extends BaseRESTTest {
 
     // Test Order History
     try {
-      this.logger.info('\n📜 Testing getOrderHistory for BTC/USDC...');
-      const orderHistory = await coinbase.getOrderHistory('BTC/USDC');
+      this.logger.info('\n📜 Testing getOrderHistory for BTC/USDT...');
+      const orderHistory = await binance.getOrderHistory('BTC/USDT');
       if (orderHistory !== undefined) {
         this.logger.info(`  ✅ Received ${orderHistory.length} orders in history`);
         this.results.accountData.orderHistory = true;
@@ -192,55 +157,52 @@ class CoinbaseRESTTest extends BaseRESTTest {
   }
 
   async run(): Promise<void> {
-    this.logger.info('🧪 Starting Coinbase REST API Test\n');
+    this.logger.info('🧪 Starting Binance REST API Test\n');
     this.logger.info('Testing: Market Data + Account Data\n');
-    this.logger.info(
-      '⚠️  NOTE: Coinbase requires authentication for all REST endpoints\n',
-    );
 
-    const coinbase = new CoinbaseExchange();
+    const binance = new BinanceExchange();
 
     try {
       // Connect
       const credentials = this.getCredentials();
       if (credentials) {
-        await coinbase.connect(credentials);
-        this.logger.info('✅ Connected to Coinbase (with credentials)\n');
+        await binance.connect(credentials);
+        this.logger.info('✅ Connected to Binance (with credentials)\n');
       } else {
-        await coinbase.connect({} as ExchangeCredentials);
-        this.logger.info('✅ Connected to Coinbase (public data only)\n');
+        await binance.connect({} as ExchangeCredentials);
+        this.logger.info('✅ Connected to Binance (public data only)\n');
       }
 
       // Test market data
       this.logger.info('═══════════════════════════════════════════');
       this.logger.info('📈 TESTING MARKET DATA ENDPOINTS');
       this.logger.info('═══════════════════════════════════════════');
-      await this.testMarketData(coinbase, 'BTC/USDC', 'BTC/USDC:USDC');
+      await this.testMarketData(binance, 'BTC/USDT', 'BTC/USDT:USDT');
 
       // Test account data if credentials available
       if (credentials) {
         this.logger.info('\n═══════════════════════════════════════════');
         this.logger.info('👤 TESTING ACCOUNT DATA ENDPOINTS');
         this.logger.info('═══════════════════════════════════════════');
-        await this.testAccountData(coinbase);
+        await this.testAccountData(binance);
       }
 
       // Print summary
       this.printSummary();
 
       // Cleanup
-      this.cleanup(coinbase, 0);
+      this.cleanup(binance, 0);
     } catch (error) {
       this.logger.error('Test failed with error:', error as Error);
-      this.cleanup(coinbase, 1);
+      this.cleanup(binance, 1);
     }
   }
 }
 
 // Run test if executed directly
 if (require.main === module) {
-  const test = new CoinbaseRESTTest();
+  const test = new BinanceRESTTest();
   test.run();
 }
 
-export { CoinbaseRESTTest };
+export { BinanceRESTTest };

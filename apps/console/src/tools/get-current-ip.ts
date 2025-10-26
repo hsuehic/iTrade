@@ -36,14 +36,12 @@ async function getCurrentIP() {
 
           if (service.name === 'ipinfo' && response.data.city) {
             console.log(
-              `📍 位置信息: ${response.data.city}, ${response.data.region}, ${response.data.country}`
+              `📍 位置信息: ${response.data.city}, ${response.data.region}, ${response.data.country}`,
             );
           }
 
           console.log('\n🔧 添加步骤:');
-          console.log(
-            '1. 访问 https://www.binance.com/cn/my/settings/api-management'
-          );
+          console.log('1. 访问 https://www.binance.com/cn/my/settings/api-management');
           console.log('2. 找到您的 API 密钥');
           console.log('3. 在 "IP access restrictions" 部分');
           console.log(`4. 添加 IP: ${ip}`);

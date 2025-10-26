@@ -5,7 +5,7 @@
 
 import { BinanceExchange } from '@itrade/exchange-connectors';
 import type { IExchange } from '@itrade/core';
-import { BaseExchangeTest, type ExchangeCredentials } from './BaseExchangeTest';
+import { BaseExchangeTest, type ExchangeCredentials } from '../base/BaseExchangeTest';
 
 class BinanceWebSocketTest extends BaseExchangeTest {
   constructor() {

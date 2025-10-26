@@ -26,7 +26,7 @@ import { randomUUID } from 'crypto';
 import { Decimal } from 'decimal.js';
 import { ConsoleLogger, LogLevel } from '@itrade/core';
 import { OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
-import { TypeOrmDataManager, StrategyStatus } from '@itrade/data-manager';
+import { TypeOrmDataManager, StrategyStatus, OrderEntity } from '@itrade/data-manager';
 
 // Load environment variables
 dotenv.config();
@@ -288,6 +288,22 @@ async function main() {
     // Step 10: Clean up test data
     logger.info('\n📦 Step 10: Clean Up Test Data');
 
+    // Delete Order first (due to foreign key constraint)
+    if (testOrderId) {
+      try {
+        // Use OrderEntity repository to delete order
+        const orderRepo = (dataManager as any).dataSource.getRepository(OrderEntity);
+        await orderRepo.delete({ id: testOrderId });
+        logger.info(`✅ Deleted test order: ${testOrderId}`);
+      } catch (error) {
+        logger.warn(
+          `Failed to delete order ${testOrderId}:`,
+          error as Record<string, unknown>,
+        );
+      }
+    }
+
+    // Then delete Strategy
     if (testStrategyId) {
       try {
         await dataManager.deleteStrategy(testStrategyId);

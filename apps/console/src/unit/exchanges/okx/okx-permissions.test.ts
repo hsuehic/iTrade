@@ -30,7 +30,7 @@ async function testOKXPermissions() {
   try {
     console.log('1️⃣  Testing public endpoint (getTicker)...');
     const ticker = await exchange.getTicker('WLD/USDT:USDT');
-    console.log(`   ✅ SUCCESS - Last price: ${ticker.last}\n`);
+    console.log(`   ✅ SUCCESS - Last price: ${ticker.price.toString()}\n`);
   } catch (error: any) {
     console.error(`   ❌ FAILED: ${error.message}\n`);
   }
@@ -38,8 +38,8 @@ async function testOKXPermissions() {
   // 2. Test account info (requires Read permission)
   try {
     console.log('2️⃣  Testing account endpoint (getBalances)...');
-    const account = await exchange.getBalances();
-    console.log(`   ✅ SUCCESS - Found ${account.balances.length} balances\n`);
+    const balances = await exchange.getBalances();
+    console.log(`   ✅ SUCCESS - Found ${balances.length} balances\n`);
   } catch (error: any) {
     console.error(`   ❌ FAILED: ${error.message}\n`);
   }

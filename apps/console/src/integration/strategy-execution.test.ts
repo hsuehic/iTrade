@@ -1,4 +1,4 @@
-import { run } from './strategy-runner';
+import { run } from './helpers/strategy-runner';
 import { IStrategy, MovingWindowGridsStrategy } from '@itrade/strategies';
 
 async function main() {

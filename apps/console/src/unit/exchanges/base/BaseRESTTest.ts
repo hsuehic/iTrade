@@ -4,7 +4,7 @@
  */
 
 import * as dotenv from 'dotenv';
-import { ConsoleLogger, LogLevel } from '@itrade/logger';
+import { ConsoleLogger, LogLevel } from '@itrade/core';
 import type {
   IExchange,
   ExchangeCredentials as CoreExchangeCredentials,

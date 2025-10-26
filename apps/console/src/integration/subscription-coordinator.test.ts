@@ -1,5 +1,5 @@
 import { SubscriptionCoordinator, LogLevel } from '@itrade/core';
-import { ConsoleLogger } from '@itrade/logger';
+import { ConsoleLogger } from '@itrade/core';
 import { BinanceExchange } from '@itrade/exchange-connectors';
 
 /**
@@ -34,7 +34,7 @@ async function runSubscriptionDemo() {
       'BTC/USDT',
       'ticker',
       {},
-      'websocket'
+      'websocket',
     );
 
     // Subscribe Strategy 2 to the same ticker (reference counting)
@@ -44,7 +44,7 @@ async function runSubscriptionDemo() {
       'BTC/USDT',
       'ticker',
       {},
-      'websocket'
+      'websocket',
     );
 
     // Subscribe Strategy 2 to klines with different interval
@@ -54,7 +54,7 @@ async function runSubscriptionDemo() {
       'BTC/USDT',
       'klines',
       { interval: '1m' },
-      'websocket'
+      'websocket',
     );
 
     console.log('\n=== Subscription Stats ===');
@@ -62,33 +62,17 @@ async function runSubscriptionDemo() {
 
     console.log('\n=== Strategy 2 Subscriptions ===');
     console.log(
-      JSON.stringify(
-        coordinator.getStrategySubscriptions('MA Strategy 2'),
-        null,
-        2
-      )
+      JSON.stringify(coordinator.getStrategySubscriptions('MA Strategy 2'), null, 2),
     );
 
     // Unsubscribe Strategy 1 (subscription should remain for Strategy 2)
-    await coordinator.unsubscribe(
-      'MA Strategy 1',
-      exchange,
-      'BTC/USDT',
-      'ticker',
-      {}
-    );
+    await coordinator.unsubscribe('MA Strategy 1', exchange, 'BTC/USDT', 'ticker', {});
 
     console.log('\n=== After Unsubscribing Strategy 1 ===');
     console.log(JSON.stringify(coordinator.getStats(), null, 2));
 
     // Unsubscribe Strategy 2 (subscription should be removed)
-    await coordinator.unsubscribe(
-      'MA Strategy 2',
-      exchange,
-      'BTC/USDT',
-      'ticker',
-      {}
-    );
+    await coordinator.unsubscribe('MA Strategy 2', exchange, 'BTC/USDT', 'ticker', {});
 
     console.log('\n=== After Unsubscribing Strategy 2 ===');
     console.log(JSON.stringify(coordinator.getStats(), null, 2));
