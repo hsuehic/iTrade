@@ -2,7 +2,13 @@ import { EventEmitter } from 'events';
 
 import { Decimal } from 'decimal.js';
 
-import { IStrategy, StrategyStateSnapshot, StrategyRecoveryContext } from '../interfaces';
+import {
+  DataUpdate,
+  IStrategy,
+  StrategyStateSnapshot,
+  StrategyRecoveryContext,
+  ILogger,
+} from '../interfaces';
 import {
   StrategyParameters,
   StrategyResult,
@@ -14,10 +20,16 @@ import {
   Trade,
   Kline,
 } from '../types';
+import { ConsoleLogger } from './ConsoleLogger';
 
 export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   protected _parameters: StrategyParameters;
   protected _isInitialized = false;
+  protected _exchangeName?: string;
+  protected _symbol?: string;
+  protected _quote: string;
+  protected _base: string;
+  protected _settlement?: string;
 
   // 🆕 State Management Properties
   protected _strategyId?: number;
@@ -26,6 +38,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   protected _lastSignal?: string;
   protected _lastSignalTime?: Date;
   protected _stateVersion = '1.0.0'; // Override in subclasses if needed
+  protected _logger: ILogger;
 
   constructor(
     public readonly name: string,
@@ -33,6 +46,14 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   ) {
     super();
     this._parameters = { ...parameters };
+    const { exchange, symbol, logger } = parameters;
+    this._logger = logger ? logger : new ConsoleLogger();
+    this._exchangeName = Array.isArray(exchange) ? exchange[0] : exchange;
+    this._symbol = symbol;
+    const parts = symbol.split(/[/:]/).filter(Boolean);
+    this._quote = parts[0];
+    this._base = parts[1];
+    this._settlement = parts.length > 2 ? parts[2] : undefined;
   }
 
   public get parameters(): StrategyParameters {
@@ -46,19 +67,7 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
     this.emit('initialized', this.name);
   }
 
-  public abstract analyze(marketData: {
-    exchangeName: string;
-    symbol?: string;
-    // Market Data
-    ticker?: Ticker;
-    orderbook?: OrderBook;
-    trades?: Trade[];
-    klines?: Kline[];
-    // Account Data
-    positions?: Position[];
-    orders?: Order[];
-    balances?: Balance[];
-  }): Promise<StrategyResult>;
+  public abstract analyze(marketData: DataUpdate): Promise<StrategyResult>;
 
   public async onOrderFilled(order: Order): Promise<void> {
     this.emit('orderFilled', order);

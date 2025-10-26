@@ -2,8 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "composite": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
+  "include": ["src/**/*", "../core/src/models/ConsoleLogger.ts"],
+  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"],
+  "references": [{ "path": "../core" }]
 }

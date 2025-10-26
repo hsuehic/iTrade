@@ -77,3 +77,5 @@ export { SubscriptionManager } from './engine/SubscriptionManager'; // Legacy
 // Utilities
 export { PrecisionUtils } from './utils/PrecisionUtils';
 export { StrategyLoader } from './utils/StrategyLoader';
+
+export { ConsoleLogger } from './models/ConsoleLogger';

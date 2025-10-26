@@ -1,4 +1,5 @@
-import { ILogger, LogLevel } from '@itrade/core';
+import { ILogger } from '../interfaces';
+import { LogLevel } from '../types';
 
 export class ConsoleLogger implements ILogger {
   private level: LogLevel;

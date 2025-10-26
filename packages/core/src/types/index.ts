@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { ILogger } from '../interfaces';
 
 // Re-export subscription types
 export * from './subscription';
@@ -192,6 +193,7 @@ export interface StrategyParameters {
   subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
   initialData?: InitialDataConfig; // 🆕 Initial data configuration
   loadedInitialData?: InitialDataResult; // 🆕 Loaded initial data (populated by TradingEngine)
+  logger?: ILogger;
   [key: string]: unknown; // Allow additional custom parameters
 }
 
