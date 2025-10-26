@@ -1678,3 +1678,223 @@ When running successfully, you should see:
 ### Summary: Use Debugger Settings for main.ts
 
 > **When running `main.ts`, ALWAYS use the exact same settings as `.vscode/launch.json` to ensure consistent behavior between AI testing and user debugging.**
+
+---
+
+## 🔍 TypeScript Code Quality Verification Rules
+
+### Mandatory Verification After TypeScript Code Changes
+
+**When ANY TypeScript code (.ts, .tsx files) in a package is modified, added, or deleted, AI agents MUST execute the following verification steps:**
+
+#### Core Principle
+
+> **"Code Modified → Lint & TypeCheck → Verify Applications"**
+>
+> After modifying TypeScript code in any package:
+>
+> 1. ✅ **Verify the modified package** - Run lint and typecheck in the current package
+> 2. ✅ **Verify dependent applications** - Run lint and typecheck in `apps/web` and `apps/console`
+> 3. ✅ **Fix all errors** before marking task complete
+> 4. ✅ **Never skip verification** - Type safety is critical
+
+#### When Verification is REQUIRED
+
+Verification is MANDATORY when modifying:
+
+1. **Package Source Files** (`packages/*/src/**/*.ts`, `*.tsx`)
+   - Entity definitions
+   - Type definitions
+   - Repository files
+   - Service implementations
+   - Utility functions
+   - Any exported modules
+
+2. **Application Source Files** (`apps/*/src/**/*.ts`, `*.tsx`)
+   - Components
+   - Pages
+   - API routes
+   - Server code
+   - Client code
+
+#### Verification Commands
+
+**For Modified Package:**
+
+```bash
+# Step 1: Navigate to the modified package
+cd packages/{package-name}
+
+# Step 2: Run lint
+pnpm lint
+
+# Step 3: Run typecheck
+pnpm typecheck
+
+# Step 4: Fix any errors
+pnpm lint --fix  # Auto-fix lint issues
+# Then manually fix any remaining typecheck errors
+```
+
+**For Dependent Applications (ALWAYS):**
+
+```bash
+# Step 1: Verify web application
+cd apps/web
+pnpm lint
+pnpm typecheck
+
+# Step 2: Verify console application
+cd apps/console
+pnpm lint
+pnpm typecheck
+```
+
+#### Complete Verification Workflow
+
+```bash
+# Example: After modifying packages/core/src/types/index.ts
+
+# 1. Verify the modified package
+cd packages/core
+pnpm lint
+pnpm typecheck
+
+# 2. If errors found, fix them
+pnpm lint --fix
+# Fix typecheck errors manually
+
+# 3. Rebuild the package (critical for type propagation)
+pnpm build
+
+# 4. Verify web application
+cd ../../apps/web
+pnpm lint
+pnpm typecheck
+
+# 5. Verify console application
+cd ../console
+pnpm lint
+pnpm typecheck
+
+# 6. If web/console have errors, fix them
+# This ensures the package changes integrate correctly
+```
+
+#### AI Agent Responsibilities
+
+**The AI agent MUST:**
+
+1. ✅ **Run lint and typecheck** on the modified package immediately after changes
+2. ✅ **Run lint and typecheck** on `apps/web` and `apps/console` after package changes
+3. ✅ **Rebuild the package** before verifying applications (for type propagation)
+4. ✅ **Fix all lint and typecheck errors** before completing the task
+5. ✅ **Report verification results** clearly to the user
+6. ✅ **Never skip verification** even if changes seem minor
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Mark tasks complete** without running verification
+2. ❌ **Skip application verification** after package changes
+3. ❌ **Leave lint or typecheck errors** for the user to fix
+4. ❌ **Assume changes are safe** without verification
+5. ❌ **Skip rebuilding packages** before application verification
+
+#### Verification Checklist
+
+Before marking a TypeScript modification task as complete:
+
+- [ ] **Modified package: lint passed** (`pnpm lint`)
+- [ ] **Modified package: typecheck passed** (`pnpm typecheck`)
+- [ ] **Modified package: rebuilt** (`pnpm build`)
+- [ ] **Web app: lint passed** (`cd apps/web && pnpm lint`)
+- [ ] **Web app: typecheck passed** (`cd apps/web && pnpm typecheck`)
+- [ ] **Console app: lint passed** (`cd apps/console && pnpm lint`)
+- [ ] **Console app: typecheck passed** (`cd apps/console && pnpm typecheck`)
+- [ ] **All errors fixed** (no lint or typecheck errors remaining)
+
+#### Quick Reference Commands
+
+```bash
+# Verify entire workspace (all packages and apps)
+cd /path/to/iTrade
+pnpm lint
+pnpm typecheck
+
+# These commands run sequentially through all workspace projects
+# Errors will be displayed clearly for each package/app
+```
+
+#### Common Verification Scenarios
+
+**Scenario 1: Modified a package entity/type**
+
+```bash
+# 1. Modified: packages/core/src/types/index.ts
+cd packages/core
+pnpm lint && pnpm typecheck && pnpm build
+
+# 2. Verify apps use the updated types correctly
+cd ../../apps/web && pnpm typecheck
+cd ../console && pnpm typecheck
+```
+
+**Scenario 2: Modified a package service**
+
+```bash
+# 1. Modified: packages/exchange-connectors/src/binance/BinanceExchange.ts
+cd packages/exchange-connectors
+pnpm lint && pnpm typecheck && pnpm build
+
+# 2. Verify apps integrate correctly
+cd ../../apps/console && pnpm lint && pnpm typecheck
+cd ../web && pnpm lint && pnpm typecheck
+```
+
+**Scenario 3: Modified multiple packages**
+
+```bash
+# 1. Verify each modified package
+cd packages/core && pnpm lint && pnpm typecheck && pnpm build
+cd ../data-manager && pnpm lint && pnpm typecheck && pnpm build
+
+# 2. Verify both applications once at the end
+cd ../../apps/web && pnpm lint && pnpm typecheck
+cd ../console && pnpm lint && pnpm typecheck
+```
+
+#### Error Resolution Protocol
+
+**When verification fails:**
+
+1. **Read the error message carefully** - Understand what failed
+2. **Identify the root cause** - Is it lint, typecheck, or integration?
+3. **Fix the error** - Make necessary code changes
+4. **Re-run verification** - Ensure the fix works
+5. **Verify applications again** - Ensure integration still works
+6. **Repeat until all pass** - Don't stop until everything is green
+
+#### Skip Conditions
+
+Verification may be skipped ONLY when:
+
+- Only modifying `.md` documentation files
+- Only modifying configuration files that don't affect types (`.json`, `.yml`)
+- Only modifying test files that don't export types
+- User explicitly requests to skip (rare, not recommended)
+
+**Default behavior: ALWAYS verify TypeScript code changes.**
+
+### Summary: TypeScript Verification is Mandatory
+
+> **Every TypeScript code modification MUST be verified through lint and typecheck in both the modified package AND dependent applications (web/console). Type safety is non-negotiable.**
+
+**Critical Rules:**
+
+1. **Always run verification** after modifying TypeScript code
+2. **Always verify applications** after package changes
+3. **Always rebuild packages** before application verification
+4. **Always fix all errors** before completing tasks
+5. **Never skip verification** - Type errors cause runtime failures
+
+**Remember**: Unverified TypeScript changes lead to runtime errors and integration issues. Verification is not optional—it's a fundamental part of professional TypeScript development. 🔍✅

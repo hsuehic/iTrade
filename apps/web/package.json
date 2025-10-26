@@ -19,7 +19,8 @@
     "clean:prod": "rm -rf .next-prod",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --fix --ext .ts,.tsx",
-    "generate-qr": "node scripts/generate-qr-codes.js"
+    "generate-qr": "node scripts/generate-qr-codes.js",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

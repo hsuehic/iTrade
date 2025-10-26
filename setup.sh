@@ -41,7 +41,7 @@ pnpm run build
 # Run type checking
 echo ""
 echo "🔍 Running type checks..."
-pnpm run type-check
+pnpm run typecheck
 
 echo ""
 echo "✅ Setup complete!"

@@ -10,7 +10,7 @@ interface DebouncedOrderUpdate {
 
 /**
  * OrderTracker - 监听并持久化订单信息
- * 
+ *
  * 功能：
  * 1. 监听订单事件（创建、部分成交、完全成交、取消、拒绝）
  * 2. 对部分成交使用 debounce 机制（可能非常频繁）

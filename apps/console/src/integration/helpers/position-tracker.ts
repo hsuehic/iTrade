@@ -12,7 +12,7 @@ interface DebouncedPositionUpdate {
 
 /**
  * PositionTracker - 监听并持久化账户持仓信息
- * 
+ *
  * 功能：
  * 1. 监听 positionUpdate 事件
  * 2. 使用 debounce 机制批量保存（按 exchange + symbol 分组）
@@ -43,9 +43,12 @@ export class PositionTracker {
     this.logger.info('Starting Position Tracker...');
 
     // Listen for position updates
-    this.eventBus.on('positionUpdate', (data: { exchange: string; position: Position }) => {
-      this.handlePositionUpdate(data.exchange, data.position);
-    });
+    this.eventBus.on(
+      'positionUpdate',
+      (data: { exchange: string; position: Position }) => {
+        this.handlePositionUpdate(data.exchange, data.position);
+      },
+    );
 
     this.logger.info(
       `✅ Position Tracker started (debounce: ${this.DEBOUNCE_MS}ms per exchange-symbol)`,
@@ -167,7 +170,9 @@ export class PositionTracker {
   private async flushAllPendingUpdates(): Promise<void> {
     if (this.pendingUpdates.size === 0) return;
 
-    this.logger.info(`🔄 Flushing ${this.pendingUpdates.size} pending position updates...`);
+    this.logger.info(
+      `🔄 Flushing ${this.pendingUpdates.size} pending position updates...`,
+    );
 
     // Cancel all timers and save immediately
     const promises: Promise<void>[] = [];
@@ -190,8 +195,8 @@ export class PositionTracker {
       totalUpdates: this.totalUpdates,
       totalSaved: this.totalSaved,
       pendingUpdates: this.pendingUpdates.size,
-      efficiency: ((1 - this.totalSaved / Math.max(this.totalUpdates, 1)) * 100).toFixed(1) + '%',
+      efficiency:
+        ((1 - this.totalSaved / Math.max(this.totalUpdates, 1)) * 100).toFixed(1) + '%',
     };
   }
 }
-

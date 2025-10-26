@@ -9,11 +9,10 @@
   ],
   "packageManager": "pnpm@10.18.0",
   "scripts": {
-    "dev": "turbo run dev --parallel",
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
-    "lint": "turbo run lint --no-cache",
-    "lint:fix": "turbo run lint:fix --no-cache",
+    "typecheck": "pnpm -r --workspace-concurrency=1 run typecheck",
+    "lint": "pnpm -r --workspace-concurrency=1 run lint",
+    "lint:fix": "pnpm -r --workspace-concurrency=1 run lint --fix",
     "test": "turbo run test",
     "clean": "find . -type d -name dist -o -name build | xargs rm -rf"
   },

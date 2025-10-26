@@ -11,7 +11,7 @@ interface DebouncedBalanceUpdate {
 
 /**
  * BalanceTracker - 监听并持久化账户余额信息
- * 
+ *
  * 功能：
  * 1. 监听 accountUpdate 事件
  * 2. 使用 debounce 机制批量保存（按 exchange 分组）
@@ -39,9 +39,12 @@ export class BalanceTracker {
     this.logger.info('Starting Balance Tracker...');
 
     // Listen for account updates (balance changes)
-    this.eventBus.on('accountUpdate', (data: { exchange: string; accountInfo: AccountInfo }) => {
-      this.handleBalanceUpdate(data.exchange, data.accountInfo);
-    });
+    this.eventBus.on(
+      'accountUpdate',
+      (data: { exchange: string; accountInfo: AccountInfo }) => {
+        this.handleBalanceUpdate(data.exchange, data.accountInfo);
+      },
+    );
 
     this.logger.info(
       `✅ Balance Tracker started (debounce: ${this.DEBOUNCE_MS}ms per exchange)`,
@@ -144,7 +147,9 @@ export class BalanceTracker {
   private async flushAllPendingUpdates(): Promise<void> {
     if (this.pendingUpdates.size === 0) return;
 
-    this.logger.info(`🔄 Flushing ${this.pendingUpdates.size} pending balance updates...`);
+    this.logger.info(
+      `🔄 Flushing ${this.pendingUpdates.size} pending balance updates...`,
+    );
 
     // Cancel all timers and save immediately
     const promises: Promise<void>[] = [];
@@ -167,8 +172,8 @@ export class BalanceTracker {
       totalUpdates: this.totalUpdates,
       totalSaved: this.totalSaved,
       pendingUpdates: this.pendingUpdates.size,
-      efficiency: ((1 - this.totalSaved / Math.max(this.totalUpdates, 1)) * 100).toFixed(1) + '%',
+      efficiency:
+        ((1 - this.totalSaved / Math.max(this.totalUpdates, 1)) * 100).toFixed(1) + '%',
     };
   }
 }
-

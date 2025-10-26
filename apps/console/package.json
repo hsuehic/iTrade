@@ -26,7 +26,9 @@
     "tool:init-history": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/tools/init-history.ts",
     "tool:diagnose-auth": "tsx src/tools/diagnose-auth.ts",
     "tool:get-ip": "tsx src/tools/get-current-ip.ts",
-    "cron": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/tools/cron.ts"
+    "cron": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/tools/cron.ts",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
   },
   "author": "xiaoweihsueh@gmail.com",
   "license": "MIT",

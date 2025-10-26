@@ -33,9 +33,7 @@ dotenv.config();
 const logger = new ConsoleLogger(LogLevel.INFO);
 
 // Polling interval (default: 6 seconds for testing)
-const POLLING_INTERVAL = parseInt(
-  process.env.ACCOUNT_POLLING_INTERVAL || '6000'
-);
+const POLLING_INTERVAL = parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '6000');
 
 let dataManager: TypeOrmDataManager;
 let accountPollingService: AccountPollingService;
@@ -81,9 +79,7 @@ async function initialize() {
       logger.warn(`⚠️  Failed to initialize Binance: ${error.message}`);
     }
   } else {
-    logger.warn(
-      '⚠️  Binance API credentials not found in environment variables'
-    );
+    logger.warn('⚠️  Binance API credentials not found in environment variables');
   }
 
   // OKX
@@ -128,9 +124,7 @@ async function initialize() {
   }
 
   if (exchanges.size === 0) {
-    logger.error(
-      '❌ No exchanges configured. Please set API credentials in .env file.'
-    );
+    logger.error('❌ No exchanges configured. Please set API credentials in .env file.');
     process.exit(1);
   }
 
@@ -143,7 +137,7 @@ async function initialize() {
       retryAttempts: 3,
       retryDelay: 5000,
     },
-    logger
+    logger,
   );
 
   // Register all exchanges
@@ -162,19 +156,19 @@ async function initialize() {
   accountPollingService.on('pollingComplete', (results: PollingResult[]) => {
     const successCount = results.filter((r) => r.success).length;
     logger.info(
-      `📊 Polling completed: ${successCount}/${results.length} exchanges successful`
+      `📊 Polling completed: ${successCount}/${results.length} exchanges successful`,
     );
   });
 
   accountPollingService.on('exchangePolled', (data: any) => {
     logger.debug(
-      `✅ ${data.exchange}: ${data.balances?.length || 0} balances, ${data.positions?.length || 0} positions`
+      `✅ ${data.exchange}: ${data.balances?.length || 0} balances, ${data.positions?.length || 0} positions`,
     );
   });
 
   accountPollingService.on('snapshotSaved', (snapshot: any) => {
     logger.info(
-      `💾 ${snapshot.exchange} snapshot saved: Equity=${snapshot.totalBalance.toFixed(2)}, Positions=${snapshot.positionCount}`
+      `💾 ${snapshot.exchange} snapshot saved: Equity=${snapshot.totalBalance.toFixed(2)}, Positions=${snapshot.positionCount}`,
     );
   });
 

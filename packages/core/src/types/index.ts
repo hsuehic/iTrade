@@ -218,6 +218,9 @@ export interface StrategyResult {
   price?: Decimal;
   confidence?: number;
   reason?: string;
+  // Risk management
+  stopLoss?: Decimal;
+  takeProfit?: Decimal;
   // Trading mode and leverage (for futures/margin)
   tradeMode?: 'cash' | 'isolated' | 'cross'; // cash=spot, isolated/cross=margin/futures
   leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)

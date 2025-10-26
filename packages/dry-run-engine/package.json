@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc --noEmit true -p tsconfig.build.json && pkgroll --clean-dist --sourcemap --tsconfig tsconfig.build.json",
-    "type-check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "clean": "rm -rf dist"
