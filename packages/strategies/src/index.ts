@@ -1,14 +1,19 @@
 // Export strategy implementations
-export { MovingAverageStrategy } from './strategies/MovingAverageStrategy';
-export { MovingWindowGridsStrategy } from './strategies/MovingWindowGridsStrategy';
-export { HammerChannelStrategy } from './strategies/HammerChannelStrategy';
+export {
+  type MovingAverageParameters,
+  MovingAverageStrategy,
+} from './strategies/MovingAverageStrategy';
+export {
+  type MovingWindowGridsParameters,
+  MovingWindowGridsStrategy,
+} from './strategies/MovingWindowGridsStrategy';
+export {
+  type HammerChannelParameters,
+  HammerChannelStrategy,
+} from './strategies/HammerChannelStrategy';
 
 // Export策略注册表和工厂（合并后的完整导出）
 export {
-  // 参数接口
-  type MovingAverageParameters,
-  type MovingWindowGridsParameters,
-  type HammerChannelParameters,
   // 类型定义
   type StrategyTypeKey,
   type StrategyRegistryConfig,
