@@ -3,18 +3,22 @@ import {
   IStrategy,
   ILogger,
   EventBus,
-  type StrategyTypeKey,
   StrategyStateManager,
   StrategyStateMonitor,
   TypeOrmStrategyStateAdapter,
   type StateRecoveryMetrics,
   type StrategyHealthStatus,
 } from '@itrade/core';
-import { TypeOrmDataManager, StrategyStatus } from '@itrade/data-manager';
+import {
+  TypeOrmDataManager,
+  StrategyStatus,
+  type StrategyEntity,
+} from '@itrade/data-manager';
 import {
   createStrategyInstance,
   getImplementedStrategies,
   StrategyImplementationInfo,
+  type StrategyTypeKey,
 } from '@itrade/strategies';
 
 interface StrategyMetrics {
@@ -323,8 +327,7 @@ export class StrategyManager {
 
       this.logger.info(`✅ Added strategy: ${dbStrategy.name} (ID: ${strategyId})`);
       // Use normalizedSymbol from database (auto-computed)
-      const displaySymbol =
-        (dbStrategy as any).normalizedSymbol || dbStrategy.symbol || 'N/A';
+      const displaySymbol = dbStrategy.normalizedSymbol || dbStrategy.symbol || 'N/A';
       this.logger.info(
         `   Type: ${dbStrategy.type}, Symbol: ${displaySymbol}, Exchange: ${dbStrategy.exchange || 'default'}`,
       );
@@ -362,19 +365,17 @@ export class StrategyManager {
     }
   }
 
-  private createStrategyInstance(dbStrategy: any): IStrategy {
-    const { id, name, type, symbol, parameters, exchange } = dbStrategy;
-
+  private createStrategyInstance(dbStrategy: StrategyEntity): IStrategy {
     return createStrategyInstance(
-      type as StrategyTypeKey,
-      parameters, // 用户自定义参数
+      dbStrategy.type as StrategyTypeKey,
       {
-        strategyId: id, // Strategy ID from database
-        strategyName: name, // 🆕 User-defined strategy name from database
-        symbol,
-        exchange,
+        symbol: dbStrategy.symbol || '',
+        exchange: dbStrategy.exchange || '',
+        parameters: dbStrategy.parameters,
         logger: this.logger,
       },
+      dbStrategy.id,
+      dbStrategy.name,
     );
   }
 
@@ -469,7 +470,7 @@ export class StrategyManager {
       this.logger.info(
         `   📊 Total Orders: ${pnl.totalOrders} (${pnl.filledOrders} filled)`,
       );
-    } catch (_error) {
+    } catch {
       // PnL data might not be available yet, that's ok
     }
   }
@@ -495,9 +496,16 @@ export class StrategyManager {
 
     for (const [strategyId, { instance }] of this.strategies) {
       try {
-        await this.stateManager.saveStrategyState(strategyId, await instance.saveState());
-        this.stateMonitor.recordBackupSuccess(strategyId);
-        successCount++;
+        if (instance.saveState) {
+          const state = await instance.saveState();
+          await this.stateManager.saveStrategyState(strategyId, state);
+          this.stateMonitor.recordBackupSuccess(strategyId);
+          successCount++;
+        } else {
+          this.logger.debug(
+            `Strategy ${strategyId} does not implement saveState(), skipping backup`,
+          );
+        }
       } catch (error) {
         this.stateMonitor.recordBackupFailure(strategyId, (error as Error).message);
         errorCount++;
@@ -555,7 +563,14 @@ export class StrategyManager {
   /**
    * Handle monitoring alerts
    */
-  private handleMonitoringAlert(alert: any): void {
+  private handleMonitoringAlert(alert: {
+    type: string;
+    strategyId: number;
+    failures?: number;
+    threshold?: number;
+    recoveryTime?: number;
+    details?: string;
+  }): void {
     const { type, strategyId } = alert;
 
     switch (type) {
