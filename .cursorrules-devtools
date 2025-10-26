@@ -1,26 +1,31 @@
 # Chrome DevTools MCP Usage Guide for AI Agent
 
 ## Purpose
+
 Use Chrome DevTools MCP to verify web application functionality, debug issues, and validate API endpoints directly in the browser.
 
 ## When to Use Chrome DevTools MCP
 
 ### 1. **Verify Page Loading**
+
 - After making changes to web components or pages
 - To check if the application renders correctly
 - To identify build or runtime errors
 
 ### 2. **Debug API Endpoints**
+
 - Test API responses directly in the browser
 - Check for network errors or failed requests
 - Verify API data format and content
 
 ### 3. **Check Console Errors**
+
 - Identify JavaScript errors
 - Debug React component issues
 - Monitor warnings and logs
 
 ### 4. **Validate User Experience**
+
 - Test navigation flows
 - Verify interactive elements
 - Check responsive design
@@ -28,6 +33,7 @@ Use Chrome DevTools MCP to verify web application functionality, debug issues, a
 ## Common Workflow
 
 ### Basic Verification Flow
+
 ```
 1. mcp_chrome-devtools_list_pages() 
    → Check available browser tabs
@@ -46,6 +52,7 @@ Use Chrome DevTools MCP to verify web application functionality, debug issues, a
 ```
 
 ### API Endpoint Testing
+
 ```typescript
 // Test an API endpoint
 1. Navigate to API URL:
@@ -59,6 +66,7 @@ Use Chrome DevTools MCP to verify web application functionality, debug issues, a
 ```
 
 ### Page Interaction Testing
+
 ```typescript
 // Fill a form
 mcp_chrome-devtools_fill(uid="input_uid", value="test@example.com")
@@ -116,6 +124,7 @@ const messages = await mcp_chrome-devtools_list_console_messages();
 ## Best Practices
 
 ### ✅ DO
+
 - Use DevTools MCP after making significant changes
 - Test both UI pages and API endpoints
 - Check console messages for hidden errors
@@ -123,6 +132,7 @@ const messages = await mcp_chrome-devtools_list_console_messages();
 - Take screenshots when visual verification is important
 
 ### ❌ DON'T
+
 - Don't skip DevTools verification when user reports issues
 - Don't rely solely on terminal output for web debugging
 - Don't forget to check console messages
@@ -131,31 +141,39 @@ const messages = await mcp_chrome-devtools_list_console_messages();
 ## Common Issues and Solutions
 
 ### Issue: "Module not found" Error
+
 **Symptoms**: Build error in browser console
 **Solution**:
+
 1. Check package.json dependencies
 2. Verify build outputs exist (dist/ folders)
 3. Check Next.js configuration (serverExternalPackages)
 4. Rebuild packages: `pnpm run build --filter @package-name`
 
 ### Issue: API Returns 500 Error
+
 **Symptoms**: Network request shows 500 status
 **Solution**:
+
 1. Check server terminal for detailed error logs
 2. Verify database connection
 3. Ensure DataManager is initialized
 4. Check entity relationships are correct
 
 ### Issue: Page Redirects to Login
+
 **Symptoms**: All pages redirect to /auth/sign-in
 **Solution**:
+
 1. Check middleware configuration
 2. Verify skipPathsPattern includes API routes
 3. Test API endpoints directly (bypass middleware)
 
 ### Issue: TypeORM Entity Not Found
+
 **Symptoms**: "relation does not exist" error
 **Solution**:
+
 1. Run database migrations
 2. Set synchronize: true temporarily to create tables
 3. Verify entity is included in DataSource configuration
@@ -176,6 +194,7 @@ const messages = await mcp_chrome-devtools_list_console_messages();
 ## Advanced Usage
 
 ### Performance Testing
+
 ```typescript
 // Start performance trace
 await mcp_chrome-devtools_performance_start_trace({
@@ -190,6 +209,7 @@ await mcp_chrome-devtools_performance_analyze_insight({
 ```
 
 ### Network Throttling
+
 ```typescript
 // Simulate slow connection
 await mcp_chrome-devtools_emulate_network({
@@ -198,6 +218,7 @@ await mcp_chrome-devtools_emulate_network({
 ```
 
 ### CPU Throttling
+
 ```typescript
 // Simulate slow device
 await mcp_chrome-devtools_emulate_cpu({
@@ -208,6 +229,7 @@ await mcp_chrome-devtools_emulate_cpu({
 ## Summary
 
 Chrome DevTools MCP is a powerful tool for:
+
 - ✅ Verifying web application functionality
 - ✅ Debugging runtime issues
 - ✅ Testing API endpoints in browser context
@@ -215,6 +237,7 @@ Chrome DevTools MCP is a powerful tool for:
 - ✅ Validating fixes immediately
 
 **Always use DevTools MCP when:**
+
 - User reports a web UI issue
 - After making changes to web components or APIs
 - When debugging Next.js compilation or runtime errors
@@ -223,4 +246,3 @@ Chrome DevTools MCP is a powerful tool for:
 ---
 
 **Note**: The user has explicitly requested that this workflow be incorporated into AI agent rules for web development tasks.
-

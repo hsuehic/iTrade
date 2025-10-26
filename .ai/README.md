@@ -7,7 +7,9 @@ This directory contains AI Agent configuration and rule files.
 ## 📁 Files
 
 ### `.cursorrules`
+
 Located in the project root, contains:
+
 - Documentation organization rules
 - File naming conventions
 - Directory structure definitions
@@ -37,6 +39,7 @@ When AI creates documentation, it automatically:
 ## 📚 Rule Files
 
 The main rule file is in the project root:
+
 - [`../.cursorrules`](../.cursorrules)
 
 ## 🔄 Updating Rules
@@ -177,6 +180,7 @@ Before creating/moving documentation, AI checks:
 ## 🌟 Best Practices
 
 ### For AI
+
 1. **Always check** `.cursorrules` before creating docs
 2. **Never place** documentation in root (except README.md)
 3. **Always update** relevant README indexes
@@ -184,6 +188,7 @@ Before creating/moving documentation, AI checks:
 5. **Use templates** for consistency
 
 ### For Developers
+
 1. **Follow** the same rules as AI
 2. **Update** `.cursorrules` if patterns change
 3. **Review** AI-generated docs
@@ -194,19 +199,23 @@ Before creating/moving documentation, AI checks:
 ## 🔗 Quick Links
 
 ### Configuration
+
 - [.cursorrules](../.cursorrules) - Main AI rules
 
 ### Documentation
+
 - [Documentation Center](../docs/README.md)
 - [Documentation Guide](../docs/guides/DOCUMENTATION_GUIDE.md)
 - [Organization Guide](../docs/development/DOCUMENTATION_ORGANIZATION_EN.md)
 
 ### Application Docs
+
 - [Console Docs](../apps/console/docs/README.md)
 - [Web Docs](../apps/web/docs/README.md)
 - [Mobile Docs](../apps/mobile/docs/README.md)
 
 ### Package Docs
+
 - [Core Docs](../packages/core/docs/README.md)
 
 ---
@@ -214,6 +223,7 @@ Before creating/moving documentation, AI checks:
 ## 💡 Example: AI Creating Documentation
 
 ### User Request
+>
 > "Create a quick start guide for the Web application"
 
 ### AI Process
@@ -226,6 +236,7 @@ Before creating/moving documentation, AI checks:
 6. **Update Index**: Add link to `apps/web/docs/README.md`
 
 ### Result
+
 ```
 apps/web/docs/
 ├── README.md (updated with new link)
@@ -253,4 +264,3 @@ Current documentation organization:
 ---
 
 **Last Updated**: 2025-10-09
-

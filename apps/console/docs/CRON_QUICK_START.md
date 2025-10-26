@@ -47,12 +47,14 @@ pnpm run dev
 ```
 
 这会启动完整的 console 应用，包括：
+
 - ✅ Account Polling Service（自动轮询）
 - ✅ Strategy Manager
 - ✅ Order Tracker
 - ✅ Trading Engine
 
 **优点**:
+
 - 一次性启动所有服务
 - 已经过测试和验证
 - 自动保存账户快照到数据库
@@ -94,7 +96,8 @@ GROUP BY exchange;
 ### 方法 2: 访问 Dashboard
 
 打开 Web Manager:
-- http://localhost:3000/dashboard
+
+- <http://localhost:3000/dashboard>
 - 应该能看到实时的账户数据
 - 卡片中的数字会平滑动画更新
 
@@ -126,12 +129,14 @@ await accountPollingService.start();
 ## 🎯 推荐工作流
 
 **开发/测试环境**:
+
 ```bash
 cd apps/console
 pnpm run dev
 ```
 
 **生产环境 (使用 PM2)**:
+
 ```bash
 # 安装 PM2
 npm install -g pm2
@@ -208,6 +213,7 @@ pg_ctl status
 ### 问题: 交易所API错误
 
 确认 API 凭证正确：
+
 - API Key 和 Secret Key 正确
 - API 权限包含读取权限
 - IP 白名单配置（如有）
@@ -221,4 +227,3 @@ pg_ctl status
 ---
 
 **建议**: 生产环境使用 `main.ts` 启动完整服务，开发环境可以使用独立的 cron 脚本进行测试。
-

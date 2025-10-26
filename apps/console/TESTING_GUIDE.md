@@ -7,17 +7,20 @@ iTrade Console 的测试代码使用两种不同的运行方式：`tsx` 和 `ts-
 ### ⚡ tsx - 快速运行（推荐用于不涉及 TypeORM 的测试）
 
 **适用场景：**
+
 - ✅ 交易所 WebSocket 测试
 - ✅ 交易所 REST API 测试
 - ✅ 不涉及数据库操作的工具脚本
 - ✅ 纯逻辑测试（不使用装饰器）
 
 **优点：**
+
 - 启动速度快
 - 开发体验好
 - 内存占用少
 
 **限制：**
+
 - ❌ 不完全支持 TypeORM 装饰器
 - ❌ 不完全支持 `reflect-metadata`
 - ❌ 会导致装饰器相关的运行时错误
@@ -25,17 +28,20 @@ iTrade Console 的测试代码使用两种不同的运行方式：`tsx` 和 `ts-
 ### 🔨 ts-node - 完整支持（必须用于涉及 TypeORM 的测试）
 
 **适用场景：**
+
 - ✅ 数据库 CRUD 测试
 - ✅ 集成测试（涉及 TradingEngine + 数据库）
 - ✅ 涉及 TypeORM Entity 的任何代码
 - ✅ 需要 reflect-metadata 完整支持的代码
 
 **优点：**
+
 - 完整支持 TypeORM 装饰器
 - 完整支持 reflect-metadata
 - 与生产环境行为一致
 
 **缺点：**
+
 - 启动稍慢
 - 命令行较长
 
@@ -69,6 +75,7 @@ npm run test:all-exchanges  # 所有交易所
 ```
 
 **运行命令格式：**
+
 ```bash
 tsx src/unit/exchanges/{exchange}/{test-file}.test.ts
 ```
@@ -103,6 +110,7 @@ npm run test:db:order-association
 ```
 
 **运行命令格式：**
+
 ```bash
 NODE_ENV=development \
 TS_NODE_PROJECT=tsconfig.build.json \
@@ -115,6 +123,7 @@ node -r ts-node/register \
 ```
 
 **为什么需要这些参数？**
+
 - `NODE_ENV=development` - 设置开发环境
 - `TS_NODE_PROJECT=tsconfig.build.json` - 指定 TypeScript 配置
 - `TS_NODE_FILES=true` - 启用文件解析
@@ -131,6 +140,7 @@ npm run dev                   # 同上（开发快捷方式）
 ```
 
 **为什么 TradingEngine 测试必须用 ts-node？**
+
 - 依赖 `TypeOrmDataManager`
 - 依赖 `StrategyManager`（使用数据库）
 - 依赖 `OrderTracker`（保存订单到数据库）
@@ -144,6 +154,7 @@ npm run cron                  # 账户轮询服务
 ```
 
 **为什么这些工具必须用 ts-node？**
+
 - 直接操作 TypeORM Entity
 - 保存快照到数据库
 - 查询和更新数据库记录
@@ -155,6 +166,7 @@ npm run cron                  # 账户轮询服务
 ### 错误 1: TypeORM 装饰器错误
 
 **错误信息：**
+
 ```
 TypeError: Cannot read properties of undefined (reading 'constructor')
     at PrimaryGeneratedColumn.ts:106:28
@@ -165,6 +177,7 @@ TypeError: Cannot read properties of undefined (reading 'constructor')
 
 **解决方案：**
 改用 `ts-node` 运行：
+
 ```bash
 # ❌ 错误
 tsx src/unit/database/order-strategy-association.test.ts
@@ -178,6 +191,7 @@ npm run test:db:order-association
 ### 错误 2: 找不到模块（路径别名问题）
 
 **错误信息：**
+
 ```
 Error: Cannot find module '@itrade/core'
 ```
@@ -193,6 +207,7 @@ Error: Cannot find module '@itrade/core'
 ### 错误 3: 装饰器元数据丢失
 
 **错误信息：**
+
 ```
 Error: No metadata found
 ```
@@ -245,6 +260,7 @@ Error: No metadata found
 ### ✅ 推荐做法
 
 1. **始终使用 npm scripts**
+
    ```bash
    # ✅ 正确 - 使用预定义脚本
    npm run test:trading-engine
@@ -264,6 +280,7 @@ Error: No metadata found
    - 集成测试 → 放在 `integration/` → 根据是否用数据库选择
 
 4. **测试前先验证**
+
    ```bash
    # 快速测试导入是否正确
    tsx your-test.ts
@@ -314,6 +331,7 @@ npm run test:xxx
 ### 步骤 4: 切换运行方式
 
 如果使用 tsx 遇到 TypeORM 错误：
+
 1. 更新 package.json 脚本
 2. 改用 ts-node 格式
 3. 重新运行测试
@@ -338,6 +356,5 @@ npm run test:xxx
 
 ---
 
-Author: xiaoweihsueh@gmail.com  
+Author: <xiaoweihsueh@gmail.com>  
 Date: October 26, 2025
-
