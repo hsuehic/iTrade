@@ -21,12 +21,18 @@ import { User } from './User';
 @Index(['timestamp'])
 @Index(['user'])
 @Index(['user', 'symbol'])
+@Index(['exchange'])
+@Index(['exchange', 'symbol'])
+@Index(['user', 'exchange', 'symbol'], { unique: true })
 export class PositionEntity implements Position {
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Column({ type: 'character varying', length: 20 })
   symbol!: string;
+
+  @Column({ type: 'character varying', length: 50 })
+  exchange!: string;
 
   @Column({ type: 'text' })
   side!: 'long' | 'short';

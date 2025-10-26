@@ -22,7 +22,6 @@ export enum StrategyStatus {
 }
 
 // Strategy type is now a string (strategy class name) - no enum needed
-// This eliminates the need to sync enum with STRATEGY_REGISTRY
 // Simply use the strategy class name directly (e.g., "MovingAverageStrategy", "RSIStrategy")
 
 export enum MarketType {
@@ -74,6 +73,11 @@ export class StrategyEntity {
   })
   marketType!: MarketType;
 
+  /**
+   * Strategy-specific parameters (stored as JSONB)
+   * Only stores strategy parameters (e.g., fastPeriod, slowPeriod)
+   * Does NOT store runtime context (symbol, exchange, etc.) - those have dedicated columns
+   */
   @Column({ type: 'jsonb', nullable: true })
   parameters?: StrategyParameters;
 

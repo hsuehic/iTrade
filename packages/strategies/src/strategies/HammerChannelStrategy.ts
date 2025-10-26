@@ -2,7 +2,7 @@ import { FixedLengthList } from '@itrade/utils';
 import {
   BaseStrategy,
   StrategyResult,
-  StrategyParameters,
+  StrategyConfig,
   Ticker,
   Kline,
   Order,
@@ -13,6 +13,7 @@ import {
   InitialDataResult,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
+import type { HammerChannelParameters } from '../registry/strategy-factory';
 
 /**
  * Candle type for Hammer detection
@@ -31,18 +32,6 @@ interface HammerDetectionParams {
   lowerShadowToBody: number;
   upperShadowToBody: number;
   bodyToRange: number;
-}
-
-/**
- * Strategy parameters for HammerChannelStrategy
- */
-export interface HammerChannelParameters extends StrategyParameters {
-  windowSize: number;
-  lowerShadowToBody: number;
-  upperShadowToBody: number;
-  bodyToRange: number;
-  highThreshold: number;
-  lowThreshold: number;
 }
 
 /**
@@ -69,7 +58,7 @@ export interface HammerChannelParameters extends StrategyParameters {
  * });
  * ```
  */
-export class HammerChannelStrategy extends BaseStrategy {
+export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters> {
   private windowSize: number;
   private lowerShadowToBody: number;
   private upperShadowToBody: number;
@@ -86,9 +75,9 @@ export class HammerChannelStrategy extends BaseStrategy {
   private balances: Balance[] = [];
   private tickers: FixedLengthList<Ticker>;
 
-  constructor(parameters: HammerChannelParameters) {
-    super('HammerChannelStrategy', parameters);
-
+  constructor(config: StrategyConfig<HammerChannelParameters>) {
+    super(config);
+    const { parameters } = config;
     // Initialize parameters with defaults
     this.windowSize = parameters.windowSize ?? 15;
     this.lowerShadowToBody = parameters.lowerShadowToBody ?? 2;
@@ -102,8 +91,8 @@ export class HammerChannelStrategy extends BaseStrategy {
     this.tickers = new FixedLengthList<Ticker>(10);
 
     // 🆕 Process loaded initial data if available
-    if (parameters.loadedInitialData) {
-      this.processInitialData(parameters.loadedInitialData);
+    if (config.loadedInitialData) {
+      this.processInitialData(config.loadedInitialData);
     }
   }
 
@@ -257,7 +246,7 @@ export class HammerChannelStrategy extends BaseStrategy {
     const latestKline = klines[klines.length - 1];
 
     // 🔍 Validate symbol match
-    const strategySymbol = this.getParameter('symbol');
+    const strategySymbol = this._context.symbol;
     if (strategySymbol && latestKline.symbol !== strategySymbol) {
       return {
         action: 'hold',
@@ -266,7 +255,7 @@ export class HammerChannelStrategy extends BaseStrategy {
     }
 
     // 🔍 Validate exchange match
-    const strategyExchange = this.getParameter('exchange');
+    const strategyExchange = this._context.exchange;
     if (strategyExchange && latestKline.exchange) {
       // Handle both single exchange and array of exchanges
       const exchanges = Array.isArray(strategyExchange)

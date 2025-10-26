@@ -1,9 +1,8 @@
-//import { Decimal } from 'decimal.js';
 import { FixedLengthList } from '@itrade/utils';
 import {
   BaseStrategy,
   StrategyResult,
-  StrategyParameters,
+  StrategyConfig,
   Ticker,
   Kline,
   Order,
@@ -12,22 +11,14 @@ import {
   OrderBook,
   Trade,
   InitialDataResult,
-  // StrategyRecoveryContext, // to support state recovery in the future
 } from '@itrade/core';
 import Decimal from 'decimal.js';
+import type { MovingWindowGridsParameters } from '../registry/strategy-factory';
 
-export interface MovingWindowGridsParameters extends StrategyParameters {
-  windowSize: number;
-  gridSize: number;
-  gridCount: number;
-  minVolatility: number;
-  takeProfitRatio: number;
-}
-
-export class MovingWindowGridsStrategy extends BaseStrategy {
-  private windowSize: number;
-  private gridSize: number;
-  private gridCount: number;
+export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
+  private windowSize!: number;
+  private gridSize!: number;
+  private gridCount!: number;
   private position: 'long' | 'short' | 'none' = 'none';
   private positions: Position[] = [];
   private orders: Order[] = [];
@@ -37,22 +28,17 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   private baseSize: number = 100;
   private maxSize: number = 1000;
   private size: number = 0;
-  private minVolatility: number;
-  private takeProfitRatio: number;
+  private minVolatility!: number;
+  private takeProfitRatio!: number;
 
-  constructor(parameters: MovingWindowGridsParameters) {
-    super('MovingWindowGridsStrategy', parameters);
+  constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
+    super(config);
 
-    // Initialize parameters
-    this.windowSize = parameters.windowSize;
-    this.gridSize = parameters.gridSize;
-    this.gridCount = parameters.gridCount;
-    this.minVolatility = parameters.minVolatility;
-    this.takeProfitRatio = parameters.takeProfitRatio;
+    // Parameters will be initialized in onInitialize
 
     // 🆕 Process loaded initial data if available
-    if (parameters.loadedInitialData) {
-      this.processInitialData(parameters.loadedInitialData);
+    if (this._context.loadedInitialData && 'symbol' in this._context.loadedInitialData) {
+      this.processInitialData(this._context.loadedInitialData as any);
     }
 
     // Strategy-specific initialization logic (if needed)
@@ -118,10 +104,10 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
   }
 
   protected async onInitialize(): Promise<void> {
-    this.validateParameters(['windowSize', 'gridSize', 'gridCount']);
-    this.windowSize = this.getParameter('windowSize');
-    this.gridSize = this.getParameter('gridSize');
-    this.gridCount = this.getParameter('gridCount');
+    this.validateParameters(['windowSize', 'gridSize', 'gridCount'] as any[]);
+    this.windowSize = this.getParameter('windowSize') as number;
+    this.gridSize = this.getParameter('gridSize') as number;
+    this.gridCount = this.getParameter('gridCount') as number;
   }
 
   public override async analyze(marketData: {
@@ -140,7 +126,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
     if (!!klines && klines.length > 0) {
       const kline = klines[klines.length - 1];
       // 🔍 Validate symbol match
-      const strategySymbol = this.getParameter('symbol');
+      const strategySymbol = this._context.symbol;
       if (strategySymbol && kline.symbol !== strategySymbol) {
         return {
           action: 'hold',
@@ -149,7 +135,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy {
       }
 
       // 🔍 Validate exchange match
-      const strategyExchange = this.getParameter('exchange');
+      const strategyExchange = this._context.exchange;
       if (strategyExchange && kline.exchange) {
         // Handle both single exchange and array of exchanges
         const exchanges = Array.isArray(strategyExchange)

@@ -4,6 +4,7 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
+    "start": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/main.ts",
     "dev": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/integration/trading-engine.test.ts",
     "test:trading-engine": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/integration/trading-engine.test.ts",
     "test:strategy-execution": "tsx src/integration/strategy-execution.test.ts",

@@ -44,22 +44,6 @@ export type {
   ExchangeEvent,
 } from './events';
 
-// Strategy Registry - 策略配置中心
-export {
-  STRATEGY_REGISTRY,
-  getImplementedStrategies,
-  getAllStrategyTypes,
-  getStrategyConfig,
-  getStrategyDefaultParameters,
-  isValidStrategyType,
-  getStrategiesByCategory,
-} from './config/strategy-registry';
-export type {
-  StrategyTypeKey,
-  StrategyConfig,
-  StrategyParameterDefinition,
-} from './config/strategy-registry';
-
 // Strategy State Management & Monitoring
 export { StrategyStateManager } from './models/StrategyStateManager';
 export { StrategyStateMonitor } from './monitoring/StrategyStateMonitor';
@@ -76,6 +60,6 @@ export { SubscriptionManager } from './engine/SubscriptionManager'; // Legacy
 
 // Utilities
 export { PrecisionUtils } from './utils/PrecisionUtils';
-export { StrategyLoader } from './utils/StrategyLoader';
+export { loadInitialDataForStrategy } from './utils/StrategyLoader';
 
 export { ConsoleLogger } from './models/ConsoleLogger';

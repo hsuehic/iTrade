@@ -1,8 +1,19 @@
 import { Decimal } from 'decimal.js';
-import { ILogger } from '../interfaces';
 
 // Re-export subscription types
 export * from './subscription';
+
+// Re-export strategy types
+export * from './strategy-types';
+
+// Strategy Health Status
+export interface StrategyHealthStatus {
+  status: 'healthy' | 'unhealthy' | 'initializing' | 'stopped';
+  message: string;
+  timestamp: Date;
+  lastSignal?: string;
+  currentPosition?: Decimal;
+}
 
 // Initial Data Configuration Types
 export interface InitialKlineConfig {
@@ -199,18 +210,7 @@ export interface AccountInfo {
   updateTime: Date;
 }
 
-// Strategy Types
-export interface StrategyParameters {
-  strategyId?: number; // Strategy ID from database (optional, for order tracking)
-  strategyName?: string; // User-defined strategy name from database (e.g., "MA_1", "My BTC Strategy")
-  symbol: string; // Trading symbol
-  exchange: string | string[]; // Single exchange or multiple exchanges
-  subscription?: import('./subscription').SubscriptionConfig; // Auto-subscription configuration
-  initialData?: InitialDataConfig; // 🆕 Initial data configuration
-  loadedInitialData?: InitialDataResult; // 🆕 Loaded initial data (populated by TradingEngine)
-  logger?: ILogger;
-  [key: string]: unknown; // Allow additional custom parameters
-}
+// Note: StrategyParameters is now defined in strategy-types.ts and re-exported above
 
 export interface StrategyResult {
   action: 'buy' | 'sell' | 'hold';

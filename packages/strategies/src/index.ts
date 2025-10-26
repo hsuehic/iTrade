@@ -1,34 +1,34 @@
-// Strategies
+// Export strategy implementations
 export { MovingAverageStrategy } from './strategies/MovingAverageStrategy';
-export type { MovingAverageParameters } from './strategies/MovingAverageStrategy';
-
 export { MovingWindowGridsStrategy } from './strategies/MovingWindowGridsStrategy';
-export type { MovingWindowGridsParameters } from './strategies/MovingWindowGridsStrategy';
-
 export { HammerChannelStrategy } from './strategies/HammerChannelStrategy';
-export type { HammerChannelParameters } from './strategies/HammerChannelStrategy';
 
-// Strategy Factory & Registry - 策略工厂和注册表
+// Export策略注册表和工厂（合并后的完整导出）
 export {
+  // 参数接口
+  type MovingAverageParameters,
+  type MovingWindowGridsParameters,
+  type HammerChannelParameters,
+  // 类型定义
+  type StrategyTypeKey,
+  type StrategyRegistryConfig,
+  type StrategyConstructor,
+  type StrategyImplementationInfo,
+  type ParameterDefinition, // UI 参数定义
+  // 元数据注册表
+  STRATEGY_REGISTRY,
+  // 元数据函数
+  getStrategyConfig,
+  getStrategyDefaultParameters,
+  getAllStrategyTypes,
+  isValidStrategyType,
+  getStrategiesByCategory,
+  // 实现注册表函数
   getImplementedStrategies,
-  getUnimplementedStrategies,
+  getAllStrategiesWithImplementationStatus,
   isStrategyImplemented,
   getStrategyConstructor,
+  // 工厂方法
   createStrategyInstance,
-  getAllStrategiesWithImplementationStatus,
-  getImplementationStats,
-  validateStrategyImplementations,
-  IMPLEMENTED_STRATEGIES,
+  getRegistryStats,
 } from './registry/strategy-factory';
-export type {
-  StrategyConstructor,
-  StrategyImplementationInfo,
-} from './registry/strategy-factory';
-
-// Re-export from core for convenience
-export {
-  BaseStrategy,
-  type IStrategy,
-  type StrategyParameters,
-  type StrategyResult,
-} from '@itrade/core';

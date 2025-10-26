@@ -1,167 +1,129 @@
-import { IExchange } from '../interfaces';
-import {
-  StrategyParameters,
-  InitialDataConfig,
+import type { IExchange, IStrategy } from '../interfaces';
+import type {
   InitialDataResult,
+  InitialDataConfig,
   Kline,
-  OrderStatus,
+  Position,
+  Order,
+  Balance,
+  AccountInfo,
+  Ticker,
+  OrderBook,
 } from '../types';
-import { ILogger } from '../interfaces';
+import type { ILogger } from '../interfaces';
 
 /**
- * 策略加载器 - 在实例化策略前加载初始数据
+ * 🔄 Strategy Loader
+ *
+ * Loads initial data for strategies based on their configuration
+ * This includes historical klines, current positions, open orders, balances, etc.
+ *
+ * @param strategy - The strategy instance to load data for
+ * @param exchanges - Map of exchange instances
+ * @param logger - Logger instance for debugging
+ * @returns InitialDataResult containing the loaded data
  */
-export class StrategyLoader {
-  /**
-   * 加载初始数据（在策略实例化之前调用）
-   * @param parameters 策略参数（包含 initialData 配置）
-   * @param exchange 交易所实例
-   * @param logger 日志记录器
-   * @returns 加载后的初始数据（添加到 parameters.loadedInitialData）
-   */
-  public static async loadInitialData(
-    parameters: StrategyParameters,
-    exchange: IExchange,
-    logger?: ILogger,
-  ): Promise<InitialDataResult | null> {
-    const config = parameters.initialData;
-    if (!config) {
-      return null;
-    }
+export async function loadInitialDataForStrategy(
+  strategy: IStrategy,
+  exchanges: Map<string, IExchange>,
+  logger?: ILogger,
+): Promise<InitialDataResult> {
+  // 1. Extract context from strategy
+  const context = strategy.context;
+  if (!context) {
+    logger?.warn('No context available in strategy');
+    return {} as InitialDataResult;
+  }
 
-    const symbol = parameters.symbol;
-    if (!symbol) {
-      logger?.warn('No symbol specified, skipping initial data loading');
-      return null;
-    }
+  const { initialData } = context;
 
-    const exchangeName = exchange.name;
-    logger?.info(`Loading initial data for ${symbol} on ${exchangeName}...`);
+  // 2. Get exchange instance
+  const exchangeName = Array.isArray(context.exchange)
+    ? context.exchange[0]
+    : context.exchange;
+  const exchange = exchanges.get(exchangeName);
 
-    const initialData: InitialDataResult = {
-      symbol,
-      exchange: exchangeName,
-      timestamp: new Date(),
-    };
+  if (!exchange) {
+    const strategyName = strategy.strategyType || 'unknown';
+    throw new Error(`Exchange ${exchangeName} not found for strategy ${strategyName}`);
+  }
 
-    try {
-      // 1. 加载历史 K 线数据
-      if (config.klines && config.klines.length > 0) {
-        initialData.klines = {};
-        for (const klineConfig of config.klines) {
-          try {
-            const klines = await exchange.getKlines(
-              symbol,
-              klineConfig.interval,
-              undefined,
-              undefined,
-              klineConfig.limit,
-            );
-            initialData.klines[klineConfig.interval] = klines;
-            logger?.info(
-              `  📈 Loaded ${klines.length} klines for ${klineConfig.interval}`,
-            );
-          } catch (error) {
-            logger?.error(
-              `Failed to fetch klines (${klineConfig.interval})`,
-              error as Error,
-            );
-          }
-        }
-      }
+  // 3. Load initial data based on initialData config
+  if (!initialData) {
+    return {} as InitialDataResult; // No initial data requested
+  }
 
-      // 2. 加载当前持仓
-      if (config.fetchPositions) {
-        try {
-          const allPositions = await exchange.getPositions();
-          initialData.positions = allPositions.filter((p) => p.symbol === symbol);
-          logger?.info(`  💼 Loaded ${initialData.positions.length} position(s)`);
-        } catch (error) {
-          logger?.error('Failed to fetch positions', error as Error);
-        }
-      }
+  const symbol = context.symbol;
 
-      // 3. 加载挂单
-      if (config.fetchOpenOrders) {
-        try {
-          const allOrders = await exchange.getOpenOrders(symbol);
-          initialData.openOrders = allOrders;
-          logger?.info(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
-        } catch (error) {
-          logger?.error('Failed to fetch orders', error as Error);
-        }
-      }
+  if (!symbol) {
+    logger?.warn('No symbol found in strategy context, skipping initial data load');
+    return {} as InitialDataResult;
+  }
 
-      // 4. 加载账户余额
-      if (config.fetchBalance) {
-        try {
-          initialData.balance = await exchange.getBalances();
-          logger?.info(`  💰 Loaded balance (${initialData.balance.length} asset(s))`);
-        } catch (error) {
-          logger?.error('Failed to fetch balance', error as Error);
-        }
-      }
+  const result: Partial<InitialDataResult> = {};
 
-      // 5. 加载账户信息
-      if (config.fetchAccountInfo) {
-        try {
-          initialData.accountInfo = await exchange.getAccountInfo();
-          logger?.info('  ℹ️  Loaded account info');
-        } catch (error) {
-          logger?.error('Failed to fetch account info', error as Error);
-        }
-      }
+  const typedInitialData = initialData as InitialDataConfig;
 
-      // 6. 加载当前 Ticker
-      if (config.fetchTicker) {
-        try {
-          initialData.ticker = await exchange.getTicker(symbol);
-          logger?.info(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
-        } catch (error) {
-          logger?.error('Failed to fetch ticker', error as Error);
-        }
-      }
-
-      // 7. 加载订单簿
-      if (config.fetchOrderBook?.enabled) {
-        try {
-          const depth = config.fetchOrderBook.depth || 20;
-          initialData.orderBook = await exchange.getOrderBook(symbol, depth);
-          logger?.info(`  📊 Loaded order book (${depth} levels)`);
-        } catch (error) {
-          logger?.error('Failed to fetch order book', error as Error);
-        }
-      }
-
-      logger?.info('✅ Initial data loaded successfully');
-      return initialData;
-    } catch (error) {
-      logger?.error('Failed to load initial data', error as Error);
-      return null;
+  // 3.1 Load Klines
+  if (typedInitialData.klines && typedInitialData.klines.length > 0) {
+    result.klines = {};
+    for (const klineConfig of typedInitialData.klines) {
+      const interval = klineConfig.interval;
+      logger?.debug(`Loading ${klineConfig.limit} klines for ${symbol} (${interval})`);
+      const klines = await exchange.getKlines(
+        symbol,
+        interval,
+        undefined,
+        undefined,
+        klineConfig.limit,
+      );
+      result.klines[interval] = klines;
     }
   }
 
-  /**
-   * 准备策略参数（加载初始数据并添加到参数中）
-   * @param parameters 原始策略参数
-   * @param exchange 交易所实例
-   * @param logger 日志记录器
-   * @returns 包含已加载初始数据的参数
-   */
-  public static async prepareStrategyParameters(
-    parameters: StrategyParameters,
-    exchange: IExchange,
-    logger?: ILogger,
-  ): Promise<StrategyParameters> {
-    const loadedData = await this.loadInitialData(parameters, exchange, logger);
-
-    if (loadedData) {
-      return {
-        ...parameters,
-        loadedInitialData: loadedData,
-      };
-    }
-
-    return parameters;
+  // 3.2 Load Positions
+  if (typedInitialData.fetchPositions) {
+    logger?.debug(`Loading positions for ${symbol}`);
+    const allPositions = await exchange.getPositions();
+    result.positions = allPositions.filter((p) => p.symbol === symbol);
   }
+
+  // 3.3 Load Open Orders
+  if (typedInitialData.fetchOpenOrders) {
+    logger?.debug(`Loading open orders for ${symbol}`);
+    const openOrders = await exchange.getOpenOrders(symbol);
+    result.openOrders = openOrders;
+  }
+
+  // 3.4 Load Balance
+  if (typedInitialData.fetchBalance) {
+    logger?.debug(`Loading balances`);
+    const balance = await exchange.getBalances();
+    result.balance = balance;
+  }
+
+  // 3.5 Load Account Info
+  if (typedInitialData.fetchAccountInfo) {
+    logger?.debug(`Loading account info`);
+    const accountInfo = await exchange.getAccountInfo();
+    result.accountInfo = accountInfo;
+  }
+
+  // 3.6 Load Ticker
+  if (typedInitialData.fetchTicker) {
+    logger?.debug(`Loading ticker for ${symbol}`);
+    const ticker = await exchange.getTicker(symbol);
+    result.ticker = ticker;
+  }
+
+  // 3.7 Load Order Book
+  if (typedInitialData.fetchOrderBook) {
+    logger?.debug(`Loading order book for ${symbol}`);
+    const depth = typedInitialData.fetchOrderBook?.depth || 20;
+    const orderBook = await exchange.getOrderBook(symbol, depth);
+    result.orderBook = orderBook;
+  }
+
+  logger?.info(`✅ Initial data loaded for ${symbol}`);
+  return result as InitialDataResult;
 }

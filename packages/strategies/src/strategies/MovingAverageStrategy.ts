@@ -2,33 +2,30 @@ import { Decimal } from 'decimal.js';
 import {
   BaseStrategy,
   StrategyResult,
-  StrategyParameters,
+  StrategyConfig,
   Ticker,
   Kline,
   StrategyRecoveryContext,
 } from '@itrade/core';
+import type { MovingAverageParameters } from '../registry/strategy-factory';
 
-export interface MovingAverageParameters extends StrategyParameters {
-  fastPeriod: number;
-  slowPeriod: number;
-  threshold: number;
-}
+type MovingAverageConfig = StrategyConfig<MovingAverageParameters>;
 
-export class MovingAverageStrategy extends BaseStrategy {
+export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters> {
   private priceHistory: Decimal[] = [];
   private fastMA: Decimal = new Decimal(0);
   private slowMA: Decimal = new Decimal(0);
   private position: 'long' | 'short' | 'none' = 'none';
 
-  constructor(parameters: MovingAverageParameters) {
-    super('MovingAverageStrategy', parameters);
+  constructor(config: MovingAverageConfig) {
+    super(config);
   }
 
   protected async onInitialize(): Promise<void> {
     this.validateParameters(['fastPeriod', 'slowPeriod', 'threshold']);
 
-    const fastPeriod = this.getParameter<number>('fastPeriod');
-    const slowPeriod = this.getParameter<number>('slowPeriod');
+    const fastPeriod = this.getParameter('fastPeriod');
+    const slowPeriod = this.getParameter('slowPeriod');
 
     if (fastPeriod >= slowPeriod) {
       throw new Error('Fast period must be less than slow period');
@@ -59,9 +56,9 @@ export class MovingAverageStrategy extends BaseStrategy {
     // Add price to history
     this.priceHistory.push(currentPrice);
 
-    const fastPeriod = this.getParameter<number>('fastPeriod');
-    const slowPeriod = this.getParameter<number>('slowPeriod');
-    const threshold = this.getParameter<number>('threshold', 0.001);
+    const fastPeriod = this.getParameter('fastPeriod');
+    const slowPeriod = this.getParameter('slowPeriod');
+    const threshold = this.getParameter('threshold') ?? 0.001;
 
     // Keep only required history
     if (this.priceHistory.length > slowPeriod) {
@@ -105,7 +102,7 @@ export class MovingAverageStrategy extends BaseStrategy {
     // Calculate position size based on confidence
     let quantity: Decimal | undefined;
     if (action !== 'hold') {
-      const baseQuantity = this.getParameter<number>('baseQuantity', 100);
+      const baseQuantity = (this._parameters as any).baseQuantity ?? 100;
       quantity = new Decimal(baseQuantity).mul(confidence);
     }
 
@@ -154,38 +151,6 @@ export class MovingAverageStrategy extends BaseStrategy {
    * Override stateVersion for MovingAverage strategy
    */
   protected _stateVersion = '1.1.0';
-
-  /**
-   * Save internal state specific to MovingAverage strategy
-   */
-  protected async getInternalState(): Promise<Record<string, unknown>> {
-    const baseState = await super.getInternalState();
-
-    return {
-      ...baseState,
-      position: this.position,
-      priceHistoryLength: this.priceHistory.length,
-      lastAnalysisTime: new Date().toISOString(),
-      parameters: {
-        fastPeriod: this.getParameter('fastPeriod'),
-        slowPeriod: this.getParameter('slowPeriod'),
-        threshold: this.getParameter('threshold'),
-      },
-    };
-  }
-
-  /**
-   * Restore internal state for MovingAverage strategy
-   */
-  protected async setInternalState(state: Record<string, unknown>): Promise<void> {
-    await super.setInternalState(state);
-
-    if (state.position && typeof state.position === 'string') {
-      this.position = state.position as 'long' | 'short' | 'none';
-    }
-
-    // Note: priceHistory and MAs will be restored from indicatorData
-  }
 
   /**
    * Save technical indicator data for MovingAverage strategy
@@ -247,15 +212,15 @@ export class MovingAverageStrategy extends BaseStrategy {
     // Log recovery information
     this.emit('recoveryInfo', {
       strategyType: 'MovingAverage',
-      openOrdersCount: openOrders.length,
+      openOrdersCount: openOrders?.length ?? 0,
       totalPosition: totalPosition,
       priceHistoryLength: this.priceHistory.length,
       lastSignal: this.getLastSignal(),
     });
 
     // Validate recovered state
-    const fastPeriod = this.getParameter<number>('fastPeriod');
-    const slowPeriod = this.getParameter<number>('slowPeriod');
+    const fastPeriod = this.getParameter('fastPeriod');
+    const slowPeriod = this.getParameter('slowPeriod');
 
     if (this.priceHistory.length < slowPeriod) {
       this.emit('recoveryWarning', {
@@ -297,8 +262,6 @@ export class MovingAverageStrategy extends BaseStrategy {
       } else {
         this.position = 'none';
       }
-
-      this.updatePosition(positionDecimal, this._averagePrice);
     }
   }
 

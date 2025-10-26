@@ -134,7 +134,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Cleanup all strategies
       for (const [name, strategy] of this._strategies) {
         try {
-          await strategy.cleanup();
+          await strategy.cleanup?.();
           this.logger.info(`Strategy ${name} cleaned up successfully`);
         } catch (error) {
           this.logger.error(`Failed to cleanup strategy ${name}`, error as Error);
@@ -542,13 +542,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     const strategy = this._strategies.get(strategyName);
-    const exchangeConfig = strategy?.parameters.exchange;
+    const exchangeConfig = strategy?.config?.exchange;
 
     // 🆕 Get strategy metadata
     const strategyId =
-      paramsStrategyId ?? strategy?.getStrategyId() ?? strategy?.parameters.strategyId;
+      paramsStrategyId ?? strategy?.getStrategyId?.() ?? strategy?.config?.strategyId;
     const strategyType = strategy?.strategyType; // Strategy class name
-    const userDefinedName = strategy?.strategyName || strategy?.parameters.strategyName; // User-defined name
+    const userDefinedName = strategy?.strategyName || strategy?.config?.strategyName; // User-defined name
 
     // For order execution, use the first exchange if array is provided
     const exchangeName = Array.isArray(exchangeConfig)
@@ -1006,7 +1006,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           if (result.action !== 'hold') {
             // Account data changes might trigger trading signals
             // Note: symbol should come from the strategy's parameters
-            const symbol = strategy.parameters.symbol || '';
+            const symbol = strategy.context.symbol || '';
             this._eventBus.emitStrategySignal({
               strategyName,
               symbol,
@@ -1054,19 +1054,19 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     strategyName: string,
     strategy: IStrategy,
   ): Promise<void> {
-    const config = strategy.parameters.subscription;
+    const config = strategy.context.subscription;
     if (!config) {
       this.logger.debug(`Strategy ${strategyName} has no subscription config`);
       return;
     }
 
-    const symbol = strategy.parameters.symbol;
+    const symbol = strategy.context.symbol;
     if (!symbol) {
       this.logger.warn(`Strategy ${strategyName} has subscription config but no symbol`);
       return;
     }
 
-    const exchanges = this.getTargetExchanges(strategy.parameters.exchange);
+    const exchanges = this.getTargetExchanges(strategy.context.exchange);
     this.logger.info(
       `Auto-subscribing data for strategy ${strategyName} (symbol: ${symbol}, exchanges: ${exchanges.map((e) => e.name).join(', ')})`,
     );
@@ -1131,12 +1131,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   private async unsubscribeStrategyData(strategyName: string): Promise<void> {
     const strategy = this._strategies.get(strategyName);
-    if (!strategy || !strategy.parameters.subscription) {
+    if (!strategy || !strategy.context.subscription) {
       return;
     }
 
-    const config = strategy.parameters.subscription;
-    const symbol = strategy.parameters.symbol;
+    const config = strategy.context.subscription;
+    const symbol = strategy.context.symbol;
     if (!symbol) return;
 
     const exchanges = this.getTargetExchanges(config.exchange);

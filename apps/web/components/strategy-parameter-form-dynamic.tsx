@@ -5,8 +5,8 @@ import { InfoIcon, AlertTriangleIcon } from 'lucide-react';
 import {
   getStrategyConfig,
   type StrategyTypeKey,
-  type StrategyParameterDefinition,
-} from '@itrade/core';
+  type ParameterDefinition,
+} from '@itrade/strategies';
 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -64,7 +64,7 @@ export function StrategyParameterFormDynamic({
     onParametersChange(newParameters);
   };
 
-  const renderField = (paramDef: StrategyParameterDefinition) => {
+  const renderField = (paramDef: ParameterDefinition) => {
     const value = parameters[paramDef.name] ?? paramDef.defaultValue;
 
     switch (paramDef.type) {
@@ -209,31 +209,6 @@ export function StrategyParameterFormDynamic({
           </div>
         );
 
-      case 'date':
-        return (
-          <div key={paramDef.name} className="space-y-2">
-            <Label htmlFor={paramDef.name}>
-              {paramDef.name
-                .split(/(?=[A-Z])/)
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ')}
-              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            <Input
-              id={paramDef.name}
-              type="date"
-              value={
-                value instanceof Date
-                  ? value.toISOString().split('T')[0]
-                  : (value as string)
-              }
-              onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
-              required={paramDef.required}
-            />
-            <p className="text-xs text-muted-foreground">{paramDef.description}</p>
-          </div>
-        );
-
       case 'enum':
         return (
           <div key={paramDef.name} className="space-y-2">
@@ -297,37 +272,6 @@ export function StrategyParameterFormDynamic({
                 </span>
               )}
             </p>
-          </div>
-        );
-
-      case 'color':
-        return (
-          <div key={paramDef.name} className="space-y-2">
-            <Label htmlFor={paramDef.name}>
-              {paramDef.name
-                .split(/(?=[A-Z])/)
-                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ')}
-              {paramDef.required && <span className="text-red-500 ml-1">*</span>}
-            </Label>
-            <div className="flex gap-2 items-center">
-              <Input
-                id={paramDef.name}
-                type="color"
-                value={value as string}
-                onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
-                className="w-20 h-10 cursor-pointer"
-              />
-              <Input
-                type="text"
-                value={value as string}
-                onChange={(e) => handleParameterChange(paramDef.name, e.target.value)}
-                pattern="^#[0-9A-Fa-f]{6}$"
-                placeholder="#000000"
-                className="font-mono"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">{paramDef.description}</p>
           </div>
         );
 

@@ -12,8 +12,9 @@ import {
   IconClock,
   IconSettings,
 } from '@tabler/icons-react';
-import { getStrategyDefaultParameters, type StrategyTypeKey } from '@itrade/core';
 import {
+  getStrategyDefaultParameters,
+  type StrategyTypeKey,
   getImplementedStrategies,
   getAllStrategiesWithImplementationStatus,
 } from '@itrade/strategies';
@@ -93,7 +94,7 @@ export default function StrategyPage() {
   const getDefaultStrategyType = (): StrategyTypeKey => {
     const implementedStrategies = getImplementedStrategies();
     return implementedStrategies.length > 0
-      ? implementedStrategies[0].type
+      ? (implementedStrategies[0].type as StrategyTypeKey)
       : 'MovingAverageStrategy';
   };
 
@@ -647,15 +648,17 @@ export default function StrategyPage() {
                                     {getAllStrategiesWithImplementationStatus().map(
                                       (strategy) => (
                                         <SelectItem
-                                          key={strategy.type}
-                                          value={strategy.type}
+                                          key={strategy.type as string}
+                                          value={strategy.type as string}
                                           disabled={!strategy.implemented}
                                         >
                                           <div className="flex items-center gap-2">
-                                            <span>{strategy.icon}</span>
+                                            <span>
+                                              {strategy.icon as React.ReactNode}
+                                            </span>
                                             <div className="flex flex-col">
                                               <span className="font-medium">
-                                                {strategy.name}
+                                                {strategy.name as React.ReactNode}
                                               </span>
                                               {!strategy.implemented && (
                                                 <span className="text-xs text-muted-foreground">

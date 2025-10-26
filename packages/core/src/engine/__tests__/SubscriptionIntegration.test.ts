@@ -539,10 +539,25 @@ function createMockStrategy(
   strategyType: string,
   parameters: StrategyParameters,
 ): IStrategy {
+  const config = {
+    type: strategyType,
+    parameters: {},
+    symbol: parameters.symbol as string,
+    exchange: parameters.exchange as string | string[],
+    subscription: parameters.subscription,
+    initialData: parameters.initialData,
+  };
+
   return {
     strategyType, // Strategy class name
     strategyName: parameters.strategyName, // User-defined name
-    parameters,
+    config,
+    context: {
+      symbol: parameters.symbol as string,
+      exchange: parameters.exchange as string | string[],
+      subscription: parameters.subscription,
+      initialData: parameters.initialData,
+    },
     initialize: vi.fn().mockResolvedValue(undefined),
     analyze: vi.fn().mockResolvedValue({
       action: 'hold',
@@ -557,9 +572,9 @@ function createMockStrategy(
       indicatorData: {},
       currentPosition: '0',
     }),
-    restoreState: vi.fn().mockResolvedValue(undefined),
+    loadState: vi.fn().mockResolvedValue({} as any),
     setRecoveryContext: vi.fn().mockResolvedValue(undefined),
     getStateVersion: vi.fn().mockReturnValue('1.0'),
     cleanup: vi.fn().mockResolvedValue(undefined),
-  } as IStrategy;
+  } as unknown as IStrategy;
 }

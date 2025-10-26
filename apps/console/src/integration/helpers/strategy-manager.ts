@@ -37,14 +37,15 @@ export class StrategyManager {
   private stateMonitor: StrategyStateMonitor;
 
   // Configuration
-  private readonly SYNC_INTERVAL_MS = 600000; // Sync every 10 seconds (configurable)
-  private readonly REPORT_INTERVAL_MS = 600000; // Report every 60 seconds
-  private readonly STATE_BACKUP_INTERVAL_MS = 60000; // Backup state every 30 seconds
+  private readonly SYNC_INTERVAL_MS = 600000; // Sync every 10 minutes (configurable)
+  private readonly REPORT_INTERVAL_MS = 600000; // Report every 10 minutes
+  private readonly STATE_BACKUP_INTERVAL_MS = 60000; // Backup state every 1 minute
 
   constructor(
     private engine: TradingEngine,
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
+    private userId?: string, // 🆕 Support multi-user system
   ) {
     this.eventBus = EventBus.getInstance();
     const stateAdapter = new TypeOrmStrategyStateAdapter(dataManager);
@@ -55,6 +56,15 @@ export class StrategyManager {
 
   async start(): Promise<void> {
     this.logger.info('Starting Strategy Manager...');
+
+    // 🆕 Log user context
+    if (this.userId) {
+      this.logger.info(`👤 Loading strategies for user: ${this.userId}`);
+    } else {
+      this.logger.warn(
+        '⚠️  No userId provided - loading ALL strategies (not recommended for production)',
+      );
+    }
 
     // 📊 显示策略实现统计信息
     const implementedStrategies = getImplementedStrategies();
@@ -129,7 +139,9 @@ export class StrategyManager {
 
   private async loadActiveStrategies(): Promise<void> {
     try {
+      // 🆕 Filter by userId if provided
       const dbStrategies = await this.dataManager.getStrategies({
+        userId: this.userId,
         status: StrategyStatus.ACTIVE,
       });
 
@@ -162,7 +174,9 @@ export class StrategyManager {
   private async syncStrategiesWithDatabase(): Promise<void> {
     try {
       // Only fetch ACTIVE strategies from database (performance optimization)
+      // 🆕 Filter by userId if provided
       const activeStrategies = await this.dataManager.getStrategies({
+        userId: this.userId,
         status: StrategyStatus.ACTIVE,
       });
       const activeStrategyIds = new Set(activeStrategies.map((s) => s.id));

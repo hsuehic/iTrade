@@ -23,6 +23,8 @@ import {
   BacktestResult,
   RiskLimits,
   RiskMetrics,
+  StrategyConfig,
+  StrategyRuntimeContext,
 } from '../types';
 
 // Exchange Interface
@@ -93,6 +95,9 @@ export interface IExchange extends EventEmitter {
 // Strategy State Management Types
 export interface StrategyStateSnapshot {
   strategyId?: number;
+  strategyType?: string;
+  stateVersion?: string;
+  timestamp?: Date;
   internalState: Record<string, unknown>;
   indicatorData: Record<string, unknown>;
   lastSignal?: string;
@@ -102,15 +107,18 @@ export interface StrategyStateSnapshot {
 }
 
 export interface StrategyRecoveryContext {
-  strategyId: number;
+  recovered?: boolean;
+  message?: string;
+  metrics?: Record<string, unknown>;
+  strategyId?: number;
   savedState?: StrategyStateSnapshot;
-  openOrders: Array<{
+  openOrders?: Array<{
     orderId: string;
     status: string;
     executedQuantity: string;
     remainingQuantity: string;
   }>;
-  totalPosition: string;
+  totalPosition?: string;
   lastExecutionTime?: Date;
 }
 
@@ -135,32 +143,39 @@ export interface AccountDataUpdate {
 export type DataUpdate = MarketDataUpdate & AccountDataUpdate;
 
 // Strategy Interface
-export interface IStrategy {
-  readonly strategyType: string; // Strategy class name (e.g., "MovingAverageStrategy", "RSIStrategy")
-  readonly strategyName?: string; // User-defined strategy name (e.g., "MA_1", "My BTC Strategy")
-  readonly parameters: StrategyParameters;
+export interface IStrategy<TParams extends StrategyParameters = StrategyParameters> {
+  /** Strategy type/class name (e.g., "MovingAverageStrategy") - accessed via getter */
+  readonly strategyType: string;
 
-  initialize(parameters: StrategyParameters): Promise<void>;
+  /** User-defined strategy name (optional, e.g., "MA_1") */
+  readonly strategyName?: string;
+
+  /** Get complete configuration (parameters + context) */
+  readonly config: StrategyConfig<TParams>;
+
+  /** Get runtime context */
+  readonly context: StrategyRuntimeContext;
+
+  initialize(config: StrategyConfig<TParams>): Promise<void>;
 
   analyze(dataUpdate: DataUpdate): Promise<StrategyResult>;
 
   onOrderFilled(order: Order): Promise<void>;
-  onPositionChanged(position: Position): Promise<void>;
 
-  // 🆕 Strategy Name Management
-  setStrategyName(name: string): void; // Set user-defined strategy name from database
+  // 🆕 Strategy Name Management (optional - implemented in BaseStrategy)
+  setStrategyName?(name: string): void; // Set user-defined strategy name from database
 
-  // 🆕 Strategy ID Management
-  setStrategyId(id: number): void; // Set strategy ID from database
-  getStrategyId(): number | undefined; // Get strategy ID
+  // 🆕 Strategy ID Management (optional - implemented in BaseStrategy)
+  setStrategyId?(id: number): void; // Set strategy ID from database
+  getStrategyId?(): number | undefined; // Get strategy ID
 
-  // 🆕 State Management Methods
-  saveState(): Promise<StrategyStateSnapshot>;
-  restoreState(snapshot: StrategyStateSnapshot): Promise<void>;
-  setRecoveryContext(context: StrategyRecoveryContext): Promise<void>;
-  getStateVersion(): string; // For state schema versioning
+  // 🆕 State Management Methods (optional - implemented in BaseStrategy)
+  saveState?(): Promise<StrategyStateSnapshot>;
+  loadState?(snapshot: StrategyStateSnapshot): Promise<StrategyRecoveryContext>;
+  setRecoveryContext?(context: StrategyRecoveryContext): Promise<void>;
+  getStateVersion?(): string; // For state schema versioning
 
-  cleanup(): Promise<void>;
+  cleanup?(): Promise<void>;
 }
 
 export interface ExecuteOrderParameters {

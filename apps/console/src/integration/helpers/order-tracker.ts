@@ -2,13 +2,34 @@ import { ILogger, Order, EventBus, OrderEventData } from '@itrade/core';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
 
+interface DebouncedOrderUpdate {
+  order: Order;
+  timestamp: Date;
+  timer: NodeJS.Timeout;
+}
+
+/**
+ * OrderTracker - 监听并持久化订单信息
+ * 
+ * 功能：
+ * 1. 监听订单事件（创建、部分成交、完全成交、取消、拒绝）
+ * 2. 对部分成交使用 debounce 机制（可能非常频繁）
+ * 3. 对其他状态立即保存（创建、完全成交、取消、拒绝）
+ * 4. 按 orderId 分组 debounce
+ */
 export class OrderTracker {
   private eventBus: EventBus;
+  private pendingPartialFills = new Map<string, DebouncedOrderUpdate>();
   private totalOrders = 0;
   private totalFilled = 0;
+  private totalPartialFills = 0;
+  private totalPartialFillsSaved = 0;
   private totalCancelled = 0;
   private totalRejected = 0;
   private startTime: Date;
+
+  // Debounce configuration (only for partial fills)
+  private readonly DEBOUNCE_MS = 1000; // 1 second debounce for partial fills
 
   constructor(
     private dataManager: TypeOrmDataManager,
@@ -42,15 +63,28 @@ export class OrderTracker {
       this.handleOrderRejected(data.order);
     });
 
-    this.logger.info('✅ Order Tracker started - All orders will be saved to database');
+    this.logger.info(
+      `✅ Order Tracker started (partial fill debounce: ${this.DEBOUNCE_MS}ms per order)`,
+    );
   }
 
   async stop(): Promise<void> {
+    // Flush all pending partial fills
+    await this.flushAllPendingUpdates();
+
     this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.info('📊 Order Tracker Final Report');
     this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.info(`   Total Orders Created: ${this.totalOrders}`);
     this.logger.info(`   Orders Filled: ${this.totalFilled}`);
+    this.logger.info(
+      `   Partial Fill Updates: ${this.totalPartialFills} received, ${this.totalPartialFillsSaved} saved`,
+    );
+    if (this.totalPartialFills > 0) {
+      this.logger.info(
+        `   Partial Fill Debounce Efficiency: ${((1 - this.totalPartialFillsSaved / this.totalPartialFills) * 100).toFixed(1)}% reduction`,
+      );
+    }
     this.logger.info(`   Orders Cancelled: ${this.totalCancelled}`);
     this.logger.info(`   Orders Rejected: ${this.totalRejected}`);
 
@@ -100,10 +134,17 @@ export class OrderTracker {
     try {
       this.totalFilled++;
 
+      // Cancel any pending partial fill update for this order
+      const pending = this.pendingPartialFills.get(order.id);
+      if (pending?.timer) {
+        clearTimeout(pending.timer);
+        this.pendingPartialFills.delete(order.id);
+      }
+
       // Calculate PnL
       const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
 
-      // Update order in database
+      // Update order in database (immediately, no debounce for final state)
       await this.dataManager.updateOrder(order.id, {
         status: order.status,
         executedQuantity: order.executedQuantity,
@@ -128,9 +169,44 @@ export class OrderTracker {
     }
   }
 
-  private async handleOrderPartiallyFilled(order: Order): Promise<void> {
+  private handleOrderPartiallyFilled(order: Order): void {
     try {
-      this.logger.info(`Order partially filled: ${order.id}`);
+      this.totalPartialFills++;
+
+      // Use debounce for partial fills (can be very frequent)
+      const key = order.id;
+
+      // Cancel existing timer if present
+      const existing = this.pendingPartialFills.get(key);
+      if (existing?.timer) {
+        clearTimeout(existing.timer);
+      }
+
+      // Create new debounced update
+      const timer = setTimeout(() => {
+        this.savePartialFillUpdate(key);
+      }, this.DEBOUNCE_MS);
+
+      this.pendingPartialFills.set(key, {
+        order,
+        timestamp: new Date(),
+        timer,
+      });
+
+      this.logger.debug(
+        `⏳ Partial fill queued: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
+      );
+    } catch (error) {
+      this.logger.error('❌ Failed to queue partial fill update', error as Error);
+    }
+  }
+
+  private async savePartialFillUpdate(orderId: string): Promise<void> {
+    const update = this.pendingPartialFills.get(orderId);
+    if (!update) return;
+
+    try {
+      const { order } = update;
 
       const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
 
@@ -143,8 +219,16 @@ export class OrderTracker {
         unrealizedPnl,
         averagePrice,
       });
+
+      this.totalPartialFillsSaved++;
+      this.pendingPartialFills.delete(orderId);
+
+      this.logger.info(
+        `💾 Partial fill saved: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
+      );
     } catch (error) {
-      this.logger.error('Failed to update partially filled order', error as Error);
+      this.logger.error(`❌ Failed to save partial fill for ${orderId}`, error as Error);
+      this.pendingPartialFills.delete(orderId);
     }
   }
 
@@ -152,6 +236,14 @@ export class OrderTracker {
     try {
       this.totalCancelled++;
 
+      // Cancel any pending partial fill update for this order
+      const pending = this.pendingPartialFills.get(order.id);
+      if (pending?.timer) {
+        clearTimeout(pending.timer);
+        this.pendingPartialFills.delete(order.id);
+      }
+
+      // Save immediately (final state, no debounce)
       await this.dataManager.updateOrder(order.id, {
         status: order.status,
         updateTime: order.updateTime,
@@ -167,6 +259,14 @@ export class OrderTracker {
     try {
       this.totalRejected++;
 
+      // Cancel any pending partial fill update for this order
+      const pending = this.pendingPartialFills.get(order.id);
+      if (pending?.timer) {
+        clearTimeout(pending.timer);
+        this.pendingPartialFills.delete(order.id);
+      }
+
+      // Save immediately (final state, no debounce)
       await this.dataManager.updateOrder(order.id, {
         status: order.status,
         updateTime: order.updateTime,
@@ -176,6 +276,26 @@ export class OrderTracker {
     } catch (error) {
       this.logger.error('❌ Failed to update rejected order', error as Error);
     }
+  }
+
+  private async flushAllPendingUpdates(): Promise<void> {
+    if (this.pendingPartialFills.size === 0) return;
+
+    this.logger.info(
+      `🔄 Flushing ${this.pendingPartialFills.size} pending partial fill updates...`,
+    );
+
+    // Cancel all timers and save immediately
+    const promises: Promise<void>[] = [];
+    for (const [orderId, update] of this.pendingPartialFills) {
+      if (update.timer) {
+        clearTimeout(update.timer);
+      }
+      promises.push(this.savePartialFillUpdate(orderId));
+    }
+
+    await Promise.allSettled(promises);
+    this.logger.info('✅ All pending partial fill updates flushed');
   }
 
   private async calculatePnL(order: Order): Promise<{
