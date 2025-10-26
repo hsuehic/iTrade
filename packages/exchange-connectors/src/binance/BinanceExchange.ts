@@ -291,10 +291,6 @@ export class BinanceExchange extends BaseExchange {
 
       const signedParams = this.signRequest(params);
       await this.futuresClient.post('/fapi/v1/leverage', signedParams);
-
-      console.log(
-        `[Binance] Set leverage for ${symbol}: ${leverage}x (${marginType || 'default'})`,
-      );
     } catch (error: any) {
       // If error is "No need to change leverage" or similar, ignore it
       if (error.response?.data?.code === -4028 || error.response?.data?.code === -4046) {

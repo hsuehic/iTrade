@@ -40,7 +40,7 @@
         "NODE_OPTIONS": "--conditions=source",
         "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
       },
-      "args": ["${workspaceFolder}/apps/console/src/main.ts"],
+      "args": ["${file}"],
       "sourceMaps": true,
       "stopOnEntry": false,
       "smartStep": true,

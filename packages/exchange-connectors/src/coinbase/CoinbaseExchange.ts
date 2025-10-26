@@ -207,7 +207,6 @@ export class CoinbaseExchange extends BaseExchange {
       `/api/v3/brokerage/products/${productId}/candles`,
       { params },
     );
-    console.log('resp:', resp);
     const data = resp.data?.candles || resp.data || [];
     return data.map((c: any) => ({
       symbol: productId,
@@ -369,9 +368,6 @@ export class CoinbaseExchange extends BaseExchange {
       // Step 1: Get all accounts to find perpetual portfolio IDs
       const accountsResp = await this.httpClient.get('/api/v3/brokerage/accounts');
       const accounts = accountsResp.data?.accounts || [];
-
-      // Debug: Log all accounts to understand the structure (remove in production)
-      // console.log('[Coinbase Debug] All accounts:', JSON.stringify(accounts, null, 2));
 
       // Find perpetual accounts - they might have different structures
       const perpetualAccounts = accounts.filter((account: any) => {
@@ -838,8 +834,6 @@ export class CoinbaseExchange extends BaseExchange {
 
   protected addAuthentication(config: any): any {
     if (!this.credentials) return config;
-
-    console.log('config:', config);
 
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const method = (config.method || 'GET').toUpperCase();
