@@ -34,8 +34,6 @@ import {
   TradesSubscriptionConfig,
   KlinesSubscriptionConfig,
   SubscriptionParamValue,
-  InitialDataConfig,
-  InitialDataResult,
 } from '../types';
 import { EventBus } from '../events';
 import { PrecisionUtils } from '../utils/PrecisionUtils';
@@ -234,14 +232,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     try {
       // Add exchange info to ticker if provided
-      if (exchangeName) {
-        ticker.exchange = exchangeName;
-      }
 
       // Process ticker with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          const result = await strategy.analyze({ ticker });
+          const result = await strategy.analyze({ ticker, exchangeName, symbol });
 
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
@@ -281,15 +276,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
-      // Add exchange info to orderbook if provided
-      if (exchangeName) {
-        orderbook.exchange = exchangeName;
-      }
-
       // Process orderbook with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          const result = await strategy.analyze({ orderbook });
+          const result = await strategy.analyze({ orderbook, exchangeName, symbol });
 
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
@@ -338,7 +328,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Process trades with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          const result = await strategy.analyze({ trades });
+          const result = await strategy.analyze({ trades, exchangeName, symbol });
 
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
@@ -443,7 +433,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          const result = await strategy.analyze({ ticker: data as Ticker });
+          const result = await strategy.analyze({
+            ticker: data as Ticker,
+            exchangeName,
+            symbol,
+          });
 
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
@@ -895,7 +889,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Notify strategies of specific order update
-      this.notifyStrategiesAccountUpdate({ orders: [order] });
+      this.notifyStrategiesAccountUpdate({
+        orders: [order],
+        exchangeName,
+      });
     });
 
     // Balance Update Event
@@ -910,7 +907,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._eventBus.emitBalanceUpdate({ balances, timestamp: new Date() });
 
       // Notify strategies of specific balance update (push data only)
-      this.notifyStrategiesAccountUpdate({ balances });
+      this.notifyStrategiesAccountUpdate({ balances, exchangeName });
     });
 
     exchange.on('positionUpdate', (exchangeId: string, positions: Position[]) => {
@@ -922,7 +919,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._eventBus.emitPositionUpdate({ positions, timestamp: new Date() });
 
       // Notify strategies of specific position update
-      this.notifyStrategiesAccountUpdate({ positions });
+      this.notifyStrategiesAccountUpdate({ positions, exchangeName });
     });
   }
 
@@ -968,6 +965,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     positions?: Position[];
     orders?: Order[];
     balances?: Balance[];
+    exchangeName?: string;
   }): Promise<void> {
     try {
       // Process account data update with all strategies

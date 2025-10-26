@@ -55,6 +55,7 @@ export class BacktestEngine implements IBacktestEngine {
     config: BacktestConfig,
     dataManager: IDataManager,
   ): Promise<void> {
+    const { exchange } = strategy.parameters;
     // Get historical data
     const klines = await dataManager.getKlines(
       symbol,
@@ -66,7 +67,11 @@ export class BacktestEngine implements IBacktestEngine {
     // Process each kline
     for (const kline of klines) {
       // Analyze with strategy
-      const result = await strategy.analyze({ klines: [kline] });
+      const result = await strategy.analyze({
+        klines: [kline],
+        exchangeName: Array.isArray(exchange) ? exchange[0] : exchange,
+        symbol,
+      });
 
       // Execute trades based on strategy signals
       if (result.action !== 'hold' && result.quantity) {

@@ -19,6 +19,9 @@ export class DecimalTransformer {
   }
 }
 
+// Create a SINGLE shared instance outside the class
+const decimalTransformer = new DecimalTransformer();
+
 @Entity('klines')
 @Index(['symbol', 'interval', 'openTime'], { unique: true })
 @Index(['symbol', 'interval'])
@@ -44,7 +47,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   open!: Decimal;
 
@@ -52,7 +55,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   high!: Decimal;
 
@@ -60,7 +63,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   low!: Decimal;
 
@@ -68,7 +71,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   close!: Decimal;
 
@@ -76,7 +79,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   volume!: Decimal;
 
@@ -84,7 +87,7 @@ export class KlineEntity {
     type: 'decimal',
     precision: 20,
     scale: 8,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   quoteVolume!: Decimal;
 
@@ -96,7 +99,7 @@ export class KlineEntity {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   takerBuyBaseVolume?: Decimal;
 
@@ -105,7 +108,7 @@ export class KlineEntity {
     precision: 20,
     scale: 8,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer, // Use shared instance
   })
   takerBuyQuoteVolume?: Decimal;
 

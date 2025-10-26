@@ -23,7 +23,6 @@ import {
   BacktestResult,
   RiskLimits,
   RiskMetrics,
-  InitialDataResult,
 } from '../types';
 
 // Exchange Interface
@@ -115,6 +114,26 @@ export interface StrategyRecoveryContext {
   lastExecutionTime?: Date;
 }
 
+export interface MarketDataUpdate {
+  exchangeName?: string;
+  symbol?: string;
+  // Market Data
+  ticker?: Ticker;
+  orderbook?: OrderBook;
+  trades?: Trade[];
+  klines?: Kline[];
+}
+
+export interface AccountDataUpdate {
+  exchangeName?: string;
+  // Account Data
+  positions?: Position[];
+  orders?: Order[];
+  balances?: Balance[];
+}
+
+export type DataUpdate = MarketDataUpdate & AccountDataUpdate;
+
 // Strategy Interface
 export interface IStrategy {
   readonly name: string;
@@ -122,17 +141,7 @@ export interface IStrategy {
 
   initialize(parameters: StrategyParameters): Promise<void>;
 
-  analyze(marketData: {
-    // Market Data
-    ticker?: Ticker;
-    orderbook?: OrderBook;
-    trades?: Trade[];
-    klines?: Kline[];
-    // Account Data
-    positions?: Position[];
-    orders?: Order[];
-    balances?: Balance[];
-  }): Promise<StrategyResult>;
+  analyze(dataUpdate: DataUpdate): Promise<StrategyResult>;
 
   onOrderFilled(order: Order): Promise<void>;
   onPositionChanged(position: Position): Promise<void>;

@@ -47,6 +47,8 @@ export abstract class BaseStrategy extends EventEmitter implements IStrategy {
   }
 
   public abstract analyze(marketData: {
+    exchangeName: string;
+    symbol?: string;
     // Market Data
     ticker?: Ticker;
     orderbook?: OrderBook;
