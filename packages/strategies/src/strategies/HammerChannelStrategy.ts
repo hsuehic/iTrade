@@ -16,16 +16,6 @@ import Decimal from 'decimal.js';
 import type { HammerChannelParameters } from '../registry/strategy-factory';
 
 /**
- * Candle type for Hammer detection
- */
-interface Candle {
-  o: number; // open
-  h: number; // high
-  l: number; // low
-  c: number; // close
-}
-
-/**
  * Hammer detection parameters
  */
 interface HammerDetectionParams {
@@ -67,12 +57,10 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
   private lowThreshold: number;
 
   private klines: FixedLengthList<Kline>;
-  private candles: Candle[] = [];
 
   // Account data
   private positions: Position[] = [];
   private orders: Order[] = [];
-  private balances: Balance[] = [];
   private tickers: FixedLengthList<Ticker>;
 
   constructor(config: StrategyConfig<HammerChannelParameters>) {
@@ -112,7 +100,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
         // Store last N klines for analysis
         klines.forEach((kline) => {
           this.klines.push(kline);
-          this.candles.push(this.klineToCandle(kline));
         });
       });
     }
@@ -127,12 +114,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     if (initialData.openOrders && initialData.openOrders.length > 0) {
       this.orders = initialData.openOrders;
       console.log(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
-    }
-
-    // Load account balance
-    if (initialData.balance) {
-      this.balances = initialData.balance;
-      console.log(`  💰 Loaded balance for ${initialData.balance.length} asset(s)`);
     }
 
     // Load current ticker
@@ -175,22 +156,14 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
   }
 
   /**
-   * Convert Kline to simple Candle format
+   * Check if a kline is a hammer pattern
    */
-  private klineToCandle(kline: Kline): Candle {
-    return {
-      o: kline.open.toNumber(),
-      h: kline.high.toNumber(),
-      l: kline.low.toNumber(),
-      c: kline.close.toNumber(),
-    };
-  }
+  private isHammer(kline: Kline, params: HammerDetectionParams): boolean {
+    const o = kline.open.toNumber();
+    const h = kline.high.toNumber();
+    const l = kline.low.toNumber();
+    const c = kline.close.toNumber();
 
-  /**
-   * Check if a candle is a hammer pattern
-   */
-  private isHammer(candle: Candle, params: HammerDetectionParams): boolean {
-    const { o, h, l, c } = candle;
     const body = Math.abs(c - o);
     const range = h - l;
 
@@ -234,7 +207,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     // Update account data
     if (marketData.positions) this.positions = marketData.positions;
     if (marketData.orders) this.orders = marketData.orders;
-    if (marketData.balances) this.balances = marketData.balances;
 
     // Process klines
     const klines = marketData?.klines;
@@ -276,24 +248,18 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
     // ✅ Add to buffer (only closed klines with matching symbol/exchange)
     this.klines.push(latestKline);
-    const candle = this.klineToCandle(latestKline);
-    this.candles.push(candle);
-
-    // Keep buffer size fixed
-    if (this.candles.length > this.windowSize) {
-      this.candles.shift();
-    }
 
     // Need enough data
-    if (this.candles.length < this.windowSize) {
+    const allKlines = this.klines.toArray();
+    if (allKlines.length < this.windowSize) {
       return {
         action: 'hold',
-        reason: `Collecting data (${this.candles.length}/${this.windowSize})`,
+        reason: `Collecting data (${allKlines.length}/${this.windowSize})`,
       };
     }
 
-    // Check if current candle is a hammer
-    const isHammerCandle = this.isHammer(candle, {
+    // Check if current kline is a hammer
+    const isHammerCandle = this.isHammer(latestKline, {
       lowerShadowToBody: this.lowerShadowToBody,
       upperShadowToBody: this.upperShadowToBody,
       bodyToRange: this.bodyToRange,
@@ -305,22 +271,23 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
     console.log('🔨 [HammerChannel] Hammer pattern detected!');
 
-    // Determine if bullish or bearish candle
-    const isBullish = candle.c > candle.o;
-    const isBearish = candle.c < candle.o;
+    // Determine if bullish or bearish kline
+    const isBullish = latestKline.close.gt(latestKline.open);
+    const isBearish = latestKline.close.lt(latestKline.open);
 
     // Calculate position within recent channel
-    const closes = this.candles.map((c) => c.c);
+    const closes = allKlines.map((k) => k.close.toNumber());
     const minClose = Math.min(...closes);
     const maxClose = Math.max(...closes);
     const range = maxClose - minClose || 1e-9; // Avoid division by zero
 
-    const positionRatio = (candle.c - minClose) / range; // 0=lowest, 1=highest
+    const currentClose = latestKline.close.toNumber();
+    const positionRatio = (currentClose - minClose) / range; // 0=lowest, 1=highest
 
     console.log(
       `🔨 [HammerChannel] Channel position: ${(positionRatio * 100).toFixed(2)}%`,
       {
-        close: candle.c,
+        close: currentClose,
         minClose,
         maxClose,
         isBullish,
@@ -331,7 +298,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     // Generate signals based on hammer type and position
     if (isBearish && positionRatio <= this.lowThreshold) {
       // Bearish hammer at low position = potential reversal up = BUY
-      const price = new Decimal(candle.c);
+      const price = latestKline.close;
       const quantity = new Decimal(100); // Base quantity
 
       console.log(
@@ -351,7 +318,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
     if (isBullish && positionRatio >= this.highThreshold) {
       // Bullish hammer at high position = potential reversal down = SELL
-      const price = new Decimal(candle.c);
+      const price = latestKline.close;
       const quantity = new Decimal(100); // Base quantity
 
       console.log(
@@ -362,8 +329,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
         action: 'sell',
         price,
         quantity,
-        takeProfit: price.mul(0.98), // 2% profit target
-        stopLoss: price.mul(1.02), // 2% stop loss
         leverage: 1,
         tradeMode: 'isolated',
       };
@@ -391,7 +356,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    * Cleanup strategy state
    */
   protected async onCleanup(): Promise<void> {
-    this.candles = [];
     console.log('🔨 [HammerChannel] Strategy cleaned up');
   }
 
@@ -402,7 +366,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     return {
       strategyId: this.getStrategyId(),
       strategyType: this.strategyType,
-      candleCount: this.candles.length,
+      klineCount: this.klines.toArray().length,
       windowSize: this.windowSize,
       positions: this.positions.length,
       openOrders: this.orders.length,
