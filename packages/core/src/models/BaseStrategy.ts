@@ -22,7 +22,6 @@ import {
   Ticker,
   OrderBook,
   Trade,
-  StrategyHealthStatus,
 } from '../types';
 import { ConsoleLogger } from './ConsoleLogger';
 

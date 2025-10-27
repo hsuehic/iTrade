@@ -6,12 +6,10 @@ import {
   Ticker,
   Kline,
   Order,
-  Balance,
   Position,
-  OrderBook,
-  Trade,
   InitialDataResult,
   StrategyParameters,
+  DataUpdate,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 
@@ -210,25 +208,14 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
   /**
    * Analyze market data and generate trading signals
    */
-  public override async analyze(marketData: {
-    // Market Data
-    ticker?: Ticker;
-    klines?: Kline[];
-    orderbook?: OrderBook;
-    trades?: Trade[];
-    // Account Data
-    positions?: Position[];
-    orders?: Order[];
-    balances?: Balance[];
-  }): Promise<StrategyResult> {
+  public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
     this.ensureInitialized();
 
+    const { ticker, klines, positions, orders, exchangeName, symbol } = dataUpdate;
+
     // Update account data
-    if (marketData.positions) this.positions = marketData.positions;
-    if (marketData.orders) this.orders = marketData.orders;
 
     // Process klines
-    const klines = marketData?.klines;
     if (!klines || klines.length === 0) {
       return { action: 'hold', reason: 'No kline data available' };
     }
