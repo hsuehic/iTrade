@@ -143,7 +143,7 @@ export enum TimeInForce {
 
 export interface Order {
   id: string;
-  clientOrderId: string;
+  clientOrderId?: string; // Optional: may not be present for orders not created by our system
   symbol: string;
   side: OrderSide;
   type: OrderType;
@@ -221,6 +221,13 @@ export interface StrategyResult {
   // Trading mode and leverage (for futures/margin)
   tradeMode?: 'cash' | 'isolated' | 'cross'; // cash=spot, isolated/cross=margin/futures
   leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)
+
+  // 🆕 Metadata for signal classification and additional context
+  metadata?: {
+    signalType?: 'entry' | 'take_profit' | 'stop_loss' | 'trailing_stop' | string;
+    parentOrderId?: string; // Link to parent order for TP/SL orders
+    [key: string]: any; // Extensible for strategy-specific data
+  };
 
   // Note: Stop loss and take profit should be implemented as separate orders
   // after the main order is filled, not as part of the initial order creation
