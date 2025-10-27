@@ -538,6 +538,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       price,
       tradeMode,
       leverage,
+      clientOrderId: providedClientOrderId, // 🆕 Accept clientOrderId from params
     } = params;
     if (!this._isRunning) {
       throw new Error('Trading engine is not running');
@@ -625,12 +626,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const positions = await this.portfolioManager.getPositions();
       const balances = await this.portfolioManager.getBalances();
 
-      // 🆕 Create clientOrderId with compact format
+      // 🆕 Use provided clientOrderId from signal metadata, or generate one
       // Format: s-{strategyId|"id"}-{timestamp} (max 32 chars for OKX)
       // Uses hyphen (-) which is supported by all exchanges (OKX, Binance, Coinbase)
-      const timestamp = Date.now();
-      const idPart = strategyId ? String(strategyId) : 'id';
-      const clientOrderId = `s-${idPart}-${timestamp}`.slice(0, 32);
+      const clientOrderId =
+        providedClientOrderId ||
+        (() => {
+          const timestamp = Date.now();
+          const idPart = strategyId ? String(strategyId) : 'id';
+          return `s-${idPart}-${timestamp}`.slice(0, 32);
+        })();
 
       // Create order object for risk checking (with adjusted values)
       const order: Order = {
@@ -728,6 +733,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const orderType = signal.price ? OrderType.LIMIT : OrderType.MARKET;
       const side = signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
 
+      // 🆕 Extract clientOrderId from signal metadata
+      const clientOrderId = signal.metadata?.clientOrderId;
+
       const executedOrder = await this.executeOrder({
         // exchange: exchangeName,
         strategyName,
@@ -738,6 +746,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         price: signal.price,
         tradeMode: signal.tradeMode,
         leverage: signal.leverage,
+        clientOrderId, // 🆕 Pass clientOrderId from signal metadata
       });
 
       this.logger.logStrategy('Executed signal', {

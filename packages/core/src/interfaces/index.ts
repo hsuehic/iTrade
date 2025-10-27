@@ -188,6 +188,7 @@ export interface ExecuteOrderParameters {
   price?: Decimal; // Limit price for the main/initial order
   tradeMode?: 'cash' | 'isolated' | 'cross'; // Trading mode for margin/futures
   leverage?: number; // Leverage multiplier
+  clientOrderId?: string; // 🆕 Client order ID from strategy signal metadata (optional)
 
   // Note: Stop loss and take profit should be implemented as separate orders
 }
