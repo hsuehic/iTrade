@@ -65,14 +65,12 @@ export interface IExchange extends EventEmitter {
     side: OrderSide,
     type: OrderType,
     quantity: Decimal,
-    price?: Decimal,
-    stopLoss?: Decimal,
+    price?: Decimal, // Limit price for the order
     timeInForce?: TimeInForce,
     clientOrderId?: string,
     options?: {
       tradeMode?: 'cash' | 'isolated' | 'cross';
       leverage?: number;
-      takeProfitPrice?: Decimal;
     },
   ): Promise<Order>;
 
@@ -160,7 +158,9 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
 
   analyze(dataUpdate: DataUpdate): Promise<StrategyResult>;
 
-  onOrderFilled(order: Order): Promise<void>;
+  // Order lifecycle callbacks
+  onOrderCreated?(order: Order): Promise<void>; // Called when order is created from strategy signal
+  onOrderFilled(order: Order): Promise<void>; // Called when order is filled
 
   // 🆕 Strategy Name Management (optional - implemented in BaseStrategy)
   setStrategyName?(name: string): void; // Set user-defined strategy name from database
@@ -185,11 +185,11 @@ export interface ExecuteOrderParameters {
   side: OrderSide;
   quantity: Decimal;
   type: OrderType;
-  price?: Decimal;
-  stopLoss?: Decimal;
-  takeProfit?: Decimal;
+  price?: Decimal; // Limit price for the main/initial order
   tradeMode?: 'cash' | 'isolated' | 'cross'; // Trading mode for margin/futures
   leverage?: number; // Leverage multiplier
+
+  // Note: Stop loss and take profit should be implemented as separate orders
 }
 
 // Trading Engine Interface

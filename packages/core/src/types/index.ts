@@ -143,14 +143,13 @@ export enum TimeInForce {
 
 export interface Order {
   id: string;
-  clientOrderId?: string;
+  clientOrderId: string;
   symbol: string;
   side: OrderSide;
   type: OrderType;
   quantity: Decimal;
-  price?: Decimal;
-  stopLoss?: Decimal; // Stop loss trigger price (not execution price)
-  takeProfit?: Decimal; // Take profit trigger price (not execution price)
+  price?: Decimal; // Limit price for the order
+  stopPrice?: Decimal; // Trigger price for stop orders (STOP_LOSS, TAKE_PROFIT, etc.)
   status: OrderStatus;
   timeInForce: TimeInForce;
   timestamp: Date;
@@ -215,15 +214,16 @@ export interface AccountInfo {
 export interface StrategyResult {
   action: 'buy' | 'sell' | 'hold';
   quantity?: Decimal;
-  price?: Decimal;
+  price?: Decimal; // Limit price for the main/initial order
   confidence?: number;
   reason?: string;
-  // Risk management
-  stopLoss?: Decimal;
-  takeProfit?: Decimal;
+
   // Trading mode and leverage (for futures/margin)
   tradeMode?: 'cash' | 'isolated' | 'cross'; // cash=spot, isolated/cross=margin/futures
   leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)
+
+  // Note: Stop loss and take profit should be implemented as separate orders
+  // after the main order is filled, not as part of the initial order creation
 }
 
 // Exchange Types

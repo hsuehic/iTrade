@@ -196,13 +196,11 @@ export class OKXExchange extends BaseExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopLoss?: Decimal,
     _timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
     options?: {
       tradeMode?: 'cash' | 'isolated' | 'cross';
       leverage?: number;
-      takeProfitPrice?: Decimal;
     },
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
@@ -239,24 +237,6 @@ export class OKXExchange extends BaseExchange {
 
     if (price) {
       orderData.px = price.toString();
-    }
-
-    // Stop loss trigger price (OKX uses slTriggerPx)
-    if (stopLoss) {
-      orderData.slTriggerPx = stopLoss.toString();
-      // For stop loss with limit price, use slOrdPx
-      if (price) {
-        orderData.slOrdPx = price.toString();
-      }
-    }
-
-    // Take profit trigger price (OKX uses tpTriggerPx)
-    if (options?.takeProfitPrice) {
-      orderData.tpTriggerPx = options.takeProfitPrice.toString();
-      // For take profit with limit price, use tpOrdPx
-      if (price) {
-        orderData.tpOrdPx = price.toString();
-      }
     }
 
     if (clientOrderId) {

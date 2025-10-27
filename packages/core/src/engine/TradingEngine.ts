@@ -375,7 +375,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Process kline with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          const result = await strategy.analyze({ klines: [kline] });
+          const result = await strategy.analyze({
+            klines: [kline],
+            symbol,
+            exchangeName,
+          });
 
           if (result.action !== 'hold') {
             this._eventBus.emitStrategySignal({
@@ -532,8 +536,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       quantity,
       type,
       price,
-      stopLoss,
-      takeProfit,
       tradeMode,
       leverage,
     } = params;
@@ -607,19 +609,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         );
       }
 
-      // Apply precision to stop loss price (if provided)
-      let adjustedStopLoss = stopLoss;
-      if (stopLoss) {
-        adjustedStopLoss = PrecisionUtils.roundPrice(
-          stopLoss,
-          symbolInfo.tickSize,
-          symbolInfo.pricePrecision,
-        );
-
-        // Validate stop loss price
-        PrecisionUtils.validatePrice(adjustedStopLoss, symbolInfo.tickSize);
-      }
-
       // Log precision adjustments if any changes were made
       if (!adjustedQuantity.equals(quantity)) {
         this.logger.info(
@@ -629,11 +618,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       if (price && adjustedPrice && !adjustedPrice.equals(price)) {
         this.logger.info(
           `Adjusted price for ${symbol}: ${price.toString()} → ${adjustedPrice.toString()}`,
-        );
-      }
-      if (stopLoss && adjustedStopLoss && !adjustedStopLoss.equals(stopLoss)) {
-        this.logger.info(
-          `Adjusted stop loss for ${symbol}: ${stopLoss.toString()} → ${adjustedStopLoss.toString()}`,
         );
       }
 
@@ -657,8 +641,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type,
         quantity: adjustedQuantity,
         price: adjustedPrice,
-        stopLoss: adjustedStopLoss,
-        takeProfit,
         status: 'NEW' as OrderStatus,
         timeInForce: 'GTC' as TimeInForce,
         timestamp: new Date(),
@@ -691,13 +673,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type,
         adjustedQuantity,
         adjustedPrice,
-        adjustedStopLoss,
         'GTC' as TimeInForce,
         order.clientOrderId,
         {
           tradeMode,
           leverage,
-          takeProfitPrice: takeProfit,
         },
       );
 
@@ -748,7 +728,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const orderType = signal.price ? OrderType.LIMIT : OrderType.MARKET;
       const side = signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
 
-      await this.executeOrder({
+      const executedOrder = await this.executeOrder({
         // exchange: exchangeName,
         strategyName,
         symbol,
@@ -756,8 +736,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         quantity: signal.quantity,
         type: orderType,
         price: signal.price,
-        stopLoss: signal.stopLoss,
-        takeProfit: signal.takeProfit,
         tradeMode: signal.tradeMode,
         leverage: signal.leverage,
       });
@@ -770,7 +748,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         price: signal.price?.toNumber(),
         confidence: signal.confidence,
         reason: signal.reason,
+        clientOrderId: executedOrder.clientOrderId,
       });
+
+      // 🆕 Notify strategy that order was created from its signal
+      const strategy = this._strategies.get(strategyName);
+      if (strategy && strategy.onOrderCreated) {
+        await strategy.onOrderCreated(executedOrder);
+      }
     } catch (error) {
       this.logger.error(
         `Failed to execute strategy signal for ${strategyName}`,

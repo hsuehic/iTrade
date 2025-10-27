@@ -32,7 +32,7 @@ export class BacktestEngine implements IBacktestEngine {
     this.positions.clear();
 
     // Initialize strategy
-    await strategy.initialize(strategy.parameters);
+    await strategy.initialize(strategy.config);
 
     // Record initial equity
     this.equity.push({
@@ -55,7 +55,7 @@ export class BacktestEngine implements IBacktestEngine {
     config: BacktestConfig,
     dataManager: IDataManager,
   ): Promise<void> {
-    const { exchange } = strategy.parameters;
+    const { exchange } = strategy.config;
     // Get historical data
     const klines = await dataManager.getKlines(
       symbol,

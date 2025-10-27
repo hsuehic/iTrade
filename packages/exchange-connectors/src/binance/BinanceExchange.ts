@@ -211,13 +211,11 @@ export class BinanceExchange extends BaseExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopLoss?: Decimal,
     timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
     options?: {
       tradeMode?: 'cash' | 'isolated' | 'cross';
       leverage?: number;
-      takeProfitPrice?: Decimal;
     },
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
@@ -243,21 +241,6 @@ export class BinanceExchange extends BaseExchange {
     };
 
     if (price) params.price = price.toString();
-    if (stopLoss) params.stopPrice = stopLoss.toString();
-
-    // Binance supports take profit through stopPrice for TAKE_PROFIT orders
-    // If takeProfitPrice is provided, treat as TAKE_PROFIT_LIMIT order
-    if (options?.takeProfitPrice) {
-      params.stopPrice = options.takeProfitPrice.toString();
-      // If price is provided, use TAKE_PROFIT_LIMIT, otherwise TAKE_PROFIT
-      if (price) {
-        params.type = 'TAKE_PROFIT_LIMIT';
-        params.price = price.toString();
-      } else {
-        params.type = 'TAKE_PROFIT';
-      }
-    }
-
     if (timeInForce !== 'GTC') params.timeInForce = timeInForce;
     if (clientOrderId) params.newClientOrderId = clientOrderId;
 
@@ -963,7 +946,7 @@ export class BinanceExchange extends BaseExchange {
         type,
         quantity: qty,
         price,
-        stopLoss: data.P ? this.formatDecimal(data.P) : undefined,
+        stopPrice: data.P ? this.formatDecimal(data.P) : undefined,
         status: this.transformBinanceOrderStatus(data.X || data.x || 'NEW'),
         timeInForce: (data.f as TimeInForce) || 'GTC',
         timestamp: this.formatTimestamp(data.T || Date.now()),
@@ -988,7 +971,7 @@ export class BinanceExchange extends BaseExchange {
         type,
         quantity: qty,
         price,
-        stopLoss: o.sp ? this.formatDecimal(o.sp) : undefined,
+        stopPrice: o.sp ? this.formatDecimal(o.sp) : undefined,
         status: this.transformBinanceOrderStatus(o.X || 'NEW'),
         timeInForce: (o.f as TimeInForce) || 'GTC',
         timestamp: this.formatTimestamp(o.T || Date.now()),
@@ -1076,7 +1059,7 @@ export class BinanceExchange extends BaseExchange {
       type: this.transformBinanceOrderType(order.type),
       quantity: this.formatDecimal(order.origQty || order.quantity || '0'),
       price: order.price ? this.formatDecimal(order.price) : undefined,
-      stopLoss: order.stopPrice ? this.formatDecimal(order.stopPrice) : undefined,
+      stopPrice: order.stopPrice ? this.formatDecimal(order.stopPrice) : undefined,
       status,
       timeInForce: (order.timeInForce as TimeInForce) || 'GTC',
       timestamp: this.formatTimestamp(order.time || order.transactTime || Date.now()),

@@ -230,13 +230,11 @@ export class CoinbaseExchange extends BaseExchange {
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-    stopLoss?: Decimal,
     timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
     options?: {
       tradeMode?: 'cash' | 'isolated' | 'cross';
       leverage?: number;
-      takeProfitPrice?: Decimal;
     },
   ): Promise<Order> {
     const productId = this.normalizeSymbol(symbol);
@@ -247,16 +245,7 @@ export class CoinbaseExchange extends BaseExchange {
 
     const order_configuration: any = {};
 
-    // If take profit is provided, use stop limit order
-    if (options?.takeProfitPrice) {
-      order_configuration.stop_limit_stop_limit_gtc = {
-        base_size: quantity.toString(),
-        limit_price: price?.toString() || options.takeProfitPrice.toString(),
-        stop_price: options.takeProfitPrice.toString(),
-        stop_direction:
-          side === OrderSide.BUY ? 'STOP_DIRECTION_STOP_DOWN' : 'STOP_DIRECTION_STOP_UP',
-      };
-    } else if (type === OrderType.LIMIT) {
+    if (type === OrderType.LIMIT) {
       order_configuration.limit_limit_gtc = {
         base_size: quantity.toString(),
         limit_price: price?.toString() || '0',

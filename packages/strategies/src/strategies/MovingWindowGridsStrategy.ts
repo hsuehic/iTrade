@@ -29,9 +29,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private windowSize!: number;
   private gridSize!: number;
   private gridCount!: number;
-  private position: 'long' | 'short' | 'none' = 'none';
+  private position: Position | null = null;
   private positions: Position[] = [];
-  private orders: Order[] = [];
+  private orders: Map<string, Order> = new Map();
   private balances: Balance[] = [];
   private tickers: FixedLengthList<Ticker> = new FixedLengthList<Ticker>(15);
   private klines: FixedLengthList<Kline> = new FixedLengthList<Kline>(15);
@@ -40,6 +40,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private size: number = 0;
   private minVolatility!: number;
   private takeProfitRatio!: number;
+  // Signals to be sent when price reaches the target price
+  private pendingSignals: Map<string, StrategyResult> = new Map();
 
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
     super(config);
@@ -73,31 +75,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       });
     }
 
-    // Load current positions
-    if (initialData.positions && initialData.positions.length > 0) {
-      this.positions = initialData.positions;
-      console.log(`  💼 Loaded ${initialData.positions.length} position(s)`);
-      // Determine strategy state based on positions
-      const totalSize = initialData.positions.reduce(
-        (sum, p) => sum + parseFloat(p.quantity.toString()),
-        0,
-      );
-      if (totalSize > 0) {
-        this.position = 'long';
-        this.size = totalSize;
-      } else if (totalSize < 0) {
-        this.position = 'short';
-        this.size = Math.abs(totalSize);
-      }
-      console.log(`  📍 Position state: ${this.position}, size: ${this.size}`);
-    }
-
-    // Load open orders
-    if (initialData.openOrders && initialData.openOrders.length > 0) {
-      this.orders = initialData.openOrders;
-      console.log(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
-    }
-
     // Load account balance
     if (initialData.balance) {
       this.balances = initialData.balance;
@@ -120,78 +97,121 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.gridCount = this.getParameter('gridCount') as number;
   }
 
-  public override async analyze({ klines }: DataUpdate): Promise<StrategyResult> {
+  public override async analyze({
+    exchangeName,
+    klines,
+    orders,
+    positions,
+    symbol,
+    ticker,
+  }: DataUpdate): Promise<StrategyResult> {
     this.ensureInitialized();
-    if (!!klines && klines.length > 0) {
-      const kline = klines[klines.length - 1];
-      // 🔍 Validate symbol match
-      const strategySymbol = this._context.symbol;
-      if (strategySymbol && kline.symbol !== strategySymbol) {
-        return {
-          action: 'hold',
-          reason: `Symbol mismatch: expected ${strategySymbol}, got ${kline.symbol}`,
-        };
+
+    if (exchangeName == this._exchangeName) {
+      if (positions) {
+        this.handlePosition(positions);
       }
 
-      // 🔍 Validate exchange match
-      const strategyExchange = this._context.exchange;
-      if (strategyExchange && kline.exchange) {
-        // Handle both single exchange and array of exchanges
-        const exchanges = Array.isArray(strategyExchange)
-          ? strategyExchange
-          : [strategyExchange];
-        if (!exchanges.includes(kline.exchange)) {
-          return {
-            action: 'hold',
-            reason: `Exchange mismatch: expected ${exchanges.join(',')}, got ${kline.exchange}`,
-          };
+      if (orders) {
+        this.handleOrder(orders);
+      }
+
+      if (symbol == this._symbol) {
+        if (ticker) {
+          const result = this.handleTicker(ticker);
+          if (result) {
+            return result;
+          }
         }
-      }
 
-      // 🔍 Only process closed klines
-      if (!kline.isClosed) {
-        return { action: 'hold', reason: 'Waiting for kline to close' };
-      }
+        if (!!klines && klines.length > 0) {
+          const kline = klines[klines.length - 1];
 
-      const { minVolatility, takeProfitRatio } = this;
-      // ✅ Process validated and closed kline
-      const range = kline.high.minus(kline.low).toNumber();
-      const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
-      console.log(
-        'volatility:',
-        volatility,
-        'range:',
-        range,
-        'isClosed:',
-        kline.isClosed,
-      );
-      if (volatility >= minVolatility) {
-        console.log(
-          `✅ analyze: Kline is closed and volatility(${volatility}) is >${minVolatility * 100}%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
-        );
-        const price = kline.open.add(kline.close).dividedBy(2);
-        if (kline.close.gt(kline.open)) {
-          console.log('✅ analyze: BUY signal!');
-          return {
-            action: 'buy',
-            price,
-            quantity: new Decimal(this.baseSize),
-            leverage: 10,
-            tradeMode: 'isolated',
-          };
+          const { minVolatility } = this;
+          // ✅ Process validated and closed kline
+          const range = kline.high.minus(kline.low).toNumber();
+          const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
+          console.log(
+            'volatility:',
+            volatility,
+            'range:',
+            range,
+            'isClosed:',
+            kline.isClosed,
+          );
+          if (volatility >= minVolatility) {
+            console.log(
+              `✅ analyze: Kline is closed and volatility(${volatility}) is >${minVolatility * 100}%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
+            );
+            const price = kline.open.add(kline.close).dividedBy(2);
+            if (kline.close.gt(kline.open)) {
+              console.log('✅ analyze: BUY signal!');
+              this.size += this.baseSize;
+              if (this.size <= this.maxSize) {
+                return {
+                  action: 'buy',
+                  price,
+                  quantity: new Decimal(this.baseSize),
+                  leverage: 10,
+                  tradeMode: 'isolated',
+                };
+              }
+            }
+          }
         }
       }
     }
 
-    return { action: 'hold', reason: 'Waiting for closed kline with >0.6% volatility' };
+    return { action: 'hold' };
   }
 
+  private handlePosition(positions: Position[]): void {
+    const position = positions.find((p) => p.symbol === this._context.symbol);
+    if (position) {
+      this._logger.info(`[MovingWindowGridsStrategy] Pushed position:`);
+      this._logger.info(JSON.stringify(position, null, 2));
+      this.position = position;
+    }
+  }
+
+  private handleTicker(ticker: Ticker): StrategyResult | null {
+    const key = ticker.price.toString();
+    const signal = this.pendingSignals.get(key);
+    if (signal) {
+      return signal;
+    }
+    return null;
+  }
+
+  private handleOrder(orders: Order[]): void {
+    this._logger.info(`[MovingWindowGridsStrategy] Pushed ${orders.length} order(s):`);
+    this._logger.info(JSON.stringify(orders, null, 2));
+    orders.forEach((order) => {
+      if (this.orders.has(order.clientOrderId!)) {
+        const storedOrder = this.orders.get(order.clientOrderId!);
+        if (storedOrder?.updateTime && order.updateTime) {
+          if (storedOrder?.updateTime?.getTime() < order.updateTime?.getTime()) {
+            this.orders.set(order.clientOrderId!, order);
+          }
+        }
+      }
+    });
+  }
+
+  // orders created from this strategy's signal
+  public override async onOrderCreated(order: Order): Promise<void> {
+    this.orders.set(order.clientOrderId!, order);
+  }
+
+  // all orders from subscription, not filtered
   public override async onOrderFilled(order: Order): Promise<void> {
-    console.log('on order:', order);
+    if (this.orders.has(order.clientOrderId)) {
+      this.orders.set(order.clientOrderId, order);
+    }
   }
 
   protected async onCleanup(): Promise<void> {
-    this.position = 'none';
+    console.log('Clean up');
   }
 
   public getStrategyState() {
