@@ -282,7 +282,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     const isBearish = latestKline.close.lt(latestKline.open);
 
     // Calculate position within recent channel
-    const closes = allKlines.map((k) => k.close.toNumber());
+    const closes = allKlines.map((k: Kline) => k.close.toNumber());
     const minClose = Math.min(...closes);
     const maxClose = Math.max(...closes);
     const range = maxClose - minClose || 1e-9; // Avoid division by zero

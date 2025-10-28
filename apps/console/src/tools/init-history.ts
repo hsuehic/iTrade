@@ -22,7 +22,7 @@
 import 'reflect-metadata';
 import dotenv from 'dotenv';
 import { LogLevel } from '@itrade/core';
-import { ConsoleLogger } from '@itrade/logger';
+import { ConsoleLogger } from '@itrade/core';
 import {
   BinanceExchange,
   OKXExchange,

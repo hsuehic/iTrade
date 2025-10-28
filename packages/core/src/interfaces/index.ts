@@ -154,8 +154,6 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   /** Get runtime context */
   readonly context: StrategyRuntimeContext;
 
-  initialize(config: StrategyConfig<TParams>): Promise<void>;
-
   analyze(dataUpdate: DataUpdate): Promise<StrategyResult>;
 
   // Order lifecycle callbacks

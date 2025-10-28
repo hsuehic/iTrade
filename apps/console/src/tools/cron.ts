@@ -18,8 +18,12 @@
 
 import 'reflect-metadata';
 import dotenv from 'dotenv';
-import { AccountPollingService, LogLevel, PollingResult } from '@itrade/core';
-import { ConsoleLogger } from '@itrade/logger';
+import {
+  AccountPollingService,
+  ConsoleLogger,
+  LogLevel,
+  PollingResult,
+} from '@itrade/core';
 import {
   BinanceExchange,
   OKXExchange,

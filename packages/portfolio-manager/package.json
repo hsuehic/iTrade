@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsc --noEmit true -p tsconfig.build.json && pkgroll --clean-dist --sourcemap --tsconfig tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && pkgroll --sourcemap --tsconfig tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",
