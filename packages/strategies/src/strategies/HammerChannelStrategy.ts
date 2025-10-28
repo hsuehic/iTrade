@@ -10,6 +10,7 @@ import {
   InitialDataResult,
   StrategyParameters,
   DataUpdate,
+  TradeMode,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 
@@ -284,7 +285,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
         price,
         quantity,
         leverage: 1,
-        tradeMode: 'isolated',
+        tradeMode: TradeMode.ISOLATED,
       };
     }
 
@@ -302,7 +303,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
         price,
         quantity,
         leverage: 1,
-        tradeMode: 'isolated',
+        tradeMode: TradeMode.ISOLATED,
       };
     }
 
