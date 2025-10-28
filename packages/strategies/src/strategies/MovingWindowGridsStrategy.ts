@@ -123,8 +123,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     // 使用更短的时间戳（去掉毫秒的后3位）和前缀
     const shortTimestamp = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
     const strategyId = this.getStrategyId();
-    // 格式: S{strategyId}_{type首字母}_{sequence}_{timestamp}
-    // 例如: S2_E_1_1730089500 (19字符) 或 S2_TP_1_1730089500 (21字符)
+    // 格式: S{strategyId}{type首字母}{sequence}{timestamp}
+    // 例如: S2E11730089500 (19字符) 或 S2TP11730089500 (21字符)
     const typePrefix =
       type === 'entry'
         ? 'E'
