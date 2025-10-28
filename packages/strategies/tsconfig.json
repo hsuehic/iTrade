@@ -8,12 +8,7 @@
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"],
 
   "references": [
-    { "path": "../core" }, 
-    { "path": "../exchange-connectors" },
-    { "path": "../data-manager" },
-    { "path": "../risk-manager" },
-    { "path": "../portfolio-manager" },
-    { "path": "../logger" },
+    { "path": "../core" },
     { "path": "../utils" }
   ]
 }

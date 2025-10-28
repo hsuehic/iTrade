@@ -31,9 +31,6 @@ export class BacktestEngine implements IBacktestEngine {
     this.currentBalance = config.initialBalance;
     this.positions.clear();
 
-    // Initialize strategy
-    await strategy.initialize(strategy.config);
-
     // Record initial equity
     this.equity.push({
       timestamp: config.startDate,

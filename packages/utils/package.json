@@ -7,14 +7,13 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && pkgroll --sourcemap",
+    "build": "tsc --noEmit && pkgroll --sourcemap --clean-dist",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts,.tsx",
@@ -29,8 +28,7 @@
     "moment-timezone": "^0.6.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
-    "tsdown": "^0.2.16"
+    "@types/node": "^20.11.24"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

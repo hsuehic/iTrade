@@ -3,8 +3,9 @@
   "compilerOptions": {
     "outDir": "./dist",
     "composite": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "rootDir": "./src"
   },
-  "include": ["src/**/*"],
+  "include": ["./src"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
 }
