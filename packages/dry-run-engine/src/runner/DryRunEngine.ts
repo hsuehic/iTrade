@@ -6,8 +6,12 @@ import {
   OrderSide,
   BacktestResult,
 } from '@itrade/core';
-import { TypeOrmDataManager, TypeOrmDataManagerConfig } from '@itrade/data-manager';
-import { DryRunOrderEntity, DryRunTradeEntity } from '@itrade/data-manager';
+import {
+  DryRunOrderEntity,
+  DryRunTradeEntity,
+  TypeOrmDataManager,
+  TypeOrmDataManagerConfig,
+} from '@itrade/data-manager';
 
 export interface DryRunRunOptions {
   userId: string;
@@ -40,10 +44,10 @@ export class DryRunEngine {
     await this.dataManager.initialize();
 
     // Create session
-    const session = await (this.dataManager as any).createDryRunSession({
+    const session = await this.dataManager.createDryRunSession({
       strategyId: options.strategy?.id,
       name: options.name,
-      parametersSnapshot: strategy.parameters,
+      parametersSnapshot: strategy.config as unknown as Record<string, unknown>,
       startTime: params.startDate,
       timeframe: params.timeframe,
       symbols: params.symbols,
