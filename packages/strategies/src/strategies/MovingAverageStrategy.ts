@@ -29,23 +29,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     super(config);
   }
 
-  protected async onInitialize(): Promise<void> {
-    this.validateParameters(['fastPeriod', 'slowPeriod', 'threshold']);
-
-    const fastPeriod = this.getParameter('fastPeriod');
-    const slowPeriod = this.getParameter('slowPeriod');
-
-    if (fastPeriod >= slowPeriod) {
-      throw new Error('Fast period must be less than slow period');
-    }
-
-    this.priceHistory = [];
-    this.position = 'none';
-  }
-
   public async analyze({ ticker, klines }: DataUpdate): Promise<StrategyResult> {
-    this.ensureInitialized();
-
     let currentPrice: Decimal;
 
     // Get current price from available data
@@ -61,9 +45,9 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     // Add price to history
     this.priceHistory.push(currentPrice);
 
-    const fastPeriod = this.getParameter('fastPeriod');
-    const slowPeriod = this.getParameter('slowPeriod');
-    const threshold = this.getParameter('threshold') ?? 0.001;
+    const fastPeriod = this._parameters.fastPeriod;
+    const slowPeriod = this._parameters.slowPeriod;
+    const threshold = this._parameters.threshold ?? 0.001;
 
     // Keep only required history
     if (this.priceHistory.length > slowPeriod) {

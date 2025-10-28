@@ -143,36 +143,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
   }
 
   /**
-   * Initialize strategy
-   */
-  protected override async onInitialize(): Promise<void> {
-    this.validateParameters([
-      'windowSize',
-      'lowerShadowToBody',
-      'upperShadowToBody',
-      'bodyToRange',
-      'highThreshold',
-      'lowThreshold',
-    ]);
-
-    this.windowSize = this.getParameter('windowSize');
-    this.lowerShadowToBody = this.getParameter('lowerShadowToBody');
-    this.upperShadowToBody = this.getParameter('upperShadowToBody');
-    this.bodyToRange = this.getParameter('bodyToRange');
-    this.highThreshold = this.getParameter('highThreshold');
-    this.lowThreshold = this.getParameter('lowThreshold');
-
-    console.log(`🔨 [HammerChannel] Initialized with parameters:`, {
-      windowSize: this.windowSize,
-      lowerShadowToBody: this.lowerShadowToBody,
-      upperShadowToBody: this.upperShadowToBody,
-      bodyToRange: this.bodyToRange,
-      highThreshold: this.highThreshold,
-      lowThreshold: this.lowThreshold,
-    });
-  }
-
-  /**
    * Check if a kline is a hammer pattern
    */
   private isHammer(kline: Kline, params: HammerDetectionParams): boolean {
@@ -209,8 +179,6 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    * Analyze market data and generate trading signals
    */
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
-    this.ensureInitialized();
-
     const { ticker, klines, positions, orders, exchangeName, symbol } = dataUpdate;
 
     // Update account data

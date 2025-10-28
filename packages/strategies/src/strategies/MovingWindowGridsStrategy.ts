@@ -61,9 +61,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     if (this._context.loadedInitialData && 'symbol' in this._context.loadedInitialData) {
       this.processInitialData(this._context.loadedInitialData as any);
     }
-
-    // Strategy-specific initialization logic (if needed)
-    // No need to call this.initialize() - it's optional now
   }
 
   /**
@@ -97,21 +94,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     }
 
     console.log(`✅ [${this.strategyType}] Initial data processed successfully`);
-  }
-
-  protected async onInitialize(): Promise<void> {
-    this.validateParameters([
-      'windowSize',
-      'gridSize',
-      'gridCount',
-      'minVolatility',
-      'takeProfitRatio',
-    ] as any[]);
-    this.windowSize = this.getParameter('windowSize') as number;
-    this.gridSize = this.getParameter('gridSize') as number;
-    this.gridCount = this.getParameter('gridCount') as number;
-    this.minVolatility = this.getParameter('minVolatility') as number;
-    this.takeProfitRatio = this.getParameter('takeProfitRatio') as number;
   }
 
   /**
@@ -171,7 +153,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
     // 计算止盈价格（基于成交均价）
     const entryPrice = parentOrder.averagePrice || parentOrder.price!;
-    const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio);
+    const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio / 100);
 
     const metadata = {
       signalType: 'take_profit',
@@ -192,15 +174,17 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this._logger.info(`   Parent Order: ${parentOrder.clientOrderId}`);
     this._logger.info(`   Entry Price: ${entryPrice.toString()}`);
     this._logger.info(
-      `   TP Price: ${takeProfitPrice.toString()} (+${(this.takeProfitRatio * 100).toFixed(2)}%)`,
+      `   TP Price: ${takeProfitPrice.toString()} (+${this.takeProfitRatio.toFixed(2)}%)`,
     );
 
     return {
       action: 'sell',
       price: takeProfitPrice,
+      leverage: 10,
       quantity: parentOrder.executedQuantity || parentOrder.quantity,
       reason: 'take_profit',
       metadata,
+      tradeMode: 'isolated',
     };
   }
 
@@ -212,8 +196,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     symbol,
     ticker,
   }: DataUpdate): Promise<StrategyResult> {
-    this.ensureInitialized();
-
     if (exchangeName == this._exchangeName) {
       if (positions) {
         this.handlePosition(positions);
@@ -248,7 +230,11 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
           const { minVolatility } = this;
           // ✅ Process validated and closed kline
-          const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
+          const volatility = kline.high
+            .minus(kline.low)
+            .dividedBy(kline.open)
+            .mul(100)
+            .toNumber();
 
           if (volatility >= minVolatility && kline.isClosed) {
             const price = kline.open.add(kline.close).dividedBy(2);

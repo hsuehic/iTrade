@@ -96,6 +96,9 @@ export abstract class BaseStrategy<
     this._quote = parts[0];
     this._base = parts[1];
     this._settlement = parts.length > 2 ? parts[2] : undefined;
+
+    // indicate that strategy is initialized, is ready to use. you need to override this method in your strategy, and set this._initialized to true, and emit 'initialized' event.
+    this.onInitialize();
   }
 
   public get config(): StrategyConfig<TParams> {
@@ -112,40 +115,6 @@ export abstract class BaseStrategy<
 
   public get context(): StrategyRuntimeContext {
     return { ...this._context };
-  }
-
-  public async initialize(config: StrategyConfig<TParams>): Promise<void> {
-    const {
-      type,
-      parameters,
-      symbol,
-      exchange,
-      strategyId,
-      strategyName,
-      logger,
-      subscription,
-      initialData,
-      loadedInitialData,
-    } = config;
-
-    if (type) {
-      this._strategyType = type;
-    }
-    this._parameters = parameters;
-    this._context = {
-      symbol,
-      exchange,
-      strategyId,
-      strategyName,
-      logger,
-      subscription,
-      initialData,
-      loadedInitialData,
-    };
-
-    await this.onInitialize();
-    this._isInitialized = true;
-    this.emit('initialized', this.strategyType);
   }
 
   public abstract analyze(marketData: DataUpdate): Promise<StrategyResult>;
@@ -231,6 +200,8 @@ export abstract class BaseStrategy<
 
   protected async onInitialize(): Promise<void> {
     // Override in derived classes for custom initialization
+    this._isInitialized = true;
+    this.emit('initialized', this.strategyType);
   }
 
   protected async onCleanup(): Promise<void> {
@@ -244,21 +215,6 @@ export abstract class BaseStrategy<
 
   protected setParameter<K extends keyof TParams>(key: K, value: TParams[K]): void {
     this._parameters[key] = value;
-  }
-
-  protected validateParameters(requiredParams: (keyof TParams)[]): void {
-    const missing = requiredParams.filter((param) => !(param in this._parameters));
-    if (missing.length > 0) {
-      throw new Error(
-        `Missing required parameters for strategy ${this.strategyType}: ${missing.map(String).join(', ')}`,
-      );
-    }
-  }
-
-  protected async ensureInitialized(): Promise<void> {
-    if (!this._isInitialized) {
-      await this.initialize(this.config);
-    }
   }
 
   // 🆕 State Management Methods Implementation
