@@ -1,5 +1,5 @@
 import { run } from './helpers/strategy-runner';
-import { IStrategy } from '@itrade/core';
+import { IStrategy, TradeMode } from '@itrade/core';
 import { MovingWindowGridsStrategy } from '@itrade/strategies';
 
 async function main() {
@@ -16,7 +16,7 @@ async function main() {
         ticker: false,
         klines: {
           enabled: true,
-          interval: '5m',
+          interval: '15m',
         },
         trades: false,
         orderbook: {
@@ -30,8 +30,12 @@ async function main() {
         windowSize: 10,
         gridSize: 10,
         gridCount: 10,
-        minVolatility: 0.003,
-        takeProfitRatio: 0.005,
+        minVolatility: 0.5,
+        takeProfitRatio: 1.5,
+        baseSize: 3000,
+        maxSize: 30000,
+        leverage: 10,
+        tradeMode: TradeMode.ISOLATED,
       },
     }),
   );

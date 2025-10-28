@@ -81,6 +81,11 @@ export interface OrderBook {
   exchange?: string; // 交易所名称，用于区分多交易所数据
 }
 
+export enum TradeMode {
+  CASH = 'cash',
+  ISOLATED = 'isolated',
+  CROSS = 'cross',
+}
 export interface Trade {
   id: string;
   symbol: string;
@@ -219,7 +224,7 @@ export interface StrategyResult {
   reason?: string;
 
   // Trading mode and leverage (for futures/margin)
-  tradeMode?: 'cash' | 'isolated' | 'cross'; // cash=spot, isolated/cross=margin/futures
+  tradeMode?: TradeMode; // cash=spot, isolated/cross=margin/futures
   leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)
 
   // 🆕 Metadata for signal classification and additional context

@@ -18,6 +18,7 @@ import {
   Position,
   ExchangeInfo,
   SymbolInfo,
+  TradeMode,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -214,7 +215,7 @@ export class BinanceExchange extends BaseExchange {
     timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
     options?: {
-      tradeMode?: 'cash' | 'isolated' | 'cross';
+      tradeMode?: TradeMode;
       leverage?: number;
     },
   ): Promise<Order> {
@@ -257,7 +258,7 @@ export class BinanceExchange extends BaseExchange {
   private async setLeverage(
     symbol: string,
     leverage: number,
-    marginType?: 'cash' | 'isolated' | 'cross',
+    marginType?: TradeMode,
   ): Promise<void> {
     try {
       // First, set margin type if specified (isolated or cross)

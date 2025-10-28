@@ -25,6 +25,7 @@ import {
   RiskMetrics,
   StrategyConfig,
   StrategyRuntimeContext,
+  TradeMode,
 } from '../types';
 
 // Exchange Interface
@@ -69,7 +70,7 @@ export interface IExchange extends EventEmitter {
     timeInForce?: TimeInForce,
     clientOrderId?: string,
     options?: {
-      tradeMode?: 'cash' | 'isolated' | 'cross';
+      tradeMode?: TradeMode;
       leverage?: number;
     },
   ): Promise<Order>;
@@ -184,7 +185,7 @@ export interface ExecuteOrderParameters {
   quantity: Decimal;
   type: OrderType;
   price?: Decimal; // Limit price for the main/initial order
-  tradeMode?: 'cash' | 'isolated' | 'cross'; // Trading mode for margin/futures
+  tradeMode?: TradeMode; // Trading mode for margin/futures
   leverage?: number; // Leverage multiplier
   clientOrderId?: string; // 🆕 Client order ID from strategy signal metadata (optional)
 

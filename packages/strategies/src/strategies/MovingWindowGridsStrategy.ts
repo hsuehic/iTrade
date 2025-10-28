@@ -11,6 +11,7 @@ import {
   InitialDataResult,
   DataUpdate,
   StrategyParameters,
+  TradeMode,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 
@@ -23,6 +24,10 @@ export interface MovingWindowGridsParameters extends StrategyParameters {
   gridCount: number;
   minVolatility: number;
   takeProfitRatio: number;
+  baseSize: number;
+  maxSize: number;
+  leverage?: number;
+  tradeMode?: TradeMode;
 }
 
 export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
@@ -35,11 +40,13 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private balances: Balance[] = [];
   private tickers: FixedLengthList<Ticker> = new FixedLengthList<Ticker>(15);
   private klines: FixedLengthList<Kline> = new FixedLengthList<Kline>(15);
-  private baseSize: number = 100;
-  private maxSize: number = 1000;
+  private baseSize!: number;
+  private maxSize!: number;
   private size: number = 0;
   private minVolatility!: number;
   private takeProfitRatio!: number;
+  private leverage!: number;
+  private tradeMode!: TradeMode;
 
   // 🆕 Signal and order tracking
   private pendingSignals: Map<string, StrategyResult> = new Map();
@@ -56,7 +63,15 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     super(config);
 
     // Parameters will be initialized in onInitialize
-
+    this.windowSize = config.parameters.windowSize;
+    this.gridSize = config.parameters.gridSize;
+    this.gridCount = config.parameters.gridCount;
+    this.minVolatility = config.parameters.minVolatility / 100;
+    this.takeProfitRatio = config.parameters.takeProfitRatio / 100;
+    this.baseSize = config.parameters.baseSize;
+    this.maxSize = config.parameters.maxSize;
+    this.leverage = config.parameters.leverage ?? 10;
+    this.tradeMode = config.parameters.tradeMode ?? TradeMode.ISOLATED;
     // 🆕 Process loaded initial data if available
     if (this._context.loadedInitialData && 'symbol' in this._context.loadedInitialData) {
       this.processInitialData(this._context.loadedInitialData as any);
@@ -139,7 +154,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       price,
       quantity,
       leverage: 10,
-      tradeMode: 'isolated',
+      tradeMode: this.tradeMode,
       reason: 'volatility_breakout',
       metadata,
     };
@@ -153,7 +168,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
     // 计算止盈价格（基于成交均价）
     const entryPrice = parentOrder.averagePrice || parentOrder.price!;
-    const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio / 100);
+    const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio);
 
     const metadata = {
       signalType: 'take_profit',
@@ -174,7 +189,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this._logger.info(`   Parent Order: ${parentOrder.clientOrderId}`);
     this._logger.info(`   Entry Price: ${entryPrice.toString()}`);
     this._logger.info(
-      `   TP Price: ${takeProfitPrice.toString()} (+${this.takeProfitRatio.toFixed(2)}%)`,
+      `   TP Price: ${takeProfitPrice.toString()} (+${(this.takeProfitRatio * 100).toFixed(2)}%)`,
     );
 
     return {
@@ -184,7 +199,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       quantity: parentOrder.executedQuantity || parentOrder.quantity,
       reason: 'take_profit',
       metadata,
-      tradeMode: 'isolated',
+      tradeMode: this.tradeMode,
     };
   }
 
@@ -230,11 +245,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
           const { minVolatility } = this;
           // ✅ Process validated and closed kline
-          const volatility = kline.high
-            .minus(kline.low)
-            .dividedBy(kline.open)
-            .mul(100)
-            .toNumber();
+          const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
 
           if (volatility >= minVolatility && kline.isClosed) {
             const price = kline.open.add(kline.close).dividedBy(2);

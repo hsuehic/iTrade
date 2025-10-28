@@ -19,6 +19,7 @@ import {
   ExchangeCredentials,
   ExchangeInfo,
   SymbolInfo,
+  TradeMode,
 } from '@itrade/core';
 
 export abstract class BaseExchange extends EventEmitter implements IExchange {
@@ -94,7 +95,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     timeInForce?: TimeInForce,
     clientOrderId?: string,
     options?: {
-      tradeMode?: 'cash' | 'isolated' | 'cross';
+      tradeMode?: TradeMode;
       leverage?: number;
     },
   ): Promise<Order>;

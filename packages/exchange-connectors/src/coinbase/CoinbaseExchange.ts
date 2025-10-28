@@ -18,6 +18,7 @@ import {
   Position,
   ExchangeInfo,
   SymbolInfo,
+  TradeMode,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -233,7 +234,7 @@ export class CoinbaseExchange extends BaseExchange {
     timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
     options?: {
-      tradeMode?: 'cash' | 'isolated' | 'cross';
+      tradeMode?: TradeMode;
       leverage?: number;
     },
   ): Promise<Order> {

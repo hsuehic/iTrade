@@ -19,6 +19,7 @@ import {
   ExchangeInfo,
   SymbolInfo,
   ExchangeCredentials,
+  TradeMode,
 } from '@itrade/core';
 
 export type OkxWsType = 'public' | 'private' | 'business';
@@ -199,7 +200,7 @@ export class OKXExchange extends BaseExchange {
     _timeInForce: TimeInForce = TimeInForce.GTC,
     clientOrderId?: string,
     options?: {
-      tradeMode?: 'cash' | 'isolated' | 'cross';
+      tradeMode?: TradeMode;
       leverage?: number;
     },
   ): Promise<Order> {
@@ -213,7 +214,7 @@ export class OKXExchange extends BaseExchange {
     // SWAP/FUTURES: isolated (safer than cross), or cross if specified
     let tdMode = options?.tradeMode;
     if (!tdMode) {
-      tdMode = isSwap ? 'isolated' : 'cash';
+      tdMode = isSwap ? TradeMode.ISOLATED : TradeMode.CASH;
     }
 
     const orderData: Record<string, string> = {
