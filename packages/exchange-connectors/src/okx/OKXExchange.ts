@@ -229,10 +229,12 @@ export class OKXExchange extends BaseExchange {
       if (options?.leverage) {
         orderData.lever = options.leverage.toString();
       }
-      // posSide: For dual-direction mode: 'long' for BUY, 'short' for SELL
-      // For net mode (one-way): 'net'
-      // Using dual-direction mode by default (more common for trading)
-      orderData.posSide = side === OrderSide.BUY ? 'long' : 'short';
+      // 🔄 Using net mode (one-way position mode) for automatic position management
+      // In net mode:
+      // - BUY automatically increases long position or decreases short position
+      // - SELL automatically decreases long position or increases short position
+      // This is the most intuitive behavior for most trading strategies
+      orderData.posSide = 'net';
     }
 
     if (price) {
@@ -882,9 +884,20 @@ export class OKXExchange extends BaseExchange {
         }
       } else if (channel === 'balance_and_position') {
         try {
+          // 🔍 Debug: Print raw position data
+          console.log(
+            '[OKX] 📦 Raw balance_and_position data:',
+            JSON.stringify(data, null, 2),
+          );
           const { balances, positions } = this.transformOKXBalanceAndPosition(data);
           if (balances.length) this.emit('accountUpdate', 'okx', balances);
-          if (positions.length) this.emit('positionUpdate', 'okx', positions);
+          if (positions.length) {
+            console.log(
+              '[OKX] 📊 Normalized positions:',
+              JSON.stringify(positions, null, 2),
+            );
+            this.emit('positionUpdate', 'okx', positions);
+          }
         } catch (error) {
           console.error('[OKX] Error transforming balance_and_position data:', error);
           console.error(
@@ -1195,16 +1208,33 @@ export class OKXExchange extends BaseExchange {
 
     if (Array.isArray(data.posData)) {
       for (const p of data.posData) {
+        // 🔍 Debug: Log each position's raw fields
+        console.log('[OKX] 📍 Raw position fields:', {
+          instId: p.instId,
+          pos: p.pos,
+          avgPx: p.avgPx,
+          markPx: p.markPx,
+          upl: p.upl,
+          uplRatio: p.uplRatio,
+          lever: p.lever,
+          mgnMode: p.mgnMode,
+          posSide: p.posSide,
+        });
+
         // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
         const unifiedSymbol = this.denormalizeSymbol(p.instId);
+
+        // Use avgPx as fallback for markPx (same as REST API)
+        const markPrice = this.formatDecimal(p.markPx ?? p.avgPx ?? '0');
+
         positions.push({
           symbol: unifiedSymbol,
           side: (p.posSide || 'long').toLowerCase() === 'long' ? 'long' : 'short',
           quantity: this.formatDecimal(p.pos || '0'),
           avgPrice: this.formatDecimal(p.avgPx || '0'),
-          markPrice: this.formatDecimal(p.markPx || '0'),
-          unrealizedPnl: this.formatDecimal(p.upl || '0'),
-          leverage: this.formatDecimal(p.lever || '0'),
+          markPrice: markPrice,
+          unrealizedPnl: this.formatDecimal(p.upl ?? '0'),
+          leverage: this.formatDecimal(p.lever ?? '0'),
           timestamp: new Date(),
         });
       }
