@@ -1230,7 +1230,7 @@ export class OKXExchange extends BaseExchange {
 
         positions.push({
           symbol: unifiedSymbol,
-          side: (p.posSide || 'long').toLowerCase() === 'long' ? 'long' : 'short',
+          side: (p.posSide || 'net').toLowerCase(),
           quantity: this.formatDecimal(p.pos || '0'),
           avgPrice: this.formatDecimal(p.avgPx || '0'),
           markPrice: markPrice,
