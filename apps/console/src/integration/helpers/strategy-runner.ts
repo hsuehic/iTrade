@@ -137,6 +137,28 @@ export async function run(strategies: Map<string, IStrategy>) {
     logger.error(`🚫 ORDER REJECTED: ${data.order.id}`);
   });
 
+  // Track balance updates
+  eventBus.onBalanceUpdate((data) => {
+    logger.info(`💰 BALANCE UPDATE: ${data.balances.length} balances received`);
+    data.balances.forEach((balance) => {
+      if (balance.total.greaterThan(0)) {
+        logger.info(
+          `   ${balance.asset}: Total=${balance.total}, Free=${balance.free}, Locked=${balance.locked}`,
+        );
+      }
+    });
+  });
+
+  // Track position updates
+  eventBus.onPositionUpdate((data) => {
+    logger.info(`📊 POSITION UPDATE: ${data.positions.length} positions received`);
+    data.positions.forEach((position) => {
+      logger.info(
+        `   ${position.symbol}: ${position.side} ${position.quantity} @ ${position.avgPrice}, PnL=${position.unrealizedPnl}`,
+      );
+    });
+  });
+
   // Keep the process running
   process.on('SIGINT', async () => {
     logger.info('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

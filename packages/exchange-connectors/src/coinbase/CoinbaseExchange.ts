@@ -667,10 +667,20 @@ export class CoinbaseExchange extends BaseExchange {
         }
         break;
       case 'user':
-        // Handle user data (orders, balances)
+        // Handle user data (orders, balances, positions)
         if (msg.events) {
           for (const e of msg.events) {
-            if (e.orders) {
+            // Log full event structure for debugging
+            console.log(
+              '[Coinbase] User event keys:',
+              Object.keys(e),
+              'event type:',
+              e.type,
+            );
+
+            // Handle orders
+            if (e.orders && e.orders.length > 0) {
+              console.log(`[Coinbase] Processing ${e.orders.length} order updates`);
               for (const orderData of e.orders) {
                 const order = this.transformCoinbaseUserOrder(orderData);
                 console.log(
@@ -680,17 +690,70 @@ export class CoinbaseExchange extends BaseExchange {
               }
             }
 
-            // Throttled balance/position refresh after any user event
-            const now = Date.now();
-            if (now - this.lastUserDataSyncAt > 1000) {
-              this.lastUserDataSyncAt = now;
-              // Fire and forget; errors are logged but don't crash handler
-              this.refreshBalancesAndPositions().catch((err) =>
-                console.warn(
-                  '[Coinbase] Failed to refresh balances/positions:',
-                  err?.message || err,
-                ),
-              );
+            // Handle balances (if pushed via WebSocket)
+            if (e.balances && e.balances.length > 0) {
+              console.log(`[Coinbase] Processing ${e.balances.length} balance updates`);
+              const balances = this.transformBalances(e.balances);
+              if (balances.length > 0) {
+                console.log(`[Coinbase] 💰 Balance Update: ${balances.length} balances`);
+                this.emit('accountUpdate', 'coinbase', balances);
+              }
+            }
+
+            // Handle positions (if pushed via WebSocket)
+            if (e.positions && e.positions.length > 0) {
+              console.log(`[Coinbase] Processing ${e.positions.length} position updates`);
+              const positions = this.transformPositions(e.positions);
+              if (positions.length > 0) {
+                console.log(
+                  `[Coinbase] 📊 Position Update: ${positions.length} positions`,
+                );
+                this.emit('positionUpdate', 'coinbase', positions);
+              }
+            }
+
+            // Handle account snapshot (if available)
+            if (e.account) {
+              console.log('[Coinbase] Processing account snapshot');
+              // Account snapshot may contain balances and positions
+              if (e.account.balances) {
+                const balances = this.transformBalances(e.account.balances);
+                if (balances.length > 0) {
+                  console.log(
+                    `[Coinbase] 💰 Account Snapshot Balances: ${balances.length}`,
+                  );
+                  this.emit('accountUpdate', 'coinbase', balances);
+                }
+              }
+              if (e.account.positions) {
+                const positions = this.transformPositions(e.account.positions);
+                if (positions.length > 0) {
+                  console.log(
+                    `[Coinbase] 📊 Account Snapshot Positions: ${positions.length}`,
+                  );
+                  this.emit('positionUpdate', 'coinbase', positions);
+                }
+              }
+            }
+
+            // If no balance/position data in WebSocket, fall back to REST API
+            // Only refresh if we received orders but no balance/position data
+            if (e.orders && !e.balances && !e.positions && !e.account) {
+              // Throttled balance/position refresh after order events
+              const now = Date.now();
+              if (now - this.lastUserDataSyncAt > 1000) {
+                this.lastUserDataSyncAt = now;
+                console.log(
+                  '[Coinbase] No balance/position in WebSocket, fetching via REST API',
+                );
+                // Fire and forget; errors are logged but don't crash handler
+                this.refreshBalancesAndPositions().catch((err) =>
+                  console.warn(
+                    '[Coinbase] Failed to refresh balances/positions:',
+                    err?.message || err,
+                  ),
+                );
+              }
             }
           }
         }
@@ -784,6 +847,12 @@ export class CoinbaseExchange extends BaseExchange {
     this.wsManager.subscribe('user', ['*']);
 
     console.log('[Coinbase] User data subscription requests sent');
+
+    // Coinbase doesn't push balance/position via WebSocket
+    // Fetch initial data immediately after subscription
+    console.log('[Coinbase] Fetching initial balance and position data...');
+    await this.refreshBalancesAndPositions();
+    console.log('[Coinbase] ✅ Initial account data loaded');
   }
 
   /**
@@ -829,6 +898,89 @@ export class CoinbaseExchange extends BaseExchange {
     };
 
     return order;
+  }
+
+  /**
+   * Transform Coinbase balance data to iTrade Balance format
+   */
+  private transformBalances(balanceData: any[]): Balance[] {
+    if (!Array.isArray(balanceData)) {
+      console.warn('[Coinbase] transformBalances: input is not an array');
+      return [];
+    }
+
+    return balanceData
+      .map((b: any) => {
+        try {
+          const asset = b.currency || b.asset || b.symbol || 'UNKNOWN';
+          const available = b.available_balance?.value || b.available || b.free || '0';
+          const hold = b.hold?.value || b.hold || b.locked || '0';
+          const free = this.formatDecimal(available);
+          const locked = this.formatDecimal(hold);
+
+          return {
+            asset,
+            free,
+            locked,
+            total: free.add(locked),
+          };
+        } catch (err) {
+          console.warn(
+            '[Coinbase] Failed to transform balance:',
+            (err as any)?.message || err,
+          );
+          return null;
+        }
+      })
+      .filter((b): b is Balance => b !== null);
+  }
+
+  /**
+   * Transform Coinbase position data to iTrade Position format
+   */
+  private transformPositions(positionData: any[]): Position[] {
+    if (!Array.isArray(positionData)) {
+      console.warn('[Coinbase] transformPositions: input is not an array');
+      return [];
+    }
+
+    return positionData
+      .map((p: any) => {
+        try {
+          const productId = p.product_id || p.symbol || 'UNKNOWN';
+          const symbol = this.denormalizeSymbol(productId);
+          const side = (p.side || 'LONG').toUpperCase();
+          const quantity = this.formatDecimal(p.number_of_contracts || p.size || '0');
+          const entryPrice = this.formatDecimal(p.entry_price || p.entry_vwap || '0');
+          const unrealizedPnl = p.unrealized_pnl
+            ? this.formatDecimal(p.unrealized_pnl)
+            : new Decimal(0);
+
+          return {
+            symbol,
+            side: side === 'LONG' ? 'long' : 'short',
+            quantity,
+            entryPrice,
+            avgPrice: entryPrice, // Use entry price as average price
+            markPrice: p.mark_price ? this.formatDecimal(p.mark_price) : entryPrice,
+            liquidationPrice: p.liquidation_price
+              ? this.formatDecimal(p.liquidation_price)
+              : undefined,
+            leverage: p.leverage ? new Decimal(p.leverage) : new Decimal(1),
+            unrealizedPnl,
+            marginType: p.margin_type || 'cross',
+            timestamp: new Date(p.timestamp || Date.now()),
+            updateTime: new Date(p.timestamp || Date.now()),
+          } as Position;
+        } catch (err) {
+          console.warn(
+            '[Coinbase] Failed to transform position:',
+            (err as any)?.message || err,
+          );
+          return null;
+        }
+      })
+      .filter((p): p is Position => p !== null);
   }
 
   private async refreshBalancesAndPositions(): Promise<void> {
