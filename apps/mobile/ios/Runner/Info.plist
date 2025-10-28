@@ -31,16 +31,16 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.1007531825407-bi5jf7erbm8gbs710etk7ufhbigmijtn</string>
+				<string>com.googleusercontent.apps.239898125237-7qiah2g6rbanoggphpfrfe77i3t467ev</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>CLIENT_ID</key>
-	<string>1007531825407-bi5jf7erbm8gbs710etk7ufhbigmijtn.apps.googleusercontent.com</string>
+	<string>239898125237-7qiah2g6rbanoggphpfrfe77i3t467ev.apps.googleusercontent.com</string>
 	<key>GIDClientID</key>
-	<string>1007531825407-bi5jf7erbm8gbs710etk7ufhbigmijtn.apps.googleusercontent.com</string>
+	<string>239898125237-7qiah2g6rbanoggphpfrfe77i3t467ev.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -65,7 +65,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.1007531825407-bi5jf7erbm8gbs710etk7ufhbigmijtn</string>
+	<string>com.googleusercontent.apps.239898125237-7qiah2g6rbanoggphpfrfe77i3t467ev</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

@@ -1,12 +1,12 @@
 /// App configuration constants.
 ///
-/// Replace the placeholder below with your real iOS OAuth client ID
-/// from Google Cloud Console (format: 1234567890-abcdefg.apps.googleusercontent.com).
+/// These OAuth client IDs are from Firebase project: itrade-965d8 (239898125237)
+/// They must match the credentials configured in google-services.json and GoogleService-Info.plist
 const String kGoogleIosClientId =
-    '1007531825407-bi5jf7erbm8gbs710etk7ufhbigmijtn.apps.googleusercontent.com';
+    '239898125237-7qiah2g6rbanoggphpfrfe77i3t467ev.apps.googleusercontent.com';
 
 const String kGoogleWebClientId =
-    '1007531825407-2k8aqcdlhj8j0e0ge4880f2gsmhajtpv.apps.googleusercontent.com';
+    '239898125237-hmsrf67gv81s5u3bsahjivus6gu71gtl.apps.googleusercontent.com';
 
 const String kGoogleAndroidClientId =
-    '1007531825407-h73i370sq1r55ipertfircir7n2svqtq.apps.googleusercontent.com';
+    '239898125237-8dpfhal61v0hj7m454miq0tpscfkeh00.apps.googleusercontent.com';
