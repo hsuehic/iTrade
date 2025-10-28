@@ -35,6 +35,7 @@ export class CoinbaseExchange extends BaseExchange {
   private publicHttpClient: AxiosInstance;
   private wsManager: CoinbaseWebSocketManager;
   private symbolMap = new Map<string, string>(); // Coinbase product_id -> original symbol mapping
+  private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
   private static readonly MAINNET_WS_URL = 'wss://advanced-trade-ws.coinbase.com';
@@ -678,6 +679,19 @@ export class CoinbaseExchange extends BaseExchange {
                 this.emit('orderUpdate', order.symbol, order);
               }
             }
+
+            // Throttled balance/position refresh after any user event
+            const now = Date.now();
+            if (now - this.lastUserDataSyncAt > 1000) {
+              this.lastUserDataSyncAt = now;
+              // Fire and forget; errors are logged but don't crash handler
+              this.refreshBalancesAndPositions().catch((err) =>
+                console.warn(
+                  '[Coinbase] Failed to refresh balances/positions:',
+                  err?.message || err,
+                ),
+              );
+            }
           }
         }
         break;
@@ -815,6 +829,27 @@ export class CoinbaseExchange extends BaseExchange {
     };
 
     return order;
+  }
+
+  private async refreshBalancesAndPositions(): Promise<void> {
+    try {
+      const balances = await this.getBalances();
+      if (balances?.length) {
+        this.emit('accountUpdate', 'coinbase', balances);
+      }
+    } catch (err) {
+      console.warn('[Coinbase] Balance refresh error:', (err as any)?.message || err);
+    }
+
+    try {
+      const positions = await this.getPositions();
+      if (positions?.length) {
+        this.emit('positionUpdate', 'coinbase', positions);
+      }
+    } catch (err) {
+      // It's normal to have no positions for spot-only accounts
+      console.warn('[Coinbase] Position refresh note:', (err as any)?.message || err);
+    }
   }
 
   protected signRequest(params: Record<string, any>): Record<string, any> {

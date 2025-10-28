@@ -52,6 +52,7 @@ export class OKXExchange extends BaseExchange {
   private okxSubscriptions = new Map<string, Set<string>>();
   private okxPrivateAuthenticated = false;
   private symbolMap = new Map<string, string>(); // OKX instId -> original symbol mapping
+  private leverageCache = new Map<string, number>();
 
   constructor(isDemo = false) {
     const baseUrl = isDemo ? OKXExchange.TESTNET_BASE_URL : OKXExchange.MAINNET_BASE_URL;
@@ -217,6 +218,15 @@ export class OKXExchange extends BaseExchange {
       tdMode = isSwap ? TradeMode.ISOLATED : TradeMode.CASH;
     }
 
+    // Ensure leverage is set at account level for SWAP/FUTURES before placing order
+    if (isSwap && options?.leverage) {
+      const current = this.leverageCache.get(instId);
+      if (current !== options.leverage) {
+        await this.setOkxLeverage(instId, options.leverage, tdMode);
+        this.leverageCache.set(instId, options.leverage);
+      }
+    }
+
     const orderData: Record<string, string> = {
       instId,
       tdMode, // cash=spot, isolated=isolated margin, cross=cross margin
@@ -225,7 +235,7 @@ export class OKXExchange extends BaseExchange {
       sz: quantity.toString(),
     };
 
-    // Set leverage and posSide for SWAP/FUTURES (OKX requires these for margin trading)
+    // Set leverage and posSide for SWAP/FUTURES
     if (isSwap) {
       if (options?.leverage) {
         orderData.lever = options.leverage.toString();
@@ -269,6 +279,35 @@ export class OKXExchange extends BaseExchange {
 
     const data = response.data.data[0];
     return this.transformOKXOrder(data, instId, side, type, quantity, price);
+  }
+
+  private async setOkxLeverage(
+    instId: string,
+    leverage: number,
+    tradeMode: TradeMode,
+  ): Promise<void> {
+    // OKX leverage must be set via account API for SWAP/FUTURES
+    // Docs: POST /api/v5/account/set-leverage
+    const body: Record<string, string> = {
+      instId,
+      lever: leverage.toString(),
+      mgnMode: tradeMode === TradeMode.CROSS ? 'cross' : 'isolated',
+      posSide: 'net',
+    };
+
+    const signed = this.signOKXRequest('POST', '/api/v5/account/set-leverage', body);
+    const resp = await this.httpClient.post('/api/v5/account/set-leverage', body, {
+      headers: signed.headers,
+    });
+
+    if (resp.data.code !== '0') {
+      const details = Array.isArray(resp.data.data)
+        ? JSON.stringify(resp.data.data[0] || {})
+        : '';
+      throw new Error(
+        `OKX set-leverage error [${resp.data.code}]: ${resp.data.msg} ${details}`,
+      );
+    }
   }
 
   public async cancelOrder(

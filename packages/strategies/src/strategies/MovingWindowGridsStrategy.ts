@@ -153,7 +153,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       action: 'buy',
       price,
       quantity,
-      leverage: 10,
+      leverage: this.leverage,
       tradeMode: this.tradeMode,
       reason: 'volatility_breakout',
       metadata,
@@ -195,7 +195,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     return {
       action: 'sell',
       price: takeProfitPrice,
-      leverage: 10,
+      leverage: this.leverage,
       quantity: parentOrder.executedQuantity || parentOrder.quantity,
       reason: 'take_profit',
       metadata,
@@ -203,14 +203,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     };
   }
 
-  public override async analyze({
-    exchangeName,
-    klines,
-    orders,
-    positions,
-    symbol,
-    ticker,
-  }: DataUpdate): Promise<StrategyResult> {
+  public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
+    const { exchangeName, klines, orders, positions, symbol, ticker } = dataUpdate;
     if (exchangeName == this._exchangeName) {
       if (positions) {
         this.handlePosition(positions);
@@ -259,7 +253,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
                   new Decimal(this.baseSize),
                 );
                 this._logger.info(
-                  `[MovingWindowGridsStrategy] Entry signal generated:\n ${JSON.stringify(signal, null, 2)}`,
+                  `[${exchangeName}] [${this._strategyName}] Entry signal generated:\n ${JSON.stringify(signal, null, 2)}`,
                 );
                 return signal;
               }
@@ -275,7 +269,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private handlePosition(positions: Position[]): void {
     const position = positions.find((p) => p.symbol === this._context.symbol);
     if (position) {
-      this._logger.info(`[MovingWindowGridsStrategy] Pushed position:`);
+      this._logger.info(
+        `[${this._exchangeName}] [${this._strategyName}] Pushed position:`,
+      );
       this._logger.info(JSON.stringify(position, null, 2));
       this.position = position;
     }
@@ -291,7 +287,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   }
 
   private handleOrder(orders: Order[]): void {
-    this._logger.info(`[MovingWindowGridsStrategy] Pushed ${orders.length} order(s):`);
+    this._logger.info(
+      `[${this._exchangeName}] [${this._strategyName}] Pushed ${orders.length} order(s):`,
+    );
     this._logger.info(JSON.stringify(orders, null, 2));
     orders.forEach((order) => {
       if (this.orders.has(order.clientOrderId!)) {
