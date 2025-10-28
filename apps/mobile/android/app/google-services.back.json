@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "239898125237",
+    "project_id": "itrade-965d8",
+    "storage_bucket": "itrade-965d8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:239898125237:android:a95caa6e4bbbfd4b606ffc",
+        "android_client_info": {
+          "package_name": "com.ihsueh.itrade"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAN3hLq7_RwJpL_3K-KxZeT4ZLZ4QHytD8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

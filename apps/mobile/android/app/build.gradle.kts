@@ -70,3 +70,7 @@ dependencies {
 flutter {
     source = "../.."
 }
+
+// Apply Google Services plugin (must be at the end of file)
+// This processes google-services.json for Google Sign-In
+apply(plugin = "com.google.gms.google-services")
