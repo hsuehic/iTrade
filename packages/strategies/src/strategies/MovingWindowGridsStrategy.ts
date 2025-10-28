@@ -248,27 +248,23 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
           const { minVolatility } = this;
           // ✅ Process validated and closed kline
-          const range = kline.high.minus(kline.low).toNumber();
           const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
-          console.log(
-            'volatility:',
-            volatility,
-            'range:',
-            range,
-            'isClosed:',
-            kline.isClosed,
-          );
+
           if (volatility >= minVolatility && kline.isClosed) {
-            console.log(
-              `✅ analyze: Kline is closed and volatility(${volatility}) is >${minVolatility * 100}%: \n open: ${kline.open.toString()}, close: ${kline.close.toString()}, high: ${kline.high.toString()}, low: ${kline.low.toString()}`,
-            );
             const price = kline.open.add(kline.close).dividedBy(2);
             if (kline.close.gt(kline.open)) {
               console.log('✅ analyze: Generating entry signal...');
               const tempSize = this.size + this.baseSize;
               if (tempSize <= this.maxSize) {
                 // 🆕 使用新的信号生成方法
-                return this.generateEntrySignal(price, new Decimal(this.baseSize));
+                const signal = this.generateEntrySignal(
+                  price,
+                  new Decimal(this.baseSize),
+                );
+                this._logger.info(
+                  `[MovingWindowGridsStrategy] Entry signal generated:\n ${JSON.stringify(signal, null, 2)}`,
+                );
+                return signal;
               }
             }
           }
