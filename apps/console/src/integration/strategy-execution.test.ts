@@ -24,14 +24,14 @@ async function main() {
           depth: 5,
         },
         method: 'websocket',
-        exchange: 'binance',
+        exchange: 'okx',
       },
       parameters: {
         windowSize: 10,
         gridSize: 10,
         gridCount: 10,
-        minVolatility: 0.008,
-        takeProfitRatio: 0.006,
+        minVolatility: 0.003,
+        takeProfitRatio: 0.005,
       },
     }),
   );

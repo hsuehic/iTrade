@@ -116,10 +116,22 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
   /**
    * 🆕 生成唯一的 clientOrderId
+   * OKX要求: 字母数字字符, 最大长度32字符
    */
   private generateClientOrderId(type: string): string {
     this.orderSequence++;
-    return `${this.getStrategyId()}_${type}_${Date.now()}_${this.orderSequence}`;
+    // 使用更短的时间戳（去掉毫秒的后3位）和前缀
+    const shortTimestamp = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
+    const strategyId = this.getStrategyId();
+    // 格式: S{strategyId}_{type首字母}_{sequence}_{timestamp}
+    // 例如: S2_E_1_1730089500 (19字符) 或 S2_TP_1_1730089500 (21字符)
+    const typePrefix =
+      type === 'entry'
+        ? 'E'
+        : type === 'take_profit'
+          ? 'TP'
+          : type.substring(0, 2).toUpperCase();
+    return `${typePrefix}${strategyId}${this.orderSequence}${shortTimestamp}`;
   }
 
   /**
@@ -253,8 +265,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             const price = kline.open.add(kline.close).dividedBy(2);
             if (kline.close.gt(kline.open)) {
               console.log('✅ analyze: Generating entry signal...');
-              this.size += this.baseSize;
-              if (this.size <= this.maxSize) {
+              const tempSize = this.size + this.baseSize;
+              if (tempSize <= this.maxSize) {
                 // 🆕 使用新的信号生成方法
                 return this.generateEntrySignal(price, new Decimal(this.baseSize));
               }
@@ -316,7 +328,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this._logger.warn(
         `⚠️ [Order Created] No metadata found for order: ${order.clientOrderId}`,
       );
-      this.orders.set(order.clientOrderId, order);
+      //this.orders.set(order.clientOrderId, order);
       return;
     }
 
@@ -332,6 +344,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         `   Price: ${order.price?.toString()}, Quantity: ${order.quantity.toString()}`,
       );
       this._logger.info(`   Status: ${order.status}`);
+      this.size += this.baseSize;
 
       // 保存主订单
       this.orders.set(order.clientOrderId, order);
@@ -362,6 +375,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * 从 EventBus 订阅调用，可能包含非本策略的订单
    */
   public override async onOrderFilled(order: Order): Promise<void> {
+    this._logger.info(`[MovingWindowGridsStrategy] Order Filled: ${order.clientOrderId}`);
     if (!order.clientOrderId) {
       return;
     }

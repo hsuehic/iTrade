@@ -816,28 +816,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private setupExchangeListeners(exchange: IExchange): void {
     const exchangeName = exchange.name;
 
-    // Listen for order updates
-    exchange.on('order', (order: Order) => {
-      switch (order.status) {
-        case 'FILLED':
-          this._eventBus.emitOrderFilled({ order, timestamp: new Date() });
-          this.notifyStrategiesOrderFilled(order);
-          break;
-        case 'PARTIALLY_FILLED':
-          this._eventBus.emitOrderPartiallyFilled({
-            order,
-            timestamp: new Date(),
-          });
-          break;
-        case 'CANCELED':
-          this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
-          break;
-        case 'REJECTED':
-          this._eventBus.emitOrderRejected({ order, timestamp: new Date() });
-          break;
-      }
-    });
-
     // Listen for market data - use specific typed methods
     exchange.on('ticker', (symbol: string, ticker: Ticker) => {
       this._eventBus.emitTickerUpdate({
@@ -898,6 +876,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       switch (order.status) {
         case 'FILLED':
           this._eventBus.emitOrderFilled({ order, timestamp: new Date() });
+          this.notifyStrategiesOrderFilled(order, exchangeName);
           break;
         case 'PARTIALLY_FILLED':
           this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
@@ -913,7 +892,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // Notify strategies of specific order update
-      this.notifyStrategiesAccountUpdate({
+      this.onAccountUpdate({
         orders: [order],
         exchangeName,
       });
@@ -931,7 +910,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._eventBus.emitBalanceUpdate({ balances, timestamp: new Date() });
 
       // Notify strategies of specific balance update (push data only)
-      this.notifyStrategiesAccountUpdate({ balances, exchangeName });
+      this.onAccountUpdate({ balances, exchangeName });
     });
 
     exchange.on('positionUpdate', (exchangeId: string, positions: Position[]) => {
@@ -943,7 +922,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._eventBus.emitPositionUpdate({ positions, timestamp: new Date() });
 
       // Notify strategies of specific position update
-      this.notifyStrategiesAccountUpdate({ positions, exchangeName });
+      this.onAccountUpdate({ positions, exchangeName });
     });
   }
 
@@ -985,7 +964,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    * Notify strategies with specific account data updates (pushed data only)
    * Only passes the data that was actually pushed, not all account data
    */
-  private async notifyStrategiesAccountUpdate(accountData: {
+  private async onAccountUpdate(accountData: {
     positions?: Position[];
     orders?: Order[];
     balances?: Balance[];
@@ -1028,10 +1007,15 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
   }
 
-  private async notifyStrategiesOrderFilled(order: Order): Promise<void> {
+  private async notifyStrategiesOrderFilled(
+    order: Order,
+    exchangeName: string,
+  ): Promise<void> {
     for (const [name, strategy] of this._strategies) {
       try {
-        await strategy.onOrderFilled(order);
+        if (strategy.config.exchange === exchangeName) {
+          await strategy.onOrderFilled(order);
+        }
       } catch (error) {
         this.logger.error(
           `Error notifying strategy ${name} of order fill`,
