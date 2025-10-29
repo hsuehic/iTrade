@@ -75,12 +75,16 @@ class AuthService {
         AppleIDAuthorizationScopes.fullName,
       ],
       nonce: nonceHash,
-      webAuthenticationOptions: WebAuthenticationOptions(
-        clientId: 'com.ihsueh.itrade.web',
-        redirectUri: Uri.parse(
-          'https://itrade.ihsueh.com/api/auth/callback/apple',
-        ),
-      ),
+      // Android需要webAuthenticationOptions来处理浏览器OAuth回调
+      // iOS使用原生API，不需要此参数（会被自动忽略）
+      webAuthenticationOptions: Platform.isAndroid
+          ? WebAuthenticationOptions(
+              clientId: 'com.ihsueh.itrade.web',
+              redirectUri: Uri.parse(
+                'https://itrade.ihsueh.com/callbacks/sign_in_with_apple',
+              ),
+            )
+          : null,
     );
 
     // final dio = Dio(

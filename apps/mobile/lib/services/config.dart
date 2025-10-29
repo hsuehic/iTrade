@@ -9,4 +9,4 @@ const String kGoogleWebClientId =
     '239898125237-hmsrf67gv81s5u3bsahjivus6gu71gtl.apps.googleusercontent.com';
 
 const String kGoogleAndroidClientId =
-    '239898125237-8dpfhal61v0hj7m454miq0tpscfkeh00.apps.googleusercontent.com';
+    '239898125237-39qdn6qqppi475d0c40a7hfmpkcmoaei.apps.googleusercontent.com';

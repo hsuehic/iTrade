@@ -6,7 +6,8 @@
       "cwd": "apps/mobile",
       "request": "launch",
       "type": "dart",
-      "flutterMode": "debug"
+      "flutterMode": "debug",
+      "deviceId": "TGVGP7NNH6TGOJTC"
     },
     {
       "name": "mobile (profile mode)",

@@ -14,11 +14,27 @@
       },
       "oauth_client": [
         {
-          "client_id": "239898125237-8dpfhal61v0hj7m454miq0tpscfkeh00.apps.googleusercontent.com",
+          "client_id": "239898125237-39qdn6qqppi475d0c40a7hfmpkcmoaei.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.ihsueh.itrade",
-            "certificate_hash": "285d2be5c66a14f2fac08c3990266ab6f7e2aaf6"
+            "certificate_hash": "326978bdced038695ebdd16a25d9d281ce1d55d7"
+          }
+        },
+        {
+          "client_id": "239898125237-algf9i5anpcladvobllp51s42tm5dn75.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ihsueh.itrade",
+            "certificate_hash": "839772e507c49b11ac8a04b3b021530d8c6d8b3b"
+          }
+        },
+        {
+          "client_id": "239898125237-is83jhb9ukq4tk972qf377clk69dvfic.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ihsueh.itrade",
+            "certificate_hash": "00916196a324af8d53c3fa93a61ad08ba023f8ac"
           }
         },
         {
