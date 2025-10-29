@@ -38,6 +38,19 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  // Allow Server Actions from external origins (for OAuth callbacks)
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        'itrade.ihsueh.com',
+        'appleid.apple.com',
+        'accounts.google.com',
+        'localhost:3000',
+        'localhost:3002',
+      ],
+    },
+  },
+
   // In Next.js 15.5+, use serverExternalPackages instead of experimental.serverComponentsExternalPackages
   serverExternalPackages: [
     'typeorm',

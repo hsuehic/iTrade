@@ -37,17 +37,48 @@ export async function GET(req: NextRequest) {
 
 /**
  * Handle POST requests from Apple's callback
- * Some OAuth flows use POST instead of GET
+ * Apple sends form-encoded data, not JSON
  */
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  try {
+    // Apple sends form data, not JSON
+    const formData = await req.formData();
 
-  const deepLinkUrl = new URL('signinwithapple://callback');
+    const deepLinkUrl = new URL('signinwithapple://callback');
 
-  if (body.code) deepLinkUrl.searchParams.set('code', body.code);
-  if (body.state) deepLinkUrl.searchParams.set('state', body.state);
-  if (body.id_token) deepLinkUrl.searchParams.set('id_token', body.id_token);
-  if (body.user) deepLinkUrl.searchParams.set('user', body.user);
+    const code = formData.get('code');
+    const state = formData.get('state');
+    const idToken = formData.get('id_token');
+    const user = formData.get('user');
 
-  return Response.redirect(deepLinkUrl.toString(), 302);
+    if (code) deepLinkUrl.searchParams.set('code', code.toString());
+    if (state) deepLinkUrl.searchParams.set('state', state.toString());
+    if (idToken) deepLinkUrl.searchParams.set('id_token', idToken.toString());
+    if (user) deepLinkUrl.searchParams.set('user', user.toString());
+
+    return Response.redirect(deepLinkUrl.toString(), 302);
+  } catch (error) {
+    console.error('Error processing Apple Sign-In callback:', error);
+    // Return a user-friendly error page
+    return new Response(
+      `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Sign in with Apple - Error</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: system-ui; padding: 20px; text-align: center;">
+          <h1>Authentication Error</h1>
+          <p>There was an error processing your Apple Sign-In request.</p>
+          <p>Please close this window and try again in the app.</p>
+        </body>
+      </html>
+      `,
+      {
+        status: 400,
+        headers: { 'Content-Type': 'text/html' },
+      },
+    );
+  }
 }
