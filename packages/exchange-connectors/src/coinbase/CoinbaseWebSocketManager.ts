@@ -119,40 +119,12 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    */
   private handleMessage(message: any): void {
     // Log all non-heartbeat messages for debugging
-    if (message.type !== 'heartbeat') {
-      this.logger.info(
-        `[Coinbase WS] Message type:
-        ${message.type}\n
-        channel:\n
-        ${message.channel}`,
-      );
-    }
+    // if (message.type !== 'heartbeat') {
+    //   this.logger.info(`[Coinbase] push:\n ${JSON.stringify(message, null, 2)}`);
+    // }
 
     // Emit raw message for processing in CoinbaseExchange
     this.emit('data', message);
-
-    // Handle subscription confirmations
-    if (message.type === 'subscriptions') {
-      this.logger.info(
-        `[Coinbase] ✅ Subscription confirmation:\n
-        ${JSON.stringify(message)}`,
-      );
-      this.emit('subscribed', message.channels);
-    }
-
-    // Handle errors
-    if (message.type === 'error') {
-      this.logger.error(
-        `[Coinbase] ❌ WebSocket error message:\n,
-        ${JSON.stringify(message, null, 2)}`,
-      );
-      this.emit('ws_error', new Error(message.message));
-    }
-
-    // Handle heartbeat responses
-    if (message.type === 'heartbeat') {
-      // console.log('[Coinbase] Heartbeat received');
-    }
   }
 
   /**

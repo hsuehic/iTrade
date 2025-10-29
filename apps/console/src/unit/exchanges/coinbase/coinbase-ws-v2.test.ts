@@ -4,7 +4,15 @@
  */
 
 import { CoinbaseExchange } from '@itrade/exchange-connectors';
-import type { IExchange } from '@itrade/core';
+import type {
+  Balance,
+  IExchange,
+  Kline,
+  OrderBook,
+  Position,
+  Ticker,
+  Trade,
+} from '@itrade/core';
 import { BaseExchangeTest, type ExchangeCredentials } from '../base/BaseExchangeTest';
 
 class CoinbaseWebSocketTest extends BaseExchangeTest {
@@ -26,93 +34,97 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
     const coinbase = exchange as CoinbaseExchange;
 
     // Spot ticker
-    coinbase.on('ticker', (symbol: string, ticker: any) => {
-      if (symbol === 'BTC/USDC' && !this.results.spot.ticker) {
-        this.logger.info(`📊 [TICKER] ${symbol}: $${ticker.price}`);
+    coinbase.on('ticker', (symbol: string, ticker: Ticker) => {
+      if (symbol === 'BTC/USDC') {
+        this.logger.info(`📊 [TICKER] ${symbol}: \n $${JSON.stringify(ticker, null, 2)}`);
         this.results.spot.ticker = true;
       }
     });
 
     // Spot orderbook
-    coinbase.on('orderbook', (symbol: string, orderbook: any) => {
+    coinbase.on('orderbook', (symbol: string, orderbook: OrderBook) => {
       if (symbol === 'BTC/USDC' && !this.results.spot.orderbook) {
         this.logger.info(
-          `📚 [ORDERBOOK] ${symbol}: Bid $${orderbook.bids[0]?.price}, Ask $${orderbook.asks[0]?.price}`,
+          `📚 [ORDERBOOK] ${symbol}: \n ${JSON.stringify(orderbook, null, 2)}`,
         );
         this.results.spot.orderbook = true;
       }
     });
 
     // Spot trades
-    coinbase.on('trade', (symbol: string, trade: any) => {
+    coinbase.on('trade', (symbol: string, trade: Trade) => {
       if (symbol === 'BTC/USDC' && !this.results.spot.trades) {
-        this.logger.info(`💱 [TRADE] ${symbol}: ${trade.side} $${trade.price}`);
+        this.logger.info(`💱 [TRADE] ${symbol}: \n ${JSON.stringify(trade, null, 2)}`);
         this.results.spot.trades = true;
       }
     });
 
     // Spot klines
-    coinbase.on('kline', (symbol: string, kline: any) => {
+    coinbase.on('kline', (symbol: string, kline: Kline) => {
       if (symbol === 'BTC/USDC' && !this.results.spot.klines) {
-        this.logger.info(`📈 [KLINE] ${symbol}: O:$${kline.open} C:$${kline.close}`);
+        this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.spot.klines = true;
       }
     });
 
     // Perpetual ticker
-    coinbase.on('ticker', (symbol: string, ticker: any) => {
+    coinbase.on('ticker', (symbol: string, ticker: Ticker) => {
       if (symbol === 'BTC/USDC:USDC' && !this.results.futures.ticker) {
-        this.logger.info(`📊 [TICKER] ${symbol}: $${ticker.price}`);
+        this.logger.info(`📊 [TICKER]: \n ${JSON.stringify(ticker, null, 2)}`);
         this.results.futures.ticker = true;
       }
     });
 
     // Perpetual orderbook
-    coinbase.on('orderbook', (symbol: string, orderbook: any) => {
+    coinbase.on('orderbook', (symbol: string, orderbook: OrderBook) => {
       if (symbol === 'BTC/USDC:USDC' && !this.results.futures.orderbook) {
         this.logger.info(
-          `📚 [ORDERBOOK] ${symbol}: Bid $${orderbook.bids[0]?.price}, Ask $${orderbook.asks[0]?.price}`,
+          `📚 [ORDERBOOK] ${symbol}: \n${JSON.stringify(orderbook, null, 2)}`,
         );
         this.results.futures.orderbook = true;
       }
     });
 
     // Perpetual trades
-    coinbase.on('trade', (symbol: string, trade: any) => {
+    coinbase.on('trade', (symbol: string, trade: Trade) => {
       if (symbol === 'BTC/USDC:USDC' && !this.results.futures.trades) {
-        this.logger.info(`💱 [TRADE] ${symbol}: ${trade.side} $${trade.price}`);
+        this.logger.info(`💱 [TRADE] ${symbol}: ${JSON.stringify(trade, null, 2)}`);
         this.results.futures.trades = true;
       }
     });
 
     // Perpetual klines
-    coinbase.on('kline', (symbol: string, kline: any) => {
+    coinbase.on('kline', (symbol: string, kline: Kline) => {
       if (symbol === 'BTC/USDC:USDC' && !this.results.futures.klines) {
-        this.logger.info(`📈 [KLINE] ${symbol}: O:$${kline.open} C:$${kline.close}`);
+        this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.futures.klines = true;
       }
     });
 
     // User Data - Orders
-    coinbase.on('orderUpdate', (symbol: string, order: any) => {
+    coinbase.on('orderUpdate', (symbol: string, order: OrderBook) => {
       if (!this.results.userData.orders) {
-        this.logger.info(`📦 [ORDER] ${symbol}: ${order.status}`);
+        this.logger.info(`📦 [ORDER] ${symbol}: ${JSON.stringify(order, null, 2)}`);
         this.results.userData.orders = true;
       }
     });
 
     // User Data - Balance
-    coinbase.on('accountUpdate', (_exchange: string, balances: any[]) => {
+    coinbase.on('accountUpdate', (_exchange: string, balances: Balance[]) => {
       if (!this.results.userData.balance) {
-        this.logger.info(`💰 [BALANCE] Received ${balances.length} balances`);
+        this.logger.info(
+          `💰 [BALANCE] Received ${balances.length} balances: \n ${JSON.stringify(balances, null, 2)}`,
+        );
         this.results.userData.balance = true;
       }
     });
 
     // User Data - Positions
-    coinbase.on('positionUpdate', (_exchange: string, positions: any[]) => {
+    coinbase.on('positionUpdate', (_exchange: string, positions: Position[]) => {
       if (!this.results.userData.positions) {
-        this.logger.info(`📍 [POSITION] Received ${positions.length} positions`);
+        this.logger.info(
+          `📍 [POSITION] Received ${positions.length} positions: \n ${JSON.stringify(positions, null, 2)}`,
+        );
         this.results.userData.positions = true;
       }
     });

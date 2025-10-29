@@ -88,7 +88,7 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
     // Perpetual klines
     coinbase.on('kline', (symbol: string, kline: any) => {
       if (symbol === 'BTC/USDC:USDC' && !this.results.futures.klines) {
-        this.logger.info(`📈 [KLINE] ${symbol}: O:$${kline.open} C:$${kline.close}`);
+        this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.futures.klines = true;
       }
     });
@@ -96,7 +96,7 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
     // User Data - Orders
     coinbase.on('orderUpdate', (symbol: string, order: any) => {
       if (!this.results.userData.orders) {
-        this.logger.info(`📦 [ORDER] ${symbol}: ${order.status}`);
+        this.logger.info(`📦 [ORDER] ${symbol}: \n ${JSON.stringify(order, null, 2)}`);
         this.results.userData.orders = true;
       }
     });
@@ -161,11 +161,6 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
       this.logger.info('🟢 ===== SUBSCRIBING TO SPOT MARKET DATA =====\n');
       this.logger.info('🔵 ===== SUBSCRIBING TO PERPETUAL MARKET DATA =====\n');
       await this.subscribeToMarketData(coinbase, 'BTC/USDC', 'BTC/USDC:USDC');
-
-      // User data subscription skipped (requires valid Coinbase credentials and connect())
-      this.logger.info(
-        '\n👤 USER DATA: Skipped (requires valid credentials and REST API connection)\n',
-      );
 
       // Start check interval and timeout
       this.startCheckInterval();

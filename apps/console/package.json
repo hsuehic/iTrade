@@ -16,7 +16,7 @@
     "test:okx-rest": "tsx src/unit/exchanges/okx/okx-rest.test.ts",
     "test:okx-order": "tsx src/unit/exchanges/okx/okx-create-order.test.ts",
     "test:okx-permissions": "tsx src/unit/exchanges/okx/okx-permissions.test.ts",
-    "test:coinbase": "tsx src/unit/exchanges/coinbase/coinbase-ws.test.ts",
+    "test:coinbase": "tsx src/unit/exchanges/coinbase/coinbase-ws-v2.test.ts",
     "test:coinbase-rest": "tsx src/unit/exchanges/coinbase/coinbase-rest.test.ts",
     "test:coinbase-adv": "tsx src/unit/exchanges/coinbase-adv/coinbase-adv-ws.test.ts",
     "test:coinbase-adv-rest": "tsx src/unit/exchanges/coinbase-adv/coinbase-adv-rest.test.ts",
