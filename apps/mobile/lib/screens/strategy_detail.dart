@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'dart:convert';
 import '../models/strategy.dart';
 import '../models/order.dart';
@@ -249,8 +250,8 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
           children: [
             // Header Card
             Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(20),
+              margin: EdgeInsets.all(16.w),
+              padding: EdgeInsets.all(20.w),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [statusColor.withValues(alpha: 0.8), statusColor],
@@ -303,9 +304,9 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                   const SizedBox(height: 16),
                   Text(
                     _strategy.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 28,
+                      fontSize: 28.sp,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -315,7 +316,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                       _strategy.description!,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 14,
+                        fontSize: 14.sp,
                       ),
                     ),
                   ],
@@ -326,8 +327,8 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
             // PnL Card
             if (_pnl != null)
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(20),
+                margin: EdgeInsets.symmetric(horizontal: 16.w),
+                padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.grey[900]
@@ -396,8 +397,8 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
             // Details Card
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(20),
+              margin: EdgeInsets.symmetric(horizontal: 16.w),
+              padding: EdgeInsets.all(20.w),
               decoration: BoxDecoration(
                 color: isDark
                     ? Colors.grey[900]
@@ -493,8 +494,8 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
             // Orders Card
             Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.all(20),
+              margin: EdgeInsets.symmetric(horizontal: 16.w),
+              padding: EdgeInsets.all(20.w),
               decoration: BoxDecoration(
                 color: isDark
                     ? Colors.grey[900]
@@ -518,10 +519,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      Text(
-                        '${_orders.length} total',
-                        style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                      ),
+                        Text(
+                          '${_orders.length} total',
+                          style: TextStyle(fontSize: 14.sp, color: Colors.grey[600]),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -555,13 +556,13 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                       },
                     ),
                   if (_orders.length > 10)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Center(
-                        child: Text(
-                          'Showing first 10 of ${_orders.length} orders',
-                          style: TextStyle(
-                            fontSize: 12,
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Center(
+                          child: Text(
+                            'Showing first 10 of ${_orders.length} orders',
+                            style: TextStyle(
+                              fontSize: 12.sp,
                             color: Colors.grey[500],
                           ),
                         ),
@@ -577,8 +578,8 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
             if (_strategy.parameters != null &&
                 _strategy.parameters!.isNotEmpty)
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                padding: const EdgeInsets.all(20),
+                margin: EdgeInsets.symmetric(horizontal: 16.w),
+                padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.grey[900]
@@ -602,7 +603,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                     const SizedBox(height: 12),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
                         color: isDark
                             ? Colors.grey[850]
@@ -622,7 +623,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                           ).convert(_strategy.parameters),
                           style: TextStyle(
                             fontFamily: 'monospace',
-                            fontSize: 12,
+                            fontSize: 12.sp,
                             color: isDark ? Colors.grey[300] : Colors.grey[800],
                             height: 1.5,
                           ),
@@ -637,7 +638,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
             // Action Button
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
               child: ElevatedButton(
                 onPressed: _isUpdating ? null : _toggleStatus,
                 style: ElevatedButton.styleFrom(
@@ -664,17 +665,17 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            _strategy.isActive ? Icons.stop : Icons.play_arrow,
-                            size: 24,
-                          ),
+                        Icon(
+                          _strategy.isActive ? Icons.stop : Icons.play_arrow,
+                          size: 24.w,
+                        ),
                           const SizedBox(width: 8),
                           Text(
                             _strategy.isActive
                                 ? 'Stop Strategy'
                                 : 'Start Strategy',
-                            style: const TextStyle(
-                              fontSize: 16,
+                            style: TextStyle(
+                              fontSize: 16.sp,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -758,20 +759,20 @@ class _OrderItem extends StatelessWidget {
     return Row(
       children: [
         // Crypto Icon
-        Image.network(
-          CryptoIcons.getIconUrl(baseCurrency),
-          width: 36,
-          height: 36,
-          errorBuilder: (context, error, stackTrace) => Container(
-            width: 36,
-            height: 36,
+      Image.network(
+        CryptoIcons.getIconUrl(baseCurrency),
+        width: 36.w,
+        height: 36.w,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: 36.w,
+          height: 36.w,
             decoration: BoxDecoration(
               color: Colors.grey[200],
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.monetization_on,
-              size: 20,
+              size: 20.w,
               color: Colors.grey[600],
             ),
           ),
@@ -788,18 +789,18 @@ class _OrderItem extends StatelessWidget {
                   // Symbol and Side
                   Row(
                     children: [
-                      Text(
-                        order.symbol,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                  Text(
+                    order.symbol,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
                           fontFamily: 'monospace',
                         ),
                       ),
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6.w,
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
@@ -811,7 +812,7 @@ class _OrderItem extends StatelessWidget {
                         child: Text(
                           order.side,
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 10.sp,
                             fontWeight: FontWeight.bold,
                             color: order.isBuy ? Colors.green : Colors.red,
                           ),
@@ -821,8 +822,8 @@ class _OrderItem extends StatelessWidget {
                   ),
                   // Status
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
@@ -832,7 +833,7 @@ class _OrderItem extends StatelessWidget {
                     child: Text(
                       _formatStatus(order.status),
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.sp,
                         fontWeight: FontWeight.w600,
                         color: statusColor,
                       ),
@@ -847,20 +848,20 @@ class _OrderItem extends StatelessWidget {
                 children: [
                   Text(
                     'Qty: ${order.executedQuantity.toStringAsFixed(4)}/${order.quantity.toStringAsFixed(4)}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                   ),
                   if (order.averagePrice != null)
                     Text(
                       '\$${order.averagePrice!.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 12,
+                      style: TextStyle(
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.w600,
                       ),
                     )
                   else if (order.price != null)
                     Text(
                       '\$${order.price!.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                     ),
                 ],
               ),
@@ -871,13 +872,13 @@ class _OrderItem extends StatelessWidget {
                 children: [
                   Text(
                     _formatDateTime(order.timestamp),
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 11.sp, color: Colors.grey[500]),
                   ),
                   if (order.realizedPnl != null && order.realizedPnl != 0)
                     Text(
                       '${order.realizedPnl! >= 0 ? '+' : ''}${order.realizedPnl!.toStringAsFixed(2)}',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.sp,
                         fontWeight: FontWeight.w600,
                         color: order.realizedPnl! >= 0
                             ? Colors.green
@@ -919,7 +920,7 @@ class _PnLItem extends StatelessWidget {
         Text(
           value,
           style: TextStyle(
-            fontSize: isLarge ? 24 : 16,
+            fontSize: isLarge ? 24.sp : 16.sp,
             fontWeight: FontWeight.bold,
             color: color,
           ),
@@ -944,11 +945,11 @@ class _StatItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Icon(icon, size: 32, color: Colors.grey[600]),
+        Icon(icon, size: 32.w, color: Colors.grey[600]),
         const SizedBox(height: 8),
         Text(
           value,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
         Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
@@ -970,11 +971,11 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
+        Text(label, style: TextStyle(fontSize: 14.sp, color: Colors.grey[600])),
+        Text(
+          value,
+          style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+        ),
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   final String userEmail;
@@ -29,7 +30,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Delete Account', style: TextStyle(color: colorOnError)),
+        title: Text('Delete Account', style: TextStyle(fontSize: 18.sp, color: colorOnError)),
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -40,19 +41,20 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: EdgeInsets.all(24.w),  // ✅ Width-adapted
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '⚠️ Deleting your account is permanent.',
               style: TextStyle(
+                fontSize: 14.sp,  // ✅ Adaptive font
                 color: Theme.of(context).colorScheme.error,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Please type your email address to confirm:'),
+            Text('Please type your email address to confirm:', style: TextStyle(fontSize: 14.sp)),
             const SizedBox(height: 12),
             TextField(
               controller: _controller,
@@ -71,7 +73,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel'),
+                    child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -88,7 +90,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                             Navigator.pop(context);
                           }
                         : null,
-                    child: const Text('Delete'),
+                    child: Text('Delete', style: TextStyle(fontSize: 14.sp)),
                   ),
                 ),
               ],

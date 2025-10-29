@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
@@ -92,7 +93,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
 
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -100,8 +101,8 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                   children: [
                     // Logo
                     Container(
-                      width: 32,
-                      height: 32,
+                      width: 32.w,
+                      height: 32.w,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
@@ -134,10 +135,10 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Text(
+                    Text(
                       'Quick Menu',
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 20.sp,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -162,7 +163,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
           // Content
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16.w),
               children: [
                 // User Card
                 _buildUserCard(user, image, isDark),
@@ -249,7 +250,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [primaryColor.withValues(alpha: 0.8), primaryColor],
@@ -274,8 +275,8 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
               children: [
                 Text(
                   user.name,
-                  style: const TextStyle(
-                    fontSize: 18,
+                  style: TextStyle(
+                    fontSize: 18.sp,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -284,7 +285,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                 Text(
                   user.email,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 14.sp,
                     color: Colors.white.withValues(alpha: 0.9),
                   ),
                 ),
@@ -339,12 +340,12 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 40.w,
+              height: 40.w,
               decoration: BoxDecoration(
                 color: isDark
                     ? Colors.grey[800]
@@ -353,7 +354,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
               ),
               child: Icon(
                 icon,
-                size: 20,
+                size: 20.w,
                 color: Theme.of(context).primaryColor,
               ),
             ),
@@ -364,8 +365,8 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: TextStyle(
+                      fontSize: 15.sp,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -373,7 +374,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
                     ),
                   ],
                 ],
@@ -395,7 +396,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
     required bool isDark,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8),
       child: Row(
         children: [
           Container(
@@ -450,18 +451,18 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
 
   Widget _buildSignOutButton() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
       child: SizedBox(
         height: 50,
         child: OutlinedButton.icon(
           onPressed: _signingOut ? null : _signOut,
           icon: _signingOut
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              ? SizedBox(
+                  width: 16.w,
+                  height: 16.w,
+                  child: const CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.logout),
+              : Icon(Icons.logout, size: 24.w),
           label: Text(_signingOut ? 'Signing out...' : 'Sign Out'),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.red,

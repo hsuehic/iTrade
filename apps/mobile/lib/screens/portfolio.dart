@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../model/api.dart';
 import '../widgets/asset_list.dart';
@@ -68,30 +69,40 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: EdgeInsets.fromLTRB(
+                16.w,
+                12,
+                16.w,
+                0,
+              ), // ✅ Width-adapted horizontal
               child: _BalanceHeader(total: total, dailyPct: dailyWeightedPct),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16.w), // ✅ Width-adapted
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(12), // ✅ Uniform radius
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(0, 12, 12, 12),
+                  padding: EdgeInsets.fromLTRB(
+                    0,
+                    12,
+                    12.w,
+                    12,
+                  ), // ✅ Width-adapted right padding
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.w, // ✅ Width-adapted
+                              vertical: 4, // ✅ Fixed vertical
                             ),
                             decoration: BoxDecoration(
                               color: Theme.of(
@@ -103,6 +114,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                               'Allocation',
                               style: Theme.of(context).textTheme.titleSmall
                                   ?.copyWith(
+                                    fontSize: 14.sp, // ✅ Adaptive font
                                     fontWeight: FontWeight.w600,
                                     color: Theme.of(
                                       context,
@@ -161,8 +173,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                                 value: data.value,
                                 title: '${percentage.toStringAsFixed(1)}%',
                                 radius: isSelected ? 110 : 100,
-                                titleStyle: const TextStyle(
-                                  fontSize: 12,
+                                titleStyle: TextStyle(
+                                  fontSize: 12.sp, // ✅ Adaptive font
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
                                 ),
@@ -182,7 +194,12 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: EdgeInsets.fromLTRB(
+                16.w,
+                0,
+                16.w,
+                8,
+              ), // ✅ Width-adapted horizontal
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
@@ -199,6 +216,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                   child: Text(
                     'Assets',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontSize: 14.sp, // ✅ Adaptive font
                       fontWeight: FontWeight.w600,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -252,21 +270,25 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         children: chartData.asMap().entries.map((entry) {
           final index = entry.key;
           final data = entry.value;
-          final percentage = total == 0 ? 0 : (data.value / total * 100);
 
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 12,
-                height: 12,
+                width: 12.w, // ✅ Uniform scaling
+                height: 12.w, // ✅ Uniform scaling
                 decoration: BoxDecoration(
                   color: colors[index % colors.length],
                   shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 4),
-              Text(data.label, style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                data.label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontSize: 12.sp,
+                ), // ✅ Adaptive font
+              ),
             ],
           );
         }).toList(),
@@ -322,6 +344,7 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
             Text(
               'Total Balance',
               style: theme.textTheme.bodySmall?.copyWith(
+                fontSize: 12.sp, // ✅ Adaptive font
                 color: theme.colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
@@ -335,7 +358,7 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
               },
               child: Icon(
                 _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
-                size: 16,
+                size: 16.w, // ✅ Uniform scaling
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
@@ -365,7 +388,7 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
               children: [
                 Icon(
                   _selectedPct >= 0 ? Icons.trending_up : Icons.trending_down,
-                  size: 16,
+                  size: 16.w, // ✅ Uniform scaling
                   color: changeColor,
                 ),
                 const SizedBox(width: 4),
@@ -394,7 +417,7 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
                   : Colors.white,
               elevation: 4,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(8), // ✅ Uniform radius
               ),
               padding: EdgeInsets.zero,
               itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -402,13 +425,14 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
                   PopupMenuItem<String>(
                     value: period,
                     height: 36,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 0,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.w, // ✅ Width-adapted
+                      vertical: 0, // ✅ Fixed vertical
                     ),
                     child: Text(
                       period,
                       style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12.sp, // ✅ Adaptive font
                         fontWeight: period == _period ? FontWeight.bold : null,
                         color: theme.brightness == Brightness.dark
                             ? Colors.grey[200]
@@ -418,10 +442,13 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
                   ),
               ],
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 8.w,
+                  vertical: 4,
+                ), // ✅ Width-adapted horizontal
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(6), // ✅ Uniform radius
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -429,13 +456,14 @@ class _BalanceHeaderState extends State<_BalanceHeader> {
                     Text(
                       _period,
                       style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 12.sp, // ✅ Adaptive font
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(width: 4),
                     Icon(
                       Icons.arrow_drop_down,
-                      size: 16,
+                      size: 16.w, // ✅ Uniform scaling
                       color: theme.colorScheme.onSurface,
                     ),
                   ],

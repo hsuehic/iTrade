@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:local_auth/local_auth.dart';
@@ -87,12 +88,12 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         backgroundColor: Theme.of(context).colorScheme.onSurface.withAlpha(88),
         behavior: SnackBarBehavior.floating, // 改为悬浮样式
-        margin: const EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: 80,
-        ), // 控制上下左右位置
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        padding: const EdgeInsets.all(16),
+        margin: EdgeInsets.symmetric(
+          horizontal: 20.w,  // ✅ Width-adapted
+          vertical: 80,      // ✅ Fixed vertical
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),  // ✅ Uniform radius
+        padding: EdgeInsets.all(16.w),  // ✅ Width-adapted
         elevation: 0,
         duration: Duration(seconds: 2),
       ),
@@ -215,10 +216,10 @@ class _LoginScreenState extends State<LoginScreen> {
             children: [
               SizedBox(height: spacing.lg),
 
-              // Logo
+              // Logo - Use fixed size for better visibility
               Container(
-                width: 80,
-                height: 80,
+                width: 100,   // ✅ Fixed size
+                height: 100,  // ✅ Fixed size
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
@@ -241,11 +242,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ClipOval(
                     child: Image.asset(
                       'assets/images/logo-512x512.png',
-                      width: 45,
-                      height: 45,
+                      width: 60,   // ✅ Fixed size
+                      height: 60,  // ✅ Fixed size
                       fit: BoxFit.cover,
-                      cacheWidth: 90, // 2x resolution
-                      cacheHeight: 90,
+                      cacheWidth: 120,
+                      cacheHeight: 120,
                     ),
                   ),
                 ),
@@ -255,6 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Text(
                 'Welcome to iTrade',
                 style: theme.textTheme.headlineMedium?.copyWith(
+                  fontSize: 24.sp,  // ✅ Adaptive font size
                   fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
@@ -263,6 +265,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Text(
                 'Please sign in to your account',
                 style: theme.textTheme.bodyLarge?.copyWith(
+                  fontSize: 16.sp,  // ✅ Adaptive font size
                   color: isDark ? Colors.grey[400] : Colors.grey[600],
                 ),
                 textAlign: TextAlign.center,
@@ -270,13 +273,13 @@ class _LoginScreenState extends State<LoginScreen> {
               if (_error != null) ...[
                 SizedBox(height: spacing.sm),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 16.w,  // ✅ Width-adapted
+                    vertical: 12,      // ✅ Fixed vertical
                   ),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(12),  // ✅ Uniform radius
                     border: Border.all(
                       color: theme.colorScheme.error.withValues(alpha: 0.3),
                     ),
@@ -284,6 +287,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Text(
                     _error!,
                     style: theme.textTheme.bodyMedium?.copyWith(
+                      fontSize: 14.sp,  // ✅ Adaptive font size
                       color: theme.colorScheme.error,
                     ),
                     textAlign: TextAlign.center,
@@ -294,12 +298,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
               // Login Form Card
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: EdgeInsets.all(24.w),  // ✅ Width-adapted
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.grey[900]
                       : Colors.white.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(16),  // ✅ Uniform radius
                   border: Border.all(
                     color: isDark
                         ? Colors.grey[850]!
@@ -389,10 +393,11 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            padding: EdgeInsets.symmetric(horizontal: 12.w),  // ✅ Width-adapted
                             child: Text(
                               'or continue with',
                               style: theme.textTheme.bodySmall?.copyWith(
+                                fontSize: 12.sp,  // ✅ Adaptive font size
                                 color: isDark
                                     ? Colors.grey[500]
                                     : Colors.grey[600],
@@ -416,13 +421,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12.w),  // ✅ Width-adapted
                           OutlinedButton.icon(
                             onPressed: _loading ? null : _handleAppleSignIn,
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 12,
-                                horizontal: 12,
+                              padding: EdgeInsets.symmetric(
+                                vertical: 12,      // ✅ Fixed vertical
+                                horizontal: 12.w,  // ✅ Width-adapted
                               ),
                               side: BorderSide(
                                 color: isDark
@@ -432,18 +437,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             icon: SvgPicture.asset(
                               'assets/icons/apple.svg',
-                              width: 18,
-                              height: 18,
+                              width: 18.w,   // ✅ Uniform scaling
+                              height: 18.w,  // ✅ Uniform scaling
                             ),
-                            label: const Text('Apple'),
+                            label: Text('Apple', style: TextStyle(fontSize: 14.sp)),  // ✅ Adaptive font
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12.w),  // ✅ Width-adapted
                           OutlinedButton.icon(
                             onPressed: _loading ? null : _handleGoogleSignIn,
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 12,
-                                horizontal: 12,
+                              padding: EdgeInsets.symmetric(
+                                vertical: 12,      // ✅ Fixed vertical
+                                horizontal: 12.w,  // ✅ Width-adapted
                               ),
                               side: BorderSide(
                                 color: isDark
@@ -453,12 +458,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             icon: SvgPicture.asset(
                               'assets/icons/google.svg',
-                              width: 18,
-                              height: 18,
+                              width: 18.w,   // ✅ Uniform scaling
+                              height: 18.w,  // ✅ Uniform scaling
                             ),
-                            label: const Text('Google'),
+                            label: Text('Google', style: TextStyle(fontSize: 14.sp)),  // ✅ Adaptive font
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12.w),  // ✅ Width-adapted
                           // Expanded(
                           //   child: OutlinedButton.icon(
                           //     onPressed: () => _showSnack('Coming soon'),

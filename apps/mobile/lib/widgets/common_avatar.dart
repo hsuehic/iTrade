@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 
 /// A reusable Avatar widget supporting [MemoryImage], [NetworkImage], or fallback icon.
@@ -34,6 +35,7 @@ class CommonAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color effectiveBg = backgroundColor ?? Colors.white.withOpacity(0.3);
+    // Use the radius and iconSize as-is (caller decides if they want to adapt)
     final double effectiveIconSize = iconSize ?? radius * 0.6;
     ImageProvider? provider;
     if (imageBytes != null) {
@@ -42,13 +44,13 @@ class CommonAvatar extends StatelessWidget {
       provider = NetworkImage(imageUrl!);
     }
     return CircleAvatar(
-      radius: radius,
+      radius: radius,  // ✅ Use as-is
       backgroundImage: provider,
       backgroundColor: effectiveBg,
       child: provider == null
           ? Icon(
               icon,
-              size: effectiveIconSize,
+              size: effectiveIconSize,  // ✅ Use as-is
               color: iconColor ?? Colors.white,
             )
           : null,
@@ -83,6 +85,7 @@ class UserAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color effectiveBg = backgroundColor ?? Colors.white.withOpacity(0.3);
+    // Use the radius and iconSize as-is (caller decides if they want to adapt)
     final double effectiveIconSize = iconSize ?? radius * 0.6;
     final String? imageUrl = AuthService.instance.user?.image;
     ImageProvider? provider;
@@ -90,13 +93,13 @@ class UserAvatar extends StatelessWidget {
       provider = NetworkImage(imageUrl);
     }
     return CircleAvatar(
-      radius: radius,
+      radius: radius,  // ✅ Use as-is
       backgroundImage: provider,
       backgroundColor: effectiveBg,
       child: provider == null
           ? Icon(
               icon,
-              size: effectiveIconSize,
+              size: effectiveIconSize,  // ✅ Use as-is
               color: iconColor ?? Colors.white,
             )
           : null,

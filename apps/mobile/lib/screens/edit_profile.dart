@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../widgets/user_avatar.dart';
@@ -163,7 +164,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: InkWell(
                         onTap: _pickImage,
                         child: Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: EdgeInsets.all(8.w),
                           decoration: BoxDecoration(
                             color: primaryColor,
                             shape: BoxShape.circle,
@@ -175,9 +176,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ),
                             ],
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.camera_alt,
-                            size: 20,
+                            size: 20.w,
                             color: Colors.white,
                           ),
                         ),
@@ -190,7 +191,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Center(
                 child: TextButton.icon(
                   onPressed: _pickImage,
-                  icon: Icon(Icons.edit, size: 16, color: primaryColor),
+                  icon: Icon(Icons.edit, size: 16.w, color: primaryColor),
                   label: Text(
                     'Change Profile Picture',
                     style: TextStyle(color: primaryColor),
@@ -244,7 +245,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
               // Info Box
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16.w),
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.grey[900]
@@ -264,7 +265,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       child: Text(
                         'Email address cannot be changed for security reasons. Contact support if you need to update your email.',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 13.sp,
                           color: isDark ? Colors.grey[400] : Colors.grey[700],
                         ),
                       ),
@@ -298,10 +299,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ),
                           ),
                         )
-                      : const Text(
+                      : Text(
                           'Save Changes',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -359,7 +360,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 14.sp,
               fontWeight: FontWeight.w600,
               color: isDark ? Colors.grey[300] : Colors.grey[700],
             ),

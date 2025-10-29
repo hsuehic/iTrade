@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/okx_data_service.dart';
 
 class OrderBookWidget extends StatelessWidget {
@@ -31,7 +32,7 @@ class OrderBookWidget extends StatelessWidget {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(12.w),
             decoration: BoxDecoration(
               color: Colors.grey[50],
               borderRadius: const BorderRadius.only(
@@ -41,12 +42,12 @@ class OrderBookWidget extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.list_alt, size: 18, color: Colors.grey[700]),
+                Icon(Icons.list_alt, size: 18.w, color: Colors.grey[700]),
                 const SizedBox(width: 8),
                 Text(
                   'Order Book',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
@@ -54,8 +55,8 @@ class OrderBookWidget extends StatelessWidget {
                 const Spacer(),
                 if (isLoading)
                   SizedBox(
-                    width: 16,
-                    height: 16,
+                    width: 16.w,
+                    height: 16.w,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(
@@ -71,14 +72,14 @@ class OrderBookWidget extends StatelessWidget {
           if (orderBook != null) ...[
             // Column headers
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
                       'Price',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                         color: Colors.grey[600],
                       ),
@@ -89,7 +90,7 @@ class OrderBookWidget extends StatelessWidget {
                     child: Text(
                       'Total',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                         color: Colors.grey[600],
                       ),
@@ -119,8 +120,8 @@ class OrderBookWidget extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
@@ -132,10 +133,10 @@ class OrderBookWidget extends StatelessWidget {
                       ),
                       child: Text(
                         '\$${_formatPrice(currentPrice!)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.amber,
                           fontWeight: FontWeight.w700,
-                          fontSize: 12,
+                          fontSize: 12.sp,
                         ),
                       ),
                     ),
@@ -166,13 +167,13 @@ class OrderBookWidget extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.hourglass_empty,
-                    size: 32,
+                    size: 32.w,
                     color: Colors.grey[400],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     isLoading ? 'Loading order book...' : 'No data available',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14.sp),
                   ),
                 ],
               ),
@@ -195,14 +196,14 @@ class OrderBookWidget extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(color: backgroundColor),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4),
       child: Row(
         children: [
           Expanded(
             child: Text(
               _formatPrice(price),
               style: TextStyle(
-                fontSize: 12,
+                          fontSize: 12.sp,
                 fontWeight: FontWeight.w600,
                 color: textColor,
               ),
@@ -212,7 +213,7 @@ class OrderBookWidget extends StatelessWidget {
           Expanded(
             child: Text(
               _formatTotal(total),
-              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              style: TextStyle(fontSize: 12.sp, color: Colors.grey[700]),
               textAlign: TextAlign.center,
             ),
           ),

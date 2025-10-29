@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 import '../widgets/user_avatar.dart';
 
@@ -62,8 +63,8 @@ class _RportScreenState extends State<ReportScreen> {
                             .clamp(0.0, 1.0);
 
                     final double fontSize =
-                        collapsedFontSize +
-                        (expandedFontSize - collapsedFontSize) * t;
+                        (collapsedFontSize +
+                        (expandedFontSize - collapsedFontSize) * t).sp;
                     final double offsetY =
                         collapsedOffset +
                         (expandedOffset - collapsedOffset) * t;
@@ -102,8 +103,8 @@ class _RportScreenState extends State<ReportScreen> {
                         // 动态标题：用 AnimatedPadding 控制垂直位移，用 AnimatedDefaultTextStyle 控制字体大小的平滑过渡
                         // 将文字放到底部左侧（类似 FlexibleSpaceBar 默认的位置）
                         Positioned(
-                          left: 16,
-                          right: 16,
+                          left: 16.w,
+                          right: 16.w,
                           bottom: 0,
                           child: AnimatedPadding(
                             duration: const Duration(milliseconds: 120),

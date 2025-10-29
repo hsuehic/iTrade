@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ihsueh_itrade/services/api_client.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -71,13 +72,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     const SizedBox(height: 24),
                     Icon(
                       Icons.mark_email_read_outlined,
-                      size: 72,
+                      size: 72.w,  // ✅ Uniform scaling
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(height: 16),
                     Text(
                       'Check your email',
                       style: theme.textTheme.headlineSmall?.copyWith(
+                        fontSize: 22.sp,  // ✅ Adaptive font
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
@@ -101,22 +103,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     children: <Widget>[
                       const SizedBox(height: 24),
                       Text(
-                        'Forgot your password?',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      'Forgot your password?',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontSize: 22.sp,  // ✅ Adaptive font
+                        fontWeight: FontWeight.bold,
+                      ),
                         textAlign: TextAlign.left,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Enter your email address and we\'ll send you a reset link.',
-                        style: theme.textTheme.bodyMedium,
+                      'Enter your email address and we\'ll send you a reset link.',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14.sp),  // ✅ Adaptive font
                       ),
                       const SizedBox(height: 16),
                       if (_error != null)
                         Text(
                           _error!,
                           style: theme.textTheme.bodyMedium?.copyWith(
+                            fontSize: 14.sp,  // ✅ Adaptive font
                             color: theme.colorScheme.error,
                           ),
                         ),

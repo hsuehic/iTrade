@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class QrScanScreen extends StatefulWidget {
@@ -54,11 +55,11 @@ class _QrScanScreenState extends State<QrScanScreen> {
           MobileScanner(controller: _controller, onDetect: _onDetect),
           Center(
             child: Container(
-              width: 240,
-              height: 240,
+              width: 240.w,  // ✅ Width-adapted
+              height: 240.w,  // ✅ Keep square ratio
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white70, width: 2),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(12),  // ✅ Uniform radius
               ),
             ),
           ),

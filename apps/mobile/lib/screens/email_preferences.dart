@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/api_client.dart';
 
 class EmailPreferencesScreen extends StatefulWidget {
@@ -92,10 +93,10 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
             backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(
-              bottom: 28.0,
-              left: 16.0,
-              right: 16.0,
+            margin: EdgeInsets.only(
+              bottom: 28,
+              left: 16.w,
+              right: 16.w,
             ),
           ),
         );
@@ -107,10 +108,10 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(
-              bottom: 28.0,
-              left: 16.0,
-              right: 16.0,
+            margin: EdgeInsets.only(
+              bottom: 28,
+              left: 16.w,
+              right: 16.w,
             ),
           ),
         );
@@ -321,18 +322,18 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                   child: ElevatedButton(
                     onPressed: _isSaving ? null : _savePreferences,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                       ),
                       elevation: 2,
                     ),
-                    child: _isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
+                    child:                       _isSaving
+                          ? SizedBox(
+                              width: 20.w,
+                              height: 20.w,
+                              child: const CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(
                                 Colors.white,

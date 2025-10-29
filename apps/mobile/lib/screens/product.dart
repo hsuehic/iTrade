@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
 import '../widgets/custom_app_bar.dart';
@@ -108,7 +109,7 @@ class _ProductScreenState extends State<ProductScreen>
           ),
           const SizedBox(height: 16),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(horizontal: 16.w), // ✅ Width-adapted
             child: TagList(
               tags: tags,
               currentTag: _currentTag,
@@ -152,20 +153,25 @@ class _ProductScreenState extends State<ProductScreen>
                     },
                     leading: Image.network(
                       ticker.iconUrl,
-                      width: 28,
-                      height: 28,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Icon(Icons.monetization_on, size: 28),
+                      width: 28.w, // ✅ Uniform scaling
+                      height: 28.w, // ✅ Uniform scaling
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.monetization_on,
+                        size: 28.w,
+                      ), // ✅ Uniform scaling
                     ),
                     title: Text(
                       ticker.instId,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontSize: 16.sp, // ✅ Adaptive font
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     subtitle: Text(
                       'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontSize: 12.sp, // ✅ Adaptive font
+                      ),
                     ),
                     trailing: IntrinsicWidth(
                       child: Column(
@@ -175,7 +181,10 @@ class _ProductScreenState extends State<ProductScreen>
                           Text(
                             ticker.last.toString(),
                             style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.w600),
+                                ?.copyWith(
+                                  fontSize: 14.sp, // ✅ Adaptive font
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
                           const SizedBox(height: 2),
                           Row(
@@ -185,14 +194,17 @@ class _ProductScreenState extends State<ProductScreen>
                                 changePercent >= 0
                                     ? Icons.trending_up
                                     : Icons.trending_down,
-                                size: 16,
+                                size: 16.w, // ✅ Uniform scaling
                                 color: changeColor,
                               ),
                               const SizedBox(width: 4),
                               Text(
                                 '${changePercent.toStringAsFixed(2)}%',
                                 style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: changeColor),
+                                    ?.copyWith(
+                                      fontSize: 12.sp, // ✅ Adaptive font
+                                      color: changeColor,
+                                    ),
                               ),
                             ],
                           ),

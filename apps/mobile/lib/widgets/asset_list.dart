@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../model/api.dart';
 
 enum SortField { value, price, dailyChange }
@@ -100,7 +101,10 @@ class _PortfolioAssetListState extends State<PortfolioAssetList> {
     final color = theme.colorScheme.onSurfaceVariant;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: 16.w,
+        vertical: 8,
+      ), // ✅ Width-adapted
       child: Row(
         children: [
           const SizedBox(width: 40), // icon column
@@ -115,12 +119,12 @@ class _PortfolioAssetListState extends State<PortfolioAssetList> {
             ),
           ),
           SizedBox(
-            width: 100,
+            width: 100.w, // ✅ Width-adapted
             child: _buildSortableTitle('Price', SortField.price),
           ),
           const SizedBox(width: 12),
           SizedBox(
-            width: 100,
+            width: 100.w, // ✅ Width-adapted
             child: _buildSortableTitle('Value', SortField.value),
           ),
         ],
@@ -141,11 +145,11 @@ class _PortfolioAssetListState extends State<PortfolioAssetList> {
           Text(
             label,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 12.sp, // ✅ Adaptive font
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),
-          if (isSelected) Icon(icon, size: 16),
+          if (isSelected) Icon(icon, size: 16.w), // ✅ Uniform scaling
         ],
       ),
     );
@@ -174,24 +178,27 @@ class AssetListItem extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(12), // ✅ Uniform radius
       child: Container(
         decoration: BoxDecoration(
           color: isSelected
               ? Colors.grey.withValues(alpha: 0.05)
               : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(12), // ✅ Uniform radius
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: 16.w,
+          vertical: 12,
+        ), // ✅ Width-adapted
         child: Row(
           children: [
             // Icon
             Image.network(
               asset.iconUrl,
-              width: 28,
-              height: 28,
+              width: 28.w, // ✅ Uniform scaling
+              height: 28.w, // ✅ Uniform scaling
               errorBuilder: (context, error, stackTrace) =>
-                  Icon(Icons.monetization_on, size: 28),
+                  Icon(Icons.monetization_on, size: 28.w), // ✅ Uniform scaling
             ),
             const SizedBox(width: 12),
 
@@ -218,7 +225,7 @@ class AssetListItem extends StatelessWidget {
 
             // Price + Change
             SizedBox(
-              width: 100,
+              width: 100.w, // ✅ Width-adapted
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -242,7 +249,7 @@ class AssetListItem extends StatelessWidget {
 
             // Amount + Value
             SizedBox(
-              width: 100,
+              width: 100.w, // ✅ Width-adapted
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [

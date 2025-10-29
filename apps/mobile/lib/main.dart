@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/screens/satistics.dart';
@@ -189,27 +190,40 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeService.instance.themeMode,
       builder: (context, themeMode, child) {
-        return MaterialApp(
-          title: 'iTrade',
-          theme: AppTheme.brand,
-          darkTheme: AppTheme.dark,
-          themeMode: themeMode,
-          // Only show splash on first cold start, not when resuming from background
-          home: _hasInitialized ? const AuthGate() : const SplashScreen(),
-          routes: {
-            '/login': (_) => const LoginScreen(),
-            '/forgot-password': (_) => const ForgotPasswordScreen(),
-            '/home': (_) => const MyHomePage(title: 'iTrade'),
-            '/scan-qr': (_) => const QrScanScreen(),
-            '/profile': (_) => const ProfileScreen(),
-          },
-          onGenerateRoute: (settings) {
-            // Handle deep links and external navigation
-            developer.log(
-              'onGenerateRoute: ${settings.name}',
-              name: 'MyApp',
+        // Initialize ScreenUtil - ONLY adapts width, NOT height
+        // This ensures consistent horizontal layout while allowing natural vertical flow
+        return ScreenUtilInit(
+          // Design width: 375px (iPhone SE/8 as standard)
+          // Design height: Set very large to effectively disable height scaling
+          designSize: const Size(375, 10000),
+          // Minimum text adapt size (prevents text from being too small)
+          minTextAdapt: true,
+          // Split screen mode support
+          splitScreenMode: true,
+          builder: (context, child) {
+            return MaterialApp(
+              title: 'iTrade',
+              theme: AppTheme.brand,
+              darkTheme: AppTheme.dark,
+              themeMode: themeMode,
+              // Only show splash on first cold start, not when resuming from background
+              home: _hasInitialized ? const AuthGate() : const SplashScreen(),
+              routes: {
+                '/login': (_) => const LoginScreen(),
+                '/forgot-password': (_) => const ForgotPasswordScreen(),
+                '/home': (_) => const MyHomePage(title: 'iTrade'),
+                '/scan-qr': (_) => const QrScanScreen(),
+                '/profile': (_) => const ProfileScreen(),
+              },
+              onGenerateRoute: (settings) {
+                // Handle deep links and external navigation
+                developer.log(
+                  'onGenerateRoute: ${settings.name}',
+                  name: 'MyApp',
+                );
+                return null; // Use default route handling
+              },
             );
-            return null; // Use default route handling
           },
         );
       },

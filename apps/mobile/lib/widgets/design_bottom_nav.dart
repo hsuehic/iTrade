@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../design/extensions/spacing_extension.dart';
 
 class NavItemSpec {
@@ -29,7 +30,7 @@ class DesignBottomNavBar extends StatelessWidget {
     this.activeColor,
     this.inactiveColor,
     this.height = 64,
-    this.iconSize = 24,
+    this.iconSize = 28,  // Increased from 24 for better visibility
     this.labelSize = 12,
     this.labelWeight = FontWeight.w600,
   }) : assert(items.length >= 2);
@@ -116,13 +117,13 @@ class _NavItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(spacing!.md),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6),  // ✅ Width-adapted
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               selected && spec.activeIcon != null ? spec.activeIcon : spec.icon,
-              size: iconSize,
+              size: iconSize,  // ✅ Fixed size for consistent icon display
               color: color,
             ),
             const SizedBox(height: 4),
@@ -130,7 +131,7 @@ class _NavItem extends StatelessWidget {
               spec.label,
               style: TextStyle(
                 color: color,
-                fontSize: labelSize,
+                fontSize: labelSize.sp,  // ✅ Adaptive font
                 fontWeight: labelWeight,
                 letterSpacing: 0.1,
               ),

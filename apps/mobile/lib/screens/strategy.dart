@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models/strategy.dart';
 import '../services/strategy_service.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
@@ -200,29 +201,29 @@ class _StrategyScreenState extends State<StrategyScreen>
           const SizedBox(height: 16),
           // Sort Buttons
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: Row(
               children: [
-                _SortChip(
-                  label: 'Name',
-                  isSelected: _sortBy == SortBy.name,
-                  isAscending: _sortAscending,
-                  onTap: () => _handleSortChange(SortBy.name),
-                ),
-                const SizedBox(width: 8),
-                _SortChip(
-                  label: 'PnL',
-                  isSelected: _sortBy == SortBy.pnl,
-                  isAscending: _sortAscending,
-                  onTap: () => _handleSortChange(SortBy.pnl),
-                ),
-                const SizedBox(width: 8),
-                _SortChip(
-                  label: 'Date',
-                  isSelected: _sortBy == SortBy.createdAt,
-                  isAscending: _sortAscending,
-                  onTap: () => _handleSortChange(SortBy.createdAt),
-                ),
+                  _SortChip(
+                    label: 'Name',
+                    isSelected: _sortBy == SortBy.name,
+                    isAscending: _sortAscending,
+                    onTap: () => _handleSortChange(SortBy.name),
+                  ),
+                  SizedBox(width: 8.w),
+                  _SortChip(
+                    label: 'PnL',
+                    isSelected: _sortBy == SortBy.pnl,
+                    isAscending: _sortAscending,
+                    onTap: () => _handleSortChange(SortBy.pnl),
+                  ),
+                  SizedBox(width: 8.w),
+                  _SortChip(
+                    label: 'Date',
+                    isSelected: _sortBy == SortBy.createdAt,
+                    isAscending: _sortAscending,
+                    onTap: () => _handleSortChange(SortBy.createdAt),
+                  ),
               ],
             ),
           ),
@@ -278,7 +279,7 @@ class _StrategyScreenState extends State<StrategyScreen>
                                     ? 'No strategies yet'
                                     : 'No strategies found',
                                 style: TextStyle(
-                                  fontSize: 18,
+                                  fontSize: 18.sp,
                                   color: Colors.grey[600],
                                 ),
                               ),
@@ -288,7 +289,7 @@ class _StrategyScreenState extends State<StrategyScreen>
                                     ? 'Create your first strategy using web manager to get started'
                                     : 'Try a different search term',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 14.sp,
                                   color: Colors.grey[500],
                                 ),
                               ),
@@ -345,7 +346,7 @@ class _SortChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
               ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
@@ -363,7 +364,7 @@ class _SortChip extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 12.sp,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
                 color: isSelected
                     ? Theme.of(context).colorScheme.primary
@@ -371,10 +372,10 @@ class _SortChip extends StatelessWidget {
               ),
             ),
             if (isSelected) ...[
-              const SizedBox(width: 4),
+              SizedBox(width: 4.w),
               Icon(
                 isAscending ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 14,
+                size: 14.w,
                 color: Theme.of(context).colorScheme.primary,
               ),
             ],
@@ -444,7 +445,7 @@ class _StrategyCard extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: EdgeInsets.only(bottom: 8.w),
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
@@ -459,7 +460,7 @@ class _StrategyCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(16.w),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -472,11 +473,11 @@ class _StrategyCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       child: Image.network(
                         CryptoIcons.getIconUrl(baseCurrency),
-                        width: 32,
-                        height: 32,
+                        width: 32.w,
+                        height: 32.w,
                         errorBuilder: (context, error, stackTrace) => Container(
-                          width: 32,
-                          height: 32,
+                          width: 32.w,
+                          height: 32.w,
                           decoration: BoxDecoration(
                             color: Colors.grey[300],
                             shape: BoxShape.circle,
@@ -485,7 +486,7 @@ class _StrategyCard extends StatelessWidget {
                             child: Text(
                               baseCurrency.substring(0, 1).toUpperCase(),
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 14.sp,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.grey[700],
                               ),
@@ -496,15 +497,15 @@ class _StrategyCard extends StatelessWidget {
                     )
                   else
                     Container(
-                      width: 32,
-                      height: 32,
+                      width: 32.w,
+                      height: 32.w,
                       decoration: BoxDecoration(
                         color: Colors.grey[300],
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.currency_exchange,
-                        size: 16,
+                        size: 16.w,
                         color: Colors.grey,
                       ),
                     ),
@@ -527,10 +528,10 @@ class _StrategyCard extends StatelessWidget {
                           children: [
                             // Symbol with market type indicator at the end
                             Flexible(
-                              child: Text(
+                              child:                               Text(
                                 _getSymbolWithMarketType(),
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 12.sp,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.grey[700],
                                   fontFamily: 'monospace',
@@ -552,8 +553,8 @@ class _StrategyCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   // Status badge
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
@@ -563,7 +564,7 @@ class _StrategyCard extends StatelessWidget {
                     child: Text(
                       formatStatus(strategy.status),
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.sp,
                         color: statusColor,
                         fontWeight: FontWeight.w600,
                       ),
@@ -596,7 +597,7 @@ class _StrategyCard extends StatelessWidget {
                               : pnlValue < 0
                               ? Icons.arrow_downward
                               : Icons.remove,
-                          size: 20,
+                          size: 20.w,
                           color: pnlColor,
                         ),
                         const SizedBox(width: 4),
@@ -606,7 +607,7 @@ class _StrategyCard extends StatelessWidget {
                             Text(
                               'Total PnL',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 11.sp,
                                 color: Colors.grey[600],
                               ),
                             ),
@@ -614,7 +615,7 @@ class _StrategyCard extends StatelessWidget {
                             Text(
                               formatPnL(pnlValue),
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: 18.sp,
                                 fontWeight: FontWeight.bold,
                                 color: pnlColor,
                               ),
@@ -632,15 +633,15 @@ class _StrategyCard extends StatelessWidget {
                         Text(
                           'Orders',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 11.sp,
                             color: Colors.grey[600],
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${pnl!.filledOrders} / ${pnl!.totalOrders}',
-                          style: const TextStyle(
-                            fontSize: 16,
+                          style: TextStyle(
+                            fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -652,11 +653,11 @@ class _StrategyCard extends StatelessWidget {
               // Created time
               Row(
                 children: [
-                  Icon(Icons.schedule, size: 12, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
+                  Icon(Icons.schedule, size: 12.w, color: Colors.grey[500]),
+                  SizedBox(width: 4.w),
                   Text(
                     'Created ${_formatDate(strategy.createdAt)}',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 11.sp, color: Colors.grey[500]),
                   ),
                 ],
               ),
@@ -682,8 +683,8 @@ class _ExchangeLogo extends StatelessWidget {
     final color = SupportedExchanges.getColor(exchangeId);
 
     return Container(
-      width: 24,
-      height: 24,
+      width: 24.w,
+      height: 24.w,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(4),
@@ -703,7 +704,7 @@ class _ExchangeLogo extends StatelessWidget {
                       child: Text(
                         name.substring(0, 1),
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 10.sp,
                           fontWeight: FontWeight.bold,
                           color: color,
                         ),

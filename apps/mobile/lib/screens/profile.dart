@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -77,7 +78,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16.w),  // ✅ Width-adapted
         children: [
           // User Profile Card
           _buildUserCard(user, image, isDark),
@@ -167,10 +168,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                                 duration: const Duration(seconds: 3),
                                 behavior: SnackBarBehavior.floating,
-                                margin: const EdgeInsets.only(
-                                  bottom: 28.0, // distance from bottom
-                                  left: 16.0,
-                                  right: 16.0,
+                                margin: EdgeInsets.only(
+                                  bottom: 28,       // ✅ Fixed vertical
+                                  left: 16.w,       // ✅ Width-adapted
+                                  right: 16.w,      // ✅ Width-adapted
                                 ),
                               ),
                             );
@@ -413,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildUserCard(User user, String? image, bool isDark) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(20.w),  // ✅ Width-adapted
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -423,7 +424,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),  // ✅ Uniform radius
         boxShadow: [
           BoxShadow(
             color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
@@ -437,13 +438,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           // Avatar
           UserAvatar(
-            radius: 32,
+            radius: 40,  // ✅ Fixed size for better visibility
             backgroundColor: Colors.white.withOpacity(0.3),
             icon: Icons.person,
             iconColor: Colors.white.withOpacity(0.9),
-            iconSize: 36,
+            iconSize: 48,  // ✅ Fixed size
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16.w),  // ✅ Width-adapted
           // User info
           Expanded(
             child: Column(
@@ -452,6 +453,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   user.name,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: 20.sp,  // ✅ Adaptive font
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
@@ -460,6 +462,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text(
                   user.email,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14.sp,  // ✅ Adaptive font
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),
@@ -473,11 +476,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4),
+      padding: EdgeInsets.only(left: 4.w),  // ✅ Width-adapted
       child: Text(
         title,
         style: TextStyle(
-          fontSize: 13,
+          fontSize: 13.sp,  // ✅ Adaptive font
           fontWeight: FontWeight.w600,
           color: Colors.grey[600],
           letterSpacing: 0.5,
@@ -493,7 +496,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12),  // ✅ Uniform radius
         border: Border.all(
           color: isDark ? Colors.grey[850]! : Colors.grey.withOpacity(0.08),
         ),
@@ -513,31 +516,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12),  // ✅ Width-adapted horizontal
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 40.w,   // ✅ Uniform scaling
+              height: 40.w,  // ✅ Uniform scaling
               decoration: BoxDecoration(
                 color: isDark ? Colors.grey[800] : Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(10),  // ✅ Uniform radius
               ),
               child: Icon(
                 icon,
-                size: 20,
+                size: 20.w,  // ✅ Uniform scaling
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12.w),  // ✅ Width-adapted
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 15,
+                    style: TextStyle(
+                      fontSize: 15.sp,  // ✅ Adaptive font
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -545,14 +548,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),  // ✅ Adaptive font
                     ),
                   ],
                 ],
               ),
             ),
             if (trailing != null)
-              Icon(trailing, size: 20, color: Colors.grey[400]),
+              Icon(trailing, size: 20.w, color: Colors.grey[400]),  // ✅ Uniform scaling
           ],
         ),
       ),
@@ -568,27 +571,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required bool isDark,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8),  // ✅ Width-adapted horizontal
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 40.w,   // ✅ Uniform scaling
+            height: 40.w,  // ✅ Uniform scaling
             decoration: BoxDecoration(
               color: isDark ? Colors.grey[800] : Colors.grey.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(10),  // ✅ Uniform radius
             ),
-            child: Icon(icon, size: 20, color: Theme.of(context).primaryColor),
+            child: Icon(icon, size: 20.w, color: Theme.of(context).primaryColor),  // ✅ Uniform scaling
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12.w),  // ✅ Width-adapted
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 15,
+                  style: TextStyle(
+                    fontSize: 15.sp,  // ✅ Adaptive font
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -596,7 +599,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),  // ✅ Adaptive font
                   ),
                 ],
               ],
@@ -619,24 +622,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSignOutButton() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: EdgeInsets.symmetric(horizontal: 4.w),  // ✅ Width-adapted
       child: SizedBox(
         height: 50,
         child: OutlinedButton.icon(
           onPressed: _signingOut ? null : _signOut,
           icon: _signingOut
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              ? SizedBox(
+                  width: 16.w,   // ✅ Uniform scaling
+                  height: 16.w,  // ✅ Uniform scaling
+                  child: const CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.logout),
-          label: Text(_signingOut ? 'Signing out...' : 'Sign Out'),
+          label: Text(
+            _signingOut ? 'Signing out...' : 'Sign Out',
+            style: TextStyle(fontSize: 14.sp),  // ✅ Adaptive font
+          ),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.red,
             side: const BorderSide(color: Colors.red),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),  // ✅ Uniform radius
             ),
           ),
         ),

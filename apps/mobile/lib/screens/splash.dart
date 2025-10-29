@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 import '../main.dart' show MyHomePage;
 import './login.dart';
@@ -207,10 +208,10 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Logo
+                    // Logo - Use fixed size for better visibility
                     Container(
-                      width: 120,
-                      height: 120,
+                      width: 140,   // ✅ Fixed size
+                      height: 140,  // ✅ Fixed size
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
@@ -226,8 +227,8 @@ class _SplashScreenState extends State<SplashScreen>
                             color: theme.colorScheme.primary.withValues(
                               alpha: 0.3,
                             ),
-                            blurRadius: 20,
-                            spreadRadius: 5,
+                            blurRadius: 20,  // Fixed value
+                            spreadRadius: 5,  // Fixed value
                           ),
                         ],
                       ),
@@ -235,12 +236,12 @@ class _SplashScreenState extends State<SplashScreen>
                         child: ClipOval(
                           child: Image.asset(
                             'assets/images/logo-512x512.png',
-                            width: 70,
-                            height: 70,
+                            width: 85,   // ✅ Fixed size
+                            height: 85,  // ✅ Fixed size
                             fit: BoxFit.cover,
                             cacheWidth:
-                                140, // 2x resolution for high-DPI screens
-                            cacheHeight: 140,
+                                170, // 2x resolution for high-DPI screens
+                            cacheHeight: 170,
                             errorBuilder: (context, error, stackTrace) {
                               developer.log(
                                 'Failed to load logo image',
@@ -248,9 +249,9 @@ class _SplashScreenState extends State<SplashScreen>
                                 error: error,
                               );
                               // Fallback to icon if image fails to load
-                              return const Icon(
+                              return Icon(
                                 Icons.account_balance,
-                                size: 50,
+                                size: 60,  // ✅ Fixed size
                                 color: Colors.white,
                               );
                             },
@@ -259,30 +260,32 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 32),  // ✅ Fixed vertical spacing
 
-                    // Title
+                    // Title - Use .sp for font size
                     Text(
                       'iTrade',
                       style: theme.textTheme.headlineLarge?.copyWith(
+                        fontSize: 32.sp,  // ✅ Adaptive font size
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
 
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 8),  // ✅ Fixed vertical spacing
 
                     // Subtitle
                     Text(
                       'Intelligent & Strategic',
                       style: theme.textTheme.bodyLarge?.copyWith(
+                        fontSize: 16.sp,  // ✅ Adaptive font size
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
                         letterSpacing: 0.5,
                       ),
                     ),
 
-                    const SizedBox(height: 48),
+                    const SizedBox(height: 48),  // ✅ Fixed vertical spacing
                   ],
                 ),
               ),

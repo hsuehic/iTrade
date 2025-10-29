@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 class Tag {
   final String name;
@@ -29,16 +30,17 @@ class TagItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4),  // ✅ Width-adapted
             decoration: BoxDecoration(
               color: checked
                   ? Theme.of(context).colorScheme.onSurface
                   : Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(6),  // ✅ Uniform radius
             ),
             child: Text(
               tag.name,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontSize: 14.sp,  // ✅ Adaptive font
                 fontWeight: FontWeight.w600,
                 color: checked
                     ? Theme.of(context).colorScheme.onInverseSurface
@@ -46,7 +48,7 @@ class TagItem extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 16),
+          SizedBox(width: 16.w),  // ✅ Width-adapted
         ],
       ),
     );
