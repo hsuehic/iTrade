@@ -35,6 +35,7 @@ export class CoinbaseExchange extends BaseExchange {
   private publicHttpClient: AxiosInstance;
   private wsManager: CoinbaseWebSocketManager;
   private symbolMap = new Map<string, string>(); // Coinbase product_id -> original symbol mapping
+  private positionSymbolMap = new Map<string, string>(); // position_id -> product_id mapping
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
@@ -89,20 +90,6 @@ export class CoinbaseExchange extends BaseExchange {
     if (!this.credentials) {
       throw new Error('Coinbase credentials required for JWT generation');
     }
-
-    const header = {
-      alg: 'ES256',
-      kid: this.credentials.apiKey,
-      nonce: Math.floor(Date.now() / 1000).toString(),
-    };
-
-    const payload = {
-      sub: this.credentials.apiKey,
-      iss: 'coinbase-cloud',
-      nbf: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 120, // 2 minutes
-      aud: ['retail_rest_api_proxy'],
-    };
 
     // Generate JWT using the token utility
     const token = generateToken(
@@ -501,7 +488,27 @@ export class CoinbaseExchange extends BaseExchange {
           const portfolioPositions = positionsResp.data?.positions || [];
 
           for (const pos of portfolioPositions) {
-            if (!pos.product_id || !pos.net_size) continue;
+            // Debug: log raw position data
+            console.log('[Coinbase] Raw position data:', JSON.stringify(pos, null, 2));
+
+            if (!pos.symbol || !pos.net_size) {
+              console.warn('[Coinbase] Position missing symbol or net_size:', pos);
+              continue;
+            }
+
+            // Coinbase position structure:
+            // - product_id: internal position ID (e.g., "1s6uej26-0-1")
+            // - symbol: actual product symbol (e.g., "OP-PERP-INTX")
+            const productSymbol = pos.symbol; // Use 'symbol' field, not 'product_id'!
+            const positionId = pos.product_id; // This is actually the position ID
+
+            // Build position_id -> product_symbol mapping for WebSocket handling
+            if (positionId && productSymbol) {
+              this.positionSymbolMap.set(positionId, productSymbol);
+              console.log(
+                `[Coinbase] Mapping position_id ${positionId} -> symbol ${productSymbol}`,
+              );
+            }
 
             // Handle different data formats - some fields might be objects with 'value' property
             const getDecimalValue = (field: any): string => {
@@ -514,8 +521,12 @@ export class CoinbaseExchange extends BaseExchange {
             const size = this.formatDecimal(getDecimalValue(pos.net_size));
             if (size.isZero()) continue; // Skip zero positions
 
+            // Denormalize symbol from Coinbase format to unified format
+            // OP-PERP-INTX -> OP/USDC:USDC
+            const unifiedSymbol = this.denormalizeSymbol(productSymbol);
+
             positions.push({
-              symbol: pos.product_id,
+              symbol: unifiedSymbol,
               side: size.isPositive() ? 'long' : 'short',
               quantity: size.abs(),
               avgPrice: pos.avg_entry_price
@@ -1127,23 +1138,48 @@ export class CoinbaseExchange extends BaseExchange {
       .map((p: any) => {
         try {
           // Coinbase position structure:
-          // {
-          //   "product_id": "BTC-PERP-INTX",
-          //   "vwap": "50000.00",
-          //   "entry_vwap": "50000.00",
-          //   "position_side": "LONG",
-          //   "net_size": "0.5",
-          //   "buy_order_size": "0.5",
-          //   "sell_order_size": "0",
-          //   "im_contribution": "1000.00",
-          //   "unrealized_pnl": "500.00",
-          //   "mark_price": "51000.00",
-          //   "liquidation_price": "45000.00",
-          //   "leverage": "10"
-          // }
+          // REST API and WebSocket may use different field names:
+          // REST: { product_id: "position-id", symbol: "OP-PERP-INTX", ... }
+          // WS:   { position_id: "position-id", symbol: "position-id" or product_symbol, ... }
 
-          const productId = p.product_id || 'UNKNOWN';
-          const symbol = this.denormalizeSymbol(productId);
+          // Priority:
+          // 1. If p.symbol looks like a valid product (contains PERP/INTX), use it
+          // 2. Otherwise, try to map from position_id using positionSymbolMap
+          // 3. Fall back to p.product_id if available
+
+          let productSymbol: string | undefined;
+
+          // Check if symbol field contains actual product symbol (e.g., "OP-PERP-INTX")
+          if (p.symbol && (p.symbol.includes('PERP') || p.symbol.includes('-'))) {
+            productSymbol = p.symbol;
+          } else {
+            // Try to resolve via mapping
+            const positionId = p.position_id || p.product_id || p.symbol;
+            if (positionId) {
+              const mapped = this.positionSymbolMap.get(positionId);
+              if (mapped) {
+                productSymbol = mapped;
+                console.log(
+                  `[Coinbase] Resolved position_id ${positionId} -> symbol ${productSymbol}`,
+                );
+              } else {
+                // Try using product_id as fallback
+                productSymbol = p.product_id || p.symbol;
+                console.warn(
+                  `[Coinbase] No mapping for position ${positionId}, using fallback: ${productSymbol}`,
+                );
+              }
+            }
+          }
+
+          if (!productSymbol || productSymbol === 'UNKNOWN') {
+            console.warn('[Coinbase] Position missing valid symbol, skipping:', p);
+            return null;
+          }
+
+          // Denormalize symbol from Coinbase format to unified format
+          // OP-PERP-INTX -> OP/USDC:USDC
+          const symbol = this.denormalizeSymbol(productSymbol);
 
           const side =
             (p.position_side || p.side || 'LONG').toUpperCase() === 'LONG'
