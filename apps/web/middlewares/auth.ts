@@ -5,7 +5,7 @@ export function withAuth(request: NextRequest, res: NextResponse) {
   const sessionCookie = getSessionCookie(request);
   const pathname = request.nextUrl.pathname;
   const skipPathsPattern =
-    /(^\/api\/)|(^\/auth)|(^\/_next)|((\.js|\.css|\.png|\.jpg|\.jpeg|\.svg|\.gif|\.woff|\.woff2|\.ttf|\.eot|\.otf|\.map|\.html)$)/;
+    /(^\/api\/)|(^\/auth)|(^\/callbacks)|(^\/_next)|((\.js|\.css|\.png|\.jpg|\.jpeg|\.svg|\.gif|\.woff|\.woff2|\.ttf|\.eot|\.otf|\.map|\.html)$)/;
 
   // Allow landing page for unauthenticated users
   const isLandingPage = pathname === '/' || pathname === '/landing';
