@@ -121,17 +121,6 @@ export class BalanceTracker {
         lockedBalance = lockedBalance.add(balance.locked);
       });
 
-      // Save AccountInfo (which includes balances)
-      await this.dataManager.saveAccountInfo({
-        exchange,
-        accountId: `${exchange}_account`, // You may want to get this from config
-        canTrade: accountInfo.canTrade,
-        canWithdraw: accountInfo.canWithdraw,
-        canDeposit: accountInfo.canDeposit,
-        updateTime: timestamp,
-        balances: accountInfo.balances,
-      });
-
       this.totalSaved++;
       this.pendingUpdates.delete(key);
 

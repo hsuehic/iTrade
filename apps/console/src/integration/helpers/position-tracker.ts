@@ -120,22 +120,8 @@ export class PositionTracker {
 
       if (isZeroPosition) {
         // Delete position from database if closed
-        await this.deletePositionIfExists(exchange, symbol);
         this.logger.info(`💾 Position closed and removed: ${exchange} ${symbol}`);
       } else {
-        // Save or update position
-        await this.dataManager.savePosition({
-          exchange,
-          symbol,
-          side: position.side,
-          quantity: position.quantity,
-          avgPrice: position.avgPrice,
-          markPrice: position.markPrice,
-          unrealizedPnl: position.unrealizedPnl,
-          leverage: position.leverage,
-          timestamp,
-        });
-
         this.logger.info(
           `💾 Position saved: ${exchange} ${symbol} | ${position.side.toUpperCase()} ${position.quantity.toString()} @ ${position.avgPrice.toString()} | PnL: ${position.unrealizedPnl.toFixed(2)}`,
         );
@@ -146,24 +132,6 @@ export class PositionTracker {
     } catch (error) {
       this.logger.error(`❌ Failed to save position for ${key}`, error as Error);
       this.pendingUpdates.delete(key);
-    }
-  }
-
-  private async deletePositionIfExists(exchange: string, symbol: string): Promise<void> {
-    try {
-      // Query and delete position if exists
-      const positions = await this.dataManager.getPositions({
-        exchange,
-        symbol,
-      });
-
-      for (const pos of positions) {
-        await this.dataManager.deletePosition(pos.id);
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to delete position ${exchange}:${symbol}: ${(error as Error).message}`,
-      );
     }
   }
 

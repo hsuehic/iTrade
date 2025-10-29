@@ -111,8 +111,6 @@ export class OrderTracker {
         type: order.type,
         quantity: order.quantity,
         price: order.price,
-        stopLoss: order.stopLoss,
-        takeProfit: order.takeProfit,
         status: order.status,
         timeInForce: order.timeInForce,
         timestamp: order.timestamp,
