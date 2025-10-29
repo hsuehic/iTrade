@@ -39,6 +39,25 @@ export default async function Home() {
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
           <p>&copy; {new Date().getFullYear()} iTrade. All rights reserved.</p>
           <p className="mt-2">Trade responsibly. Cryptocurrency trading involves risk.</p>
+          <div className="mt-4 flex items-center justify-center gap-4">
+            <a
+              href="/privacy.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline transition-colors hover:text-foreground"
+            >
+              Privacy Policy
+            </a>
+            <span>•</span>
+            <a
+              href="/terms.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline transition-colors hover:text-foreground"
+            >
+              Terms of Service
+            </a>
+          </div>
         </div>
       </footer>
     </div>

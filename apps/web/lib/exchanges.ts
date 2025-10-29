@@ -91,6 +91,41 @@ export function getExchangeLogoUrl(exchangeId: string): string | undefined {
   return exchange?.logoUrl;
 }
 
+export const SUPPORTED_BASE_CURRENCIES = [
+  'BTC',
+  'ETH',
+  'SOL',
+  'LTC',
+  'XRP',
+  'DOGE',
+  'WLD',
+  'APT',
+  'ARB',
+  'OP',
+  'OKB',
+  'ADA',
+  'DOT',
+  'LINK',
+  'SUI',
+  'UNI',
+  'FIL',
+] as const;
+
+export const SUPPORTED_QUOTE_CURRENCIES = {
+  binance: ['USDT'],
+  okx: ['USDT'],
+  coinbase: ['USDC'],
+} as const;
+
+export interface TradingPair {
+  symbol: string;
+  base: string;
+  quote: string;
+  name: string;
+  type: 'spot' | 'perpetual';
+  exchange: ExchangeId;
+}
+
 /**
  * Common trading pairs with crypto icons
  * Format:
@@ -219,16 +254,45 @@ export function extractBaseCurrency(symbol: string): string {
 /**
  * Get trading pairs for a specific exchange
  */
-export function getTradingPairsForExchange(exchangeId: string) {
-  return COMMON_TRADING_PAIRS.filter((pair) =>
-    pair.exchange.includes(exchangeId.toLowerCase()),
-  );
+export function getTradingPairsForExchange(exchangeId: ExchangeId): TradingPair[] {
+  const quoteCurrencies = SUPPORTED_QUOTE_CURRENCIES[exchangeId];
+  const perpetualPairs = quoteCurrencies.reduce((pre, quote) => {
+    return [
+      ...pre,
+      ...SUPPORTED_BASE_CURRENCIES.map((base) => {
+        return {
+          type: 'perpetual' as const,
+          exchange: exchangeId,
+          symbol: `${base}/${quote}:${quote}`,
+          name: `${base} Perp`,
+          base,
+          quote,
+        };
+      }),
+    ];
+  }, [] as TradingPair[]);
+  const spotPairs = quoteCurrencies.reduce((acc, quote) => {
+    return [
+      ...acc,
+      ...SUPPORTED_BASE_CURRENCIES.map((base) => {
+        return {
+          type: 'spot' as const,
+          exchange: exchangeId,
+          symbol: `${base}/${quote}`,
+          name: `${base}`,
+          base,
+          quote,
+        };
+      }),
+    ];
+  }, [] as TradingPair[]);
+  return [...perpetualPairs, ...spotPairs];
 }
 
 /**
  * Get default trading pair for an exchange (preferably perpetual)
  */
-export function getDefaultTradingPair(exchangeId: string): string {
+export function getDefaultTradingPair(exchangeId: ExchangeId): string {
   const exchangePairs = getTradingPairsForExchange(exchangeId);
 
   // First try to find a perpetual BTC pair
