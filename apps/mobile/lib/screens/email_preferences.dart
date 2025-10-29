@@ -142,6 +142,7 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Email Preferences'),
+        centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,

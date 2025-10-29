@@ -37,6 +37,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Scan QR Code'),
+        centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.flash_on),

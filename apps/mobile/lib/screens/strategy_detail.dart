@@ -234,6 +234,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(_strategy.name),
+        centerTitle: true,
         actions: [
           if (!_strategy.isActive)
             IconButton(

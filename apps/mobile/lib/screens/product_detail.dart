@@ -206,7 +206,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     };
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.productId)),
+      appBar: AppBar(
+        title: Text(widget.productId),
+        centerTitle: true,
+      ),
       body: Column(
         children: [
           SizedBox(height: 16),

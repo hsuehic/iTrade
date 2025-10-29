@@ -48,6 +48,7 @@ class _RportScreenState extends State<ReportScreen> {
                 pinned: true,
                 floating: false,
                 expandedHeight: expandedHeight,
+                centerTitle: true,
                 backgroundColor: Colors.blue, // 收起后会显示的背景色
                 elevation: 0,
                 // 使用 LayoutBuilder 获取当前高度，从而计算收缩比例 t

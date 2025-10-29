@@ -30,6 +30,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Delete Account', style: TextStyle(color: colorOnError)),
+        centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).colorScheme.errorContainer,
