@@ -165,6 +165,7 @@ export async function POST(req: Request) {
     }
 
     // Use Better Auth to handle the sign-in
+    // For mobile apps, we pass the idToken directly
     const result = await auth.api.signInSocial({
       body: {
         provider,
@@ -176,10 +177,20 @@ export async function POST(req: Request) {
       asResponse: true,
     });
 
-    console.log('[Mobile Social Sign-In] Response:', {
+    console.log('[Mobile Social Sign-In] Better Auth Response:', {
       status: result.status,
       ok: result.ok,
+      headers: Object.fromEntries(result.headers.entries()),
     });
+
+    // Check if the response contains an error message
+    if (!result.ok) {
+      const responseData = await result
+        .clone()
+        .json()
+        .catch(() => ({}));
+      console.error('[Mobile Social Sign-In] Failed:', responseData);
+    }
 
     return result;
   } catch (error) {
