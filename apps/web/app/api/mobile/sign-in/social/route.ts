@@ -52,6 +52,49 @@ async function verifyAppleToken(idToken: string, nonce?: string) {
   }
 }
 
+/**
+ * Decode and verify Google ID Token
+ * Google's public keys are at https://www.googleapis.com/oauth2/v3/certs
+ */
+async function verifyGoogleToken(idToken: string) {
+  try {
+    const JWKS = jose.createRemoteJWKSet(
+      new URL('https://www.googleapis.com/oauth2/v3/certs'),
+    );
+
+    // Accept multiple client IDs (iOS, Android, Web)
+    const acceptedAudiences = [
+      process.env.GOOGLE_CLIENT_ID || '', // Web Client ID
+      process.env.GOOGLE_IOS_CLIENT_ID || '', // iOS Client ID
+      process.env.GOOGLE_ANDROID_CLIENT_ID || '', // Android Client ID
+    ].filter(Boolean);
+
+    const { payload } = await jose.jwtVerify(idToken, JWKS, {
+      issuer: ['https://accounts.google.com', 'accounts.google.com'],
+      audience: acceptedAudiences,
+    });
+
+    console.log('[Google Token] Payload:', {
+      aud: payload.aud,
+      iss: payload.iss,
+      sub: payload.sub,
+      email: payload.email,
+      email_verified: payload.email_verified,
+    });
+
+    return {
+      email: payload.email as string,
+      emailVerified: payload.email_verified === true,
+      sub: payload.sub as string,
+      name: payload.name as string | undefined,
+      picture: payload.picture as string | undefined,
+    };
+  } catch (error) {
+    console.error('[Google Token Verification] Error:', error);
+    throw error;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -74,6 +117,27 @@ export async function POST(req: Request) {
         { error: 'idToken is required for mobile sign-in' },
         { status: 400 },
       );
+    }
+
+    // For Google, verify the idToken and log details
+    if (provider === 'google') {
+      try {
+        const googleUser = await verifyGoogleToken(idToken);
+        console.log('[Google Sign-In] Token verified successfully:', {
+          email: googleUser.email,
+          sub: googleUser.sub,
+          emailVerified: googleUser.emailVerified,
+          aud: 'See [Google Token] Payload log above',
+        });
+      } catch (error) {
+        console.error('[Google Sign-In] Token verification failed:', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        console.warn(
+          '[Google Sign-In] Proceeding with Better Auth despite verification failure',
+        );
+      }
     }
 
     // For Apple, verify the identityToken manually first
