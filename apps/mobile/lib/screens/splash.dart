@@ -56,14 +56,11 @@ class _SplashScreenState extends State<SplashScreen>
       // Start loading user session in parallel with animation
       final userFuture = _checkUserSession();
 
-      // Wait for minimum animation time (2.5 seconds)
-      await Future.delayed(const Duration(milliseconds: 1500));
-
-      // Ensure user check is complete with timeout
+      // Check session status quickly first
       bool isLoggedIn = false;
       try {
         isLoggedIn = await userFuture.timeout(
-          const Duration(seconds: 3),
+          const Duration(seconds: 2),
           onTimeout: () {
             developer.log(
               'User session check timed out, treating as logged out',
@@ -74,7 +71,7 @@ class _SplashScreenState extends State<SplashScreen>
         );
       } catch (e) {
         developer.log(
-          'Error waiting for user session',
+          'Error checking user session',
           name: 'SplashScreen',
           error: e,
         );
@@ -82,6 +79,16 @@ class _SplashScreenState extends State<SplashScreen>
       }
 
       developer.log('Login status: $isLoggedIn', name: 'SplashScreen');
+
+      // If already logged in (resuming from browser), skip animation delay
+      // Otherwise, show full splash animation for better UX
+      if (!isLoggedIn) {
+        // Wait for minimum animation time for first-time visitors
+        await Future.delayed(const Duration(milliseconds: 1500));
+      } else {
+        // Quick transition for returning users
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
 
       // Check if widget is still mounted before using context
       if (!mounted) {

@@ -30,6 +30,14 @@
           }
         },
         {
+          "client_id": "239898125237-bjqv477p1irj8dv7lcvds4pud61bh85q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ihsueh.itrade",
+            "certificate_hash": "285d2be5c66a14f2fac08c3990266ab6f7e2aaf6"
+          }
+        },
+        {
           "client_id": "239898125237-is83jhb9ukq4tk972qf377clk69dvfic.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

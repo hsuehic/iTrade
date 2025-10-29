@@ -159,7 +159,31 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  // Track if we're resuming from background (to avoid showing splash again)
+  static bool _hasInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Mark as initialized when app resumes (e.g., from browser)
+      _hasInitialized = true;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
@@ -170,13 +194,22 @@ class _MyAppState extends State<MyApp> {
           theme: AppTheme.brand,
           darkTheme: AppTheme.dark,
           themeMode: themeMode,
-          home: const SplashScreen(),
+          // Only show splash on first cold start, not when resuming from background
+          home: _hasInitialized ? const AuthGate() : const SplashScreen(),
           routes: {
             '/login': (_) => const LoginScreen(),
             '/forgot-password': (_) => const ForgotPasswordScreen(),
             '/home': (_) => const MyHomePage(title: 'iTrade'),
             '/scan-qr': (_) => const QrScanScreen(),
             '/profile': (_) => const ProfileScreen(),
+          },
+          onGenerateRoute: (settings) {
+            // Handle deep links and external navigation
+            developer.log(
+              'onGenerateRoute: ${settings.name}',
+              name: 'MyApp',
+            );
+            return null; // Use default route handling
           },
         );
       },
