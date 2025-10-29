@@ -66,6 +66,7 @@ import {
   getCryptoIconUrl,
   getTradingPairsForExchange,
   getDefaultTradingPair,
+  ExchangeId,
 } from '@/lib/exchanges';
 
 type Strategy = {
@@ -723,8 +724,9 @@ export default function StrategyPage() {
                                         : formData.exchange
                                     }
                                     onValueChange={(value) => {
-                                      const defaultTradingPair =
-                                        getDefaultTradingPair(value);
+                                      const defaultTradingPair = getDefaultTradingPair(
+                                        value as ExchangeId,
+                                      );
                                       setFormData({
                                         ...formData,
                                         exchange: value,
@@ -895,9 +897,9 @@ export default function StrategyPage() {
                                   </SelectTrigger>
                                   <SelectContent>
                                     {getTradingPairsForExchange(
-                                      Array.isArray(formData.exchange)
+                                      (Array.isArray(formData.exchange)
                                         ? formData.exchange[0]
-                                        : formData.exchange,
+                                        : formData.exchange) as ExchangeId,
                                     ).map((pair) => (
                                       <SelectItem key={pair.symbol} value={pair.symbol}>
                                         <div className="flex items-center gap-2">
