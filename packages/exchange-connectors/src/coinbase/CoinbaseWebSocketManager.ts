@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
+import { ConsoleLogger } from '@itrade/core';
 
 interface WebSocketState {
   ws: WebSocket | null;
@@ -26,15 +27,16 @@ export class CoinbaseWebSocketManager extends EventEmitter {
   private readonly wsUrl: string;
   private readonly maxReconnectAttempts = 10;
   private readonly baseReconnectDelay = 1000;
-  private readonly heartbeatInterval = 30000; // 30 seconds
+  private readonly heartbeatInterval = 15000; // 30 seconds
   private isConnecting: boolean = false; // Track if connection is in progress
-
+  private logger: ConsoleLogger;
   // JWT generation callback (provided by CoinbaseExchange)
   private generateJWT: (() => string) | null = null;
 
   constructor(wsUrl: string) {
     super();
     this.wsUrl = wsUrl;
+    this.logger = new ConsoleLogger();
     this.state = {
       ws: null,
       reconnectAttempts: 0,
@@ -58,22 +60,22 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    */
   public createConnection(): void {
     if (this.state.ws?.readyState === WebSocket.OPEN) {
-      console.log('[Coinbase] WebSocket already connected');
+      this.logger.info('[Coinbase] WebSocket already connected');
       return;
     }
 
     if (this.isConnecting) {
-      console.log('[Coinbase] WebSocket connection already in progress');
+      this.logger.info('[Coinbase] WebSocket connection already in progress');
       return;
     }
 
-    console.log('[Coinbase] Creating WebSocket connection...');
+    this.logger.info('[Coinbase] Creating WebSocket connection...');
     this.isConnecting = true;
 
     this.state.ws = new WebSocket(this.wsUrl);
 
     this.state.ws.on('open', () => {
-      console.log('[Coinbase] WebSocket connected');
+      this.logger.info('[Coinbase] WebSocket connected');
       this.state.reconnectAttempts = 0;
       this.isConnecting = false;
       this.emit('connected');
@@ -81,7 +83,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
       // Resubscribe to all previous subscriptions
       if (this.state.subscriptions.size > 0) {
-        console.log(
+        this.logger.info(
           `[Coinbase] Resubscribing to ${this.state.subscriptions.size} channels...`,
         );
         this.resubscribeAll();
@@ -116,18 +118,34 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    * Handle incoming WebSocket messages
    */
   private handleMessage(message: any): void {
+    // Log all non-heartbeat messages for debugging
+    if (message.type !== 'heartbeat') {
+      this.logger.info(
+        `[Coinbase WS] Message type:
+        ${message.type}\n
+        channel:\n
+        ${message.channel}`,
+      );
+    }
+
     // Emit raw message for processing in CoinbaseExchange
     this.emit('data', message);
 
     // Handle subscription confirmations
     if (message.type === 'subscriptions') {
-      console.log('[Coinbase] Subscription confirmation:', message.channels);
+      this.logger.info(
+        `[Coinbase] ✅ Subscription confirmation:\n
+        ${JSON.stringify(message)}`,
+      );
       this.emit('subscribed', message.channels);
     }
 
     // Handle errors
     if (message.type === 'error') {
-      console.error('[Coinbase] WebSocket error message:', message.message);
+      this.logger.error(
+        `[Coinbase] ❌ WebSocket error message:\n,
+        ${JSON.stringify(message, null, 2)}`,
+      );
       this.emit('ws_error', new Error(message.message));
     }
 
@@ -153,7 +171,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     productIds.forEach((pid) => channelSubs.add(pid));
 
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
-      console.log(
+      this.logger.info(
         `[Coinbase] WebSocket not connected, subscription to ${channel} will be sent after connection`,
       );
       this.createConnection();
@@ -169,15 +187,24 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       ...additionalParams,
     };
 
-    // Add JWT authentication for user channel
-    if (channel === 'user' && this.generateJWT) {
+    // Add JWT authentication for user channel and futures channels
+    if (
+      (channel === 'user' || channel === 'futures_balance_summary') &&
+      this.generateJWT
+    ) {
       const jwt = this.generateJWT();
       subscribeMessage.jwt = jwt;
       this.state.jwtToken = jwt;
-      console.log('[Coinbase] Subscribing to user channel with JWT authentication...');
+      this.logger.info(`[Coinbase] Subscribing to ${channel} with JWT authentication...`);
+      this.logger.info(
+        `[Coinbase] JWT token (first 50 chars): ${jwt.substring(0, 50)}...`,
+      );
     }
 
-    console.log(`[Coinbase] Subscribing to ${channel}:`, productIds);
+    this.logger.info(
+      `[Coinbase] Sending subscription message:
+      ${JSON.stringify(subscribeMessage, null, 2)}`,
+    );
     this.state.ws.send(JSON.stringify(subscribeMessage));
   }
 
@@ -186,7 +213,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    */
   public unsubscribe(channel: string, productIds: string[]): void {
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
-      console.warn('[Coinbase] WebSocket not connected, cannot unsubscribe');
+      this.logger.warn('[Coinbase] WebSocket not connected, cannot unsubscribe');
       return;
     }
 
@@ -206,11 +233,11 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       channel: channel,
     };
 
-    console.log(`[Coinbase] Unsubscribing from ${channel}:`, productIds);
+    this.logger.info(`[Coinbase] Unsubscribing from ${channel}:${productIds.join(', ')}`);
     this.state.ws.send(JSON.stringify(unsubscribeMessage));
 
     // Keep connection alive (don't close even if no subscriptions)
-    console.log(
+    this.logger.info(
       `[Coinbase] Connection kept alive (${this.state.subscriptions.size} channels remaining)`,
     );
   }
@@ -221,7 +248,9 @@ export class CoinbaseWebSocketManager extends EventEmitter {
   private resubscribeAll(): void {
     for (const [channel, productIds] of this.state.subscriptions.entries()) {
       const productIdsArray = Array.from(productIds);
-      console.log(`[Coinbase] Resubscribing to ${channel}:`, productIdsArray);
+      this.logger.info(
+        `[Coinbase] Resubscribing to ${channel}:${productIdsArray.join(', ')}`,
+      );
 
       const subscribeMessage: any = {
         type: 'subscribe',
@@ -274,7 +303,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     }
 
     if (this.state.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[Coinbase] Max reconnection attempts reached, giving up');
+      this.logger.error('[Coinbase] Max reconnection attempts reached, giving up');
       this.emit('max_reconnect_failed');
       return;
     }
@@ -284,7 +313,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       30000, // Max 30 seconds
     );
 
-    console.log(
+    this.logger.info(
       `[Coinbase] Scheduling reconnection attempt ${this.state.reconnectAttempts + 1} in ${delay}ms...`,
     );
 
@@ -299,7 +328,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    * Explicitly close the WebSocket connection
    */
   public closeConnection(): void {
-    console.log('[Coinbase] Closing WebSocket connection...');
+    this.logger.info('[Coinbase] Closing WebSocket connection...');
 
     // Clear timers
     if (this.state.reconnectTimer) {

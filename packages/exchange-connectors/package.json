@@ -23,16 +23,17 @@
   },
   "dependencies": {
     "@itrade/core": "workspace:*",
-    "@types/node": "^20.11.24",
-    "@types/ws": "^8.5.10",
-    "@types/uuid": "^9.0.8",
     "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.11.24",
+    "@types/uuid": "^9.0.8",
+    "@types/ws": "^8.5.10",
     "axios": "^1.6.7",
-    "ws": "^8.16.0",
+    "coinbase-api": "^1.1.6",
     "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
+    "jsonwebtoken": "^9.0.2",
     "uuid": "^9.0.1",
-    "jsonwebtoken": "^9.0.2"
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "tsdown": "^0.2.16"

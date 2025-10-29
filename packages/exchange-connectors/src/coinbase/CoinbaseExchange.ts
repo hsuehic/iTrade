@@ -350,8 +350,103 @@ export class CoinbaseExchange extends BaseExchange {
   }
 
   public async getBalances(): Promise<Balance[]> {
+    // Get spot account balances
     const info = await this.getAccountInfo();
-    return info.balances;
+    const spotBalances = info.balances;
+
+    // Get INTX perpetual account balances
+    const perpetualBalances = await this.getIntxBalances();
+
+    // Combine both
+    return [...spotBalances, ...perpetualBalances];
+  }
+
+  /**
+   * Get Coinbase International Exchange (INTX) perpetual account balances
+   */
+  private async getIntxBalances(): Promise<Balance[]> {
+    try {
+      // Step 1: Get all accounts to find perpetual portfolio
+      const accountsResp = await this.httpClient.get('/api/v3/brokerage/accounts');
+      const accounts = accountsResp.data?.accounts || [];
+
+      // Find perpetual/INTX accounts
+      const perpetualAccounts = accounts.filter((account: any) => {
+        return (
+          account.portfolio_uuid ||
+          account.retail_portfolio_id ||
+          account.platform === 'ACCOUNT_PLATFORM_INTX' ||
+          account.type?.includes('INTX') ||
+          account.name?.includes('INTX') ||
+          account.name?.includes('Perpetual')
+        );
+      });
+
+      console.log(`[Coinbase] Found ${perpetualAccounts.length} INTX accounts`);
+
+      if (perpetualAccounts.length === 0) {
+        return [];
+      }
+
+      const balances: Balance[] = [];
+
+      // Step 2: Get balances for each perpetual portfolio
+      for (const account of perpetualAccounts) {
+        const portfolioUuid = account.portfolio_uuid || account.retail_portfolio_id;
+        if (!portfolioUuid) continue;
+
+        console.log(`[Coinbase] Fetching INTX portfolio: ${portfolioUuid}`);
+
+        try {
+          // Try portfolio summary endpoint
+          const portfolioResp = await this.httpClient.get(
+            `/api/v3/brokerage/intx/portfolio/${portfolioUuid}`,
+          );
+
+          console.log(
+            '[Coinbase] INTX Portfolio response:',
+            JSON.stringify(portfolioResp.data),
+          );
+
+          // Response structure: { portfolios: [ {...}, {...} ] }
+          const portfolios = portfolioResp.data?.portfolios || [];
+
+          for (const portfolio of portfolios) {
+            // Extract balance information from Coinbase INTX format
+            const collateral = portfolio.collateral || '0'; // Total collateral (available balance)
+            const positionNotional = portfolio.position_notional || '0'; // Used in positions
+            const unrealizedPnl = portfolio.unrealized_pnl?.value || '0';
+
+            // Total = collateral + position value + unrealized PnL
+            const total = parseFloat(collateral) + parseFloat(positionNotional);
+
+            balances.push({
+              asset: 'USDC', // INTX uses USDC
+              free: this.formatDecimal(collateral),
+              locked: this.formatDecimal(positionNotional),
+              total: this.formatDecimal(total.toString()),
+            });
+
+            console.log(
+              `[Coinbase] 💰 INTX Portfolio ${portfolio.portfolio_uuid}: Collateral=${collateral}, Position=${positionNotional}, Total=${total}, UnrealizedPnL=${unrealizedPnl}`,
+            );
+          }
+        } catch (error: any) {
+          console.warn(
+            `[Coinbase] Failed to fetch INTX portfolio ${portfolioUuid}:`,
+            error.response?.data || error.message,
+          );
+        }
+      }
+
+      return balances;
+    } catch (error: any) {
+      console.warn(
+        '[Coinbase] Failed to fetch INTX balances:',
+        error.response?.data || error.message,
+      );
+      return [];
+    }
   }
 
   public async getPositions(): Promise<Position[]> {
@@ -374,13 +469,18 @@ export class CoinbaseExchange extends BaseExchange {
         );
       });
 
-      // console.log(`[Coinbase Debug] Found ${perpetualAccounts.length} potential perpetual accounts:`,
-      //   perpetualAccounts.map((acc: any) => ({
-      //     uuid: acc.uuid,
-      //     name: acc.name,
-      //     type: acc.type,
-      //     portfolio_uuid: acc.portfolio_uuid
-      //   })));
+      console.log(
+        `[Coinbase Debug] Found ${perpetualAccounts.length} potential perpetual accounts:`,
+        perpetualAccounts.map((acc: any) => ({
+          uuid: acc.uuid,
+          name: acc.name,
+          type: acc.type,
+          portfolio_uuid: acc.portfolio_uuid,
+          retail_portfolio_id: acc.retail_portfolio_id,
+          platform: acc.platform,
+          available_balance: acc.available_balance,
+        })),
+      );
 
       if (perpetualAccounts.length === 0) {
         // No perpetual accounts found - this is normal for spot-only accounts
@@ -575,6 +675,14 @@ export class CoinbaseExchange extends BaseExchange {
 
   protected handleWebSocketMessage(msg: any): void {
     const channel = msg.channel || msg.type;
+
+    // Debug: Log full message for user-related channels
+    if (channel === 'user' || channel === 'futures_balance_summary') {
+      console.log(
+        `[Coinbase DEBUG] Full ${channel} message:`,
+        JSON.stringify(msg, null, 2),
+      );
+    }
     if (!channel) return;
 
     switch (channel) {
@@ -666,6 +774,45 @@ export class CoinbaseExchange extends BaseExchange {
           }
         }
         break;
+      case 'futures_balance_summary':
+        // Handle futures balance summary
+        console.log('[Coinbase] Received futures_balance_summary message');
+        if (msg.events) {
+          for (const e of msg.events) {
+            console.log('[Coinbase] Futures event keys:', Object.keys(e));
+
+            // Handle FCM balance summary
+            if (e.fcm_balance_summary) {
+              console.log(
+                `[Coinbase] Processing fcm_balance_summary:`,
+                e.fcm_balance_summary,
+              );
+
+              // Convert FCM balance to iTrade Balance format
+              const summary = e.fcm_balance_summary;
+              const balances: Balance[] = [];
+
+              // Create USD balance entry from available margin
+              // Always push balance even if 0 to show the account state
+              const totalUsd = parseFloat(summary.total_usd_balance || '0');
+              const availableMargin = parseFloat(summary.available_margin || '0');
+              const lockedMargin = totalUsd - availableMargin;
+
+              balances.push({
+                asset: 'USD',
+                free: this.formatDecimal(availableMargin.toString()),
+                locked: this.formatDecimal(lockedMargin.toString()),
+                total: this.formatDecimal(totalUsd.toString()),
+              });
+
+              console.log(
+                `[Coinbase] 💰 Futures Balance Update: ${balances.length} balances (Total: ${totalUsd} USD)`,
+              );
+              this.emit('accountUpdate', 'coinbase', balances);
+            }
+          }
+        }
+        break;
       case 'user':
         // Handle user data (orders, balances, positions)
         if (msg.events) {
@@ -701,14 +848,29 @@ export class CoinbaseExchange extends BaseExchange {
             }
 
             // Handle positions (if pushed via WebSocket)
-            if (e.positions && e.positions.length > 0) {
-              console.log(`[Coinbase] Processing ${e.positions.length} position updates`);
-              const positions = this.transformPositions(e.positions);
-              if (positions.length > 0) {
-                console.log(
-                  `[Coinbase] 📊 Position Update: ${positions.length} positions`,
-                );
-                this.emit('positionUpdate', 'coinbase', positions);
+            if (e.positions) {
+              console.log(`[Coinbase] Processing position updates`);
+              const allPositions: any[] = [];
+
+              // Coinbase positions structure:
+              // { perpetual_futures_positions: [], expiring_futures_positions: [] }
+              if (e.positions.perpetual_futures_positions) {
+                allPositions.push(...e.positions.perpetual_futures_positions);
+              }
+              if (e.positions.expiring_futures_positions) {
+                allPositions.push(...e.positions.expiring_futures_positions);
+              }
+
+              if (allPositions.length > 0) {
+                const positions = this.transformCoinbasePositions(allPositions);
+                if (positions.length > 0) {
+                  console.log(
+                    `[Coinbase] 📊 Position Update: ${positions.length} positions`,
+                  );
+                  this.emit('positionUpdate', 'coinbase', positions);
+                }
+              } else {
+                console.log(`[Coinbase] No open positions`);
               }
             }
 
@@ -841,10 +1003,23 @@ export class CoinbaseExchange extends BaseExchange {
     // Set JWT generator callback
     this.wsManager.setJWTGenerator(() => this.generateJWT());
 
-    // Subscribe to user channel (all products)
-    // Note: Coinbase user channel doesn't require specific product_ids
-    // It will send updates for all user's products
-    this.wsManager.subscribe('user', ['*']);
+    // Subscribe to user channel
+    // Coinbase Advanced Trade API: user channel provides order updates
+    // Try empty array first, as '*' may not be valid
+    console.log('[Coinbase] Attempting user channel subscription...');
+    this.wsManager.subscribe('user', []);
+
+    // Try subscribing to futures_balance_summary for position/balance updates
+    // This channel may provide real-time balance and position data
+    console.log('[Coinbase] Attempting futures_balance_summary channel subscription...');
+    try {
+      this.wsManager.subscribe('futures_balance_summary', []);
+    } catch (err) {
+      console.warn(
+        '[Coinbase] futures_balance_summary subscription failed (may not be available):',
+        (err as any)?.message || err,
+      );
+    }
 
     console.log('[Coinbase] User data subscription requests sent');
 
@@ -938,6 +1113,80 @@ export class CoinbaseExchange extends BaseExchange {
   /**
    * Transform Coinbase position data to iTrade Position format
    */
+  /**
+   * Transform Coinbase-specific position format from WebSocket user channel
+   * Handles both perpetual_futures_positions and expiring_futures_positions
+   */
+  private transformCoinbasePositions(positionData: any[]): Position[] {
+    if (!Array.isArray(positionData)) {
+      console.warn('[Coinbase] transformCoinbasePositions: input is not an array');
+      return [];
+    }
+
+    return positionData
+      .map((p: any) => {
+        try {
+          // Coinbase position structure:
+          // {
+          //   "product_id": "BTC-PERP-INTX",
+          //   "vwap": "50000.00",
+          //   "entry_vwap": "50000.00",
+          //   "position_side": "LONG",
+          //   "net_size": "0.5",
+          //   "buy_order_size": "0.5",
+          //   "sell_order_size": "0",
+          //   "im_contribution": "1000.00",
+          //   "unrealized_pnl": "500.00",
+          //   "mark_price": "51000.00",
+          //   "liquidation_price": "45000.00",
+          //   "leverage": "10"
+          // }
+
+          const productId = p.product_id || 'UNKNOWN';
+          const symbol = this.denormalizeSymbol(productId);
+
+          const side =
+            (p.position_side || p.side || 'LONG').toUpperCase() === 'LONG'
+              ? 'long'
+              : 'short';
+
+          const quantity = this.formatDecimal(p.net_size || p.number_of_contracts || '0');
+          const entryPrice = this.formatDecimal(p.entry_vwap || p.vwap || '0');
+          const markPrice = p.mark_price ? this.formatDecimal(p.mark_price) : entryPrice;
+          const unrealizedPnl = p.unrealized_pnl
+            ? this.formatDecimal(p.unrealized_pnl)
+            : new Decimal(0);
+
+          return {
+            symbol,
+            side,
+            quantity,
+            entryPrice,
+            avgPrice: entryPrice,
+            markPrice,
+            liquidationPrice: p.liquidation_price
+              ? this.formatDecimal(p.liquidation_price)
+              : undefined,
+            leverage: p.leverage ? new Decimal(p.leverage) : new Decimal(1),
+            unrealizedPnl,
+            marginType: 'cross', // Coinbase International Exchange uses cross margin
+            timestamp: new Date(p.timestamp || Date.now()),
+            updateTime: new Date(p.timestamp || Date.now()),
+          } as Position;
+        } catch (err) {
+          console.warn(
+            '[Coinbase] Failed to transform position:',
+            (err as any)?.message || err,
+          );
+          return null;
+        }
+      })
+      .filter((p): p is Position => p !== null);
+  }
+
+  /**
+   * Legacy transform method for REST API positions (if needed)
+   */
   private transformPositions(positionData: any[]): Position[] {
     if (!Array.isArray(positionData)) {
       console.warn('[Coinbase] transformPositions: input is not an array');
@@ -986,6 +1235,9 @@ export class CoinbaseExchange extends BaseExchange {
   private async refreshBalancesAndPositions(): Promise<void> {
     try {
       const balances = await this.getBalances();
+      console.log(
+        `[Coinbase] 💰 Emitting accountUpdate with ${balances.length} balances`,
+      );
       if (balances?.length) {
         this.emit('accountUpdate', 'coinbase', balances);
       }
@@ -995,6 +1247,9 @@ export class CoinbaseExchange extends BaseExchange {
 
     try {
       const positions = await this.getPositions();
+      console.log(
+        `[Coinbase] 📊 Emitting positionUpdate with ${positions.length} positions`,
+      );
       if (positions?.length) {
         this.emit('positionUpdate', 'coinbase', positions);
       }

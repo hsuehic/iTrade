@@ -7,6 +7,7 @@ export { BinanceExchange } from './binance/BinanceExchange';
 export { BinanceWebsocket } from './binance/BinanceWebsocket';
 export type { BinanceWebsocketEventMap } from './binance/BinanceWebsocket';
 export { CoinbaseExchange } from './coinbase/CoinbaseExchange';
+export { CoinbaseAdvancedExchange } from './coinbase-adv/CoinbaseAdvancedExchange';
 export { OKXExchange, type OKXCredentials } from './okx/OKXExchange';
 
 // Re-export types from core for convenience

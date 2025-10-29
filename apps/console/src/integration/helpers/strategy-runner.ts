@@ -29,6 +29,36 @@ export async function run(strategies: Map<string, IStrategy>) {
 
   logger.info('📊 iTrade Console started with database-driven strategy management');
 
+  // Setup EventBus monitoring FIRST, before initializing exchanges
+  // This ensures we don't miss any initial balance/position updates
+  const eventBus = engine.eventBus;
+
+  // Track balance updates
+  logger.info('🔧 Setting up Balance Update listener...');
+  eventBus.onBalanceUpdate((data) => {
+    logger.info(`💰 BALANCE UPDATE: ${data.balances.length} balances received`);
+    data.balances.forEach((balance) => {
+      if (balance.total.greaterThan(0)) {
+        logger.info(
+          `   ${balance.asset}: Total=${balance.total}, Free=${balance.free}, Locked=${balance.locked}`,
+        );
+      }
+    });
+  });
+
+  // Track position updates
+  logger.info('🔧 Setting up Position Update listener...');
+  eventBus.onPositionUpdate((data) => {
+    logger.info(`📊 POSITION UPDATE: ${data.positions.length} positions received`);
+    data.positions.forEach((position) => {
+      logger.info(
+        `   ${position.symbol}: ${position.side} ${position.quantity} @ ${position.avgPrice}, PnL=${position.unrealizedPnl}`,
+      );
+    });
+  });
+
+  logger.info('✅ EventBus listeners set up successfully');
+
   // Initialize exchanges dynamically based on database strategies
   const exchanges = new Map<string, any>();
   const USE_MAINNET_FOR_DATA = true; // Use mainnet for market data
@@ -95,10 +125,6 @@ export async function run(strategies: Map<string, IStrategy>) {
     `📡 Initialized ${exchanges.size} exchange(s): ${Array.from(exchanges.keys()).join(', ')}`,
   );
 
-  // Setup enhanced event monitoring BEFORE starting engine
-  // IMPORTANT: Use the EventBus instance from the engine, not a separate getInstance()
-  const eventBus = engine.eventBus;
-
   // Track strategy signals with enhanced logging
   eventBus.onStrategySignal((signal) => {
     logger.info(
@@ -135,28 +161,6 @@ export async function run(strategies: Map<string, IStrategy>) {
 
   eventBus.onOrderRejected((data) => {
     logger.error(`🚫 ORDER REJECTED: ${data.order.id}`);
-  });
-
-  // Track balance updates
-  eventBus.onBalanceUpdate((data) => {
-    logger.info(`💰 BALANCE UPDATE: ${data.balances.length} balances received`);
-    data.balances.forEach((balance) => {
-      if (balance.total.greaterThan(0)) {
-        logger.info(
-          `   ${balance.asset}: Total=${balance.total}, Free=${balance.free}, Locked=${balance.locked}`,
-        );
-      }
-    });
-  });
-
-  // Track position updates
-  eventBus.onPositionUpdate((data) => {
-    logger.info(`📊 POSITION UPDATE: ${data.positions.length} positions received`);
-    data.positions.forEach((position) => {
-      logger.info(
-        `   ${position.symbol}: ${position.side} ${position.quantity} @ ${position.avgPrice}, PnL=${position.unrealizedPnl}`,
-      );
-    });
   });
 
   // Keep the process running
