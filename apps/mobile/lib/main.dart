@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +24,8 @@ import 'screens/product.dart';
 import 'screens/profile.dart';
 import 'widgets/design_bottom_nav.dart';
 
+import 'firebase_options.dart';
+
 Future<void> main() async {
   // Wrap entire initialization in try-catch to prevent white screen
   try {
@@ -32,7 +35,9 @@ Future<void> main() async {
     // Firebase initialization with timeout
     bool firebaseReady = false;
     try {
-      await Firebase.initializeApp().timeout(
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
           developer.log('Firebase init timeout', name: 'main');
@@ -163,6 +168,8 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // Track if we're resuming from background (to avoid showing splash again)
   static bool _hasInitialized = false;
+  // 获取 Firebase Analytics 实例
+  static FirebaseAnalytics analytics = FirebaseAnalytics.instance;
 
   @override
   void initState() {
@@ -203,6 +210,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           builder: (context, child) {
             return MaterialApp(
               title: 'iTrade',
+              navigatorObservers: [
+                FirebaseAnalyticsObserver(
+                  analytics: analytics,
+                ), // 自动追踪 screen_view
+              ],
+
               theme: AppTheme.brand,
               darkTheme: AppTheme.dark,
               themeMode: themeMode,
