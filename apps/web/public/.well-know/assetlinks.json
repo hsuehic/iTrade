@@ -1,13 +1,15 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.ihsueh.itrade",
-      "sha256_cert_fingerprints":
-        [
-          "AF:C8:D0:C7:8E:CF:94:72:BF:CD:60:45:3C:F2:64:98:8F:33:6C:C7:FA:D1:1E:0C:C4:0A:A1:DD:A1:4A:8A:14"
-        ]
+      "sha256_cert_fingerprints": [
+        "AF:C8:D0:C7:8E:CF:94:72:BF:CD:60:45:3C:F2:64:98:8F:33:6C:C7:FA:D1:1E:0C:C4:0A:A1:DD:A1:4A:8A:14"
+      ]
     }
   }
 ]
