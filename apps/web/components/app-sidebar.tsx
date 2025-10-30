@@ -27,7 +27,7 @@ export async function AppSidebar({ ...props }: React.ComponentProps<typeof Sideb
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5 !h-12"
             >
-              <a href="#">
+              <a href="/">
                 <Image src="/logo.svg" width={38} height={38} alt="iTrade" />
                 <span className="text-base font-semibold">iTrade</span>
               </a>

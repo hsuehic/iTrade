@@ -24,7 +24,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
     const res = await signIn.email({
       email,
       password,
-      callbackURL: '/dashboard',
+      callbackURL: callback,
     });
     if (res.error) {
       setError(res.error.message || 'Failed to sign in');
@@ -93,9 +93,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             variant="outline"
             type="button"
             className="w-full"
-            onClick={() =>
-              signIn.social({ provider: 'apple', callbackURL: '/dashboard' })
-            }
+            onClick={() => signIn.social({ provider: 'apple', callbackURL: callback })}
           >
             <IconApple />
             <span className="sr-only">Login with Apple</span>
@@ -104,9 +102,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             variant="outline"
             type="button"
             className="w-full"
-            onClick={() =>
-              signIn.social({ provider: 'google', callbackURL: '/dashboard' })
-            }
+            onClick={() => signIn.social({ provider: 'google', callbackURL: callback })}
           >
             <IconGoogle />
             <span className="sr-only">Login with Google</span>
@@ -115,9 +111,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             variant="outline"
             type="button"
             className="w-full"
-            onClick={() =>
-              signIn.social({ provider: 'github', callbackURL: '/dashboard' })
-            }
+            onClick={() => signIn.social({ provider: 'github', callbackURL: callback })}
           >
             <IconGithub />
             <span className="sr-only">Login with Github</span>
