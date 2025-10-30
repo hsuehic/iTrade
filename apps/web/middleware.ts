@@ -17,5 +17,13 @@ const chain = (
 export const middleware = chain(withAuth, withPathHeader);
 
 export const config = {
-  matcher: ['/:path+'], // Specify the routes the middleware applies to
+  matcher: [
+    // Apply middleware to all paths except:
+    // - .well-known (assetlinks.json)
+    // - API routes
+    // - _next static files
+    // - auth routes
+    // - static assets: .js, .css, .json, .html, images, fonts, etc.
+    '/((?!\\.well-known/|api/|_next/|auth/|.*\\.(js|css|json|html|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|otf|map)$).*)',
+  ],
 };
