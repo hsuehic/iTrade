@@ -1898,3 +1898,677 @@ Verification may be skipped ONLY when:
 5. **Never skip verification** - Type errors cause runtime failures
 
 **Remember**: Unverified TypeScript changes lead to runtime errors and integration issues. Verification is not optional—it's a fundamental part of professional TypeScript development. 🔍✅
+
+---
+
+## 🎨 Frontend Development Conventions
+
+### Mandatory Frontend Best Practices
+
+**When working on frontend code (web or mobile applications), AI agents MUST follow these baseline conventions to ensure consistency, quality, and excellent user experience.**
+
+#### Core Principle
+
+> **"User First, Validate Everything, Optimize Performance"**
+>
+> When creating or modifying frontend code, AI agents MUST:
+>
+> 1. ✅ **Validate all user inputs** (client and server side)
+> 2. ✅ **Use debouncing** for validation during user input
+> 3. ✅ **Provide clear error messages** that help users understand what's wrong
+> 4. ✅ **Implement loading states** for all async operations
+> 5. ✅ **Ensure accessibility** (keyboard navigation, screen readers, ARIA labels)
+> 6. ✅ **Follow security best practices** (sanitize inputs, protect API keys)
+> 7. ✅ **Write testable components** with proper TypeScript types
+
+#### Frontend Development Checklist
+
+**Before marking any frontend task complete, verify ALL of the following:**
+
+- [ ] **All user inputs are validated** (client and server)
+- [ ] **Validation uses debouncing** (500ms recommended)
+- [ ] **Error messages are clear and helpful**
+- [ ] **Forms have loading states during submission**
+- [ ] **Submit buttons are disabled when form is invalid or submitting**
+- [ ] **All inputs have proper labels** (no placeholder-only labels)
+- [ ] **Interactive elements are keyboard accessible**
+- [ ] **Focus indicators are visible**
+- [ ] **Color contrast meets WCAG AA standards**
+- [ ] **TypeScript types are properly defined** (no `any`)
+- [ ] **Error boundaries are implemented**
+- [ ] **Loading and error states are handled**
+- [ ] **API keys are not exposed in frontend code**
+- [ ] **User input is sanitized before display**
+- [ ] **Components are tested with unit tests**
+- [ ] **Code follows ESLint and Prettier conventions**
+
+---
+
+### 1. User Input Validation Rules
+
+#### Required Validation Patterns
+
+**Email Validation:**
+```typescript
+// ✅ REQUIRED: Use debouncing and clear error messages
+import { debounce } from 'lodash';
+import { z } from 'zod';
+
+const emailSchema = z.string().email('Please enter a valid email address');
+
+const validateEmail = debounce((email: string, callback: (error: string | null) => void) => {
+  try {
+    emailSchema.parse(email);
+    callback(null);
+  } catch (error) {
+    callback('Please enter a valid email address (e.g., user@example.com)');
+  }
+}, 500);
+```
+
+**Number Validation (Amount, Price, Quantity):**
+```typescript
+// ✅ REQUIRED: Validate range and decimal precision
+const validateAmount = debounce((
+  value: string,
+  min: number,
+  max: number,
+  decimals: number,
+  callback: (error: string | null) => void
+) => {
+  if (!value.trim()) {
+    callback(null);
+    return;
+  }
+  
+  const number = parseFloat(value);
+  
+  if (isNaN(number)) {
+    callback('Please enter a valid number');
+    return;
+  }
+  
+  if (number < min) {
+    callback(`Amount must be at least ${min}`);
+    return;
+  }
+  
+  if (number > max) {
+    callback(`Amount must not exceed ${max}`);
+    return;
+  }
+  
+  const decimalPart = value.split('.')[1];
+  if (decimalPart && decimalPart.length > decimals) {
+    callback(`Maximum ${decimals} decimal places allowed`);
+    return;
+  }
+  
+  callback(null);
+}, 500);
+```
+
+#### Validation Requirements
+
+**The AI agent MUST:**
+
+1. ✅ **Always validate on both client AND server** - Never trust client-side validation alone
+2. ✅ **Use debouncing** (500ms recommended) for real-time validation during typing
+3. ✅ **Validate on blur** for individual fields
+4. ✅ **Validate on submit** for the entire form
+5. ✅ **Provide specific error messages** (not generic "Invalid input")
+6. ✅ **Use TypeScript types and Zod schemas** for type-safe validation
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Validate on every keystroke** without debouncing (causes poor UX)
+2. ❌ **Show error messages** before user finishes typing
+3. ❌ **Use generic error messages** like "Error" or "Invalid"
+4. ❌ **Allow form submission** with invalid data
+5. ❌ **Skip server-side validation** (client-side can be bypassed)
+
+---
+
+### 2. Form Handling Rules
+
+#### Required Form Implementation
+
+```typescript
+// ✅ REQUIRED: Comprehensive form submission handling
+const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  
+  // 1. Validate all fields
+  const errors = validateAllFields(formData);
+  if (Object.keys(errors).length > 0) {
+    setFormErrors(errors);
+    return;
+  }
+  
+  // 2. Disable submit button
+  setIsSubmitting(true);
+  
+  try {
+    // 3. Sanitize data before submission
+    const sanitizedData = sanitizeFormData(formData);
+    
+    // 4. Submit to API
+    const response = await fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sanitizedData),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Submission failed');
+    }
+    
+    // 5. Show success message
+    toast.success('Form submitted successfully');
+    
+    // 6. Reset form
+    resetForm();
+  } catch (error) {
+    // 7. Show error message
+    toast.error('Failed to submit form. Please try again.');
+    console.error('Form submission error:', error);
+  } finally {
+    // 8. Re-enable submit button
+    setIsSubmitting(false);
+  }
+};
+```
+
+#### Form Requirements
+
+**The AI agent MUST:**
+
+1. ✅ **Show loading states** during submission (disable button, show spinner)
+2. ✅ **Prevent multiple submissions** (disable button when submitting)
+3. ✅ **Validate before submission** (don't send invalid data)
+4. ✅ **Handle errors gracefully** (show user-friendly messages)
+5. ✅ **Sanitize user input** before sending to server
+6. ✅ **Use react-hook-form + Zod** for complex forms (recommended)
+
+---
+
+### 3. Accessibility (a11y) Rules
+
+#### Required Accessibility Practices
+
+**The AI agent MUST:**
+
+1. ✅ **Use semantic HTML** (`<button>`, `<nav>`, `<main>`, `<article>`)
+2. ✅ **Provide alt text** for all images
+3. ✅ **Use proper heading hierarchy** (h1 → h2 → h3)
+4. ✅ **Make elements keyboard accessible** (Tab navigation works)
+5. ✅ **Provide visible focus indicators** for keyboard navigation
+6. ✅ **Use ARIA labels** when semantic HTML is insufficient
+7. ✅ **Ensure color contrast meets WCAG AA** (4.5:1 for normal text)
+8. ✅ **Support screen readers** with descriptive labels
+9. ✅ **Use proper labels for form inputs** (not placeholder-only)
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Use `<div onClick>`** instead of `<button>`
+2. ❌ **Rely on color alone** to convey information
+3. ❌ **Remove focus outlines** without providing alternatives
+4. ❌ **Use placeholder text as labels**
+5. ❌ **Create keyboard traps**
+
+#### Accessibility Example
+
+```typescript
+// ✅ REQUIRED: Accessible form with proper labels and ARIA
+<form onSubmit={handleSubmit}>
+  <label htmlFor="email">
+    Email Address
+    <span className="text-red-500" aria-label="required">*</span>
+  </label>
+  <input
+    id="email"
+    type="email"
+    value={email}
+    onChange={handleEmailChange}
+    aria-invalid={!!emailError}
+    aria-describedby={emailError ? 'email-error' : undefined}
+    required
+  />
+  {emailError && (
+    <span id="email-error" role="alert" className="text-red-500">
+      {emailError}
+    </span>
+  )}
+</form>
+```
+
+---
+
+### 4. Performance Optimization Rules
+
+#### Required Performance Practices
+
+**Debouncing and Throttling:**
+
+```typescript
+// ✅ REQUIRED: Use debounce for validation, throttle for scroll
+import { debounce, throttle } from 'lodash';
+
+// Use DEBOUNCE for:
+// - Search input (wait until user stops typing)
+// - Form validation (wait until user finishes typing)
+// - Auto-save (wait until user stops editing)
+const debouncedSearch = debounce((query: string) => {
+  searchAPI(query);
+}, 500);
+
+// Use THROTTLE for:
+// - Scroll events (limit update frequency)
+// - Resize events (limit recalculations)
+// - Mouse move tracking (limit updates)
+const throttledScroll = throttle(() => {
+  updateScrollPosition();
+}, 100);
+```
+
+**Component Optimization:**
+
+```typescript
+// ✅ REQUIRED: Use memoization for expensive operations
+import { memo, useMemo, useCallback } from 'react';
+
+// Memoize expensive list components
+const ExpensiveList = memo(({ items }: { items: Item[] }) => {
+  return (
+    <ul>
+      {items.map(item => (
+        <ExpensiveListItem key={item.id} item={item} />
+      ))}
+    </ul>
+  );
+});
+
+// Use useMemo for expensive calculations
+const sortedItems = useMemo(() => {
+  return items.sort((a, b) => a.name.localeCompare(b.name));
+}, [items]);
+
+// Use useCallback for event handlers passed to children
+const handleClick = useCallback((id: string) => {
+  selectItem(id);
+}, []);
+```
+
+**The AI agent MUST:**
+
+1. ✅ **Use debouncing** for validation and search (500ms recommended)
+2. ✅ **Use throttling** for scroll/resize events (100ms recommended)
+3. ✅ **Memoize expensive components** with `memo()`
+4. ✅ **Use useMemo** for expensive calculations
+5. ✅ **Use useCallback** for event handlers passed to children
+
+---
+
+### 5. Security Best Practices
+
+#### Required Security Measures
+
+**Input Sanitization:**
+
+```typescript
+// ✅ REQUIRED: Sanitize user input before display
+import DOMPurify from 'dompurify';
+
+const sanitizeInput = (input: string): string => {
+  return DOMPurify.sanitize(input, { ALLOWED_TAGS: [] });
+};
+
+const sanitizeHTML = (html: string): string => {
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br'],
+    ALLOWED_ATTR: ['href', 'title'],
+  });
+};
+```
+
+**API Key Protection:**
+
+```typescript
+// ✅ REQUIRED: Never expose API keys in frontend
+// Use server-side API routes
+const response = await fetch('/api/data', {
+  method: 'GET',
+  // No API key sent from frontend
+});
+
+// In Next.js API route:
+export async function GET() {
+  const apiKey = process.env.API_KEY; // Only accessible on server
+  const data = await externalAPI.fetch({ apiKey });
+  return Response.json(data);
+}
+```
+
+**The AI agent MUST:**
+
+1. ✅ **Sanitize user input** before displaying or storing
+2. ✅ **Never expose API keys** in frontend code
+3. ✅ **Use server-side API routes** for sensitive operations
+4. ✅ **Validate and sanitize on server** (never trust client)
+5. ✅ **Use environment variables** for configuration
+6. ✅ **Escape user content** (React does this by default)
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Hardcode API keys** in frontend code
+2. ❌ **Trust client-side validation alone**
+3. ❌ **Use `dangerouslySetInnerHTML`** without sanitization
+4. ❌ **Store sensitive data** in localStorage/sessionStorage
+5. ❌ **Expose internal API endpoints** publicly
+
+---
+
+### 6. UI/UX Best Practices
+
+#### Required Loading States
+
+```typescript
+// ✅ REQUIRED: Always show loading, error, and empty states
+const DataTable = () => {
+  const [data, setData] = useState<Item[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    fetchData()
+      .then(setData)
+      .catch(err => setError(err.message))
+      .finally(() => setIsLoading(false));
+  }, []);
+  
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+  
+  if (error) {
+    return <ErrorMessage message={error} onRetry={refetch} />;
+  }
+  
+  if (data.length === 0) {
+    return <EmptyState message="No data available" />;
+  }
+  
+  return <Table data={data} />;
+};
+```
+
+#### Required Button States
+
+```typescript
+// ✅ REQUIRED: Show clear button states
+<button
+  onClick={handleSubmit}
+  disabled={isSubmitting || hasErrors}
+  className={cn(
+    'btn-primary',
+    isSubmitting && 'opacity-50 cursor-not-allowed'
+  )}
+>
+  {isSubmitting ? (
+    <>
+      <Loader className="animate-spin" />
+      Submitting...
+    </>
+  ) : (
+    'Submit'
+  )}
+</button>
+```
+
+**The AI agent MUST:**
+
+1. ✅ **Show loading states** for all async operations
+2. ✅ **Show error states** with user-friendly messages
+3. ✅ **Show empty states** when no data is available
+4. ✅ **Disable buttons during submission** with visual feedback
+5. ✅ **Provide retry mechanisms** for failed operations
+6. ✅ **Use user-friendly error messages** (not raw error objects)
+
+---
+
+### 7. TypeScript Quality Rules
+
+#### Required TypeScript Practices
+
+```typescript
+// ✅ REQUIRED: Proper typing (no 'any')
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'user';
+}
+
+const fetchUser = async (userId: string): Promise<User> => {
+  const response = await fetch(`/api/users/${userId}`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch user');
+  }
+  return response.json();
+};
+
+const UserProfile = ({ userId }: { userId: string }) => {
+  const [user, setUser] = useState<User | null>(null);
+  
+  useEffect(() => {
+    fetchUser(userId).then(setUser);
+  }, [userId]);
+  
+  if (!user) return <LoadingSpinner />;
+  
+  return <div>{user.name}</div>;
+};
+```
+
+**The AI agent MUST:**
+
+1. ✅ **Define proper TypeScript interfaces** for all data structures
+2. ✅ **Avoid using `any`** - use proper types or `unknown` with type guards
+3. ✅ **Use type inference** where appropriate
+4. ✅ **Export types** that are used across files
+5. ✅ **Use union types** for states (e.g., `'idle' | 'loading' | 'error'`)
+
+---
+
+### 8. Testing Requirements
+
+#### Required Testing Practices
+
+```typescript
+// ✅ REQUIRED: Test user interactions and validation
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+describe('LoginForm', () => {
+  it('validates email format', async () => {
+    render(<LoginForm />);
+    
+    const emailInput = screen.getByLabelText('Email');
+    await userEvent.type(emailInput, 'invalid-email');
+    
+    fireEvent.blur(emailInput);
+    
+    await waitFor(() => {
+      expect(screen.getByText(/valid email/i)).toBeInTheDocument();
+    });
+  });
+  
+  it('disables submit button when form is invalid', () => {
+    render(<LoginForm />);
+    
+    const submitButton = screen.getByRole('button', { name: /submit/i });
+    expect(submitButton).toBeDisabled();
+  });
+});
+```
+
+**The AI agent MUST:**
+
+1. ✅ **Write tests for form validation**
+2. ✅ **Test user interactions** (clicks, typing, etc.)
+3. ✅ **Test error states** and error messages
+4. ✅ **Test loading states** and async operations
+5. ✅ **Use @testing-library/react** for component testing
+6. ✅ **Execute all tests** after writing or modifying them
+
+---
+
+### 9. Recommended Libraries
+
+**For validation:**
+- **Zod** - Schema validation with TypeScript inference (required)
+- **Validator.js** - String validation utilities
+- **libphonenumber-js** - Phone number validation
+
+**For forms:**
+- **react-hook-form** - Performant form library (recommended)
+- **@hookform/resolvers** - Validation resolver for react-hook-form
+
+**For utilities:**
+- **lodash** - Debounce, throttle, and utility functions
+- **date-fns** - Date manipulation and validation
+- **DOMPurify** - HTML sanitization
+
+**For UI/UX:**
+- **react-hot-toast** - Toast notifications (lightweight)
+- **sonner** - Toast notifications (alternative)
+- **framer-motion** - Animations
+
+**For testing:**
+- **@testing-library/react** - Component testing
+- **@testing-library/user-event** - User interaction simulation
+- **vitest** - Fast test runner
+
+---
+
+### 10. Common Mistakes to Avoid
+
+**The AI agent MUST AVOID:**
+
+1. ❌ **No validation on client side** - Always validate before submission
+2. ❌ **Validating too frequently** - Use debouncing for real-time validation
+3. ❌ **Poor error messages** - Be specific about what's wrong and how to fix it
+4. ❌ **No loading states** - Always show feedback during async operations
+5. ❌ **Ignoring accessibility** - Use semantic HTML and ARIA labels
+6. ❌ **Hardcoding values** - Use environment variables for configuration
+7. ❌ **No error handling** - Always handle errors gracefully
+8. ❌ **Using `any` in TypeScript** - Define proper types
+9. ❌ **Exposing API keys** - Use server-side API routes
+10. ❌ **Not testing components** - Write and execute tests
+
+---
+
+### Frontend Development Workflow
+
+**Standard workflow for frontend tasks:**
+
+1. ✅ **Understand requirements** - What user interaction is needed?
+2. ✅ **Design component structure** - Plan state, props, and validation
+3. ✅ **Implement with TypeScript** - Use proper types from the start
+4. ✅ **Add validation** - Client-side (debounced) + server-side
+5. ✅ **Implement loading/error states** - Handle all async states
+6. ✅ **Ensure accessibility** - Semantic HTML, ARIA labels, keyboard navigation
+7. ✅ **Add tests** - Test validation, interactions, and error handling
+8. ✅ **Run linting** - `pnpm lint --fix`
+9. ✅ **Execute tests** - Verify all tests pass
+10. ✅ **Build and verify** - Test in browser (web) or simulator (mobile)
+
+---
+
+### AI Agent Frontend Responsibilities
+
+**When working on frontend code, the AI agent MUST:**
+
+1. ✅ **Follow ALL items in the Frontend Development Checklist**
+2. ✅ **Validate user inputs with debouncing** (500ms recommended)
+3. ✅ **Provide clear, helpful error messages**
+4. ✅ **Implement loading states for all async operations**
+5. ✅ **Ensure keyboard accessibility** and screen reader support
+6. ✅ **Use proper TypeScript types** (no `any`)
+7. ✅ **Sanitize user input** before display or submission
+8. ✅ **Write and execute component tests**
+9. ✅ **Build and verify in browser/simulator** before completion
+10. ✅ **Follow ESLint and Prettier conventions**
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Skip validation** - Always validate user inputs
+2. ❌ **Use `any` in TypeScript** - Define proper types
+3. ❌ **Expose API keys** in frontend code
+4. ❌ **Skip loading/error states** - Always handle async states
+5. ❌ **Ignore accessibility** - Make UI keyboard accessible
+6. ❌ **Mark tasks complete** without testing in browser/simulator
+7. ❌ **Leave linting errors** - Always run `pnpm lint --fix`
+8. ❌ **Skip writing tests** - Test validation and user interactions
+
+---
+
+### Frontend Verification Checklist
+
+**Before marking a frontend task complete, the AI agent MUST verify:**
+
+#### Validation & Forms
+- [ ] All user inputs have validation (client + server)
+- [ ] Validation uses debouncing (500ms recommended)
+- [ ] Error messages are clear and specific
+- [ ] Forms show loading states during submission
+- [ ] Submit buttons are disabled when invalid/submitting
+
+#### Accessibility
+- [ ] All inputs have proper labels (no placeholder-only)
+- [ ] Interactive elements are keyboard accessible
+- [ ] Focus indicators are visible
+- [ ] Color contrast meets WCAG AA standards
+- [ ] ARIA labels are used where appropriate
+
+#### Code Quality
+- [ ] TypeScript types are properly defined (no `any`)
+- [ ] Error boundaries are implemented
+- [ ] Loading and error states are handled
+- [ ] User input is sanitized before display
+- [ ] Code follows ESLint and Prettier conventions
+
+#### Security
+- [ ] API keys are not exposed in frontend code
+- [ ] User input is validated on server side
+- [ ] Sensitive operations use server-side API routes
+
+#### Testing
+- [ ] Components are tested with unit tests
+- [ ] Tests cover validation logic
+- [ ] Tests cover user interactions
+- [ ] All tests pass when executed
+
+#### Build & Verification
+- [ ] Code builds without errors (`pnpm build`)
+- [ ] Linting passes (`pnpm lint`)
+- [ ] Application tested in browser/simulator
+- [ ] No console errors during normal operation
+
+---
+
+### Summary: Frontend Development is User-Centric
+
+> **Every frontend feature MUST prioritize user experience, accessibility, and security. Validation, loading states, error handling, and accessibility are NOT optional—they are fundamental requirements for professional frontend development.**
+
+**Critical Rules:**
+
+1. **Always validate user inputs** - Client (debounced) + Server
+2. **Always show loading states** - Users need feedback
+3. **Always handle errors gracefully** - Clear, helpful messages
+4. **Always ensure accessibility** - Keyboard navigation, ARIA labels
+5. **Always use proper TypeScript types** - No `any`
+6. **Always test in browser/simulator** - Don't assume it works
+7. **Always sanitize user input** - Security is not optional
+
+**Remember**: Frontend development is about creating excellent user experiences. Every decision should be made with the user in mind. 🎨✅
