@@ -35,9 +35,6 @@
     "uuid": "^9.0.1",
     "ws": "^8.16.0"
   },
-  "devDependencies": {
-    "tsdown": "^0.2.16"
-  },
   "files": [
     "dist"
   ],

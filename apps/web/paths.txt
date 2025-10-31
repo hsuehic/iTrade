@@ -1,0 +1,7 @@
+/.env
+/.env.save
+/.git/config
+/phpinfo.php
+/includes/phpinfo.php.save
+/robots.txt
+/%22/_next/static/chunks/app/layout-19161b7f45ecf2a5.js%22
