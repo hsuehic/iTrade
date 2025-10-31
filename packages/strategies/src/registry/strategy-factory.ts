@@ -9,9 +9,19 @@
 
 import type { IStrategy, StrategyConfig, StrategyParameters } from '@itrade/core';
 
-import { MovingAverageStrategy } from '../strategies/MovingAverageStrategy';
-import { MovingWindowGridsStrategy } from '../strategies/MovingWindowGridsStrategy';
-import { HammerChannelStrategy } from '../strategies/HammerChannelStrategy';
+import {
+  MovingAverageStrategy,
+  MovingAverageStrategyRegistryConfig,
+} from '../strategies/MovingAverageStrategy';
+import {
+  MovingWindowGridsStrategy,
+  MovingWindowGridsStrategyRegistryConfig,
+} from '../strategies/MovingWindowGridsStrategy';
+import {
+  HammerChannelStrategy,
+  HammerChannelStrategyRegistryConfig,
+} from '../strategies/HammerChannelStrategy';
+import { StrategyRegistryConfig } from '../type';
 
 // ============================================================================
 // 策略参数接口定义
@@ -29,336 +39,6 @@ export type StrategyTypeKey =
   | 'MovingWindowGridsStrategy'
   | 'HammerChannelStrategy';
 
-// ============================================================================
-// UI 参数定义
-// ============================================================================
-
-/**
- * 🎨 Parameter Definition for UI Generation
- * Describes how a parameter should be displayed and validated in the UI
- */
-export interface ParameterDefinition<T = unknown> {
-  name: string;
-  type: 'number' | 'string' | 'boolean' | 'object' | 'enum' | 'range';
-  description: string;
-  defaultValue: T;
-  required?: boolean;
-  min?: number;
-  max?: number;
-  step?: number;
-  validation?: {
-    pattern?: string;
-    options?: string[];
-  };
-  unit?: string;
-  group?: string; // UI grouping
-  order?: number; // UI ordering
-}
-
-// ============================================================================
-// 策略注册配置
-// ============================================================================
-
-/**
- * 📋 Strategy Registry Configuration
- * Complete metadata and configuration for a strategy type
- */
-export interface StrategyRegistryConfig<
-  TParams extends StrategyParameters = StrategyParameters,
-> {
-  type: string;
-  name: string;
-  description: string;
-  icon?: string;
-  implemented: boolean;
-  category: 'trend' | 'momentum' | 'volatility' | 'custom';
-  defaultParameters: TParams;
-  parameterDefinitions: ParameterDefinition[];
-  documentation?: {
-    overview: string;
-    parameters: string;
-    signals: string;
-    riskFactors: string[];
-  };
-}
-
-/**
- * 🎯 策略元数据注册表 - 所有策略的中央配置
- */
-export const STRATEGY_REGISTRY: Record<StrategyTypeKey, StrategyRegistryConfig> = {
-  MovingWindowGridsStrategy: {
-    type: 'MovingWindowGridsStrategy',
-    name: 'Moving Window Grids',
-    description: 'Grid trading strategy within a moving price window',
-    icon: '🎯',
-    implemented: true,
-    category: 'volatility',
-    defaultParameters: {
-      windowSize: 20,
-      gridSize: 0.005,
-      gridCount: 5,
-      minVolatility: 0.5,
-      takeProfitRatio: 1,
-    },
-    parameterDefinitions: [
-      {
-        name: 'windowSize',
-        type: 'number',
-        description: 'Number of candles for price window',
-        defaultValue: 20,
-        required: true,
-        min: 5,
-        max: 100,
-        group: 'Window',
-        order: 1,
-      },
-      {
-        name: 'gridSize',
-        type: 'number',
-        description: 'Grid spacing as percentage',
-        defaultValue: 0.005,
-        required: true,
-        min: 0.001,
-        max: 0.1,
-        group: 'Grid',
-        order: 2,
-        unit: '%',
-      },
-      {
-        name: 'gridCount',
-        type: 'number',
-        description: 'Number of grid levels',
-        defaultValue: 5,
-        required: true,
-        min: 2,
-        max: 20,
-        group: 'Grid',
-        order: 3,
-      },
-      {
-        name: 'minVolatility',
-        type: 'number',
-        description: 'Minimum volatility threshold',
-        defaultValue: 1,
-        required: true,
-        min: 1,
-        max: 80,
-        group: 'Risk',
-        order: 4,
-        unit: '%',
-      },
-      {
-        name: 'takeProfitRatio',
-        type: 'number',
-        description: 'Take profit ratio',
-        defaultValue: 1,
-        required: true,
-        min: 1,
-        max: 50,
-        group: 'Risk',
-        order: 5,
-        unit: '%',
-      },
-    ],
-    documentation: {
-      overview:
-        'Places grid orders within a moving window, capturing profits from oscillations.',
-      parameters: 'Window size determines range, grid size and count define placement.',
-      signals: 'Buy at lower levels, sell at upper levels.',
-      riskFactors: ['Trending markets', 'Low volatility'],
-    },
-  },
-
-  MovingAverageStrategy: {
-    type: 'MovingAverageStrategy',
-    name: 'Moving Average Crossover',
-    description: 'Classic trend-following strategy using two moving averages',
-    icon: '📈',
-    implemented: true,
-    category: 'trend',
-    defaultParameters: {
-      fastPeriod: 10,
-      slowPeriod: 20,
-      threshold: 0.01,
-    },
-    parameterDefinitions: [
-      {
-        name: 'fastPeriod',
-        type: 'number',
-        description: 'Fast moving average period',
-        defaultValue: 10,
-        required: true,
-        min: 1,
-        max: 100,
-        group: 'Basic',
-        order: 1,
-      },
-      {
-        name: 'slowPeriod',
-        type: 'number',
-        description: 'Slow moving average period',
-        defaultValue: 20,
-        required: true,
-        min: 2,
-        max: 200,
-        group: 'Basic',
-        order: 2,
-      },
-      {
-        name: 'threshold',
-        type: 'number',
-        description: 'Minimum crossover percentage',
-        defaultValue: 0.01,
-        required: true,
-        min: 0,
-        max: 1,
-        group: 'Signal',
-        order: 3,
-        unit: '%',
-      },
-    ],
-    documentation: {
-      overview:
-        'Generates buy signals when fast MA crosses above slow MA, and sell signals when it crosses below.',
-      parameters: 'Fast MA should be shorter than Slow MA.',
-      signals: 'Buy: Fast MA > Slow MA. Sell: Fast MA < Slow MA.',
-      riskFactors: ['Lagging indicator', 'Choppy markets'],
-    },
-  },
-
-  HammerChannelStrategy: {
-    type: 'HammerChannelStrategy',
-    name: 'Hammer Channel',
-    description: 'Identifies hammer patterns within price channels',
-    icon: '🔨',
-    implemented: true,
-    category: 'momentum',
-    defaultParameters: {
-      windowSize: 15,
-      lowerShadowToBody: 2,
-      upperShadowToBody: 0.3,
-      bodyToRange: 0.35,
-      highThreshold: 0.9,
-      lowThreshold: 0.1,
-    },
-    parameterDefinitions: [
-      {
-        name: 'windowSize',
-        type: 'number',
-        description: 'Channel calculation window',
-        defaultValue: 15,
-        required: true,
-        min: 5,
-        max: 100,
-        group: 'Channel',
-        order: 1,
-      },
-      {
-        name: 'lowerShadowToBody',
-        type: 'number',
-        description: 'Lower shadow to body ratio',
-        defaultValue: 2,
-        required: true,
-        min: 1,
-        max: 10,
-        group: 'Hammer',
-        order: 2,
-      },
-      {
-        name: 'upperShadowToBody',
-        type: 'number',
-        description: 'Upper shadow to body ratio',
-        defaultValue: 0.3,
-        required: true,
-        min: 0,
-        max: 1,
-        group: 'Hammer',
-        order: 3,
-      },
-      {
-        name: 'bodyToRange',
-        type: 'number',
-        description: 'Body to range ratio',
-        defaultValue: 0.35,
-        required: true,
-        min: 0.1,
-        max: 0.9,
-        group: 'Hammer',
-        order: 4,
-      },
-      {
-        name: 'highThreshold',
-        type: 'number',
-        description: 'Upper channel threshold',
-        defaultValue: 0.9,
-        required: true,
-        min: 0.5,
-        max: 1,
-        group: 'Channel',
-        order: 5,
-      },
-      {
-        name: 'lowThreshold',
-        type: 'number',
-        description: 'Lower channel threshold',
-        defaultValue: 0.1,
-        required: true,
-        min: 0,
-        max: 0.5,
-        group: 'Channel',
-        order: 6,
-      },
-    ],
-    documentation: {
-      overview: 'Detects hammer patterns and signals based on channel position.',
-      parameters: 'Adjust ratios for pattern strictness, thresholds for timing.',
-      signals: 'Buy: Bearish hammer at low. Sell: Bullish hammer at high.',
-      riskFactors: ['False hammers', 'Strong trends'],
-    },
-  },
-};
-
-// ============================================================================
-// 策略元数据辅助函数
-// ============================================================================
-
-/** 获取策略配置 */
-export function getStrategyConfig(
-  type: StrategyTypeKey,
-): StrategyRegistryConfig | undefined {
-  return STRATEGY_REGISTRY[type];
-}
-
-/** 获取默认参数 */
-export function getStrategyDefaultParameters<
-  T extends StrategyParameters = StrategyParameters,
->(type: StrategyTypeKey): T {
-  return (STRATEGY_REGISTRY[type]?.defaultParameters || {}) as T;
-}
-
-/** 获取所有策略类型 */
-export function getAllStrategyTypes(): StrategyTypeKey[] {
-  return Object.keys(STRATEGY_REGISTRY) as StrategyTypeKey[];
-}
-
-/** 验证策略类型 */
-export function isValidStrategyType(type: string): type is StrategyTypeKey {
-  return type in STRATEGY_REGISTRY;
-}
-
-/** 按类别获取策略 */
-export function getStrategiesByCategory(
-  category: 'trend' | 'momentum' | 'volatility' | 'custom',
-): StrategyRegistryConfig[] {
-  return Object.values(STRATEGY_REGISTRY).filter(
-    (config) => config.category === category,
-  );
-}
-
-// ============================================================================
-// 策略实现注册表
-// ============================================================================
-
 /**
  * 策略构造函数类型
  */
@@ -371,7 +51,11 @@ export type StrategyConstructor<TParams extends StrategyParameters = StrategyPar
  * 使用类来管理策略注册，提供更好的类型安全性
  */
 class StrategyRegistry {
-  private strategies = new Map<StrategyTypeKey, StrategyConstructor<any>>();
+  public readonly strategies = new Map<StrategyTypeKey, StrategyConstructor<any>>();
+  public readonly strategyRegistryConfigs = new Map<
+    StrategyTypeKey,
+    StrategyRegistryConfig<any>
+  >();
 
   /*
    * 注册策略实现
@@ -381,8 +65,10 @@ class StrategyRegistry {
   register<TParams extends StrategyParameters>(
     type: StrategyTypeKey,
     constructor: StrategyConstructor<TParams>,
+    registryConfig: StrategyRegistryConfig<TParams>,
   ): void {
     this.strategies.set(type, constructor);
+    this.strategyRegistryConfigs.set(type, registryConfig);
   }
 
   /**
@@ -431,9 +117,58 @@ const registry = new StrategyRegistry();
  * 当新增策略实现时，在这里注册：
  * registry.register('StrategyTypeKey', StrategyClass);
  */
-registry.register('MovingAverageStrategy', MovingAverageStrategy);
-registry.register('MovingWindowGridsStrategy', MovingWindowGridsStrategy);
-registry.register('HammerChannelStrategy', HammerChannelStrategy);
+registry.register(
+  'MovingAverageStrategy',
+  MovingAverageStrategy,
+  MovingAverageStrategyRegistryConfig,
+);
+registry.register(
+  'MovingWindowGridsStrategy',
+  MovingWindowGridsStrategy,
+  MovingWindowGridsStrategyRegistryConfig,
+);
+registry.register(
+  'HammerChannelStrategy',
+  HammerChannelStrategy,
+  HammerChannelStrategyRegistryConfig,
+);
+
+// ============================================================================
+// 策略元数据辅助函数
+// ============================================================================
+
+/** 获取策略配置 */
+export function getStrategyRegistryConfig(
+  type: StrategyTypeKey,
+): StrategyRegistryConfig | undefined {
+  return registry.strategyRegistryConfigs.get(type);
+}
+
+/** 获取默认参数 */
+export function getStrategyDefaultParameters<
+  T extends StrategyParameters = StrategyParameters,
+>(type: StrategyTypeKey): T {
+  return (getStrategyRegistryConfig(type)?.defaultParameters || {}) as T;
+}
+
+/** 获取所有策略类型 */
+export function getAllStrategyTypes(): StrategyTypeKey[] {
+  return Object.keys(registry.strategyRegistryConfigs) as StrategyTypeKey[];
+}
+
+/** 验证策略类型 */
+export function isValidStrategyType(type: string): type is StrategyTypeKey {
+  return registry.strategyRegistryConfigs.has(type as StrategyTypeKey);
+}
+
+/** 按类别获取策略 */
+export function getStrategyRegistryConfigsByCategory(
+  category: 'trend' | 'momentum' | 'volatility' | 'custom',
+): StrategyRegistryConfig[] {
+  return Array.from(registry.strategyRegistryConfigs.values()).filter(
+    (config) => config.category === category,
+  );
+}
 
 /**
  * 获取所有已实现的策略信息
@@ -449,8 +184,10 @@ export interface StrategyImplementationInfo {
 }
 
 export function getImplementedStrategies(): StrategyImplementationInfo[] {
-  return Object.values(STRATEGY_REGISTRY)
-    .filter((config) => registry.has(config.type as StrategyTypeKey))
+  return Array.from(registry.strategyRegistryConfigs.values())
+    .filter((config: StrategyRegistryConfig) =>
+      registry.has(config.type as StrategyTypeKey),
+    )
     .map((config) => ({
       type: config.type as StrategyTypeKey,
       name: config.name,
@@ -548,6 +285,7 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
       method: 'websocket', // Use WebSocket by default
     };
   }
+  console.log('fullConfig:', JSON.stringify(fullConfig, null, 2));
 
   // 实例化策略
   const strategyInstance = new StrategyClass(fullConfig);
@@ -562,15 +300,17 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
 export function getAllStrategiesWithImplementationStatus(): (StrategyImplementationInfo & {
   implemented: boolean;
 })[] {
-  return Object.values(STRATEGY_REGISTRY).map((config) => ({
-    type: config.type as StrategyTypeKey,
-    name: config.name,
-    description: config.description,
-    icon: config.icon,
-    category: config.category,
-    implemented: registry.has(config.type as StrategyTypeKey),
-    constructor: registry.get(config.type as StrategyTypeKey)!,
-  }));
+  return Array.from(registry.strategyRegistryConfigs.values()).map(
+    (config: StrategyRegistryConfig) => ({
+      type: config.type as StrategyTypeKey,
+      name: config.name,
+      description: config.description,
+      icon: config.icon,
+      category: config.category,
+      implemented: registry.has(config.type as StrategyTypeKey),
+      constructor: registry.get(config.type as StrategyTypeKey)!,
+    }),
+  );
 }
 
 /**
@@ -583,7 +323,7 @@ export function getRegistryStats(): {
 } {
   return {
     registered: registry.size(),
-    total: Object.keys(STRATEGY_REGISTRY).length,
+    total: registry.strategyRegistryConfigs.size,
     registeredTypes: registry.getRegisteredTypes(),
   };
 }

@@ -16,18 +16,13 @@ export {
 export {
   // 类型定义
   type StrategyTypeKey,
-  type StrategyRegistryConfig,
   type StrategyConstructor,
-  type StrategyImplementationInfo,
-  type ParameterDefinition, // UI 参数定义
-  // 元数据注册表
-  STRATEGY_REGISTRY,
-  // 元数据函数
-  getStrategyConfig,
+  type StrategyImplementationInfo, // UI 参数定义
+  getStrategyRegistryConfig as getStrategyConfig,
   getStrategyDefaultParameters,
   getAllStrategyTypes,
   isValidStrategyType,
-  getStrategiesByCategory,
+  getStrategyRegistryConfigsByCategory as getStrategiesByCategory,
   // 实现注册表函数
   getImplementedStrategies,
   getAllStrategiesWithImplementationStatus,
@@ -37,3 +32,4 @@ export {
   createStrategyInstance,
   getRegistryStats,
 } from './registry/strategy-factory';
+export { type StrategyRegistryConfig, type ParameterDefinition } from './type';

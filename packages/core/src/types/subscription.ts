@@ -10,7 +10,7 @@ export type DataType = 'ticker' | 'orderbook' | 'trades' | 'klines';
  */
 export interface TickerSubscriptionConfig {
   enabled: boolean;
-  interval?: number; // REST polling interval in milliseconds
+  pollInterval?: number; // REST polling interval in milliseconds
 }
 
 /**
@@ -19,7 +19,7 @@ export interface TickerSubscriptionConfig {
 export interface OrderBookSubscriptionConfig {
   enabled: boolean;
   depth?: number; // Order book depth
-  interval?: number; // REST polling interval in milliseconds
+  pollInterval?: number; // REST polling interval in milliseconds
 }
 
 /**
@@ -28,7 +28,7 @@ export interface OrderBookSubscriptionConfig {
 export interface TradesSubscriptionConfig {
   enabled: boolean;
   limit?: number; // Number of trades to fetch
-  interval?: number; // REST polling interval in milliseconds
+  pollInterval?: number; // REST polling interval in milliseconds
 }
 
 /**
@@ -98,19 +98,19 @@ export interface SubscriptionInfo {
  */
 export const DEFAULT_TICKER_CONFIG: TickerSubscriptionConfig = {
   enabled: true,
-  interval: 1000, // 1 second
+  pollInterval: 1000, // 1 second
 };
 
 export const DEFAULT_ORDERBOOK_CONFIG: OrderBookSubscriptionConfig = {
   enabled: true,
   depth: 20,
-  interval: 500, // 0.5 seconds
+  pollInterval: 500, // 0.5 seconds
 };
 
 export const DEFAULT_TRADES_CONFIG: TradesSubscriptionConfig = {
   enabled: true,
   limit: 10,
-  interval: 1000, // 1 second
+  pollInterval: 1000, // 1 second
 };
 
 export const DEFAULT_KLINES_CONFIG: KlinesSubscriptionConfig = {

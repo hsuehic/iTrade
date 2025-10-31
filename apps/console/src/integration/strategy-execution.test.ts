@@ -16,7 +16,7 @@ async function main() {
         ticker: false,
         klines: {
           enabled: true,
-          interval: '15m',
+          interval: '5m',
         },
         trades: false,
         orderbook: {

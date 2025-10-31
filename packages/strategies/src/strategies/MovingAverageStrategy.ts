@@ -7,6 +7,65 @@ import {
   DataUpdate,
   StrategyParameters,
 } from '@itrade/core';
+import { StrategyRegistryConfig } from '../type';
+
+export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingAverageParameters> =
+  {
+    type: 'MovingAverageStrategy',
+    name: 'Moving Average Crossover',
+    description: 'Classic trend-following strategy using two moving averages',
+    icon: '📈',
+    implemented: true,
+    category: 'trend',
+    defaultParameters: {
+      fastPeriod: 10,
+      slowPeriod: 20,
+      threshold: 0.01,
+    },
+    parameterDefinitions: [
+      {
+        name: 'fastPeriod',
+        type: 'number',
+        description: 'Fast moving average period',
+        defaultValue: 10,
+        required: true,
+        min: 1,
+        max: 100,
+        group: 'Basic',
+        order: 1,
+      },
+      {
+        name: 'slowPeriod',
+        type: 'number',
+        description: 'Slow moving average period',
+        defaultValue: 20,
+        required: true,
+        min: 2,
+        max: 200,
+        group: 'Basic',
+        order: 2,
+      },
+      {
+        name: 'threshold',
+        type: 'number',
+        description: 'Minimum crossover percentage',
+        defaultValue: 0.01,
+        required: true,
+        min: 0,
+        max: 1,
+        group: 'Signal',
+        order: 3,
+        unit: '%',
+      },
+    ],
+    documentation: {
+      overview:
+        'Generates buy signals when fast MA crosses above slow MA, and sell signals when it crosses below.',
+      parameters: 'Fast MA should be shorter than Slow MA.',
+      signals: 'Buy: Fast MA > Slow MA. Sell: Fast MA < Slow MA.',
+      riskFactors: ['Lagging indicator', 'Choppy markets'],
+    },
+  };
 
 /**
  * 📊 MovingAverageStrategy 参数

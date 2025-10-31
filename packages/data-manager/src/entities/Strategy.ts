@@ -81,6 +81,22 @@ export class StrategyEntity {
   @Column({ type: 'jsonb', nullable: true })
   parameters?: StrategyParameters;
 
+  /**
+   * Subscription configuration (stored as JSONB)
+   * Defines what market data the strategy subscribes to
+   * Example: { ticker: true, klines: { enabled: true, interval: '1m' }, method: 'websocket' }
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  subscription?: Record<string, unknown>;
+
+  /**
+   * Subscription configuration (stored as JSONB)
+   * Defines what market data the strategy subscribes to
+   * Example: { ticker: true, klines: { enabled: true, interval: '1m' }, method: 'websocket' }
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  initialData?: Record<string, unknown>;
+
   @Column({ type: 'text', nullable: true })
   errorMessage?: string;
 

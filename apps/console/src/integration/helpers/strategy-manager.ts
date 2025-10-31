@@ -372,10 +372,86 @@ export class StrategyManager {
         exchange: dbStrategy.exchange || '',
         parameters: dbStrategy.parameters,
         logger: this.logger,
+        // 🆕 Use subscription configuration from database
+        // If not set in database, use default based on strategy type
+        subscription:
+          (dbStrategy.subscription as any) ||
+          this.getDefaultSubscriptionConfig(dbStrategy.type),
       },
       dbStrategy.id,
       dbStrategy.name,
     );
+  }
+
+  /**
+   * Get default subscription configuration for a strategy type
+   * Used as fallback when subscription is not configured in database
+   * Different strategies require different market data types
+   */
+  private getDefaultSubscriptionConfig(strategyType: string): {
+    ticker?: boolean;
+    klines?:
+      | boolean
+      | {
+          enabled: boolean;
+          interval?: string;
+          limit?: number;
+        };
+    trades?: boolean;
+    orderbook?: boolean;
+    method?: 'websocket' | 'rest' | 'auto';
+  } {
+    // Default configuration for strategies that use klines
+    const klineBasedStrategies: string[] = [
+      'MovingWindowGridsStrategy',
+      'HammerChannelStrategy',
+      // Add other kline-based strategies here
+    ];
+
+    // Default configuration for strategies that use ticker
+    const tickerBasedStrategies: string[] = [
+      // Add ticker-based strategies here
+    ];
+
+    if (klineBasedStrategies.includes(strategyType)) {
+      this.logger.debug(
+        `Using default kline subscription for ${strategyType} (not configured in database)`,
+      );
+      return {
+        ticker: false,
+        klines: {
+          enabled: true,
+          interval: '1m', // Subscribe to 1-minute klines
+          limit: 1,
+        },
+        trades: false,
+        orderbook: false,
+        method: 'websocket', // Use WebSocket for real-time updates
+      };
+    } else if (tickerBasedStrategies.includes(strategyType)) {
+      this.logger.debug(
+        `Using default ticker subscription for ${strategyType} (not configured in database)`,
+      );
+      return {
+        ticker: true,
+        klines: false,
+        trades: false,
+        orderbook: false,
+        method: 'websocket',
+      };
+    } else {
+      // Default: subscribe to ticker for unknown strategies
+      this.logger.warn(
+        `Unknown strategy type ${strategyType}, using default ticker subscription (should configure in database)`,
+      );
+      return {
+        ticker: true,
+        klines: false,
+        trades: false,
+        orderbook: false,
+        method: 'websocket',
+      };
+    }
   }
 
   private setupEventListeners(): void {

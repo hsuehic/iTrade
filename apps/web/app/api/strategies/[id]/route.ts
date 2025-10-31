@@ -3,6 +3,7 @@ import type { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { auth } from '@/lib/auth';
+import { StrategyParameters } from '@itrade/core';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -78,7 +79,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json();
-    const { name, description, type, status, exchange, symbol, parameters } = body;
+    const {
+      name,
+      description,
+      type,
+      status,
+      exchange,
+      symbol,
+      parameters,
+      initialData,
+      subscription,
+    } = body;
 
     interface StrategyUpdates {
       name?: string;
@@ -87,8 +98,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       status?: StrategyStatus;
       exchange?: string;
       symbol?: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      parameters?: any;
+      parameters?: StrategyParameters;
+      initialData?: Record<string, unknown>;
+      subscription?: Record<string, unknown>;
     }
 
     const updates: StrategyUpdates = {};
@@ -99,6 +111,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (exchange !== undefined) updates.exchange = exchange;
     if (symbol !== undefined) updates.symbol = symbol;
     if (parameters !== undefined) updates.parameters = parameters;
+    if (initialData !== undefined) updates.initialData = initialData;
+    if (subscription !== undefined) updates.subscription = subscription;
 
     await dataManager.updateStrategy(id, updates);
 

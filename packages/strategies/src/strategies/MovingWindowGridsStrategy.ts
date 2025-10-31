@@ -14,6 +14,18 @@ import {
   TradeMode,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
+import { StrategyRegistryConfig } from '../type';
+
+interface SignaMetaData {
+  signalType: 'entry' | 'take_profit' | 'stop_loss' | 'trailing_stop';
+  reason?: string;
+  timestamp: number;
+  clientOrderId: string;
+  parentOrderId?: string;
+  entryPrice?: string;
+  takeProfitPrice?: string;
+  profitRatio?: number;
+}
 
 /**
  * 📊 MovingWindowGridsStrategy 参数
@@ -30,6 +42,113 @@ export interface MovingWindowGridsParameters extends StrategyParameters {
   tradeMode?: TradeMode;
 }
 
+export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<MovingWindowGridsParameters> =
+  {
+    type: 'MovingWindowGridsStrategy',
+    name: 'Moving Window Grids',
+    description: 'Grid trading strategy within a moving price window',
+    icon: '🎯',
+    implemented: true,
+    category: 'volatility',
+    defaultParameters: {
+      windowSize: 20,
+      gridSize: 0.005,
+      gridCount: 5,
+      minVolatility: 0.5,
+      takeProfitRatio: 1,
+      baseSize: 1000,
+      maxSize: 10000,
+    },
+    parameterDefinitions: [
+      {
+        name: 'windowSize',
+        type: 'number',
+        description: 'Number of candles for price window',
+        defaultValue: 20,
+        required: true,
+        min: 5,
+        max: 100,
+        group: 'Window',
+        order: 1,
+      },
+      {
+        name: 'gridSize',
+        type: 'number',
+        description: 'Grid spacing as percentage',
+        defaultValue: 0.005,
+        required: true,
+        min: 0.001,
+        max: 0.1,
+        group: 'Grid',
+        order: 2,
+        unit: '%',
+      },
+      {
+        name: 'gridCount',
+        type: 'number',
+        description: 'Number of grid levels',
+        defaultValue: 5,
+        required: true,
+        min: 2,
+        max: 20,
+        group: 'Grid',
+        order: 3,
+      },
+      {
+        name: 'minVolatility',
+        type: 'number',
+        description: 'Minimum volatility threshold',
+        defaultValue: 1,
+        required: true,
+        min: 1,
+        max: 80,
+        group: 'Risk',
+        order: 4,
+        unit: '%',
+      },
+      {
+        name: 'takeProfitRatio',
+        type: 'number',
+        description: 'Take profit ratio',
+        defaultValue: 1,
+        required: true,
+        min: 1,
+        max: 50,
+        group: 'Risk',
+        order: 5,
+        unit: '%',
+      },
+      {
+        name: 'baseSize',
+        type: 'number',
+        description: 'Base size for each grid/per order',
+        defaultValue: 1000,
+        required: true,
+        min: 0.001,
+        max: 500000,
+        group: 'Risk',
+        order: 6,
+      },
+      {
+        name: 'maxSize',
+        type: 'number',
+        description: 'Maximum position size opened by this strategy',
+        defaultValue: 10000,
+        required: true,
+        min: 0.001,
+        max: 500000,
+        group: 'Risk',
+        order: 7,
+      },
+    ],
+    documentation: {
+      overview:
+        'Places grid orders within a moving window, capturing profits from oscillations.',
+      parameters: 'Window size determines range, grid size and count define placement.',
+      signals: 'Buy at lower levels, sell at upper levels.',
+      riskFactors: ['Trending markets', 'Low volatility'],
+    },
+  };
 export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
   private windowSize!: number;
   private gridSize!: number;
@@ -51,7 +170,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   // 🆕 Signal and order tracking
   private pendingSignals: Map<string, StrategyResult> = new Map();
   // 🆕 订单元数据映射：clientOrderId -> metadata
-  private orderMetadataMap: Map<string, any> = new Map();
+  private orderMetadataMap: Map<string, SignaMetaData> = new Map();
   // 🆕 待处理的止盈订单队列：存储已成交的主订单，等待生成止盈信号
   private pendingTakeProfitOrders: Map<string, Order> = new Map();
   // 🆕 止盈订单追踪
@@ -74,7 +193,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.tradeMode = config.parameters.tradeMode ?? TradeMode.ISOLATED;
     // 🆕 Process loaded initial data if available
     if (this._context.loadedInitialData && 'symbol' in this._context.loadedInitialData) {
-      this.processInitialData(this._context.loadedInitialData as any);
+      this.processInitialData(this._context.loadedInitialData);
     }
   }
 
@@ -82,7 +201,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * 🆕 Process initial data loaded by TradingEngine
    * Called from constructor if initialData was configured
    */
-  private processInitialData(initialData: InitialDataResult): void {
+  private processInitialData(initialData?: InitialDataResult): void {
+    if (!initialData) return;
     console.log(
       `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
     );
@@ -136,7 +256,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    */
   private generateEntrySignal(price: Decimal, quantity: Decimal): StrategyResult {
     const clientOrderId = this.generateClientOrderId('entry');
-    const metadata = {
+    const metadata: SignaMetaData = {
       signalType: 'entry',
       reason: 'volatility_breakout',
       timestamp: Date.now(),
@@ -170,7 +290,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const entryPrice = parentOrder.averagePrice || parentOrder.price!;
     const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio);
 
-    const metadata = {
+    const metadata: SignaMetaData = {
       signalType: 'take_profit',
       parentOrderId: parentOrder.clientOrderId,
       entryPrice: entryPrice.toString(),
@@ -205,6 +325,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
     const { exchangeName, klines, orders, positions, symbol, ticker } = dataUpdate;
+    this._logger.info(
+      `[${exchangeName}] [${this._strategyName}] Analyzing data update: ${JSON.stringify(dataUpdate, null, 2)}`,
+    );
     if (exchangeName == this._exchangeName) {
       if (positions) {
         this.handlePosition(positions);
@@ -346,7 +469,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this._logger.info(`   Parent Order: ${metadata.parentOrderId}`);
       this._logger.info(`   Entry Price: ${metadata.entryPrice}`);
       this._logger.info(
-        `   TP Price: ${order.price?.toString()} (+${(metadata.profitRatio * 100).toFixed(2)}%)`,
+        `   TP Price: ${order.price?.toString()} (+${(metadata.profitRatio! * 100).toFixed(2)}%)`,
       );
       this._logger.info(`   Quantity: ${order.quantity.toString()}`);
       this._logger.info(`   Status: ${order.status}`);
@@ -407,8 +530,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this._logger.info(`   Executed Quantity: ${order.executedQuantity?.toString()}`);
       this._logger.info(`   Average Price: ${order.averagePrice?.toString()}`);
 
-      // 计算实现盈利
-      const entryPrice = new Decimal(metadata.entryPrice);
+      // calculate profit
+      const entryPrice = new Decimal(metadata.entryPrice!);
       const exitPrice = order.averagePrice || order.price!;
       const profit = exitPrice
         .minus(entryPrice)
@@ -421,9 +544,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
       // 清理订单和元数据
       this.takeProfitOrders.delete(order.clientOrderId);
-      this.orders.delete(metadata.parentOrderId);
+      this.orders.delete(metadata.parentOrderId!);
       this.orderMetadataMap.delete(order.clientOrderId);
-      this.orderMetadataMap.delete(metadata.parentOrderId);
+      this.orderMetadataMap.delete(metadata.parentOrderId!);
 
       // 减少仓位大小
       this.size -= this.baseSize;

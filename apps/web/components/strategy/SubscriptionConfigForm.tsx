@@ -21,6 +21,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { IconSettings, IconBraces, IconForms } from '@tabler/icons-react';
 import dynamic from 'next/dynamic';
+import { SubscriptionConfig } from '@itrade/core';
 
 const JsonEditor = dynamic(
   () => import('@/components/json-editor').then((mod) => mod.JsonEditor),
@@ -37,15 +38,6 @@ const SUPPORTED_EXCHANGES = [
   { id: 'okx', name: 'OKX' },
   { id: 'coinbase', name: 'Coinbase' },
 ];
-
-interface SubscriptionConfig {
-  ticker?: boolean;
-  orderbook?: boolean | { enabled: boolean; depth: number };
-  trades?: boolean;
-  klines?: boolean | { enabled: boolean; interval: string };
-  exchange?: string | string[];
-  method?: 'rest' | 'websocket';
-}
 
 interface SubscriptionConfigFormProps {
   value: SubscriptionConfig;
@@ -148,7 +140,7 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
                         <SelectTrigger className="h-8">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent container={false}>
                           <SelectItem value="5">5 levels</SelectItem>
                           <SelectItem value="10">10 levels</SelectItem>
                           <SelectItem value="20">20 levels</SelectItem>
@@ -204,7 +196,7 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
                         <SelectTrigger className="h-8">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent container={false}>
                           <SelectItem value="1m">1 minute</SelectItem>
                           <SelectItem value="3m">3 minutes</SelectItem>
                           <SelectItem value="5m">5 minutes</SelectItem>
@@ -295,7 +287,7 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent container={false}>
                   <SelectItem value="rest">REST Polling</SelectItem>
                   <SelectItem value="websocket">WebSocket Stream</SelectItem>
                 </SelectContent>

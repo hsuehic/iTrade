@@ -13,7 +13,99 @@ import {
   TradeMode,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
+import { StrategyRegistryConfig } from '../type';
 
+export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerChannelParameters> =
+  {
+    type: 'HammerChannelStrategy',
+    name: 'Hammer Channel',
+    description: 'Identifies hammer patterns within price channels',
+    icon: '🔨',
+    implemented: true,
+    category: 'momentum',
+    defaultParameters: {
+      windowSize: 15,
+      lowerShadowToBody: 2,
+      upperShadowToBody: 0.3,
+      bodyToRange: 0.35,
+      highThreshold: 0.9,
+      lowThreshold: 0.1,
+    },
+    parameterDefinitions: [
+      {
+        name: 'windowSize',
+        type: 'number',
+        description: 'Channel calculation window',
+        defaultValue: 15,
+        required: true,
+        min: 5,
+        max: 100,
+        group: 'Channel',
+        order: 1,
+      },
+      {
+        name: 'lowerShadowToBody',
+        type: 'number',
+        description: 'Lower shadow to body ratio',
+        defaultValue: 2,
+        required: true,
+        min: 1,
+        max: 10,
+        group: 'Hammer',
+        order: 2,
+      },
+      {
+        name: 'upperShadowToBody',
+        type: 'number',
+        description: 'Upper shadow to body ratio',
+        defaultValue: 0.3,
+        required: true,
+        min: 0,
+        max: 1,
+        group: 'Hammer',
+        order: 3,
+      },
+      {
+        name: 'bodyToRange',
+        type: 'number',
+        description: 'Body to range ratio',
+        defaultValue: 0.35,
+        required: true,
+        min: 0.1,
+        max: 0.9,
+        group: 'Hammer',
+        order: 4,
+      },
+      {
+        name: 'highThreshold',
+        type: 'number',
+        description: 'Upper channel threshold',
+        defaultValue: 0.9,
+        required: true,
+        min: 0.5,
+        max: 1,
+        group: 'Channel',
+        order: 5,
+      },
+      {
+        name: 'lowThreshold',
+        type: 'number',
+        description: 'Lower channel threshold',
+        defaultValue: 0.1,
+        required: true,
+        min: 0,
+        max: 0.5,
+        group: 'Channel',
+        order: 6,
+      },
+    ],
+    documentation: {
+      overview: 'Detects hammer patterns and signals based on channel position.',
+      parameters: 'Adjust ratios for pattern strictness, thresholds for timing.',
+      signals: 'Buy: Bearish hammer at low. Sell: Bullish hammer at high.',
+      riskFactors: ['False hammers', 'Strong trends'],
+    },
+  };
 /**
  * Hammer detection parameters
  */
