@@ -15,7 +15,7 @@ import { User } from './User';
 
 @Entity('account_info')
 @Index(['user'])
-@Index(['user', 'exchange'])
+@Index(['user', 'exchange'], { unique: true })
 export class AccountInfoEntity implements AccountInfo {
   @PrimaryGeneratedColumn()
   id!: number;

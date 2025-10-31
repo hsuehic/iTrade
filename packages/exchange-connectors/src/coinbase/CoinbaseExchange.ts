@@ -1071,7 +1071,7 @@ export class CoinbaseExchange extends BaseExchange {
       quantity: this.formatDecimal(orderData.size || orderData.base_size || '0'),
       price: orderData.price ? this.formatDecimal(orderData.price) : undefined,
       status: this.transformOrderStatus(orderData.status || 'NEW'),
-      timeInForce: (orderData.time_in_force as TimeInForce) || TimeInForce.GTC,
+      timeInForce: this.transformTimeInForce(orderData.time_in_force),
       timestamp: orderData.created_at ? new Date(orderData.created_at) : new Date(),
       updateTime: orderData.updated_at ? new Date(orderData.updated_at) : undefined,
       executedQuantity: orderData.filled_size
@@ -1084,6 +1084,29 @@ export class CoinbaseExchange extends BaseExchange {
     };
 
     return order;
+  }
+
+  /**
+   * Transform Coinbase TimeInForce to iTrade TimeInForce enum
+   */
+  private transformTimeInForce(coinbaseTif: string): TimeInForce {
+    const normalized = (coinbaseTif || 'GTC').toUpperCase().trim();
+
+    switch (normalized) {
+      case 'GOOD_UNTIL_CANCELLED':
+      case 'GOOD_UNTIL_CANCELED':
+      case 'GTC':
+        return 'GTC' as TimeInForce;
+      case 'IMMEDIATE_OR_CANCEL':
+      case 'IOC':
+        return 'IOC' as TimeInForce;
+      case 'FILL_OR_KILL':
+      case 'FOK':
+        return 'FOK' as TimeInForce;
+      default:
+        console.warn(`[Coinbase] Unknown TimeInForce: ${coinbaseTif}, defaulting to GTC`);
+        return 'GTC' as TimeInForce;
+    }
   }
 
   /**
@@ -1498,8 +1521,13 @@ export class CoinbaseExchange extends BaseExchange {
       symbol: o.product_id || 'UNKNOWN',
       side: (o.side?.toUpperCase() || 'BUY') === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformOrderType(o.order_type || o.type || 'LIMIT'),
-      quantity: this.formatDecimal(o.quantity || o.base_size || '0'),
-      price: o.price ? this.formatDecimal(o.price) : undefined,
+      quantity: this.formatDecimal(
+        o.quantity || o.size || o.order_size || o.base_size || o.leaves_quantity || '0',
+      ),
+      price:
+        o.price || o.limit_price
+          ? this.formatDecimal(o.price || o.limit_price)
+          : undefined,
       status,
       timeInForce: (o.time_in_force as TimeInForce) || TimeInForce.GTC,
       timestamp: o.submitted_time ? new Date(o.submitted_time) : new Date(),

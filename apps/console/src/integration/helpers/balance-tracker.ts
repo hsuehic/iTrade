@@ -136,21 +136,14 @@ export class BalanceTracker {
         lockedBalance = lockedBalance.add(balance.locked);
       });
 
-      // Save to database using repository save (handles cascades)
+      // Save to database using upsert
       const accountInfoRepo =
         this.dataManager.dataSource.getRepository(AccountInfoEntity);
+      const balanceRepo = this.dataManager.dataSource.getRepository(BalanceEntity);
 
-      // Find existing account info or create new
-      let existingAccountInfo = await accountInfoRepo.findOne({
-        where: {
-          user: { id: userId },
-          exchange,
-        },
-        relations: ['balances'],
-      });
-
-      if (!existingAccountInfo) {
-        existingAccountInfo = accountInfoRepo.create({
+      // Upsert AccountInfoEntity
+      await accountInfoRepo.upsert(
+        {
           user: { id: userId },
           exchange,
           accountId: exchange, // Use exchange as accountId
@@ -158,35 +151,45 @@ export class BalanceTracker {
           canWithdraw: accountInfo.canWithdraw,
           canDeposit: accountInfo.canDeposit,
           updateTime: accountInfo.updateTime || timestamp,
-          balances: [],
-        });
-      } else {
-        // Update existing fields
-        existingAccountInfo.canTrade = accountInfo.canTrade;
-        existingAccountInfo.canWithdraw = accountInfo.canWithdraw;
-        existingAccountInfo.canDeposit = accountInfo.canDeposit;
-        existingAccountInfo.updateTime = accountInfo.updateTime || timestamp;
-      }
+        },
+        {
+          conflictPaths: ['user', 'exchange'],
+          skipUpdateIfNoValuesChanged: true,
+        },
+      );
 
-      // Clear existing balances and add new ones (cascade delete + insert)
-      if (existingAccountInfo.balances && existingAccountInfo.balances.length > 0) {
-        // Remove all existing balances - cascade will delete them
-        existingAccountInfo.balances = [];
-        await accountInfoRepo.save(existingAccountInfo);
-      }
-
-      // Now add new balances
-      existingAccountInfo.balances = accountInfo.balances.map((balance) => {
-        const balanceEntity = new BalanceEntity();
-        balanceEntity.accountInfo = existingAccountInfo!;
-        balanceEntity.asset = balance.asset;
-        balanceEntity.free = balance.free;
-        balanceEntity.locked = balance.locked;
-        balanceEntity.total = balance.total;
-        return balanceEntity;
+      // Get the account info to retrieve its ID
+      const existingAccountInfo = await accountInfoRepo.findOne({
+        where: {
+          user: { id: userId },
+          exchange,
+        },
       });
 
-      await accountInfoRepo.save(existingAccountInfo);
+      if (!existingAccountInfo) {
+        throw new Error(`Failed to find AccountInfo after upsert for ${exchange}`);
+      }
+
+      // Delete all existing balances for this account
+      await balanceRepo.delete({
+        accountInfo: { id: existingAccountInfo.id },
+      });
+
+      // Upsert new balances
+      if (accountInfo.balances.length > 0) {
+        const balanceEntities = accountInfo.balances.map((balance) => ({
+          accountInfo: { id: existingAccountInfo.id },
+          asset: balance.asset,
+          free: balance.free,
+          locked: balance.locked,
+          total: balance.total,
+        }));
+
+        await balanceRepo.upsert(balanceEntities, {
+          conflictPaths: ['accountInfo', 'asset'],
+          skipUpdateIfNoValuesChanged: true,
+        });
+      }
 
       this.totalSaved++;
       this.pendingUpdates.delete(key);

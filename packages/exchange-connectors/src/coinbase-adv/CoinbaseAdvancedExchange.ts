@@ -1125,18 +1125,24 @@ export class CoinbaseAdvancedExchange extends EventEmitter implements IExchange 
   }
 
   private transformTimeInForce(coinbaseTif: string): TimeInForce {
-    switch (coinbaseTif?.toUpperCase()) {
+    const normalized = (coinbaseTif || 'GTC').toUpperCase().trim();
+
+    switch (normalized) {
       case 'GOOD_UNTIL_CANCELLED':
+      case 'GOOD_UNTIL_CANCELED': // Handle both spellings
       case 'GTC':
-        return TimeInForce.GTC;
+        return 'GTC' as TimeInForce;
       case 'IMMEDIATE_OR_CANCEL':
       case 'IOC':
-        return TimeInForce.IOC;
+        return 'IOC' as TimeInForce;
       case 'FILL_OR_KILL':
       case 'FOK':
-        return TimeInForce.FOK;
+        return 'FOK' as TimeInForce;
       default:
-        return TimeInForce.GTC;
+        console.warn(
+          `[CoinbaseAdv] Unknown TimeInForce: ${coinbaseTif}, defaulting to GTC`,
+        );
+        return 'GTC' as TimeInForce;
     }
   }
 
