@@ -92,9 +92,27 @@ async function main(userId?: string) {
   logger.info('✅ TradingEngine initialized\n');
 
   // ============================================================
-  // Step 3: Initialize and Add Exchanges
+  // Step 3: Initialize Trackers (Order, Balance, Position)
+  // IMPORTANT: Trackers MUST be initialized BEFORE adding exchanges
+  // to ensure they capture initial balance/position snapshots
   // ============================================================
-  logger.info('📦 Step 3: Initializing exchanges...');
+  logger.info('📦 Step 3: Initializing trackers...');
+
+  const orderTracker = new OrderTracker(dataManager, logger);
+  await orderTracker.start();
+
+  const balanceTracker = new BalanceTracker(dataManager, logger);
+  await balanceTracker.start();
+
+  const positionTracker = new PositionTracker(dataManager, logger);
+  await positionTracker.start();
+
+  logger.info('✅ All trackers initialized\n');
+
+  // ============================================================
+  // Step 4: Initialize and Add Exchanges
+  // ============================================================
+  logger.info('📦 Step 4: Initializing exchanges...');
 
   const exchanges = new Map<string, IExchange>();
   const USE_MAINNET_FOR_DATA = true; // Use mainnet for market data
@@ -168,22 +186,6 @@ async function main(userId?: string) {
   logger.info(
     `✅ ${exchanges.size} exchange(s) initialized: ${Array.from(exchanges.keys()).join(', ')}\n`,
   );
-
-  // ============================================================
-  // Step 4: Initialize Trackers (Order, Balance, Position)
-  // ============================================================
-  logger.info('📦 Step 4: Initializing trackers...');
-
-  const orderTracker = new OrderTracker(dataManager, logger);
-  await orderTracker.start();
-
-  const balanceTracker = new BalanceTracker(dataManager, logger);
-  await balanceTracker.start();
-
-  const positionTracker = new PositionTracker(dataManager, logger);
-  await positionTracker.start();
-
-  logger.info('✅ All trackers initialized\n');
 
   // ============================================================
   // Step 5: Initialize Strategy Manager

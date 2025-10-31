@@ -39,7 +39,7 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
     strategyId: number,
     state: Partial<StrategyState>,
   ): Promise<void> {
-    // TODO: 实现策略状态保存逻辑
+    // TODO: 实现策略状态获取逻辑
     console.log(`Saving strategy state for ${strategyId}:`, state);
   }
 

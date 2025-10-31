@@ -907,7 +907,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       );
       // Store balances for this exchange
       this._balances.set(exchangeName, balances);
-      this._eventBus.emitBalanceUpdate({ balances, timestamp: new Date() });
+      this._eventBus.emitBalanceUpdate({
+        exchange: exchangeName,
+        balances,
+        timestamp: new Date(),
+      });
 
       // Notify strategies of specific balance update (push data only)
       this.onAccountUpdate({ balances, exchangeName });
@@ -919,7 +923,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       );
       // Store positions for this exchange
       this._positions.set(exchangeName, positions);
-      this._eventBus.emitPositionUpdate({ positions, timestamp: new Date() });
+      this._eventBus.emitPositionUpdate({
+        exchange: exchangeName,
+        positions,
+        timestamp: new Date(),
+      });
 
       // Notify strategies of specific position update
       this.onAccountUpdate({ positions, exchangeName });

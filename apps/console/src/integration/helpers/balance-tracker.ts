@@ -1,5 +1,9 @@
 import { ILogger, EventBus, AccountInfo } from '@itrade/core';
-import { TypeOrmDataManager } from '@itrade/data-manager';
+import {
+  TypeOrmDataManager,
+  AccountInfoEntity,
+  BalanceEntity,
+} from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
 
 interface DebouncedBalanceUpdate {
@@ -38,13 +42,18 @@ export class BalanceTracker {
   async start(): Promise<void> {
     this.logger.info('Starting Balance Tracker...');
 
-    // Listen for account updates (balance changes)
-    this.eventBus.on(
-      'accountUpdate',
-      (data: { exchange: string; accountInfo: AccountInfo }) => {
-        this.handleBalanceUpdate(data.exchange, data.accountInfo);
-      },
-    );
+    // Listen for balance updates using the correct event name
+    this.eventBus.onBalanceUpdate((data) => {
+      // Convert Balance[] to AccountInfo for backwards compatibility
+      const accountInfo: AccountInfo = {
+        balances: data.balances,
+        canTrade: true,
+        canWithdraw: true,
+        canDeposit: true,
+        updateTime: data.timestamp,
+      };
+      this.handleBalanceUpdate(data.exchange, accountInfo);
+    });
 
     this.logger.info(
       `✅ Balance Tracker started (debounce: ${this.DEBOUNCE_MS}ms per exchange)`,
@@ -109,8 +118,14 @@ export class BalanceTracker {
 
     try {
       const { accountInfo, exchange, timestamp } = update;
+      const userId = process.env.USER_ID;
 
-      // Calculate totals
+      if (!userId) {
+        this.logger.error('❌ USER_ID not found in environment variables');
+        return;
+      }
+
+      // Calculate totals for logging
       let totalBalance = new Decimal(0);
       let availableBalance = new Decimal(0);
       let lockedBalance = new Decimal(0);
@@ -120,6 +135,51 @@ export class BalanceTracker {
         availableBalance = availableBalance.add(balance.free);
         lockedBalance = lockedBalance.add(balance.locked);
       });
+
+      // Save to database using repository save (handles cascades)
+      const accountInfoRepo =
+        this.dataManager.dataSource.getRepository(AccountInfoEntity);
+
+      // Find existing account info or create new
+      let existingAccountInfo = await accountInfoRepo.findOne({
+        where: {
+          user: { id: userId },
+          exchange,
+        },
+        relations: ['balances'],
+      });
+
+      if (!existingAccountInfo) {
+        existingAccountInfo = accountInfoRepo.create({
+          user: { id: userId },
+          exchange,
+          accountId: exchange, // Use exchange as accountId
+          canTrade: accountInfo.canTrade,
+          canWithdraw: accountInfo.canWithdraw,
+          canDeposit: accountInfo.canDeposit,
+          updateTime: accountInfo.updateTime || timestamp,
+          balances: [],
+        });
+      } else {
+        // Update existing fields
+        existingAccountInfo.canTrade = accountInfo.canTrade;
+        existingAccountInfo.canWithdraw = accountInfo.canWithdraw;
+        existingAccountInfo.canDeposit = accountInfo.canDeposit;
+        existingAccountInfo.updateTime = accountInfo.updateTime || timestamp;
+      }
+
+      // Update balances (cascade will handle save/update)
+      existingAccountInfo.balances = accountInfo.balances.map((balance) => {
+        const balanceEntity = new BalanceEntity();
+        balanceEntity.accountInfo = existingAccountInfo!;
+        balanceEntity.asset = balance.asset;
+        balanceEntity.free = balance.free;
+        balanceEntity.locked = balance.locked;
+        balanceEntity.total = balance.total;
+        return balanceEntity;
+      });
+
+      await accountInfoRepo.save(existingAccountInfo);
 
       this.totalSaved++;
       this.pendingUpdates.delete(key);
@@ -139,7 +199,6 @@ export class BalanceTracker {
     this.logger.info(
       `🔄 Flushing ${this.pendingUpdates.size} pending balance updates...`,
     );
-
     // Cancel all timers and save immediately
     const promises: Promise<void>[] = [];
     for (const [key, update] of this.pendingUpdates) {

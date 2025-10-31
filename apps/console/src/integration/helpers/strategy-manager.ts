@@ -90,6 +90,7 @@ export class StrategyManager {
 
     // Start periodic database sync
     this.syncInterval = setInterval(() => {
+      this.logger.info('Syncing strategies with database...');
       this.syncStrategiesWithDatabase();
     }, this.SYNC_INTERVAL_MS);
 
@@ -153,7 +154,7 @@ export class StrategyManager {
 
       for (const dbStrategy of dbStrategies) {
         try {
-          await this.addStrategy(dbStrategy.id);
+          await this.addStrategy(dbStrategy);
         } catch (error) {
           this.logger.error(`Failed to load strategy ${dbStrategy.name}`, error as Error);
           // Mark strategy as error in database
@@ -198,7 +199,7 @@ export class StrategyManager {
             `🔄 [SYNC] Adding strategy to TradeEngine: ${dbStrategy.name} (ID: ${dbStrategy.id})`,
           );
           try {
-            await this.addStrategy(dbStrategy.id);
+            await this.addStrategy(dbStrategy);
             addedCount++;
           } catch (error) {
             this.logger.error(
@@ -233,12 +234,10 @@ export class StrategyManager {
     }
   }
 
-  private async addStrategy(strategyId: number): Promise<void> {
+  private async addStrategy(dbStrategy: StrategyEntity): Promise<void> {
     try {
-      const dbStrategy = await this.dataManager.getStrategy(strategyId);
-      if (!dbStrategy) {
-        throw new Error(`Strategy ${strategyId} not found in database`);
-      }
+      const strategyId = dbStrategy.id;
+      //const dbStrategy = await this.dataManager.getStrategy(strategyId);
 
       // Create strategy instance based on type
       const strategy = this.createStrategyInstance(dbStrategy);
@@ -332,7 +331,7 @@ export class StrategyManager {
         `   Type: ${dbStrategy.type}, Symbol: ${displaySymbol}, Exchange: ${dbStrategy.exchange || 'default'}`,
       );
     } catch (error) {
-      this.logger.error(`Failed to add strategy ${strategyId}`, error as Error);
+      this.logger.error(`Failed to add strategy ${dbStrategy.id}`, error as Error);
       throw error;
     }
   }

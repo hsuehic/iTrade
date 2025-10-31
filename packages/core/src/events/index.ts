@@ -71,11 +71,13 @@ export interface OrderEventData {
 }
 
 export interface BalanceUpdateEvent {
+  exchange: string; // Exchange name where the balances are from
   balances: Balance[];
   timestamp: Date;
 }
 
 export interface PositionUpdateEvent {
+  exchange: string; // Exchange name where the positions are from
   positions: Position[];
   timestamp: Date;
 }
