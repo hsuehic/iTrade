@@ -168,7 +168,14 @@ export class BalanceTracker {
         existingAccountInfo.updateTime = accountInfo.updateTime || timestamp;
       }
 
-      // Update balances (cascade will handle save/update)
+      // Clear existing balances and add new ones (cascade delete + insert)
+      if (existingAccountInfo.balances && existingAccountInfo.balances.length > 0) {
+        // Remove all existing balances - cascade will delete them
+        existingAccountInfo.balances = [];
+        await accountInfoRepo.save(existingAccountInfo);
+      }
+
+      // Now add new balances
       existingAccountInfo.balances = accountInfo.balances.map((balance) => {
         const balanceEntity = new BalanceEntity();
         balanceEntity.accountInfo = existingAccountInfo!;

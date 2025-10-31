@@ -4,7 +4,6 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -16,6 +15,7 @@ import { AccountInfoEntity } from './AccountInfo';
 
 @Entity('balances')
 @Index(['asset'])
+@Index(['accountInfo', 'asset'], { unique: true })
 export class BalanceEntity implements Balance {
   @PrimaryGeneratedColumn()
   id!: number;
