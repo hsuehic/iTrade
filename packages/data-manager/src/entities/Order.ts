@@ -20,7 +20,8 @@ import { OrderFillEntity } from './OrderFill';
 @Entity('orders')
 @Index(['symbol'])
 @Index(['status'])
-@Index(['timestamp'])
+@Index(['strategyId'])
+@Index(['exchange'])
 export class OrderEntity implements Order {
   @PrimaryGeneratedColumn()
   internalId!: number;
@@ -108,9 +109,14 @@ export class OrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   exchange?: string;
 
-  // 🆕 Strategy association metadata (application layer only, not persisted separately)
-  // Note: strategyId is managed by TypeORM via @JoinColumn below
-  // We declare it here for type compatibility with Order interface
+  // TypeORM relation - loads the full Strategy object when needed
+  @ManyToOne(() => StrategyEntity, (s) => s.orders, { nullable: true })
+  @JoinColumn({ name: 'strategyId' })
+  strategy?: StrategyEntity;
+
+  // Strategy ID - explicit column for direct ID access and indexing
+  // This works with @JoinColumn above - they reference the same database column
+  @Column({ type: 'integer', nullable: true })
   strategyId?: number;
 
   @Column({ type: 'text', nullable: true })
@@ -160,11 +166,6 @@ export class OrderEntity implements Order {
 
   @OneToMany(() => OrderFillEntity, (f) => f.order, { cascade: true })
   fills?: OrderFillEntity[];
-
-  // TypeORM relation - this automatically creates/manages strategyId column in database
-  @ManyToOne(() => StrategyEntity, (s) => s.orders, { nullable: true })
-  @JoinColumn({ name: 'strategyId' })
-  strategy?: StrategyEntity;
 
   @ManyToOne(() => PositionEntity, (p) => p.orders, { nullable: true })
   @JoinColumn({ name: 'positionId' })
