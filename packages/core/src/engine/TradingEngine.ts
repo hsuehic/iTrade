@@ -634,7 +634,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         (() => {
           const timestamp = Date.now();
           const idPart = strategyId ? String(strategyId) : 'id';
-          return `s-${idPart}-${timestamp}`.slice(0, 32);
+          return `s${idPart}${timestamp}`.slice(0, 32);
         })();
 
       // Create order object for risk checking (with adjusted values)
@@ -871,6 +871,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         orders.push(order);
       }
       this._orders.set(exchangeName, orders);
+      order.exchange = exchange.name;
 
       // Emit order event based on status
       switch (order.status) {

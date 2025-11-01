@@ -20,6 +20,8 @@ interface DebouncedOrderUpdate {
 export class OrderTracker {
   private eventBus: EventBus;
   private pendingPartialFills = new Map<string, DebouncedOrderUpdate>();
+  private orders: Map<string, Order> = new Map();
+  private filledOrders: Map<string, Order> = new Map();
   private totalOrders = 0;
   private totalFilled = 0;
   private totalPartialFills = 0;
@@ -96,7 +98,10 @@ export class OrderTracker {
 
   private async handleOrderCreated(order: Order): Promise<void> {
     try {
-      this.totalOrders++;
+      if (!this.orders.has(order.id)) {
+        this.totalOrders++;
+      }
+      this.orders.set(order.id, order);
 
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
@@ -130,7 +135,10 @@ export class OrderTracker {
 
   private async handleOrderFilled(order: Order): Promise<void> {
     try {
-      this.totalFilled++;
+      if (!this.filledOrders.has(order.id)) {
+        this.totalFilled++;
+      }
+      this.filledOrders.set(order.id, order);
 
       // Cancel any pending partial fill update for this order
       const pending = this.pendingPartialFills.get(order.id);

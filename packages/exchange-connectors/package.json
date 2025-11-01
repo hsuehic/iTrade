@@ -28,7 +28,6 @@
     "@types/uuid": "^9.0.8",
     "@types/ws": "^8.5.10",
     "axios": "^1.6.7",
-    "coinbase-api": "^1.1.6",
     "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
     "jsonwebtoken": "^9.0.2",

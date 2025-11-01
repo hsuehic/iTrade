@@ -325,9 +325,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
     const { exchangeName, klines, orders, positions, symbol, ticker } = dataUpdate;
-    this._logger.info(
-      `[${exchangeName}] [${this._strategyName}] Analyzing data update: ${JSON.stringify(dataUpdate, null, 2)}`,
-    );
+    this._logger.info(`[${exchangeName}] [${this._strategyName}] Analyzing data update`);
     if (exchangeName == this._exchangeName) {
       if (positions) {
         this.handlePosition(positions);
@@ -367,7 +365,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           if (volatility >= minVolatility && kline.isClosed) {
             const price = kline.open.add(kline.close).dividedBy(2);
             if (kline.close.gt(kline.open)) {
-              console.log('✅ analyze: Generating entry signal...');
               const tempSize = this.size + this.baseSize;
               if (tempSize <= this.maxSize) {
                 // 🆕 使用新的信号生成方法
