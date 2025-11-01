@@ -214,10 +214,28 @@ export interface AccountInfo {
   updateTime: Date;
 }
 
-// Note: StrategyParameters is now defined in strategy-types.ts and re-exported above
+export enum SignalType {
+  Entry = 'entry',
+  TakeProfit = 'take_profit',
+  StopLoss = 'stop_loss',
+  TrailingStop = 'trailing_stop',
+}
 
-export interface StrategyResult {
-  action: 'buy' | 'sell' | 'hold';
+export interface SignalMetaData {
+  signalType: SignalType;
+  timestamp?: number;
+  clientOrderId?: string;
+  parentOrderId?: string;
+  entryPrice?: string;
+  takeProfitPrice?: string;
+  profitRatio?: number;
+}
+
+export type StrategyResult = StrategyOrderResult | StrategyHoldResult;
+
+export interface StrategyOrderResult {
+  action: 'buy' | 'sell';
+  clientOrderId: string;
   quantity?: Decimal;
   price?: Decimal; // Limit price for the main/initial order
   confidence?: number;
@@ -226,16 +244,12 @@ export interface StrategyResult {
   // Trading mode and leverage (for futures/margin)
   tradeMode?: TradeMode; // cash=spot, isolated/cross=margin/futures
   leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)
+  metadata?: SignalMetaData;
+}
 
-  // 🆕 Metadata for signal classification and additional context
-  metadata?: {
-    signalType?: 'entry' | 'take_profit' | 'stop_loss' | 'trailing_stop' | string;
-    parentOrderId?: string; // Link to parent order for TP/SL orders
-    [key: string]: any; // Extensible for strategy-specific data
-  };
-
-  // Note: Stop loss and take profit should be implemented as separate orders
-  // after the main order is filled, not as part of the initial order creation
+export interface StrategyHoldResult {
+  action: 'hold';
+  reason?: string;
 }
 
 // Exchange Types

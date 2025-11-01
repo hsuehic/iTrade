@@ -734,7 +734,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const side = signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
 
       // 🆕 Extract clientOrderId from signal metadata
-      const clientOrderId = signal.metadata?.clientOrderId;
+      const clientOrderId = signal.clientOrderId;
 
       const executedOrder = await this.executeOrder({
         // exchange: exchangeName,

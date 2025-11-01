@@ -23,6 +23,7 @@ import {
   OrderBook,
   Trade,
   OrderSide,
+  SignalType,
 } from '../types';
 import { ConsoleLogger } from './ConsoleLogger';
 
@@ -51,6 +52,9 @@ export abstract class BaseStrategy<
   protected _lastSignalTime?: Date;
   protected _stateVersion = '1.0.0'; // Override in subclasses if needed
   protected _logger: ILogger;
+
+  // 🆕 订单序列号（用于生成唯一 clientOrderId）
+  protected orderSequence: number = 0;
 
   public get strategyType(): string {
     return this._strategyType;
@@ -115,6 +119,20 @@ export abstract class BaseStrategy<
 
   public get context(): StrategyRuntimeContext {
     return { ...this._context };
+  }
+
+  /**
+   * 🆕 生成唯一的 clientOrderId
+   * OKX要求: 字母数字字符, 最大长度32字符
+   */
+  protected generateClientOrderId(type: SignalType): string {
+    this.orderSequence++;
+    // 使用更短的时间戳（去掉毫秒的后3位）和前缀
+    const shortTimestamp = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
+    const strategyId = this.getStrategyId();
+    // 主订单格式: E{strategyId}D{sequence}D{timestamp} , 止盈订单: T{strategyId}D{sequence}D{timestamp}
+    const typePrefix = type === SignalType.Entry ? 'E' : 'T';
+    return `${typePrefix}${strategyId}D${this.orderSequence}D${shortTimestamp}`;
   }
 
   public abstract analyze(marketData: DataUpdate): Promise<StrategyResult>;

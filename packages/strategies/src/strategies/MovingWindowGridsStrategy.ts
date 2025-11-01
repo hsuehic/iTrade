@@ -12,20 +12,11 @@ import {
   DataUpdate,
   StrategyParameters,
   TradeMode,
+  SignalType,
+  SignalMetaData,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
-
-interface SignaMetaData {
-  signalType: 'entry' | 'take_profit' | 'stop_loss' | 'trailing_stop';
-  reason?: string;
-  timestamp: number;
-  clientOrderId: string;
-  parentOrderId?: string;
-  entryPrice?: string;
-  takeProfitPrice?: string;
-  profitRatio?: number;
-}
 
 /**
  * 📊 MovingWindowGridsStrategy 参数
@@ -170,13 +161,11 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   // 🆕 Signal and order tracking
   private pendingSignals: Map<string, StrategyResult> = new Map();
   // 🆕 订单元数据映射：clientOrderId -> metadata
-  private orderMetadataMap: Map<string, SignaMetaData> = new Map();
+  private orderMetadataMap: Map<string, SignalMetaData> = new Map();
   // 🆕 待处理的止盈订单队列：存储已成交的主订单，等待生成止盈信号
   private pendingTakeProfitOrders: Map<string, Order> = new Map();
   // 🆕 止盈订单追踪
   private takeProfitOrders: Map<string, Order> = new Map();
-  // 🆕 订单序列号（用于生成唯一 clientOrderId）
-  private orderSequence: number = 0;
 
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
     super(config);
@@ -232,35 +221,13 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   }
 
   /**
-   * 🆕 生成唯一的 clientOrderId
-   * OKX要求: 字母数字字符, 最大长度32字符
-   */
-  private generateClientOrderId(type: string): string {
-    this.orderSequence++;
-    // 使用更短的时间戳（去掉毫秒的后3位）和前缀
-    const shortTimestamp = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
-    const strategyId = this.getStrategyId();
-    // 格式: S{strategyId}{type首字母}{sequence}{timestamp}
-    // 例如: S2E11730089500 (19字符) 或 S2TP11730089500 (21字符)
-    const typePrefix =
-      type === 'entry'
-        ? 'E'
-        : type === 'take_profit'
-          ? 'TP'
-          : type.substring(0, 2).toUpperCase();
-    return `${typePrefix}${strategyId}${this.orderSequence}${shortTimestamp}`;
-  }
-
-  /**
    * 🆕 生成主信号（入场信号）- 根据市场行情产生
    */
   private generateEntrySignal(price: Decimal, quantity: Decimal): StrategyResult {
-    const clientOrderId = this.generateClientOrderId('entry');
-    const metadata: SignaMetaData = {
-      signalType: 'entry',
-      reason: 'volatility_breakout',
+    const clientOrderId = this.generateClientOrderId(SignalType.Entry);
+    const metadata: SignalMetaData = {
+      signalType: SignalType.Entry,
       timestamp: Date.now(),
-      clientOrderId, // 预存 clientOrderId 用于后续关联
     };
 
     // 保存 metadata 映射
@@ -273,6 +240,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       action: 'buy',
       price,
       quantity,
+      clientOrderId: this.generateClientOrderId(SignalType.Entry),
       leverage: this.leverage,
       tradeMode: this.tradeMode,
       reason: 'volatility_breakout',
@@ -284,14 +252,14 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * 🆕 生成止盈信号 - 根据订单成交情况产生
    */
   private generateTakeProfitSignal(parentOrder: Order): StrategyResult {
-    const clientOrderId = this.generateClientOrderId('tp');
+    const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
 
     // 计算止盈价格（基于成交均价）
     const entryPrice = parentOrder.averagePrice || parentOrder.price!;
     const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio);
 
-    const metadata: SignaMetaData = {
-      signalType: 'take_profit',
+    const metadata: SignalMetaData = {
+      signalType: SignalType.TakeProfit,
       parentOrderId: parentOrder.clientOrderId,
       entryPrice: entryPrice.toString(),
       takeProfitPrice: takeProfitPrice.toString(),
@@ -320,6 +288,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       reason: 'take_profit',
       metadata,
       tradeMode: this.tradeMode,
+      clientOrderId,
     };
   }
 

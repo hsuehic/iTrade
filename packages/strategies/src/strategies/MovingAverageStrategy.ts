@@ -6,6 +6,7 @@ import {
   StrategyRecoveryContext,
   DataUpdate,
   StrategyParameters,
+  SignalType,
 } from '@itrade/core';
 import { StrategyRegistryConfig } from '../type';
 
@@ -161,6 +162,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       confidence,
       reason:
         reason || `Fast MA: ${fastValue.toFixed(2)}, Slow MA: ${slowValue.toFixed(2)}`,
+      clientOrderId: this.generateClientOrderId(SignalType.Entry),
     };
   }
 

@@ -11,6 +11,7 @@ import {
   StrategyParameters,
   DataUpdate,
   TradeMode,
+  SignalType,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
@@ -374,6 +375,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
       return {
         action: 'buy',
+        clientOrderId: this.generateClientOrderId(SignalType.Entry),
         price,
         quantity,
         leverage: 1,
@@ -392,6 +394,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
       return {
         action: 'sell',
+        clientOrderId: this.generateClientOrderId(SignalType.Entry),
         price,
         quantity,
         leverage: 1,
