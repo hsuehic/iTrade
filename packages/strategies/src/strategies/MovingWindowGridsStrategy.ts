@@ -158,8 +158,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private leverage!: number;
   private tradeMode!: TradeMode;
 
-  // 🆕 Signal and order tracking
-  private pendingSignals: Map<string, StrategyResult> = new Map();
   // 🆕 订单元数据映射：clientOrderId -> metadata
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
   // 🆕 待处理的止盈订单队列：存储已成交的主订单，等待生成止盈信号
@@ -240,6 +238,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       action: 'buy',
       price,
       quantity,
+      symbol: this._symbol,
       clientOrderId: this.generateClientOrderId(SignalType.Entry),
       leverage: this.leverage,
       tradeMode: this.tradeMode,
@@ -283,6 +282,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     return {
       action: 'sell',
       price: takeProfitPrice,
+      symbol: this._symbol,
       leverage: this.leverage,
       quantity: parentOrder.executedQuantity || parentOrder.quantity,
       reason: 'take_profit',
@@ -293,7 +293,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   }
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
-    const { exchangeName, klines, orders, positions, symbol, ticker } = dataUpdate;
+    const { exchangeName, klines, orders, positions, symbol } = dataUpdate;
     if (
       exchangeName == this._exchangeName ||
       this.context.subscription?.exchange?.includes(exchangeName || '')
@@ -322,13 +322,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           }
         }
 
-        if (ticker) {
-          const result = this.handleTicker(ticker);
-          if (result) {
-            return result;
-          }
-        }
-
         if (!!klines && klines.length > 0) {
           const kline = klines[klines.length - 1];
 
@@ -341,7 +334,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             if (kline.close.gt(kline.open)) {
               const tempSize = this.size + this.baseSize;
               if (tempSize <= this.maxSize) {
-                // 🆕 使用新的信号生成方法
                 const signal = this.generateEntrySignal(
                   price,
                   new Decimal(this.baseSize),
@@ -361,7 +353,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   }
 
   private handlePosition(positions: Position[]): void {
-    const position = positions.find((p) => p.symbol === this._context.symbol);
+    const position = positions.find((p) => p.symbol === this._symbol);
     if (position) {
       this._logger.info(
         `[${this._exchangeName}] [${this._strategyName}] Pushed position:`,
@@ -369,15 +361,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this._logger.info(JSON.stringify(position, null, 2));
       this.position = position;
     }
-  }
-
-  private handleTicker(ticker: Ticker): StrategyResult | null {
-    const key = ticker.price.toString();
-    const signal = this.pendingSignals.get(key);
-    if (signal) {
-      return signal;
-    }
-    return null;
   }
 
   private handleOrder(orders: Order[]): void {
@@ -420,37 +403,12 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const signalType = metadata.signalType;
 
     if (signalType === 'entry') {
-      this._logger.info(`🎯 [Entry Order Created]`);
-      this._logger.info(`   Client Order ID: ${order.clientOrderId}`);
-      this._logger.info(`   Order ID: ${order.id}`);
-      this._logger.info(`   Symbol: ${order.symbol}`);
-      this._logger.info(`   Side: ${order.side}, Type: ${order.type}`);
-      this._logger.info(
-        `   Price: ${order.price?.toString()}, Quantity: ${order.quantity.toString()}`,
-      );
-      this._logger.info(`   Status: ${order.status}`);
       this.size += this.baseSize;
-
-      // 保存主订单
       this.orders.set(order.clientOrderId, order);
     } else if (signalType === 'take_profit') {
-      this._logger.info(`💰 [Take Profit Order Created]`);
-      this._logger.info(`   Client Order ID: ${order.clientOrderId}`);
-      this._logger.info(`   Order ID: ${order.id}`);
-      this._logger.info(`   Parent Order: ${metadata.parentOrderId}`);
-      this._logger.info(`   Entry Price: ${metadata.entryPrice}`);
-      this._logger.info(
-        `   TP Price: ${order.price?.toString()} (+${(metadata.profitRatio! * 100).toFixed(2)}%)`,
-      );
-      this._logger.info(`   Quantity: ${order.quantity.toString()}`);
-      this._logger.info(`   Status: ${order.status}`);
-
-      // 保存止盈订单
       this.takeProfitOrders.set(order.clientOrderId, order);
       this.orders.set(order.clientOrderId, order);
     } else {
-      this._logger.info(`📝 [Order Created] Signal Type: ${signalType || 'unknown'}`);
-      this._logger.info(`   Client Order ID: ${order.clientOrderId}`);
       this.orders.set(order.clientOrderId, order);
     }
   }
@@ -460,7 +418,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * 从 EventBus 订阅调用，可能包含非本策略的订单
    */
   public override async onOrderFilled(order: Order): Promise<void> {
-    this._logger.info(`[MovingWindowGridsStrategy] Order Filled: ${order.clientOrderId}`);
     if (!order.clientOrderId) {
       return;
     }
@@ -485,22 +442,10 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const signalType = metadata.signalType;
 
     if (signalType === 'entry') {
-      this._logger.info(`✅ [Entry Order Filled]`);
-      this._logger.info(`   Client Order ID: ${order.clientOrderId}`);
-      this._logger.info(`   Executed Quantity: ${order.executedQuantity?.toString()}`);
-      this._logger.info(`   Average Price: ${order.averagePrice?.toString()}`);
-      this._logger.info(`   💡 Scheduling take profit order creation...`);
-
       // 🔥 关键：将已成交的主订单加入待处理队列
       // 下次 analyze 调用时会生成止盈信号
       this.pendingTakeProfitOrders.set(order.clientOrderId, order);
     } else if (signalType === 'take_profit') {
-      this._logger.info(`💰 [Take Profit Order Filled]`);
-      this._logger.info(`   Client Order ID: ${order.clientOrderId}`);
-      this._logger.info(`   Parent Order: ${metadata.parentOrderId}`);
-      this._logger.info(`   Executed Quantity: ${order.executedQuantity?.toString()}`);
-      this._logger.info(`   Average Price: ${order.averagePrice?.toString()}`);
-
       // calculate profit
       const entryPrice = new Decimal(metadata.entryPrice!);
       const exitPrice = order.averagePrice || order.price!;
@@ -536,7 +481,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.takeProfitOrders.clear();
     this.pendingTakeProfitOrders.clear();
     this.orderMetadataMap.clear();
-    this.pendingSignals.clear();
 
     // 清理市场数据
     this.tickers = new FixedLengthList<Ticker>(15);
