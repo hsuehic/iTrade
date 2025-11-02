@@ -715,7 +715,11 @@ export class BinanceExchange extends BaseExchange {
 
       switch (eventType) {
         case '24hrTicker':
-          this.emit('ticker', originalSymbol, this.transformBinanceTicker(message));
+          this.emit(
+            'ticker',
+            originalSymbol,
+            this.transformBinanceTicker(originalSymbol, message),
+          );
           break;
         case 'depthUpdate':
         case 'depthSnapshot':
@@ -723,18 +727,22 @@ export class BinanceExchange extends BaseExchange {
           this.emit(
             'orderbook',
             originalSymbol,
-            this.transformBinanceOrderBook(message, normalizedSymbol),
+            this.transformBinanceOrderBook(message, originalSymbol),
           );
           break;
         case 'trade':
           this.emit(
             'trade',
             originalSymbol,
-            this.transformBinanceTrade(message, normalizedSymbol),
+            this.transformBinanceTrade(message, originalSymbol),
           );
           break;
         case 'kline':
-          this.emit('kline', originalSymbol, this.transformBinanceKline(message.k));
+          this.emit(
+            'kline',
+            originalSymbol,
+            this.transformBinanceKline(originalSymbol, message.k),
+          );
           break;
         default:
           console.warn(`[Binance] Unknown event type: ${eventType}`);
@@ -1111,9 +1119,9 @@ export class BinanceExchange extends BaseExchange {
     return typeMap[type] || OrderType.LIMIT;
   }
 
-  private transformBinanceTicker(data: any): Ticker {
+  private transformBinanceTicker(originalSymbol: string, data: any): Ticker {
     return {
-      symbol: data.s,
+      symbol: originalSymbol,
       price: this.formatDecimal(data.c),
       volume: this.formatDecimal(data.v),
       timestamp: new Date(),
@@ -1157,9 +1165,9 @@ export class BinanceExchange extends BaseExchange {
     };
   }
 
-  private transformBinanceKline(data: any): Kline {
+  private transformBinanceKline(originalSymbol: string, data: any): Kline {
     return {
-      symbol: data.s,
+      symbol: originalSymbol,
       interval: data.i,
       openTime: this.formatTimestamp(data.t),
       closeTime: this.formatTimestamp(data.T),

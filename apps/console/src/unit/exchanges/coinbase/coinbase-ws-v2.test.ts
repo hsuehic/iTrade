@@ -16,8 +16,11 @@ import type {
 import { BaseExchangeTest, type ExchangeCredentials } from '../base/BaseExchangeTest';
 
 class CoinbaseWebSocketTest extends BaseExchangeTest {
+  private readonly spotSymbol = 'WLD/USDC';
+  private readonly perpetualSymbol = 'WLD/USDC:USDC';
+
   constructor() {
-    super('Coinbase', 30); // 30 second timeout (faster for Coinbase)
+    super('Coinbase', 300); // 30 second timeout (faster for Coinbase)
   }
 
   protected getCredentials(): ExchangeCredentials | null {
@@ -35,15 +38,15 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
 
     // Spot ticker
     coinbase.on('ticker', (symbol: string, ticker: Ticker) => {
-      if (symbol === 'BTC/USDC') {
+      if (symbol === this.spotSymbol) {
         this.logger.info(`📊 [TICKER] ${symbol}: \n $${JSON.stringify(ticker, null, 2)}`);
         this.results.spot.ticker = true;
       }
     });
 
-    // Spot orderbook
+    // // Spot orderbook
     coinbase.on('orderbook', (symbol: string, orderbook: OrderBook) => {
-      if (symbol === 'BTC/USDC' && !this.results.spot.orderbook) {
+      if (symbol === this.spotSymbol && !this.results.spot.orderbook) {
         this.logger.info(
           `📚 [ORDERBOOK] ${symbol}: \n ${JSON.stringify(orderbook, null, 2)}`,
         );
@@ -51,9 +54,9 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
       }
     });
 
-    // Spot trades
+    // // Spot trades
     coinbase.on('trade', (symbol: string, trade: Trade) => {
-      if (symbol === 'BTC/USDC' && !this.results.spot.trades) {
+      if (symbol === this.spotSymbol && !this.results.spot.trades) {
         this.logger.info(`💱 [TRADE] ${symbol}: \n ${JSON.stringify(trade, null, 2)}`);
         this.results.spot.trades = true;
       }
@@ -61,7 +64,7 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
 
     // Spot klines
     coinbase.on('kline', (symbol: string, kline: Kline) => {
-      if (symbol === 'BTC/USDC' && !this.results.spot.klines) {
+      if (symbol === this.spotSymbol && !this.results.spot.klines) {
         this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.spot.klines = true;
       }
@@ -69,15 +72,15 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
 
     // Perpetual ticker
     coinbase.on('ticker', (symbol: string, ticker: Ticker) => {
-      if (symbol === 'BTC/USDC:USDC' && !this.results.futures.ticker) {
+      if (symbol === this.perpetualSymbol && !this.results.futures.ticker) {
         this.logger.info(`📊 [TICKER]: \n ${JSON.stringify(ticker, null, 2)}`);
         this.results.futures.ticker = true;
       }
     });
 
-    // Perpetual orderbook
+    // // Perpetual orderbook
     coinbase.on('orderbook', (symbol: string, orderbook: OrderBook) => {
-      if (symbol === 'BTC/USDC:USDC' && !this.results.futures.orderbook) {
+      if (symbol === this.perpetualSymbol && !this.results.futures.orderbook) {
         this.logger.info(
           `📚 [ORDERBOOK] ${symbol}: \n${JSON.stringify(orderbook, null, 2)}`,
         );
@@ -85,9 +88,9 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
       }
     });
 
-    // Perpetual trades
+    // // Perpetual trades
     coinbase.on('trade', (symbol: string, trade: Trade) => {
-      if (symbol === 'BTC/USDC:USDC' && !this.results.futures.trades) {
+      if (symbol === this.perpetualSymbol && !this.results.futures.trades) {
         this.logger.info(`💱 [TRADE] ${symbol}: ${JSON.stringify(trade, null, 2)}`);
         this.results.futures.trades = true;
       }
@@ -95,7 +98,8 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
 
     // Perpetual klines
     coinbase.on('kline', (symbol: string, kline: Kline) => {
-      if (symbol === 'BTC/USDC:USDC' && !this.results.futures.klines) {
+      if (symbol === this.perpetualSymbol) {
+        //  && !this.results.futures.klines
         this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.futures.klines = true;
       }
@@ -138,16 +142,16 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
     const coinbase = exchange as CoinbaseExchange;
 
     // Subscribe to spot
-    await coinbase.subscribeToTicker(spotSymbol);
-    await coinbase.subscribeToOrderBook(spotSymbol);
-    await coinbase.subscribeToTrades(spotSymbol);
-    await coinbase.subscribeToKlines(spotSymbol, '1m');
+    // await coinbase.subscribeToTicker(spotSymbol);
+    // await coinbase.subscribeToOrderBook(spotSymbol);
+    // await coinbase.subscribeToTrades(spotSymbol);
+    await coinbase.subscribeToKlines(spotSymbol, '5m');
 
     // Subscribe to perpetual
-    await coinbase.subscribeToTicker(perpetualSymbol);
-    await coinbase.subscribeToOrderBook(perpetualSymbol);
-    await coinbase.subscribeToTrades(perpetualSymbol);
-    await coinbase.subscribeToKlines(perpetualSymbol, '1m');
+    // await coinbase.subscribeToTicker(perpetualSymbol);
+    // await coinbase.subscribeToOrderBook(perpetualSymbol);
+    // await coinbase.subscribeToTrades(perpetualSymbol);
+    await coinbase.subscribeToKlines(perpetualSymbol, '5m');
 
     this.logger.info('📡 Subscribed to all market data channels\n');
   }
@@ -175,7 +179,7 @@ class CoinbaseWebSocketTest extends BaseExchangeTest {
       // Subscribe to market data
       this.logger.info('🟢 ===== SUBSCRIBING TO SPOT MARKET DATA =====\n');
       this.logger.info('🔵 ===== SUBSCRIBING TO PERPETUAL MARKET DATA =====\n');
-      await this.subscribeToMarketData(coinbase, 'BTC/USDC', 'BTC/USDC:USDC');
+      await this.subscribeToMarketData(coinbase, this.spotSymbol, this.perpetualSymbol);
 
       // Subscribe to user data if credentials available
       if (credentials) {

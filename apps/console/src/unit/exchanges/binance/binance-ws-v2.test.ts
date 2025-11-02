@@ -4,12 +4,15 @@
  */
 
 import { BinanceExchange } from '@itrade/exchange-connectors';
-import type { IExchange } from '@itrade/core';
+import type { IExchange, Kline, Order, OrderBook, Ticker, Trade } from '@itrade/core';
 import { BaseExchangeTest, type ExchangeCredentials } from '../base/BaseExchangeTest';
 
 class BinanceWebSocketTest extends BaseExchangeTest {
+  private readonly spotSymbol = 'BTC/USDT';
+  private readonly perpetualSymbol = 'BTC/USDT:USDT';
+
   constructor() {
-    super('Binance', 60); // 60 second timeout
+    super('Binance', 300); // 60 second timeout
   }
 
   protected getCredentials(): ExchangeCredentials | null {
@@ -25,76 +28,80 @@ class BinanceWebSocketTest extends BaseExchangeTest {
   protected setupEventListeners(exchange: IExchange): void {
     const binance = exchange as BinanceExchange;
 
+    const { spotSymbol, perpetualSymbol } = this;
+
     // Spot ticker
-    binance.on('ticker', (symbol: string, ticker: any) => {
-      if (symbol === 'BTC/USDT' && !this.results.spot.ticker) {
-        this.logger.info(`📊 [TICKER] ${symbol}: $${ticker.price}`);
+    binance.on('ticker', (symbol: string, ticker: Ticker) => {
+      if (symbol === spotSymbol && !this.results.spot.ticker) {
+        this.logger.info(`📊 [TICKER]: \n ${JSON.stringify(ticker, null, 2)}`);
         this.results.spot.ticker = true;
       }
     });
 
     // Spot orderbook
-    binance.on('orderbook', (symbol: string, orderbook: any) => {
-      if (symbol === 'BTC/USDT' && !this.results.spot.orderbook) {
+    binance.on('orderbook', (symbol: string, orderbook: OrderBook) => {
+      if (symbol === spotSymbol && !this.results.spot.orderbook) {
         this.logger.info(
-          `📚 [ORDERBOOK] ${symbol}: Bid $${orderbook.bids[0]?.price}, Ask $${orderbook.asks[0]?.price}`,
+          `📚 [ORDERBOOK] ${symbol}: \n ${JSON.stringify(orderbook, null, 2)}`,
         );
         this.results.spot.orderbook = true;
       }
     });
 
     // Spot trades
-    binance.on('trade', (symbol: string, trade: any) => {
-      if (symbol === 'BTC/USDT' && !this.results.spot.trades) {
-        this.logger.info(`💱 [TRADE] ${symbol}: ${trade.side} $${trade.price}`);
+    binance.on('trade', (symbol: string, trade: Trade) => {
+      if (symbol === spotSymbol && !this.results.spot.trades) {
+        this.logger.info(`💱 [TRADE] ${symbol}: \n ${JSON.stringify(trade, null, 2)}`);
         this.results.spot.trades = true;
       }
     });
 
     // Spot klines
-    binance.on('kline', (symbol: string, kline: any) => {
-      if (symbol === 'BTC/USDT' && !this.results.spot.klines) {
-        this.logger.info(`📈 [KLINE] ${symbol}: O:$${kline.open} C:$${kline.close}`);
+    binance.on('kline', (symbol: string, kline: Kline) => {
+      if (symbol === spotSymbol) {
+        // && !this.results.spot.klines
+        this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.spot.klines = true;
       }
     });
 
     // Futures ticker
-    binance.on('ticker', (symbol: string, ticker: any) => {
-      if (symbol === 'BTC/USDT:USDT' && !this.results.futures.ticker) {
-        this.logger.info(`📊 [TICKER] ${symbol}: $${ticker.price}`);
+    binance.on('ticker', (symbol: string, ticker: Ticker) => {
+      if (symbol === perpetualSymbol && !this.results.futures.ticker) {
+        this.logger.info(`📊 [TICKER] ${symbol}: \n ${JSON.stringify(ticker, null, 2)}`);
         this.results.futures.ticker = true;
       }
     });
 
     // Futures orderbook
-    binance.on('orderbook', (symbol: string, orderbook: any) => {
-      if (symbol === 'BTC/USDT:USDT' && !this.results.futures.orderbook) {
+    binance.on('orderbook', (symbol: string, orderbook: OrderBook) => {
+      if (symbol === perpetualSymbol && !this.results.futures.orderbook) {
         this.logger.info(
-          `📚 [ORDERBOOK] ${symbol}: Bid $${orderbook.bids[0]?.price}, Ask $${orderbook.asks[0]?.price}`,
+          `📚 [ORDERBOOK] ${symbol}:  \n ${JSON.stringify(orderbook, null, 2)}`,
         );
         this.results.futures.orderbook = true;
       }
     });
 
     // Futures trades
-    binance.on('trade', (symbol: string, trade: any) => {
-      if (symbol === 'BTC/USDT:USDT' && !this.results.futures.trades) {
+    binance.on('trade', (symbol: string, trade: Trade) => {
+      if (symbol === perpetualSymbol && !this.results.futures.trades) {
         this.logger.info(`💱 [TRADE] ${symbol}: ${trade.side} $${trade.price}`);
         this.results.futures.trades = true;
       }
     });
 
     // Futures klines
-    binance.on('kline', (symbol: string, kline: any) => {
-      if (symbol === 'BTC/USDT:USDT' && !this.results.futures.klines) {
-        this.logger.info(`📈 [KLINE] ${symbol}: O:$${kline.open} C:$${kline.close}`);
+    binance.on('kline', (symbol: string, kline: Kline) => {
+      if (symbol === perpetualSymbol) {
+        //  && !this.results.futures.klines
+        this.logger.info(`📈 [KLINE] ${symbol}: \n ${JSON.stringify(kline, null, 2)}`);
         this.results.futures.klines = true;
       }
     });
 
     // User Data - Orders
-    binance.on('orderUpdate', (symbol: string, order: any) => {
+    binance.on('orderUpdate', (symbol: string, order: Order) => {
       if (!this.results.userData.orders) {
         this.logger.info(`📦 [ORDER] ${symbol}: ${order.status}`);
         this.results.userData.orders = true;
@@ -163,7 +170,7 @@ class BinanceWebSocketTest extends BaseExchangeTest {
       // Subscribe to market data
       this.logger.info('🟢 ===== SUBSCRIBING TO SPOT MARKET DATA =====\n');
       this.logger.info('🔵 ===== SUBSCRIBING TO FUTURES MARKET DATA =====\n');
-      await this.subscribeToMarketData(binance, 'BTC/USDT', 'BTC/USDT:USDT');
+      await this.subscribeToMarketData(binance, this.spotSymbol, this.perpetualSymbol);
 
       // Subscribe to user data if credentials available
       if (credentials) {

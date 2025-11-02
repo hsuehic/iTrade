@@ -758,9 +758,14 @@ export class CoinbaseExchange extends BaseExchange {
         if (msg.events) {
           for (const e of msg.events) {
             for (const c of e.candles || []) {
+              console.log(
+                '[Coinbase] Received candles message:',
+                JSON.stringify(c, null, 2),
+              );
               const originalSymbol = this.symbolMap.get(c.product_id) || c.product_id;
+              const openTime = new Date(c.start * 1000);
               const closeTime = new Date(
-                new Date(c.start).getTime() + (c.granularity || 60) * 1000,
+                openTime.getTime() + (c.granularity || 300) * 1000,
               );
               // Coinbase doesn't have explicit isClosed field, so we determine it by comparing with current time
               // If current time is past the expected close time, the candle is closed
@@ -770,7 +775,7 @@ export class CoinbaseExchange extends BaseExchange {
               this.emit('kline', originalSymbol, {
                 symbol: originalSymbol,
                 interval: c.granularity?.toString() || '',
-                openTime: new Date(c.start),
+                openTime: openTime,
                 closeTime: closeTime,
                 open: this.formatDecimal(c.open),
                 high: this.formatDecimal(c.high),
