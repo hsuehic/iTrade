@@ -239,7 +239,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       price,
       quantity,
       symbol: this._symbol,
-      clientOrderId: this.generateClientOrderId(SignalType.Entry),
+      clientOrderId, // ✅ FIX: Use the same clientOrderId that was stored with metadata
       leverage: this.leverage,
       tradeMode: this.tradeMode,
       reason: 'volatility_breakout',
@@ -295,7 +295,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
     const { exchangeName, klines, orders, positions, symbol } = dataUpdate;
     if (
-      exchangeName == this._exchangeName ||
+      exchangeName === this._exchangeName ||
       this.context.subscription?.exchange?.includes(exchangeName || '')
     ) {
       this._logger.info(
@@ -309,7 +309,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         this.handleOrder(orders);
       }
 
-      if (symbol == this._symbol) {
+      if (symbol === this._symbol) {
         // 🆕 优先处理待生成的止盈订单
         if (this.pendingTakeProfitOrders.size > 0) {
           const nextEntry = this.pendingTakeProfitOrders.entries().next();

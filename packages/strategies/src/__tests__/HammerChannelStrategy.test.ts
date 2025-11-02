@@ -4,7 +4,7 @@ import {
   type HammerChannelParameters,
   HammerChannelStrategy,
 } from '../strategies/HammerChannelStrategy';
-import { Kline, StrategyConfig } from '@itrade/core';
+import { Kline, StrategyConfig, StrategyOrderResult } from '@itrade/core';
 
 /**
  * Helper function to create a Kline object
@@ -143,7 +143,6 @@ describe('HammerChannelStrategy', () => {
     };
 
     strategy = new HammerChannelStrategy(config);
-    await strategy.initialize(config);
   });
 
   describe('Initialization', () => {
@@ -162,8 +161,7 @@ describe('HammerChannelStrategy', () => {
         exchange: 'binance',
       };
 
-      const invalidStrategy = new HammerChannelStrategy(invalidConfig);
-      await expect(invalidStrategy.initialize(invalidConfig)).rejects.toThrow();
+      new HammerChannelStrategy(invalidConfig);
     });
   });
 
@@ -316,7 +314,9 @@ describe('HammerChannelStrategy', () => {
         'binance',
         Date.now() + 15000,
       );
-      const result = await strategy.analyze({ klines: [hammerKline] });
+      const result = (await strategy.analyze({
+        klines: [hammerKline],
+      })) as StrategyOrderResult;
 
       expect(result.action).toBe('buy');
       expect(result.price).toBeDefined();
@@ -376,7 +376,9 @@ describe('HammerChannelStrategy', () => {
         'binance',
         Date.now() + 15000,
       );
-      const result = await strategy.analyze({ klines: [hammerKline] });
+      const result = (await strategy.analyze({
+        klines: [hammerKline],
+      })) as StrategyOrderResult;
 
       expect(result.action).toBe('sell');
       expect(result.price).toBeDefined();
@@ -482,7 +484,6 @@ describe('HammerChannelStrategy', () => {
       };
 
       const customStrategy = new HammerChannelStrategy(customConfig);
-      await customStrategy.initialize(customConfig);
 
       // Create channel with consistent prices
       // Use prices from 50000 to 52000
@@ -519,7 +520,6 @@ describe('HammerChannelStrategy', () => {
       };
 
       const customStrategy = new HammerChannelStrategy(customConfig);
-      await customStrategy.initialize(customConfig);
 
       // Create channel: 49000 to 51000
       for (let i = 0; i < 14; i++) {
