@@ -294,8 +294,13 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
     const { exchangeName, klines, orders, positions, symbol, ticker } = dataUpdate;
-    this._logger.info(`[${exchangeName}] [${this._strategyName}] Analyzing data update`);
-    if (exchangeName == this._exchangeName) {
+    if (
+      exchangeName == this._exchangeName ||
+      this.context.subscription?.exchange?.includes(exchangeName || '')
+    ) {
+      this._logger.info(
+        `[${exchangeName}] [${this._strategyName}] Analyzing data update`,
+      );
       if (positions) {
         this.handlePosition(positions);
       }

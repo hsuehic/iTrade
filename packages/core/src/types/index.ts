@@ -233,9 +233,11 @@ export interface SignalMetaData {
 
 export type StrategyResult = StrategyOrderResult | StrategyHoldResult;
 
+// TODO: support multiple orders per signal
 export interface StrategyOrderResult {
   action: 'buy' | 'sell';
   clientOrderId: string;
+  symbol?: string;
   quantity?: Decimal;
   price?: Decimal; // Limit price for the main/initial order
   confidence?: number;

@@ -43,6 +43,7 @@ export interface KlinesSubscriptionConfig {
 
 /**
  * Overall subscription configuration for a strategy
+ * TODO: support multiple symbols * multiple exchanges  per subscription
  */
 export interface SubscriptionConfig {
   // Ticker subscription
