@@ -9,6 +9,7 @@ import {
   OrderSide,
   Kline,
   StrategyResult,
+  isHoldResult,
 } from '@itrade/core';
 
 export class BacktestEngine implements IBacktestEngine {
@@ -90,13 +91,15 @@ export class BacktestEngine implements IBacktestEngine {
     kline: Kline,
     config: BacktestConfig,
   ): Promise<void> {
+    if (isHoldResult(signal)) return;
     if (!signal.quantity) return;
 
     const price = signal.price || kline.close;
-    const slippageAdjustedPrice =
-      signal.action === 'hold'
-        ? price
-        : this.applySlippage(price, signal.action, config.slippage);
+    const slippageAdjustedPrice = this.applySlippage(
+      price,
+      signal.action,
+      config.slippage,
+    );
     const commission = slippageAdjustedPrice.mul(signal.quantity).mul(config.commission);
 
     const currentPosition = this.positions.get(symbol);

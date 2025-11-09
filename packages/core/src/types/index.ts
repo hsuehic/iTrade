@@ -254,6 +254,20 @@ export interface StrategyHoldResult {
   reason?: string;
 }
 
+export function isOrderResult(value: StrategyResult): value is StrategyOrderResult {
+  if (value.action === 'buy' || value.action === 'hold') {
+    return true;
+  }
+  return false;
+}
+
+export function isHoldResult(value: StrategyResult): value is StrategyHoldResult {
+  if (value.action === 'hold') {
+    return true;
+  }
+  return false;
+}
+
 // Exchange Types
 export interface ExchangeCredentials {
   apiKey: string;
