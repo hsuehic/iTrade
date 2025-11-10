@@ -1140,8 +1140,8 @@ export class OKXExchange extends BaseExchange {
       price: price,
       status: this.transformOKXOrderStatus(order.state),
       timeInForce: 'GTC' as TimeInForce,
-      timestamp: new Date(parseInt(order.cTime || order.uTime)),
-      updateTime: new Date(parseInt(order.uTime)),
+      timestamp: order.cTime ? new Date(parseInt(order.cTime)) : (order.uTime ? new Date(parseInt(order.uTime)) : new Date()),
+      updateTime: order.uTime ? new Date(parseInt(order.uTime)) : undefined,
       executedQuantity: order.accFillSz ? this.formatDecimal(order.accFillSz) : undefined,
       cummulativeQuoteQuantity,
     };
