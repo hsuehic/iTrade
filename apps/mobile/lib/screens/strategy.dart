@@ -159,6 +159,18 @@ class _StrategyScreenState extends State<StrategyScreen>
     return '$sign${pnl.toStringAsFixed(2)}';
   }
 
+  bool _shouldUseTabletLayout(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = ResponsiveLayout.isTablet(context);
+
+    final isLargeScreen = screenWidth >= 600 ||
+        (screenWidth > 800 && screenHeight > 1000) ||
+        (screenWidth > 1000 && screenHeight > 800);
+
+    return isTablet || isLargeScreen;
+  }
+
   String _formatStatus(String status) {
     switch (status) {
       case 'active':
@@ -258,10 +270,16 @@ class _StrategyScreenState extends State<StrategyScreen>
   }
 
   Widget _buildTabletGrid() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Account for sidebar (~240px) when present in landscape
+    final effectiveWidth = screenWidth - 240;
+    // Use 2 columns for portrait/smaller screens, 3 for wider landscape
+    final crossAxisCount = effectiveWidth > 900 ? 3 : 2;
+    
     return GridView.builder(
-      padding: EdgeInsets.all(24.w),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+      padding: const EdgeInsets.all(24),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
         mainAxisSpacing: 16,
         crossAxisSpacing: 16,
         childAspectRatio: 1.6,
@@ -335,7 +353,7 @@ class _StrategyScreenState extends State<StrategyScreen>
                     ? _buildErrorView()
                     : _filteredStrategies.isEmpty
                         ? _buildEmptyView()
-                        : context.isTablet
+                        : _shouldUseTabletLayout(context)
                             ? _buildTabletGrid()
                             : _buildPhoneList(),
           ),

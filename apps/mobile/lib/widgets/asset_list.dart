@@ -211,12 +211,14 @@ class AssetListItem extends StatelessWidget {
                     asset.symbol,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
+                      fontSize: 12.sp,
                     ),
                   ),
                   Text(
                     asset.name,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
+                      fontSize: 10.sp,
                     ),
                   ),
                 ],
@@ -233,6 +235,7 @@ class AssetListItem extends StatelessWidget {
                     '\$${asset.price.toStringAsFixed(2)}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
+                      fontSize: 12.sp,
                     ),
                   ),
                   Text(
@@ -240,6 +243,7 @@ class AssetListItem extends StatelessWidget {
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: changeColor,
                       fontWeight: FontWeight.w500,
+                      fontSize: 10.sp,
                     ),
                   ),
                 ],
@@ -257,11 +261,12 @@ class AssetListItem extends StatelessWidget {
                     '\$${(asset.price * asset.amount).toStringAsFixed(2)}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
+                      fontSize: 12.sp,
                     ),
                   ),
                   Text(
                     asset.amount.toStringAsFixed(4),
-                    style: theme.textTheme.bodySmall,
+                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 10.sp),
                   ),
                 ],
               ),

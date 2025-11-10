@@ -31,7 +31,7 @@ class DesignBottomNavBar extends StatelessWidget {
     this.inactiveColor,
     this.height = 64,
     this.iconSize = 28,  // Increased from 24 for better visibility
-    this.labelSize = 12,
+    this.labelSize = 10,  // Reduced from 12 to prevent truncation
     this.labelWeight = FontWeight.w600,
   }) : assert(items.length >= 2);
 
@@ -117,7 +117,7 @@ class _NavItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(spacing!.md),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6),  // ✅ Width-adapted
+        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 6),  // Reduced from 12.w to 4.w for more text space
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -131,9 +131,9 @@ class _NavItem extends StatelessWidget {
               spec.label,
               style: TextStyle(
                 color: color,
-                fontSize: labelSize.sp,  // ✅ Adaptive font
+                fontSize: labelSize.sp,  // ✅ Adaptive font (reduced to 10)
                 fontWeight: labelWeight,
-                letterSpacing: 0.1,
+                letterSpacing: -0.3,  // Tighter letter spacing to fit more text
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

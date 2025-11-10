@@ -67,8 +67,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     return Scaffold(
       appBar: const CustomAppBar(title: 'Portfolio'),
       body: ResponsiveLayoutBuilder(
-        phone: (context) => _buildPhoneLayout(assets, total, dailyWeightedPct, chartData),
-        tablet: (context) => _buildTabletLayout(assets, total, dailyWeightedPct, chartData),
+        phone: (context) =>
+            _buildPhoneLayout(assets, total, dailyWeightedPct, chartData),
+        tablet: (context) =>
+            _buildTabletLayout(assets, total, dailyWeightedPct, chartData),
       ),
     );
   }
@@ -108,7 +110,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             selectedSymbol: _selectedSymbol,
             onTap: (asset) {
               setState(() {
-                _selectedSymbol = _selectedSymbol == asset.symbol ? null : asset.symbol;
+                _selectedSymbol = _selectedSymbol == asset.symbol
+                    ? null
+                    : asset.symbol;
               });
             },
           ),
@@ -154,7 +158,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                     children: [
                       _buildAssetsHeader(),
                       const SizedBox(height: 8),
-                      ...assets.take(3).map((asset) => _buildAssetListItem(asset)),
+                      ...assets
+                          .take(3)
+                          .map((asset) => _buildAssetListItem(asset)),
                     ],
                   ),
                 ),
@@ -212,7 +218,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -239,9 +247,13 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                           pieTouchResponse != null &&
                           pieTouchResponse.touchedSection != null) {
                         setState(() {
-                          final index = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                          final index = pieTouchResponse
+                              .touchedSection!
+                              .touchedSectionIndex;
                           _selectedSymbol =
-                              index >= 0 && index < chartData.length ? chartData[index].label : null;
+                              index >= 0 && index < chartData.length
+                              ? chartData[index].label
+                              : null;
                         });
                       }
                     },
@@ -250,7 +262,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                     final index = entry.key;
                     final data = entry.value;
                     final isSelected = _selectedSymbol == data.label;
-                    final percentage = total == 0 ? 0 : (data.value / total * 100);
+                    final percentage = total == 0
+                        ? 0
+                        : (data.value / total * 100);
 
                     final colors = [
                       Colors.blue.shade300,
@@ -307,7 +321,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   }
 
   Widget _buildAssetListItem(AssetItem asset) {
-    final changeColor = asset.dailyChange >= 0 ? Colors.green : Theme.of(context).colorScheme.error;
+    final changeColor = asset.dailyChange >= 0
+        ? Colors.green
+        : Theme.of(context).colorScheme.error;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -326,17 +342,27 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         children: [
           Image.network(
             asset.iconUrl,
-            width: 32.w,
-            height: 32.w,
-            errorBuilder: (context, error, stackTrace) => Icon(Icons.currency_bitcoin, size: 32.w),
+            width: 28.w,
+            height: 28.w,
+            errorBuilder: (context, error, stackTrace) =>
+                Icon(Icons.currency_bitcoin, size: 28.w),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(asset.symbol, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('\$${asset.value.toStringAsFixed(2)}', style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
+                Text(
+                  asset.symbol,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.sp,
+                  ),
+                ),
+                Text(
+                  '\$${asset.value.toStringAsFixed(2)}',
+                  style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                ),
               ],
             ),
           ),
@@ -344,13 +370,19 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Icon(
-                asset.dailyChange >= 0 ? Icons.trending_up : Icons.trending_down,
+                asset.dailyChange >= 0
+                    ? Icons.trending_up
+                    : Icons.trending_down,
                 size: 16.w,
                 color: changeColor,
               ),
               Text(
                 '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
-                style: TextStyle(fontSize: 12.sp, color: changeColor, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 10.sp,
+                  color: changeColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -360,14 +392,18 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   }
 
   Widget _buildAssetCard(AssetItem asset) {
-    final changeColor = asset.dailyChange >= 0 ? Colors.green : Theme.of(context).colorScheme.error;
+    final changeColor = asset.dailyChange >= 0
+        ? Colors.green
+        : Theme.of(context).colorScheme.error;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     return InkWell(
       onTap: () {
         setState(() {
-          _selectedSymbol = _selectedSymbol == asset.symbol ? null : asset.symbol;
+          _selectedSymbol = _selectedSymbol == asset.symbol
+              ? null
+              : asset.symbol;
         });
       },
       borderRadius: BorderRadius.circular(12),
@@ -376,12 +412,16 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         decoration: BoxDecoration(
           color: _selectedSymbol == asset.symbol
               ? theme.primaryColor.withValues(alpha: 0.1)
-              : (isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5)),
+              : (isDark
+                    ? Colors.grey[900]
+                    : Colors.white.withValues(alpha: 0.5)),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: _selectedSymbol == asset.symbol
                 ? theme.primaryColor
-                : (isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.08)),
+                : (isDark
+                      ? Colors.grey[850]!
+                      : Colors.grey.withValues(alpha: 0.08)),
           ),
         ),
         child: Row(
@@ -390,7 +430,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               asset.iconUrl,
               width: 32.w,
               height: 32.w,
-              errorBuilder: (context, error, stackTrace) => Icon(Icons.currency_bitcoin, size: 32.w),
+              errorBuilder: (context, error, stackTrace) =>
+                  Icon(Icons.currency_bitcoin, size: 32.w),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -400,12 +441,15 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                 children: [
                   Text(
                     asset.symbol,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14.sp,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '\$${asset.value.toStringAsFixed(2)}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -415,14 +459,20 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  asset.dailyChange >= 0 ? Icons.trending_up : Icons.trending_down,
-                  size: 14.w,
+                  asset.dailyChange >= 0
+                      ? Icons.trending_up
+                      : Icons.trending_down,
+                  size: 12.w,
                   color: changeColor,
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
-                  style: TextStyle(fontSize: 11, color: changeColor, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: changeColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),

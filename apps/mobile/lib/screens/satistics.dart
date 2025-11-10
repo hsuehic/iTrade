@@ -36,6 +36,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     _loadAnalytics();
   }
 
+  bool _shouldUseTabletLayout(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = ResponsiveLayout.isTablet(context);
+
+    // iPad detection: Use tablet layout if screen is large enough OR if it's clearly iPad dimensions
+    final isLargeScreen =
+        screenWidth >= 600 ||
+        (screenWidth > 800 && screenHeight > 1000) ||
+        (screenWidth > 1000 && screenHeight > 800);
+
+    return isTablet || isLargeScreen;
+  }
+
   Future<void> _loadAnalytics() async {
     setState(() {
       _loading = true;
@@ -127,7 +141,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: CustomAppBar(title: 'Statistics'),
+      appBar: CustomAppBar(title: 'Statistic'),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -257,27 +271,41 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     }
 
     // Use grid on tablets for better space utilization
-    if (context.isTablet) {
-      return GridView.builder(
-        padding: const EdgeInsets.all(24),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 2.5,
-        ),
-        itemCount: data.length,
-        itemBuilder: (context, index) {
-          final item = data[index];
-          switch (_currentTab) {
-            case StatTab.topPerformers:
-              return _buildPerformerCard(item, isDark);
-            case StatTab.byExchange:
-              return _buildExchangeCard(item, isDark);
-            case StatTab.bySymbol:
-              return _buildSymbolCard(item, isDark);
-          }
-        },
+    if (_shouldUseTabletLayout(context)) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      // Account for sidebar (~240px) to determine optimal column count
+      final effectiveWidth = screenWidth - 240;
+      final crossAxisCount = effectiveWidth > 900 ? 3 : 2;
+
+      return Column(
+        children: [
+          // Header row with sort controls
+          _buildGridHeader(isDark),
+          // Grid content
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 16,
+                crossAxisSpacing: 16,
+                childAspectRatio: 2.8,
+              ),
+              itemCount: data.length,
+              itemBuilder: (context, index) {
+                final item = data[index];
+                switch (_currentTab) {
+                  case StatTab.topPerformers:
+                    return _buildPerformerCard(item, isDark, isGridMode: true);
+                  case StatTab.byExchange:
+                    return _buildExchangeCard(item, isDark, isGridMode: true);
+                  case StatTab.bySymbol:
+                    return _buildSymbolCard(item, isDark, isGridMode: true);
+                }
+              },
+            ),
+          ),
+        ],
       );
     }
 
@@ -298,7 +326,67 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  Widget _buildPerformerCard(Map<String, dynamic> strategy, bool isDark) {
+  Widget _buildGridHeader(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.05),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.grey[800]!
+                : Colors.grey.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: _buildSortButton(
+              _currentTab == StatTab.topPerformers
+                  ? 'Name'
+                  : _currentTab == StatTab.byExchange
+                  ? 'Exchange'
+                  : 'Symbol',
+              SortField.name,
+              isDark,
+            ),
+          ),
+          const SizedBox(width: 16),
+          if (_currentTab == StatTab.topPerformers) ...[
+            SizedBox(
+              width: 100,
+              child: _buildSortButton('PnL', SortField.pnl, isDark),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 80,
+              child: _buildSortButton('Orders', SortField.orders, isDark),
+            ),
+          ],
+          if (_currentTab != StatTab.topPerformers) ...[
+            SizedBox(
+              width: 80,
+              child: _buildSortButton('Count', SortField.count, isDark),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 100,
+              child: _buildSortButton('Total PnL', SortField.pnl, isDark),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPerformerCard(
+    Map<String, dynamic> strategy,
+    bool isDark, {
+    bool isGridMode = false,
+  }) {
     final pnl = (strategy['totalPnl'] ?? 0).toDouble();
     final totalOrders = strategy['totalOrders'] ?? 0;
     final filledOrders = strategy['filledOrders'] ?? 0;
@@ -317,8 +405,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       ),
       child: Column(
         children: [
-          // Header with sort controls
-          if (strategy == _getSortedData().first)
+          // Header with sort controls (only in list mode)
+          if (!isGridMode && strategy == _getSortedData().first)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -454,7 +542,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  Widget _buildExchangeCard(Map<String, dynamic> stats, bool isDark) {
+  Widget _buildExchangeCard(
+    Map<String, dynamic> stats,
+    bool isDark, {
+    bool isGridMode = false,
+  }) {
     final exchange = stats['exchange'] ?? 'Unknown';
     final count = stats['count'] ?? 0;
     final activeCount = stats['activeCount'] ?? 0;
@@ -475,8 +567,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       ),
       child: Column(
         children: [
-          // Header with sort controls
-          if (stats == _getSortedData().first)
+          // Header with sort controls (only in list mode)
+          if (!isGridMode && stats == _getSortedData().first)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
@@ -546,7 +638,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  Widget _buildSymbolCard(Map<String, dynamic> stats, bool isDark) {
+  Widget _buildSymbolCard(
+    Map<String, dynamic> stats,
+    bool isDark, {
+    bool isGridMode = false,
+  }) {
     final symbol = stats['symbol'] ?? 'Unknown';
     final normalizedSymbol = stats['normalizedSymbol'];
     final count = stats['count'] ?? 0;
@@ -569,8 +665,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       ),
       child: Column(
         children: [
-          // Header with sort controls
-          if (stats == _getSortedData().first)
+          // Header with sort controls (only in list mode)
+          if (!isGridMode && stats == _getSortedData().first)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(

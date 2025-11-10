@@ -75,6 +75,20 @@ class _ProductScreenState extends State<ProductScreen>
   @override
   bool get wantKeepAlive => true;
 
+  bool _shouldUseTabletLayout(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = ResponsiveLayout.isTablet(context);
+
+    // iPad detection: Use tablet layout if screen is large enough OR if it's clearly iPad dimensions
+    final isLargeScreen =
+        screenWidth >= 600 ||
+        (screenWidth > 800 && screenHeight > 1000) ||
+        (screenWidth > 1000 && screenHeight > 800);
+
+    return isTablet || isLargeScreen;
+  }
+
   @override
   void dispose() {
     _timer.cancel();
@@ -128,7 +142,7 @@ class _ProductScreenState extends State<ProductScreen>
             const Expanded(child: Center(child: CircularProgressIndicator()))
           else
             Expanded(
-              child: context.isTablet
+              child: _shouldUseTabletLayout(context)
                   ? _buildTabletGrid()
                   : _buildPhoneList(),
             ),
@@ -147,15 +161,21 @@ class _ProductScreenState extends State<ProductScreen>
   }
 
   Widget _buildTabletGrid() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Determine column count based on available width
+    // If sidebar is visible (~240px), we have less space
+    final effectiveWidth = screenWidth - 240; // Account for sidebar
+    final crossAxisCount = effectiveWidth > 900 ? 3 : 2;
+
     return GridView.builder(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       controller: _scrollController,
-      padding: EdgeInsets.all(24.w),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 3,
+      padding: const EdgeInsets.all(24),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 3.5,
       ),
       itemCount: _tickers.length,
       itemBuilder: (context, index) => _buildProductCard(_tickers[index]),
@@ -163,7 +183,8 @@ class _ProductScreenState extends State<ProductScreen>
   }
 
   Widget _buildProductListTile(OKXTicker ticker) {
-    final changePercent = ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
+    final changePercent =
+        ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
     final changeColor = changePercent >= 0 ? Colors.green : Colors.red;
 
     return ListTile(
@@ -186,13 +207,13 @@ class _ProductScreenState extends State<ProductScreen>
       title: Text(
         ticker.instId,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w600,
-            ),
+          fontSize: 12.sp, // Reduced from 16.sp for better proportions
+          fontWeight: FontWeight.w600,
+        ),
       ),
       subtitle: Text(
         'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12.sp),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10.sp),
       ),
       trailing: IntrinsicWidth(
         child: Column(
@@ -202,9 +223,9 @@ class _ProductScreenState extends State<ProductScreen>
             Text(
               ticker.last.toString(),
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 2),
             Row(
@@ -219,9 +240,9 @@ class _ProductScreenState extends State<ProductScreen>
                 Text(
                   '${changePercent.toStringAsFixed(2)}%',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontSize: 12.sp,
-                        color: changeColor,
-                      ),
+                    fontSize: 10.sp,
+                    color: changeColor,
+                  ),
                 ),
               ],
             ),
@@ -232,7 +253,8 @@ class _ProductScreenState extends State<ProductScreen>
   }
 
   Widget _buildProductCard(OKXTicker ticker) {
-    final changePercent = ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
+    final changePercent =
+        ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
     final changeColor = changePercent >= 0 ? Colors.green : Colors.red;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -250,7 +272,9 @@ class _ProductScreenState extends State<ProductScreen>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5),
+          color: isDark
+              ? Colors.grey[900]
+              : Colors.white.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isDark

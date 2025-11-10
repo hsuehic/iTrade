@@ -30,17 +30,20 @@ class TagItem extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4),  // ✅ Width-adapted
+            padding: EdgeInsets.symmetric(
+              horizontal: 8.w,
+              vertical: 4,
+            ), // ✅ Width-adapted
             decoration: BoxDecoration(
               color: checked
                   ? Theme.of(context).colorScheme.onSurface
                   : Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(6),  // ✅ Uniform radius
+              borderRadius: BorderRadius.circular(6), // ✅ Uniform radius
             ),
             child: Text(
               tag.name,
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontSize: 14.sp,  // ✅ Adaptive font
+                fontSize: 12.sp, // ✅ Adaptive font
                 fontWeight: FontWeight.w600,
                 color: checked
                     ? Theme.of(context).colorScheme.onInverseSurface
@@ -48,7 +51,7 @@ class TagItem extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 16.w),  // ✅ Width-adapted
+          SizedBox(width: 16.w), // ✅ Width-adapted
         ],
       ),
     );

@@ -31,11 +31,8 @@ class AppSidebar extends StatefulWidget {
   State<AppSidebar> createState() => _AppSidebarState();
 }
 
-class _AppSidebarState extends State<AppSidebar>
-    with SingleTickerProviderStateMixin {
+class _AppSidebarState extends State<AppSidebar> {
   late bool _isExpanded;
-  late AnimationController _animationController;
-  late Animation<double> _animation;
 
   // Sidebar dimensions
   static const double _expandedWidth = 240.0;
@@ -45,36 +42,11 @@ class _AppSidebarState extends State<AppSidebar>
   void initState() {
     super.initState();
     _isExpanded = widget.initiallyExpanded;
-
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
-      vsync: this,
-    );
-
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    );
-
-    if (_isExpanded) {
-      _animationController.value = 1.0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
   }
 
   void _toggleExpanded() {
     setState(() {
       _isExpanded = !_isExpanded;
-      if (_isExpanded) {
-        _animationController.forward();
-      } else {
-        _animationController.reverse();
-      }
     });
   }
 
@@ -199,44 +171,55 @@ class _AppSidebarState extends State<AppSidebar>
       child: InkWell(
         onTap: _toggleExpanded,
         borderRadius: BorderRadius.circular(12),
-        child: Container(
-          height: 40,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.5,
-            ),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            mainAxisAlignment: _isExpanded
-                ? MainAxisAlignment.spaceBetween
-                : MainAxisAlignment.center,
-            children: [
-              if (_isExpanded) ...[
-                Padding(
-                  padding: const EdgeInsets.only(left: 12),
-                  child: Text(
-                    'Menu',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final availableWidth = constraints.maxWidth;
+            final shouldShowLabel = availableWidth > 100;
+
+            return Container(
+              height: 40,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: shouldShowLabel
+                    ? MainAxisAlignment.spaceBetween
+                    : MainAxisAlignment.center,
+                children: [
+                  if (shouldShowLabel) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: Text(
+                        'Menu',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.clip,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                  Padding(
+                    padding: EdgeInsets.only(right: shouldShowLabel ? 8 : 0),
+                    child: AnimatedRotation(
+                      turns: _isExpanded ? 0 : 0.5,
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        Icons.chevron_left,
+                        size: 20,
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.7,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ],
-              Padding(
-                padding: EdgeInsets.only(right: _isExpanded ? 8 : 0),
-                child: AnimatedRotation(
-                  turns: _isExpanded ? 0 : 0.5,
-                  duration: const Duration(milliseconds: 200),
-                  child: Icon(
-                    Icons.chevron_left,
-                    size: 20,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -250,71 +233,89 @@ class _AppSidebarState extends State<AppSidebar>
     final isSelected = index == widget.selectedIndex;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: EdgeInsets.symmetric(
+        vertical: 2,
+        horizontal: _isExpanded ? 0 : 4,
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => widget.onDestinationSelected(index),
           borderRadius: BorderRadius.circular(12),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            height: 56,
-            padding: EdgeInsets.symmetric(horizontal: _isExpanded ? 16 : 0),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? theme.colorScheme.primaryContainer.withValues(alpha: 0.8)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                // Icon
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: _isExpanded ? 24 : 72,
-                  alignment: Alignment.center,
-                  child: Icon(
-                    isSelected ? destination.selectedIcon : destination.icon,
-                    color: isSelected
-                        ? theme.colorScheme.onPrimaryContainer
-                        : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                    size: 24,
-                  ),
-                ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Use available width to determine rendering
+              final availableWidth = constraints.maxWidth;
+              final shouldShowExpanded = availableWidth > 120;
 
-                // Label (only when expanded)
-                if (_isExpanded) ...[
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FadeTransition(
-                      opacity: _animation,
-                      child: Text(
-                        destination.label,
-                        style: theme.textTheme.bodyLarge?.copyWith(
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                height: 56,
+                padding: EdgeInsets.symmetric(
+                  horizontal: shouldShowExpanded ? 16 : 0,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? theme.colorScheme.primaryContainer.withValues(
+                          alpha: 0.8,
+                        )
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: shouldShowExpanded
+                    ? Row(
+                        children: [
+                          // Icon
+                          Icon(
+                            isSelected
+                                ? destination.selectedIcon
+                                : destination.icon,
+                            color: isSelected
+                                ? theme.colorScheme.onPrimaryContainer
+                                : theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.7,
+                                  ),
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          // Label (only when expanded)
+                          Expanded(
+                            child: Text(
+                              destination.label,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: isSelected
+                                    ? theme.colorScheme.onPrimaryContainer
+                                    : theme.colorScheme.onSurface,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          // Badge (optional)
+                          if (destination.badge != null) ...[
+                            const SizedBox(width: 8),
+                            destination.badge!,
+                          ],
+                        ],
+                      )
+                    : Center(
+                        child: Icon(
+                          isSelected
+                              ? destination.selectedIcon
+                              : destination.icon,
                           color: isSelected
                               ? theme.colorScheme.onPrimaryContainer
-                              : theme.colorScheme.onSurface,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.normal,
+                              : theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.7,
+                                ),
+                          size: 24,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ),
-                ],
-
-                // Badge (optional)
-                if (_isExpanded && destination.badge != null) ...[
-                  const SizedBox(width: 8),
-                  FadeTransition(
-                    opacity: _animation,
-                    child: destination.badge!,
-                  ),
-                ],
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),

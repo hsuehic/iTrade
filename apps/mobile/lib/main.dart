@@ -352,10 +352,10 @@ class _MyHomePageState extends State<MyHomePage> {
       _NavItem(icon: Icons.pie_chart, label: 'Portfolio'),
       _NavItem(icon: Icons.calculate, label: 'Strategy'),
       _NavItem(icon: Icons.widgets, label: 'Product'),
-      _NavItem(icon: Icons.analytics, label: 'Statistics'),
+      _NavItem(icon: Icons.analytics, label: 'Statistic'),
       _NavItem(icon: Icons.manage_accounts, label: 'Profile'),
     ];
-    
+
     // Debug: Print device info after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -370,16 +370,17 @@ class _MyHomePageState extends State<MyHomePage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final isTablet = ResponsiveLayout.isTablet(context);
-    
+
     // iPad detection: Use sidebar if screen is large enough OR if it's clearly iPad dimensions
     // iPad Pro 13": 1024x1366 (portrait), 1366x1024 (landscape)
     // iPad Pro 11": 834x1194 (portrait), 1194x834 (landscape)
-    final isLargeScreen = screenWidth >= 600 || 
-                          (screenWidth > 800 && screenHeight > 1000) ||
-                          (screenWidth > 1000 && screenHeight > 800);
-    
+    final isLargeScreen =
+        screenWidth >= 600 ||
+        (screenWidth > 800 && screenHeight > 1000) ||
+        (screenWidth > 1000 && screenHeight > 800);
+
     final shouldUseSidebar = isTablet || isLargeScreen;
-    
+
     // Debug: Print device info to understand layout detection
     developer.log(
       'Screen: ${screenWidth.toStringAsFixed(0)}x${screenHeight.toStringAsFixed(0)}, '
@@ -402,11 +403,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 setState(() => _pageIndex = index);
               },
               destinations: _navItems
-                  .map((item) => SidebarDestination(
-                        icon: item.icon,
-                        selectedIcon: item.icon,
-                        label: item.label,
-                      ))
+                  .map(
+                    (item) => SidebarDestination(
+                      icon: item.icon,
+                      selectedIcon: item.icon,
+                      label: item.label,
+                    ),
+                  )
                   .toList(),
               footer: _buildSidebarFooter(context),
             ),
@@ -453,7 +456,9 @@ class _MyHomePageState extends State<MyHomePage> {
             child: Container(
               height: 48,
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                color: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
