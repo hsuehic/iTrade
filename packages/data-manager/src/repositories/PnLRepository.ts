@@ -181,31 +181,55 @@ export class PnLRepository {
 
     const strategyResults = await query.getRawMany();
 
-    // Calculate PnL for each strategy
-    const strategies = await Promise.all(
-      strategyResults.map(async (row) => {
-        const orders = await this.repository.find({
-          where: { strategyId: row.strategyId },
-          order: { timestamp: 'ASC' },
-        });
+    // Fetch all orders in ONE query (optimized)
+    const strategyIds = strategyResults.map((row) => row.strategyId);
+    let allOrders: any[] = [];
 
-        const { realizedPnl, unrealizedPnl } = this.calculatePnLFromOrders(orders);
+    if (strategyIds.length > 0) {
+      const ordersQuery = this.repository
+        .createQueryBuilder('order')
+        .where('order.strategyId IN (:...ids)', { ids: strategyIds })
+        .orderBy('order.timestamp', 'ASC');
 
-        // Count total and filled orders
-        const totalOrders = orders.length;
-        const filledOrders = orders.filter((o) => o.status === 'FILLED').length;
+      if (userId) {
+        ordersQuery.andWhere(
+          'order.strategyId IN (SELECT id FROM strategies WHERE userId = :userId)',
+          { userId },
+        );
+      }
 
-        return {
-          strategyId: row.strategyId,
-          strategyName: row.strategyName,
-          pnl: realizedPnl + unrealizedPnl,
-          realizedPnl,
-          unrealizedPnl,
-          totalOrders,
-          filledOrders,
-        };
-      }),
-    );
+      allOrders = await ordersQuery.getMany();
+    }
+
+    // Group orders by strategyId in memory
+    const ordersByStrategy = new Map<number, any[]>();
+    for (const order of allOrders) {
+      if (!ordersByStrategy.has(order.strategyId)) {
+        ordersByStrategy.set(order.strategyId, []);
+      }
+      ordersByStrategy.get(order.strategyId)!.push(order);
+    }
+
+    // Calculate PnL for each strategy using pre-fetched orders
+    const strategies = strategyResults.map((row) => {
+      const orders = ordersByStrategy.get(row.strategyId) || [];
+
+      const { realizedPnl, unrealizedPnl } = this.calculatePnLFromOrders(orders);
+
+      // Count total and filled orders
+      const totalOrders = orders.length;
+      const filledOrders = orders.filter((o) => o.status === 'FILLED').length;
+
+      return {
+        strategyId: row.strategyId,
+        strategyName: row.strategyName,
+        pnl: realizedPnl + unrealizedPnl,
+        realizedPnl,
+        unrealizedPnl,
+        totalOrders,
+        filledOrders,
+      };
+    });
 
     const totalRealizedPnl = strategies.reduce((sum, s) => sum + s.realizedPnl, 0);
     const totalUnrealizedPnl = strategies.reduce((sum, s) => sum + s.unrealizedPnl, 0);
