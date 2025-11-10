@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:developer' as developer;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -29,15 +30,44 @@ class NotificationService {
     );
     await _local.initialize(initSettings);
 
-    _messaging.subscribeToTopic('news');
-    _messaging.subscribeToTopic('allUsers');
+    // Subscribe to topics with error handling
+    // Note: This may fail on iOS simulators as they don't support APNS
+    try {
+      await _messaging.subscribeToTopic('news');
+      developer.log('Subscribed to topic: news', name: 'NotificationService');
+    } catch (e) {
+      developer.log(
+        'Failed to subscribe to topic: news (this is expected on iOS simulator)',
+        name: 'NotificationService',
+        error: e,
+      );
+    }
+
+    try {
+      await _messaging.subscribeToTopic('allUsers');
+      developer.log('Subscribed to topic: allUsers', name: 'NotificationService');
+    } catch (e) {
+      developer.log(
+        'Failed to subscribe to topic: allUsers (this is expected on iOS simulator)',
+        name: 'NotificationService',
+        error: e,
+      );
+    }
 
     if (Platform.isIOS || Platform.isMacOS) {
-      await _messaging.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      try {
+        await _messaging.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      } catch (e) {
+        developer.log(
+          'Failed to set notification presentation options',
+          name: 'NotificationService',
+          error: e,
+        );
+      }
     }
 
     _initialized = true;
@@ -57,7 +87,16 @@ class NotificationService {
   }
 
   Future<String?> getDeviceToken() async {
-    return _messaging.getToken();
+    try {
+      return await _messaging.getToken();
+    } catch (e) {
+      developer.log(
+        'Failed to get device token (this is expected on iOS simulator)',
+        name: 'NotificationService',
+        error: e,
+      );
+      return null;
+    }
   }
 
   void listenToMessages({void Function(RemoteMessage message)? onTap}) {
@@ -101,5 +140,9 @@ class NotificationService {
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Background handler; Firebase.initializeApp is automatically handled by FlutterFire if configured
-  print(message.data);
+  developer.log(
+    'Background message received',
+    name: 'FirebaseMessaging',
+    error: message.data,
+  );
 }

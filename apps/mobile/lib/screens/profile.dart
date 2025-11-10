@@ -5,6 +5,7 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
+import '../widgets/responsive_layout_builder.dart';
 import 'change_password.dart';
 import 'delete_account.dart';
 import 'edit_profile.dart';
@@ -77,9 +78,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       ),
-      body: ListView(
-        padding: EdgeInsets.all(16.w),  // ✅ Width-adapted
-        children: [
+      body: ResponsiveLayoutBuilder(
+        phone: (context) => _buildPhoneLayout(user, image, isDark),
+        tablet: (context) => _buildTabletLayout(user, image, isDark),
+      ),
+    );
+  }
+
+  Widget _buildPhoneLayout(User user, String? image, bool isDark) {
+    return ListView(
+      padding: EdgeInsets.all(16.w),
+      children: [
           // User Profile Card
           _buildUserCard(user, image, isDark),
           const SizedBox(height: 24),
@@ -408,7 +417,327 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildSignOutButton(),
           const SizedBox(height: 32),
         ],
-      ),
+    );
+  }
+
+  Widget _buildTabletLayout(User user, String? image, bool isDark) {
+    return ListView(
+      padding: EdgeInsets.all(24.w),
+      children: [
+        // User Profile Card
+        _buildUserCard(user, image, isDark),
+        const SizedBox(height: 32),
+
+        // Two-column layout for settings
+        ResponsiveTwoColumn(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 24,
+          left: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Account Settings
+              _buildSectionHeader('Account'),
+              const SizedBox(height: 8),
+              _buildSettingsGroup(
+                isDark: isDark,
+                children: [
+                  _buildSettingTile(
+                    icon: Icons.person_outline,
+                    title: 'Edit Profile',
+                    subtitle: 'Update your personal information',
+                    trailing: Icons.chevron_right,
+                    onTap: () async {
+                      final updated = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EditProfileScreen(),
+                        ),
+                      );
+                      if (updated == true && mounted) {
+                        setState(() {});
+                      }
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.key_outlined,
+                    title: 'Change Password',
+                    subtitle: 'Update your password',
+                    trailing: Icons.chevron_right,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ChangePasswordScreen(),
+                        ),
+                      );
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.email_outlined,
+                    title: 'Email Preferences',
+                    subtitle: 'Manage email notifications',
+                    trailing: Icons.chevron_right,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EmailPreferencesScreen(),
+                        ),
+                      );
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.delete_forever,
+                    title: 'Delete Account',
+                    subtitle: 'Delete your account and all data',
+                    trailing: Icons.chevron_right,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => DeleteAccountScreen(
+                            userEmail: user.email,
+                            onConfirm: () async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final result = await AuthService.instance.deleteAccount();
+                              if (result != null && result.success) {
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Delete account success! It\'s our honour to serve you. Hope to see you again.',
+                                    ),
+                                    backgroundColor: Theme.of(context).colorScheme.primary,
+                                    duration: const Duration(seconds: 3),
+                                    behavior: SnackBarBehavior.floating,
+                                    margin: EdgeInsets.only(
+                                      bottom: 28,
+                                      left: 16.w,
+                                      right: 16.w,
+                                    ),
+                                  ),
+                                );
+                                if (!mounted) return;
+                                Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                              } else {
+                                if (result != null && result.message != null) {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('Delete account failed: ${result.message}!'),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                } else {
+                                  messenger.showSnackBar(
+                                    SnackBar(
+                                      content: Text('Delete account failed!'),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // App Settings
+              _buildSectionHeader('App Settings'),
+              const SizedBox(height: 8),
+              _buildSettingsGroup(
+                isDark: isDark,
+                children: [
+                  _buildSwitchTile(
+                    icon: Icons.dark_mode_outlined,
+                    title: 'Dark Mode',
+                    subtitle: 'Switch between light and dark theme',
+                    value: _darkMode,
+                    onChanged: (v) async {
+                      setState(() => _darkMode = v);
+                      await ThemeService.instance.setThemeMode(v);
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSwitchTile(
+                    icon: Icons.notifications_outlined,
+                    title: 'Push Notifications',
+                    subtitle: 'Receive alerts and updates',
+                    value: _notificationsEnabled,
+                    onChanged: (v) {
+                      setState(() => _notificationsEnabled = v);
+                      Preference.setNotificationsEnabled(v);
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSwitchTile(
+                    icon: Icons.volume_up_outlined,
+                    title: 'Sound',
+                    subtitle: 'Enable sound effects',
+                    value: _soundEnabled,
+                    onChanged: (v) {
+                      setState(() => _soundEnabled = v);
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSwitchTile(
+                    icon: Icons.vibration,
+                    title: 'Vibration',
+                    subtitle: 'Enable haptic feedback',
+                    value: _vibrationEnabled,
+                    onChanged: (v) {
+                      setState(() => _vibrationEnabled = v);
+                    },
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          right: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Security Settings
+              _buildSectionHeader('Security'),
+              const SizedBox(height: 8),
+              _buildSettingsGroup(
+                isDark: isDark,
+                children: [
+                  _buildSwitchTile(
+                    icon: Icons.fingerprint,
+                    title: 'Biometric Authentication',
+                    subtitle: 'Use Face ID or Touch ID',
+                    value: _enableFaceId,
+                    onChanged: (v) {
+                      setState(() => _enableFaceId = v);
+                      Preference.setBiometricEnabled(v);
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.lock_outline,
+                    title: 'Privacy Settings',
+                    subtitle: 'Manage your data and privacy',
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.security,
+                    title: 'Two-Factor Authentication',
+                    subtitle: 'Add extra security to your account',
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Trading Preferences
+              _buildSectionHeader('Trading'),
+              const SizedBox(height: 8),
+              _buildSettingsGroup(
+                isDark: isDark,
+                children: [
+                  _buildSettingTile(
+                    icon: Icons.currency_bitcoin,
+                    title: 'Default Exchange',
+                    subtitle: 'OKX',
+                    trailing: Icons.chevron_right,
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.attach_money,
+                    title: 'Default Currency',
+                    subtitle: 'USDT',
+                    trailing: Icons.chevron_right,
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.speed,
+                    title: 'Trading Mode',
+                    subtitle: 'Conservative',
+                    trailing: Icons.chevron_right,
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Support & About
+              _buildSectionHeader('Support'),
+              const SizedBox(height: 8),
+              _buildSettingsGroup(
+                isDark: isDark,
+                children: [
+                  _buildSettingTile(
+                    icon: Icons.help_outline,
+                    title: 'Help Center',
+                    subtitle: 'Get help and support',
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.bug_report_outlined,
+                    title: 'Report a Problem',
+                    subtitle: 'Let us know about issues',
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.star_outline,
+                    title: 'Rate App',
+                    subtitle: 'Share your feedback',
+                    onTap: () {},
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.info_outline,
+                    title: 'About',
+                    subtitle: 'iTrade v1.0.0',
+                    onTap: () => showAboutDialog(
+                      context: context,
+                      applicationName: 'iTrade',
+                      applicationVersion: '1.0.0',
+                      applicationLegalese: '© 2025 iTrade. All rights reserved.',
+                    ),
+                    isDark: isDark,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 32),
+
+        // Sign Out Button
+        _buildSignOutButton(),
+        const SizedBox(height: 32),
+      ],
     );
   }
 

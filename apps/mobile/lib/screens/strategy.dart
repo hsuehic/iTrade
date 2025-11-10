@@ -6,6 +6,7 @@ import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/custom_app_bar.dart';
 import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
+import '../utils/responsive_layout.dart';
 import 'strategy_detail.dart';
 
 enum SortBy { name, pnl, createdAt }
@@ -186,6 +187,104 @@ class _StrategyScreenState extends State<StrategyScreen>
     });
   }
 
+  Widget _buildErrorView() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.error_outline, size: 64, color: Colors.red),
+          const SizedBox(height: 16),
+          Text(
+            _errorMessage!,
+            style: const TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _loadStrategies,
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyView() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 32),
+          Icon(Icons.bar_chart, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            _searchQuery.isEmpty ? 'No strategies yet' : 'No strategies found',
+            style: TextStyle(fontSize: 18.sp, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _searchQuery.isEmpty
+                ? 'Create your first strategy using web manager to get started'
+                : 'Try a different search term',
+            style: TextStyle(fontSize: 14.sp, color: Colors.grey[500]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhoneList() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _filteredStrategies.length,
+      itemBuilder: (context, index) {
+        final strategy = _filteredStrategies[index];
+        final pnl = _pnlMap[strategy.id];
+        final baseCurrency = _extractBaseCurrency(strategy.symbol);
+        return _StrategyCard(
+          strategy: strategy,
+          pnl: pnl,
+          onTap: () => _navigateToDetail(strategy),
+          getStatusColor: _getStatusColor,
+          getPnLColor: _getPnLColor,
+          formatPnL: _formatPnL,
+          formatStatus: _formatStatus,
+          baseCurrency: baseCurrency,
+        );
+      },
+    );
+  }
+
+  Widget _buildTabletGrid() {
+    return GridView.builder(
+      padding: EdgeInsets.all(24.w),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 16,
+        childAspectRatio: 1.6,
+      ),
+      itemCount: _filteredStrategies.length,
+      itemBuilder: (context, index) {
+        final strategy = _filteredStrategies[index];
+        final pnl = _pnlMap[strategy.id];
+        final baseCurrency = _extractBaseCurrency(strategy.symbol);
+        return _StrategyCard(
+          strategy: strategy,
+          pnl: pnl,
+          onTap: () => _navigateToDetail(strategy),
+          getStatusColor: _getStatusColor,
+          getPnLColor: _getPnLColor,
+          formatPnL: _formatPnL,
+          formatStatus: _formatStatus,
+          baseCurrency: baseCurrency,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
@@ -230,96 +329,15 @@ class _StrategyScreenState extends State<StrategyScreen>
           const SizedBox(height: 8),
           // Strategy List
           Expanded(
-            child: CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 300,
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      : _errorMessage != null
-                      ? Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              const Icon(
-                                Icons.error_outline,
-                                size: 64,
-                                color: Colors.red,
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _errorMessage!,
-                                style: const TextStyle(color: Colors.red),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 16),
-                              ElevatedButton(
-                                onPressed: _loadStrategies,
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        )
-                      : _filteredStrategies.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 32),
-                              Icon(
-                                Icons.bar_chart,
-                                size: 64,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _searchQuery.isEmpty
-                                    ? 'No strategies yet'
-                                    : 'No strategies found',
-                                style: TextStyle(
-                                  fontSize: 18.sp,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _searchQuery.isEmpty
-                                    ? 'Create your first strategy using web manager to get started'
-                                    : 'Try a different search term',
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: _filteredStrategies.map((strategy) {
-                              final pnl = _pnlMap[strategy.id];
-                              final baseCurrency = _extractBaseCurrency(
-                                strategy.symbol,
-                              );
-                              return _StrategyCard(
-                                strategy: strategy,
-                                pnl: pnl,
-                                onTap: () => _navigateToDetail(strategy),
-                                getStatusColor: _getStatusColor,
-                                getPnLColor: _getPnLColor,
-                                formatPnL: _formatPnL,
-                                formatStatus: _formatStatus,
-                                baseCurrency: baseCurrency,
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                ),
-              ],
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _errorMessage != null
+                    ? _buildErrorView()
+                    : _filteredStrategies.isEmpty
+                        ? _buildEmptyView()
+                        : context.isTablet
+                            ? _buildTabletGrid()
+                            : _buildPhoneList(),
           ),
         ],
       ),

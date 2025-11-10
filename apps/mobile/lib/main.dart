@@ -10,6 +10,7 @@ import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
+import 'package:ihsueh_itrade/utils/responsive_layout.dart';
 import 'constant/network.dart';
 import 'design/themes/theme.dart';
 
@@ -23,6 +24,7 @@ import 'screens/strategy.dart';
 import 'screens/product.dart';
 import 'screens/profile.dart';
 import 'widgets/design_bottom_nav.dart';
+import 'widgets/app_sidebar.dart';
 
 import 'firebase_options.dart';
 
@@ -197,12 +199,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeService.instance.themeMode,
       builder: (context, themeMode, child) {
-        // Initialize ScreenUtil - ONLY adapts width, NOT height
-        // This ensures consistent horizontal layout while allowing natural vertical flow
+        // Initialize ScreenUtil with responsive design sizes
+        // - Phone: 375x10000 (iPhone SE/8 as standard, height disabled)
+        // - Tablet: 768x10000 (iPad as standard, height disabled)
+        // - Desktop: 1440x10000 (Desktop standard, height disabled)
+        // Height is set to large value to effectively disable height scaling
         return ScreenUtilInit(
-          // Design width: 375px (iPhone SE/8 as standard)
-          // Design height: Set very large to effectively disable height scaling
-          designSize: const Size(375, 10000),
+          designSize: _getDesignSize(context),
           // Minimum text adapt size (prevents text from being too small)
           minTextAdapt: true,
           // Split screen mode support
@@ -241,6 +244,24 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
       },
     );
+  }
+
+  /// Get responsive design size based on device width
+  Size _getDesignSize(BuildContext context) {
+    // For initial build, use MediaQuery directly
+    final width = MediaQuery.of(context).size.width;
+
+    // Determine design size based on device width
+    if (width < ResponsiveLayout.phoneBreakpoint) {
+      // Phone: 375x10000 (iPhone SE/8 standard)
+      return const Size(375, 10000);
+    } else if (width < ResponsiveLayout.tabletBreakpoint) {
+      // Tablet: 768x10000 (iPad standard)
+      return const Size(768, 10000);
+    } else {
+      // Desktop: 1440x10000 (Desktop standard)
+      return const Size(1440, 10000);
+    }
   }
 }
 
@@ -311,6 +332,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _pageIndex = 0;
   late final List<Widget> _pages;
+  late final List<_NavItem> _navItems;
   StreamSubscription? _linkSubscription;
 
   @override
@@ -324,30 +346,126 @@ class _MyHomePageState extends State<MyHomePage> {
       const StatisticsScreen(),
       const ProfileScreen(),
     ];
+
+    // Navigation items for both bottom bar and rail
+    _navItems = [
+      _NavItem(icon: Icons.pie_chart, label: 'Portfolio'),
+      _NavItem(icon: Icons.calculate, label: 'Strategy'),
+      _NavItem(icon: Icons.widgets, label: 'Product'),
+      _NavItem(icon: Icons.analytics, label: 'Statistics'),
+      _NavItem(icon: Icons.manage_accounts, label: 'Profile'),
+    ];
+    
+    // Debug: Print device info after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ResponsiveLayout.printDeviceInfo(context);
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      appBar: null,
-      body: IndexedStack(index: _pageIndex, children: _pages),
-      bottomNavigationBar: DesignBottomNavBar(
-        currentIndex: _pageIndex,
-        onTap: (index) => setState(() => _pageIndex = index),
-        items: const [
-          NavItemSpec(icon: Icons.pie_chart, label: 'Portfolio'),
-          NavItemSpec(icon: Icons.calculate, label: 'Strategy'),
-          NavItemSpec(icon: Icons.widgets, label: 'Product'),
-          NavItemSpec(icon: Icons.analytics, label: 'Statistics'),
-          NavItemSpec(icon: Icons.manage_accounts, label: 'Profile'),
-        ],
+    // Use different layouts for phone vs tablet
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isTablet = ResponsiveLayout.isTablet(context);
+    
+    // iPad detection: Use sidebar if screen is large enough OR if it's clearly iPad dimensions
+    // iPad Pro 13": 1024x1366 (portrait), 1366x1024 (landscape)
+    // iPad Pro 11": 834x1194 (portrait), 1194x834 (landscape)
+    final isLargeScreen = screenWidth >= 600 || 
+                          (screenWidth > 800 && screenHeight > 1000) ||
+                          (screenWidth > 1000 && screenHeight > 800);
+    
+    final shouldUseSidebar = isTablet || isLargeScreen;
+    
+    // Debug: Print device info to understand layout detection
+    developer.log(
+      'Screen: ${screenWidth.toStringAsFixed(0)}x${screenHeight.toStringAsFixed(0)}, '
+      'isTablet: $isTablet, isLargeScreen: $isLargeScreen, '
+      'shouldUseSidebar: $shouldUseSidebar',
+      name: 'MyHomePage',
+    );
+
+    if (shouldUseSidebar) {
+      // Tablet layout: Modern sidebar navigation
+      return Scaffold(
+        resizeToAvoidBottomInset: false,
+        appBar: null,
+        body: Row(
+          children: [
+            // Modern Sidebar
+            AppSidebar(
+              selectedIndex: _pageIndex,
+              onDestinationSelected: (index) {
+                setState(() => _pageIndex = index);
+              },
+              destinations: _navItems
+                  .map((item) => SidebarDestination(
+                        icon: item.icon,
+                        selectedIcon: item.icon,
+                        label: item.label,
+                      ))
+                  .toList(),
+              footer: _buildSidebarFooter(context),
+            ),
+            // Content area
+            Expanded(
+              child: IndexedStack(index: _pageIndex, children: _pages),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Phone layout: Bottom navigation bar
+      return Scaffold(
+        resizeToAvoidBottomInset: false,
+        appBar: null,
+        body: IndexedStack(index: _pageIndex, children: _pages),
+        bottomNavigationBar: DesignBottomNavBar(
+          currentIndex: _pageIndex,
+          onTap: (index) => setState(() => _pageIndex = index),
+          items: _navItems
+              .map((item) => NavItemSpec(icon: item.icon, label: item.label))
+              .toList(),
+        ),
+      );
+    }
+  }
+
+  /// Build footer for sidebar with theme toggle
+  Widget _buildSidebarFooter(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      child: Tooltip(
+        message: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () {
+              ThemeService.instance.toggleTheme();
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              height: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Icon(
+                  isDark ? Icons.light_mode : Icons.dark_mode,
+                  size: 24,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -357,4 +475,12 @@ class _MyHomePageState extends State<MyHomePage> {
     _linkSubscription?.cancel();
     super.dispose();
   }
+}
+
+/// Navigation item data class
+class _NavItem {
+  final IconData icon;
+  final String label;
+
+  const _NavItem({required this.icon, required this.label});
 }

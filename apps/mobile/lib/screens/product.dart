@@ -5,6 +5,7 @@ import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
 import '../widgets/custom_app_bar.dart';
 import '../services/okx_data_service.dart';
+import '../utils/responsive_layout.dart';
 import 'product_detail.dart';
 
 class ProductScreen extends StatefulWidget {
@@ -127,95 +128,203 @@ class _ProductScreenState extends State<ProductScreen>
             const Expanded(child: Center(child: CircularProgressIndicator()))
           else
             Expanded(
-              child: ListView.builder(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                controller: _scrollController,
-                itemCount: _tickers.length,
-                itemBuilder: (context, index) {
-                  final ticker = _tickers[index];
-                  final changePercent =
-                      ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
-                  final changeColor = changePercent >= 0
-                      ? Colors.green
-                      : Colors.red;
+              child: context.isTablet
+                  ? _buildTabletGrid()
+                  : _buildPhoneList(),
+            ),
+        ],
+      ),
+    );
+  }
 
-                  return ListTile(
-                    key: ValueKey(ticker.instId),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              ProductDetailScreen(productId: ticker.instId),
-                        ),
-                      );
-                    },
-                    leading: Image.network(
-                      ticker.iconUrl,
-                      width: 28.w, // ✅ Uniform scaling
-                      height: 28.w, // ✅ Uniform scaling
-                      errorBuilder: (context, error, stackTrace) => Icon(
-                        Icons.monetization_on,
-                        size: 28.w,
-                      ), // ✅ Uniform scaling
+  Widget _buildPhoneList() {
+    return ListView.builder(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      controller: _scrollController,
+      itemCount: _tickers.length,
+      itemBuilder: (context, index) => _buildProductListTile(_tickers[index]),
+    );
+  }
+
+  Widget _buildTabletGrid() {
+    return GridView.builder(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      controller: _scrollController,
+      padding: EdgeInsets.all(24.w),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 3,
+      ),
+      itemCount: _tickers.length,
+      itemBuilder: (context, index) => _buildProductCard(_tickers[index]),
+    );
+  }
+
+  Widget _buildProductListTile(OKXTicker ticker) {
+    final changePercent = ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
+    final changeColor = changePercent >= 0 ? Colors.green : Colors.red;
+
+    return ListTile(
+      key: ValueKey(ticker.instId),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProductDetailScreen(productId: ticker.instId),
+          ),
+        );
+      },
+      leading: Image.network(
+        ticker.iconUrl,
+        width: 28.w,
+        height: 28.w,
+        errorBuilder: (context, error, stackTrace) =>
+            Icon(Icons.monetization_on, size: 28.w),
+      ),
+      title: Text(
+        ticker.instId,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+      subtitle: Text(
+        'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12.sp),
+      ),
+      trailing: IntrinsicWidth(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              ticker.last.toString(),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  changePercent >= 0 ? Icons.trending_up : Icons.trending_down,
+                  size: 16.w,
+                  color: changeColor,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${changePercent.toStringAsFixed(2)}%',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontSize: 12.sp,
+                        color: changeColor,
+                      ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductCard(OKXTicker ticker) {
+    final changePercent = ((ticker.last - ticker.open24h) / ticker.open24h) * 100;
+    final changeColor = changePercent >= 0 ? Colors.green : Colors.red;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProductDetailScreen(productId: ticker.instId),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark
+                ? Colors.grey[850]!
+                : Colors.grey.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Row(
+          children: [
+            Image.network(
+              ticker.iconUrl,
+              width: 36.w,
+              height: 36.w,
+              errorBuilder: (context, error, stackTrace) =>
+                  Icon(Icons.monetization_on, size: 36.w),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    ticker.instId,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
-                    title: Text(
-                      ticker.instId,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontSize: 16.sp, // ✅ Adaptive font
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  ticker.last.toString(),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      changePercent >= 0
+                          ? Icons.trending_up
+                          : Icons.trending_down,
+                      size: 14.w,
+                      color: changeColor,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${changePercent.toStringAsFixed(2)}%',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: changeColor,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    subtitle: Text(
-                      'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontSize: 12.sp, // ✅ Adaptive font
-                      ),
-                    ),
-                    trailing: IntrinsicWidth(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min, // 关键点
-                        children: [
-                          Text(
-                            ticker.last.toString(),
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  fontSize: 14.sp, // ✅ Adaptive font
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          const SizedBox(height: 2),
-                          Row(
-                            mainAxisSize: MainAxisSize.min, // 防止Row拉伸
-                            children: [
-                              Icon(
-                                changePercent >= 0
-                                    ? Icons.trending_up
-                                    : Icons.trending_down,
-                                size: 16.w, // ✅ Uniform scaling
-                                color: changeColor,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${changePercent.toStringAsFixed(2)}%',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      fontSize: 12.sp, // ✅ Adaptive font
-                                      color: changeColor,
-                                    ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
+                  ],
+                ),
+              ],
             ),
-        ],
+          ],
+        ),
       ),
     );
   }

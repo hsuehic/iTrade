@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/strategy_service.dart';
 import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
+import '../utils/responsive_layout.dart';
 import '../widgets/custom_app_bar.dart';
 
 enum StatTab { topPerformers, byExchange, bySymbol }
@@ -252,6 +253,31 @@ class _StatisticsScreenState extends State<StatisticsScreen>
             ),
           ],
         ),
+      );
+    }
+
+    // Use grid on tablets for better space utilization
+    if (context.isTablet) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(24),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 2.5,
+        ),
+        itemCount: data.length,
+        itemBuilder: (context, index) {
+          final item = data[index];
+          switch (_currentTab) {
+            case StatTab.topPerformers:
+              return _buildPerformerCard(item, isDark);
+            case StatTab.byExchange:
+              return _buildExchangeCard(item, isDark);
+            case StatTab.bySymbol:
+              return _buildSymbolCard(item, isDark);
+          }
+        },
       );
     }
 

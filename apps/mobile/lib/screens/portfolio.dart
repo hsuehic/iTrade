@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../model/api.dart';
 import '../widgets/asset_list.dart';
 import '../widgets/custom_app_bar.dart';
+import '../widgets/responsive_layout_builder.dart';
 
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
@@ -65,184 +66,368 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
     return Scaffold(
       appBar: const CustomAppBar(title: 'Portfolio'),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16.w,
-                12,
-                16.w,
-                0,
-              ), // ✅ Width-adapted horizontal
-              child: _BalanceHeader(total: total, dailyPct: dailyWeightedPct),
-            ),
+      body: ResponsiveLayoutBuilder(
+        phone: (context) => _buildPhoneLayout(assets, total, dailyWeightedPct, chartData),
+        tablet: (context) => _buildTabletLayout(assets, total, dailyWeightedPct, chartData),
+      ),
+    );
+  }
+
+  // Phone layout - single column
+  Widget _buildPhoneLayout(
+    List<AssetItem> assets,
+    double total,
+    double dailyWeightedPct,
+    List<_PieData> chartData,
+  ) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 12, 16.w, 0),
+            child: _BalanceHeader(total: total, dailyPct: dailyWeightedPct),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(16.w), // ✅ Width-adapted
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(12), // ✅ Uniform radius
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(16.w),
+            child: _buildAllocationChart(chartData, total),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8),
+            child: _buildAssetsHeader(),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: PortfolioAssetList(
+            assets: assets,
+            shrinkWrap: true,
+            selectedSymbol: _selectedSymbol,
+            onTap: (asset) {
+              setState(() {
+                _selectedSymbol = _selectedSymbol == asset.symbol ? null : asset.symbol;
+              });
+            },
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+      ],
+    );
+  }
+
+  // Tablet layout - two columns
+  Widget _buildTabletLayout(
+    List<AssetItem> assets,
+    double total,
+    double dailyWeightedPct,
+    List<_PieData> chartData,
+  ) {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(24.w, 16, 24.w, 0),
+            child: _BalanceHeader(total: total, dailyPct: dailyWeightedPct),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24.w),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left: Allocation Chart
+                Expanded(
+                  flex: 2,
+                  child: _buildAllocationChart(chartData, total),
                 ),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    0,
-                    12,
-                    12.w,
-                    12,
-                  ), // ✅ Width-adapted right padding
+                const SizedBox(width: 24),
+                // Right: Assets List (top 3)
+                Expanded(
+                  flex: 3,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8.w, // ✅ Width-adapted
-                              vertical: 4, // ✅ Fixed vertical
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'Allocation',
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(
-                                    fontSize: 14.sp, // ✅ Adaptive font
-                                    fontWeight: FontWeight.w600,
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                  ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      _buildAssetsHeader(),
                       const SizedBox(height: 8),
-                      SizedBox(
-                        height: 200,
-                        child: PieChart(
-                          PieChartData(
-                            sectionsSpace: 2,
-                            centerSpaceRadius: 0,
-                            pieTouchData: PieTouchData(
-                              touchCallback:
-                                  (FlTouchEvent event, pieTouchResponse) {
-                                    if (event is FlTapUpEvent &&
-                                        pieTouchResponse != null &&
-                                        pieTouchResponse.touchedSection !=
-                                            null) {
-                                      setState(() {
-                                        final index = pieTouchResponse
-                                            .touchedSection!
-                                            .touchedSectionIndex;
-                                        _selectedSymbol =
-                                            index >= 0 &&
-                                                index < chartData.length
-                                            ? chartData[index].label
-                                            : null;
-                                      });
-                                    }
-                                  },
-                            ),
-                            sections: chartData.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final data = entry.value;
-                              final isSelected = _selectedSymbol == data.label;
-                              final percentage = total == 0
-                                  ? 0
-                                  : (data.value / total * 100);
-
-                              final colors = [
-                                Colors.blue.shade300,
-                                Colors.orange.shade300,
-                                Colors.green.shade300,
-                                Colors.purple.shade300,
-                                Colors.red.shade300,
-                                Colors.teal.shade300,
-                              ];
-
-                              return PieChartSectionData(
-                                color: colors[index % colors.length],
-                                value: data.value,
-                                title: '${percentage.toStringAsFixed(1)}%',
-                                radius: isSelected ? 110 : 100,
-                                titleStyle: TextStyle(
-                                  fontSize: 12.sp, // ✅ Adaptive font
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                                titlePositionPercentageOffset: 0.6,
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      _buildChartLegend(context, chartData, total),
+                      ...assets.take(3).map((asset) => _buildAssetListItem(asset)),
                     ],
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24.w),
+            child: Text(
+              'All Assets',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontSize: 16.sp,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                16.w,
-                0,
-                16.w,
-                8,
-              ), // ✅ Width-adapted horizontal
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: 24.w),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 2.5,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _buildAssetCard(assets[index]),
+              childCount: assets.length,
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 16)),
+      ],
+    );
+  }
+
+  Widget _buildAllocationChart(List<_PieData> chartData, double total) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(0, 12, 12.w, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    'Assets',
+                    'Allocation',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontSize: 14.sp, // ✅ Adaptive font
+                      fontSize: 14.sp,
                       fontWeight: FontWeight.w600,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 200,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 0,
+                  pieTouchData: PieTouchData(
+                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                      if (event is FlTapUpEvent &&
+                          pieTouchResponse != null &&
+                          pieTouchResponse.touchedSection != null) {
+                        setState(() {
+                          final index = pieTouchResponse.touchedSection!.touchedSectionIndex;
+                          _selectedSymbol =
+                              index >= 0 && index < chartData.length ? chartData[index].label : null;
+                        });
+                      }
+                    },
+                  ),
+                  sections: chartData.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final data = entry.value;
+                    final isSelected = _selectedSymbol == data.label;
+                    final percentage = total == 0 ? 0 : (data.value / total * 100);
+
+                    final colors = [
+                      Colors.blue.shade300,
+                      Colors.orange.shade300,
+                      Colors.green.shade300,
+                      Colors.purple.shade300,
+                      Colors.red.shade300,
+                      Colors.teal.shade300,
+                    ];
+
+                    return PieChartSectionData(
+                      color: colors[index % colors.length],
+                      value: data.value,
+                      title: '${percentage.toStringAsFixed(1)}%',
+                      radius: isSelected ? 110 : 100,
+                      titleStyle: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      titlePositionPercentageOffset: 0.6,
+                    );
+                  }).toList(),
+                ),
               ),
             ),
+            const SizedBox(height: 12),
+            _buildChartLegend(context, chartData, total),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssetsHeader() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          'Assets',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          // Asset list with built-in sorting
-          SliverToBoxAdapter(
-            child: PortfolioAssetList(
-              assets: assets,
-              shrinkWrap: true,
-              selectedSymbol: _selectedSymbol,
-              onTap: (asset) {
-                setState(() {
-                  // Toggle selection: if already selected, deselect it
-                  _selectedSymbol = _selectedSymbol == asset.symbol
-                      ? null
-                      : asset.symbol;
-                });
-              },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAssetListItem(AssetItem asset) {
+    final changeColor = asset.dailyChange >= 0 ? Colors.green : Theme.of(context).colorScheme.error;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _selectedSymbol == asset.symbol
+            ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: _selectedSymbol == asset.symbol
+              ? Theme.of(context).primaryColor
+              : Colors.grey.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Image.network(
+            asset.iconUrl,
+            width: 32.w,
+            height: 32.w,
+            errorBuilder: (context, error, stackTrace) => Icon(Icons.currency_bitcoin, size: 32.w),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(asset.symbol, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('\$${asset.value.toStringAsFixed(2)}', style: TextStyle(fontSize: 12.sp, color: Colors.grey[600])),
+              ],
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Icon(
+                asset.dailyChange >= 0 ? Icons.trending_up : Icons.trending_down,
+                size: 16.w,
+                color: changeColor,
+              ),
+              Text(
+                '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
+                style: TextStyle(fontSize: 12.sp, color: changeColor, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAssetCard(AssetItem asset) {
+    final changeColor = asset.dailyChange >= 0 ? Colors.green : Theme.of(context).colorScheme.error;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedSymbol = _selectedSymbol == asset.symbol ? null : asset.symbol;
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _selectedSymbol == asset.symbol
+              ? theme.primaryColor.withValues(alpha: 0.1)
+              : (isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _selectedSymbol == asset.symbol
+                ? theme.primaryColor
+                : (isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.08)),
+          ),
+        ),
+        child: Row(
+          children: [
+            Image.network(
+              asset.iconUrl,
+              width: 32.w,
+              height: 32.w,
+              errorBuilder: (context, error, stackTrace) => Icon(Icons.currency_bitcoin, size: 32.w),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    asset.symbol,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '\$${asset.value.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  asset.dailyChange >= 0 ? Icons.trending_up : Icons.trending_down,
+                  size: 14.w,
+                  color: changeColor,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
+                  style: TextStyle(fontSize: 11, color: changeColor, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
