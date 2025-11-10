@@ -1122,6 +1122,14 @@ export class OKXExchange extends BaseExchange {
     quantity: Decimal,
     price?: Decimal,
   ): Order {
+    // Calculate cummulativeQuoteQuantity from filled size and average price
+    let cummulativeQuoteQuantity: Decimal | undefined;
+    if (order.accFillSz && order.avgPx) {
+      const accFillSz = this.formatDecimal(order.accFillSz);
+      const avgPx = this.formatDecimal(order.avgPx);
+      cummulativeQuoteQuantity = accFillSz.mul(avgPx);
+    }
+
     return {
       id: order.ordId || uuidv4(),
       clientOrderId: order.clOrdId,
@@ -1135,6 +1143,7 @@ export class OKXExchange extends BaseExchange {
       timestamp: new Date(parseInt(order.cTime || order.uTime)),
       updateTime: new Date(parseInt(order.uTime)),
       executedQuantity: order.accFillSz ? this.formatDecimal(order.accFillSz) : undefined,
+      cummulativeQuoteQuantity,
     };
   }
 
@@ -1212,6 +1221,15 @@ export class OKXExchange extends BaseExchange {
     const type = this.transformOKXOrderType(data.ordType || 'limit');
     const qty = this.formatDecimal(data.sz || '0');
     const price = data.px ? this.formatDecimal(data.px) : undefined;
+    
+    // Calculate cummulativeQuoteQuantity from filled size and average price
+    let cummulativeQuoteQuantity: Decimal | undefined;
+    if (data.accFillSz && data.avgPx) {
+      const accFillSz = this.formatDecimal(data.accFillSz);
+      const avgPx = this.formatDecimal(data.avgPx);
+      cummulativeQuoteQuantity = accFillSz.mul(avgPx);
+    }
+    
     return {
       id: (data.ordId || uuidv4()).toString(),
       clientOrderId: data.clOrdId,
@@ -1225,6 +1243,7 @@ export class OKXExchange extends BaseExchange {
       timestamp: data.cTime ? new Date(parseInt(data.cTime)) : new Date(),
       updateTime: data.uTime ? new Date(parseInt(data.uTime)) : undefined,
       executedQuantity: data.accFillSz ? this.formatDecimal(data.accFillSz) : undefined,
+      cummulativeQuoteQuantity,
     };
   }
 
