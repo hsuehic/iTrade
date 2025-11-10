@@ -33,7 +33,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     super.initState();
     _strategy = widget.strategy;
     _pnl = widget.pnl;
-    _loadOrders();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    // Load orders and PnL data in parallel
+    await Future.wait([
+      _loadOrders(),
+      _loadPnL(),
+    ]);
   }
 
   Future<void> _loadOrders() async {
@@ -49,6 +57,19 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     } catch (e) {
       print('❌ Error loading orders: $e');
       setState(() => _isLoadingOrders = false);
+    }
+  }
+
+  Future<void> _loadPnL() async {
+    try {
+      final pnl = await _strategyService.getStrategyPnL(_strategy.id);
+      if (pnl != null) {
+        setState(() {
+          _pnl = pnl;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading PnL: $e');
     }
   }
 

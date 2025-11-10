@@ -93,10 +93,14 @@ class Order {
   bool get isBuy => side == 'BUY';
   bool get isSell => side == 'SELL';
 
-  /// Extract base currency from symbol (e.g., BTC/USDT -> BTC)
+  /// Extract base currency from symbol (e.g., BTC/USDT -> BTC, WLD-USDT-SWAP -> WLD)
   String get baseCurrency {
     if (symbol.contains('/')) {
       return symbol.split('/')[0];
+    }
+    // For symbols like WLD-USDT-SWAP, extract base currency
+    if (symbol.contains('-')) {
+      return symbol.split('-')[0];
     }
     // Handle symbols without separator (e.g., BTCUSDT -> BTC)
     // Common quote currencies
@@ -107,6 +111,22 @@ class Order {
       }
     }
     return symbol;
+  }
+  
+  /// Check if this is a perpetual/swap contract
+  bool get isPerpetual {
+    return symbol.contains('SWAP') || 
+           symbol.contains(':USDT') || 
+           symbol.contains('PERP');
+  }
+  
+  /// Get a display-friendly symbol with contract type indicator
+  String get displaySymbol {
+    final base = baseCurrency;
+    if (isPerpetual) {
+      return '$base PERP';
+    }
+    return base;
   }
 }
 
