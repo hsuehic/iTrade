@@ -193,7 +193,7 @@ export class PnLRepository {
 
       if (userId) {
         ordersQuery.andWhere(
-          'order.strategyId IN (SELECT id FROM strategies WHERE userId = :userId)',
+          'order.strategyId IN (SELECT id FROM strategies WHERE "userId" = :userId)',
           { userId },
         );
       }
