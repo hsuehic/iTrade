@@ -248,24 +248,27 @@ class _StrategyScreenState extends State<StrategyScreen>
   }
 
   Widget _buildPhoneList() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _filteredStrategies.length,
-      itemBuilder: (context, index) {
-        final strategy = _filteredStrategies[index];
-        final pnl = _pnlMap[strategy.id];
-        final baseCurrency = _extractBaseCurrency(strategy.symbol);
-        return _StrategyCard(
-          strategy: strategy,
-          pnl: pnl,
-          onTap: () => _navigateToDetail(strategy),
-          getStatusColor: _getStatusColor,
-          getPnLColor: _getPnLColor,
-          formatPnL: _formatPnL,
-          formatStatus: _formatStatus,
-          baseCurrency: baseCurrency,
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _loadStrategies,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _filteredStrategies.length,
+        itemBuilder: (context, index) {
+          final strategy = _filteredStrategies[index];
+          final pnl = _pnlMap[strategy.id];
+          final baseCurrency = _extractBaseCurrency(strategy.symbol);
+          return _StrategyCard(
+            strategy: strategy,
+            pnl: pnl,
+            onTap: () => _navigateToDetail(strategy),
+            getStatusColor: _getStatusColor,
+            getPnLColor: _getPnLColor,
+            formatPnL: _formatPnL,
+            formatStatus: _formatStatus,
+            baseCurrency: baseCurrency,
+          );
+        },
+      ),
     );
   }
 
@@ -276,30 +279,33 @@ class _StrategyScreenState extends State<StrategyScreen>
     // Use 2 columns for portrait/smaller screens, 3 for wider landscape
     final crossAxisCount = effectiveWidth > 900 ? 3 : 2;
     
-    return GridView.builder(
-      padding: const EdgeInsets.all(24),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        mainAxisSpacing: 16,
-        crossAxisSpacing: 16,
-        childAspectRatio: 1.6,
+    return RefreshIndicator(
+      onRefresh: _loadStrategies,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(24),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 1.6,
+        ),
+        itemCount: _filteredStrategies.length,
+        itemBuilder: (context, index) {
+          final strategy = _filteredStrategies[index];
+          final pnl = _pnlMap[strategy.id];
+          final baseCurrency = _extractBaseCurrency(strategy.symbol);
+          return _StrategyCard(
+            strategy: strategy,
+            pnl: pnl,
+            onTap: () => _navigateToDetail(strategy),
+            getStatusColor: _getStatusColor,
+            getPnLColor: _getPnLColor,
+            formatPnL: _formatPnL,
+            formatStatus: _formatStatus,
+            baseCurrency: baseCurrency,
+          );
+        },
       ),
-      itemCount: _filteredStrategies.length,
-      itemBuilder: (context, index) {
-        final strategy = _filteredStrategies[index];
-        final pnl = _pnlMap[strategy.id];
-        final baseCurrency = _extractBaseCurrency(strategy.symbol);
-        return _StrategyCard(
-          strategy: strategy,
-          pnl: pnl,
-          onTap: () => _navigateToDetail(strategy),
-          getStatusColor: _getStatusColor,
-          getPnLColor: _getPnLColor,
-          formatPnL: _formatPnL,
-          formatStatus: _formatStatus,
-          baseCurrency: baseCurrency,
-        );
-      },
     );
   }
 
