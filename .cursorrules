@@ -1152,6 +1152,406 @@ pnpm build
 
 ---
 
+## 🔒 Database and File I/O Performance & Security Rules
+
+### Mandatory Performance and Security Considerations
+
+**When working with database queries or file I/O operations, AI agents MUST carefully consider performance implications and security risks BEFORE implementing.**
+
+#### Core Principle
+
+> **"Measure Twice, Query Once - Think Security First"**
+>
+> When implementing ANY database or file operations, AI agents MUST:
+>
+> 1. ✅ **Analyze query patterns** - Avoid N+1 queries
+> 2. ✅ **Consider data volume** - Will this scale with 10x, 100x data?
+> 3. ✅ **Validate inputs** - Prevent SQL injection and path traversal
+> 4. ✅ **Use parameterized queries** - Never concatenate user input into SQL
+> 5. ✅ **Check permissions** - Verify user authorization before data access
+> 6. ✅ **Add indexes** - Ensure queries use appropriate database indexes
+> 7. ✅ **Limit results** - Use pagination for large datasets
+
+---
+
+### 🚫 Common Anti-Patterns to AVOID
+
+#### ❌ **1. N+1 Query Problem**
+
+**BAD - Separate query for each item:**
+```typescript
+// ❌ NEVER DO THIS: N+1 queries
+const strategies = await getStrategies(); // 1 query
+for (const strategy of strategies) {
+  const orders = await getOrders(strategy.id); // N queries
+  // = 1 + N total queries!
+}
+```
+
+**GOOD - Single query with JOIN or IN clause:**
+```typescript
+// ✅ DO THIS: 1 query for all data
+const strategies = await getStrategies(); // 1 query
+const strategyIds = strategies.map(s => s.id);
+const allOrders = await getOrdersForStrategies(strategyIds); // 1 query
+const ordersByStrategy = groupBy(allOrders, 'strategyId'); // Group in memory
+// = 2 total queries (constant time)
+```
+
+#### ❌ **2. Missing Indexes**
+
+**BAD - Query without index:**
+```typescript
+// ❌ Slow: Full table scan
+const orders = await repository.find({
+  where: { customerId: userId }, // No index on customerId
+});
+```
+
+**GOOD - Add index for frequently queried columns:**
+```typescript
+// ✅ In entity definition:
+@Entity()
+class Order {
+  @Index() // Add index
+  @Column()
+  customerId: string;
+}
+```
+
+#### ❌ **3. SQL Injection Vulnerability**
+
+**BAD - String concatenation:**
+```typescript
+// ❌ NEVER DO THIS: SQL injection risk!
+const query = `SELECT * FROM users WHERE email = '${userEmail}'`;
+await db.query(query);
+```
+
+**GOOD - Parameterized queries:**
+```typescript
+// ✅ DO THIS: Safe parameterized query
+const query = 'SELECT * FROM users WHERE email = ?';
+await db.query(query, [userEmail]);
+// OR using query builder:
+await repository.findOne({ where: { email: userEmail } });
+```
+
+#### ❌ **4. Loading Too Much Data**
+
+**BAD - No pagination:**
+```typescript
+// ❌ Loads entire table into memory!
+const allOrders = await repository.find();
+```
+
+**GOOD - Pagination:**
+```typescript
+// ✅ DO THIS: Paginate results
+const orders = await repository.find({
+  skip: (page - 1) * pageSize,
+  take: pageSize,
+  order: { createdAt: 'DESC' },
+});
+```
+
+#### ❌ **5. Missing Authorization Checks**
+
+**BAD - No permission check:**
+```typescript
+// ❌ Any user can access any strategy!
+const strategy = await repository.findOne({ where: { id } });
+```
+
+**GOOD - Check ownership:**
+```typescript
+// ✅ DO THIS: Verify user owns the resource
+const strategy = await repository.findOne({
+  where: { id, userId: currentUser.id },
+});
+if (!strategy) {
+  throw new UnauthorizedException('Access denied');
+}
+```
+
+#### ❌ **6. Path Traversal in File Operations**
+
+**BAD - Unsanitized file paths:**
+```typescript
+// ❌ NEVER DO THIS: Path traversal vulnerability!
+const filePath = `/uploads/${userProvidedFilename}`;
+fs.readFile(filePath); // User could provide: ../../../../etc/passwd
+```
+
+**GOOD - Validate and sanitize:**
+```typescript
+// ✅ DO THIS: Sanitize filename
+import path from 'path';
+const safeFilename = path.basename(userProvidedFilename); // Remove path components
+const filePath = path.join(UPLOAD_DIR, safeFilename);
+if (!filePath.startsWith(UPLOAD_DIR)) {
+  throw new Error('Invalid file path');
+}
+```
+
+---
+
+### ✅ Required Performance Analysis
+
+**Before implementing database operations, AI agents MUST:**
+
+1. **Estimate data volume:**
+   - "Will this strategy have 10 orders or 10,000 orders?"
+   - "Will this user have 1 file or 1,000 files?"
+
+2. **Count queries:**
+   - "How many database queries will this make?"
+   - "Does query count grow with data (O(N)) or stay constant (O(1))?"
+
+3. **Check for loops:**
+   - "Am I querying inside a loop?" → ❌ N+1 problem!
+   - "Can I fetch all data in one query?" → ✅ Better!
+
+4. **Consider caching:**
+   - "Is this data rarely changed?" → Consider caching
+   - "Is this query expensive?" → Cache the result
+
+---
+
+### ✅ Required Security Checks
+
+**Before implementing data access, AI agents MUST:**
+
+1. **✅ Input Validation:**
+   - Validate ALL user inputs
+   - Check data types (string, number, email, etc.)
+   - Enforce length limits
+   - Reject malicious patterns (../,  <script>, etc.)
+
+2. **✅ Parameterized Queries:**
+   - NEVER concatenate user input into SQL
+   - ALWAYS use query builder or parameterized queries
+   - Use ORM methods (find, findOne, etc.)
+
+3. **✅ Authorization:**
+   - Check user owns the resource
+   - Verify permissions before read/write/delete
+   - Filter queries by userId/tenantId
+
+4. **✅ File Path Safety:**
+   - Use `path.basename()` to remove directory components
+   - Validate file path stays within allowed directory
+   - Check file extension whitelist
+
+5. **✅ Rate Limiting:**
+   - Implement rate limits for expensive operations
+   - Prevent DoS attacks via excessive queries
+
+---
+
+### 🔍 AI Agent Checklist for Database Operations
+
+Before writing database code, verify:
+
+- [ ] **Query pattern analyzed** - No N+1 queries
+- [ ] **Indexes present** - Columns in WHERE clause are indexed
+- [ ] **Data volume considered** - Works with 10x, 100x, 1000x data
+- [ ] **Inputs validated** - All user inputs are validated
+- [ ] **Parameterized queries** - No string concatenation
+- [ ] **Authorization checked** - User can access this data
+- [ ] **Pagination implemented** - Large datasets are paginated
+- [ ] **Transactions used** - Multiple writes use transactions
+- [ ] **Error handling** - Database errors handled gracefully
+- [ ] **Performance tested** - Query performance verified
+
+---
+
+### 🔍 AI Agent Checklist for File I/O Operations
+
+Before writing file operations, verify:
+
+- [ ] **Path sanitized** - Use `path.basename()` and validate
+- [ ] **Directory validated** - Path stays within allowed directory
+- [ ] **Extension checked** - File extension is whitelisted
+- [ ] **Size limited** - File size is within allowed limit
+- [ ] **Permissions checked** - User authorized to access file
+- [ ] **Error handling** - File not found, permission denied handled
+- [ ] **Resource cleanup** - File handles closed properly
+- [ ] **Async operations** - Use async file operations (don't block)
+- [ ] **Concurrent access** - Handle file locks if needed
+
+---
+
+### 📊 Performance Analysis Example
+
+**Scenario: Fetch PnL for all strategies**
+
+**❌ BAD Implementation (N+1):**
+```typescript
+// Get all strategies
+const strategies = await strategyRepo.find(); // 1 query
+
+// For each strategy, get orders
+for (const strategy of strategies) {
+  const orders = await orderRepo.find({
+    where: { strategyId: strategy.id } // N queries
+  });
+  calculatePnL(orders);
+}
+// Total: 1 + N queries
+// 10 strategies = 11 queries
+// 100 strategies = 101 queries ❌ SLOW!
+```
+
+**✅ GOOD Implementation (Optimized):**
+```typescript
+// Get all strategies
+const strategies = await strategyRepo.find(); // 1 query
+
+// Get ALL orders in ONE query
+const strategyIds = strategies.map(s => s.id);
+const allOrders = await orderRepo.find({
+  where: { strategyId: In(strategyIds) } // 1 query with IN clause
+});
+
+// Group in memory (fast)
+const ordersByStrategy = new Map();
+for (const order of allOrders) {
+  if (!ordersByStrategy.has(order.strategyId)) {
+    ordersByStrategy.set(order.strategyId, []);
+  }
+  ordersByStrategy.get(order.strategyId).push(order);
+}
+
+// Calculate PnL using pre-fetched data
+for (const strategy of strategies) {
+  const orders = ordersByStrategy.get(strategy.id) || [];
+  calculatePnL(orders);
+}
+// Total: 2 queries (constant)
+// 10 strategies = 2 queries ✅ FAST!
+// 100 strategies = 2 queries ✅ FAST!
+```
+
+---
+
+### 🛡️ Security Analysis Example
+
+**Scenario: Download user's uploaded file**
+
+**❌ BAD Implementation (Path Traversal):**
+```typescript
+// ❌ VULNERABLE!
+app.get('/download/:filename', async (req, res) => {
+  const filename = req.params.filename; // User input
+  const filePath = `/uploads/${filename}`; // ❌ Dangerous!
+  res.sendFile(filePath);
+  // User can request: ../../../../etc/passwd
+});
+```
+
+**✅ GOOD Implementation (Safe):**
+```typescript
+// ✅ SECURE!
+app.get('/download/:filename', async (req, res) => {
+  const filename = req.params.filename;
+  
+  // 1. Sanitize filename (remove path components)
+  const safeFilename = path.basename(filename);
+  
+  // 2. Build safe path
+  const filePath = path.resolve(UPLOAD_DIR, safeFilename);
+  
+  // 3. Verify path is within allowed directory
+  if (!filePath.startsWith(UPLOAD_DIR)) {
+    return res.status(400).json({ error: 'Invalid file path' });
+  }
+  
+  // 4. Check file exists and user owns it
+  const file = await fileRepo.findOne({
+    where: { 
+      filename: safeFilename,
+      userId: req.user.id // ✅ Authorization check
+    }
+  });
+  
+  if (!file) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  
+  // 5. Send file
+  res.sendFile(filePath);
+});
+```
+
+---
+
+### ⚡ Quick Reference: Query Optimization
+
+| Pattern | Queries | Performance | Use When |
+|---------|---------|-------------|----------|
+| **Fetch in loop** | O(N) | ❌ Slow | Never |
+| **IN clause** | O(1) | ✅ Fast | < 1000 IDs |
+| **JOIN** | O(1) | ✅ Fast | Always prefer |
+| **Subquery** | O(1) | ✅ Fast | Complex filters |
+| **Full table scan** | O(1) | ❌ Slow | Add index! |
+
+---
+
+### 🔐 Quick Reference: Security Checklist
+
+| Risk | Mitigation | Example |
+|------|------------|---------|
+| **SQL Injection** | Parameterized queries | `where: { id: userId }` |
+| **Path Traversal** | Sanitize paths | `path.basename(filename)` |
+| **Unauthorized Access** | Check ownership | `where: { userId }` |
+| **XSS** | Sanitize output | Use React (auto-escapes) |
+| **DoS** | Rate limiting | Max 100 req/min |
+| **File Upload Abuse** | Size + type limits | Max 10MB, images only |
+
+---
+
+### 📝 AI Agent Responsibilities
+
+**The AI agent MUST:**
+
+1. ✅ **Analyze BEFORE coding** - Think about performance first
+2. ✅ **Ask if uncertain** - "Will this query be slow with 10,000 records?"
+3. ✅ **Propose optimizations** - Suggest better approaches
+4. ✅ **Add comments** - Explain why approach is chosen
+5. ✅ **Test performance** - Verify query speed with realistic data
+6. ✅ **Document security** - Note security considerations
+7. ✅ **Review existing code** - Identify and fix performance issues
+
+**The AI agent MUST NOT:**
+
+1. ❌ **Query in loops** - Without considering N+1 problem
+2. ❌ **Skip validation** - All user input must be validated
+3. ❌ **Assume small data** - Always design for scale
+4. ❌ **Concatenate SQL** - Use parameterized queries
+5. ❌ **Skip authorization** - Always check permissions
+6. ❌ **Ignore errors** - Handle database/file errors gracefully
+
+---
+
+### Summary: Performance and Security are NOT Optional
+
+> **Every database query and file operation MUST be analyzed for performance implications and security risks. If unsure, ASK before implementing. It's better to be slow and correct than fast and vulnerable.**
+
+**Critical Rules:**
+
+1. **NEVER query in a loop** - Fetch all data in one query
+2. **ALWAYS validate user input** - Prevent injection attacks
+3. **ALWAYS check authorization** - Verify user can access data
+4. **ALWAYS use parameterized queries** - Never concatenate SQL
+5. **ALWAYS sanitize file paths** - Prevent path traversal
+6. **ALWAYS consider scale** - Design for 100x data growth
+7. **ALWAYS add indexes** - For columns in WHERE clauses
+
+**Remember**: Security vulnerabilities and performance issues are often introduced at the design stage, not the implementation stage. Think carefully BEFORE coding! 🔒⚡
+
+---
+
 ## 🧪 Verification and Testing Rules
 
 ### Mandatory Verification After Changes
