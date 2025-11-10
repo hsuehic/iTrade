@@ -36,9 +36,15 @@ export class PnLRepository {
       if (order.status !== 'FILLED') continue;
 
       const executedQty = parseFloat(order.executedQuantity?.toString() || '0');
-      const avgPrice = order.cummulativeQuoteQuantity
-        ? parseFloat(order.cummulativeQuoteQuantity.toString()) / executedQty
-        : parseFloat(order.price?.toString() || '0');
+      const cumulativeQuote = parseFloat(
+        order.cummulativeQuoteQuantity?.toString() || '0',
+      );
+
+      // Calculate average price: use cummulativeQuoteQuantity if available, otherwise use order price
+      const avgPrice =
+        cumulativeQuote > 0 && executedQty > 0
+          ? cumulativeQuote / executedQty
+          : parseFloat(order.price?.toString() || '0');
 
       if (executedQty === 0 || avgPrice === 0) continue;
 
