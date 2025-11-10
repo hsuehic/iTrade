@@ -122,6 +122,9 @@ export class OrderTracker {
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
         exchange: exchange, // 🆕 Save exchange association
+        strategyId: strategyId, // ✅ Set strategyId directly
+        strategyType: order.strategyType, // ✅ Save strategy type
+        strategyName: order.strategyName, // ✅ Save strategy name
         strategy: strategyId ? ({ id: strategyId } as any) : undefined,
       });
 
