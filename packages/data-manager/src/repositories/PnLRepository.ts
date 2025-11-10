@@ -160,6 +160,8 @@ export class PnLRepository {
       pnl: number;
       realizedPnl: number;
       unrealizedPnl: number;
+      totalOrders: number;
+      filledOrders: number;
     }>;
   }> {
     // Get all strategies (grouped by strategyId)
@@ -189,12 +191,18 @@ export class PnLRepository {
 
         const { realizedPnl, unrealizedPnl } = this.calculatePnLFromOrders(orders);
 
+        // Count total and filled orders
+        const totalOrders = orders.length;
+        const filledOrders = orders.filter((o) => o.status === 'FILLED').length;
+
         return {
           strategyId: row.strategyId,
           strategyName: row.strategyName,
           pnl: realizedPnl + unrealizedPnl,
           realizedPnl,
           unrealizedPnl,
+          totalOrders,
+          filledOrders,
         };
       }),
     );
