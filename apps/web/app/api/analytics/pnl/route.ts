@@ -32,7 +32,19 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
 
-      const pnl = await dataManager.getStrategyPnL(id);
+      const pnlData = await dataManager.getStrategyPnL(id);
+
+      // Format response to match mobile app expectations
+      const pnl = {
+        strategyId: id,
+        strategyName: strategy.name,
+        pnl: pnlData.totalPnl, // Mobile app expects 'pnl' not 'totalPnl'
+        realizedPnl: pnlData.realizedPnl,
+        unrealizedPnl: pnlData.unrealizedPnl,
+        totalOrders: pnlData.totalOrders,
+        filledOrders: pnlData.filledOrders,
+      };
+
       return NextResponse.json({ pnl });
     } else {
       // Get overall PnL for user

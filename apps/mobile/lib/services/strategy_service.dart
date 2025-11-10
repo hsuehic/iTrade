@@ -112,9 +112,18 @@ class StrategyService {
 
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
-        final strategies = data['strategies'] as List?;
-        if (strategies != null && strategies.isNotEmpty) {
-          return StrategyPnL.fromJson(strategies[0] as Map<String, dynamic>);
+        // API returns { pnl: {...} } for single strategy
+        final pnlData = data['pnl'];
+        if (pnlData is Map<String, dynamic>) {
+          // Add strategyId to the pnl data if not present
+          if (!pnlData.containsKey('strategyId')) {
+            pnlData['strategyId'] = strategyId;
+          }
+          // Add strategyName if not present
+          if (!pnlData.containsKey('strategyName')) {
+            pnlData['strategyName'] = 'Strategy $strategyId';
+          }
+          return StrategyPnL.fromJson(pnlData);
         }
       }
       return null;

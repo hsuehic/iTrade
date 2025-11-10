@@ -35,10 +35,22 @@ class OrderService {
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
-      if (response.statusCode == 200 && response.data is List) {
-        return (response.data as List)
-            .map((json) => Order.fromJson(json as Map<String, dynamic>))
-            .toList();
+      if (response.statusCode == 200) {
+        // API returns { orders: [...] }, not directly [...]
+        if (response.data is Map<String, dynamic>) {
+          final ordersData = response.data['orders'];
+          if (ordersData is List) {
+            return ordersData
+                .map((json) => Order.fromJson(json as Map<String, dynamic>))
+                .toList();
+          }
+        }
+        // Fallback: if data is directly a list (for backwards compatibility)
+        else if (response.data is List) {
+          return (response.data as List)
+              .map((json) => Order.fromJson(json as Map<String, dynamic>))
+              .toList();
+        }
       }
       return [];
     } catch (e) {
