@@ -26,6 +26,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   bool _isUpdating = false;
   List<Order> _orders = [];
   bool _isLoadingOrders = true;
+  int _displayedOrdersCount = 20; // Show 20 initially
 
   @override
   void initState() {
@@ -36,14 +37,17 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   }
 
   Future<void> _loadOrders() async {
+    print('🔍 Loading orders for strategy: ${_strategy.id} (${_strategy.name})');
     setState(() => _isLoadingOrders = true);
     try {
       final orders = await _orderService.getOrders(strategyId: _strategy.id);
+      print('✅ Received ${orders.length} orders');
       setState(() {
         _orders = orders;
         _isLoadingOrders = false;
       });
     } catch (e) {
+      print('❌ Error loading orders: $e');
       setState(() => _isLoadingOrders = false);
     }
   }
@@ -544,29 +548,46 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                       ),
                     )
                   else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _orders.length > 10 ? 10 : _orders.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(height: 16),
-                      itemBuilder: (context, index) {
-                        final order = _orders[index];
-                        return _OrderItem(order: order);
-                      },
-                    ),
-                  if (_orders.length > 10)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Center(
-                          child: Text(
-                            'Showing first 10 of ${_orders.length} orders',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                            color: Colors.grey[500],
-                          ),
+                    Column(
+                      children: [
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _orders.length > _displayedOrdersCount 
+                              ? _displayedOrdersCount 
+                              : _orders.length,
+                          separatorBuilder: (context, index) =>
+                              const Divider(height: 16),
+                          itemBuilder: (context, index) {
+                            final order = _orders[index];
+                            return _OrderItem(order: order);
+                          },
                         ),
-                      ),
+                        if (_orders.length > _displayedOrdersCount)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Showing $_displayedOrdersCount of ${_orders.length} orders',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: Colors.grey[500],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _displayedOrdersCount += 20;
+                                    });
+                                  },
+                                  child: const Text('Load More'),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                 ],
               ),
@@ -790,7 +811,7 @@ class _OrderItem extends StatelessWidget {
                   Row(
                     children: [
                   Text(
-                    order.symbol,
+                    order.baseCurrency, // Show base currency instead of full symbol
                     style: TextStyle(
                       fontSize: 14.sp,
                       fontWeight: FontWeight.w600,
@@ -847,22 +868,35 @@ class _OrderItem extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Qty: ${order.executedQuantity.toStringAsFixed(4)}/${order.quantity.toStringAsFixed(4)}',
+                    'Qty: ${order.executedQuantity.toStringAsFixed(0)}/${order.quantity.toStringAsFixed(0)}',
                     style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
                   ),
-                  if (order.averagePrice != null)
-                    Text(
-                      '\$${order.averagePrice!.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    )
-                  else if (order.price != null)
-                    Text(
-                      '\$${order.price!.toStringAsFixed(2)}',
-                      style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                    ),
+                  Builder(
+                    builder: (context) {
+                      // Calculate average price from executed quantity and quote quantity
+                      double? avgPrice;
+                      if (order.averagePrice != null && order.averagePrice! > 0) {
+                        avgPrice = order.averagePrice;
+                      } else if (order.cummulativeQuoteQuantity != null && 
+                                 order.cummulativeQuoteQuantity! > 0 && 
+                                 order.executedQuantity > 0) {
+                        avgPrice = order.cummulativeQuoteQuantity! / order.executedQuantity;
+                      } else if (order.price != null) {
+                        avgPrice = order.price;
+                      }
+                      
+                      if (avgPrice != null) {
+                        return Text(
+                          '\$${avgPrice.toStringAsFixed(4)}',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
                 ],
               ),
               const SizedBox(height: 4),

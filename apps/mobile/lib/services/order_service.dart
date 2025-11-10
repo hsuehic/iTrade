@@ -35,33 +35,41 @@ class OrderService {
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
-      developer.log('📥 Orders API Response:', name: 'OrderService');
-      developer.log('  Status: ${response.statusCode}', name: 'OrderService');
-      developer.log('  Data type: ${response.data.runtimeType}', name: 'OrderService');
-      developer.log('  Data: ${response.data}', name: 'OrderService');
+      print('📥 Orders API Response:');
+      print('  Status: ${response.statusCode}');
+      print('  Data type: ${response.data.runtimeType}');
+      print('  Data keys: ${response.data is Map ? (response.data as Map).keys.toList() : "not a map"}');
 
       if (response.statusCode == 200) {
         // API returns { orders: [...] }, not directly [...]
         if (response.data is Map<String, dynamic>) {
           final ordersData = response.data['orders'];
-          developer.log('  Found orders key: ${ordersData != null}', name: 'OrderService');
-          developer.log('  Orders type: ${ordersData.runtimeType}', name: 'OrderService');
+          print('  Found orders key: ${ordersData != null}');
+          print('  Orders type: ${ordersData.runtimeType}');
           if (ordersData is List) {
-            developer.log('  ✅ Orders count: ${ordersData.length}', name: 'OrderService');
-            return ordersData
-                .map((json) => Order.fromJson(json as Map<String, dynamic>))
-                .toList();
+            print('  ✅ Orders count: ${ordersData.length}');
+            try {
+              final orders = ordersData
+                  .map((json) => Order.fromJson(json as Map<String, dynamic>))
+                  .toList();
+              print('  ✅ Successfully parsed ${orders.length} orders');
+              return orders;
+            } catch (parseError) {
+              print('  ❌ Error parsing orders: $parseError');
+              print('  First order data: ${ordersData.isNotEmpty ? ordersData[0] : "empty"}');
+              rethrow;
+            }
           }
         }
         // Fallback: if data is directly a list (for backwards compatibility)
         else if (response.data is List) {
-          developer.log('  ✅ Direct list, count: ${(response.data as List).length}', name: 'OrderService');
+          print('  ✅ Direct list, count: ${(response.data as List).length}');
           return (response.data as List)
               .map((json) => Order.fromJson(json as Map<String, dynamic>))
               .toList();
         }
       }
-      developer.log('  ❌ Returning empty list', name: 'OrderService');
+      print('  ❌ Returning empty list');
       return [];
     } catch (e) {
       developer.log(

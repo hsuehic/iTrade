@@ -45,40 +45,43 @@ class Order {
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
+    // Helper to parse number that might be string or number
+    double _parseDouble(dynamic value) {
+      if (value == null) return 0.0;
+      if (value is num) return value.toDouble();
+      if (value is String) return double.parse(value);
+      return 0.0;
+    }
+
+    double? _parseDoubleOrNull(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      if (value is String) return double.tryParse(value);
+      return null;
+    }
+
     return Order(
       id: json['id'] as String,
       clientOrderId: json['clientOrderId'] as String?,
       symbol: json['symbol'] as String,
       side: json['side'] as String,
       type: json['type'] as String,
-      quantity: (json['quantity'] as num).toDouble(),
-      price: json['price'] != null ? (json['price'] as num).toDouble() : null,
-      stopPrice: json['stopPrice'] != null
-          ? (json['stopPrice'] as num).toDouble()
-          : null,
+      quantity: _parseDouble(json['quantity']),
+      price: _parseDoubleOrNull(json['price']),
+      stopPrice: _parseDoubleOrNull(json['stopPrice']),
       status: json['status'] as String,
       timeInForce: json['timeInForce'] as String?,
       timestamp: DateTime.parse(json['timestamp'] as String),
-      executedQuantity: (json['executedQuantity'] as num).toDouble(),
-      cummulativeQuoteQuantity: json['cummulativeQuoteQuantity'] != null
-          ? (json['cummulativeQuoteQuantity'] as num).toDouble()
-          : null,
+      executedQuantity: _parseDouble(json['executedQuantity']),
+      cummulativeQuoteQuantity: _parseDoubleOrNull(json['cummulativeQuoteQuantity']),
       updateTime: json['updateTime'] != null
           ? DateTime.parse(json['updateTime'] as String)
           : null,
       exchange: json['exchange'] as String?,
-      realizedPnl: json['realizedPnl'] != null
-          ? (json['realizedPnl'] as num).toDouble()
-          : null,
-      unrealizedPnl: json['unrealizedPnl'] != null
-          ? (json['unrealizedPnl'] as num).toDouble()
-          : null,
-      averagePrice: json['averagePrice'] != null
-          ? (json['averagePrice'] as num).toDouble()
-          : null,
-      commission: json['commission'] != null
-          ? (json['commission'] as num).toDouble()
-          : null,
+      realizedPnl: _parseDoubleOrNull(json['realizedPnl']),
+      unrealizedPnl: _parseDoubleOrNull(json['unrealizedPnl']),
+      averagePrice: _parseDoubleOrNull(json['averagePrice']),
+      commission: _parseDoubleOrNull(json['commission']),
       commissionAsset: json['commissionAsset'] as String?,
     );
   }
