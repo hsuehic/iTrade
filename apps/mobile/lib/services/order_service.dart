@@ -35,11 +35,19 @@ class OrderService {
         queryParameters: queryParams.isNotEmpty ? queryParams : null,
       );
 
+      developer.log('📥 Orders API Response:', name: 'OrderService');
+      developer.log('  Status: ${response.statusCode}', name: 'OrderService');
+      developer.log('  Data type: ${response.data.runtimeType}', name: 'OrderService');
+      developer.log('  Data: ${response.data}', name: 'OrderService');
+
       if (response.statusCode == 200) {
         // API returns { orders: [...] }, not directly [...]
         if (response.data is Map<String, dynamic>) {
           final ordersData = response.data['orders'];
+          developer.log('  Found orders key: ${ordersData != null}', name: 'OrderService');
+          developer.log('  Orders type: ${ordersData.runtimeType}', name: 'OrderService');
           if (ordersData is List) {
+            developer.log('  ✅ Orders count: ${ordersData.length}', name: 'OrderService');
             return ordersData
                 .map((json) => Order.fromJson(json as Map<String, dynamic>))
                 .toList();
@@ -47,11 +55,13 @@ class OrderService {
         }
         // Fallback: if data is directly a list (for backwards compatibility)
         else if (response.data is List) {
+          developer.log('  ✅ Direct list, count: ${(response.data as List).length}', name: 'OrderService');
           return (response.data as List)
               .map((json) => Order.fromJson(json as Map<String, dynamic>))
               .toList();
         }
       }
+      developer.log('  ❌ Returning empty list', name: 'OrderService');
       return [];
     } catch (e) {
       developer.log(
