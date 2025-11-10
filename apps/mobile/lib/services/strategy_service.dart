@@ -83,7 +83,9 @@ class StrategyService {
 
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
-        final strategies = data['strategies'] as List?;
+        // API returns { pnl: { strategies: [...] } }
+        final pnlData = data['pnl'] as Map<String, dynamic>?;
+        final strategies = pnlData?['strategies'] as List?;
         if (strategies != null) {
           return strategies
               .map((json) => StrategyPnL.fromJson(json as Map<String, dynamic>))
