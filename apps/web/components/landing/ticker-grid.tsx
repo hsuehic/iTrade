@@ -46,6 +46,19 @@ interface OKXTickerData {
   }[];
 }
 
+// Helper function to trim trailing zeros from price strings
+const trimTrailingZeros = (priceStr: string): string => {
+  // If it contains a decimal point, remove trailing zeros
+  if (priceStr.includes('.')) {
+    // Remove trailing zeros after decimal point
+    let trimmed = priceStr.replace(/(\.\d*?)0+$/, '$1');
+    // If only decimal point remains, remove it too
+    trimmed = trimmed.replace(/\.$/, '');
+    return trimmed;
+  }
+  return priceStr;
+};
+
 export function TickerGrid() {
   // Initialize with placeholder data in correct order
   const [binanceTickers, setBinanceTickers] = useState<TickerData[]>(
@@ -179,15 +192,15 @@ export function TickerGrid() {
             const open = parseFloat(ticker.o);
             const change24h = open > 0 ? ((price - open) / open) * 100 : 0;
 
-            console.log(`[Binance WS] ${ticker.s}: $${ticker.c}`);
+            console.log(`[Binance WS] ${ticker.s}: $${trimTrailingZeros(ticker.c)}`);
 
             updateTicker(
               {
-                price: ticker.c,
+                price: trimTrailingZeros(ticker.c),
                 change24h,
                 volume24h: parseFloat(ticker.q),
-                high24h: ticker.h,
-                low24h: ticker.l,
+                high24h: trimTrailingZeros(ticker.h),
+                low24h: trimTrailingZeros(ticker.l),
               },
               'Binance',
               ticker.s,
