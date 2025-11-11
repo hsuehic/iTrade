@@ -426,6 +426,100 @@ This ensures consistent authorship attribution and helps track document creation
 
 ---
 
+## 🔒 Git and Version Control Rules
+
+### Critical Commit Policy
+
+**AI agents MUST follow strict version control guidelines to prevent unwanted commits and maintain code review standards.**
+
+#### Core Principle
+
+> **"NEVER commit changes unless explicitly requested by the user"**
+>
+> The user must have full control over what gets committed to version control.
+
+#### Mandatory Rules
+
+1. **❌ NEVER commit changes automatically** - Even if the code is perfect, linted, and tested
+2. **❌ NEVER push changes automatically** - Even if user asks to commit
+3. **✅ ONLY commit when user explicitly says**: "commit", "commit these changes", "commit and push", etc.
+4. **✅ ALWAYS ask before committing** if the intent is unclear
+5. **✅ Show git status and diff** before asking to commit
+
+#### When User Requests Changes
+
+**Standard workflow:**
+
+```markdown
+1. ✅ Make the requested code changes
+2. ✅ Run linting and formatting
+3. ✅ Build and verify
+4. ✅ Run tests if applicable
+5. ❌ DO NOT commit
+6. ✅ Report: "Changes complete and verified. Ready for your review."
+7. ⏸️ WAIT for user to review
+8. ⏸️ WAIT for user to explicitly request commit
+```
+
+#### What User Might Say (Examples)
+
+**User wants you to commit:**
+- ✅ "Please commit these changes"
+- ✅ "Commit with message: [message]"
+- ✅ "Commit and push"
+- ✅ "git commit these files"
+
+**User does NOT want you to commit:**
+- ❌ "Make the homepage more transparent" (just make changes)
+- ❌ "Fix the bug" (just fix it, don't commit)
+- ❌ "Add this feature" (implement, don't commit)
+- ❌ "Build and verify" (build/test, don't commit)
+
+#### Error Recovery
+
+**If you accidentally commit:**
+
+1. **Immediately apologize** and acknowledge the mistake
+2. **Show what was committed** (git log, git diff)
+3. **Offer to revert**: "Would you like me to revert the last commit?"
+4. **Add the rule to memory** if not already present
+
+#### Git Commands Usage
+
+**ALLOWED without asking:**
+- `git status` - Check status
+- `git diff` - Show changes
+- `git log` - View history
+- `git branch` - List branches
+
+**REQUIRES explicit user permission:**
+- `git add` - Stage files
+- `git commit` - Commit changes
+- `git push` - Push to remote
+- `git pull` - Pull from remote
+- `git merge` - Merge branches
+- `git rebase` - Rebase branches
+- `git reset` - Reset changes
+- Any destructive operations
+
+#### Exceptions
+
+**The ONLY time auto-commit is acceptable:**
+- User explicitly says "auto-commit all changes going forward"
+- User explicitly enables an "auto-commit mode"
+- (These are extremely rare and should be confirmed)
+
+**CRITICAL**: 
+> This rule exists because:
+> 1. User needs to review changes before they become part of history
+> 2. Commit messages should be written or approved by user
+> 3. Premature commits can disrupt user's workflow
+> 4. Version control is a critical part of software development
+
+**Remember**: When in doubt, DON'T commit. Ask first! 🚫
+
+---
+
 ## 🔧 Code Quality and Linting Rules
 
 ### Mandatory Post-Edit Linting
