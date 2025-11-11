@@ -134,7 +134,7 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="rounded-lg border bg-card p-6 text-left transition-colors hover:bg-accent/50">
+    <div className="rounded-lg border bg-card/30 backdrop-blur-sm p-6 text-left transition-colors hover:bg-accent/50">
       <div className="mb-3 inline-flex rounded-lg bg-primary/10 p-3 text-primary">
         {icon}
       </div>

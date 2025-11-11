@@ -9,11 +9,11 @@ import { useRef, useEffect, useState } from 'react';
 
 export interface TickerData {
   symbol: string;
-  price: number;
+  price: number | string;
   change24h: number;
   volume24h: number;
-  high24h?: number;
-  low24h?: number;
+  high24h?: number | string;
+  low24h?: number | string;
   exchange: string;
 }
 
@@ -28,10 +28,10 @@ interface TickerCardProps {
 export const TickerCard = ({ ticker, index, onVisibilityChange }: TickerCardProps) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const controls = useAnimation();
-  const prevPriceRef = useRef<number>(ticker.price);
+  const prevPriceRef = useRef<number | string>(ticker.price);
   const isInitialMount = useRef(true);
   const [priceState, setPriceState] = useState<{
-    value: number;
+    value: number | string;
     direction: 'up' | 'down' | null;
   }>({
     value: ticker.price,
@@ -47,8 +47,15 @@ export const TickerCard = ({ ticker, index, onVisibilityChange }: TickerCardProp
       return;
     }
 
-    if (prevPriceRef.current !== ticker.price && ticker.price > 0) {
-      const priceIncreased = ticker.price > prevPriceRef.current;
+    const currentPrice =
+      typeof ticker.price === 'string' ? parseFloat(ticker.price) : ticker.price;
+    const prevPrice =
+      typeof prevPriceRef.current === 'string'
+        ? parseFloat(prevPriceRef.current)
+        : prevPriceRef.current;
+
+    if (prevPriceRef.current !== ticker.price && currentPrice > 0) {
+      const priceIncreased = currentPrice > prevPrice;
 
       // Trigger flash animation
       controls
@@ -116,7 +123,7 @@ export const TickerCard = ({ ticker, index, onVisibilityChange }: TickerCardProp
       className="h-full"
     >
       <motion.div animate={controls} className="h-full rounded-lg">
-        <Card className="relative flex h-full min-h-[220px] flex-col overflow-hidden p-4 transition-all hover:shadow-lg">
+        <Card className="relative flex h-full min-h-[220px] flex-col overflow-hidden bg-card/30 backdrop-blur-sm p-4 transition-all hover:shadow-lg">
           {/* Symbol and Icon */}
           <div className="mb-3 flex items-center gap-3">
             <SymbolIcon symbol={ticker.symbol} size="lg" />
@@ -160,10 +167,9 @@ export const TickerCard = ({ ticker, index, onVisibilityChange }: TickerCardProp
                 className="text-2xl font-bold absolute inset-0"
               >
                 $
-                {priceState.value.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {typeof priceState.value === 'string'
+                  ? priceState.value
+                  : priceState.value.toFixed(2)}
               </motion.div>
             </AnimatePresence>
           </div>
@@ -207,8 +213,18 @@ export const TickerCard = ({ ticker, index, onVisibilityChange }: TickerCardProp
             <div className="flex justify-between font-medium">
               {ticker.high24h && ticker.low24h ? (
                 <>
-                  <span>${ticker.high24h.toFixed(2)}</span>
-                  <span>${ticker.low24h.toFixed(2)}</span>
+                  <span>
+                    $
+                    {typeof ticker.high24h === 'string'
+                      ? ticker.high24h
+                      : ticker.high24h.toFixed(2)}
+                  </span>
+                  <span>
+                    $
+                    {typeof ticker.low24h === 'string'
+                      ? ticker.low24h
+                      : ticker.low24h.toFixed(2)}
+                  </span>
                 </>
               ) : (
                 <>

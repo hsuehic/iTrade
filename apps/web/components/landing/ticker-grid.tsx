@@ -51,22 +51,22 @@ export function TickerGrid() {
   const [binanceTickers, setBinanceTickers] = useState<TickerData[]>(
     BINANCE_COINS.map((coin) => ({
       symbol: coin.display,
-      price: 0,
+      price: '0',
       change24h: 0,
       volume24h: 0,
-      high24h: 0,
-      low24h: 0,
+      high24h: '0',
+      low24h: '0',
       exchange: 'Binance',
     })),
   );
   const [okxTickers, setOkxTickers] = useState<TickerData[]>(
     OKX_COINS.map((coin) => ({
       symbol: coin.display,
-      price: 0,
+      price: '0',
       change24h: 0,
       volume24h: 0,
-      high24h: 0,
-      low24h: 0,
+      high24h: '0',
+      low24h: '0',
       exchange: 'OKX',
     })),
   );
@@ -127,7 +127,7 @@ export function TickerGrid() {
 
       const fullTickerData: TickerData = {
         symbol: displaySymbol,
-        price: tickerData.price || 0,
+        price: tickerData.price || '0',
         change24h: tickerData.change24h || 0,
         volume24h: tickerData.volume24h || 0,
         high24h: tickerData.high24h,
@@ -179,15 +179,15 @@ export function TickerGrid() {
             const open = parseFloat(ticker.o);
             const change24h = open > 0 ? ((price - open) / open) * 100 : 0;
 
-            console.log(`[Binance WS] ${ticker.s}: $${price.toFixed(2)}`);
+            console.log(`[Binance WS] ${ticker.s}: $${ticker.c}`);
 
             updateTicker(
               {
-                price,
+                price: ticker.c,
                 change24h,
                 volume24h: parseFloat(ticker.q),
-                high24h: parseFloat(ticker.h),
-                low24h: parseFloat(ticker.l),
+                high24h: ticker.h,
+                low24h: ticker.l,
               },
               'Binance',
               ticker.s,
@@ -247,15 +247,15 @@ export function TickerGrid() {
             const last = parseFloat(tickerData.last);
             const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
 
-            console.log(`[OKX WS] ${tickerData.instId}: $${last.toFixed(2)}`);
+            console.log(`[OKX WS] ${tickerData.instId}: $${tickerData.last}`);
 
             updateTicker(
               {
-                price: last,
+                price: tickerData.last,
                 change24h: changePercent,
                 volume24h: parseFloat(tickerData.volCcy24h),
-                high24h: parseFloat(tickerData.high24h),
-                low24h: parseFloat(tickerData.low24h),
+                high24h: tickerData.high24h,
+                low24h: tickerData.low24h,
               },
               'OKX',
               tickerData.instId,
