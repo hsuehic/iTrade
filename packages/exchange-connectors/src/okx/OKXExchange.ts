@@ -550,16 +550,29 @@ export class OKXExchange extends BaseExchange {
       throw new Error(`OKX API error: ${response.data.msg}`);
     }
 
-    return response.data.data.map((pos: any) => ({
-      symbol: pos.instId,
-      side: pos.posSide === 'long' ? 'long' : 'short',
-      quantity: this.formatDecimal((pos.pos ?? '0').toString()),
-      avgPrice: this.formatDecimal((pos.avgPx ?? '0').toString()),
-      markPrice: this.formatDecimal((pos.markPx ?? pos.avgPx ?? '0').toString()),
-      unrealizedPnl: this.formatDecimal((pos.upl ?? '0').toString()),
-      leverage: this.formatDecimal((pos.lever ?? '0').toString()),
-      timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
-    }));
+    return response.data.data.map((pos: any) => {
+      // ✅ FIXED: Use markPx only, do NOT fallback to avgPx
+      // If markPx is missing, use lastPx as fallback (NOT avgPx)
+      const markPrice = this.formatDecimal((pos.markPx ?? pos.lastPx ?? '0').toString());
+
+      // Calculate market value: quantity * markPrice
+      const quantity = this.formatDecimal((pos.pos ?? '0').toString());
+      const marketValue = quantity.abs().mul(markPrice);
+
+      return {
+        symbol: pos.instId,
+        side: pos.posSide === 'long' ? 'long' : 'short',
+        quantity: quantity,
+        avgPrice: this.formatDecimal((pos.avgPx ?? '0').toString()),
+        markPrice: markPrice,
+        unrealizedPnl: this.formatDecimal((pos.upl ?? '0').toString()),
+        leverage: this.formatDecimal((pos.lever ?? '0').toString()),
+        timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
+        // ✅ Add market value and notionalUsd
+        marketValue: marketValue,
+        notionalUsd: pos.notionalUsd,
+      };
+    });
   }
 
   public async getExchangeInfo(): Promise<ExchangeInfo> {
@@ -1140,7 +1153,11 @@ export class OKXExchange extends BaseExchange {
       price: price,
       status: this.transformOKXOrderStatus(order.state),
       timeInForce: 'GTC' as TimeInForce,
-      timestamp: order.cTime ? new Date(parseInt(order.cTime)) : (order.uTime ? new Date(parseInt(order.uTime)) : new Date()),
+      timestamp: order.cTime
+        ? new Date(parseInt(order.cTime))
+        : order.uTime
+          ? new Date(parseInt(order.uTime))
+          : new Date(),
       updateTime: order.uTime ? new Date(parseInt(order.uTime)) : undefined,
       executedQuantity: order.accFillSz ? this.formatDecimal(order.accFillSz) : undefined,
       cummulativeQuoteQuantity,
@@ -1221,7 +1238,7 @@ export class OKXExchange extends BaseExchange {
     const type = this.transformOKXOrderType(data.ordType || 'limit');
     const qty = this.formatDecimal(data.sz || '0');
     const price = data.px ? this.formatDecimal(data.px) : undefined;
-    
+
     // Calculate cummulativeQuoteQuantity from filled size and average price
     let cummulativeQuoteQuantity: Decimal | undefined;
     if (data.accFillSz && data.avgPx) {
@@ -1229,7 +1246,7 @@ export class OKXExchange extends BaseExchange {
       const avgPx = this.formatDecimal(data.avgPx);
       cummulativeQuoteQuantity = accFillSz.mul(avgPx);
     }
-    
+
     return {
       id: (data.ordId || uuidv4()).toString(),
       clientOrderId: data.clOrdId,
@@ -1267,34 +1284,59 @@ export class OKXExchange extends BaseExchange {
 
     if (Array.isArray(data.posData)) {
       for (const p of data.posData) {
-        // 🔍 Debug: Log each position's raw fields
+        // 🔍 Debug: Log each position's raw fields (including all available fields)
         console.log('[OKX] 📍 Raw position fields:', {
           instId: p.instId,
           pos: p.pos,
           avgPx: p.avgPx,
           markPx: p.markPx,
+          lastPx: p.lastPx,
           upl: p.upl,
           uplRatio: p.uplRatio,
           lever: p.lever,
           mgnMode: p.mgnMode,
           posSide: p.posSide,
+          notionalUsd: p.notionalUsd, // Position value in USD
+          uTime: p.uTime,
+          cTime: p.cTime,
         });
 
         // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
         const unifiedSymbol = this.denormalizeSymbol(p.instId);
 
-        // Use avgPx as fallback for markPx (same as REST API)
-        const markPrice = this.formatDecimal(p.markPx ?? p.avgPx ?? '0');
+        // ✅ FIXED: Use markPx only, do NOT fallback to avgPx
+        // markPx and avgPx should be different:
+        // - avgPx: Average entry price of the position (from your orders)
+        // - markPx: Current mark price used for PnL calculation (from market)
+        // - lastPx: Last traded price
+        // If markPx is missing, use lastPx as fallback (NOT avgPx)
+        const markPrice = this.formatDecimal(p.markPx || p.lastPx || '0');
+
+        // Calculate position value: quantity * markPrice (absolute value)
+        const quantity = this.formatDecimal(p.pos || '0');
+        const positionValue = quantity.abs().mul(markPrice);
+
+        console.log('[OKX] 📊 Position calculated:', {
+          symbol: unifiedSymbol,
+          quantity: quantity.toString(),
+          avgPrice: p.avgPx,
+          markPrice: markPrice.toString(),
+          positionValue: positionValue.toString(),
+          notionalUsd: p.notionalUsd,
+        });
 
         positions.push({
           symbol: unifiedSymbol,
           side: (p.posSide || 'net').toLowerCase(),
-          quantity: this.formatDecimal(p.pos || '0'),
+          quantity: quantity,
           avgPrice: this.formatDecimal(p.avgPx || '0'),
           markPrice: markPrice,
           unrealizedPnl: this.formatDecimal(p.upl ?? '0'),
           leverage: this.formatDecimal(p.lever ?? '0'),
           timestamp: new Date(),
+          // ✅ Add market value and notionalUsd
+          marketValue: positionValue,
+          notionalUsd: p.notionalUsd,
         });
       }
     }
