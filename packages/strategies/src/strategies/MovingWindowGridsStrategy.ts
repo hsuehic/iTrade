@@ -265,17 +265,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       }
 
       if (symbol === this._symbol) {
-        // 🆕 优先处理待生成的止盈订单
-        if (this.pendingTakeProfitOrders.size > 0) {
-          const nextEntry = this.pendingTakeProfitOrders.entries().next();
-          if (!nextEntry.done && nextEntry.value) {
-            const [orderId, parentOrder] = nextEntry.value;
-            this.pendingTakeProfitOrders.delete(orderId);
-
-            this._logger.info(`📋 [Processing Pending TP] Parent order: ${orderId}`);
-            return this.generateTakeProfitSignal(parentOrder);
-          }
-        }
+        // TP signals are now generated immediately in handleOrder when entry orders become FILLED
+        // No need for pendingTakeProfitOrders queue anymore
 
         if (!!klines && klines.length > 0) {
           const kline = klines[klines.length - 1];
@@ -398,10 +389,26 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           if (signal) {
             return signal; // Return TP signal immediately
           }
+          // Don't update order if it was deleted during cancellation
+          continue;
+        }
+
+        // 🔥 Handle FILLED status - Generate TP immediately!
+        if (order.status === OrderStatus.FILLED) {
+          const metadata = this.orderMetadataMap.get(order.clientOrderId);
+          if (metadata && metadata.signalType === 'entry') {
+            this._logger.info(
+              `✅ [Entry Order FULLY FILLED] Generating TP signal immediately for: ${order.clientOrderId}`,
+            );
+            // Update stored order first
+            this.orders.set(order.clientOrderId, order);
+            // Generate and return TP signal immediately
+            return this.generateTakeProfitSignal(order);
+          }
         }
       }
 
-      // Update stored order
+      // Update stored order (only if not canceled/rejected/expired)
       this.orders.set(order.clientOrderId, order);
     }
 
@@ -443,21 +450,15 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this._logger.info(`   Executed: ${executedQty.toString()} / ${totalQty.toString()}`);
 
     if (signalType === 'entry') {
-      // 🔥 关键：检查是否已经生成或待生成止盈订单
-      const hasPendingTP = this.pendingTakeProfitOrders.has(order.clientOrderId);
+      // 🔥 关键：检查是否已经生成止盈订单
       const hasGeneratedTP = this.findTakeProfitOrderByParentId(order.clientOrderId);
 
-      if (hasPendingTP || hasGeneratedTP) {
-        // 订单已完全成交，止盈订单存在或待生成
+      if (hasGeneratedTP) {
+        // 订单已完全成交，止盈订单已存在
         // 不调整 size，因为止盈订单成交时会处理
         this._logger.info(
-          `   ℹ️ Entry was FULLY FILLED, TP order ${hasPendingTP ? 'pending' : 'exists'}, size will be adjusted when TP fills`,
+          `   ℹ️ Entry was FULLY FILLED, TP order exists, size will be adjusted when TP fills`,
         );
-
-        // 清理 pending TP（因为原订单已取消，不会再通过 analyze 生成 TP）
-        if (hasPendingTP) {
-          this.pendingTakeProfitOrders.delete(order.clientOrderId);
-        }
       } else if (executedQty.gt(0)) {
         // 🔥 订单部分成交 - 关键场景！
         // Generate TP signal IMMEDIATELY for the executed portion
@@ -590,13 +591,12 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const signalType = metadata.signalType;
 
     if (signalType === 'entry') {
-      // 🔥 关键：只有完全成交时才生成止盈订单
-      // TP orders are ONLY generated when order is FULLY FILLED
+      // 🔥 TP signals are now generated immediately in handleOrder when status changes to FILLED
+      // This callback is kept for logging and future enhancements
       if (order.status === OrderStatus.FILLED) {
         this._logger.info(
-          `✅ [Entry Order FULLY FILLED] Queueing TP generation for: ${order.clientOrderId}`,
+          `✅ [Entry Order FULLY FILLED] TP signal generated via handleOrder: ${order.clientOrderId}`,
         );
-        this.pendingTakeProfitOrders.set(order.clientOrderId, order);
       } else {
         this._logger.info(
           `⏳ [Entry Order PARTIALLY FILLED] ${order.executedQuantity?.toString() || '0'} / ${order.quantity.toString()}, waiting for full fill`,
@@ -621,8 +621,10 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this.orderMetadataMap.delete(order.clientOrderId);
       this.orderMetadataMap.delete(metadata.parentOrderId!);
 
-      // 减少仓位大小
-      this.size -= this.baseSize;
+      // 减少仓位大小 - use actual TP quantity, not baseSize
+      // (TP quantity may be less than baseSize for partially filled entry orders)
+      const sizeToReduce = (order.executedQuantity || order.quantity).toNumber();
+      this.size -= sizeToReduce;
       this._logger.info(`   📉 Position size reduced: ${this.size}`);
     } else {
       this._logger.info(`📝 [Order Filled] Signal Type: ${signalType || 'unknown'}`);
@@ -659,7 +661,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       // 🆕 额外状态信息
       activeOrders: this.orders.size,
       takeProfitOrders: this.takeProfitOrders.size,
-      pendingTakeProfitOrders: this.pendingTakeProfitOrders.size,
       currentSize: this.size,
       maxSize: this.maxSize,
     };
