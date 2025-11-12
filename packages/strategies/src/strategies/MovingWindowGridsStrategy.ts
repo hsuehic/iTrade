@@ -6,6 +6,7 @@ import {
   Ticker,
   Kline,
   Order,
+  OrderStatus,
   Position,
   InitialDataResult,
   DataUpdate,
@@ -257,7 +258,10 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       }
 
       if (orders) {
-        this.handleOrder(orders);
+        const signal = this.handleOrder(orders);
+        if (signal) {
+          return signal; // Return TP signal immediately if generated
+        }
       }
 
       if (symbol === this._symbol) {
@@ -314,59 +318,252 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     }
   }
 
-  private handleOrder(orders: Order[]): void {
+  /**
+   * 🆕 统一订单处理入口 - 处理新订单和订单状态变更
+   * Unified order handling - handles both new orders and order updates
+   *
+   * This replaces the need for onOrderCreated callback
+   *
+   * @returns StrategyResult if TP signal should be generated, null otherwise
+   */
+  private handleOrder(orders: Order[]): StrategyResult | null {
     this._logger.info(
       `[${this._exchangeName}] [${this._strategyName}] Pushed ${orders.length} order(s):`,
     );
     this._logger.info(JSON.stringify(orders, null, 2));
-    orders.forEach((order) => {
-      if (this.orders.has(order.clientOrderId!)) {
-        const storedOrder = this.orders.get(order.clientOrderId!);
-        if (storedOrder?.updateTime && order.updateTime) {
-          if (storedOrder?.updateTime?.getTime() < order.updateTime?.getTime()) {
-            this.orders.set(order.clientOrderId!, order);
+
+    for (const order of orders) {
+      if (!order.clientOrderId) {
+        this._logger.warn('⚠️ [Order] Order has no clientOrderId, skipping');
+        continue;
+      }
+
+      const metadata = this.orderMetadataMap.get(order.clientOrderId);
+
+      // Check if this is a NEW order (not seen before)
+      if (!this.orders.has(order.clientOrderId)) {
+        // 🔥 NEW ORDER - Handle like onOrderCreated
+        if (!metadata) {
+          this._logger.warn(
+            `⚠️ [New Order] No metadata found for order: ${order.clientOrderId}`,
+          );
+          continue;
+        }
+
+        const signalType = metadata.signalType;
+        this._logger.info(
+          `✨ [New Order] Client Order ID: ${order.clientOrderId}, Type: ${signalType}, Status: ${order.status}`,
+        );
+
+        if (signalType === 'entry') {
+          this.size += this.baseSize;
+          this.orders.set(order.clientOrderId, order);
+          this._logger.info(`   📈 Position size increased: ${this.size}`);
+        } else if (signalType === 'take_profit') {
+          this.takeProfitOrders.set(order.clientOrderId, order);
+          this.orders.set(order.clientOrderId, order);
+          this._logger.info(`   📊 TP order tracked`);
+        } else {
+          this.orders.set(order.clientOrderId, order);
+        }
+
+        continue; // Move to next order
+      }
+
+      // 🔥 EXISTING ORDER - Check for status changes
+      const storedOrder = this.orders.get(order.clientOrderId)!;
+
+      // Skip if no update time or order is older than stored
+      if (!storedOrder?.updateTime || !order.updateTime) {
+        continue;
+      }
+
+      if (storedOrder.updateTime.getTime() >= order.updateTime.getTime()) {
+        continue; // Order is not newer, skip
+      }
+
+      // 🔥 ORDER STATUS CHANGED
+      if (storedOrder.status !== order.status) {
+        this._logger.info(
+          `🔄 [Order Status Changed] ${order.clientOrderId}: ${storedOrder.status} → ${order.status}`,
+        );
+
+        // Handle cancellation/rejection/expiration
+        if (
+          order.status === OrderStatus.CANCELED ||
+          order.status === OrderStatus.REJECTED ||
+          order.status === OrderStatus.EXPIRED
+        ) {
+          const signal = this.handleOrderCancellation(order);
+          if (signal) {
+            return signal; // Return TP signal immediately
           }
         }
       }
-    });
+
+      // Update stored order
+      this.orders.set(order.clientOrderId, order);
+    }
+
+    return null;
   }
 
   /**
-   * 🆕 订单创建回调 - 区分不同类型的订单
-   * 从 TradingEngine 调用，订单已成功创建
+   * 🆕 处理订单取消/拒绝/过期
+   * When an entry order is canceled, rejected, or expired, we need to update the size
+   *
+   * Important: Generates TP for partially filled orders
+   * - If FULLY FILLED → TP already generated → TP will handle size
+   * - If PARTIALLY FILLED → Generate TP signal immediately, release unfilled size
+   * - If NOT FILLED → Release full size commitment
+   *
+   * @returns StrategyResult if TP signal should be generated, null otherwise
    */
-  public override async onOrderCreated(order: Order): Promise<void> {
+  private handleOrderCancellation(order: Order): StrategyResult | null {
     if (!order.clientOrderId) {
-      this._logger.warn('⚠️ [Order Created] Order has no clientOrderId, skipping');
-      return;
+      return null;
     }
 
     const metadata = this.orderMetadataMap.get(order.clientOrderId);
 
     if (!metadata) {
       this._logger.warn(
-        `⚠️ [Order Created] No metadata found for order: ${order.clientOrderId}`,
+        `⚠️ [Order Cancellation] No metadata found for order: ${order.clientOrderId}`,
       );
-      //this.orders.set(order.clientOrderId, order);
-      return;
+      return null;
     }
 
     const signalType = metadata.signalType;
+    const executedQty = order.executedQuantity || new Decimal(0);
+    const totalQty = order.quantity;
+
+    this._logger.info(
+      `🚫 [Order ${order.status}] Client Order ID: ${order.clientOrderId}, Signal Type: ${signalType}`,
+    );
+    this._logger.info(`   Executed: ${executedQty.toString()} / ${totalQty.toString()}`);
 
     if (signalType === 'entry') {
-      this.size += this.baseSize;
-      this.orders.set(order.clientOrderId, order);
+      // 🔥 关键：检查是否已经生成或待生成止盈订单
+      const hasPendingTP = this.pendingTakeProfitOrders.has(order.clientOrderId);
+      const hasGeneratedTP = this.findTakeProfitOrderByParentId(order.clientOrderId);
+
+      if (hasPendingTP || hasGeneratedTP) {
+        // 订单已完全成交，止盈订单存在或待生成
+        // 不调整 size，因为止盈订单成交时会处理
+        this._logger.info(
+          `   ℹ️ Entry was FULLY FILLED, TP order ${hasPendingTP ? 'pending' : 'exists'}, size will be adjusted when TP fills`,
+        );
+
+        // 清理 pending TP（因为原订单已取消，不会再通过 analyze 生成 TP）
+        if (hasPendingTP) {
+          this.pendingTakeProfitOrders.delete(order.clientOrderId);
+        }
+      } else if (executedQty.gt(0)) {
+        // 🔥 订单部分成交 - 关键场景！
+        // Generate TP signal IMMEDIATELY for the executed portion
+        this._logger.info(
+          `   🎯 Entry was PARTIALLY FILLED, generating TP signal immediately for: ${executedQty.toString()}`,
+        );
+
+        // 🔥 关键：只释放未成交部分的大小承诺
+        // The executed portion's size commitment will be released when TP fills
+        const unfilledAmount = this.baseSize * (1 - executedQty.div(totalQty).toNumber());
+        this.size -= unfilledAmount;
+
+        this._logger.info(
+          `   📉 Released unfilled portion from size: -${unfilledAmount.toFixed(2)}, new size: ${this.size}`,
+        );
+
+        // Generate and return TP signal immediately
+        return this.generateTakeProfitSignal(order);
+      } else {
+        // 订单完全未成交
+        // 释放全部大小承诺
+        this.size -= this.baseSize;
+        this._logger.info(
+          `   📉 Entry was NOT filled, released full size commitment: ${this.size}`,
+        );
+
+        // 清理订单和元数据（完全未成交，无需保留）
+        this.orders.delete(order.clientOrderId);
+        this.orderMetadataMap.delete(order.clientOrderId);
+      }
+
+      // Note: For partially filled orders, metadata is kept until TP fills
+      // Only delete for unfilled orders (handled above)
+      if (executedQty.isZero()) {
+        this.orders.delete(order.clientOrderId);
+        this.orderMetadataMap.delete(order.clientOrderId);
+      }
     } else if (signalType === 'take_profit') {
-      this.takeProfitOrders.set(order.clientOrderId, order);
-      this.orders.set(order.clientOrderId, order);
-    } else {
-      this.orders.set(order.clientOrderId, order);
+      // 止盈订单被取消（可能是部分成交或完全未成交）
+      // 需要根据成交情况调整 size
+      const parentOrderId = metadata.parentOrderId;
+
+      if (executedQty.gt(0) && executedQty.lt(totalQty)) {
+        // TP 部分成交后被取消 - 只释放已成交部分对应的 size
+        const filledRatio = executedQty.div(totalQty).toNumber();
+        const sizeToRelease = this.baseSize * filledRatio;
+        this.size -= sizeToRelease;
+
+        this._logger.info(
+          `   📉 TP partially filled and canceled, released: ${sizeToRelease.toFixed(2)}, new size: ${this.size}`,
+        );
+      } else if (executedQty.isZero()) {
+        // TP 完全未成交被取消 - 不调整 size（position 仍然持有）
+        this._logger.warn(
+          `   ⚠️ TP canceled with no fill, position remains open! Size unchanged: ${this.size}`,
+        );
+      }
+      // If fully filled, onOrderFilled already handled size adjustment
+
+      // 清理订单和元数据
+      this.takeProfitOrders.delete(order.clientOrderId);
+      this.orders.delete(order.clientOrderId);
+      this.orderMetadataMap.delete(order.clientOrderId);
+
+      // 清理父订单元数据
+      if (parentOrderId) {
+        this.orders.delete(parentOrderId);
+        this.orderMetadataMap.delete(parentOrderId);
+      }
     }
+
+    return null;
   }
 
   /**
-   * 🆕 订单成交回调 - 主订单成交后触发止盈订单创建
+   * 🆕 Helper: 根据父订单ID查找止盈订单
+   * Returns the TP order if found, otherwise null
+   */
+  private findTakeProfitOrderByParentId(parentOrderId: string): Order | null {
+    for (const [tpOrderId, tpOrder] of this.takeProfitOrders) {
+      const tpMetadata = this.orderMetadataMap.get(tpOrderId);
+      if (tpMetadata?.parentOrderId === parentOrderId) {
+        return tpOrder;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 🚫 DEPRECATED: onOrderCreated callback is no longer used
+   * All order handling is now unified in handleOrder() method
+   *
+   * This method is kept for backward compatibility but does nothing
+   */
+  public override async onOrderCreated(order: Order): Promise<void> {
+    // All logic moved to handleOrder() - this is now a no-op
+    this._logger.debug(
+      `[onOrderCreated] Called for ${order.clientOrderId} - handled in handleOrder() instead`,
+    );
+  }
+
+  /**
+   * 🆕 订单成交回调 - 主订单完全成交后触发止盈订单创建
    * 从 EventBus 订阅调用，可能包含非本策略的订单
+   *
+   * Important: TP orders are ONLY generated when entry order is FULLY FILLED
    */
   public override async onOrderFilled(order: Order): Promise<void> {
     if (!order.clientOrderId) {
@@ -393,9 +590,18 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const signalType = metadata.signalType;
 
     if (signalType === 'entry') {
-      // 🔥 关键：将已成交的主订单加入待处理队列
-      // 下次 analyze 调用时会生成止盈信号
-      this.pendingTakeProfitOrders.set(order.clientOrderId, order);
+      // 🔥 关键：只有完全成交时才生成止盈订单
+      // TP orders are ONLY generated when order is FULLY FILLED
+      if (order.status === OrderStatus.FILLED) {
+        this._logger.info(
+          `✅ [Entry Order FULLY FILLED] Queueing TP generation for: ${order.clientOrderId}`,
+        );
+        this.pendingTakeProfitOrders.set(order.clientOrderId, order);
+      } else {
+        this._logger.info(
+          `⏳ [Entry Order PARTIALLY FILLED] ${order.executedQuantity?.toString() || '0'} / ${order.quantity.toString()}, waiting for full fill`,
+        );
+      }
     } else if (signalType === 'take_profit') {
       // calculate profit
       const entryPrice = new Decimal(metadata.entryPrice!);
