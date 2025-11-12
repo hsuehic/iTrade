@@ -6,7 +6,6 @@ import {
   Ticker,
   Kline,
   Order,
-  Balance,
   Position,
   InitialDataResult,
   DataUpdate,
@@ -52,40 +51,6 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
     },
     parameterDefinitions: [
       {
-        name: 'windowSize',
-        type: 'number',
-        description: 'Number of candles for price window',
-        defaultValue: 20,
-        required: true,
-        min: 5,
-        max: 100,
-        group: 'Window',
-        order: 1,
-      },
-      {
-        name: 'gridSize',
-        type: 'number',
-        description: 'Grid spacing as percentage',
-        defaultValue: 0.005,
-        required: true,
-        min: 0.001,
-        max: 0.1,
-        group: 'Grid',
-        order: 2,
-        unit: '%',
-      },
-      {
-        name: 'gridCount',
-        type: 'number',
-        description: 'Number of grid levels',
-        defaultValue: 5,
-        required: true,
-        min: 2,
-        max: 20,
-        group: 'Grid',
-        order: 3,
-      },
-      {
         name: 'minVolatility',
         type: 'number',
         description: 'Minimum volatility threshold',
@@ -94,7 +59,7 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
         min: 1,
         max: 80,
         group: 'Risk',
-        order: 4,
+        order: 1,
         unit: '%',
       },
       {
@@ -106,7 +71,7 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
         min: 1,
         max: 50,
         group: 'Risk',
-        order: 5,
+        order: 2,
         unit: '%',
       },
       {
@@ -118,7 +83,7 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
         min: 0.001,
         max: 500000,
         group: 'Risk',
-        order: 6,
+        order: 3,
       },
       {
         name: 'maxSize',
@@ -129,25 +94,20 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
         min: 0.001,
         max: 500000,
         group: 'Risk',
-        order: 7,
+        order: 4,
       },
     ],
     documentation: {
-      overview:
-        'Places grid orders within a moving window, capturing profits from oscillations.',
-      parameters: 'Window size determines range, grid size and count define placement.',
+      overview: 'Places orders based on volatility and take profit ratio.',
+      parameters:
+        'minVolatility, takeProfitRatio, baseSize, maxSize are the parameters that control the strategy.',
       signals: 'Buy at lower levels, sell at upper levels.',
       riskFactors: ['Trending markets', 'Low volatility'],
     },
   };
 export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
-  private windowSize!: number;
-  private gridSize!: number;
-  private gridCount!: number;
   private position: Position | null = null;
-  private positions: Position[] = [];
   private orders: Map<string, Order> = new Map();
-  private balances: Balance[] = [];
   private tickers: FixedLengthList<Ticker> = new FixedLengthList<Ticker>(15);
   private klines: FixedLengthList<Kline> = new FixedLengthList<Kline>(15);
   private baseSize!: number;
@@ -168,10 +128,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
     super(config);
 
-    // Parameters will be initialized in onInitialize
-    this.windowSize = config.parameters.windowSize;
-    this.gridSize = config.parameters.gridSize;
-    this.gridCount = config.parameters.gridCount;
+    // Parameters will be initialized in onInitialized
     this.minVolatility = config.parameters.minVolatility / 100;
     this.takeProfitRatio = config.parameters.takeProfitRatio / 100;
     this.baseSize = config.parameters.baseSize;
@@ -201,12 +158,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         // Store last N klines for analysis
         klines.forEach((kline) => this.klines.push(kline));
       });
-    }
-
-    // Load account balance
-    if (initialData.balance) {
-      this.balances = initialData.balance;
-      console.log(`  💰 Loaded balance for ${initialData.balance.length} asset(s)`);
     }
 
     // Load current ticker
@@ -488,8 +439,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
     // 重置状态
     this.position = null;
-    this.positions = [];
-    this.balances = [];
     this.size = 0;
     this.orderSequence = 0;
 
