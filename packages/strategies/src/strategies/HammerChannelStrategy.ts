@@ -36,7 +36,7 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
       {
         name: 'windowSize',
         type: 'number',
-        description: 'Channel calculation window',
+        description: 'Number of candles to analyze for channel calculation (e.g., 15) ',
         defaultValue: 15,
         required: true,
         min: 5,
@@ -47,7 +47,8 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
       {
         name: 'lowerShadowToBody',
         type: 'number',
-        description: 'Lower shadow to body ratio',
+        description:
+          'Minimum ratio of lower shadow to body for hammer detection (e.g., 2 = lower shadow must be 2x body)',
         defaultValue: 2,
         required: true,
         min: 1,
@@ -58,8 +59,9 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
       {
         name: 'upperShadowToBody',
         type: 'number',
-        description: 'Upper shadow to body ratio',
-        defaultValue: 0.3,
+        description:
+          'Maximum ratio of upper shadow to body for hammer detection (e.g., 0.8 = upper shadow must be <80% of body)',
+        defaultValue: 0.8,
         required: true,
         min: 0,
         max: 1,
@@ -69,7 +71,8 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
       {
         name: 'bodyToRange',
         type: 'number',
-        description: 'Body to range ratio',
+        description:
+          'Maximum ratio of body to total range for hammer detection (e.g., 0.35 = body must be <35% of range)',
         defaultValue: 0.35,
         required: true,
         min: 0.1,
@@ -80,7 +83,8 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
       {
         name: 'highThreshold',
         type: 'number',
-        description: 'Upper channel threshold',
+        description:
+          'High position threshold for sell signals (e.g., 0.9 = top 10% of channel) ',
         defaultValue: 0.9,
         required: true,
         min: 0.5,
@@ -91,7 +95,8 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
       {
         name: 'lowThreshold',
         type: 'number',
-        description: 'Lower channel threshold',
+        description:
+          'Low position threshold for buy signals (e.g., 0.1 = bottom 10% of channel)',
         defaultValue: 0.1,
         required: true,
         min: 0,
@@ -125,7 +130,7 @@ export interface HammerChannelParameters extends StrategyParameters {
   windowSize: number;
   /** Minimum ratio of lower shadow to body for hammer detection (e.g., 2 = lower shadow must be 2x body) */
   lowerShadowToBody: number;
-  /** Maximum ratio of upper shadow to body for hammer detection (e.g., 0.3 = upper shadow must be <30% of body) */
+  /** Maximum ratio of upper shadow to body for hammer detection (e.g., 0.8 = upper shadow must be <80% of body) */
   upperShadowToBody: number;
   /** Maximum ratio of body to total range for hammer detection (e.g., 0.35 = body must be <35% of range) */
   bodyToRange: number;
@@ -273,7 +278,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    * Analyze market data and generate trading signals
    */
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
-    const { ticker, klines, positions, orders, exchangeName, symbol } = dataUpdate;
+    const { klines } = dataUpdate;
 
     // Update account data
 
