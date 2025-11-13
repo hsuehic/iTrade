@@ -48,7 +48,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, description, type, exchange, symbol, parameters } = body;
+    const {
+      name,
+      description,
+      type,
+      exchange,
+      symbol,
+      parameters,
+      initialData,
+      subscription,
+    } = body;
 
     if (!name || !type || !symbol) {
       return NextResponse.json(
@@ -69,6 +78,8 @@ export async function POST(request: NextRequest) {
       exchange,
       symbol,
       parameters,
+      initialData,
+      subscription,
       userId: session.user.id,
     });
 

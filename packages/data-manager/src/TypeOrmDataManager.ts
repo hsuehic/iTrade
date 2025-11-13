@@ -719,6 +719,8 @@ export class TypeOrmDataManager implements IDataManager {
     exchange?: string;
     symbol?: string;
     parameters?: any;
+    initialData?: Record<string, unknown>;
+    subscription?: Record<string, unknown>;
     userId: string;
   }): Promise<StrategyEntity> {
     this.ensureInitialized();

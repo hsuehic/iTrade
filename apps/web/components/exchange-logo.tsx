@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { memo } from 'react';
 import { getExchangeInfo, type ExchangeInfo } from '@/lib/exchanges';
 import { cn } from '@/lib/utils';
 
@@ -11,7 +12,7 @@ interface ExchangeLogoProps {
   className?: string;
 }
 
-export function ExchangeLogo({
+export const ExchangeLogo = memo(function ExchangeLogo({
   exchange,
   size = 'sm',
   showName = false,
@@ -78,4 +79,4 @@ export function ExchangeLogo({
       )}
     </div>
   );
-}
+});

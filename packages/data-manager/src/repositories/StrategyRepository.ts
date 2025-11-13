@@ -18,6 +18,8 @@ export class StrategyRepository {
     exchange?: string;
     symbol?: string;
     parameters?: any;
+    initialData?: Record<string, unknown>;
+    subscription?: Record<string, unknown>;
     userId: string;
   }): Promise<StrategyEntity> {
     const { userId, ...strategyData } = data;

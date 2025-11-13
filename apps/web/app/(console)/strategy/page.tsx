@@ -1025,27 +1025,6 @@ export default function StrategyPage() {
                                 onParametersChange={handleParametersChange}
                               />
                             )}
-
-                            <div className="rounded-lg bg-blue-50 dark:bg-blue-950 p-4">
-                              <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                <IconSettings className="h-4 w-4" />
-                                Common Parameters
-                              </h4>
-                              <ul className="text-xs text-muted-foreground space-y-1">
-                                <li>
-                                  • <code className="font-mono">fastPeriod</code>:
-                                  Short-term moving average period
-                                </li>
-                                <li>
-                                  • <code className="font-mono">slowPeriod</code>:
-                                  Long-term moving average period
-                                </li>
-                                <li>
-                                  • <code className="font-mono">threshold</code>: Signal
-                                  threshold (0.001 = 0.1%)
-                                </li>
-                              </ul>
-                            </div>
                           </div>
                         )}
 
