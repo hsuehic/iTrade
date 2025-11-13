@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 
 import { Decimal } from 'decimal.js';
+import { KlineInterval } from '@itrade/core';
 
 import { TypeOrmDataManager } from './TypeOrmDataManager';
 
@@ -238,10 +239,10 @@ export class MigrationHelper {
 
       stats.totalRecords = rawKlines.length;
 
-      // Convert raw data to Kline format
+      // Convert raw data to Kline format with proper type casting
       const klines = rawKlines.map((raw: any) => ({
         symbol,
-        interval,
+        interval: interval as KlineInterval,
         openTime: new Date(raw.openTime),
         closeTime: new Date(raw.closeTime),
         open: new Decimal(raw.open),

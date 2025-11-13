@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { DataSource, Repository, LessThanOrEqual } from 'typeorm';
-import { IDataManager, Kline } from '@itrade/core';
+import { IDataManager, Kline, KlineInterval } from '@itrade/core';
 
 import { KlineEntity } from './entities/Kline';
 import { SymbolEntity } from './entities/Symbol';
@@ -571,7 +571,7 @@ export class TypeOrmDataManager implements IDataManager {
   private entityToKline(entity: KlineEntity): Kline {
     return {
       symbol: entity.symbol,
-      interval: entity.interval,
+      interval: entity.interval as KlineInterval,
       openTime: entity.openTime,
       closeTime: entity.closeTime,
       open: entity.open,
