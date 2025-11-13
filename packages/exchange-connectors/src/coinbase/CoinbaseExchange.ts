@@ -122,7 +122,8 @@ export class CoinbaseExchange extends BaseExchange {
     );
     const data = resp.data;
     return {
-      symbol: productId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.price || data.best_ask || '0'),
       volume: this.formatDecimal(data.volume_24h || '0'),
       timestamp: new Date(),
@@ -146,7 +147,8 @@ export class CoinbaseExchange extends BaseExchange {
     );
     const data = resp.data;
     return {
-      symbol: productId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       timestamp: new Date(),
       bids: (data.bids || []).map((b: string[]) => [
         this.formatDecimal(b[0]),
@@ -170,7 +172,8 @@ export class CoinbaseExchange extends BaseExchange {
     const data = resp.data?.trades || resp.data || [];
     return data.map((t: any) => ({
       id: t.trade_id?.toString() || uuidv4(),
-      symbol: productId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(t.price),
       quantity: this.formatDecimal(t.size || t.quantity || '0'),
       side: t.side?.toLowerCase() === 'buy' ? 'buy' : 'sell',
@@ -198,7 +201,8 @@ export class CoinbaseExchange extends BaseExchange {
     );
     const data = resp.data?.candles || resp.data || [];
     return data.map((c: any) => ({
-      symbol: productId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       interval,
       openTime: new Date(c.start || c.start_time || c.t || Date.now()),
       closeTime: new Date(c.start || c.start_time || c.t || Date.now()),
@@ -704,6 +708,7 @@ export class CoinbaseExchange extends BaseExchange {
               const originalSymbol = this.symbolMap.get(t.product_id) || t.product_id;
               this.emit('ticker', originalSymbol, {
                 symbol: originalSymbol,
+                exchange: this.name, // Add exchange name
                 price: this.formatDecimal(t.price || t.best_ask || '0'),
                 volume: this.formatDecimal(t.volume_24_h || t.volume_24h || '0'),
                 timestamp: new Date(),
@@ -729,6 +734,7 @@ export class CoinbaseExchange extends BaseExchange {
               ]);
               this.emit('orderbook', originalSymbol, {
                 symbol: originalSymbol,
+                exchange: this.name, // Add exchange name
                 timestamp: new Date(),
                 bids,
                 asks,
@@ -745,6 +751,7 @@ export class CoinbaseExchange extends BaseExchange {
               this.emit('trade', originalSymbol, {
                 id: tr.trade_id?.toString() || uuidv4(),
                 symbol: originalSymbol,
+                exchange: this.name, // Add exchange name
                 price: this.formatDecimal(tr.price),
                 quantity: this.formatDecimal(tr.size || '0'),
                 side: tr.side?.toLowerCase() === 'buy' ? 'buy' : 'sell',
@@ -774,6 +781,7 @@ export class CoinbaseExchange extends BaseExchange {
 
               this.emit('kline', originalSymbol, {
                 symbol: originalSymbol,
+                exchange: this.name, // Add exchange name
                 interval: c.granularity?.toString() || '',
                 openTime: openTime,
                 closeTime: closeTime,

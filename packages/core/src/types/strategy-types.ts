@@ -38,7 +38,7 @@ export interface StrategyRuntimeContext {
 
   // System-injected
   subscription?: SubscriptionConfig;
-  initialData?: InitialDataConfig;
+  initialDataConfig?: InitialDataConfig;
   loadedInitialData?: InitialDataResult;
 }
 

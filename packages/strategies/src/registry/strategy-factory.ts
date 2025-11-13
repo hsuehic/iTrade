@@ -243,7 +243,7 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
   const defaultParameters = getStrategyDefaultParameters(type);
 
   // 从 customConfig 中提取 parameters 和其他字段
-  const { parameters: customParams, ...contextFields } = customConfig as any;
+  const { parameters: customParams, ...contextFields } = customConfig;
 
   // 构建完整配置
   const fullConfig: StrategyConfig<TParams> = {
@@ -259,7 +259,7 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
     strategyName,
     logger: contextFields.logger,
     subscription: contextFields.subscription,
-    initialData: contextFields.initialData,
+    initialDataConfig: contextFields.initialDataConfig,
     loadedInitialData: contextFields.loadedInitialData,
   };
 

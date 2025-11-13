@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       exchange,
       symbol,
       parameters,
-      initialData,
+      initialDataConfig,
       subscription,
     } = body;
 
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       exchange,
       symbol,
       parameters,
-      initialData,
+      initialDataConfig,
       subscription,
       userId: session.user.id,
     });

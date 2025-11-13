@@ -545,7 +545,7 @@ function createMockStrategy(
     symbol: parameters.symbol as string,
     exchange: parameters.exchange as string | string[],
     subscription: parameters.subscription,
-    initialData: parameters.initialData,
+    initialDataConfig: parameters.initialDataConfig,
   };
 
   return {
@@ -556,7 +556,7 @@ function createMockStrategy(
       symbol: parameters.symbol as string,
       exchange: parameters.exchange as string | string[],
       subscription: parameters.subscription,
-      initialData: parameters.initialData,
+      initialDataConfig: parameters.initialDataConfig,
     },
     initialize: vi.fn().mockResolvedValue(undefined),
     analyze: vi.fn().mockResolvedValue({

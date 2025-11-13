@@ -87,7 +87,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       exchange,
       symbol,
       parameters,
-      initialData,
+      initialDataConfig,
       subscription,
     } = body;
 
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       exchange?: string;
       symbol?: string;
       parameters?: StrategyParameters;
-      initialData?: Record<string, unknown>;
+      initialDataConfig?: Record<string, unknown>;
       subscription?: Record<string, unknown>;
     }
 
@@ -111,7 +111,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (exchange !== undefined) updates.exchange = exchange;
     if (symbol !== undefined) updates.symbol = symbol;
     if (parameters !== undefined) updates.parameters = parameters;
-    if (initialData !== undefined) updates.initialData = initialData;
+    if (initialDataConfig !== undefined) updates.initialDataConfig = initialDataConfig;
     if (subscription !== undefined) updates.subscription = subscription;
 
     await dataManager.updateStrategy(id, updates);

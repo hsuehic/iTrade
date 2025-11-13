@@ -177,7 +177,22 @@ export class BalanceTracker {
 
       // Upsert new balances
       if (accountInfo.balances.length > 0) {
-        const balanceEntities = accountInfo.balances.map((balance) => ({
+        // Deduplicate balances by asset (keep the last occurrence)
+        const balanceMap = new Map<string, (typeof accountInfo.balances)[0]>();
+        for (const balance of accountInfo.balances) {
+          balanceMap.set(balance.asset, balance);
+        }
+
+        const uniqueBalances = Array.from(balanceMap.values());
+
+        // Log if duplicates were found
+        if (uniqueBalances.length < accountInfo.balances.length) {
+          this.logger.warn(
+            `⚠️  Duplicate assets detected for ${exchange}: ${accountInfo.balances.length} balances, ${uniqueBalances.length} unique`,
+          );
+        }
+
+        const balanceEntities = uniqueBalances.map((balance) => ({
           accountInfo: { id: existingAccountInfo.id },
           asset: balance.asset,
           free: balance.free,

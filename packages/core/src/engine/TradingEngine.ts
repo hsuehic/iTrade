@@ -37,6 +37,7 @@ import {
 } from '../types';
 import { EventBus } from '../events';
 import { PrecisionUtils } from '../utils/PrecisionUtils';
+import { loadInitialDataForStrategy } from '../utils/StrategyLoader';
 
 import { SubscriptionCoordinator } from './SubscriptionCoordinator';
 
@@ -44,6 +45,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private _isRunning = false;
   private readonly _strategies = new Map<string, IStrategy>();
   private readonly _exchanges = new Map<string, IExchange>();
+  private readonly _strategiesWithLoadedInitialData = new Set<string>(); // Track which strategies have loaded initial data
   private _eventBus: EventBus;
   private subscriptionCoordinator: SubscriptionCoordinator;
 
@@ -96,6 +98,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           });
           this.logger.warn(`Exchange ${name} is not connected`);
         }
+      }
+
+      // 🔄 Load initial data for all strategies that need it (before subscribing to real-time data)
+      // This handles strategies added before engine.start() is called
+      for (const [name, strategy] of this._strategies) {
+        await this.loadInitialDataForStrategy(name, strategy);
       }
 
       // Auto-subscribe to all strategy data
@@ -162,10 +170,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     this._strategies.set(name, strategy);
     this.logger.info(`Added strategy: ${name}`);
 
-    // Auto-subscribe to strategy data if engine is running
+    // If engine is already running, load initial data and subscribe
+    // (for strategies added dynamically after engine.start())
     if (this._isRunning) {
+      // Load initial data first (before subscribing to real-time data)
+      await this.loadInitialDataForStrategy(name, strategy);
+
+      // Then subscribe to real-time data
       await this.subscribeStrategyData(name, strategy);
     }
+    // Otherwise, initial data will be loaded when engine.start() is called
   }
 
   public async removeStrategy(name: string): Promise<void> {
@@ -176,7 +190,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     // Auto-unsubscribe strategy data
     await this.unsubscribeStrategyData(name);
 
+    // Remove from strategies map
     this._strategies.delete(name);
+
+    // Remove from loaded initial data tracking
+    this._strategiesWithLoadedInitialData.delete(name);
+
     this.logger.info(`Removed strategy: ${name}`);
   }
 
@@ -1031,6 +1050,59 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           error as Error,
         );
       }
+    }
+  }
+
+  /**
+   * Load initial data for a strategy (with deduplication)
+   * This is called from two places:
+   * 1. engine.start() - for strategies added before engine starts
+   * 2. addStrategy() - for strategies added while engine is running
+   */
+  private async loadInitialDataForStrategy(
+    name: string,
+    strategy: IStrategy,
+  ): Promise<void> {
+    // Skip if already loaded (prevent duplicate loading)
+    if (this._strategiesWithLoadedInitialData.has(name)) {
+      this.logger.debug(`Skipping initial data load for ${name} - already loaded`);
+      return;
+    }
+
+    const context = strategy.context;
+    if (!context?.initialDataConfig) {
+      // No initial data requested for this strategy
+      return;
+    }
+
+    try {
+      this.logger.debug(
+        `Loading initial data for strategy ${name}: ${JSON.stringify(context.initialDataConfig)}`,
+      );
+
+      const loadedData = await loadInitialDataForStrategy(
+        strategy,
+        this._exchanges,
+        this.logger,
+      );
+
+      // Store the loaded data in strategy's context for reference
+      context.loadedInitialData = loadedData;
+
+      // Call strategy's processInitialData method (required in IStrategy interface)
+      this.logger.debug(`Calling processInitialData on strategy ${name}`);
+      strategy.processInitialData(loadedData);
+
+      // Mark as loaded to prevent duplicate loading
+      this._strategiesWithLoadedInitialData.add(name);
+
+      this.logger.info(`✅ Initial data loaded for strategy ${name}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to load initial data for strategy ${name}`,
+        error as Error,
+      );
+      // Continue even if initial data loading fails - strategy can still work with real-time data
     }
   }
 

@@ -35,7 +35,7 @@ export async function loadInitialDataForStrategy(
     return {} as InitialDataResult;
   }
 
-  const { initialData } = context;
+  const { initialDataConfig } = context;
 
   // 2. Get exchange instance
   const exchangeName = Array.isArray(context.exchange)
@@ -49,7 +49,7 @@ export async function loadInitialDataForStrategy(
   }
 
   // 3. Load initial data based on initialData config
-  if (!initialData) {
+  if (!initialDataConfig) {
     return {} as InitialDataResult; // No initial data requested
   }
 
@@ -62,14 +62,45 @@ export async function loadInitialDataForStrategy(
 
   const result: Partial<InitialDataResult> = {};
 
-  const typedInitialData = initialData as InitialDataConfig;
+  const typedInitialData = initialDataConfig as InitialDataConfig;
+
+  // Log what initial data is requested
+  logger?.info(`🔍 Initial data configuration for ${symbol}:`, {
+    klines: typedInitialData.klines ? 'Yes' : 'No',
+    positions: typedInitialData.fetchPositions ? 'Yes' : 'No',
+    openOrders: typedInitialData.fetchOpenOrders ? 'Yes' : 'No',
+    balance: typedInitialData.fetchBalance ? 'Yes' : 'No',
+    accountInfo: typedInitialData.fetchAccountInfo ? 'Yes' : 'No',
+    ticker: typedInitialData.fetchTicker ? 'Yes' : 'No',
+    orderBook: typedInitialData.fetchOrderBook ? 'Yes' : 'No',
+  });
 
   // 3.1 Load Klines
-  if (typedInitialData.klines && typedInitialData.klines.length > 0) {
+  // Handle both array format and object format for backward compatibility
+  if (typedInitialData.klines) {
     result.klines = {};
-    for (const klineConfig of typedInitialData.klines) {
+
+    let klineConfigs: Array<{ interval: string; limit: number }> = [];
+
+    // Check if it's array format: [{ interval: "15m", limit: 15 }]
+    if (Array.isArray(typedInitialData.klines)) {
+      klineConfigs = typedInitialData.klines;
+    }
+    // Check if it's object format: { "15m": 15 }
+    else if (typeof typedInitialData.klines === 'object') {
+      const klinesObj = typedInitialData.klines as Record<string, number>;
+      klineConfigs = Object.entries(klinesObj).map(([interval, limit]) => ({
+        interval,
+        limit,
+      }));
+    }
+
+    // Load klines for each configuration
+    for (const klineConfig of klineConfigs) {
       const interval = klineConfig.interval;
-      logger?.debug(`Loading ${klineConfig.limit} klines for ${symbol} (${interval})`);
+      logger?.info(
+        `📡 Fetching initial klines: ${klineConfig.limit} bars at ${interval} interval for ${symbol}`,
+      );
       const klines = await exchange.getKlines(
         symbol,
         interval,
@@ -78,50 +109,79 @@ export async function loadInitialDataForStrategy(
         klineConfig.limit,
       );
       result.klines[interval] = klines;
+      logger?.info(`✅ Loaded ${klines.length} historical klines (${interval})`);
     }
   }
 
   // 3.2 Load Positions
   if (typedInitialData.fetchPositions) {
-    logger?.debug(`Loading positions for ${symbol}`);
+    logger?.info(`📊 Fetching initial positions for ${symbol}`);
     const allPositions = await exchange.getPositions();
+    // Filter to only positions for this strategy's symbol
     result.positions = allPositions.filter((p) => p.symbol === symbol);
+    logger?.info(`✅ Loaded ${result.positions.length} position(s) for ${symbol}`);
   }
 
   // 3.3 Load Open Orders
   if (typedInitialData.fetchOpenOrders) {
-    logger?.debug(`Loading open orders for ${symbol}`);
+    logger?.info(`📋 Fetching initial open orders for ${symbol}`);
     const openOrders = await exchange.getOpenOrders(symbol);
     result.openOrders = openOrders;
+    logger?.info(`✅ Loaded ${openOrders.length} open order(s) for ${symbol}`);
   }
 
   // 3.4 Load Balance
   if (typedInitialData.fetchBalance) {
-    logger?.debug(`Loading balances`);
+    logger?.info(`💰 Fetching account balances`);
     const balance = await exchange.getBalances();
     result.balance = balance;
+    const nonZeroBalances = balance.filter(
+      (b) => parseFloat(b.free.toString()) > 0 || parseFloat(b.locked.toString()) > 0,
+    );
+    logger?.info(`✅ Loaded ${nonZeroBalances.length} non-zero balance(s)`);
   }
 
   // 3.5 Load Account Info
   if (typedInitialData.fetchAccountInfo) {
-    logger?.debug(`Loading account info`);
+    logger?.info(`ℹ️  Fetching account info`);
     const accountInfo = await exchange.getAccountInfo();
     result.accountInfo = accountInfo;
+    logger?.info(`✅ Loaded account info`);
   }
 
   // 3.6 Load Ticker
   if (typedInitialData.fetchTicker) {
-    logger?.debug(`Loading ticker for ${symbol}`);
+    logger?.info(`📈 Fetching current ticker for ${symbol}`);
     const ticker = await exchange.getTicker(symbol);
-    result.ticker = ticker;
+
+    // Normalize ticker: set unified symbol and add exchange name
+    const normalizedTicker = {
+      ...ticker,
+      symbol, // Use unified symbol format
+      exchange: exchangeName, // Add exchange name
+    };
+
+    result.ticker = normalizedTicker;
+    logger?.info(`✅ Loaded ticker: ${normalizedTicker.price} (${symbol})`);
   }
 
   // 3.7 Load Order Book
   if (typedInitialData.fetchOrderBook) {
-    logger?.debug(`Loading order book for ${symbol}`);
+    logger?.info(`📖 Fetching order book for ${symbol}`);
     const depth = typedInitialData.fetchOrderBook?.depth || 20;
     const orderBook = await exchange.getOrderBook(symbol, depth);
-    result.orderBook = orderBook;
+
+    // Normalize orderbook: set unified symbol and add exchange name
+    const normalizedOrderBook = {
+      ...orderBook,
+      symbol, // Use unified symbol format
+      exchange: exchangeName, // Add exchange name
+    };
+
+    result.orderBook = normalizedOrderBook;
+    logger?.info(
+      `✅ Loaded order book: ${normalizedOrderBook.bids.length} bids, ${normalizedOrderBook.asks.length} asks`,
+    );
   }
 
   logger?.info(`✅ Initial data loaded for ${symbol}`);

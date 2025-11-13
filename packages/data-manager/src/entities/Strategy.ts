@@ -95,7 +95,7 @@ export class StrategyEntity {
    * Example: { ticker: true, klines: { enabled: true, interval: '1m' }, method: 'websocket' }
    */
   @Column({ type: 'jsonb', nullable: true })
-  initialData?: Record<string, unknown>;
+  initialDataConfig?: Record<string, unknown>;
 
   @Column({ type: 'text', nullable: true })
   errorMessage?: string;

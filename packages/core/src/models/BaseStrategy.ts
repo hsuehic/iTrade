@@ -24,6 +24,7 @@ import {
   Trade,
   OrderSide,
   SignalType,
+  InitialDataResult,
 } from '../types';
 import { ConsoleLogger } from './ConsoleLogger';
 
@@ -73,7 +74,7 @@ export abstract class BaseStrategy<
       strategyName,
       logger,
       subscription,
-      initialData,
+      initialDataConfig,
       loadedInitialData,
     } = config;
 
@@ -86,7 +87,7 @@ export abstract class BaseStrategy<
       strategyName,
       logger,
       subscription,
-      initialData,
+      initialDataConfig,
       loadedInitialData,
     };
 
@@ -282,6 +283,26 @@ export abstract class BaseStrategy<
         currentPosition: this._currentPosition,
       },
     };
+  }
+
+  /**
+   * Process initial data loaded by TradingEngine
+   * This is called after initial data (klines, positions, orders, etc.) is loaded
+   * and before real-time subscriptions begin.
+   *
+   * Default implementation does nothing - derived classes should override if they need
+   * to process initial data (e.g., populate buffers, set initial positions, etc.)
+   *
+   * @param initialData - The loaded initial data containing klines, positions, orders, etc.
+   */
+  public processInitialData(initialData: InitialDataResult): void {
+    // Default implementation: log and do nothing
+    this._logger.debug(
+      `[${this.strategyType}] processInitialData called, method not overridden in derived class:`,
+    );
+    this._logger.debug(JSON.stringify(initialData, null, 2));
+    // Derived classes should override this to process initial data
+    // Example: Load klines into buffers, set initial positions, etc.
   }
 
   /**

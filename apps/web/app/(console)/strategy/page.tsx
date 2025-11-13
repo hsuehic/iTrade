@@ -104,7 +104,7 @@ export default function StrategyPage() {
     exchange: string | string[];
     symbol: string;
     parameters: string;
-    initialData: InitialDataConfig;
+    initialDataConfig: InitialDataConfig;
     subscription: SubscriptionConfig;
   }>({
     name: '',
@@ -117,7 +117,7 @@ export default function StrategyPage() {
       null,
       2,
     ),
-    initialData: {},
+    initialDataConfig: {},
     subscription: {},
   });
 
@@ -132,14 +132,14 @@ export default function StrategyPage() {
     }
   }, [formData.parameters, formData.type]);
 
-  // 🔄 Convert initialData from strategy config format to form format
+  // 🔄 Convert initialDataConfig from strategy config format to form format
   const convertInitialDataToFormFormat = useCallback(
-    (initialData: unknown): InitialDataConfig => {
-      if (!initialData || typeof initialData !== 'object') {
+    (initialDataConfig: unknown): InitialDataConfig => {
+      if (!initialDataConfig || typeof initialDataConfig !== 'object') {
         return {};
       }
 
-      const data = initialData as Record<string, unknown>;
+      const data = initialDataConfig as Record<string, unknown>;
       const formData: InitialDataConfig = { ...data };
 
       // Convert klines from object format { '15m': 20 } to array format
@@ -156,9 +156,9 @@ export default function StrategyPage() {
     [],
   );
 
-  // 🔄 Convert initialData from form format back to strategy config format
+  // 🔄 Convert initialDataConfig from form format back to strategy config format
   const convertInitialDataToConfigFormat = useCallback((formData: InitialDataConfig) => {
-    const configData: Record<string, unknown> = { ...formData };
+    const configDataConfig: Record<string, unknown> = { ...formData };
 
     // Convert klines array back to object format for storage
     if (formData.klines && Array.isArray(formData.klines) && formData.klines.length > 0) {
@@ -166,12 +166,12 @@ export default function StrategyPage() {
       formData.klines.forEach((kline) => {
         klinesObj[kline.interval] = kline.limit;
       });
-      configData.klines = klinesObj;
+      configDataConfig.klines = klinesObj;
     } else {
-      delete configData.klines;
+      delete configDataConfig.klines;
     }
 
-    return configData;
+    return configDataConfig;
   }, []);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -363,7 +363,7 @@ export default function StrategyPage() {
       exchange: strategy.exchange || 'binance',
       symbol: strategy.symbol || '',
       parameters: JSON.stringify(strategy.parameters || {}, null, 2),
-      initialData: strategy.initialData || {},
+      initialDataConfig: strategy.initialDataConfig || {},
       subscription: strategy.subscription || {},
     });
     setIsEditing(true);
@@ -380,7 +380,7 @@ export default function StrategyPage() {
       exchange: 'coinbase',
       symbol: 'BTC/USDC:USDC',
       parameters: JSON.stringify(getDefaultParametersForType(defaultType), null, 2),
-      initialData: {},
+      initialDataConfig: {},
       subscription: {},
     });
     setIsEditing(false);
@@ -1031,12 +1031,14 @@ export default function StrategyPage() {
                         {currentStep === 2 && (
                           <div className="space-y-4 mt-4">
                             <InitialDataConfigForm
-                              value={convertInitialDataToFormFormat(formData.initialData)}
-                              onChange={(initialData) => {
+                              value={convertInitialDataToFormFormat(
+                                formData.initialDataConfig,
+                              )}
+                              onChange={(initialDataConfig) => {
                                 setFormData({
                                   ...formData,
-                                  initialData:
-                                    convertInitialDataToConfigFormat(initialData),
+                                  initialDataConfig:
+                                    convertInitialDataToConfigFormat(initialDataConfig),
                                 });
                               }}
                             />

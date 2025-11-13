@@ -136,18 +136,16 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.maxSize = config.parameters.maxSize;
     this.leverage = config.parameters.leverage ?? 10;
     this.tradeMode = config.parameters.tradeMode ?? TradeMode.ISOLATED;
-    // 🆕 Process loaded initial data if available
-    if (this._context.loadedInitialData && 'symbol' in this._context.loadedInitialData) {
-      this.processInitialData(this._context.loadedInitialData);
-    }
+
+    // Note: Initial data will be processed via processInitialData() called by TradingEngine
+    // after the strategy is added and initial data is loaded
   }
 
   /**
-   * 🆕 Process initial data loaded by TradingEngine
-   * Called from constructor if initialData was configured
+   * Process initial data loaded by TradingEngine
+   * Overrides BaseStrategy.processInitialData to populate strategy buffers with historical data
    */
-  private processInitialData(initialData?: InitialDataResult): void {
-    if (!initialData) return;
+  public override processInitialData(initialData: InitialDataResult): void {
     console.log(
       `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
     );

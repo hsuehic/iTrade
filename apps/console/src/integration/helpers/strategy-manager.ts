@@ -375,8 +375,10 @@ export class StrategyManager {
         // 🆕 Use subscription configuration from database
         // If not set in database, use default based on strategy type
         subscription:
-          (dbStrategy.subscription as any) ||
-          this.getDefaultSubscriptionConfig(dbStrategy.type),
+          dbStrategy.subscription || this.getDefaultSubscriptionConfig(dbStrategy.type),
+        // 🆕 Use initialData configuration from database
+        // This is the historical data to fetch when strategy starts
+        initialDataConfig: dbStrategy.initialDataConfig,
       },
       dbStrategy.id,
       dbStrategy.name,

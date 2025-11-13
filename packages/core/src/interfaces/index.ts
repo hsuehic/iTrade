@@ -23,6 +23,7 @@ import {
   BacktestResult,
   RiskLimits,
   RiskMetrics,
+  InitialDataResult,
   StrategyConfig,
   StrategyRuntimeContext,
   TradeMode,
@@ -173,6 +174,19 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   loadState?(snapshot: StrategyStateSnapshot): Promise<StrategyRecoveryContext>;
   setRecoveryContext?(context: StrategyRecoveryContext): Promise<void>;
   getStateVersion?(): string; // For state schema versioning
+
+  // 🆕 Initial Data Processing (required - implemented in BaseStrategy)
+  /**
+   * Process initial data loaded by TradingEngine before strategy starts receiving real-time updates
+   * This method is called after initial data (klines, positions, orders, etc.) is loaded
+   * and before real-time subscriptions begin.
+   *
+   * Default implementation in BaseStrategy does nothing - derived classes should override
+   * if they need to process initial data (e.g., populate buffers, set initial positions, etc.)
+   *
+   * @param initialData - The loaded initial data containing klines, positions, orders, etc.
+   */
+  processInitialData(initialData: InitialDataResult): void;
 
   cleanup?(): Promise<void>;
 }

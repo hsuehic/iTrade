@@ -123,7 +123,8 @@ export class BinanceExchange extends BaseExchange {
 
     const data = response.data;
     return {
-      symbol: data.symbol,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.lastPrice),
       volume: this.formatDecimal(data.volume),
       timestamp: new Date(),
@@ -143,7 +144,8 @@ export class BinanceExchange extends BaseExchange {
 
     const data = response.data;
     return {
-      symbol: data.symbol || normalizedSymbol,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       timestamp: new Date(),
       bids: data.bids.map((bid: string[]) => [
         this.formatDecimal(bid[0]),
@@ -164,7 +166,8 @@ export class BinanceExchange extends BaseExchange {
 
     return response.data.map((trade: any) => ({
       id: trade.id.toString(),
-      symbol: normalizedSymbol,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(trade.price),
       quantity: this.formatDecimal(trade.qty),
       side: trade.isBuyerMaker ? 'sell' : 'buy',
@@ -192,7 +195,8 @@ export class BinanceExchange extends BaseExchange {
     const response = await this.httpClient.get('/api/v3/klines', { params });
 
     return response.data.map((kline: any[]) => ({
-      symbol: normalizedSymbol,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       interval: interval,
       openTime: this.formatTimestamp(kline[0]),
       closeTime: this.formatTimestamp(kline[6]),
@@ -203,6 +207,7 @@ export class BinanceExchange extends BaseExchange {
       volume: this.formatDecimal(kline[5]),
       quoteVolume: this.formatDecimal(kline[7]),
       trades: kline[8],
+      isClosed: true, // REST API returns historical/closed klines
     }));
   }
 
@@ -1122,6 +1127,7 @@ export class BinanceExchange extends BaseExchange {
   private transformBinanceTicker(originalSymbol: string, data: any): Ticker {
     return {
       symbol: originalSymbol,
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.c),
       volume: this.formatDecimal(data.v),
       timestamp: new Date(),
@@ -1142,6 +1148,7 @@ export class BinanceExchange extends BaseExchange {
 
     return {
       symbol: symbol.toUpperCase(),
+      exchange: this.name, // Add exchange name
       timestamp: new Date(),
       bids: bids.map((bid: string[]) => [
         this.formatDecimal(bid[0]),
@@ -1158,6 +1165,7 @@ export class BinanceExchange extends BaseExchange {
     return {
       id: data.t.toString(),
       symbol: symbol.toUpperCase(),
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.p),
       quantity: this.formatDecimal(data.q),
       side: data.m ? 'sell' : 'buy', // m indicates buyer is maker
@@ -1168,6 +1176,7 @@ export class BinanceExchange extends BaseExchange {
   private transformBinanceKline(originalSymbol: string, data: any): Kline {
     return {
       symbol: originalSymbol,
+      exchange: this.name, // Add exchange name
       interval: data.i,
       openTime: this.formatTimestamp(data.t),
       closeTime: this.formatTimestamp(data.T),

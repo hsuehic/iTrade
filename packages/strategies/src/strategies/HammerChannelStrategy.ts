@@ -261,29 +261,30 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     this.klines = new FixedLengthList<Kline>(this.windowSize);
     this.tickers = new FixedLengthList<Ticker>(10);
 
-    // 🆕 Process loaded initial data if available
-    if (config.loadedInitialData) {
-      this.processInitialData(config.loadedInitialData);
-    }
+    // Note: Initial data will be processed via processInitialData() called by TradingEngine
+    // after the strategy is added and initial data is loaded
   }
 
   /**
-   * 🆕 Process initial data loaded by TradingEngine
-   * Called from constructor if initialData was configured
+   * Process initial data loaded by TradingEngine
+   * Overrides BaseStrategy.processInitialData to populate strategy buffers with historical data
    */
-  private processInitialData(initialData: InitialDataResult): void {
+  public override processInitialData(initialData: InitialDataResult): void {
     this._logger.info(
       `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
     );
+    this._logger.info(JSON.stringify(initialData, null, 2));
 
     // Load historical klines into strategy buffer
     if (initialData.klines) {
       Object.entries(initialData.klines).forEach(([interval, klines]) => {
         this._logger.info(`  📈 Loaded ${klines.length} klines for interval ${interval}`);
         // Store last N klines for analysis
-        klines.forEach((kline) => {
-          this.klines.push(kline);
-        });
+        if (interval === this._context.initialDataConfig?.klines?.[0]?.interval) {
+          klines.forEach((kline) => {
+            this.klines.push(kline);
+          });
+        }
       });
     }
 

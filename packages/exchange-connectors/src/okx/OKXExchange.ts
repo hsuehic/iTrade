@@ -89,7 +89,8 @@ export class OKXExchange extends BaseExchange {
 
     const data = response.data.data[0];
     return {
-      symbol: data.instId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.last),
       volume: this.formatDecimal(data.vol24h),
       timestamp: new Date(parseInt(data.ts)),
@@ -113,7 +114,8 @@ export class OKXExchange extends BaseExchange {
 
     const data = response.data.data[0];
     return {
-      symbol: instId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       timestamp: new Date(parseInt(data.ts)),
       bids: data.bids.map((bid: string[]) => [
         this.formatDecimal(bid[0]),
@@ -138,7 +140,8 @@ export class OKXExchange extends BaseExchange {
 
     return response.data.data.map((trade: any) => ({
       id: trade.tradeId,
-      symbol: instId,
+      symbol, // Use unified symbol format
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(trade.px),
       quantity: this.formatDecimal(trade.sz),
       side: trade.side === 'buy' ? 'buy' : 'sell',
@@ -178,7 +181,8 @@ export class OKXExchange extends BaseExchange {
     }
 
     return response.data.data.map((kline: string[]) => ({
-      symbol: instId,
+      symbol, // Use unified symbol format (input symbol)
+      exchange: this.name, // Add exchange name
       interval: interval,
       openTime: new Date(parseInt(kline[0])),
       closeTime: new Date(parseInt(kline[0]) + this.getIntervalMs(interval)),
@@ -189,6 +193,7 @@ export class OKXExchange extends BaseExchange {
       volume: this.formatDecimal(kline[5]),
       quoteVolume: this.formatDecimal(kline[6]),
       trades: 0, // OKX 不提供这个字段
+      isClosed: true, // REST API returns historical/closed klines
     }));
   }
 
@@ -1167,6 +1172,7 @@ export class OKXExchange extends BaseExchange {
   private transformOKXTicker(data: any, symbol: string): Ticker {
     return {
       symbol: symbol,
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.last),
       volume: this.formatDecimal(data.vol24h),
       timestamp: new Date(parseInt(data.ts)),
@@ -1181,6 +1187,7 @@ export class OKXExchange extends BaseExchange {
   private transformOKXOrderBook(data: any, symbol: string): OrderBook {
     return {
       symbol: symbol,
+      exchange: this.name, // Add exchange name
       timestamp: new Date(parseInt(data.ts)),
       bids: data.bids.map((bid: string[]) => [
         this.formatDecimal(bid[0]),
@@ -1197,6 +1204,7 @@ export class OKXExchange extends BaseExchange {
     return {
       id: data.tradeId,
       symbol: symbol,
+      exchange: this.name, // Add exchange name
       price: this.formatDecimal(data.px),
       quantity: this.formatDecimal(data.sz),
       side: data.side === 'buy' ? 'buy' : 'sell',
@@ -1216,6 +1224,7 @@ export class OKXExchange extends BaseExchange {
 
     return {
       symbol: symbol,
+      exchange: this.name, // Add exchange name
       interval: interval,
       openTime: new Date(openTime),
       closeTime: new Date(closeTime),
