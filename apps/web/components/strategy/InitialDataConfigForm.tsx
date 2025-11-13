@@ -21,14 +21,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import type { InitialDataConfig as SystemInitialDataConfig } from '@itrade/core';
 
+/**
+ * UI-specific types for the form (array format for easier management)
+ * The actual system uses object format: { "15m": 20, "1h": 10 }
+ * Conversion happens in the parent component (strategy/page.tsx)
+ */
 export interface InitialKlineConfig {
   interval: string;
   limit: number;
 }
 
 export interface InitialDataConfig {
-  klines?: InitialKlineConfig[];
+  klines?: InitialKlineConfig[]; // UI uses array format for easier form management
   fetchPositions?: boolean;
   fetchOpenOrders?: boolean;
   fetchBalance?: boolean;
@@ -39,6 +45,9 @@ export interface InitialDataConfig {
     depth?: number;
   };
 }
+
+// Export the system type for reference
+export type { SystemInitialDataConfig };
 
 interface InitialDataConfigFormProps {
   value: InitialDataConfig;

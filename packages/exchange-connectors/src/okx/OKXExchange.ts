@@ -13,6 +13,7 @@ import {
   OrderBook,
   Trade,
   Kline,
+  KlineInterval,
   AccountInfo,
   Balance,
   Position,
@@ -1225,7 +1226,7 @@ export class OKXExchange extends BaseExchange {
     return {
       symbol: symbol,
       exchange: this.name, // Add exchange name
-      interval: interval,
+      interval: interval as KlineInterval,
       openTime: new Date(openTime),
       closeTime: new Date(closeTime),
       open: this.formatDecimal(data[1]),

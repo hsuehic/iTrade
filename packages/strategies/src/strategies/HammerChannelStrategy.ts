@@ -5,6 +5,7 @@ import {
   StrategyConfig,
   Ticker,
   Kline,
+  KlineInterval,
   Order,
   Position,
   InitialDataResult,
@@ -277,13 +278,20 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
     // Load historical klines into strategy buffer
     if (initialData.klines) {
+      this._logger.info(
+        `Initial data config: ${JSON.stringify(this._context.initialDataConfig, null, 2)}`,
+      );
       Object.entries(initialData.klines).forEach(([interval, klines]) => {
         this._logger.info(`  📈 Loaded ${klines.length} klines for interval ${interval}`);
         // Store last N klines for analysis
-        if (interval === this._context.initialDataConfig?.klines?.[0]?.interval) {
+        // Check if this interval was requested in initialDataConfig
+        if (this._context.initialDataConfig?.klines?.[interval as KlineInterval]) {
           klines.forEach((kline) => {
             this.klines.push(kline);
           });
+          this._logger.info(
+            `  ✅ Loaded ${klines.length} klines for interval ${interval} into strategy buffer`,
+          );
         }
       });
     }

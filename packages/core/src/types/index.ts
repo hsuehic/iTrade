@@ -16,14 +16,37 @@ export interface StrategyHealthStatus {
 }
 
 // Initial Data Configuration Types
-export interface InitialKlineConfig {
-  interval: string; // e.g., '1m', '5m', '15m', '1h'
-  limit: number; // Number of klines to fetch (e.g., 20, 50, 100)
-}
 
+/**
+ * Supported kline/candlestick intervals
+ * Shared across all exchanges (Binance, OKX, Coinbase)
+ */
+export type KlineInterval =
+  | '1m' // 1 minute
+  | '3m' // 3 minutes
+  | '5m' // 5 minutes
+  | '15m' // 15 minutes
+  | '30m' // 30 minutes
+  | '1h' // 1 hour
+  | '2h' // 2 hours
+  | '4h' // 4 hours
+  | '6h' // 6 hours
+  | '8h' // 8 hours
+  | '12h' // 12 hours
+  | '1d' // 1 day
+  | '3d' // 3 days
+  | '1w' // 1 week
+  | '1M'; // 1 month
+
+/**
+ * Initial data configuration for strategy initialization
+ * Defines what historical and current data to load before strategy starts
+ */
 export interface InitialDataConfig {
   // Historical kline data
-  klines?: InitialKlineConfig[];
+  // Format: { "interval": limit }
+  // Example: { "15m": 20, "1h": 10 } - fetches 20 bars of 15m and 10 bars of 1h
+  klines?: Partial<Record<KlineInterval, number>>;
 
   // Account data
   fetchPositions?: boolean; // Fetch current positions for the symbol
@@ -41,7 +64,7 @@ export interface InitialDataConfig {
 
 export interface InitialDataResult {
   // Historical data
-  klines?: Record<string, Kline[]>; // interval -> klines[]
+  klines?: Partial<Record<KlineInterval, Kline[]>>; // interval -> klines[]
 
   // Account data
   positions?: Position[];
@@ -100,7 +123,7 @@ export interface Trade {
 
 export interface Kline {
   symbol: string;
-  interval: string;
+  interval: KlineInterval;
   openTime: Date;
   closeTime: Date;
   open: Decimal;

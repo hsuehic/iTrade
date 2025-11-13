@@ -2,6 +2,7 @@ import type { IExchange, IStrategy } from '../interfaces';
 import type {
   InitialDataResult,
   InitialDataConfig,
+  KlineInterval,
   Kline,
   Position,
   Order,
@@ -82,12 +83,13 @@ export async function loadInitialDataForStrategy(
 
     let klineConfigs: Array<{ interval: string; limit: number }> = [];
 
-    // Check if it's array format: [{ interval: "15m", limit: 15 }]
+    // Standard format (used by system): { "15m": 20, "1h": 10 }
+    // Legacy format (backward compatibility): [{ interval: "15m", limit: 20 }]
     if (Array.isArray(typedInitialData.klines)) {
+      // Legacy array format (for backward compatibility)
       klineConfigs = typedInitialData.klines;
-    }
-    // Check if it's object format: { "15m": 15 }
-    else if (typeof typedInitialData.klines === 'object') {
+    } else if (typeof typedInitialData.klines === 'object') {
+      // Standard object format: { interval: limit }
       const klinesObj = typedInitialData.klines as Record<string, number>;
       klineConfigs = Object.entries(klinesObj).map(([interval, limit]) => ({
         interval,
@@ -97,7 +99,7 @@ export async function loadInitialDataForStrategy(
 
     // Load klines for each configuration
     for (const klineConfig of klineConfigs) {
-      const interval = klineConfig.interval;
+      const interval = klineConfig.interval as KlineInterval;
       logger?.info(
         `📡 Fetching initial klines: ${klineConfig.limit} bars at ${interval} interval for ${symbol}`,
       );
@@ -153,16 +155,8 @@ export async function loadInitialDataForStrategy(
   if (typedInitialData.fetchTicker) {
     logger?.info(`📈 Fetching current ticker for ${symbol}`);
     const ticker = await exchange.getTicker(symbol);
-
-    // Normalize ticker: set unified symbol and add exchange name
-    const normalizedTicker = {
-      ...ticker,
-      symbol, // Use unified symbol format
-      exchange: exchangeName, // Add exchange name
-    };
-
-    result.ticker = normalizedTicker;
-    logger?.info(`✅ Loaded ticker: ${normalizedTicker.price} (${symbol})`);
+    result.ticker = ticker;
+    logger?.info(`✅ Loaded ticker: ${ticker.price} (${symbol})`);
   }
 
   // 3.7 Load Order Book
@@ -170,17 +164,9 @@ export async function loadInitialDataForStrategy(
     logger?.info(`📖 Fetching order book for ${symbol}`);
     const depth = typedInitialData.fetchOrderBook?.depth || 20;
     const orderBook = await exchange.getOrderBook(symbol, depth);
-
-    // Normalize orderbook: set unified symbol and add exchange name
-    const normalizedOrderBook = {
-      ...orderBook,
-      symbol, // Use unified symbol format
-      exchange: exchangeName, // Add exchange name
-    };
-
-    result.orderBook = normalizedOrderBook;
+    result.orderBook = orderBook;
     logger?.info(
-      `✅ Loaded order book: ${normalizedOrderBook.bids.length} bids, ${normalizedOrderBook.asks.length} asks`,
+      `✅ Loaded order book: ${orderBook.bids.length} bids, ${orderBook.asks.length} asks`,
     );
   }
 
