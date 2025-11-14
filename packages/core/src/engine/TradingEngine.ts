@@ -146,7 +146,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       for (const [name, strategy] of this._strategies) {
         try {
           await strategy.cleanup?.();
-          this.logger.info(`Strategy ${name} cleaned up successfully`);
         } catch (error) {
           this.logger.error(`Failed to cleanup strategy ${name}`, error as Error);
         }
@@ -157,7 +156,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
       this._isRunning = false;
       this._eventBus.emitEngineStopped();
-      this.logger.info('Trading engine stopped successfully');
     } catch (error) {
       this.logger.error('Error stopping trading engine', error as Error);
       this._eventBus.emitEngineError(error as Error);
@@ -940,7 +938,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     // Exchanges MUST normalize balance data to Balance[] format:
     // { asset: string, free: Decimal, locked: Decimal, total: Decimal }
     exchange.on('accountUpdate', (exchangeId: string, balances: Balance[]) => {
-      this.logger.info(
+      this.logger.debug(
         `💰 Account Update from ${exchangeName}: ${balances.length} balances`,
       );
       // Store balances for this exchange
@@ -956,7 +954,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     });
 
     exchange.on('positionUpdate', (exchangeId: string, positions: Position[]) => {
-      this.logger.info(
+      this.logger.debug(
         `📊 Position Update from ${exchangeName}: ${positions.length} positions`,
       );
       // Store positions for this exchange

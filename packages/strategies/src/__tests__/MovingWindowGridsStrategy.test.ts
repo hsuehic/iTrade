@@ -791,12 +791,23 @@ describe('MovingWindowGridsStrategy', () => {
         status: OrderStatus.FILLED,
       });
 
-      await strategy.analyze({ exchangeName: 'binance', orders: [takeProfitOrder] });
+      // First pass TP order as NEW to track it
+      const newTakeProfitOrder = createOrder({
+        clientOrderId: takeProfitSignal.clientOrderId!,
+        side: 'sell',
+        price: takeProfitSignal.price!.toNumber(),
+        quantity: takeProfitSignal.quantity!.toNumber(),
+        status: OrderStatus.NEW,
+      });
+
+      await strategy.analyze({ exchangeName: 'binance', orders: [newTakeProfitOrder] });
 
       state = strategy.getStrategyState();
       expect(state.takeProfitOrders).toBe(1);
 
-      await strategy.onOrderFilled(takeProfitOrder);
+      // Now pass TP order as FILLED to clean it up
+      takeProfitOrder.updateTime = new Date(Date.now() + 2000);
+      await strategy.analyze({ exchangeName: 'binance', orders: [takeProfitOrder] });
 
       state = strategy.getStrategyState();
       expect(state.takeProfitOrders).toBe(0);
@@ -1161,7 +1172,7 @@ describe('MovingWindowGridsStrategy', () => {
         side: 'sell',
         price: takeProfitSignal.price!.toNumber(),
         quantity: takeProfitSignal.quantity!.toNumber(),
-        status: OrderStatus.FILLED,
+        status: OrderStatus.NEW,
       });
 
       await strategy.analyze({ exchangeName: 'binance', orders: [takeProfitOrder] });
@@ -1559,7 +1570,10 @@ describe('MovingWindowGridsStrategy', () => {
         updateTime: new Date(Date.now() + 3000),
       };
 
-      await strategy.onOrderFilled(filledTpOrder);
+      await strategy.analyze({
+        exchangeName: 'binance',
+        orders: [filledTpOrder],
+      });
 
       state = strategy.getStrategyState();
       expect(state.currentSize).toBe(0); // All closed

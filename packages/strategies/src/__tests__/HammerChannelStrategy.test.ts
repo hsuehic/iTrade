@@ -321,11 +321,12 @@ describe('HammerChannelStrategy', () => {
       expect(result.action).toBe('buy');
       expect(result.price).toBeDefined();
       expect(result.quantity).toBeDefined();
-      expect(result.leverage).toBe(1);
+      expect(result.leverage).toBe(10);
       expect(result.tradeMode).toBe('isolated');
 
-      // Verify price is based on hammer close price
-      expect(result.price?.toNumber()).toBeCloseTo(49095, 0); // close = 49100 - 5
+      // Verify price is based on average of close and low
+      // close = 49095, low = 49075, avg = 49085
+      expect(result.price?.toNumber()).toBeCloseTo(49085, 0);
     });
 
     it('should NOT generate BUY signal for bullish hammer at low position', async () => {
@@ -383,11 +384,12 @@ describe('HammerChannelStrategy', () => {
       expect(result.action).toBe('sell');
       expect(result.price).toBeDefined();
       expect(result.quantity).toBeDefined();
-      expect(result.leverage).toBe(1);
+      expect(result.leverage).toBe(10);
       expect(result.tradeMode).toBe('isolated');
 
-      // Verify price is based on hammer close price
-      expect(result.price?.toNumber()).toBeCloseTo(51905, 0); // close = 51900 + 5
+      // Verify price is based on average of close and high
+      // close = 51905, high = 51906, avg = 51905.5
+      expect(result.price?.toNumber()).toBeCloseTo(51905.5, 0);
     });
 
     it('should NOT generate SELL signal for bearish hammer at high position', async () => {

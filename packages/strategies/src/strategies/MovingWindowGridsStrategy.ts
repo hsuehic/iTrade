@@ -8,7 +8,6 @@ import {
   Order,
   OrderStatus,
   Position,
-  InitialDataResult,
   DataUpdate,
   StrategyParameters,
   TradeMode,
@@ -140,33 +139,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   }
 
   /**
-   * Process initial data loaded by TradingEngine
-   * Overrides BaseStrategy.processInitialData to populate strategy buffers with historical data
-   */
-  public override processInitialData(initialData: InitialDataResult): void {
-    console.log(
-      `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
-    );
-
-    // Load historical klines into strategy buffer
-    if (initialData.klines) {
-      Object.entries(initialData.klines).forEach(([interval, klines]) => {
-        console.log(`  📈 Loaded ${klines.length} klines for interval ${interval}`);
-        // Store last N klines for analysis
-        klines.forEach((kline) => this.klines.push(kline));
-      });
-    }
-
-    // Load current ticker
-    if (initialData.ticker) {
-      this.tickers.push(initialData.ticker);
-      console.log(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
-    }
-
-    console.log(`✅ [${this.strategyType}] Initial data processed successfully`);
-  }
-
-  /**
    * 🆕 生成主信号（入场信号）- 根据市场行情产生
    */
   private generateEntrySignal(price: Decimal, quantity: Decimal): StrategyResult {
@@ -201,7 +173,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private generateTakeProfitSignal(parentOrder: Order): StrategyResult {
     const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
 
-    // 计算止盈价格（基于成交均价）
     const entryPrice = parentOrder.averagePrice || parentOrder.price!;
     const takeProfitPrice = entryPrice.mul(1 + this.takeProfitRatio);
 
@@ -215,17 +186,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       clientOrderId,
     };
 
-    // 保存 metadata 映射
     this.orderMetadataMap.set(clientOrderId, metadata);
-
-    this._logger.info(
-      `💰 [Take Profit Signal Generated] clientOrderId: ${clientOrderId}`,
-    );
-    this._logger.info(`   Parent Order: ${parentOrder.clientOrderId}`);
-    this._logger.info(`   Entry Price: ${entryPrice.toString()}`);
-    this._logger.info(
-      `   TP Price: ${takeProfitPrice.toString()} (+${(this.takeProfitRatio * 100).toFixed(2)}%)`,
-    );
 
     return {
       action: 'sell',
@@ -246,9 +207,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       exchangeName === this._exchangeName ||
       this.context.subscription?.exchange?.includes(exchangeName || '')
     ) {
-      this._logger.info(
-        `[${exchangeName}] [${this._strategyName}] Analyzing data update`,
-      );
       if (positions) {
         this.handlePosition(positions);
       }
@@ -279,9 +237,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
                   price,
                   new Decimal(this.baseSize),
                 );
-                this._logger.info(
-                  `[${exchangeName}] [${this._strategyName}] Entry signal generated:\n ${JSON.stringify(signal, null, 2)}`,
-                );
                 return signal;
               }
             }
@@ -296,10 +251,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private handlePosition(positions: Position[]): void {
     const position = positions.find((p) => p.symbol === this._symbol);
     if (position) {
-      this._logger.info(
-        `[${this._exchangeName}] [${this._strategyName}] Pushed position:`,
-      );
-      this._logger.info(JSON.stringify(position, null, 2));
       this.position = position;
     }
   }
@@ -313,11 +264,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * @returns StrategyResult if TP signal should be generated, null otherwise
    */
   private handleOrder(orders: Order[]): StrategyResult | null {
-    this._logger.info(
-      `[${this._exchangeName}] [${this._strategyName}] Pushed ${orders.length} order(s):`,
-    );
-    this._logger.info(JSON.stringify(orders, null, 2));
-
     for (const order of orders) {
       if (!order.clientOrderId) {
         this._logger.warn('⚠️ [Order] Order has no clientOrderId, skipping');
@@ -344,11 +290,38 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         if (signalType === 'entry') {
           this.size += this.baseSize;
           this.orders.set(order.clientOrderId, order);
-          this._logger.info(`   📈 Position size increased: ${this.size}`);
         } else if (signalType === 'take_profit') {
-          this.takeProfitOrders.set(order.clientOrderId, order);
-          this.orders.set(order.clientOrderId, order);
-          this._logger.info(`   📊 TP order tracked`);
+          // Check if TP order is already FILLED when first seen
+          if (order.status === OrderStatus.FILLED) {
+            // TP filled immediately - Reduce size and clean up
+            this._logger.info(
+              `✅ [TP Order FULLY FILLED] (new order) Reducing size for: ${order.clientOrderId}`,
+            );
+
+            // Reduce size by the actual filled quantity (not baseSize, in case of partial fills)
+            const filledQty = (order.executedQuantity || order.quantity).toNumber();
+            this.size -= filledQty;
+
+            // Clean up TP order (don't add to maps since it's already done)
+            this.orderMetadataMap.delete(order.clientOrderId);
+
+            // Clean up parent entry order
+            if (metadata.parentOrderId) {
+              this.orders.delete(metadata.parentOrderId);
+              this.orderMetadataMap.delete(metadata.parentOrderId);
+              this._logger.info(
+                `   🧹 Cleaned up parent entry order: ${metadata.parentOrderId}`,
+              );
+            }
+
+            this._logger.info(`   📊 New size: ${this.size}`);
+            continue; // Don't add to orders map
+          } else {
+            // TP order not filled yet - track it
+            this.takeProfitOrders.set(order.clientOrderId, order);
+            this.orders.set(order.clientOrderId, order);
+            this._logger.info(`   📊 TP order tracked`);
+          }
         } else {
           this.orders.set(order.clientOrderId, order);
         }
@@ -370,10 +343,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
       // 🔥 ORDER STATUS CHANGED
       if (storedOrder.status !== order.status) {
-        this._logger.info(
-          `🔄 [Order Status Changed] ${order.clientOrderId}: ${storedOrder.status} → ${order.status}`,
-        );
-
         // Handle cancellation/rejection/expiration
         if (
           order.status === OrderStatus.CANCELED ||
@@ -388,10 +357,12 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           continue;
         }
 
-        // 🔥 Handle FILLED status - Generate TP immediately!
+        // 🔥 Handle FILLED status
         if (order.status === OrderStatus.FILLED) {
           const metadata = this.orderMetadataMap.get(order.clientOrderId);
+
           if (metadata && metadata.signalType === 'entry') {
+            // Entry order filled - Generate TP signal
             this._logger.info(
               `✅ [Entry Order FULLY FILLED] Generating TP signal immediately for: ${order.clientOrderId}`,
             );
@@ -399,6 +370,34 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             this.orders.set(order.clientOrderId, order);
             // Generate and return TP signal immediately
             return this.generateTakeProfitSignal(order);
+          } else if (metadata && metadata.signalType === 'take_profit') {
+            // TP order filled - Reduce size and clean up
+            this._logger.info(
+              `✅ [TP Order FULLY FILLED] Reducing size for: ${order.clientOrderId}`,
+            );
+
+            // Reduce size by the actual filled quantity (not baseSize, in case of partial fills)
+            const filledQty = (order.executedQuantity || order.quantity).toNumber();
+            this.size -= filledQty;
+
+            // Clean up TP order
+            this.takeProfitOrders.delete(order.clientOrderId);
+            this.orders.delete(order.clientOrderId);
+            this.orderMetadataMap.delete(order.clientOrderId);
+
+            // Clean up parent entry order
+            if (metadata.parentOrderId) {
+              this.orders.delete(metadata.parentOrderId);
+              this.orderMetadataMap.delete(metadata.parentOrderId);
+              this._logger.info(
+                `   🧹 Cleaned up parent entry order: ${metadata.parentOrderId}`,
+              );
+            }
+
+            this._logger.info(`   📊 New size: ${this.size}`);
+            // Don't return signal, just update stored order
+            this.orders.set(order.clientOrderId, order);
+            continue;
           }
         }
       }
@@ -439,13 +438,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const executedQty = order.executedQuantity || new Decimal(0);
     const totalQty = order.quantity;
 
-    this._logger.info(
-      `🚫 [Order ${order.status}] Client Order ID: ${order.clientOrderId}, Signal Type: ${signalType}`,
-    );
-    this._logger.info(`   Executed: ${executedQty.toString()} / ${totalQty.toString()}`);
-
     if (signalType === 'entry') {
-      // 🔥 关键：检查是否已经生成止盈订单
       const hasGeneratedTP = this.findTakeProfitOrderByParentId(order.clientOrderId);
 
       if (hasGeneratedTP) {
@@ -455,32 +448,15 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           `   ℹ️ Entry was FULLY FILLED, TP order exists, size will be adjusted when TP fills`,
         );
       } else if (executedQty.gt(0)) {
-        // 🔥 订单部分成交 - 关键场景！
-        // Generate TP signal IMMEDIATELY for the executed portion
-        this._logger.info(
-          `   🎯 Entry was PARTIALLY FILLED, generating TP signal immediately for: ${executedQty.toString()}`,
-        );
-
         // 🔥 关键：只释放未成交部分的大小承诺
         // The executed portion's size commitment will be released when TP fills
         const unfilledAmount = this.baseSize * (1 - executedQty.div(totalQty).toNumber());
         this.size -= unfilledAmount;
 
-        this._logger.info(
-          `   📉 Released unfilled portion from size: -${unfilledAmount.toFixed(2)}, new size: ${this.size}`,
-        );
-
         // Generate and return TP signal immediately
         return this.generateTakeProfitSignal(order);
       } else {
-        // 订单完全未成交
-        // 释放全部大小承诺
         this.size -= this.baseSize;
-        this._logger.info(
-          `   📉 Entry was NOT filled, released full size commitment: ${this.size}`,
-        );
-
-        // 清理订单和元数据（完全未成交，无需保留）
         this.orders.delete(order.clientOrderId);
         this.orderMetadataMap.delete(order.clientOrderId);
       }
@@ -492,23 +468,15 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         this.orderMetadataMap.delete(order.clientOrderId);
       }
     } else if (signalType === 'take_profit') {
-      // 止盈订单被取消（可能是部分成交或完全未成交）
-      // 需要根据成交情况调整 size
       const parentOrderId = metadata.parentOrderId;
 
       if (executedQty.gt(0) && executedQty.lt(totalQty)) {
-        // TP 部分成交后被取消 - 只释放已成交部分对应的 size
         const filledRatio = executedQty.div(totalQty).toNumber();
         const sizeToRelease = this.baseSize * filledRatio;
         this.size -= sizeToRelease;
 
-        this._logger.info(
-          `   📉 TP partially filled and canceled, released: ${sizeToRelease.toFixed(2)}, new size: ${this.size}`,
-        );
-      } else if (executedQty.isZero()) {
-        // TP 完全未成交被取消 - 不调整 size（position 仍然持有）
         this._logger.warn(
-          `   ⚠️ TP canceled with no fill, position remains open! Size unchanged: ${this.size}`,
+          `   📉 TP partially filled and canceled, released: ${sizeToRelease.toFixed(2)}, new size: ${this.size}`,
         );
       }
       // If fully filled, onOrderFilled already handled size adjustment
@@ -518,7 +486,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this.orders.delete(order.clientOrderId);
       this.orderMetadataMap.delete(order.clientOrderId);
 
-      // 清理父订单元数据
       if (parentOrderId) {
         this.orders.delete(parentOrderId);
         this.orderMetadataMap.delete(parentOrderId);
@@ -551,7 +518,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   public override async onOrderCreated(order: Order): Promise<void> {
     // All logic moved to handleOrder() - this is now a no-op
     this._logger.debug(
-      `[onOrderCreated] Called for ${order.clientOrderId} - handled in handleOrder() instead`,
+      `[MovingWindowGridsStrategy][onOrderCreated] Called for ${order.clientOrderId} - handled in handleOrder() instead`,
     );
   }
 
@@ -562,74 +529,12 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * Important: TP orders are ONLY generated when entry order is FULLY FILLED
    */
   public override async onOrderFilled(order: Order): Promise<void> {
-    if (!order.clientOrderId) {
-      return;
-    }
-
-    // 只处理本策略的订单
-    if (!this.orders.has(order.clientOrderId)) {
-      return;
-    }
-
-    // 更新订单状态
-    this.orders.set(order.clientOrderId, order);
-
-    const metadata = this.orderMetadataMap.get(order.clientOrderId);
-
-    if (!metadata) {
-      this._logger.warn(
-        `⚠️ [Order Filled] No metadata found for order: ${order.clientOrderId}`,
-      );
-      return;
-    }
-
-    const signalType = metadata.signalType;
-
-    if (signalType === 'entry') {
-      // 🔥 TP signals are now generated immediately in handleOrder when status changes to FILLED
-      // This callback is kept for logging and future enhancements
-      if (order.status === OrderStatus.FILLED) {
-        this._logger.info(
-          `✅ [Entry Order FULLY FILLED] TP signal generated via handleOrder: ${order.clientOrderId}`,
-        );
-      } else {
-        this._logger.info(
-          `⏳ [Entry Order PARTIALLY FILLED] ${order.executedQuantity?.toString() || '0'} / ${order.quantity.toString()}, waiting for full fill`,
-        );
-      }
-    } else if (signalType === 'take_profit') {
-      // calculate profit
-      const entryPrice = new Decimal(metadata.entryPrice!);
-      const exitPrice = order.averagePrice || order.price!;
-      const profit = exitPrice
-        .minus(entryPrice)
-        .mul(order.executedQuantity || order.quantity);
-      const profitPercent = exitPrice.minus(entryPrice).dividedBy(entryPrice).mul(100);
-
-      this._logger.info(
-        `   💵 Realized Profit: ${profit.toString()} (+${profitPercent.toFixed(2)}%)`,
-      );
-
-      // 清理订单和元数据
-      this.takeProfitOrders.delete(order.clientOrderId);
-      this.orders.delete(metadata.parentOrderId!);
-      this.orderMetadataMap.delete(order.clientOrderId);
-      this.orderMetadataMap.delete(metadata.parentOrderId!);
-
-      // 减少仓位大小 - use actual TP quantity, not baseSize
-      // (TP quantity may be less than baseSize for partially filled entry orders)
-      const sizeToReduce = (order.executedQuantity || order.quantity).toNumber();
-      this.size -= sizeToReduce;
-      this._logger.info(`   📉 Position size reduced: ${this.size}`);
-    } else {
-      this._logger.info(`📝 [Order Filled] Signal Type: ${signalType || 'unknown'}`);
-      this._logger.info(`   Client Order ID: ${order.clientOrderId}`);
-    }
+    this._logger.debug(
+      `[MovingWindowGridsStrategy][onOrderFilled] Called for ${order.clientOrderId}`,
+    );
   }
 
   protected async onCleanup(): Promise<void> {
-    this._logger.info('🧹 [Cleanup] Clearing strategy state...');
-
     // 清理所有订单映射
     this.orders.clear();
     this.takeProfitOrders.clear();
@@ -643,8 +548,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.position = null;
     this.size = 0;
     this.orderSequence = 0;
-
-    this._logger.info('✅ [Cleanup] Strategy state cleared');
   }
 
   public getStrategyState() {
