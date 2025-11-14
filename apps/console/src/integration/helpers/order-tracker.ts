@@ -1,6 +1,5 @@
 import { ILogger, Order, EventBus, OrderEventData, OrderManager } from '@itrade/core';
 import { TypeOrmDataManager } from '@itrade/data-manager';
-import { Decimal } from 'decimal.js';
 
 interface DebouncedOrderUpdate {
   order: Order;
@@ -163,9 +162,6 @@ export class OrderTracker {
         this.pendingPartialFills.delete(order.id);
       }
 
-      // Calculate PnL
-      const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
-
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
@@ -186,23 +182,14 @@ export class OrderTracker {
         updateTime: order.updateTime,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
-        realizedPnl,
-        unrealizedPnl,
-        averagePrice,
         exchange: exchange,
         strategyId: strategyId,
         strategyType: order.strategyType,
         strategyName: order.strategyName,
       });
 
-      const pnlStr = realizedPnl
-        ? `💰 Realized PnL: ${realizedPnl.toFixed(2)}`
-        : unrealizedPnl
-          ? `📊 Unrealized PnL: ${unrealizedPnl.toFixed(2)}`
-          : 'PnL: N/A';
-
       this.logger.info(
-        `💾 Order filled and updated: ${order.id}, ${pnlStr}, Avg Price: ${averagePrice?.toFixed(8) || 'N/A'}`,
+        `💾 Order filled and updated: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
       );
     } catch (error) {
       this.logger.error('❌ Failed to update filled order', error as Error);
@@ -248,8 +235,6 @@ export class OrderTracker {
     try {
       const { order } = update;
 
-      const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
-
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
@@ -269,9 +254,6 @@ export class OrderTracker {
         updateTime: order.updateTime,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
-        realizedPnl,
-        unrealizedPnl,
-        averagePrice,
         exchange: exchange,
         strategyId: strategyId,
         strategyType: order.strategyType,
@@ -354,77 +336,5 @@ export class OrderTracker {
 
     await Promise.allSettled(promises);
     this.logger.info('✅ All pending partial fill updates flushed');
-  }
-
-  private async calculatePnL(order: Order): Promise<{
-    realizedPnl?: Decimal;
-    unrealizedPnl?: Decimal;
-    averagePrice?: Decimal;
-  }> {
-    try {
-      // Calculate average fill price
-      let averagePrice: Decimal | undefined;
-      if (order.executedQuantity && order.cummulativeQuoteQuantity) {
-        averagePrice = order.cummulativeQuoteQuantity.div(order.executedQuantity);
-      }
-
-      // Get previous orders for this symbol to calculate PnL
-      const previousOrders = await this.dataManager.getOrders({
-        symbol: order.symbol,
-      });
-
-      // Simple PnL calculation (this is a simplified version)
-      // In a real system, you'd track positions and calculate based on entry/exit prices
-      let realizedPnl: Decimal | undefined;
-      let unrealizedPnl: Decimal | undefined;
-
-      // For now, we'll just set unrealizedPnl for open positions
-      if (order.status === 'FILLED' && averagePrice) {
-        // This is a placeholder - implement your PnL calculation logic here
-        // You would typically:
-        // 1. Track the position (entry price, quantity)
-        // 2. Calculate PnL based on current price vs entry price
-        // 3. Update realized PnL when position is closed
-
-        const oppositeOrders = previousOrders.filter(
-          (o) =>
-            o.symbol === order.symbol && o.side !== order.side && o.status === 'FILLED',
-        );
-
-        if (oppositeOrders.length > 0) {
-          // Calculate realized PnL for closing orders
-          const lastOpposite = oppositeOrders[0];
-          if (lastOpposite.averagePrice && order.executedQuantity) {
-            const priceDiff =
-              order.side === 'BUY'
-                ? lastOpposite.averagePrice.sub(averagePrice)
-                : averagePrice.sub(lastOpposite.averagePrice);
-            realizedPnl = priceDiff.mul(order.executedQuantity);
-          }
-        } else {
-          // For opening orders, PnL is unrealized
-          unrealizedPnl = new Decimal(0);
-        }
-      }
-
-      return { realizedPnl, unrealizedPnl, averagePrice };
-    } catch (error) {
-      this.logger.error('Failed to calculate PnL', error as Error);
-      return {};
-    }
-  }
-
-  // 🗑️ No longer needed! strategyId is now directly available in order.strategyId
-  // Keeping this method for backward compatibility with old orders
-  private extractStrategyId(clientOrderId?: string): number | undefined {
-    if (!clientOrderId) return undefined;
-
-    // New format: s-{id}-{timestamp}
-    const newMatch = clientOrderId.match(/^s-(\d+)-/);
-    if (newMatch) return parseInt(newMatch[1]);
-
-    // Old format (backward compatibility): strategy_{id}_{timestamp}
-    const oldMatch = clientOrderId.match(/^strategy_(\d+)_/);
-    return oldMatch ? parseInt(oldMatch[1]) : undefined;
   }
 }
