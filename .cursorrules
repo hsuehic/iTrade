@@ -1983,6 +1983,34 @@ Tests MUST be executed when:
 2. **Test files are modified** - Re-run the modified test to verify changes
 3. **Source code is modified** - Run related tests to verify no regressions
 4. **Completing a task** - Run all relevant tests before marking complete
+5. **Package modifications** - Run ALL package tests after ANY source code changes in `packages/*/src/**`
+
+#### Package Test Requirements
+
+**CRITICAL**: When modifying ANY source code in a package (`packages/*/src/**`), AI agents MUST:
+
+1. ✅ **Run the complete package test suite** - Not just affected tests
+2. ✅ **Ensure ALL tests pass** - Zero failures allowed
+3. ✅ **Fix any broken tests** - Before proceeding or completing the task
+4. ✅ **Report test results** - Show pass/fail summary to user
+
+**Commands:**
+
+```bash
+# For modified package
+cd packages/{package-name}
+pnpm test
+
+# Expected output: All tests must pass
+# ✓ Test Files  N passed (N)
+# ✓ Tests      M passed (M)
+```
+
+**Why this is critical:**
+- Package modifications can have unexpected side effects
+- Tests catch regressions that aren't obvious
+- Ensures code quality and stability across the codebase
+- Prevents broken code from being integrated
 
 #### Test Execution Protocol
 
