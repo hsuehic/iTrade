@@ -131,7 +131,7 @@ describe('SubscriptionCoordinator', () => {
         'websocket',
       );
 
-      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith('BTC/USDT');
+      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith('BTC/USDT', 20);
     });
 
     it('should subscribe to trades', async () => {

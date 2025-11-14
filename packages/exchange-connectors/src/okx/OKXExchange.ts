@@ -1251,10 +1251,12 @@ export class OKXExchange extends BaseExchange {
 
     // Calculate cummulativeQuoteQuantity from filled size and average price
     let cummulativeQuoteQuantity: Decimal | undefined;
+    let averagePrice: Decimal | undefined;
     if (data.accFillSz && data.avgPx) {
       const accFillSz = this.formatDecimal(data.accFillSz);
       const avgPx = this.formatDecimal(data.avgPx);
       cummulativeQuoteQuantity = accFillSz.mul(avgPx);
+      averagePrice = avgPx; // 🆕 Set average execution price
     }
 
     return {
@@ -1271,6 +1273,7 @@ export class OKXExchange extends BaseExchange {
       updateTime: data.uTime ? new Date(parseInt(data.uTime)) : undefined,
       executedQuantity: data.accFillSz ? this.formatDecimal(data.accFillSz) : undefined,
       cummulativeQuoteQuantity,
+      averagePrice, // 🆕 Include average execution price
     };
   }
 

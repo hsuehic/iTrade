@@ -54,6 +54,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private readonly _orders = new Map<string, Order[]>();
   private readonly _balances = new Map<string, Balance[]>();
 
+  // 🆕 Track which orders have been emitted as "created" to avoid duplicate OrderCreated events
+  private readonly _emittedOrderCreated = new Set<string>();
+
   constructor(
     private riskManager: IRiskManager,
     private portfolioManager: IPortfolioManager,
@@ -716,6 +719,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         timestamp: new Date(),
       });
 
+      // 🆕 Mark this order as having emitted OrderCreated to avoid duplicate events
+      this._emittedOrderCreated.add(executedOrder.id);
+
       this.logger.logTrade('Order executed', {
         order: executedOrder,
         strategyId,
@@ -892,23 +898,35 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._orders.set(exchangeName, orders);
       order.exchange = exchange.name;
 
-      // Emit order event based on status
+      // 🆕 Always emit OrderCreated first if this is the first time we've seen this order
+      // This ensures OrderTracker can create the order record before any updates
+      if (!this._emittedOrderCreated.has(order.id)) {
+        this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+        this._emittedOrderCreated.add(order.id);
+        this.logger.debug(`✨ First time seeing order ${order.id}, emitted OrderCreated`);
+      }
+
+      // Emit status-specific events for non-NEW statuses
       switch (order.status) {
-        case 'FILLED':
+        case OrderStatus.FILLED:
           this._eventBus.emitOrderFilled({ order, timestamp: new Date() });
           this.notifyStrategiesOrderFilled(order, exchangeName);
           break;
-        case 'PARTIALLY_FILLED':
+        case OrderStatus.PARTIALLY_FILLED:
           this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
           break;
-        case 'CANCELED':
+        case OrderStatus.CANCELED:
           this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
           break;
-        case 'REJECTED':
+        case OrderStatus.REJECTED:
           this._eventBus.emitOrderRejected({ order, timestamp: new Date() });
           break;
-        default:
-          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+        case OrderStatus.EXPIRED:
+          // Expired orders - emit if needed
+          break;
+        case OrderStatus.NEW:
+          // NEW status already handled by OrderCreated above, no additional event needed
+          break;
       }
 
       // Notify strategies of specific order update
@@ -1019,8 +1037,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
               timestamp: new Date(),
             });
 
-            // Note: We don't auto-execute orders from account updates
-            // Strategies should explicitly request execution if needed
+            // 🆕 Execute signals generated from account updates (e.g., take profit, stop loss)
+            // This is critical for strategies that generate signals based on order fills
+            this.logger.info(
+              `🎯 Executing signal from ${strategyName} triggered by account update (reason: ${result.reason})`,
+            );
+            await this.executeStrategySignal(strategyName, symbol, result);
           }
         } catch (error) {
           this.logger.error(

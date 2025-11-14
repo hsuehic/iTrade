@@ -8,6 +8,7 @@ export class OrderManager extends EventEmitter {
   private orders = new Map<string, Order>();
   private ordersBySymbol = new Map<string, Set<string>>();
   private ordersByStatus = new Map<OrderStatus, Set<string>>();
+  private ordersByExchange = new Map<string, Set<string>>();
 
   public addOrder(order: Order): void {
     this.orders.set(order.id, order);
@@ -24,6 +25,14 @@ export class OrderManager extends EventEmitter {
     }
     this.ordersByStatus.get(order.status)!.add(order.id);
 
+    // Index by exchange
+    if (order.exchange) {
+      if (!this.ordersByExchange.has(order.exchange)) {
+        this.ordersByExchange.set(order.exchange, new Set());
+      }
+      this.ordersByExchange.get(order.exchange)!.add(order.id);
+    }
+
     this.emit('orderAdded', order);
   }
 
@@ -34,6 +43,7 @@ export class OrderManager extends EventEmitter {
     }
 
     const oldStatus = order.status;
+    const oldExchange = order.exchange;
     const updatedOrder = { ...order, ...updates, updateTime: new Date() };
 
     this.orders.set(orderId, updatedOrder);
@@ -45,6 +55,17 @@ export class OrderManager extends EventEmitter {
         this.ordersByStatus.set(updates.status, new Set());
       }
       this.ordersByStatus.get(updates.status)!.add(orderId);
+    }
+
+    // Update exchange index if exchange changed
+    if (updates.exchange && updates.exchange !== oldExchange) {
+      if (oldExchange) {
+        this.ordersByExchange.get(oldExchange)?.delete(orderId);
+      }
+      if (!this.ordersByExchange.has(updates.exchange)) {
+        this.ordersByExchange.set(updates.exchange, new Set());
+      }
+      this.ordersByExchange.get(updates.exchange)!.add(orderId);
     }
 
     this.emit('orderUpdated', updatedOrder, order);
@@ -60,6 +81,9 @@ export class OrderManager extends EventEmitter {
     this.orders.delete(orderId);
     this.ordersBySymbol.get(order.symbol)?.delete(orderId);
     this.ordersByStatus.get(order.status)?.delete(orderId);
+    if (order.exchange) {
+      this.ordersByExchange.get(order.exchange)?.delete(orderId);
+    }
 
     this.emit('orderRemoved', order);
     return order;
@@ -89,6 +113,25 @@ export class OrderManager extends EventEmitter {
     return Array.from(orderIds)
       .map((id) => this.orders.get(id))
       .filter((order) => order !== undefined) as Order[];
+  }
+
+  public getOrdersByExchange(exchange: string): Order[] {
+    const orderIds = this.ordersByExchange.get(exchange);
+    if (!orderIds) {
+      return [];
+    }
+
+    return Array.from(orderIds)
+      .map((id) => this.orders.get(id))
+      .filter((order) => order !== undefined) as Order[];
+  }
+
+  public getOrdersByExchangeAndSymbol(exchange: string, symbol: string): Order[] {
+    return this.getOrdersByExchange(exchange).filter((order) => order.symbol === symbol);
+  }
+
+  public getAllExchanges(): string[] {
+    return Array.from(this.ordersByExchange.keys());
   }
 
   public getOpenOrders(symbol?: string): Order[] {
@@ -161,7 +204,7 @@ export class OrderManager extends EventEmitter {
     return cancelledOrders;
   }
 
-  public getOrderStats(symbol?: string): {
+  public getOrderStats(filters?: { symbol?: string; exchange?: string }): {
     total: number;
     open: number;
     filled: number;
@@ -170,7 +213,15 @@ export class OrderManager extends EventEmitter {
     totalVolume: Decimal;
     totalValue: Decimal;
   } {
-    const orders = symbol ? this.getOrdersBySymbol(symbol) : this.getAllOrders();
+    let orders = this.getAllOrders();
+
+    // Apply filters
+    if (filters?.exchange) {
+      orders = orders.filter((order) => order.exchange === filters.exchange);
+    }
+    if (filters?.symbol) {
+      orders = orders.filter((order) => order.symbol === filters.symbol);
+    }
 
     let open = 0;
     let filled = 0;
@@ -213,5 +264,26 @@ export class OrderManager extends EventEmitter {
       totalVolume,
       totalValue,
     };
+  }
+
+  public getOrdersGroupedByExchangeAndSymbol(): Map<string, Map<string, Order[]>> {
+    const grouped = new Map<string, Map<string, Order[]>>();
+
+    for (const order of this.orders.values()) {
+      const exchange = order.exchange || 'unknown';
+
+      if (!grouped.has(exchange)) {
+        grouped.set(exchange, new Map<string, Order[]>());
+      }
+
+      const exchangeMap = grouped.get(exchange)!;
+      if (!exchangeMap.has(order.symbol)) {
+        exchangeMap.set(order.symbol, []);
+      }
+
+      exchangeMap.get(order.symbol)!.push(order);
+    }
+
+    return grouped;
   }
 }

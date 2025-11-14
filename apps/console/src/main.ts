@@ -39,6 +39,97 @@ dotenv.config();
 
 const logger = new ConsoleLogger(LogLevel.INFO);
 
+/**
+ * Display order statistics in a table format
+ * Groups orders by exchange and symbol, ordered by update time or status
+ */
+function displayOrderStats(orderTracker: OrderTracker): void {
+  const orderManager = orderTracker.getOrderManager();
+  const grouped = orderManager.getOrdersGroupedByExchangeAndSymbol();
+
+  if (grouped.size === 0) {
+    logger.info('📊 Order Stats: No orders tracked yet');
+    return;
+  }
+
+  logger.info('');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('📊 Order Statistics (Grouped by Exchange & Symbol)');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+  let totalOrders = 0;
+
+  for (const [exchange, symbolMap] of grouped) {
+    logger.info(`\n🏦 Exchange: ${exchange.toUpperCase()}`);
+    logger.info('─'.repeat(80));
+
+    for (const [symbol, orders] of symbolMap) {
+      // Sort orders by updateTime (desc) or status
+      const sortedOrders = orders.sort((a, b) => {
+        // First sort by status priority
+        const statusPriority: Record<string, number> = {
+          NEW: 1,
+          PARTIALLY_FILLED: 2,
+          FILLED: 3,
+          CANCELED: 4,
+          REJECTED: 5,
+        };
+        const statusDiff =
+          (statusPriority[a.status] || 99) - (statusPriority[b.status] || 99);
+        if (statusDiff !== 0) return statusDiff;
+
+        // Then sort by updateTime (most recent first)
+        const timeA = a.updateTime?.getTime() || a.timestamp.getTime();
+        const timeB = b.updateTime?.getTime() || b.timestamp.getTime();
+        return timeB - timeA;
+      });
+
+      const stats = orderManager.getOrderStats({ exchange, symbol });
+
+      logger.info(`\n  📈 Symbol: ${symbol}`);
+      logger.info(
+        `     Total: ${stats.total} | Open: ${stats.open} | Filled: ${stats.filled} | ` +
+          `Cancelled: ${stats.cancelled} | Rejected: ${stats.rejected}`,
+      );
+      logger.info(
+        `     Volume: ${stats.totalVolume.toFixed(8)} | Value: ${stats.totalValue.toFixed(2)} USDT`,
+      );
+
+      // Show recent orders (top 5)
+      const recentOrders = sortedOrders.slice(0, 5);
+      if (recentOrders.length > 0) {
+        logger.info(`\n     Recent Orders:`);
+        logger.info(
+          `     ${'ID'.padEnd(20)} | ${'Status'.padEnd(18)} | ${'Side'.padEnd(4)} | ${'Qty'.padEnd(12)} | ${'Price'.padEnd(12)} | ${'Updated'}`,
+        );
+        logger.info(`     ${'-'.repeat(120)}`);
+
+        for (const order of recentOrders) {
+          const updateTime = order.updateTime || order.timestamp;
+          const timeStr = updateTime.toISOString().slice(11, 19); // HH:MM:SS
+          const idStr = order.id.slice(0, 18) + '..';
+          const statusStr = order.status.padEnd(18);
+          const sideStr = order.side.padEnd(4);
+          const qtyStr = order.quantity.toFixed(8).padEnd(12);
+          const priceStr = (order.price?.toFixed(8) || 'N/A').padEnd(12);
+
+          logger.info(
+            `     ${idStr} | ${statusStr} | ${sideStr} | ${qtyStr} | ${priceStr} | ${timeStr}`,
+          );
+        }
+      }
+
+      totalOrders += orders.length;
+    }
+  }
+
+  logger.info('');
+  logger.info('─'.repeat(80));
+  logger.info(`📊 Total Orders Tracked: ${totalOrders}`);
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('');
+}
+
 async function main(userId?: string) {
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info('🚀 iTrade Console Application Starting...');
@@ -224,10 +315,24 @@ async function main(userId?: string) {
   logger.info(`📈 Position Tracking: Active (debounce: 2s per symbol)`);
   logger.info(`🔄 Strategy Sync: Every 10 minutes`);
   logger.info(`📊 Performance Reports: Every 10 minutes`);
+  logger.info(`📊 Order Stats Display: Every 5 minutes`);
   logger.info(`💾 State Backup: Every 1 minute`);
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   logger.info('Press Ctrl+C to stop the application\n');
+
+  // ============================================================
+  // Setup Periodic Order Stats Display (every 5 minutes)
+  // ============================================================
+  const ORDER_STATS_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+  const orderStatsTimer = setInterval(() => {
+    displayOrderStats(orderTracker);
+  }, ORDER_STATS_INTERVAL);
+
+  // Display initial stats after 30 seconds
+  setTimeout(() => {
+    displayOrderStats(orderTracker);
+  }, 30000);
 
   // ============================================================
   // Graceful Shutdown Handler
@@ -238,6 +343,9 @@ async function main(userId?: string) {
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     try {
+      // Clear periodic timers
+      clearInterval(orderStatsTimer);
+
       // Stop strategy manager (will backup states and remove strategies)
       logger.info('1. Stopping strategy manager...');
       await strategyManager.stop();

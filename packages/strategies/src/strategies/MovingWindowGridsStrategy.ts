@@ -119,11 +119,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private leverage!: number;
   private tradeMode!: TradeMode;
 
-  // 🆕 订单元数据映射：clientOrderId -> metadata
+  // 🆕 metadata mapping：clientOrderId -> metadata
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
-  // 🆕 待处理的止盈订单队列：存储已成交的主订单，等待生成止盈信号
-  private pendingTakeProfitOrders: Map<string, Order> = new Map();
-  // 🆕 止盈订单追踪
+  // 🆕 take profile order tracker
   private takeProfitOrders: Map<string, Order> = new Map();
 
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
@@ -264,7 +262,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
       if (symbol === this._symbol) {
         // TP signals are now generated immediately in handleOrder when entry orders become FILLED
-        // No need for pendingTakeProfitOrders queue anymore
 
         if (!!klines && klines.length > 0) {
           const kline = klines[klines.length - 1];
@@ -636,7 +633,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     // 清理所有订单映射
     this.orders.clear();
     this.takeProfitOrders.clear();
-    this.pendingTakeProfitOrders.clear();
     this.orderMetadataMap.clear();
 
     // 清理市场数据

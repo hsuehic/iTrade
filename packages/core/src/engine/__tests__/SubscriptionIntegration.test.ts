@@ -209,7 +209,7 @@ describe('Subscription Integration Tests', () => {
       await engine.addStrategy('test-strategy', mockStrategy);
 
       expect(mockExchange.subscribeToTicker).toHaveBeenCalledWith('BTC/USDT');
-      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith('BTC/USDT');
+      expect(mockExchange.subscribeToOrderBook).toHaveBeenCalledWith('BTC/USDT', 20);
       expect(mockExchange.subscribeToTrades).toHaveBeenCalledWith('BTC/USDT');
       expect(mockExchange.subscribeToKlines).toHaveBeenCalledWith('BTC/USDT', '1m');
 

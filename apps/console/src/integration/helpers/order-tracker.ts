@@ -1,4 +1,4 @@
-import { ILogger, Order, EventBus, OrderEventData } from '@itrade/core';
+import { ILogger, Order, EventBus, OrderEventData, OrderManager } from '@itrade/core';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { Decimal } from 'decimal.js';
 
@@ -16,12 +16,12 @@ interface DebouncedOrderUpdate {
  * 2. 对部分成交使用 debounce 机制（可能非常频繁）
  * 3. 对其他状态立即保存（创建、完全成交、取消、拒绝）
  * 4. 按 orderId 分组 debounce
+ * 5. 使用 OrderManager 管理订单状态和索引
  */
 export class OrderTracker {
   private eventBus: EventBus;
   private pendingPartialFills = new Map<string, DebouncedOrderUpdate>();
-  private orders: Map<string, Order> = new Map();
-  private filledOrders: Map<string, Order> = new Map();
+  private orderManager: OrderManager;
   private totalOrders = 0;
   private totalFilled = 0;
   private totalPartialFills = 0;
@@ -38,6 +38,7 @@ export class OrderTracker {
     private logger: ILogger,
   ) {
     this.eventBus = EventBus.getInstance();
+    this.orderManager = new OrderManager();
     this.startTime = new Date();
   }
 
@@ -96,12 +97,19 @@ export class OrderTracker {
     this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
+  /**
+   * Get the OrderManager instance for accessing order data
+   */
+  public getOrderManager(): OrderManager {
+    return this.orderManager;
+  }
+
   private async handleOrderCreated(order: Order): Promise<void> {
     try {
-      if (!this.orders.has(order.id)) {
+      if (!this.orderManager.getOrder(order.id)) {
         this.totalOrders++;
       }
-      this.orders.set(order.id, order);
+      this.orderManager.addOrder(order);
 
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
@@ -125,7 +133,6 @@ export class OrderTracker {
         strategyId: strategyId, // ✅ Set strategyId directly
         strategyType: order.strategyType, // ✅ Save strategy type
         strategyName: order.strategyName, // ✅ Save strategy name
-        strategy: strategyId ? ({ id: strategyId } as any) : undefined,
       });
 
       this.logger.info(
@@ -138,10 +145,16 @@ export class OrderTracker {
 
   private async handleOrderFilled(order: Order): Promise<void> {
     try {
-      if (!this.filledOrders.has(order.id)) {
+      const existingOrder = this.orderManager.getOrder(order.id);
+      if (!existingOrder || existingOrder.status !== 'FILLED') {
         this.totalFilled++;
       }
-      this.filledOrders.set(order.id, order);
+
+      if (existingOrder) {
+        this.orderManager.updateOrder(order.id, order);
+      } else {
+        this.orderManager.addOrder(order);
+      }
 
       // Cancel any pending partial fill update for this order
       const pending = this.pendingPartialFills.get(order.id);
@@ -153,15 +166,33 @@ export class OrderTracker {
       // Calculate PnL
       const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
 
-      // Update order in database (immediately, no debounce for final state)
-      await this.dataManager.updateOrder(order.id, {
+      // 🆕 Directly read strategyId and exchange from order object
+      const strategyId = order.strategyId;
+      const exchange = order.exchange;
+
+      // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
+      // This ensures the order is saved even if it's the first time we're seeing it
+      await this.dataManager.saveOrder({
+        id: order.id,
+        clientOrderId: order.clientOrderId,
+        symbol: order.symbol,
+        side: order.side,
+        type: order.type,
+        quantity: order.quantity,
+        price: order.price,
         status: order.status,
+        timeInForce: order.timeInForce,
+        timestamp: order.timestamp,
+        updateTime: order.updateTime,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
-        updateTime: order.updateTime,
         realizedPnl,
         unrealizedPnl,
         averagePrice,
+        exchange: exchange,
+        strategyId: strategyId,
+        strategyType: order.strategyType,
+        strategyName: order.strategyName,
       });
 
       const pnlStr = realizedPnl
@@ -219,14 +250,32 @@ export class OrderTracker {
 
       const { realizedPnl, unrealizedPnl, averagePrice } = await this.calculatePnL(order);
 
-      await this.dataManager.updateOrder(order.id, {
+      // 🆕 Directly read strategyId and exchange from order object
+      const strategyId = order.strategyId;
+      const exchange = order.exchange;
+
+      // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
+      await this.dataManager.saveOrder({
+        id: order.id,
+        clientOrderId: order.clientOrderId,
+        symbol: order.symbol,
+        side: order.side,
+        type: order.type,
+        quantity: order.quantity,
+        price: order.price,
         status: order.status,
+        timeInForce: order.timeInForce,
+        timestamp: order.timestamp,
+        updateTime: order.updateTime,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
-        updateTime: order.updateTime,
         realizedPnl,
         unrealizedPnl,
         averagePrice,
+        exchange: exchange,
+        strategyId: strategyId,
+        strategyType: order.strategyType,
+        strategyName: order.strategyName,
       });
 
       this.totalPartialFillsSaved++;
