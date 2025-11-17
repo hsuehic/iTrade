@@ -528,12 +528,14 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    * Handle order filled event
    */
   public override async onOrderFilled(order: Order): Promise<void> {
-    console.log('🔨 [HammerChannel] Order filled:', {
-      orderId: order.id,
-      side: order.side,
-      price: order.price?.toString(),
-      quantity: order.quantity?.toString(),
-    });
+    if (this.orders.has(order.clientOrderId || '')) {
+      console.log('🔨 [HammerChannel] Order filled:', {
+        orderId: order.id,
+        side: order.side,
+        price: order.price?.toString(),
+        quantity: order.quantity?.toString(),
+      });
+    }
   }
 
   /**

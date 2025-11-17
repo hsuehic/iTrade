@@ -10,6 +10,7 @@ import {
   Kline,
   StrategyResult,
   isHoldResult,
+  KlineInterval,
 } from '@itrade/core';
 
 export class BacktestEngine implements IBacktestEngine {
@@ -372,7 +373,7 @@ ${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trade
 
       yield {
         symbol,
-        interval: timeframe,
+        interval: timeframe as unknown as KlineInterval,
         openTime: timestamp,
         closeTime: new Date(timestamp.getTime() + 60 * 1000),
         open: price,
