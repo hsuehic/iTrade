@@ -882,7 +882,6 @@ export class OKXExchange extends BaseExchange {
     // OKX message format
     if (message.event === 'subscribe') {
       this.emit('ws_subscribed', message.arg);
-      console.log(`[OKX] Subscription confirmed:`, message.arg);
       return;
     }
 
@@ -895,10 +894,8 @@ export class OKXExchange extends BaseExchange {
     if (message.event === 'login') {
       // Private login ack
       if (message.code === '0') {
-        console.log('[OKX] Private WebSocket login successful');
         this.okxPrivateAuthenticated = true;
       } else {
-        console.error('[OKX] Private WebSocket login failed:', message.msg);
         this.okxPrivateAuthenticated = false;
       }
       return;
@@ -943,18 +940,9 @@ export class OKXExchange extends BaseExchange {
         }
       } else if (channel === 'balance_and_position') {
         try {
-          // 🔍 Debug: Print raw position data
-          console.log(
-            '[OKX] 📦 Raw balance_and_position data:',
-            JSON.stringify(data, null, 2),
-          );
           const { balances, positions } = this.transformOKXBalanceAndPosition(data);
           if (balances.length) this.emit('accountUpdate', 'okx', balances);
           if (positions.length) {
-            console.log(
-              '[OKX] 📊 Normalized positions:',
-              JSON.stringify(positions, null, 2),
-            );
             this.emit('positionUpdate', 'okx', positions);
           }
         } catch (error) {
