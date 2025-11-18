@@ -6,23 +6,36 @@ class OrderBookWidget extends StatelessWidget {
   final OKXOrderBook? orderBook;
   final bool isLoading;
   final double? currentPrice;
+  final bool compact; // New parameter to hide decorations in tabs
 
   const OrderBookWidget({
     super.key,
     this.orderBook,
     this.isLoading = false,
     this.currentPrice,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    // Compact mode for use in tabs (no container decoration/header)
+    if (compact) {
+      return _buildContent(isDarkMode);
+    }
+
+    // Full mode with container and header
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDarkMode ? Colors.grey[850] : Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: Colors.black.withValues(alpha: isDarkMode ? 0.3 : 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -34,7 +47,7 @@ class OrderBookWidget extends StatelessWidget {
           Container(
             padding: EdgeInsets.all(12.w),
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: isDarkMode ? Colors.grey[800] : Colors.grey[50],
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(8),
                 topRight: Radius.circular(8),
@@ -42,14 +55,18 @@ class OrderBookWidget extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(Icons.list_alt, size: 18.w, color: Colors.grey[700]),
+                Icon(
+                  Icons.list_alt,
+                  size: 18.w,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Order Book',
                   style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
+                    color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
                   ),
                 ),
                 const Spacer(),
@@ -60,16 +77,24 @@ class OrderBookWidget extends StatelessWidget {
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.grey[600]!,
+                        isDarkMode ? Colors.grey[400]! : Colors.grey[600]!,
                       ),
                     ),
                   ),
               ],
             ),
           ),
+          _buildContent(isDarkMode),
+        ],
+      ),
+    );
+  }
 
-          // Order book content
-          if (orderBook != null) ...[
+  Widget _buildContent(bool isDarkMode) {
+    return Column(
+      children: [
+        // Order book content
+        if (orderBook != null) ...[
             // Column headers
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8),
@@ -81,7 +106,7 @@ class OrderBookWidget extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -92,7 +117,7 @@ class OrderBookWidget extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -109,6 +134,7 @@ class OrderBookWidget extends StatelessWidget {
                     price: ask.price,
                     total: ask.price * ask.size,
                     isAsk: true,
+                    isDarkMode: isDarkMode,
                   ),
                 ),
 
@@ -125,7 +151,9 @@ class OrderBookWidget extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withValues(alpha: 0.12),
+                        color: Colors.amber.withValues(
+                          alpha: isDarkMode ? 0.2 : 0.12,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: Colors.amber.withValues(alpha: 0.5),
@@ -134,7 +162,7 @@ class OrderBookWidget extends StatelessWidget {
                       child: Text(
                         '\$${_formatPrice(currentPrice!)}',
                         style: TextStyle(
-                          color: Colors.amber,
+                          color: Colors.amber[isDarkMode ? 300 : 700],
                           fontWeight: FontWeight.w700,
                           fontSize: 12.sp,
                         ),
@@ -146,7 +174,10 @@ class OrderBookWidget extends StatelessWidget {
             else
               Container(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Divider(color: Colors.grey[300], thickness: 1),
+                child: Divider(
+                  color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                  thickness: 1,
+                ),
               ),
 
             // Bids (buy orders)
@@ -157,30 +188,33 @@ class OrderBookWidget extends StatelessWidget {
                     price: bid.price,
                     total: bid.price * bid.size,
                     isAsk: false,
+                    isDarkMode: isDarkMode,
                   ),
                 ),
-          ] else ...[
-            // Loading or no data state
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.hourglass_empty,
-                    size: 32.w,
-                    color: Colors.grey[400],
+        ] else ...[
+          // Loading or no data state
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.hourglass_empty,
+                  size: 32.w,
+                  color: isDarkMode ? Colors.grey[600] : Colors.grey[400],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isLoading ? 'Loading order book...' : 'No data available',
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    fontSize: 14.sp,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    isLoading ? 'Loading order book...' : 'No data available',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 14.sp),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 
@@ -188,11 +222,14 @@ class OrderBookWidget extends StatelessWidget {
     required double price,
     required double total,
     required bool isAsk,
+    required bool isDarkMode,
   }) {
-    final Color textColor = isAsk ? Colors.red[600]! : Colors.green[600]!;
+    final Color textColor = isAsk
+        ? (isDarkMode ? Colors.red[400]! : Colors.red[600]!)
+        : (isDarkMode ? Colors.green[400]! : Colors.green[600]!);
     final Color backgroundColor = isAsk
-        ? Colors.red.withValues(alpha: 0.05)
-        : Colors.green.withValues(alpha: 0.05);
+        ? Colors.red.withValues(alpha: isDarkMode ? 0.1 : 0.05)
+        : Colors.green.withValues(alpha: isDarkMode ? 0.1 : 0.05);
 
     return Container(
       decoration: BoxDecoration(color: backgroundColor),
@@ -203,7 +240,7 @@ class OrderBookWidget extends StatelessWidget {
             child: Text(
               _formatPrice(price),
               style: TextStyle(
-                          fontSize: 12.sp,
+                fontSize: 12.sp,
                 fontWeight: FontWeight.w600,
                 color: textColor,
               ),
@@ -213,7 +250,10 @@ class OrderBookWidget extends StatelessWidget {
           Expanded(
             child: Text(
               _formatTotal(total),
-              style: TextStyle(fontSize: 12.sp, color: Colors.grey[700]),
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+              ),
               textAlign: TextAlign.center,
             ),
           ),

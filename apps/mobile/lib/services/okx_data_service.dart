@@ -135,11 +135,39 @@ class OKXOrderBook {
   }
 }
 
+class OKXTrade {
+  final String tradeId;
+  final double price;
+  final double size;
+  final String side; // 'buy' or 'sell'
+  final DateTime timestamp;
+
+  OKXTrade({
+    required this.tradeId,
+    required this.price,
+    required this.size,
+    required this.side,
+    required this.timestamp,
+  });
+
+  factory OKXTrade.fromJson(Map<String, dynamic> json) {
+    return OKXTrade(
+      tradeId: json['tradeId'] ?? '',
+      price: double.tryParse(json['px'] ?? '0') ?? 0,
+      size: double.tryParse(json['sz'] ?? '0') ?? 0,
+      side: json['side'] ?? 'buy',
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+        int.tryParse(json['ts'] ?? '0') ?? 0,
+      ),
+    );
+  }
+}
+
 class OKXDataService {
   static const String baseUrl = 'https://www.okx.com/api/v5';
   static const List<String> wsUrls = [
-    'wss://ws.okx.com:8443/ws/v5/public',
-    'wss://wsaws.okx.com:8443/ws/v5/public',
+    'wss://ws.okx.com/ws/v5/public',
+    'wss://wsaws.okx.com/ws/v5/public',
   ];
 
   int _currentWsUrlIndex = 0;
@@ -154,6 +182,8 @@ class OKXDataService {
       StreamController<double>.broadcast();
   final StreamController<OKXOrderBook> _orderBookController =
       StreamController<OKXOrderBook>.broadcast();
+  final StreamController<OKXTrade> _tradeController =
+      StreamController<OKXTrade>.broadcast();
 
   bool _isConnected = false;
   Timer? _heartbeatTimer;
@@ -170,6 +200,7 @@ class OKXDataService {
   Stream<OKXTicker> get tickerStream => _tickerController.stream;
   Stream<double> get currentPriceStream => _currentPriceController.stream;
   Stream<OKXOrderBook> get orderBookStream => _orderBookController.stream;
+  Stream<OKXTrade> get tradeStream => _tradeController.stream;
 
   OKXDataService() {
     _dio = Dio(
@@ -286,6 +317,28 @@ class OKXDataService {
     }
   }
 
+  /// Get recent trades
+  Future<List<OKXTrade>> getRecentTrades(
+    String symbol, {
+    int limit = 100,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/market/trades',
+        queryParameters: {'instId': symbol, 'limit': limit.toString()},
+      );
+
+      if (response.data['code'] == '0') {
+        final List<dynamic> data = response.data['data'];
+        return data.map((item) => OKXTrade.fromJson(item)).toList();
+      }
+      throw Exception('Failed to get trades: ${response.data['msg']}');
+    } catch (e) {
+      developer.log('Error getting trades: $e');
+      rethrow;
+    }
+  }
+
   /// Connect to WebSocket and subscribe to channels
   Future<void> connectWebSocket(
     String symbol, {
@@ -330,6 +383,9 @@ class OKXDataService {
 
       // Subscribe to order book updates
       await _subscribeToOrderBook(symbol);
+
+      // Subscribe to trade updates
+      await _subscribeToTrades(symbol);
 
       // Start heartbeat
       _startHeartbeat();
@@ -382,6 +438,18 @@ class OKXDataService {
     _wsChannel?.sink.add(jsonEncode(subscribeMessage));
   }
 
+  /// Subscribe to trade updates
+  Future<void> _subscribeToTrades(String symbol) async {
+    final subscribeMessage = {
+      'op': 'subscribe',
+      'args': [
+        {'channel': 'trades', 'instId': symbol},
+      ],
+    };
+
+    _wsChannel?.sink.add(jsonEncode(subscribeMessage));
+  }
+
   /// Handle incoming WebSocket messages
   void _handleWebSocketMessage(dynamic message) {
     try {
@@ -408,6 +476,11 @@ class OKXDataService {
         } else if (channel == 'books5' && dataList.isNotEmpty) {
           final orderBook = OKXOrderBook.fromJson(dataList[0]);
           _orderBookController.add(orderBook);
+        } else if (channel == 'trades' && dataList.isNotEmpty) {
+          for (var tradeData in dataList) {
+            final trade = OKXTrade.fromJson(tradeData);
+            _tradeController.add(trade);
+          }
         }
       }
     } catch (e) {
@@ -565,5 +638,6 @@ class OKXDataService {
     _tickerController.close();
     _currentPriceController.close();
     _orderBookController.close();
+    _tradeController.close();
   }
 }
