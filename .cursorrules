@@ -309,7 +309,88 @@ When you (AI) create documentation:
 4. **CREATE** directory structure if it doesn't exist
 5. **UPDATE** relevant README files with links
 6. **FOLLOW** naming conventions consistently
-7. **DO NOT create summary documents** after completing tasks unless explicitly requested by the user
+
+### 🚫 CRITICAL: DO NOT AUTO-GENERATE DOCUMENTATION
+
+**AI agents MUST NOT automatically create markdown documentation files after completing tasks.**
+
+#### Core Principle
+
+> **"Complete the task → Report results → STOP"**
+>
+> Do NOT create summary documents, implementation reports, or documentation files unless the user explicitly requests them.
+
+#### What This Means
+
+**❌ FORBIDDEN (Do NOT do these):**
+- Creating `IMPLEMENTATION_SUMMARY.md` after implementing a feature
+- Creating `CHANGES.md` or `UPDATE_LOG.md` after making changes
+- Creating `FEATURE_DOCUMENTATION.md` after adding a feature
+- Creating any `.md` file to "document what you did"
+- Auto-generating changelogs, summaries, or reports
+
+**✅ ALLOWED (You CAN do these):**
+- Updating existing documentation when code changes
+- Creating documentation when user explicitly says "create documentation for..."
+- Modifying README files to reflect new features (if part of the task)
+- Adding inline code comments for clarity
+
+#### What to Do Instead
+
+**After completing a task:**
+
+1. ✅ **Report verbally** what you did in the chat
+2. ✅ **List the files you modified**
+3. ✅ **Mention any important details** the user should know
+4. ✅ **Ask if the user wants documentation** (optional, if complex)
+5. ❌ **DO NOT create markdown files** to document your work
+
+#### Example: Good vs Bad
+
+**❌ BAD (Do NOT do this):**
+```
+User: "Add trade history to the product screen"
+AI: [implements feature]
+AI: [creates PRODUCT_DETAIL_ENHANCEMENTS.md]
+AI: [creates TRADE_HISTORY_IMPLEMENTATION.md]
+AI: "Done! I've documented everything in these files."
+```
+
+**✅ GOOD (Do this instead):**
+```
+User: "Add trade history to the product screen"
+AI: [implements feature]
+AI: "✅ Done! I've added trade history to the product detail screen.
+
+Changes made:
+- Created TradeHistoryWidget in lib/widgets/trade_history_widget.dart
+- Added OKXTrade model in services/okx_data_service.dart
+- Integrated WebSocket subscription for real-time trades
+- Added REST API method to fetch recent trades
+
+The widget displays up to 20 recent trades with buy/sell color coding and theme support."
+```
+
+#### When Documentation IS Required
+
+Documentation should ONLY be created when:
+
+1. **User explicitly requests it**: "Create documentation for this feature"
+2. **Part of the original task**: "Implement X and document the API"
+3. **Updating existing docs**: The code you changed is documented and needs updating
+4. **README updates**: Adding new features that should be mentioned in README
+
+**Default behavior: Complete task → Report verbally → Do NOT create markdown files**
+
+#### Rationale
+
+- Users can see what you did in the conversation
+- Auto-generated docs clutter the repository
+- Users may not want documentation for every small change
+- Let users decide when documentation is needed
+- Reduces noise in git history
+
+**Remember: Your job is to code, not to document your coding. Report results in chat, don't create files about it! 📝❌**
 
 ### Decision Tree for AI
 
