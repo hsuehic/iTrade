@@ -44,6 +44,10 @@ class _ProductScreenState extends State<ProductScreen>
       _tickers = data.where((ticker) {
         return ticker.instId.toLowerCase().contains(_query);
       }).toList();
+
+      // Sort by turnover (Vol * Price) for derivatives, volume for spot
+      _sortTickersByTurnover();
+
       _loading = false;
     });
   }
@@ -56,7 +60,58 @@ class _ProductScreenState extends State<ProductScreen>
         _tickers = data.where((ticker) {
           return ticker.instId.toLowerCase().contains(_query);
         }).toList();
+
+        // Sort by turnover (Vol * Price) for derivatives, volume for spot
+        _sortTickersByTurnover();
       });
+    }
+  }
+
+  /// Sort tickers by turnover for better ranking
+  /// Use the same logic as display volume for consistency
+  void _sortTickersByTurnover() {
+    _tickers.sort((a, b) {
+      // Use volCcy24h if populated, otherwise calculate from vol24h * price
+      final aTurnover = _calculateDisplayVolume(a);
+      final bTurnover = _calculateDisplayVolume(b);
+
+      return bTurnover.compareTo(aTurnover); // Descending order (highest first)
+    });
+  }
+
+  /// Calculate display volume based on instrument type
+  /// For SPOT: volCcy24h is in quote currency (USD/USDT) - use directly
+  /// For derivatives: volCcy24h is in base currency (BTC/ETH) - multiply by price
+  double _calculateDisplayVolume(OKXTicker ticker) {
+    if (ticker.volCcy24h <= 0) {
+      return 0; // No valid volume data
+    }
+
+    // For SPOT: volCcy24h is already in quote currency (USD/USDT)
+    if (_currentTag.value == 'SPOT') {
+      return ticker.volCcy24h;
+    }
+
+    // For derivatives (SWAP/FUTURES/OPTION): volCcy24h is in base currency
+    // Convert to quote currency by multiplying by price
+    return ticker.volCcy24h * ticker.last;
+  }
+
+  /// Format volume for display with M (million) or B (billion) suffix
+  /// Examples: 1,234,567 -> "1.23M", 1,234,567,890 -> "1.23B"
+  String _formatVolume(double volume) {
+    if (volume >= 1000000000) {
+      // Billions
+      return '${(volume / 1000000000).toStringAsFixed(2)}B';
+    } else if (volume >= 1000000) {
+      // Millions
+      return '${(volume / 1000000).toStringAsFixed(2)}M';
+    } else if (volume >= 1000) {
+      // Thousands
+      return '${(volume / 1000).toStringAsFixed(2)}K';
+    } else {
+      // Less than 1000
+      return volume.toStringAsFixed(2);
     }
   }
 
@@ -190,10 +245,16 @@ class _ProductScreenState extends State<ProductScreen>
     return ListTile(
       key: ValueKey(ticker.instId),
       onTap: () {
+        // Extract available symbols from loaded tickers
+        final availableSymbols = _tickers.map((t) => t.instId).toList();
+
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ProductDetailScreen(productId: ticker.instId),
+            builder: (context) => ProductDetailScreen(
+              productId: ticker.instId,
+              availableSymbols: availableSymbols, // Pass available symbols
+            ),
           ),
         );
       },
@@ -212,7 +273,7 @@ class _ProductScreenState extends State<ProductScreen>
         ),
       ),
       subtitle: Text(
-        'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
+        'Vol: ${_formatVolume(_calculateDisplayVolume(ticker))}',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10.sp),
       ),
       trailing: IntrinsicWidth(
@@ -261,10 +322,16 @@ class _ProductScreenState extends State<ProductScreen>
 
     return InkWell(
       onTap: () {
+        // Extract available symbols from loaded tickers
+        final availableSymbols = _tickers.map((t) => t.instId).toList();
+
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => ProductDetailScreen(productId: ticker.instId),
+            builder: (context) => ProductDetailScreen(
+              productId: ticker.instId,
+              availableSymbols: availableSymbols, // Pass available symbols
+            ),
           ),
         );
       },
@@ -306,7 +373,7 @@ class _ProductScreenState extends State<ProductScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Vol: ${ticker.volCcy24h.toStringAsFixed(2)}',
+                    'Vol: ${_formatVolume(_calculateDisplayVolume(ticker))}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ],

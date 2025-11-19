@@ -22,7 +22,11 @@ class OrderBookWidget extends StatelessWidget {
 
     // Compact mode for use in tabs (no container decoration/header)
     if (compact) {
-      return _buildContent(isDarkMode);
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(12),
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: _buildContent(isDarkMode),
+      );
     }
 
     // Full mode with container and header
