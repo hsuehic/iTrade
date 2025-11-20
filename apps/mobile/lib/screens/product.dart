@@ -21,9 +21,17 @@ class _ProductScreenState extends State<ProductScreen>
   late final OKXDataService _okxService;
   Tag _currentTag = Tag(name: 'Spot', value: 'SPOT');
   String _query = '';
-  List<OKXTicker> _tickers = [];
-  List<OKXTicker> _allTickers = [];
-  bool _loading = true;
+
+  // Separate caches for each tag type - no more flashing!
+  final Map<String, List<OKXTicker>> _allTickersByTag = {};
+  final Map<String, List<OKXTicker>> _filteredTickersByTag = {};
+  final Map<String, bool> _loadingByTag = {
+    'SPOT': true,
+    'SWAP': false,
+    'FUTURES': false,
+    'OPTION': false,
+  };
+
   late Timer _timer;
   final ScrollController _scrollController = ScrollController();
 
@@ -33,51 +41,73 @@ class _ProductScreenState extends State<ProductScreen>
     _okxService = OKXDataService();
     _loadData();
 
-    // 每秒只刷新数据，不触发整个 FutureBuilder 重建
+    // Refresh current tag data periodically
     _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
       _refreshData();
     });
   }
 
   Future<void> _loadData() async {
-    setState(() => _loading = true);
-    final data = await _okxService.getTickers(_currentTag.value);
-    setState(() {
-      _tickers = data.where((ticker) {
-        return ticker.instId.toLowerCase().contains(_query);
-      }).toList();
+    final tagValue = _currentTag.value;
+    final data = await _okxService.getTickers(tagValue);
 
-      // Sort by turnover (Vol * Price) for derivatives, volume for spot
-      _sortTickersByTurnover();
-
-      _loading = false;
-    });
-  }
-
-  Future<void> _refreshData() async {
-    final data = await _okxService.getTickers(_currentTag.value);
-    // ⚠️ 不重新 setState 整个 widget，只更新 _tickers
     if (mounted) {
       setState(() {
-        _tickers = data.where((ticker) {
+        // Store data in tag-specific cache
+        _allTickersByTag[tagValue] = data;
+
+        // Filter based on search query
+        final filtered = data.where((ticker) {
           return ticker.instId.toLowerCase().contains(_query);
         }).toList();
 
-        _allTickers = data;
+        _filteredTickersByTag[tagValue] = filtered;
 
         // Sort by turnover (Vol * Price) for derivatives, volume for spot
-        _sortTickersByTurnover();
+        _sortTickersByTurnover(tagValue);
+
+        // Mark this tag as loaded
+        _loadingByTag[tagValue] = false;
+      });
+    }
+  }
+
+  Future<void> _refreshData() async {
+    final tagValue = _currentTag.value;
+
+    // Only refresh if this tag has been loaded before
+    if (_allTickersByTag[tagValue] == null) return;
+
+    final data = await _okxService.getTickers(tagValue);
+
+    if (mounted) {
+      setState(() {
+        // Update tag-specific cache
+        _allTickersByTag[tagValue] = data;
+
+        // Filter based on search query
+        final filtered = data.where((ticker) {
+          return ticker.instId.toLowerCase().contains(_query);
+        }).toList();
+
+        _filteredTickersByTag[tagValue] = filtered;
+
+        // Sort by turnover (Vol * Price) for derivatives, volume for spot
+        _sortTickersByTurnover(tagValue);
       });
     }
   }
 
   /// Sort tickers by turnover for better ranking
   /// Use the same logic as display volume for consistency
-  void _sortTickersByTurnover() {
-    _tickers.sort((a, b) {
+  void _sortTickersByTurnover(String tagValue) {
+    final tickers = _filteredTickersByTag[tagValue];
+    if (tickers == null) return;
+
+    tickers.sort((a, b) {
       // Use volCcy24h if populated, otherwise calculate from vol24h * price
-      final aTurnover = _calculateDisplayVolume(a);
-      final bTurnover = _calculateDisplayVolume(b);
+      final aTurnover = _calculateDisplayVolume(a, tagValue);
+      final bTurnover = _calculateDisplayVolume(b, tagValue);
 
       return bTurnover.compareTo(aTurnover); // Descending order (highest first)
     });
@@ -86,13 +116,13 @@ class _ProductScreenState extends State<ProductScreen>
   /// Calculate display volume based on instrument type
   /// For SPOT: volCcy24h is in quote currency (USD/USDT) - use directly
   /// For derivatives: volCcy24h is in base currency (BTC/ETH) - multiply by price
-  double _calculateDisplayVolume(OKXTicker ticker) {
+  double _calculateDisplayVolume(OKXTicker ticker, String tagValue) {
     if (ticker.volCcy24h <= 0) {
       return 0; // No valid volume data
     }
 
     // For SPOT: volCcy24h is already in quote currency (USD/USDT)
-    if (_currentTag.value == 'SPOT') {
+    if (tagValue == 'SPOT') {
       return ticker.volCcy24h;
     }
 
@@ -102,15 +132,35 @@ class _ProductScreenState extends State<ProductScreen>
   }
 
   void _handleQuery(String query) {
-    if (query.trim().isNotEmpty) {
-      final lowerQuery = query.trim().toLowerCase();
-      if (_query != lowerQuery) {
-        setState(() {
-          _query = lowerQuery;
-          _loadData();
-        });
-      }
+    final lowerQuery = query.trim().toLowerCase();
+    if (_query != lowerQuery) {
+      setState(() {
+        _query = lowerQuery;
+
+        // Re-filter all cached tag data with new query
+        for (final entry in _allTickersByTag.entries) {
+          final tagValue = entry.key;
+          final allTickers = entry.value;
+
+          final filtered = allTickers.where((ticker) {
+            return ticker.instId.toLowerCase().contains(_query);
+          }).toList();
+
+          _filteredTickersByTag[tagValue] = filtered;
+          _sortTickersByTurnover(tagValue);
+        }
+      });
     }
+  }
+
+  /// Get filtered tickers for current tag
+  List<OKXTicker> _getCurrentFilteredTickers() {
+    return _filteredTickersByTag[_currentTag.value] ?? [];
+  }
+
+  /// Get all tickers for current tag
+  List<OKXTicker> _getCurrentAllTickers() {
+    return _allTickersByTag[_currentTag.value] ?? [];
   }
 
   @override
@@ -170,17 +220,50 @@ class _ProductScreenState extends State<ProductScreen>
               tags: tags,
               currentTag: _currentTag,
               onTap: (tag) async {
-                setState(() {
-                  _currentTag = tag;
-                });
-                await _loadData(); // 切换标签重新加载
+                if (_currentTag.value != tag.value) {
+                  setState(() {
+                    _currentTag = tag;
+                  });
+
+                  // Reset scroll position to top when switching tags
+                  if (_scrollController.hasClients) {
+                    _scrollController.jumpTo(0);
+                  }
+
+                  // Only load if this tag hasn't been loaded yet
+                  if (_allTickersByTag[tag.value] == null) {
+                    await _loadData();
+                  }
+                }
               },
             ),
           ),
           const SizedBox(height: 16),
 
-          if (_loading)
+          // Check loading state for current tag
+          if (_loadingByTag[_currentTag.value] == true)
             const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_getCurrentFilteredTickers().isEmpty &&
+              _getCurrentAllTickers().isEmpty)
+            // No data loaded yet for this tag (shouldn't happen with proper init)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_getCurrentFilteredTickers().isEmpty)
+            // Search filtered everything out
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No results found',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else
             Expanded(
               child: _shouldUseTabletLayout(context)
@@ -193,15 +276,17 @@ class _ProductScreenState extends State<ProductScreen>
   }
 
   Widget _buildPhoneList() {
+    final tickers = _getCurrentFilteredTickers();
     return ListView.builder(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       controller: _scrollController,
-      itemCount: _tickers.length,
-      itemBuilder: (context, index) => _buildProductListTile(_tickers[index]),
+      itemCount: tickers.length,
+      itemBuilder: (context, index) => _buildProductListTile(tickers[index]),
     );
   }
 
   Widget _buildTabletGrid() {
+    final tickers = _getCurrentFilteredTickers();
     final screenWidth = MediaQuery.of(context).size.width;
     // Determine column count based on available width
     // If sidebar is visible (~240px), we have less space
@@ -218,8 +303,8 @@ class _ProductScreenState extends State<ProductScreen>
         crossAxisSpacing: 16,
         childAspectRatio: 3.5,
       ),
-      itemCount: _tickers.length,
-      itemBuilder: (context, index) => _buildProductCard(_tickers[index]),
+      itemCount: tickers.length,
+      itemBuilder: (context, index) => _buildProductCard(tickers[index]),
     );
   }
 
@@ -238,7 +323,7 @@ class _ProductScreenState extends State<ProductScreen>
             builder: (context) => ProductDetailScreen(
               productId: ticker.instId,
               availableTickers: {
-                for (final t in _allTickers) t.instId: t,
+                for (final t in _getCurrentAllTickers()) t.instId: t,
               }, // Pass ticker data
             ),
           ),
@@ -259,7 +344,7 @@ class _ProductScreenState extends State<ProductScreen>
         ),
       ),
       subtitle: Text(
-        'Vol: ${formatVolume(_calculateDisplayVolume(ticker))}',
+        'Vol: ${formatVolume(_calculateDisplayVolume(ticker, _currentTag.value))}',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10.sp),
       ),
       trailing: IntrinsicWidth(
@@ -315,7 +400,7 @@ class _ProductScreenState extends State<ProductScreen>
             builder: (context) => ProductDetailScreen(
               productId: ticker.instId,
               availableTickers: {
-                for (final t in _tickers) t.instId: t,
+                for (final t in _getCurrentFilteredTickers()) t.instId: t,
               }, // Pass ticker data
             ),
           ),
@@ -359,7 +444,7 @@ class _ProductScreenState extends State<ProductScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Vol: ${formatVolume(_calculateDisplayVolume(ticker))}',
+                    'Vol: ${formatVolume(_calculateDisplayVolume(ticker, _currentTag.value))}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ],

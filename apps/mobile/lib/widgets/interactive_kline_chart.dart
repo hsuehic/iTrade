@@ -173,6 +173,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     window.latestPriceValue = null;
     window.latestPriceText = null;
     window.isDarkTheme = false;
+    window.isInitialLoad = true; // Track if this is the first load
     
     // Wait for Echarts to load
     function initWhenReady() {
@@ -340,7 +341,11 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
               lineWidth: 1,
               lineDash: [4, 4],
               opacity: 1.0 // Fully opaque line
-            }
+            },
+            // Add smooth transition for line position
+            transition: ['shape'],
+            enterFrom: { style: { opacity: 0 } },
+            leaveTo: { style: { opacity: 0 } }
           },
           {
             id: 'price-label',
@@ -349,6 +354,10 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             z: 1000, // Highest z-index - ensures label is always on top
             z2: 1000, // Fine-grained z-index control
             position: [labelX, yPixel - labelHeight / 2],
+            // Add smooth transition for label position
+            transition: ['position'],
+            enterFrom: { style: { opacity: 0 } },
+            leaveTo: { style: { opacity: 0 } },
             children: [
               {
                 type: 'rect',
@@ -449,7 +458,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
       
       var option = {
         backgroundColor: 'transparent',
-        animation: false,
+        animation: false, // Disable for initial load (fast first render)
         tooltip: {
           trigger: 'axis',
           triggerOn: 'click',
@@ -771,6 +780,24 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
         window.latestPriceText = formatPriceLabel(currentPrice);
         window.isDarkTheme = isDark;
         renderPriceIndicator(currentPrice, isDark);
+        
+        // After initial load, enable smooth animations for future updates
+        if (window.isInitialLoad) {
+          window.isInitialLoad = false;
+          // Enable animation for subsequent updates with smooth transitions
+          setTimeout(function() {
+            if (window.chart) {
+              window.chart.setOption({
+                animation: true,
+                animationDuration: 300,
+                animationEasing: 'cubicOut',
+                animationDurationUpdate: 300,
+                animationEasingUpdate: 'cubicOut'
+              }, false);
+              console.log('✅ Smooth animations enabled for future updates');
+            }
+          }, 100);
+        }
       } else {
         console.error('window.chart is null');
       }
@@ -881,7 +908,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
               })
             }
           ]
-        }, { notMerge: false, lazyUpdate: true, silent: true });
+        }, { notMerge: false, lazyUpdate: false, silent: false });
         window.latestPriceValue = currentPrice;
         window.latestPriceText = formatPriceLabel(currentPrice);
         window.isDarkTheme = isDark;
@@ -936,15 +963,101 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     _controller!.runJavaScript(jsCode);
   }
 
-  /// Hide tooltips via JavaScript (public method)
+  /// Reinitialize chart via JavaScript (disposes old chart and creates new one)
+  void reinitializeChart() {
+    if (!_isChartReady || _controller == null) return;
+
+    debugPrint('🔄 Reinitializing chart...');
+
+    final jsonData = jsonEncode(widget.klineData);
+    final jsCode =
+        '''
+      (function() {
+        try {
+          console.log('🔄 Reinitializing chart with new data...');
+          
+          // Dispose old chart instance completely
+          if (window.chart) {
+            console.log('🗑️ Disposing old chart instance');
+            window.chart.dispose();
+            window.chart = null;
+          }
+          
+          // Clear all global state
+          window.originalKlineData = null;
+          window.currentCandleValues = null;
+          window.latestPriceValue = null;
+          window.latestPriceText = null;
+          window.isInitialLoad = true; // Reset for new chart
+          
+          // Recreate chart instance
+          var chartDom = document.getElementById('chart');
+          if (!chartDom) {
+            console.error('Chart DOM element not found');
+            return;
+          }
+          
+          window.chart = echarts.init(chartDom, null, {
+            renderer: 'canvas',
+            devicePixelRatio: window.devicePixelRatio || 1,
+            width: 'auto',
+            height: 'auto'
+          });
+          
+          console.log('✅ New chart instance created');
+          
+          // Update precision
+          window.pricePrecision = ${widget.pricePrecision};
+          
+          // Initialize with new data
+          var newData = $jsonData;
+          window.latestPriceValue = ${widget.currentPrice};
+          window.latestPriceText = formatPriceLabel(window.latestPriceValue);
+          
+          initChart(newData, '${widget.symbol}', ${widget.currentPrice}, '${widget.interval}');
+          
+          console.log('✅ Chart reinitialized successfully');
+        } catch (e) {
+          console.error('❌ Error reinitializing chart:', e);
+        }
+      })();
+    ''';
+
+    _controller!.runJavaScript(jsCode);
+  }
+
+  /// Hide tooltips and crosshair via JavaScript (public method)
   void hideTooltips() {
     if (!_isChartReady || _controller == null) return;
 
     const jsCode = '''
       if (window.chart && typeof window.chart.dispatchAction === 'function') {
+        // Hide tooltip
         window.chart.dispatchAction({
           type: 'hideTip'
         });
+        // Hide crosshair lines by disabling axisPointer temporarily
+        window.chart.setOption({
+          tooltip: {
+            axisPointer: {
+              type: 'cross',
+              show: false
+            }
+          }
+        }, false);
+        // Re-enable axisPointer after a brief moment for next interaction
+        setTimeout(function() {
+          if (window.chart) {
+            window.chart.setOption({
+              tooltip: {
+                axisPointer: {
+                  type: 'cross',
+                  show: true
+                }
+              }
+            }, false);
+          }
+        }, 100);
       }
     ''';
 

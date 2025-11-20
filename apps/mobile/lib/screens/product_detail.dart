@@ -39,7 +39,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   String _selectedInterval = '15m';
   int _pricePrecision = 4; // Default precision, will be fetched from API
 
-  // Global key to access chart for hiding tooltips
+  // Global key to access chart state for reinitializing
   final GlobalKey _chartKey = GlobalKey();
 
   // Stream subscriptions for cleanup
@@ -351,6 +351,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           if (_klines.isEmpty) return;
 
           final newKline = klines[0]; // WebSocket sends newest kline
+          
+          // If we have less than 30 klines, this is the first live push
+          if (_klines.length < 30) {
+            final lastKline = _klines.last;
+            final newTimestamp = int.tryParse(newKline.timestamp) ?? 0;
+            final lastTimestamp = int.tryParse(lastKline.timestamp) ?? 0;
+            
+            // Add as 30th kline if timestamp is same or newer
+            if (newTimestamp >= lastTimestamp) {
+              _klines.add(newKline);
+              debugPrint(
+                '✅ First live kline pushed! Now have ${_klines.length} klines. Chart ready to display.',
+              );
+              setState(() {});
+            }
+            return;
+          }
+
           final lastKline = _klines.last; // Our list has oldest -> newest
 
           // Compare timestamps (they are String milliseconds)
@@ -466,12 +484,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             },
           );
 
-      // Load exactly 30 klines for fixed chart window
+      // Load only 29 closed klines - wait for WebSocket to push the 30th (live) one
       final klinesF = _okxService
           .getHistoricalKlines(
             _currentSymbol,
             bar: _selectedInterval,
-            limit: 30, // Fixed window of 30 candlesticks
+            limit: 29, // Load 29 closed candlesticks
           )
           .timeout(
             const Duration(seconds: 10),
@@ -523,47 +541,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       );
 
       if (mounted) {
-        // Update the newest (unclosed) kline with current ticker price
-        if (klines.isNotEmpty) {
-          final newestKline = klines.first; // First is newest from API
-          // Update close price with current ticker price
-          final updatedKline = OKXKline(
-            timestamp: newestKline.timestamp,
-            open: newestKline.open,
-            high: newestKline.high > ticker.last
-                ? newestKline.high
-                : ticker.last,
-            low: newestKline.low < ticker.last ? newestKline.low : ticker.last,
-            close: ticker.last, // Update with current price
-            volume: newestKline.volume,
-            time: newestKline.time,
+        setState(() {
+          _pricePrecision = precision; // Update precision
+          // Store 29 closed klines (oldest -> newest)
+          // WebSocket will push the 30th (live) kline to complete the set
+          _klines = klines.reversed.toList();
+          _trades = trades;
+          _ticker = ticker;
+          _orderBook = orderBook;
+          
+          debugPrint(
+            '📊 Loaded ${_klines.length} closed klines, waiting for WebSocket to push live kline...',
           );
-
-          final updatedKlines = [updatedKline, ...klines.skip(1)];
-
-          setState(() {
-            _pricePrecision = precision; // Update precision
-            // Limit to 30 candlesticks (most recent)
-            final reversedKlines = updatedKlines.reversed.toList();
-            _klines = reversedKlines.length > 30
-                ? reversedKlines.sublist(reversedKlines.length - 30)
-                : reversedKlines;
-            _trades = trades;
-            _ticker = ticker;
-            _orderBook = orderBook;
-          });
-        } else {
-          setState(() {
-            // Limit to 30 candlesticks (most recent)
-            final reversedKlines = klines.reversed.toList();
-            _klines = reversedKlines.length > 30
-                ? reversedKlines.sublist(reversedKlines.length - 30)
-                : reversedKlines;
-            _trades = trades;
-            _ticker = ticker;
-            _orderBook = orderBook;
-          });
-        }
+        });
       }
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -575,10 +565,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   Future<void> _changeSymbol(String newSymbol) async {
     if (newSymbol == _currentSymbol) return;
 
-    // Update state immediately - keep old data visible while loading new
+    // Update state immediately
     setState(() {
       _currentSymbol = newSymbol;
     });
+
+    // Reinitialize chart via JavaScript (keeps WebView, recreates ECharts instance)
+    (_chartKey.currentState as dynamic)?.reinitializeChart();
 
     // Load new data in background
     try {
@@ -596,10 +589,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // Update interval immediately
     setState(() {
       _selectedInterval = newInterval;
-      // DON'T increment _chartVersion - let chart update data without rebuilding
-      // DON'T clear klines - keep old data visible
-      // DON'T set loading state
     });
+
+    // Reinitialize chart via JavaScript (keeps WebView, recreates ECharts instance)
+    (_chartKey.currentState as dynamic)?.reinitializeChart();
 
     // Load new data in background
     try {
@@ -739,6 +732,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// Show searchable symbol selection dialog
   void _showSymbolSearchDialog(bool isDarkMode) {
     String searchQuery = '';
+    final TextEditingController searchController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
@@ -786,21 +780,82 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     ),
                   ),
 
-                  // Search field
+                  // Search field with clear button
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: TextField(
-                      autofocus: true,
+                      controller: searchController,
+                      autofocus: false,
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.white : Colors.black87,
+                        fontSize: 14,
+                      ),
                       decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
                         hintText: 'Search symbols...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        hintStyle: TextStyle(
+                          color: isDarkMode
+                              ? Colors.grey[500]
+                              : Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: isDarkMode
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                          size: 20,
+                        ),
+                        suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: searchController,
+                          builder: (context, value, child) {
+                            if (value.text.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return IconButton(
+                              icon: Icon(
+                                Icons.clear,
+                                color: isDarkMode
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                searchController.clear();
+                                setModalState(() {
+                                  searchQuery = '';
+                                });
+                              },
+                              tooltip: 'Clear search',
+                            );
+                          },
                         ),
                         filled: true,
                         fillColor: isDarkMode
                             ? Colors.grey[850]
                             : Colors.grey[100],
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: isDarkMode
+                                ? Colors.grey[700]!
+                                : Colors.grey[300]!,
+                            width: 1.0,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.5),
+                            width: 2.0,
+                          ),
+                        ),
                       ),
                       onChanged: (value) {
                         setModalState(() {
@@ -895,127 +950,123 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           ),
         ],
       ),
-      body: GestureDetector(
-        onTap: () {
-          // Hide tooltips when tapping anywhere on the screen
-          (_chartKey.currentState as dynamic)?.hideTooltips();
-        },
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const SizedBox(height: 16),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
 
-              // Ticker Information - Always show with placeholders
-              _buildTickerInfo(isDarkMode),
+            // Ticker Information - Always show with placeholders
+            _buildTickerInfo(isDarkMode),
 
-              const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-              // Interval Selector
-              _buildIntervalSelector(isDarkMode),
+            // Interval Selector
+            _buildIntervalSelector(isDarkMode),
 
-              const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-              // Kline Chart - Fixed height, no scroll needed
-              SizedBox(
-                height: 300,
-                child: _klines.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.candlestick_chart,
-                              size: 48,
-                              color: Colors.grey[400],
+            // Kline Chart - Fixed height, no scroll needed
+            SizedBox(
+              height: 300,
+              child: _klines.length < 30
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.candlestick_chart,
+                            size: 48,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _klines.isEmpty
+                                ? 'Loading chart data...'
+                                : 'Waiting for live data... (${_klines.length}/30)',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Loading chart data...',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : InteractiveKlineChart(
-                        key: _chartKey,
-                        klineData: (() {
-                          // Debug: Verify we have exactly 30 or fewer candlesticks
-                          debugPrint(
-                            '📊 Total klines being sent to chart: ${_klines.length}',
-                          );
-                          return _klines.map((k) {
-                            // Debug: Print first kline data
-                            if (k == _klines.first) {
-                              debugPrint('🔍 Flutter First Kline Data:');
-                              debugPrint('  time: ${k.time}');
-                              debugPrint(
-                                '  open: ${k.open} (${k.open.runtimeType})',
-                              );
-                              debugPrint(
-                                '  close: ${k.close} (${k.close.runtimeType})',
-                              );
-                              debugPrint(
-                                '  low: ${k.low} (${k.low.runtimeType})',
-                              );
-                              debugPrint(
-                                '  high: ${k.high} (${k.high.runtimeType})',
-                              );
-                              debugPrint(
-                                '  volume: ${k.volume} (${k.volume.runtimeType})',
-                              );
-                            }
-
-                            // Format date based on interval
-                            String dateLabel;
-                            if (_selectedInterval == '1D' ||
-                                _selectedInterval == '1W' ||
-                                _selectedInterval == '1M') {
-                              // For daily/weekly/monthly: show date only
-                              dateLabel = DateFormat('MM/dd').format(k.time);
-                            } else if (_selectedInterval == '4H') {
-                              // For 4H: show date + hour
-                              dateLabel = DateFormat(
-                                'MM/dd HH:00',
-                              ).format(k.time);
-                            } else {
-                              // For 15m, 1H: show date + time
-                              dateLabel = DateFormat(
-                                'MM/dd HH:mm',
-                              ).format(k.time);
-                            }
-
-                            return {
-                              'date': dateLabel,
-                              'open': k.open,
-                              'close': k.close,
-                              'low': k.low,
-                              'high': k.high,
-                              'volume': k.volume,
-                            };
-                          }).toList();
-                        })(),
-                        symbol: _currentSymbol,
-                        interval: _selectedInterval,
-                        isDarkMode: isDarkMode,
-                        currentPrice: _ticker?.last ?? 0,
-                        pricePrecision: _pricePrecision,
+                          ),
+                        ],
                       ),
-              ),
+                    )
+                  : InteractiveKlineChart(
+                      key: _chartKey,
+                      klineData: (() {
+                        // Debug: Verify we have exactly 30 or fewer candlesticks
+                        debugPrint(
+                          '📊 Total klines being sent to chart: ${_klines.length}',
+                        );
+                        return _klines.map((k) {
+                          // Debug: Print first kline data
+                          if (k == _klines.first) {
+                            debugPrint('🔍 Flutter First Kline Data:');
+                            debugPrint('  time: ${k.time}');
+                            debugPrint(
+                              '  open: ${k.open} (${k.open.runtimeType})',
+                            );
+                            debugPrint(
+                              '  close: ${k.close} (${k.close.runtimeType})',
+                            );
+                            debugPrint(
+                              '  low: ${k.low} (${k.low.runtimeType})',
+                            );
+                            debugPrint(
+                              '  high: ${k.high} (${k.high.runtimeType})',
+                            );
+                            debugPrint(
+                              '  volume: ${k.volume} (${k.volume.runtimeType})',
+                            );
+                          }
 
-              const SizedBox(height: 16),
+                          // Format date based on interval
+                          String dateLabel;
+                          if (_selectedInterval == '1D' ||
+                              _selectedInterval == '1W' ||
+                              _selectedInterval == '1M') {
+                            // For daily/weekly/monthly: show date only
+                            dateLabel = DateFormat('MM/dd').format(k.time);
+                          } else if (_selectedInterval == '4H') {
+                            // For 4H: show date + hour
+                            dateLabel = DateFormat(
+                              'MM/dd HH:00',
+                            ).format(k.time);
+                          } else {
+                            // For 15m, 1H: show date + time
+                            dateLabel = DateFormat(
+                              'MM/dd HH:mm',
+                            ).format(k.time);
+                          }
 
-              // TabBar and TabView for Order Book and Trade History - Fixed height instead of Expanded
-              SizedBox(
-                height: 400, // Fixed height for the tab section
-                child: _buildTabSection(isDarkMode),
-              ),
+                          return {
+                            'date': dateLabel,
+                            'open': k.open,
+                            'close': k.close,
+                            'low': k.low,
+                            'high': k.high,
+                            'volume': k.volume,
+                          };
+                        }).toList();
+                      })(),
+                      symbol: _currentSymbol,
+                      interval: _selectedInterval,
+                      isDarkMode: isDarkMode,
+                      currentPrice: _ticker?.last ?? 0,
+                      pricePrecision: _pricePrecision,
+                    ),
+            ),
 
-              const SizedBox(height: 16),
-            ],
-          ),
+            const SizedBox(height: 16),
+
+            // TabBar and TabView for Order Book and Trade History - Fixed height instead of Expanded
+            SizedBox(
+              height: 400, // Fixed height for the tab section
+              child: _buildTabSection(isDarkMode),
+            ),
+
+            const SizedBox(height: 16),
+          ],
         ),
       ),
     );

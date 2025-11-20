@@ -18,54 +18,77 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
     super.dispose();
   }
 
+  void _clearSearch() {
+    _searchController.clear();
+    widget.onChanged?.call('');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 0),  // ✅ Width-adapted
-      // 使用 Theme 小组件包裹，以覆盖父级主题设置
-      child: Theme(
-        data: ThemeData(
-          // 将此处的 ThemeData 设置为空，以避免继承 InputdDecorationTheme
-          // 或者在此处定义新的 inputDecorationTheme
-          inputDecorationTheme: const InputDecorationTheme(
-            isDense: true,
-            contentPadding: EdgeInsets.symmetric(vertical: 4),
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(
+          color: isDarkMode ? Colors.white : Colors.black87,
+          fontSize: 14,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          hintText: 'Search...',
+          hintStyle: TextStyle(
+            color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
+            fontSize: 14,
+          ),
+          prefixIcon: Icon(
+            Icons.search,
+            color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            size: 20,
+          ),
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _searchController,
+            builder: (context, value, child) {
+              if (value.text.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                icon: Icon(
+                  Icons.clear,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  size: 20,
+                ),
+                onPressed: _clearSearch,
+                tooltip: 'Clear search',
+              );
+            },
+          ),
+          filled: true,
+          fillColor: isDarkMode ? Colors.grey[850] : Colors.grey[100],
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+              width: 1.0,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color: colorScheme.primary.withValues(alpha: 0.5),
+              width: 2.0,
+            ),
           ),
         ),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: 'Search...',
-            prefixIcon: const Icon(Icons.search),
-            filled: true,
-            fillColor: Colors.black12, // 使用一个更明显的颜色来测试
-            // 修改未聚焦时的边框
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),  // ✅ Uniform radius
-              borderSide: BorderSide(
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                width: 1.0,
-              ),
-            ),
-            // 修改聚焦时的边框
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),  // ✅ Uniform radius
-              borderSide: BorderSide(
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.5),
-                width: 2.0,
-              ),
-            ),
-          ),
-          onChanged: (query) {
-            widget.onChanged?.call(query);
-          },
-          onSubmitted: (query) {
-            widget.onSubmitted?.call(query);
-          },
-        ),
+        onChanged: (query) {
+          widget.onChanged?.call(query);
+        },
+        onSubmitted: (query) {
+          widget.onSubmitted?.call(query);
+        },
       ),
     );
   }
