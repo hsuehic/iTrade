@@ -22,6 +22,7 @@ class _ProductScreenState extends State<ProductScreen>
   Tag _currentTag = Tag(name: 'Spot', value: 'SPOT');
   String _query = '';
   List<OKXTicker> _tickers = [];
+  List<OKXTicker> _allTickers = [];
   bool _loading = true;
   late Timer _timer;
   final ScrollController _scrollController = ScrollController();
@@ -62,6 +63,8 @@ class _ProductScreenState extends State<ProductScreen>
           return ticker.instId.toLowerCase().contains(_query);
         }).toList();
 
+        _allTickers = data;
+
         // Sort by turnover (Vol * Price) for derivatives, volume for spot
         _sortTickersByTurnover();
       });
@@ -97,7 +100,6 @@ class _ProductScreenState extends State<ProductScreen>
     // Convert to quote currency by multiplying by price
     return ticker.volCcy24h * ticker.last;
   }
-
 
   void _handleQuery(String query) {
     if (query.trim().isNotEmpty) {
@@ -235,7 +237,9 @@ class _ProductScreenState extends State<ProductScreen>
           MaterialPageRoute(
             builder: (context) => ProductDetailScreen(
               productId: ticker.instId,
-              availableTickers: {for (final t in _tickers) t.instId: t}, // Pass ticker data
+              availableTickers: {
+                for (final t in _allTickers) t.instId: t,
+              }, // Pass ticker data
             ),
           ),
         );
@@ -310,7 +314,9 @@ class _ProductScreenState extends State<ProductScreen>
           MaterialPageRoute(
             builder: (context) => ProductDetailScreen(
               productId: ticker.instId,
-              availableTickers: {for (final t in _tickers) t.instId: t}, // Pass ticker data
+              availableTickers: {
+                for (final t in _tickers) t.instId: t,
+              }, // Pass ticker data
             ),
           ),
         );

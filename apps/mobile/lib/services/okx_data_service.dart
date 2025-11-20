@@ -5,6 +5,45 @@ import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+class OKXInstrument {
+  final String instId;
+  final String tickSz; // Minimum price increment
+  final String lotSz; // Minimum quantity increment
+  final int? pricePrecision; // Calculated from tickSz
+
+  OKXInstrument({
+    required this.instId,
+    required this.tickSz,
+    required this.lotSz,
+    this.pricePrecision,
+  });
+
+  factory OKXInstrument.fromJson(Map<String, dynamic> json) {
+    final tickSzRaw = json['tickSz'];
+    final tickSz = tickSzRaw.toString(); // Convert to string if needed
+
+    // Calculate precision from tickSz (e.g., "0.0001" -> 4 decimal places)
+    int precision;
+    if (tickSz.contains('.')) {
+      final decimalPart = tickSz.split('.')[1];
+      precision = decimalPart.length;
+      developer.log(
+        '📐 TickSz: $tickSz → decimal part: "$decimalPart" → precision: $precision',
+      );
+    } else {
+      precision = 0;
+      developer.log('📐 TickSz: $tickSz → no decimal → precision: 0');
+    }
+
+    return OKXInstrument(
+      instId: json['instId'] as String,
+      tickSz: tickSz,
+      lotSz: json['lotSz']?.toString() ?? '1',
+      pricePrecision: precision,
+    );
+  }
+}
+
 class OKXKline {
   String timestamp;
   double open;
@@ -165,15 +204,21 @@ class OKXTrade {
 
 class OKXDataService {
   static const String baseUrl = 'https://www.okx.com/api/v5';
-  static const List<String> wsUrls = [
+  static const List<String> publicWsUrls = [
     'wss://ws.okx.com/ws/v5/public',
     'wss://wsaws.okx.com/ws/v5/public',
   ];
+  static const List<String> businessWsUrls = [
+    'wss://ws.okx.com/ws/v5/business',
+    'wss://wsaws.okx.com/ws/v5/business',
+  ];
 
-  int _currentWsUrlIndex = 0;
+  int _currentPublicWsUrlIndex = 0;
+  int _currentBusinessWsUrlIndex = 0;
 
   late final Dio _dio;
-  WebSocketChannel? _wsChannel;
+  WebSocketChannel? _publicWsChannel; // For tickers, order book, trades
+  WebSocketChannel? _businessWsChannel; // For candlestick data
   final StreamController<List<OKXKline>> _klineController =
       StreamController<List<OKXKline>>.broadcast();
   final StreamController<OKXTicker> _tickerController =
@@ -185,8 +230,10 @@ class OKXDataService {
   final StreamController<OKXTrade> _tradeController =
       StreamController<OKXTrade>.broadcast();
 
-  bool _isConnected = false;
-  Timer? _heartbeatTimer;
+  bool _isPublicConnected = false;
+  bool _isBusinessConnected = false;
+  Timer? _publicHeartbeatTimer;
+  Timer? _businessHeartbeatTimer;
   Timer? _reconnectTimer;
   Timer? _fallbackTimer;
   String? _currentSymbol;
@@ -194,6 +241,13 @@ class OKXDataService {
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 10;
   bool _useFallbackMode = false;
+
+  // Track pending unsubscribe confirmations
+  final Set<String> _pendingBusinessUnsubscribes = {};
+  final Set<String> _pendingPublicUnsubscribes = {};
+
+  // Cache for instrument metadata (tickSize, precision, etc.)
+  final Map<String, OKXInstrument> _instrumentCache = {};
 
   // Streams for external subscription
   Stream<List<OKXKline>> get klineStream => _klineController.stream;
@@ -214,6 +268,59 @@ class OKXDataService {
         },
       ),
     );
+  }
+
+  /// Get instrument information including tick size and precision
+  Future<OKXInstrument?> getInstrument(String symbol) async {
+    // Check cache first
+    if (_instrumentCache.containsKey(symbol)) {
+      return _instrumentCache[symbol];
+    }
+
+    try {
+      developer.log('🔍 Fetching instrument info for $symbol...');
+      final response = await _dio.get(
+        '/public/instruments',
+        queryParameters: {'instType': 'SPOT', 'instId': symbol},
+      );
+
+      developer.log(
+        '📡 Instrument API response code: ${response.data['code']}',
+      );
+
+      if (response.data['code'] == '0') {
+        final List<dynamic> data = response.data['data'];
+        developer.log('📊 Instrument data length: ${data.length}');
+
+        if (data.isNotEmpty) {
+          final instrument = OKXInstrument.fromJson(data[0]);
+          _instrumentCache[symbol] = instrument; // Cache it
+          developer.log(
+            '✅ Instrument info for $symbol: tickSz=${instrument.tickSz}, precision=${instrument.pricePrecision}',
+          );
+          return instrument;
+        } else {
+          developer.log('⚠️ No instrument data returned for $symbol');
+        }
+      } else {
+        developer.log('⚠️ Instrument API error: ${response.data['msg']}');
+      }
+    } catch (e, stackTrace) {
+      developer.log('❌ Error fetching instrument info for $symbol: $e');
+      developer.log('Stack trace: $stackTrace');
+    }
+
+    developer.log('⚠️ Returning null for $symbol, will default to 2 decimals');
+    return null;
+  }
+
+  /// Get price precision for a symbol (returns number of decimal places)
+  Future<int> getPricePrecision(String symbol) async {
+    final instrument = await getInstrument(symbol);
+    final precision =
+        instrument?.pricePrecision ?? 4; // Default to 4 for crypto
+    developer.log('🎯 Final precision for $symbol: $precision decimals');
+    return precision;
   }
 
   /// Get historical candlestick data
@@ -345,38 +452,204 @@ class OKXDataService {
     String timeframe = '15m',
   }) async {
     try {
+      // If already connected, just change subscriptions (more efficient)
+      if (isConnected &&
+          _currentSymbol != null &&
+          (_currentSymbol != symbol || _currentTimeframe != timeframe)) {
+        developer.log(
+          '🔄 WebSocket already connected, changing subscriptions from '
+          '$_currentSymbol ($_currentTimeframe) to $symbol ($timeframe)',
+        );
+        await changeSymbol(symbol, timeframe: timeframe);
+        return;
+      }
+
+      // Save old symbol/timeframe for unsubscribe
+      final oldSymbol = _currentSymbol;
+      final oldTimeframe = _currentTimeframe;
+
+      // Update to new symbol/timeframe
       _currentSymbol = symbol;
       _currentTimeframe = timeframe;
 
-      // Close existing connection if any
+      // Unsubscribe from old channels before disconnecting
+      if (oldSymbol != null && oldTimeframe != null) {
+        await _unsubscribeAll(oldSymbol, oldTimeframe);
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+
+      // Close existing connections if any
       await disconnectWebSocket();
 
-      final currentUrl = wsUrls[_currentWsUrlIndex];
-      developer.log('Attempting to connect to OKX WebSocket: $currentUrl');
+      // Connect to both Business (for candlesticks) and Public (for tickers, orderbook, trades) WebSockets
+      await Future.wait([
+        _connectBusinessWebSocket(symbol, timeframe),
+        _connectPublicWebSocket(symbol),
+      ]);
 
-      // Create WebSocket connection with headers
-      _wsChannel = WebSocketChannel.connect(
+      developer.log(
+        '✅ WebSocket connected and subscribed to $symbol ($timeframe)',
+      );
+    } catch (e) {
+      developer.log('❌ Error connecting WebSocket: $e');
+      _scheduleReconnect();
+      // Don't rethrow to prevent app crashes
+    }
+  }
+
+  /// Change symbol/timeframe without disconnecting (more efficient)
+  Future<void> changeSymbol(
+    String newSymbol, {
+    String timeframe = '15m',
+  }) async {
+    if (!isConnected) {
+      developer.log('⚠️ Not connected, calling connectWebSocket instead');
+      await connectWebSocket(newSymbol, timeframe: timeframe);
+      return;
+    }
+
+    try {
+      final oldSymbol = _currentSymbol;
+      final oldTimeframe = _currentTimeframe;
+
+      developer.log(
+        '🔄 Changing from $oldSymbol ($oldTimeframe) to $newSymbol ($timeframe)',
+      );
+
+      // Unsubscribe from old channels
+      if (oldSymbol != null && oldTimeframe != null) {
+        await _unsubscribeAll(oldSymbol, oldTimeframe);
+
+        // Wait for unsubscribe confirmations (max 2 seconds)
+        await _waitForUnsubscribeConfirmations();
+      }
+
+      // Update current symbol/timeframe
+      _currentSymbol = newSymbol;
+      _currentTimeframe = timeframe;
+
+      // Subscribe to new channels
+      await _subscribeAll(newSymbol, timeframe);
+
+      developer.log('✅ Successfully changed to $newSymbol ($timeframe)');
+    } catch (e) {
+      developer.log('❌ Error changing symbol: $e');
+      // If changing fails, try reconnecting
+      await connectWebSocket(newSymbol, timeframe: timeframe);
+    }
+  }
+
+  /// Wait for all pending unsubscribe confirmations
+  Future<void> _waitForUnsubscribeConfirmations() async {
+    const maxWaitTime = Duration(seconds: 2);
+    const checkInterval = Duration(milliseconds: 50);
+    final startTime = DateTime.now();
+
+    while ((_pendingBusinessUnsubscribes.isNotEmpty ||
+            _pendingPublicUnsubscribes.isNotEmpty) &&
+        DateTime.now().difference(startTime) < maxWaitTime) {
+      await Future.delayed(checkInterval);
+    }
+
+    if (_pendingBusinessUnsubscribes.isNotEmpty ||
+        _pendingPublicUnsubscribes.isNotEmpty) {
+      developer.log(
+        '⚠️ Timeout waiting for unsubscribe confirmations. '
+        'Pending: Business=${_pendingBusinessUnsubscribes.length}, '
+        'Public=${_pendingPublicUnsubscribes.length}',
+      );
+      // Clear pending sets to avoid blocking
+      _pendingBusinessUnsubscribes.clear();
+      _pendingPublicUnsubscribes.clear();
+    }
+  }
+
+  /// Unsubscribe from all channels for a given symbol
+  Future<void> _unsubscribeAll(String symbol, String timeframe) async {
+    await Future.wait([
+      _unsubscribeFromCandlesticks(symbol, timeframe),
+      _unsubscribeFromTicker(symbol),
+      _unsubscribeFromOrderBook(symbol),
+      _unsubscribeFromTrades(symbol),
+    ]);
+  }
+
+  /// Subscribe to all channels for a given symbol
+  Future<void> _subscribeAll(String symbol, String timeframe) async {
+    await Future.wait([
+      _subscribeToCandlesticks(symbol, timeframe),
+      _subscribeToTicker(symbol),
+      _subscribeToOrderBook(symbol),
+      _subscribeToTrades(symbol),
+    ]);
+  }
+
+  /// Connect to Business WebSocket (for candlestick data)
+  Future<void> _connectBusinessWebSocket(
+    String symbol,
+    String timeframe,
+  ) async {
+    try {
+      final currentUrl = businessWsUrls[_currentBusinessWsUrlIndex];
+      developer.log('📊 Connecting to OKX Business WebSocket: $currentUrl');
+
+      // Create WebSocket connection
+      _businessWsChannel = WebSocketChannel.connect(
         Uri.parse(currentUrl),
         protocols: [],
       );
 
       // Start listening to WebSocket messages
-      _wsChannel!.stream.listen(
-        _handleWebSocketMessage,
-        onError: _handleWebSocketError,
-        onDone: _handleWebSocketDone,
+      _businessWsChannel!.stream.listen(
+        (message) => _handleBusinessWebSocketMessage(message),
+        onError: (error) => _handleBusinessWebSocketError(error),
+        onDone: () => _handleBusinessWebSocketDone(),
       );
 
-      // Wait longer for connection to establish and stabilize
+      // Wait for connection to establish
       await Future.delayed(const Duration(milliseconds: 1000));
 
-      _isConnected = true;
-      _reconnectAttempts =
-          0; // Reset reconnect attempts on successful connection
-      _stopFallbackMode(); // Stop fallback mode on successful connection
+      _isBusinessConnected = true;
+      _reconnectAttempts = 0;
+      _stopFallbackMode();
 
       // Subscribe to candlestick updates
       await _subscribeToCandlesticks(symbol, timeframe);
+
+      // Start heartbeat for business channel
+      _startBusinessHeartbeat();
+
+      developer.log('✅ Business WebSocket connected for candlesticks');
+    } catch (e) {
+      developer.log('❌ Error connecting Business WebSocket: $e');
+      _isBusinessConnected = false;
+      rethrow;
+    }
+  }
+
+  /// Connect to Public WebSocket (for tickers, order book, trades)
+  Future<void> _connectPublicWebSocket(String symbol) async {
+    try {
+      final currentUrl = publicWsUrls[_currentPublicWsUrlIndex];
+      developer.log('📡 Connecting to OKX Public WebSocket: $currentUrl');
+
+      // Create WebSocket connection
+      _publicWsChannel = WebSocketChannel.connect(
+        Uri.parse(currentUrl),
+        protocols: [],
+      );
+
+      // Start listening to WebSocket messages
+      _publicWsChannel!.stream.listen(
+        (message) => _handlePublicWebSocketMessage(message),
+        onError: (error) => _handlePublicWebSocketError(error),
+        onDone: () => _handlePublicWebSocketDone(),
+      );
+
+      // Wait for connection to establish
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      _isPublicConnected = true;
 
       // Subscribe to ticker updates
       await _subscribeToTicker(symbol);
@@ -387,21 +660,18 @@ class OKXDataService {
       // Subscribe to trade updates
       await _subscribeToTrades(symbol);
 
-      // Start heartbeat
-      _startHeartbeat();
+      // Start heartbeat for public channel
+      _startPublicHeartbeat();
 
-      developer.log(
-        'WebSocket connected and subscribed to $symbol ($timeframe)',
-      );
+      developer.log('✅ Public WebSocket connected for market data');
     } catch (e) {
-      developer.log('Error connecting WebSocket: $e');
-      _isConnected = false;
-      _scheduleReconnect();
-      // Don't rethrow to prevent app crashes
+      developer.log('❌ Error connecting Public WebSocket: $e');
+      _isPublicConnected = false;
+      rethrow;
     }
   }
 
-  /// Subscribe to candlestick updates
+  /// Subscribe to candlestick updates (Business WebSocket)
   Future<void> _subscribeToCandlesticks(String symbol, String timeframe) async {
     final channelName = 'candle$timeframe';
     final subscribeMessage = {
@@ -411,10 +681,34 @@ class OKXDataService {
       ],
     };
 
-    _wsChannel?.sink.add(jsonEncode(subscribeMessage));
+    _businessWsChannel?.sink.add(jsonEncode(subscribeMessage));
+    developer.log('📊 Subscribed to $channelName for $symbol (Business WS)');
   }
 
-  /// Subscribe to ticker updates
+  /// Unsubscribe from candlestick updates (Business WebSocket)
+  Future<void> _unsubscribeFromCandlesticks(
+    String symbol,
+    String timeframe,
+  ) async {
+    final channelName = 'candle$timeframe';
+    final unsubscribeMessage = {
+      'op': 'unsubscribe',
+      'args': [
+        {'channel': channelName, 'instId': symbol},
+      ],
+    };
+
+    // Track pending unsubscribe
+    final key = '$channelName:$symbol';
+    _pendingBusinessUnsubscribes.add(key);
+
+    _businessWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
+    developer.log(
+      '📊 Unsubscribed from $channelName for $symbol (Business WS)',
+    );
+  }
+
+  /// Subscribe to ticker updates (Public WebSocket)
   Future<void> _subscribeToTicker(String symbol) async {
     final subscribeMessage = {
       'op': 'subscribe',
@@ -423,10 +717,28 @@ class OKXDataService {
       ],
     };
 
-    _wsChannel?.sink.add(jsonEncode(subscribeMessage));
+    _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
+    developer.log('📡 Subscribed to tickers for $symbol (Public WS)');
   }
 
-  /// Subscribe to order book updates
+  /// Unsubscribe from ticker updates (Public WebSocket)
+  Future<void> _unsubscribeFromTicker(String symbol) async {
+    final unsubscribeMessage = {
+      'op': 'unsubscribe',
+      'args': [
+        {'channel': 'tickers', 'instId': symbol},
+      ],
+    };
+
+    // Track pending unsubscribe
+    final key = 'tickers:$symbol';
+    _pendingPublicUnsubscribes.add(key);
+
+    _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
+    developer.log('📡 Unsubscribed from tickers for $symbol (Public WS)');
+  }
+
+  /// Subscribe to order book updates (Public WebSocket)
   Future<void> _subscribeToOrderBook(String symbol) async {
     final subscribeMessage = {
       'op': 'subscribe',
@@ -435,10 +747,28 @@ class OKXDataService {
       ],
     };
 
-    _wsChannel?.sink.add(jsonEncode(subscribeMessage));
+    _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
+    developer.log('📡 Subscribed to books5 for $symbol (Public WS)');
   }
 
-  /// Subscribe to trade updates
+  /// Unsubscribe from order book updates (Public WebSocket)
+  Future<void> _unsubscribeFromOrderBook(String symbol) async {
+    final unsubscribeMessage = {
+      'op': 'unsubscribe',
+      'args': [
+        {'channel': 'books5', 'instId': symbol},
+      ],
+    };
+
+    // Track pending unsubscribe
+    final key = 'books5:$symbol';
+    _pendingPublicUnsubscribes.add(key);
+
+    _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
+    developer.log('📡 Unsubscribed from books5 for $symbol (Public WS)');
+  }
+
+  /// Subscribe to trade updates (Public WebSocket)
   Future<void> _subscribeToTrades(String symbol) async {
     final subscribeMessage = {
       'op': 'subscribe',
@@ -447,16 +777,50 @@ class OKXDataService {
       ],
     };
 
-    _wsChannel?.sink.add(jsonEncode(subscribeMessage));
+    _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
+    developer.log('📡 Subscribed to trades for $symbol (Public WS)');
   }
 
-  /// Handle incoming WebSocket messages
-  void _handleWebSocketMessage(dynamic message) {
+  /// Unsubscribe from trade updates (Public WebSocket)
+  Future<void> _unsubscribeFromTrades(String symbol) async {
+    final unsubscribeMessage = {
+      'op': 'unsubscribe',
+      'args': [
+        {'channel': 'trades', 'instId': symbol},
+      ],
+    };
+
+    // Track pending unsubscribe
+    final key = 'trades:$symbol';
+    _pendingPublicUnsubscribes.add(key);
+
+    _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
+    developer.log('📡 Unsubscribed from trades for $symbol (Public WS)');
+  }
+
+  /// Handle incoming Business WebSocket messages (candlesticks)
+  void _handleBusinessWebSocketMessage(dynamic message) {
     try {
       final data = jsonDecode(message);
 
+      // Handle error responses
+      if (data['event'] == 'error') {
+        developer.log('❌ Business WS error: ${data['code']} - ${data['msg']}');
+        return;
+      }
+
       if (data['event'] == 'subscribe') {
-        developer.log('Subscribed to: ${data['arg']}');
+        developer.log('✅ Business WS subscribed to: ${data['arg']}');
+        return;
+      }
+
+      if (data['event'] == 'unsubscribe') {
+        final arg = data['arg'];
+        final channel = arg['channel'];
+        final instId = arg['instId'];
+        final key = '$channel:$instId';
+        _pendingBusinessUnsubscribes.remove(key);
+        developer.log('✅ Business WS unsubscribed from: $arg');
         return;
       }
 
@@ -469,7 +833,51 @@ class OKXDataService {
               .map((item) => OKXKline.fromList(item))
               .toList();
           _klineController.add(klines);
-        } else if (channel == 'tickers' && dataList.isNotEmpty) {
+          developer.log(
+            '📊 Business WS: Received ${klines.length} candlestick(s)',
+          );
+        }
+      } else {
+        // Log unexpected message format for debugging
+        developer.log('⚠️ Business WS unexpected message: $data');
+      }
+    } catch (e) {
+      developer.log('❌ Error handling Business WebSocket message: $e');
+      developer.log('   Raw message: $message');
+    }
+  }
+
+  /// Handle incoming Public WebSocket messages (tickers, order book, trades)
+  void _handlePublicWebSocketMessage(dynamic message) {
+    try {
+      final data = jsonDecode(message);
+
+      // Handle error responses
+      if (data['event'] == 'error') {
+        developer.log('❌ Public WS error: ${data['code']} - ${data['msg']}');
+        return;
+      }
+
+      if (data['event'] == 'subscribe') {
+        developer.log('✅ Public WS subscribed to: ${data['arg']}');
+        return;
+      }
+
+      if (data['event'] == 'unsubscribe') {
+        final arg = data['arg'];
+        final channel = arg['channel'];
+        final instId = arg['instId'];
+        final key = '$channel:$instId';
+        _pendingPublicUnsubscribes.remove(key);
+        developer.log('✅ Public WS unsubscribed from: $arg');
+        return;
+      }
+
+      if (data['data'] != null) {
+        final String channel = data['arg']['channel'];
+        final List<dynamic> dataList = data['data'];
+
+        if (channel == 'tickers' && dataList.isNotEmpty) {
           final ticker = OKXTicker.fromJson(dataList[0]);
           _tickerController.add(ticker);
           _currentPriceController.add(ticker.last);
@@ -482,23 +890,41 @@ class OKXDataService {
             _tradeController.add(trade);
           }
         }
+      } else {
+        // Log unexpected message format for debugging
+        developer.log('⚠️ Public WS unexpected message: $data');
       }
     } catch (e) {
-      developer.log('Error handling WebSocket message: $e');
+      developer.log('❌ Error handling Public WebSocket message: $e');
+      developer.log('   Raw message: $message');
     }
   }
 
-  /// Handle WebSocket errors
-  void _handleWebSocketError(dynamic error) {
-    developer.log('WebSocket error: $error');
-    _isConnected = false;
+  /// Handle Business WebSocket errors
+  void _handleBusinessWebSocketError(dynamic error) {
+    developer.log('❌ Business WebSocket error: $error');
+    _isBusinessConnected = false;
     _scheduleReconnect();
   }
 
-  /// Handle WebSocket connection closed
-  void _handleWebSocketDone() {
-    developer.log('WebSocket connection closed');
-    _isConnected = false;
+  /// Handle Business WebSocket connection closed
+  void _handleBusinessWebSocketDone() {
+    developer.log('🔌 Business WebSocket connection closed');
+    _isBusinessConnected = false;
+    _scheduleReconnect();
+  }
+
+  /// Handle Public WebSocket errors
+  void _handlePublicWebSocketError(dynamic error) {
+    developer.log('❌ Public WebSocket error: $error');
+    _isPublicConnected = false;
+    _scheduleReconnect();
+  }
+
+  /// Handle Public WebSocket connection closed
+  void _handlePublicWebSocketDone() {
+    developer.log('🔌 Public WebSocket connection closed');
+    _isPublicConnected = false;
     _scheduleReconnect();
   }
 
@@ -515,11 +941,16 @@ class OKXDataService {
     if (_currentSymbol != null && _currentTimeframe != null) {
       _reconnectTimer?.cancel();
 
-      // Try next WebSocket URL after 3 failed attempts
+      // Try next WebSocket URLs after 3 failed attempts
       if (_reconnectAttempts > 0 && _reconnectAttempts % 3 == 0) {
-        _currentWsUrlIndex = (_currentWsUrlIndex + 1) % wsUrls.length;
+        _currentPublicWsUrlIndex =
+            (_currentPublicWsUrlIndex + 1) % publicWsUrls.length;
+        _currentBusinessWsUrlIndex =
+            (_currentBusinessWsUrlIndex + 1) % businessWsUrls.length;
         developer.log(
-          'Switching to WebSocket URL: ${wsUrls[_currentWsUrlIndex]}',
+          'Switching WebSocket URLs:\n'
+          '  Public: ${publicWsUrls[_currentPublicWsUrlIndex]}\n'
+          '  Business: ${businessWsUrls[_currentBusinessWsUrlIndex]}',
         );
       }
 
@@ -532,7 +963,7 @@ class OKXDataService {
       );
 
       _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
-        if (!_isConnected) {
+        if (!isConnected) {
           developer.log(
             'Attempting to reconnect WebSocket (attempt $_reconnectAttempts)...',
           );
@@ -586,12 +1017,28 @@ class OKXDataService {
     _fallbackTimer = null;
   }
 
-  /// Start heartbeat to keep connection alive
-  void _startHeartbeat() {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 25), (timer) {
-      if (_isConnected && _wsChannel != null) {
-        _wsChannel!.sink.add('ping');
+  /// Start heartbeat for Public WebSocket
+  void _startPublicHeartbeat() {
+    _publicHeartbeatTimer?.cancel();
+    _publicHeartbeatTimer = Timer.periodic(const Duration(seconds: 25), (
+      timer,
+    ) {
+      if (_isPublicConnected && _publicWsChannel != null) {
+        _publicWsChannel!.sink.add('ping');
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  /// Start heartbeat for Business WebSocket
+  void _startBusinessHeartbeat() {
+    _businessHeartbeatTimer?.cancel();
+    _businessHeartbeatTimer = Timer.periodic(const Duration(seconds: 25), (
+      timer,
+    ) {
+      if (_isBusinessConnected && _businessWsChannel != null) {
+        _businessWsChannel!.sink.add('ping');
       } else {
         timer.cancel();
       }
@@ -600,22 +1047,26 @@ class OKXDataService {
 
   /// Disconnect WebSocket
   Future<void> disconnectWebSocket() async {
-    _isConnected = false;
+    _isPublicConnected = false;
+    _isBusinessConnected = false;
     _reconnectAttempts = 0;
-    _heartbeatTimer?.cancel();
+    _publicHeartbeatTimer?.cancel();
+    _businessHeartbeatTimer?.cancel();
     _reconnectTimer?.cancel();
     _stopFallbackMode();
 
     try {
-      await _wsChannel?.sink.close();
+      await _publicWsChannel?.sink.close();
+      await _businessWsChannel?.sink.close();
     } catch (e) {
       developer.log('Error closing WebSocket: $e');
     }
-    _wsChannel = null;
+    _publicWsChannel = null;
+    _businessWsChannel = null;
   }
 
-  /// Check if WebSocket is connected
-  bool get isConnected => _isConnected;
+  /// Check if WebSocket is connected (both public and business)
+  bool get isConnected => _isPublicConnected && _isBusinessConnected;
 
   /// Get current reconnection attempts
   int get reconnectionAttempts => _reconnectAttempts;
@@ -624,7 +1075,8 @@ class OKXDataService {
   Future<void> retryConnection() async {
     if (_currentSymbol != null && _currentTimeframe != null) {
       _reconnectAttempts = 0; // Reset attempts for manual retry
-      _currentWsUrlIndex = 0; // Start with first URL
+      _currentPublicWsUrlIndex = 0; // Start with first URL
+      _currentBusinessWsUrlIndex = 0; // Start with first URL
       _stopFallbackMode(); // Stop fallback mode
       await connectWebSocket(_currentSymbol!, timeframe: _currentTimeframe!);
     }

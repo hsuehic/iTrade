@@ -7,11 +7,12 @@ import 'package:webview_flutter/webview_flutter.dart';
 /// Supports partial data updates without full chart recreation
 class InteractiveKlineChart extends StatefulWidget {
   final List<Map<String, dynamic>>
-  klineData; // [{date, open, close, low, high}]
+  klineData; // [{date, open, close, low, high, volume}]
   final String symbol;
   final String interval;
   final bool isDarkMode;
   final double currentPrice;
+  final int pricePrecision; // Number of decimal places for price
 
   const InteractiveKlineChart({
     super.key,
@@ -20,6 +21,7 @@ class InteractiveKlineChart extends StatefulWidget {
     required this.interval,
     required this.isDarkMode,
     required this.currentPrice,
+    this.pricePrecision = 4, // Default to 4 decimal places
   });
 
   @override
@@ -61,9 +63,53 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
   void didUpdateWidget(InteractiveKlineChart oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // Only update data if chart is ready and data changed
-    if (_isChartReady && widget.klineData != oldWidget.klineData) {
-      _updateChartData();
+    debugPrint(
+      '🔍 didUpdateWidget called - oldPrice: ${oldWidget.currentPrice}, newPrice: ${widget.currentPrice}, ready: $_isChartReady',
+    );
+
+    // Update chart if data or current price changed
+    if (_isChartReady) {
+      final dataChanged = widget.klineData != oldWidget.klineData;
+      final priceChanged = widget.currentPrice != oldWidget.currentPrice;
+      final precisionChanged =
+          widget.pricePrecision != oldWidget.pricePrecision;
+      final dataLengthChanged =
+          widget.klineData.length != oldWidget.klineData.length;
+
+      if (priceChanged) {
+        debugPrint(
+          '💰 PRICE CHANGED: ${oldWidget.currentPrice} → ${widget.currentPrice}',
+        );
+      } else {
+        debugPrint('⚪ Price NOT changed (both: ${widget.currentPrice})');
+      }
+
+      // Check if last candle was updated (compare last item if data length same)
+      bool lastCandleChanged = false;
+      if (!dataLengthChanged &&
+          widget.klineData.isNotEmpty &&
+          oldWidget.klineData.isNotEmpty) {
+        final newLast = widget.klineData.last;
+        final oldLast = oldWidget.klineData.last;
+        lastCandleChanged =
+            newLast['close'] != oldLast['close'] ||
+            newLast['high'] != oldLast['high'] ||
+            newLast['low'] != oldLast['low'];
+      }
+
+      // Update if anything changed
+      if (dataChanged ||
+          priceChanged ||
+          precisionChanged ||
+          dataLengthChanged ||
+          lastCandleChanged) {
+        debugPrint(
+          '🔄 Calling _updateChartData - price=$priceChanged, data=$dataChanged, candle=$lastCandleChanged',
+        );
+        _updateChartData();
+      } else {
+        debugPrint('⛔ NOT calling _updateChartData - nothing changed');
+      }
     }
   }
 
@@ -121,8 +167,12 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
 <body>
   <div id="chart"></div>
   <script>
-    // Global variable to store original kline data for tooltip access
+    // Global variables to store data for tooltip and axis formatting
     window.originalKlineData = null;
+    window.currentCandleValues = null;
+    window.latestPriceValue = null;
+    window.latestPriceText = null;
+    window.isDarkTheme = false;
     
     // Wait for Echarts to load
     function initWhenReady() {
@@ -133,13 +183,11 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
       }
       
       try {
-        console.log('🚀 Starting chart initialization...');
         var chartDom = document.getElementById('chart');
         if (!chartDom) {
-          console.error('❌ Chart DOM element not found');
+          console.error('Chart DOM element not found');
           return;
         }
-        console.log('✅ Chart DOM found');
         
         window.chart = echarts.init(chartDom, null, {
           renderer: 'canvas',
@@ -148,7 +196,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           height: 'auto'
         });
 
-        // Add click listener to hide tooltips when clicking outside chart
+        // Add click listener to hide tooltips and crosshair when clicking outside chart
         document.addEventListener('click', function(event) {
           var chartRect = chartDom.getBoundingClientRect();
           var clickX = event.clientX;
@@ -157,37 +205,69 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           // Check if click is outside the chart area
           if (clickX < chartRect.left || clickX > chartRect.right ||
               clickY < chartRect.top || clickY > chartRect.bottom) {
-            // Hide tooltips
+            // Hide tooltips and crosshair completely
             if (window.chart && typeof window.chart.dispatchAction === 'function') {
+              // Hide tooltip
               window.chart.dispatchAction({
                 type: 'hideTip'
               });
+              // Disable axisPointer temporarily to hide crosshair lines
+              window.chart.setOption({
+                tooltip: {
+                  axisPointer: {
+                    type: 'cross',
+                    show: false
+                  }
+                }
+              }, false);
+              // Re-enable axisPointer after a brief moment for next interaction
+              setTimeout(function() {
+                if (window.chart) {
+                  window.chart.setOption({
+                    tooltip: {
+                      axisPointer: {
+                        type: 'cross',
+                        show: true
+                      }
+                    }
+                  }, false);
+                }
+              }, 100);
             }
           }
         });
-        console.log('✅ Echarts instance created');
         
         var currentData = ${jsonEncode(widget.klineData)};
-        console.log('📊 Data loaded:', currentData.length, 'candles');
         
         if (currentData.length === 0) {
-          console.warn('⚠️ No data to display');
+          console.warn('No data to display');
           return;
         }
         
+        // Initialize precision before creating chart using Flutter-provided value
+        window.pricePrecision = ${widget.pricePrecision};
+        if (typeof window.pricePrecision !== 'number' || isNaN(window.pricePrecision)) {
+          window.pricePrecision = 4;
+        }
+        console.log('🎯 Initialized price precision to', window.pricePrecision);
+        
+        window.latestPriceValue = ${widget.currentPrice};
+        if (typeof window.latestPriceValue !== 'number' || isNaN(window.latestPriceValue)) {
+          window.latestPriceValue = 0;
+        }
+        window.latestPriceText = formatPriceLabel(window.latestPriceValue);
         initChart(currentData, '${widget.symbol}', ${widget.currentPrice}, '${widget.interval}');
-        console.log('✅ Chart initialized successfully');
         
         // Notify Flutter that chart is ready
         if (typeof ChartReady !== 'undefined') {
           ChartReady.postMessage('ready');
-          console.log('✅ Notified Flutter: chart ready');
         }
         
         // Handle window resize
         window.addEventListener('resize', function() {
           if (window.chart) {
             window.chart.resize();
+            renderPriceIndicator(window.latestPriceValue, window.isDarkTheme);
           }
         });
       } catch (e) {
@@ -196,19 +276,110 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
       }
     }
     
+    function formatPriceLabel(price) {
+      if (typeof price !== 'number' || isNaN(price)) {
+        return '--';
+      }
+      var precision = window.pricePrecision || 4;
+      var absPrice = Math.abs(price);
+      if (absPrice < 0.0001) {
+        return price.toExponential(2);
+      }
+      return price.toFixed(precision);
+    }
+
+    function renderPriceIndicator(price, isDark) {
+      if (!window.chart) {
+        return;
+      }
+      if (typeof price !== 'number' || isNaN(price)) {
+        window.chart.setOption({ graphic: [] }, false);
+        return;
+      }
+
+      var yPixel = window.chart.convertToPixel({ yAxisIndex: 0 }, price);
+      if (!isFinite(yPixel)) {
+        return;
+      }
+
+      var chartWidth = window.chart.getWidth();
+      var chartHeight = window.chart.getHeight();
+      yPixel = Math.min(Math.max(yPixel, 0), chartHeight);
+
+      var labelText = formatPriceLabel(price);
+      var labelWidth = Math.max(labelText.length * 8 + 8, 50);
+      var labelHeight = 18;
+      var lineColor = isDark ? '#666' : '#999';
+      var labelBg = isDark ? '#1a1a1a' : '#ffffff';
+      var textColor = isDark ? '#fff' : '#000';
+
+      // Get grid area to position label after first x-axis gridline
+      var grid = window.chart.getModel().getComponent('grid', 0);
+      var gridRect = grid.coordinateSystem.getRect();
+      var gridLeft = gridRect.x;
+      
+      // Calculate position for first candlestick (after first vertical gridline)
+      var xPixel = window.chart.convertToPixel({ xAxisIndex: 0 }, 0);
+      if (!isFinite(xPixel)) {
+        xPixel = gridLeft + 10;
+      }
+      
+      var labelX = xPixel + 6;
+      var lineEndX = labelX + labelWidth + 4;
+
+      window.chart.setOption({
+        graphic: [
+          {
+            id: 'price-line',
+            type: 'line',
+            silent: true,
+            z: 100,
+            shape: { x1: lineEndX, y1: yPixel, x2: chartWidth, y2: yPixel },
+            style: {
+              stroke: lineColor,
+              lineWidth: 1,
+              lineDash: [4, 4],
+              opacity: 0.8
+            }
+          },
+          {
+            id: 'price-label',
+            type: 'group',
+            silent: true,
+            z: 100,
+            position: [labelX, yPixel - labelHeight / 2],
+            children: [
+              {
+                type: 'rect',
+                shape: { x: 0, y: 0, width: labelWidth, height: labelHeight, r: 3 },
+                style: {
+                  fill: labelBg,
+                  stroke: lineColor,
+                  lineWidth: 1
+                }
+              },
+              {
+                type: 'text',
+                style: {
+                  x: labelWidth / 2,
+                  y: labelHeight / 2,
+                  text: labelText,
+                  fill: textColor,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  textAlign: 'center',
+                  textVerticalAlign: 'middle'
+                }
+              }
+            ]
+          }
+        ]
+      }, false);
+    }
+
     // Initialize chart with data
       function initChart(data, symbol, currentPrice, interval) {
         try {
-          console.log('🔍 ===== INIT CHART DEBUG =====');
-          console.log('📊 Data length:', data.length);
-          console.log('📊 Interval:', interval);
-          console.log('📦 First RAW item:', JSON.stringify(data[0]));
-          console.log('📦 Last RAW item:', JSON.stringify(data[data.length - 1]));
-          console.log('   First - date:', data[0].date, 'type:', typeof data[0].date);
-          console.log('   First - open:', data[0].open, 'type:', typeof data[0].open);
-          console.log('   First - close:', data[0].close, 'type:', typeof data[0].close);
-          console.log('   First - low:', data[0].low, 'type:', typeof data[0].low);
-          console.log('   First - high:', data[0].high, 'type:', typeof data[0].high);
           
           // Store original data globally for tooltip access
           window.originalKlineData = data;
@@ -256,12 +427,13 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
         ]; 
       });
       
-      console.log('📈 First MAPPED candle [O,C,L,H]:', values[0]);
-      console.log('   Open:', values[0][0], 'type:', typeof values[0][0]);
-      console.log('   Close:', values[0][1], 'type:', typeof values[0][1]);
-      console.log('   Low:', values[0][2], 'type:', typeof values[0][2]);
-      console.log('   High:', values[0][3], 'type:', typeof values[0][3]);
-      console.log('========================');
+      // Extract volume data
+      var volumes = data.map(function(item) { 
+        return Number(item.volume || 0); 
+      });
+      
+      // Store values globally for y-axis formatter access
+      window.currentCandleValues = values;
       
       // Define isDark for use in tooltip config
       var isDark = '$bgColor' === '#1a1a1a';
@@ -325,52 +497,76 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
 
             var dataIndex = candleData.dataIndex;
 
-            console.log('🔍 ===== TOOLTIP DEBUG =====');
-            console.log('📍 Data Index:', dataIndex);
-
             // Get the actual data point from the global original data array
             if (!window.originalKlineData || window.originalKlineData.length === 0) {
-              console.error('❌ No original data available');
               return '';
             }
 
             var actualData = window.originalKlineData[dataIndex];
             if (!actualData) {
-              console.error('❌ Could not find data at index:', dataIndex);
               return '';
             }
 
-            console.log('📦 Found data object:', JSON.stringify(actualData));
-
-            // Extract OHLC directly from the original data object
+            // Extract OHLC and volume directly from the original data object
             var open = Number(actualData.open);
             var close = Number(actualData.close);
             var low = Number(actualData.low);
             var high = Number(actualData.high);
+            var volume = Number(actualData.volume || 0);
             var date = actualData.date;
-
-            console.log('   ✅ Final OHLC: O=', open, 'C=', close, 'L=', low, 'H=', high);
+            
+            // Debug: Log volume data
+            console.log('📊 Tooltip volume:', volume, 'from data:', actualData.volume);
 
             var isUp = close >= open;
             var color = isUp ? '#22c55e' : '#ef5350';
             var bgColor = '$bgColor';
             var isDark = bgColor === '#1a1a1a';
 
+            // Format number using API-provided precision
             var formatNum = function(num) {
-              return typeof num === 'number' ? num.toFixed(2) : '0.00';
+              if (typeof num !== 'number') return '--';
+              if (num === 0) return '0';
+              
+              var absNum = Math.abs(num);
+              var precision = window.pricePrecision || 4;
+              
+              // Very small numbers - scientific notation
+              if (absNum < 0.0001) {
+                return num.toExponential(2);
+              }
+              
+              // Use API-provided precision - keep all digits for consistency
+              return num.toFixed(precision);
             };
+            
+            // Format volume with K/M/B suffix
+            var formatVol = function(vol) {
+              if (typeof vol !== 'number' || vol === 0) return '--';
+              if (vol >= 1000000000) {
+                return (vol / 1000000000).toFixed(2) + 'B';
+              } else if (vol >= 1000000) {
+                return (vol / 1000000).toFixed(2) + 'M';
+              } else if (vol >= 1000) {
+                return (vol / 1000).toFixed(2) + 'K';
+              }
+              return vol.toFixed(2);
+            };
+            
+            // Calculate range as percentage of open price
+            var rangePercent = open !== 0 ? ((high - low) / open * 100) : 0;
 
-            // Simple clean style - OHLC only
-            var html = '<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-width: 120px;">';
+            // Compact style - OHLCR + Volume
+            var html = '<div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-width: 95px;">';
 
             // Time
-            html += '<div style="margin-bottom: 6px; color: ' + (isDark ? '#999' : '#666') + '; font-size: 10px;">' + date + '</div>';
+            html += '<div style="margin-bottom: 4px; color: ' + (isDark ? '#999' : '#666') + '; font-size: 10px;">' + date + '</div>';
 
             // Row helper
             var row = function(label, value, valueColor) {
-              return '<div style="display: flex; justify-content: space-between; margin-bottom: 3px; line-height: 16px;">' +
-                '<span style="color: ' + (isDark ? '#999' : '#666') + '; font-size: 10px;">' + label + '</span>' +
-                '<span style="color: ' + (valueColor || (isDark ? '#fff' : '#000')) + '; font-size: 11px; font-weight: 500; margin-left: 16px;">' + value + '</span>' +
+              return '<div style="display: flex; justify-content: space-between; margin-bottom: 2px; line-height: 14px;">' +
+                '<span style="color: ' + (isDark ? '#999' : '#666') + '; font-size: 9px;">' + label + '</span>' +
+                '<span style="color: ' + (valueColor || (isDark ? '#fff' : '#000')) + '; font-size: 10px; font-weight: 500; margin-left: 12px;">' + value + '</span>' +
                 '</div>';
             };
 
@@ -378,6 +574,8 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             html += row('High', formatNum(high));
             html += row('Low', formatNum(low));
             html += row('Close', formatNum(close), color);
+            html += row('Range', rangePercent.toFixed(2) + '%', isDark ? '#999' : '#666');
+            html += row('Vol', formatVol(volume), isDark ? '#999' : '#666');
 
             html += '</div>';
             return html;
@@ -385,7 +583,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
         },
         grid: { 
           left: '3%', 
-          right: '8%', 
+          right: '3%', 
           top: '3%', 
           bottom: '8%', 
           containLabel: true,
@@ -401,88 +599,130 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             color: '$textColor', 
             fontSize: 9,
             rotate: 0,
-            interval: function(index, value) {
-              // Only show first and last labels
-              return index === 0 || index === displayDates.length - 1;
-            },
             showMinLabel: true,
-            showMaxLabel: true
-          },
-          splitLine: { 
-            show: false
-          }
-        },
-        yAxis: {
-          type: 'value',
-          scale: true,
-          axisLine: { show: false },
-          axisLabel: { 
-            color: '$textColor', 
-            fontSize: 9,
-            formatter: function(value) {
-              // Format large numbers (e.g., 91890 → 91.9K)
-              if (value >= 1000) {
-                return (value / 1000).toFixed(1) + 'K';
+            showMaxLabel: true,
+            interval: function(index, value) {
+              var totalLabels = displayDates.length;
+              if (totalLabels <= 6) {
+                return true;
               }
-              return value.toFixed(0);
+              if (index === 0 || index === totalLabels - 1) {
+                return true;
+              }
+              var step = Math.floor(totalLabels / 6);
+              if (step < 1) step = 1;
+              return index % step === 0;
             }
           },
           splitLine: { 
             show: true,
-            lineStyle: { color: '$gridLineColor', opacity: 0.5, type: 'solid', width: 1 } 
+            interval: function(index, value) {
+              var totalBoundaries = displayDates.length + 1;
+              if (totalBoundaries <= 7) {
+                return true;
+              }
+              if (index === 0 || index === totalBoundaries - 1) {
+                return true;
+              }
+              var step = Math.floor(totalBoundaries / 6);
+              if (step < 1) step = 1;
+              return index % step === 0;
+            },
+            lineStyle: { color: '$gridLineColor', opacity: 0.2, type: 'solid', width: 1 }
           }
         },
+        yAxis: [
+          {
+            type: 'value',
+            scale: true,
+            position: 'left',
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { 
+              color: '$textColor', 
+              fontSize: 9,
+              formatter: function(value) {
+                var currentValues = window.currentCandleValues || values;
+                var allPrices = currentValues.map(function(v) { return v[1]; });
+                var minPrice = Math.min.apply(null, allPrices);
+                var maxPrice = Math.max.apply(null, allPrices);
+                var priceRange = maxPrice - minPrice;
+                var avgPrice = (minPrice + maxPrice) / 2;
+                
+                if (avgPrice >= 10000) {
+                  return (value / 1000).toFixed(1) + 'K';
+                }
+                if (avgPrice >= 1000) {
+                  return value.toFixed(1);
+                }
+                if (avgPrice >= 1) {
+                  if (priceRange < 1) {
+                    return value.toFixed(3);
+                  } else if (priceRange < 10) {
+                    return value.toFixed(2);
+                  } else if (priceRange < 100) {
+                    return value.toFixed(1);
+                  }
+                  return value.toFixed(0);
+                }
+                if (avgPrice >= 0.01) {
+                  return value.toFixed(4);
+                }
+                if (avgPrice >= 0.0001) {
+                  return value.toFixed(6);
+                }
+                return value.toExponential(2);
+              }
+            },
+            splitNumber: 6,
+            minInterval: 0,
+            splitLine: { 
+              show: true,
+              lineStyle: { color: '$gridLineColor', opacity: 0.5, type: 'solid', width: 1 } 
+            }
+          },
+          {
+            type: 'value',
+            scale: true,
+            position: 'right',
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { 
+              show: false
+            },
+            splitNumber: 3,
+            splitLine: { 
+              show: false
+            },
+            max: function(value) {
+              // Make volume bars take up only bottom 25% of chart
+              return value.max * 4;
+            }
+          }
+        ],
         dataZoom: [
           { type: 'inside', disabled: true },
           { type: 'slider', show: false }
         ],
         series: [
           {
+            name: 'Candlestick',
             type: 'candlestick',
             data: values,
+            yAxisIndex: 0,
             itemStyle: {
               color: '#22c55e',
               color0: '#ef5350',
               borderColor: '#22c55e',
               borderColor0: '#ef5350'
             },
-            barWidth: '70%',
-            markLine: {
-              symbol: 'none',
-              silent: true,
-              label: {
-                show: true,
-                color: isDark ? '#fff' : '#000',
-                fontSize: 10,
-                position: 'insideEndTop',
-                formatter: '{c}',
-                backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.85)',
-                borderRadius: 2,
-                padding: [2, 6],
-                borderWidth: 1,
-                borderColor: isDark ? '#666' : '#999'
-              },
-              lineStyle: { 
-                color: isDark ? '#666' : '#999', 
-                width: 1, 
-                type: 'dashed',
-                opacity: 0.8
-              },
-              emphasis: {
-                lineStyle: { 
-                  color: isDark ? '#666' : '#999', 
-                  width: 1, 
-                  type: 'dashed',
-                  opacity: 0.8
-                }
-              },
-              data: [{ yAxis: currentPrice }]
-            }
+            barWidth: '70%'
           },
           {
             name: 'MA5',
             type: 'line',
             data: calculateMA(values, 5),
+            yAxisIndex: 0,
             smooth: true,
             lineStyle: { color: '#ffa726', opacity: 0.7, width: 1 },
             showSymbol: false
@@ -491,18 +731,39 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             name: 'MA10',
             type: 'line',
             data: calculateMA(values, 10),
+            yAxisIndex: 0,
             smooth: true,
             lineStyle: { color: '#42a5f5', opacity: 0.7, width: 1 },
             showSymbol: false
+          },
+          {
+            name: 'Volume',
+            type: 'bar',
+            data: volumes.map(function(vol, idx) {
+              var candle = values[idx];
+              var isUp = candle[1] >= candle[0]; // close >= open
+              return {
+                value: vol,
+                itemStyle: {
+                  color: isUp ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 83, 80, 0.4)'
+                }
+              };
+            }),
+            yAxisIndex: 1,
+            barWidth: '70%',
+            z: 0
           }
         ]
       };
       
       if (window.chart) {
         window.chart.setOption(option, true);
-        console.log('✅ Chart option set successfully');
+        window.latestPriceValue = currentPrice;
+        window.latestPriceText = formatPriceLabel(currentPrice);
+        window.isDarkTheme = isDark;
+        renderPriceIndicator(currentPrice, isDark);
       } else {
-        console.error('❌ window.chart is null');
+        console.error('window.chart is null');
       }
       } catch (error) {
         console.error('❌ Error in initChart:', error);
@@ -513,15 +774,37 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     }
     
     // Update chart data without full recreation
-    function updateChartData(newData, currentPrice, interval) {
+    function updateChartData(newData, currentPrice, interval, pricePrecision) {
+      console.log('🟠 updateChartData called - currentPrice:', currentPrice);
+      
       if (!window.chart) {
         console.error('Chart not initialized');
         return false;
       }
       
       try {
+        // Store precision globally for formatters using the latest value from Flutter
+        if (typeof pricePrecision === 'number' && !isNaN(pricePrecision)) {
+          window.pricePrecision = pricePrecision;
+        } else if (typeof pricePrecision === 'string' && pricePrecision.trim() !== '') {
+          var parsedPrecision = parseInt(pricePrecision, 10);
+          window.pricePrecision = isNaN(parsedPrecision) ? (window.pricePrecision || 4) : parsedPrecision;
+        } else if (!window.pricePrecision) {
+          window.pricePrecision = 4;
+        }
+        
         // Update global data for tooltip access
         window.originalKlineData = newData;
+        if (typeof currentPrice === 'number' && !isNaN(currentPrice)) {
+          window.latestPriceValue = currentPrice;
+          window.latestPriceText = formatPriceLabel(currentPrice);
+        } else if (!window.latestPriceText && window.originalKlineData.length > 0) {
+          var lastClose = Number(window.originalKlineData[window.originalKlineData.length - 1].close);
+          if (!isNaN(lastClose)) {
+            window.latestPriceValue = lastClose;
+            window.latestPriceText = formatPriceLabel(lastClose);
+          }
+        }
         
         // Check if interval is intraday
         var isIntraday = interval && !interval.match(/^(1D|1W|1M|1d|1w|1m)\$/i);
@@ -556,22 +839,44 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           return [item.open, item.close, item.low, item.high]; 
         });
         
+        // Extract volume data
+        var volumes = newData.map(function(item) { 
+          return Number(item.volume || 0); 
+        });
+        
+        // Update global values for y-axis formatter
+        window.currentCandleValues = values;
+        
         // Use setOption with notMerge: false and lazyUpdate: true
         // This updates data without recreating the chart
+        var isDark = '$bgColor' === '#1a1a1a';
+        
         window.chart.setOption({
           xAxis: { data: displayDates },
           series: [
             {
-              data: values,
-              markLine: {
-                silent: true,
-                data: [{ yAxis: currentPrice }]
-              }
+              data: values
             },
             { data: calculateMA(values, 5) },
-            { data: calculateMA(values, 10) }
+            { data: calculateMA(values, 10) },
+            {
+              data: volumes.map(function(vol, idx) {
+                var candle = values[idx];
+                var isUp = candle[1] >= candle[0];
+                return {
+                  value: vol,
+                  itemStyle: {
+                    color: isUp ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 83, 80, 0.4)'
+                  }
+                };
+              })
+            }
           ]
         }, { notMerge: false, lazyUpdate: true, silent: true });
+        window.latestPriceValue = currentPrice;
+        window.latestPriceText = formatPriceLabel(currentPrice);
+        window.isDarkTheme = isDark;
+        renderPriceIndicator(currentPrice, isDark);
         
         return true;
       } catch (e) {
@@ -616,7 +921,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     final jsonData = jsonEncode(widget.klineData);
     final jsCode =
         '''
-      updateChartData($jsonData, ${widget.currentPrice}, '${widget.interval}');
+      updateChartData($jsonData, ${widget.currentPrice}, '${widget.interval}', ${widget.pricePrecision});
     ''';
 
     _controller!.runJavaScript(jsCode);
@@ -636,7 +941,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
 
     _controller!.runJavaScript(jsCode);
   }
-
 
   @override
   Widget build(BuildContext context) {

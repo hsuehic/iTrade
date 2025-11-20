@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -36,9 +37,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   bool _isWebSocketConnected = false;
   String _currentSymbol = '';
   String _selectedInterval = '15m';
+  int _pricePrecision = 4; // Default precision, will be fetched from API
 
   // Global key to access chart for hiding tooltips
   final GlobalKey _chartKey = GlobalKey();
+
+  // Stream subscriptions for cleanup
+  StreamSubscription<OKXTicker>? _tickerSubscription;
+  StreamSubscription<OKXOrderBook>? _orderBookSubscription;
+  StreamSubscription<List<OKXKline>>? _klineSubscription;
+  StreamSubscription<OKXTrade>? _tradeSubscription;
 
   // Dynamic symbol list - populated in initState
   late final List<String> _symbols;
@@ -148,12 +156,62 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
   }
 
+  /// Cancel all stream subscriptions
+  Future<void> _cancelStreamSubscriptions() async {
+    await _tickerSubscription?.cancel();
+    await _orderBookSubscription?.cancel();
+    await _klineSubscription?.cancel();
+    await _tradeSubscription?.cancel();
+
+    _tickerSubscription = null;
+    _orderBookSubscription = null;
+    _klineSubscription = null;
+    _tradeSubscription = null;
+  }
+
   @override
   void dispose() {
     _timer.cancel();
     _tabController.dispose();
+    _cancelStreamSubscriptions(); // Cancel stream subscriptions
     _okxService.dispose();
     super.dispose();
+  }
+
+  /// Convert interval string to milliseconds
+  int _getIntervalMilliseconds(String interval) {
+    switch (interval.toUpperCase()) {
+      case '1M':
+        return 60 * 1000; // 1 minute
+      case '5M':
+        return 5 * 60 * 1000; // 5 minutes
+      case '15M':
+        return 15 * 60 * 1000; // 15 minutes
+      case '30M':
+        return 30 * 60 * 1000; // 30 minutes
+      case '1H':
+        return 60 * 60 * 1000; // 1 hour
+      case '4H':
+        return 4 * 60 * 60 * 1000; // 4 hours
+      case '1D':
+        return 24 * 60 * 60 * 1000; // 1 day
+      case '1W':
+        return 7 * 24 * 60 * 60 * 1000; // 1 week
+      default:
+        return 60 * 1000; // Default to 1 minute
+    }
+  }
+
+  double get _priceChangeThreshold {
+    if (_pricePrecision <= 0) {
+      return 0.01;
+    }
+    final threshold = 1 / math.pow(10, _pricePrecision);
+    return threshold.toDouble();
+  }
+
+  bool _hasSignificantPriceChange(double a, double b) {
+    return (a - b).abs() > _priceChangeThreshold;
   }
 
   /// Calculate display volume based on instrument type
@@ -183,6 +241,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
   Future<void> _connectWebSocket() async {
     try {
+      // Cancel existing subscriptions before creating new ones
+      await _cancelStreamSubscriptions();
+
       // Add timeout to WebSocket connection
       await _okxService
           .connectWebSocket(_currentSymbol, timeframe: _selectedInterval)
@@ -201,33 +262,83 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       }
 
       // Listen to WebSocket streams with error handling
-      _okxService.tickerStream.listen((ticker) {
+      _tickerSubscription = _okxService.tickerStream.listen((ticker) {
         if (mounted) {
+          debugPrint('📡 Ticker received: ${ticker.instId} = ${ticker.last}');
           setState(() {
             _ticker = ticker;
 
-            // Update the last candle's close price with current ticker for consistency
-            // This ensures price indicator and chart always match
+            // Update or generate candles based on ticker data
             if (_klines.isNotEmpty) {
               final lastKline = _klines.last;
-              final updatedKline = OKXKline(
-                timestamp: lastKline.timestamp,
-                open: lastKline.open,
-                high: lastKline.high > ticker.last
+              final currentPrice = ticker.last;
+              final now = DateTime.now();
+
+              // Calculate expected candle interval in milliseconds
+              final intervalMs = _getIntervalMilliseconds(_selectedInterval);
+              final lastKlineTime = lastKline.time;
+              final timeSinceLastCandle = now
+                  .difference(lastKlineTime)
+                  .inMilliseconds;
+
+              // If time gap is larger than interval, generate a new candle
+              if (timeSinceLastCandle > intervalMs * 1.5) {
+                // Generate new candle starting from last close price
+                final newCandleTime = DateTime.fromMillisecondsSinceEpoch(
+                  (lastKlineTime.millisecondsSinceEpoch ~/ intervalMs + 1) *
+                      intervalMs,
+                );
+
+                final newKline = OKXKline(
+                  timestamp: newCandleTime.millisecondsSinceEpoch.toString(),
+                  open: lastKline.close, // Open = previous close
+                  high: currentPrice > lastKline.close
+                      ? currentPrice
+                      : lastKline.close,
+                  low: currentPrice < lastKline.close
+                      ? currentPrice
+                      : lastKline.close,
+                  close: currentPrice,
+                  volume: 0, // Unknown volume for synthetic candle
+                  time: newCandleTime,
+                );
+
+                // Keep exactly 30 klines: remove oldest before adding new
+                if (_klines.length >= 30) {
+                  _klines.removeAt(0);
+                }
+                _klines.add(newKline);
+
+                debugPrint(
+                  '📊 Generated synthetic candle at ${newCandleTime.toIso8601String()}',
+                );
+              } else {
+                // Update the last (unclosed) candle with live ticker data
+                final newHigh = lastKline.high > currentPrice
                     ? lastKline.high
-                    : ticker.last,
-                low: lastKline.low < ticker.last ? lastKline.low : ticker.last,
-                close: ticker.last, // Use current ticker price
-                volume: lastKline.volume,
-                time: lastKline.time,
-              );
-              _klines[_klines.length - 1] = updatedKline;
+                    : currentPrice;
+
+                final newLow = lastKline.low < currentPrice
+                    ? lastKline.low
+                    : currentPrice;
+
+                final updatedKline = OKXKline(
+                  timestamp: lastKline.timestamp,
+                  open: lastKline.open,
+                  high: newHigh,
+                  low: newLow,
+                  close: currentPrice,
+                  volume: lastKline.volume,
+                  time: lastKline.time,
+                );
+                _klines[_klines.length - 1] = updatedKline;
+              }
             }
           });
         }
       }, onError: (error) => debugPrint('Ticker stream error: $error'));
 
-      _okxService.orderBookStream.listen((orderBook) {
+      _orderBookSubscription = _okxService.orderBookStream.listen((orderBook) {
         if (mounted) {
           setState(() {
             _orderBook = orderBook;
@@ -235,7 +346,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         }
       }, onError: (error) => debugPrint('OrderBook stream error: $error'));
 
-      _okxService.klineStream.listen((klines) {
+      _klineSubscription = _okxService.klineStream.listen((klines) {
         if (mounted && klines.isNotEmpty) {
           if (_klines.isEmpty) return;
 
@@ -246,26 +357,53 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           final newTimestamp = int.tryParse(newKline.timestamp) ?? 0;
           final lastTimestamp = int.tryParse(lastKline.timestamp) ?? 0;
 
+          // Validate that this kline matches the current interval
+          // by checking if timestamp spacing matches expected interval
+          final expectedIntervalMs = _getIntervalMilliseconds(
+            _selectedInterval,
+          );
+          final timestampDiff = (newTimestamp - lastTimestamp).abs();
+
+          // If timestamps differ, check if the difference matches our interval
+          // Allow some tolerance for timing (±10%)
+          if (timestampDiff > 0) {
+            final isMatchingInterval =
+                timestampDiff >= expectedIntervalMs * 0.9 &&
+                timestampDiff <= expectedIntervalMs * 1.1;
+
+            // Skip this update if it's for a different interval
+            if (!isMatchingInterval &&
+                timestampDiff > expectedIntervalMs * 0.5) {
+              debugPrint(
+                '⚠️ Skipping kline push: interval mismatch '
+                '(expected: ${expectedIntervalMs}ms, got: ${timestampDiff}ms)',
+              );
+              return;
+            }
+          }
+
           bool shouldUpdate = false;
 
           // Check if this is an update to the current candle or a new candle
           if (newTimestamp == lastTimestamp) {
             // Same timestamp: Update the current (last) candle
-            // Only update if OHLC values actually changed significantly
-            final oldClose = lastKline.close;
-            final newClose = newKline.close;
-            if ((oldClose - newClose).abs() > 0.01) {
+            final hasMeaningfulChange =
+                _hasSignificantPriceChange(newKline.open, lastKline.open) ||
+                _hasSignificantPriceChange(newKline.high, lastKline.high) ||
+                _hasSignificantPriceChange(newKline.low, lastKline.low) ||
+                _hasSignificantPriceChange(newKline.close, lastKline.close);
+
+            if (hasMeaningfulChange) {
               _klines[_klines.length - 1] = newKline;
               shouldUpdate = true;
             }
           } else if (newTimestamp > lastTimestamp) {
             // Newer timestamp: New candle period started, add to the list
-            _klines.add(newKline);
-
-            // Keep only the most recent 50 klines
-            if (_klines.length > 50) {
+            // Keep exactly 30 klines: remove oldest before adding new
+            if (_klines.length >= 30) {
               _klines.removeAt(0); // Remove oldest
             }
+            _klines.add(newKline);
             shouldUpdate = true;
           }
 
@@ -276,7 +414,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         }
       }, onError: (error) => debugPrint('Kline stream error: $error'));
 
-      _okxService.tradeStream.listen((trade) {
+      _tradeSubscription = _okxService.tradeStream.listen((trade) {
         if (mounted) {
           setState(() {
             // Add new trade to the beginning of the list
@@ -317,12 +455,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         'Fetching klines for $_currentSymbol with interval $_selectedInterval',
       );
 
-      // Load only 50 klines for faster loading
+      // Fetch price precision for this symbol from API
+      final precisionF = _okxService
+          .getPricePrecision(_currentSymbol)
+          .timeout(
+            const Duration(seconds: 5),
+            onTimeout: () {
+              debugPrint('⚠️ Precision fetch timeout, using default: 4');
+              return 4; // Default to 4 decimals for crypto
+            },
+          );
+
+      // Load exactly 30 klines for fixed chart window
       final klinesF = _okxService
           .getHistoricalKlines(
             _currentSymbol,
             bar: _selectedInterval,
-            limit: 50, // Reduced from 100 to 50
+            limit: 30, // Fixed window of 30 candlesticks
           )
           .timeout(
             const Duration(seconds: 10),
@@ -354,16 +503,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
       // Wait for all data
       final results = await Future.wait([
+        precisionF,
         klinesF,
         tradesF,
         tickerF,
         orderBookF,
       ], eagerError: true);
 
-      final klines = results[0] as List<OKXKline>;
-      final trades = results[1] as List<OKXTrade>;
-      final ticker = results[2] as OKXTicker;
-      final orderBook = results[3] as OKXOrderBook;
+      final precision = results[0] as int;
+      final klines = results[1] as List<OKXKline>;
+      final trades = results[2] as List<OKXTrade>;
+      final ticker = results[3] as OKXTicker;
+      final orderBook = results[4] as OKXOrderBook;
+
+      debugPrint('📊 Price precision for $_currentSymbol: $precision decimals');
 
       debugPrint(
         'Data loaded: ${klines.length} klines, ${trades.length} trades',
@@ -389,14 +542,23 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           final updatedKlines = [updatedKline, ...klines.skip(1)];
 
           setState(() {
-            _klines = updatedKlines.reversed.toList();
+            _pricePrecision = precision; // Update precision
+            // Limit to 30 candlesticks (most recent)
+            final reversedKlines = updatedKlines.reversed.toList();
+            _klines = reversedKlines.length > 30
+                ? reversedKlines.sublist(reversedKlines.length - 30)
+                : reversedKlines;
             _trades = trades;
             _ticker = ticker;
             _orderBook = orderBook;
           });
         } else {
           setState(() {
-            _klines = klines.reversed.toList();
+            // Limit to 30 candlesticks (most recent)
+            final reversedKlines = klines.reversed.toList();
+            _klines = reversedKlines.length > 30
+                ? reversedKlines.sublist(reversedKlines.length - 30)
+                : reversedKlines;
             _trades = trades;
             _ticker = ticker;
             _orderBook = orderBook;
@@ -738,98 +900,122 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           // Hide tooltips when tapping anywhere on the screen
           (_chartKey.currentState as dynamic)?.hideTooltips();
         },
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const SizedBox(height: 16),
 
-            // Ticker Information - Always show with placeholders
-            _buildTickerInfo(isDarkMode),
+              // Ticker Information - Always show with placeholders
+              _buildTickerInfo(isDarkMode),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Interval Selector
-            _buildIntervalSelector(isDarkMode),
+              // Interval Selector
+              _buildIntervalSelector(isDarkMode),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            // Kline Chart - Fixed height, no scroll needed
-            SizedBox(
-              height: 300,
-              child: _klines.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.candlestick_chart,
-                            size: 48,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Loading chart data...',
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 14,
+              // Kline Chart - Fixed height, no scroll needed
+              SizedBox(
+                height: 300,
+                child: _klines.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.candlestick_chart,
+                              size: 48,
+                              color: Colors.grey[400],
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+                            Text(
+                              'Loading chart data...',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : InteractiveKlineChart(
+                        key: _chartKey,
+                        klineData: (() {
+                          // Debug: Verify we have exactly 30 or fewer candlesticks
+                          debugPrint(
+                            '📊 Total klines being sent to chart: ${_klines.length}',
+                          );
+                          return _klines.map((k) {
+                            // Debug: Print first kline data
+                            if (k == _klines.first) {
+                              debugPrint('🔍 Flutter First Kline Data:');
+                              debugPrint('  time: ${k.time}');
+                              debugPrint(
+                                '  open: ${k.open} (${k.open.runtimeType})',
+                              );
+                              debugPrint(
+                                '  close: ${k.close} (${k.close.runtimeType})',
+                              );
+                              debugPrint(
+                                '  low: ${k.low} (${k.low.runtimeType})',
+                              );
+                              debugPrint(
+                                '  high: ${k.high} (${k.high.runtimeType})',
+                              );
+                              debugPrint(
+                                '  volume: ${k.volume} (${k.volume.runtimeType})',
+                              );
+                            }
+
+                            // Format date based on interval
+                            String dateLabel;
+                            if (_selectedInterval == '1D' ||
+                                _selectedInterval == '1W' ||
+                                _selectedInterval == '1M') {
+                              // For daily/weekly/monthly: show date only
+                              dateLabel = DateFormat('MM/dd').format(k.time);
+                            } else if (_selectedInterval == '4H') {
+                              // For 4H: show date + hour
+                              dateLabel = DateFormat(
+                                'MM/dd HH:00',
+                              ).format(k.time);
+                            } else {
+                              // For 15m, 1H: show date + time
+                              dateLabel = DateFormat(
+                                'MM/dd HH:mm',
+                              ).format(k.time);
+                            }
+
+                            return {
+                              'date': dateLabel,
+                              'open': k.open,
+                              'close': k.close,
+                              'low': k.low,
+                              'high': k.high,
+                              'volume': k.volume,
+                            };
+                          }).toList();
+                        })(),
+                        symbol: _currentSymbol,
+                        interval: _selectedInterval,
+                        isDarkMode: isDarkMode,
+                        currentPrice: _ticker?.last ?? 0,
+                        pricePrecision: _pricePrecision,
                       ),
-                    )
-                  : InteractiveKlineChart(
-                      key: _chartKey,
-                      klineData: _klines.map((k) {
-                        // Debug: Print first kline data
-                        if (k == _klines.first) {
-                          debugPrint('🔍 Flutter First Kline Data:');
-                          debugPrint('  time: ${k.time}');
-                          debugPrint(
-                            '  open: ${k.open} (${k.open.runtimeType})',
-                          );
-                          debugPrint(
-                            '  close: ${k.close} (${k.close.runtimeType})',
-                          );
-                          debugPrint('  low: ${k.low} (${k.low.runtimeType})');
-                          debugPrint(
-                            '  high: ${k.high} (${k.high.runtimeType})',
-                          );
-                        }
+              ),
 
-                        // Format date based on interval
-                        String dateLabel;
-                        if (_selectedInterval == '1D' ||
-                            _selectedInterval == '1W' ||
-                            _selectedInterval == '1M') {
-                          // For daily/weekly/monthly: show date only
-                          dateLabel = DateFormat('MM/dd').format(k.time);
-                        } else if (_selectedInterval == '4H') {
-                          // For 4H: show date + hour
-                          dateLabel = DateFormat('MM/dd HH:00').format(k.time);
-                        } else {
-                          // For 15m, 1H: show date + time
-                          dateLabel = DateFormat('MM/dd HH:mm').format(k.time);
-                        }
+              const SizedBox(height: 16),
 
-                        return {
-                          'date': dateLabel,
-                          'open': k.open,
-                          'close': k.close,
-                          'low': k.low,
-                          'high': k.high,
-                        };
-                      }).toList(),
-                      symbol: _currentSymbol,
-                      interval: _selectedInterval,
-                      isDarkMode: isDarkMode,
-                      currentPrice: _ticker?.last ?? 0,
-                    ),
-            ),
+              // TabBar and TabView for Order Book and Trade History - Fixed height instead of Expanded
+              SizedBox(
+                height: 400, // Fixed height for the tab section
+                child: _buildTabSection(isDarkMode),
+              ),
 
-            const SizedBox(height: 16),
-
-            // TabBar and TabView for Order Book and Trade History - Expanded to fill remaining space
-            Expanded(child: _buildTabSection(isDarkMode)),
-          ],
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -922,7 +1108,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    hasData ? '\$${_ticker!.last.toStringAsFixed(2)}' : '\$--',
+                    hasData
+                        ? '\$${formatPriceExact(_ticker!.last, precision: _pricePrecision)}'
+                        : '\$--',
                     style: TextStyle(
                       color: isDarkMode ? Colors.white : Colors.black,
                       fontSize: 24,
@@ -960,7 +1148,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   _buildTickerStat(
                     '24h High',
                     hasData
-                        ? '\$${_ticker!.high24h.toStringAsFixed(2)}'
+                        ? '\$${formatPriceExact(_ticker!.high24h, precision: _pricePrecision)}'
                         : '\$--',
                     isDarkMode,
                   ),
@@ -968,7 +1156,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   _buildTickerStat(
                     '24h Low',
                     hasData
-                        ? '\$${_ticker!.low24h.toStringAsFixed(2)}'
+                        ? '\$${formatPriceExact(_ticker!.low24h, precision: _pricePrecision)}'
                         : '\$--',
                     isDarkMode,
                   ),
