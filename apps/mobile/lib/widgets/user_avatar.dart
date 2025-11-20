@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 
 /// UserAvatar displays the logged-in user's image from AuthService,
@@ -19,17 +18,18 @@ class UserAvatar extends StatelessWidget {
   final double? iconSize;
 
   const UserAvatar({
-    Key? key,
+    super.key,
     this.radius = 28,
     this.backgroundColor,
     this.icon = Icons.person,
     this.iconColor,
     this.iconSize,
-  }) : super(key: key);
+  }) : super();
 
   @override
   Widget build(BuildContext context) {
-    final Color effectiveBg = backgroundColor ?? Colors.white.withOpacity(0.3);
+    final Color effectiveBg =
+        backgroundColor ?? Colors.white.withValues(alpha: 0.3);
     // Use the radius and iconSize as-is (caller decides if they want to adapt)
     final double effectiveIconSize = iconSize ?? radius * 0.6;
     final String? imgStr = AuthService.instance.user?.image;
@@ -48,13 +48,13 @@ class UserAvatar extends StatelessWidget {
       }
     }
     return CircleAvatar(
-      radius: radius,  // ✅ Use as-is
+      radius: radius, // ✅ Use as-is
       backgroundImage: provider,
       backgroundColor: effectiveBg,
       child: provider == null
           ? Icon(
               icon,
-              size: effectiveIconSize,  // ✅ Use as-is
+              size: effectiveIconSize, // ✅ Use as-is
               color: iconColor ?? Colors.white,
             )
           : null,

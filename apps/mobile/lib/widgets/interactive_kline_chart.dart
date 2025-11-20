@@ -147,6 +147,24 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           width: 'auto',
           height: 'auto'
         });
+
+        // Add click listener to hide tooltips when clicking outside chart
+        document.addEventListener('click', function(event) {
+          var chartRect = chartDom.getBoundingClientRect();
+          var clickX = event.clientX;
+          var clickY = event.clientY;
+
+          // Check if click is outside the chart area
+          if (clickX < chartRect.left || clickX > chartRect.right ||
+              clickY < chartRect.top || clickY > chartRect.bottom) {
+            // Hide tooltips
+            if (window.chart && typeof window.chart.dispatchAction === 'function') {
+              window.chart.dispatchAction({
+                type: 'hideTip'
+              });
+            }
+          }
+        });
         console.log('✅ Echarts instance created');
         
         var currentData = ${jsonEncode(widget.klineData)};
@@ -603,6 +621,22 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
 
     _controller!.runJavaScript(jsCode);
   }
+
+  /// Hide tooltips via JavaScript (public method)
+  void hideTooltips() {
+    if (!_isChartReady || _controller == null) return;
+
+    const jsCode = '''
+      if (window.chart && typeof window.chart.dispatchAction === 'function') {
+        window.chart.dispatchAction({
+          type: 'hideTip'
+        });
+      }
+    ''';
+
+    _controller!.runJavaScript(jsCode);
+  }
+
 
   @override
   Widget build(BuildContext context) {

@@ -7,15 +7,17 @@ import '../services/okx_data_service.dart';
 import '../widgets/order_book_widget.dart';
 import '../widgets/trade_history_widget.dart';
 import '../widgets/interactive_kline_chart.dart';
+import '../utils/number_format_utils.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
-  final List<String>? availableSymbols; // Optional: symbols to show in dropdown
+  final Map<String, OKXTicker>?
+  availableTickers; // Optional: ticker data for symbols
 
   const ProductDetailScreen({
     super.key,
     required this.productId,
-    this.availableSymbols,
+    this.availableTickers,
   });
 
   @override
@@ -34,13 +36,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   bool _isWebSocketConnected = false;
   String _currentSymbol = '';
   String _selectedInterval = '15m';
-  
-  // Chart version to control when chart gets fully rebuilt
-  // Only increment on symbol/interval changes, not on data updates
-  int _chartVersion = 0;
+
+  // Global key to access chart for hiding tooltips
+  final GlobalKey _chartKey = GlobalKey();
 
   // Dynamic symbol list - populated in initState
   late final List<String> _symbols;
+
+  // Ticker data for symbol list - passed from parent
+  late final Map<String, OKXTicker> _symbolTickers;
 
   // Kline intervals
   final Map<String, String> _intervals = {
@@ -59,8 +63,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     _currentSymbol = widget.productId;
     _tabController = TabController(length: 2, vsync: this);
 
-    // Initialize symbol list - ensure current symbol is included
+    // Initialize symbol list and ticker data
     _symbols = _initializeSymbolList();
+    _symbolTickers = widget.availableTickers ?? {};
 
     // Show UI immediately with placeholders - no loading state needed
     // Data will load in background and update UI when ready
@@ -81,9 +86,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     });
   }
 
-  /// Initialize symbol list with current symbol and optional provided symbols
+  /// Initialize symbol list with current symbol and available tickers
   List<String> _initializeSymbolList() {
-    // Default popular trading pairs
+    // Default popular trading pairs (fallback if no tickers provided)
     final defaultSymbols = [
       'BTC-USDT',
       'ETH-USDT',
@@ -97,13 +102,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       'AVAX-USDT',
     ];
 
-    // Use provided symbols or defaults
-    final baseSymbols = widget.availableSymbols ?? defaultSymbols;
+    // Use symbols from tickers if available, otherwise use defaults
+    final availableSymbols =
+        widget.availableTickers?.keys.toList() ?? defaultSymbols;
 
     // Create a Set to avoid duplicates, then convert back to List
     final symbolSet = <String>{
       _currentSymbol, // Always include current symbol first
-      ...baseSymbols, // Add all other symbols
+      ...availableSymbols, // Add all other symbols
     };
 
     // Return as list with current symbol first
@@ -175,24 +181,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     return ticker.volCcy24h * ticker.last;
   }
 
-  /// Format volume for display with M (million) or B (billion) suffix
-  /// Examples: 1,234,567 -> "1.23M", 1,234,567,890 -> "1.23B"
-  String _formatVolume(double volume) {
-    if (volume >= 1000000000) {
-      // Billions
-      return '${(volume / 1000000000).toStringAsFixed(2)}B';
-    } else if (volume >= 1000000) {
-      // Millions
-      return '${(volume / 1000000).toStringAsFixed(2)}M';
-    } else if (volume >= 1000) {
-      // Thousands
-      return '${(volume / 1000).toStringAsFixed(2)}K';
-    } else {
-      // Less than 1000
-      return volume.toStringAsFixed(2);
-    }
-  }
-
   Future<void> _connectWebSocket() async {
     try {
       // Add timeout to WebSocket connection
@@ -217,7 +205,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         if (mounted) {
           setState(() {
             _ticker = ticker;
-            
+
             // Update the last candle's close price with current ticker for consistency
             // This ensures price indicator and chart always match
             if (_klines.isNotEmpty) {
@@ -428,9 +416,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     // Update state immediately - keep old data visible while loading new
     setState(() {
       _currentSymbol = newSymbol;
-      _chartVersion++; // Force chart rebuild for new symbol
-      // DON'T clear data - keep old data visible
-      // DON'T set loading state - keep UI responsive
     });
 
     // Load new data in background
@@ -464,6 +449,131 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
   }
 
+  /// Custom widget for symbol list item matching product list layout
+  Widget _buildSymbolListItem(
+    String symbol,
+    bool isDarkMode,
+    OKXTicker? ticker,
+  ) {
+    final isSelected = symbol == _currentSymbol;
+    final hasData = ticker != null;
+    final changePercent = hasData
+        ? ((ticker!.last - ticker.open24h) / ticker.open24h) * 100
+        : null;
+    final changeColor = hasData && changePercent! >= 0
+        ? Colors.green
+        : Colors.red;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? (isDarkMode
+                  ? Colors.blue.withValues(alpha: 0.1)
+                  : Colors.blue.withValues(alpha: 0.05))
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isSelected
+              ? (isDarkMode ? Colors.blue[300]! : Colors.blue[400]!)
+              : Colors.transparent,
+          width: 1,
+        ),
+      ),
+      child: ListTile(
+        key: ValueKey(symbol),
+        onTap: () {
+          Navigator.pop(context);
+          _changeSymbol(symbol);
+        },
+        leading: hasData && ticker!.iconUrl.isNotEmpty
+            ? Image.network(
+                ticker.iconUrl,
+                width: 28,
+                height: 28,
+                errorBuilder: (context, error, stackTrace) =>
+                    Icon(Icons.monetization_on, size: 28),
+              )
+            : Icon(
+                Icons.currency_exchange,
+                size: 28,
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+        title: Text(
+          symbol,
+          style: TextStyle(
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+            color: isSelected
+                ? (isDarkMode ? Colors.blue[300] : Colors.blue[700])
+                : (isDarkMode ? Colors.white : Colors.black),
+          ),
+        ),
+        subtitle: hasData
+            ? Text(
+                'Vol: ${formatVolume(_calculateDisplayVolume(ticker!))}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+              )
+            : Text(
+                'Price unavailable',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.grey[500] : Colors.grey[400],
+                ),
+              ),
+        trailing: hasData
+            ? IntrinsicWidth(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '\$${ticker!.last.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isDarkMode ? Colors.white : Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          changePercent! >= 0
+                              ? Icons.trending_up
+                              : Icons.trending_down,
+                          size: 16,
+                          color: changeColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: changeColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              )
+            : isSelected
+            ? Icon(
+                Icons.check_circle,
+                color: isDarkMode ? Colors.blue[300] : Colors.blue[700],
+              )
+            : null,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
   /// Show searchable symbol selection dialog
   void _showSymbolSearchDialog(bool isDarkMode) {
     String searchQuery = '';
@@ -480,7 +590,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             }).toList();
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.7,
+              height: MediaQuery.of(context).size.height * 0.8,
               decoration: BoxDecoration(
                 color: isDarkMode ? Colors.grey[900] : Colors.white,
                 borderRadius: const BorderRadius.only(
@@ -557,36 +667,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             itemCount: filteredSymbols.length,
                             itemBuilder: (context, index) {
                               final symbol = filteredSymbols[index];
-                              final isSelected = symbol == _currentSymbol;
+                              final ticker = _symbolTickers[symbol];
 
-                              return ListTile(
-                                title: Text(
-                                  symbol,
-                                  style: TextStyle(
-                                    fontWeight: isSelected
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                    color: isSelected
-                                        ? (isDarkMode
-                                              ? Colors.blue[300]
-                                              : Colors.blue[700])
-                                        : (isDarkMode
-                                              ? Colors.white
-                                              : Colors.black),
-                                  ),
-                                ),
-                                trailing: isSelected
-                                    ? Icon(
-                                        Icons.check_circle,
-                                        color: isDarkMode
-                                            ? Colors.blue[300]
-                                            : Colors.blue[700],
-                                      )
-                                    : null,
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _changeSymbol(symbol);
-                                },
+                              return _buildSymbolListItem(
+                                symbol,
+                                isDarkMode,
+                                ticker,
                               );
                             },
                           ),
@@ -622,8 +708,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               ),
               const SizedBox(width: 4),
               Icon(
-                Icons.search,
-                size: 20,
+                Icons.arrow_drop_down,
+                size: 28,
                 color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
               ),
             ],
@@ -647,90 +733,104 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 16),
+      body: GestureDetector(
+        onTap: () {
+          // Hide tooltips when tapping anywhere on the screen
+          (_chartKey.currentState as dynamic)?.hideTooltips();
+        },
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
 
-          // Ticker Information - Always show with placeholders
-          _buildTickerInfo(isDarkMode),
+            // Ticker Information - Always show with placeholders
+            _buildTickerInfo(isDarkMode),
 
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Interval Selector
-          _buildIntervalSelector(isDarkMode),
+            // Interval Selector
+            _buildIntervalSelector(isDarkMode),
 
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Kline Chart - Fixed height, no scroll needed
-          SizedBox(
-            height: 300,
-            child: _klines.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.candlestick_chart,
-                          size: 48,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Loading chart data...',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
+            // Kline Chart - Fixed height, no scroll needed
+            SizedBox(
+              height: 300,
+              child: _klines.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.candlestick_chart,
+                            size: 48,
+                            color: Colors.grey[400],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading chart data...',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : InteractiveKlineChart(
+                      key: _chartKey,
+                      klineData: _klines.map((k) {
+                        // Debug: Print first kline data
+                        if (k == _klines.first) {
+                          debugPrint('🔍 Flutter First Kline Data:');
+                          debugPrint('  time: ${k.time}');
+                          debugPrint(
+                            '  open: ${k.open} (${k.open.runtimeType})',
+                          );
+                          debugPrint(
+                            '  close: ${k.close} (${k.close.runtimeType})',
+                          );
+                          debugPrint('  low: ${k.low} (${k.low.runtimeType})');
+                          debugPrint(
+                            '  high: ${k.high} (${k.high.runtimeType})',
+                          );
+                        }
+
+                        // Format date based on interval
+                        String dateLabel;
+                        if (_selectedInterval == '1D' ||
+                            _selectedInterval == '1W' ||
+                            _selectedInterval == '1M') {
+                          // For daily/weekly/monthly: show date only
+                          dateLabel = DateFormat('MM/dd').format(k.time);
+                        } else if (_selectedInterval == '4H') {
+                          // For 4H: show date + hour
+                          dateLabel = DateFormat('MM/dd HH:00').format(k.time);
+                        } else {
+                          // For 15m, 1H: show date + time
+                          dateLabel = DateFormat('MM/dd HH:mm').format(k.time);
+                        }
+
+                        return {
+                          'date': dateLabel,
+                          'open': k.open,
+                          'close': k.close,
+                          'low': k.low,
+                          'high': k.high,
+                        };
+                      }).toList(),
+                      symbol: _currentSymbol,
+                      interval: _selectedInterval,
+                      isDarkMode: isDarkMode,
+                      currentPrice: _ticker?.last ?? 0,
                     ),
-                  )
-                : InteractiveKlineChart(
-                    key: ValueKey('chart_${_currentSymbol}_$_chartVersion'),
-                    klineData: _klines.map((k) {
-                      // Debug: Print first kline data
-                      if (k == _klines.first) {
-                        debugPrint('🔍 Flutter First Kline Data:');
-                        debugPrint('  time: ${k.time}');
-                        debugPrint('  open: ${k.open} (${k.open.runtimeType})');
-                        debugPrint('  close: ${k.close} (${k.close.runtimeType})');
-                        debugPrint('  low: ${k.low} (${k.low.runtimeType})');
-                        debugPrint('  high: ${k.high} (${k.high.runtimeType})');
-                      }
-                      
-                      // Format date based on interval
-                      String dateLabel;
-                      if (_selectedInterval == '1D' || _selectedInterval == '1W' || _selectedInterval == '1M') {
-                        // For daily/weekly/monthly: show date only
-                        dateLabel = DateFormat('MM/dd').format(k.time);
-                      } else if (_selectedInterval == '4H') {
-                        // For 4H: show date + hour
-                        dateLabel = DateFormat('MM/dd HH:00').format(k.time);
-                      } else {
-                        // For 15m, 1H: show date + time
-                        dateLabel = DateFormat('MM/dd HH:mm').format(k.time);
-                      }
-                      
-                      return {
-                        'date': dateLabel,
-                        'open': k.open,
-                        'close': k.close,
-                        'low': k.low,
-                        'high': k.high,
-                      };
-                    }).toList(),
-                    symbol: _currentSymbol,
-                    interval: _selectedInterval,
-                    isDarkMode: isDarkMode,
-                    currentPrice: _ticker?.last ?? 0,
-                  ),
-          ),
+            ),
 
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // TabBar and TabView for Order Book and Trade History - Expanded to fill remaining space
-          Expanded(child: _buildTabSection(isDarkMode)),
-        ],
+            // TabBar and TabView for Order Book and Trade History - Expanded to fill remaining space
+            Expanded(child: _buildTabSection(isDarkMode)),
+          ],
+        ),
       ),
     );
   }
@@ -741,8 +841,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final double? changePercent = hasData
         ? ((_ticker!.last - _ticker!.open24h) / _ticker!.open24h) * 100
         : null;
-    final Color changeColor =
-        hasData && changePercent! >= 0 ? Colors.green : Colors.red;
+    final Color changeColor = hasData && changePercent! >= 0
+        ? Colors.green
+        : Colors.red;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -762,6 +863,56 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Symbol Icon and Name Row
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          color: isDarkMode
+                              ? Colors.grey[800]
+                              : Colors.grey[200],
+                        ),
+                        child: hasData && _ticker!.iconUrl.isNotEmpty
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.network(
+                                  _ticker!.iconUrl,
+                                  width: 32,
+                                  height: 32,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      Icon(
+                                        Icons.currency_exchange,
+                                        size: 20,
+                                        color: isDarkMode
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                      ),
+                                ),
+                              )
+                            : Icon(
+                                Icons.currency_exchange,
+                                size: 20,
+                                color: isDarkMode
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                              ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _currentSymbol,
+                        style: TextStyle(
+                          color: isDarkMode ? Colors.white : Colors.black,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
                   Text(
                     'Last Price',
                     style: TextStyle(
@@ -808,19 +959,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 children: [
                   _buildTickerStat(
                     '24h High',
-                    hasData ? '\$${_ticker!.high24h.toStringAsFixed(2)}' : '\$--',
+                    hasData
+                        ? '\$${_ticker!.high24h.toStringAsFixed(2)}'
+                        : '\$--',
                     isDarkMode,
                   ),
                   const SizedBox(height: 8),
                   _buildTickerStat(
                     '24h Low',
-                    hasData ? '\$${_ticker!.low24h.toStringAsFixed(2)}' : '\$--',
+                    hasData
+                        ? '\$${_ticker!.low24h.toStringAsFixed(2)}'
+                        : '\$--',
                     isDarkMode,
                   ),
                   const SizedBox(height: 8),
                   _buildTickerStat(
                     '24h Volume',
-                    hasData ? _formatVolume(_calculateDisplayVolume(_ticker!)) : '--',
+                    hasData
+                        ? formatVolume(_calculateDisplayVolume(_ticker!))
+                        : '--',
                     isDarkMode,
                   ),
                 ],
@@ -989,14 +1146,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               indicatorPadding: const EdgeInsets.all(0),
               padding: const EdgeInsets.all(0),
               tabs: const [
-                Tab(
-                  text: 'Order Book',
-                  height: 36,
-                ),
-                Tab(
-                  text: 'Trade History',
-                  height: 36,
-                ),
+                Tab(text: 'Order Book', height: 36),
+                Tab(text: 'Trade History', height: 36),
               ],
             ),
           ),

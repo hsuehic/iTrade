@@ -6,6 +6,7 @@ import '../widgets/tag_list.dart';
 import '../widgets/custom_app_bar.dart';
 import '../services/okx_data_service.dart';
 import '../utils/responsive_layout.dart';
+import '../utils/number_format_utils.dart';
 import 'product_detail.dart';
 
 class ProductScreen extends StatefulWidget {
@@ -97,23 +98,6 @@ class _ProductScreenState extends State<ProductScreen>
     return ticker.volCcy24h * ticker.last;
   }
 
-  /// Format volume for display with M (million) or B (billion) suffix
-  /// Examples: 1,234,567 -> "1.23M", 1,234,567,890 -> "1.23B"
-  String _formatVolume(double volume) {
-    if (volume >= 1000000000) {
-      // Billions
-      return '${(volume / 1000000000).toStringAsFixed(2)}B';
-    } else if (volume >= 1000000) {
-      // Millions
-      return '${(volume / 1000000).toStringAsFixed(2)}M';
-    } else if (volume >= 1000) {
-      // Thousands
-      return '${(volume / 1000).toStringAsFixed(2)}K';
-    } else {
-      // Less than 1000
-      return volume.toStringAsFixed(2);
-    }
-  }
 
   void _handleQuery(String query) {
     if (query.trim().isNotEmpty) {
@@ -245,15 +229,13 @@ class _ProductScreenState extends State<ProductScreen>
     return ListTile(
       key: ValueKey(ticker.instId),
       onTap: () {
-        // Extract available symbols from loaded tickers
-        final availableSymbols = _tickers.map((t) => t.instId).toList();
-
+        // Pass ticker data directly (no need to refetch)
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ProductDetailScreen(
               productId: ticker.instId,
-              availableSymbols: availableSymbols, // Pass available symbols
+              availableTickers: {for (final t in _tickers) t.instId: t}, // Pass ticker data
             ),
           ),
         );
@@ -273,7 +255,7 @@ class _ProductScreenState extends State<ProductScreen>
         ),
       ),
       subtitle: Text(
-        'Vol: ${_formatVolume(_calculateDisplayVolume(ticker))}',
+        'Vol: ${formatVolume(_calculateDisplayVolume(ticker))}',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10.sp),
       ),
       trailing: IntrinsicWidth(
@@ -322,15 +304,13 @@ class _ProductScreenState extends State<ProductScreen>
 
     return InkWell(
       onTap: () {
-        // Extract available symbols from loaded tickers
-        final availableSymbols = _tickers.map((t) => t.instId).toList();
-
+        // Pass ticker data directly (no need to refetch)
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ProductDetailScreen(
               productId: ticker.instId,
-              availableSymbols: availableSymbols, // Pass available symbols
+              availableTickers: {for (final t in _tickers) t.instId: t}, // Pass ticker data
             ),
           ),
         );
@@ -373,7 +353,7 @@ class _ProductScreenState extends State<ProductScreen>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Vol: ${_formatVolume(_calculateDisplayVolume(ticker))}',
+                    'Vol: ${formatVolume(_calculateDisplayVolume(ticker))}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ],
