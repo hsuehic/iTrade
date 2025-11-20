@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -32,8 +31,7 @@ Future<void> main() async {
   // Wrap entire initialization in try-catch to prevent white screen
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    developer.log('App initializing...', name: 'main');
-
+    
     // Firebase initialization with timeout
     bool firebaseReady = false;
     try {
@@ -42,17 +40,14 @@ Future<void> main() async {
       ).timeout(
         const Duration(seconds: 10),
         onTimeout: () {
-          developer.log('Firebase init timeout', name: 'main');
-          throw TimeoutException('Firebase initialization timed out');
+                    throw TimeoutException('Firebase initialization timed out');
         },
       );
       firebaseReady = true;
-      developer.log('Firebase initialized', name: 'main');
-    } catch (e) {
+          } catch (e) {
       // If config files are missing, keep app running and log a hint.
       // Add GoogleService-Info.plist (iOS) and google-services.json (Android), or configure via FlutterFire.
-      developer.log('Firebase initialization failed', name: 'main', error: e);
-    }
+          }
 
     // Firebase messaging setup (non-blocking)
     if (firebaseReady) {
@@ -67,10 +62,9 @@ Future<void> main() async {
           const Duration(seconds: 5),
         );
         NotificationService.instance.listenToMessages();
-        final token = await NotificationService.instance.getDeviceToken();
-        developer.log('FCM token: $token', name: 'main');
+        await NotificationService.instance.getDeviceToken();
       } catch (e) {
-        developer.log('Notification setup failed', name: 'main', error: e);
+        // Notification setup failed, continue without notifications
       }
     }
 
@@ -87,35 +81,23 @@ Future<void> main() async {
           .timeout(
             const Duration(seconds: 10),
             onTimeout: () {
-              developer.log('ApiClient init timeout', name: 'main');
               throw TimeoutException('API Client initialization timed out');
             },
           );
-      developer.log('ApiClient initialized', name: 'main');
     } catch (e) {
-      developer.log('ApiClient init failed', name: 'main', error: e);
       // Continue app launch even if API init fails
     }
 
     // Initialize theme service (should be fast)
     try {
       await ThemeService.instance.init().timeout(const Duration(seconds: 3));
-      developer.log('ThemeService initialized', name: 'main');
     } catch (e) {
-      developer.log('ThemeService init failed', name: 'main', error: e);
       // Continue with default theme
     }
 
-    developer.log('App initialization complete', name: 'main');
     runApp(const MyApp());
-  } catch (e, stackTrace) {
-    // Last resort error handler - log and try to show error screen
-    developer.log(
-      'Critical error during app initialization',
-      name: 'main',
-      error: e,
-      stackTrace: stackTrace,
-    );
+  } catch (e) {
+    // Last resort error handler - show error screen
     // Still try to run app with error screen
     runApp(
       MaterialApp(
@@ -233,11 +215,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               },
               onGenerateRoute: (settings) {
                 // Handle deep links and external navigation
-                developer.log(
-                  'onGenerateRoute: ${settings.name}',
-                  name: 'MyApp',
-                );
-                return null; // Use default route handling
+                                return null; // Use default route handling
               },
             );
           },
@@ -382,13 +360,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final shouldUseSidebar = isTablet || isLargeScreen;
 
     // Debug: Print device info to understand layout detection
-    developer.log(
-      'Screen: ${screenWidth.toStringAsFixed(0)}x${screenHeight.toStringAsFixed(0)}, '
-      'isTablet: $isTablet, isLargeScreen: $isLargeScreen, '
-      'shouldUseSidebar: $shouldUseSidebar',
-      name: 'MyHomePage',
-    );
-
+    
     if (shouldUseSidebar) {
       // Tablet layout: Modern sidebar navigation
       return Scaffold(

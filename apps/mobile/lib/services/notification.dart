@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:developer' as developer;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -34,25 +33,13 @@ class NotificationService {
     // Note: This may fail on iOS simulators as they don't support APNS
     try {
       await _messaging.subscribeToTopic('news');
-      developer.log('Subscribed to topic: news', name: 'NotificationService');
-    } catch (e) {
-      developer.log(
-        'Failed to subscribe to topic: news (this is expected on iOS simulator)',
-        name: 'NotificationService',
-        error: e,
-      );
-    }
+          } catch (e) {
+          }
 
     try {
       await _messaging.subscribeToTopic('allUsers');
-      developer.log('Subscribed to topic: allUsers', name: 'NotificationService');
-    } catch (e) {
-      developer.log(
-        'Failed to subscribe to topic: allUsers (this is expected on iOS simulator)',
-        name: 'NotificationService',
-        error: e,
-      );
-    }
+          } catch (e) {
+          }
 
     if (Platform.isIOS || Platform.isMacOS) {
       try {
@@ -62,12 +49,7 @@ class NotificationService {
           sound: true,
         );
       } catch (e) {
-        developer.log(
-          'Failed to set notification presentation options',
-          name: 'NotificationService',
-          error: e,
-        );
-      }
+              }
     }
 
     _initialized = true;
@@ -90,12 +72,7 @@ class NotificationService {
     try {
       return await _messaging.getToken();
     } catch (e) {
-      developer.log(
-        'Failed to get device token (this is expected on iOS simulator)',
-        name: 'NotificationService',
-        error: e,
-      );
-      return null;
+            return null;
     }
   }
 
@@ -140,9 +117,4 @@ class NotificationService {
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Background handler; Firebase.initializeApp is automatically handled by FlutterFire if configured
-  developer.log(
-    'Background message received',
-    name: 'FirebaseMessaging',
-    error: message.data,
-  );
-}
+  }

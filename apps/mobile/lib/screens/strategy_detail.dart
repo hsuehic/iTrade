@@ -45,17 +45,14 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   }
 
   Future<void> _loadOrders() async {
-    print('🔍 Loading orders for strategy: ${_strategy.id} (${_strategy.name})');
     setState(() => _isLoadingOrders = true);
     try {
       final orders = await _orderService.getOrders(strategyId: _strategy.id);
-      print('✅ Received ${orders.length} orders');
       setState(() {
         _orders = orders;
         _isLoadingOrders = false;
       });
     } catch (e) {
-      print('❌ Error loading orders: $e');
       setState(() => _isLoadingOrders = false);
     }
   }
@@ -69,7 +66,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error loading PnL: $e');
+      // Error ignored
     }
   }
 

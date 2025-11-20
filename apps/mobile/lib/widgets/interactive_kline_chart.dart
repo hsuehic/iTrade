@@ -43,11 +43,8 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
   Future<void> _loadEchartsBundle() async {
     try {
       _echartsBundle = await rootBundle.loadString('assets/js/echarts.min.js');
-      debugPrint(
-        '✅ Echarts bundle loaded (${(_echartsBundle!.length / 1024).toStringAsFixed(0)}KB)',
-      );
     } catch (e) {
-      debugPrint('⚠️ Failed to load Echarts bundle: $e, using CDN fallback');
+      // Use CDN fallback if bundle loading fails
     }
 
     _initializeWebView();
@@ -63,10 +60,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
   void didUpdateWidget(InteractiveKlineChart oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    debugPrint(
-      '🔍 didUpdateWidget called - oldPrice: ${oldWidget.currentPrice}, newPrice: ${widget.currentPrice}, ready: $_isChartReady',
-    );
-
     // Update chart if data or current price changed
     if (_isChartReady) {
       final dataChanged = widget.klineData != oldWidget.klineData;
@@ -75,14 +68,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           widget.pricePrecision != oldWidget.pricePrecision;
       final dataLengthChanged =
           widget.klineData.length != oldWidget.klineData.length;
-
-      if (priceChanged) {
-        debugPrint(
-          '💰 PRICE CHANGED: ${oldWidget.currentPrice} → ${widget.currentPrice}',
-        );
-      } else {
-        debugPrint('⚪ Price NOT changed (both: ${widget.currentPrice})');
-      }
 
       // Check if last candle was updated (compare last item if data length same)
       bool lastCandleChanged = false;
@@ -103,12 +88,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           precisionChanged ||
           dataLengthChanged ||
           lastCandleChanged) {
-        debugPrint(
-          '🔄 Calling _updateChartData - price=$priceChanged, data=$dataChanged, candle=$lastCandleChanged',
-        );
         _updateChartData();
-      } else {
-        debugPrint('⛔ NOT calling _updateChartData - nothing changed');
       }
     }
   }
@@ -123,7 +103,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           setState(() {
             _isChartReady = true;
           });
-          debugPrint('✅ Chart ready!');
         },
       )
       ..loadHtmlString(_generateHtml());
@@ -178,7 +157,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     // Wait for Echarts to load
     function initWhenReady() {
       if (typeof echarts === 'undefined') {
-        console.log('Echarts not loaded yet, retrying...');
         setTimeout(initWhenReady, 100);
         return;
       }
@@ -250,7 +228,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
         if (typeof window.pricePrecision !== 'number' || isNaN(window.pricePrecision)) {
           window.pricePrecision = 4;
         }
-        console.log('🎯 Initialized price precision to', window.pricePrecision);
         
         window.latestPriceValue = ${widget.currentPrice};
         if (typeof window.latestPriceValue !== 'number' || isNaN(window.latestPriceValue)) {
@@ -404,7 +381,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
       
       // Check if interval is intraday (not 1D, 1W, 1M)
       var isIntraday = interval && !interval.match(/^(1D|1W|1M|1d|1w|1m)\$/i);
-      console.log('📅 Is intraday:', isIntraday);
       
       // Format dates for display
       var formatDateLabel = function(dateStr, index, isFirst, isLast) {
@@ -532,9 +508,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             var high = Number(actualData.high);
             var volume = Number(actualData.volume || 0);
             var date = actualData.date;
-            
-            // Debug: Log volume data
-            console.log('📊 Tooltip volume:', volume, 'from data:', actualData.volume);
 
             var isUp = close >= open;
             var color = isUp ? '#22c55e' : '#ef5350';
@@ -794,7 +767,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
                 animationDurationUpdate: 300,
                 animationEasingUpdate: 'cubicOut'
               }, false);
-              console.log('✅ Smooth animations enabled for future updates');
             }
           }, 100);
         }
@@ -811,7 +783,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     
     // Update chart data without full recreation
     function updateChartData(newData, currentPrice, interval, pricePrecision) {
-      console.log('🟠 updateChartData called - currentPrice:', currentPrice);
       
       if (!window.chart) {
         console.error('Chart not initialized');
@@ -967,18 +938,13 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
   void reinitializeChart() {
     if (!_isChartReady || _controller == null) return;
 
-    debugPrint('🔄 Reinitializing chart...');
-
     final jsonData = jsonEncode(widget.klineData);
     final jsCode =
         '''
       (function() {
         try {
-          console.log('🔄 Reinitializing chart with new data...');
-          
           // Dispose old chart instance completely
           if (window.chart) {
-            console.log('🗑️ Disposing old chart instance');
             window.chart.dispose();
             window.chart = null;
           }
@@ -993,7 +959,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           // Recreate chart instance
           var chartDom = document.getElementById('chart');
           if (!chartDom) {
-            console.error('Chart DOM element not found');
             return;
           }
           
@@ -1004,8 +969,6 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             height: 'auto'
           });
           
-          console.log('✅ New chart instance created');
-          
           // Update precision
           window.pricePrecision = ${widget.pricePrecision};
           
@@ -1015,10 +978,8 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
           window.latestPriceText = formatPriceLabel(window.latestPriceValue);
           
           initChart(newData, '${widget.symbol}', ${widget.currentPrice}, '${widget.interval}');
-          
-          console.log('✅ Chart reinitialized successfully');
         } catch (e) {
-          console.error('❌ Error reinitializing chart:', e);
+          // Error ignored
         }
       })();
     ''';

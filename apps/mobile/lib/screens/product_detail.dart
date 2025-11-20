@@ -127,13 +127,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// Load data in background without blocking UI
   Future<void> _loadDataInBackground() async {
     // Stage 1: Load historical data (show in UI as it arrives)
-    debugPrint('Loading initial data for $_currentSymbol');
-
     try {
       await _loadData();
-      debugPrint('Initial data loaded successfully');
     } catch (e) {
-      debugPrint('Failed to load initial data: $e');
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -147,11 +143,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     // Stage 2: Connect WebSocket for real-time updates (optional)
     try {
-      debugPrint('Connecting to WebSocket for real-time updates');
       await _connectWebSocket();
-      debugPrint('WebSocket connected');
     } catch (e) {
-      debugPrint('WebSocket connection failed: $e');
       // Don't show error - fallback mode will handle it
     }
   }
@@ -250,7 +243,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           .timeout(
             const Duration(seconds: 15),
             onTimeout: () {
-              debugPrint('WebSocket connection timeout');
               throw TimeoutException('WebSocket connection timeout');
             },
           );
@@ -264,7 +256,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       // Listen to WebSocket streams with error handling
       _tickerSubscription = _okxService.tickerStream.listen((ticker) {
         if (mounted) {
-          debugPrint('📡 Ticker received: ${ticker.instId} = ${ticker.last}');
           setState(() {
             _ticker = ticker;
 
@@ -308,10 +299,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   _klines.removeAt(0);
                 }
                 _klines.add(newKline);
-
-                debugPrint(
-                  '📊 Generated synthetic candle at ${newCandleTime.toIso8601String()}',
-                );
               } else {
                 // Update the last (unclosed) candle with live ticker data
                 final newHigh = lastKline.high > currentPrice
@@ -336,7 +323,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             }
           });
         }
-      }, onError: (error) => debugPrint('Ticker stream error: $error'));
+      }, onError: (error) {});
 
       _orderBookSubscription = _okxService.orderBookStream.listen((orderBook) {
         if (mounted) {
@@ -344,31 +331,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             _orderBook = orderBook;
           });
         }
-      }, onError: (error) => debugPrint('OrderBook stream error: $error'));
+      }, onError: (error) {});
 
       _klineSubscription = _okxService.klineStream.listen((klines) {
         if (mounted && klines.isNotEmpty) {
           if (_klines.isEmpty) return;
 
           final newKline = klines[0]; // WebSocket sends newest kline
-          
-          // If we have less than 30 klines, this is the first live push
-          if (_klines.length < 30) {
-            final lastKline = _klines.last;
-            final newTimestamp = int.tryParse(newKline.timestamp) ?? 0;
-            final lastTimestamp = int.tryParse(lastKline.timestamp) ?? 0;
-            
-            // Add as 30th kline if timestamp is same or newer
-            if (newTimestamp >= lastTimestamp) {
-              _klines.add(newKline);
-              debugPrint(
-                '✅ First live kline pushed! Now have ${_klines.length} klines. Chart ready to display.',
-              );
-              setState(() {});
-            }
-            return;
-          }
-
           final lastKline = _klines.last; // Our list has oldest -> newest
 
           // Compare timestamps (they are String milliseconds)
@@ -392,10 +361,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             // Skip this update if it's for a different interval
             if (!isMatchingInterval &&
                 timestampDiff > expectedIntervalMs * 0.5) {
-              debugPrint(
-                '⚠️ Skipping kline push: interval mismatch '
-                '(expected: ${expectedIntervalMs}ms, got: ${timestampDiff}ms)',
-              );
               return;
             }
           }
@@ -430,7 +395,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             setState(() {});
           }
         }
-      }, onError: (error) => debugPrint('Kline stream error: $error'));
+      }, onError: (error) {});
 
       _tradeSubscription = _okxService.tradeStream.listen((trade) {
         if (mounted) {
@@ -443,9 +408,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             }
           });
         }
-      }, onError: (error) => debugPrint('Trade stream error: $error'));
+      }, onError: (error) {});
     } catch (e) {
-      debugPrint('WebSocket connection error: $e');
       if (mounted) {
         setState(() {
           _isWebSocketConnected = false;
@@ -469,17 +433,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
   Future<void> _loadData() async {
     try {
-      debugPrint(
-        'Fetching klines for $_currentSymbol with interval $_selectedInterval',
-      );
-
       // Fetch price precision for this symbol from API
       final precisionF = _okxService
           .getPricePrecision(_currentSymbol)
           .timeout(
             const Duration(seconds: 5),
             onTimeout: () {
-              debugPrint('⚠️ Precision fetch timeout, using default: 4');
               return 4; // Default to 4 decimals for crypto
             },
           );
@@ -534,29 +493,43 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       final ticker = results[3] as OKXTicker;
       final orderBook = results[4] as OKXOrderBook;
 
-      debugPrint('📊 Price precision for $_currentSymbol: $precision decimals');
-
-      debugPrint(
-        'Data loaded: ${klines.length} klines, ${trades.length} trades',
-      );
-
       if (mounted) {
         setState(() {
           _pricePrecision = precision; // Update precision
           // Store 29 closed klines (oldest -> newest)
-          // WebSocket will push the 30th (live) kline to complete the set
           _klines = klines.reversed.toList();
+          
+          // Create placeholder 30th candlestick using 29th candle's close price
+          if (_klines.isNotEmpty) {
+            final lastClosedKline = _klines.last;
+            final placeholderPrice = lastClosedKline.close;
+            
+            // Calculate next candlestick timestamp
+            final intervalMs = _getIntervalMilliseconds(_selectedInterval);
+            final nextCandleTime = DateTime.fromMillisecondsSinceEpoch(
+              lastClosedKline.time.millisecondsSinceEpoch + intervalMs,
+            );
+            
+            // Create placeholder kline with OHLC = last close price
+            final placeholderKline = OKXKline(
+              timestamp: nextCandleTime.millisecondsSinceEpoch.toString(),
+              open: placeholderPrice,
+              high: placeholderPrice,
+              low: placeholderPrice,
+              close: placeholderPrice,
+              volume: 0, // Placeholder, no volume yet
+              time: nextCandleTime,
+            );
+            
+            _klines.add(placeholderKline);
+          }
+          
           _trades = trades;
           _ticker = ticker;
           _orderBook = orderBook;
-          
-          debugPrint(
-            '📊 Loaded ${_klines.length} closed klines, waiting for WebSocket to push live kline...',
-          );
         });
       }
     } catch (e) {
-      debugPrint('Error loading data: $e');
       // Don't show error UI - just log it
       // User can still interact with the app
     }
@@ -579,7 +552,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       await _loadData(); // This will update UI when data arrives
       await _connectWebSocket();
     } catch (e) {
-      debugPrint('Error changing symbol: $e');
+      // Error ignored
     }
   }
 
@@ -600,7 +573,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       await _loadData(); // This will update UI when data arrives
       await _connectWebSocket();
     } catch (e) {
-      debugPrint('Error changing interval: $e');
+      // Error ignored
     }
   }
 
@@ -968,7 +941,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             // Kline Chart - Fixed height, no scroll needed
             SizedBox(
               height: 300,
-              child: _klines.length < 30
+              child: _klines.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -980,9 +953,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            _klines.isEmpty
-                                ? 'Loading chart data...'
-                                : 'Waiting for live data... (${_klines.length}/30)',
+                            'Loading chart data...',
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 14,
@@ -994,32 +965,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   : InteractiveKlineChart(
                       key: _chartKey,
                       klineData: (() {
-                        // Debug: Verify we have exactly 30 or fewer candlesticks
-                        debugPrint(
-                          '📊 Total klines being sent to chart: ${_klines.length}',
-                        );
                         return _klines.map((k) {
-                          // Debug: Print first kline data
-                          if (k == _klines.first) {
-                            debugPrint('🔍 Flutter First Kline Data:');
-                            debugPrint('  time: ${k.time}');
-                            debugPrint(
-                              '  open: ${k.open} (${k.open.runtimeType})',
-                            );
-                            debugPrint(
-                              '  close: ${k.close} (${k.close.runtimeType})',
-                            );
-                            debugPrint(
-                              '  low: ${k.low} (${k.low.runtimeType})',
-                            );
-                            debugPrint(
-                              '  high: ${k.high} (${k.high.runtimeType})',
-                            );
-                            debugPrint(
-                              '  volume: ${k.volume} (${k.volume.runtimeType})',
-                            );
-                          }
-
                           // Format date based on interval
                           String dateLabel;
                           if (_selectedInterval == '1D' ||

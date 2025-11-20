@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:developer' as developer;
 
 /// Responsive Layout Utility
 ///
@@ -199,14 +198,7 @@ class ResponsiveLayout {
     final orientation = getOrientation(context);
     final pixelRatio = MediaQuery.of(context).devicePixelRatio;
 
-    developer.log('=== Device Info ===', name: 'ResponsiveLayout');
-    developer.log('Device Type: ${deviceType.name}', name: 'ResponsiveLayout');
-    developer.log('Screen Size: ${size.width.toStringAsFixed(0)}x${size.height.toStringAsFixed(0)}', name: 'ResponsiveLayout');
-    developer.log('Orientation: ${orientation.name}', name: 'ResponsiveLayout');
-    developer.log('Pixel Ratio: ${pixelRatio.toStringAsFixed(2)}', name: 'ResponsiveLayout');
-    developer.log('Design Size: ${getDesignSize(context)}', name: 'ResponsiveLayout');
-    developer.log('==================', name: 'ResponsiveLayout');
-  }
+                              }
 }
 
 /// Device type enumeration

@@ -54,7 +54,6 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Failed to load email preferences: $e');
       // Keep default values on error
     } finally {
       if (mounted) {

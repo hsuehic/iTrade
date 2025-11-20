@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'dart:convert';
@@ -117,12 +116,9 @@ class AuthService {
     );
 
     if (response.statusCode == 200) {
-      developer.log('✅ Signed in with Apple successfully!');
-
       final res = await getUser();
       return res;
     } else {
-      developer.log('❌ Failed: ${response.statusCode} ${response.data}');
       return null;
     }
   }
@@ -153,28 +149,15 @@ class AuthService {
       final GoogleSignInAuthentication auth = account.authentication;
       _idToken = auth.idToken;
 
-      developer.log(
-        'Google idToken length: \'${_idToken?.length}\'',
-        name: 'AuthService',
-      );
-
       // For Auth.js v5, we still need to send the ID token but in the correct format
       // The serverClientId ensures the token is valid for server-side verification
       if (_idToken == null) {
-        developer.log(
-          'No ID token received from Google Sign-In',
-          name: 'AuthService',
-        );
         return null;
       }
 
       // Send ID token to Auth.js callback URL
       // Auth.js v5 with serverClientId should accept ID tokens for mobile apps
       final Map<String, dynamic> callbackData = {'idToken': _idToken};
-      developer.log(
-        'Sending callback data: $callbackData',
-        name: 'AuthService',
-      );
 
       // Use Dio directly to send form-encoded data (not JSON)
       // Send ID token to your server
@@ -184,24 +167,11 @@ class AuthService {
       );
 
       final List<String>? setCookies = response.headers.map['set-cookie'];
-      if (setCookies != null && setCookies.isNotEmpty) {
-        developer.log(
-          'Set-Cookie received (${setCookies.length}): ${setCookies.join('; ')}',
-          name: 'AuthService',
-        );
-      } else {
-        developer.log(
-          'No Set-Cookie header on callback response',
-          name: 'AuthService',
-        );
-      }
+      // Cookies are set automatically by Dio
 
       // Check if callback was successful
       if (response.statusCode != 200) {
-        developer.log(
-          'Callback failed with status ${response.statusCode}: ${response.data}',
-          name: 'AuthService',
-        );
+        return null;
       } else {
         final res = await getUser();
         return res;
@@ -209,12 +179,6 @@ class AuthService {
 
       return null;
     } catch (e, st) {
-      developer.log(
-        'Google Sign-In failed',
-        name: 'AuthService',
-        error: e,
-        stackTrace: st,
-      );
       return null;
     }
   }
@@ -236,7 +200,6 @@ class AuthService {
         message: data['message']?.toString(),
       );
     } catch (error) {
-      developer.debugger(when: true, message: error.toString());
       return null;
     }
   }
@@ -312,12 +275,6 @@ class AuthService {
       );
       return user;
     } catch (e, st) {
-      developer.log(
-        'Failed to create User object from response data',
-        name: 'AuthService',
-        error: e,
-        stackTrace: st,
-      );
       return null;
     }
   }
@@ -333,14 +290,7 @@ class AuthService {
         ),
       );
       ApiClient.instance.clearCookies();
-    } catch (e, st) {
-      developer.log(
-        'Google Sign-Out failed',
-        name: 'AuthService',
-        error: e,
-        stackTrace: st,
-      );
-    }
+    } catch (e, st) {}
     _currentAccount = null;
     _idToken = null;
   }

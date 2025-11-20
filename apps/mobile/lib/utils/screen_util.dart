@@ -1,4 +1,3 @@
-import 'dart:developer' as developer;
 
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -87,25 +86,7 @@ class ScreenAdapter {
 
   /// Print screen info for debugging
   static void printScreenInfo() {
-    developer.log('=== Screen Info ===', name: 'ScreenAdapter');
-    developer.log('Screen Width: ${screenWidth}px', name: 'ScreenAdapter');
-    developer.log('Screen Height: ${screenHeight}px', name: 'ScreenAdapter');
-    developer.log(
-      'Status Bar Height: ${statusBarHeight}px',
-      name: 'ScreenAdapter',
-    );
-    developer.log(
-      'Bottom Bar Height: ${bottomBarHeight}px',
-      name: 'ScreenAdapter',
-    );
-    developer.log('Device Pixel Ratio: $pixelRatio', name: 'ScreenAdapter');
-    developer.log('Text Scale Factor: $textScaleFactor', name: 'ScreenAdapter');
-    developer.log(
-      'Design Size: ${designWidth}x$designHeight',
-      name: 'ScreenAdapter',
-    );
-    developer.log('==================', name: 'ScreenAdapter');
-  }
+                                      }
 }
 
 /// Extension methods for convenient screen adaptation

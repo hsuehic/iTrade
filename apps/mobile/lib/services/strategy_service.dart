@@ -1,4 +1,3 @@
-import 'dart:developer' as developer;
 import 'package:dio/dio.dart';
 import '../models/strategy.dart';
 import 'api_client.dart';
@@ -48,12 +47,7 @@ class StrategyService {
       }
       return [];
     } catch (e) {
-      developer.log(
-        'Failed to fetch strategies',
-        name: 'StrategyService',
-        error: e,
-      );
-      rethrow;
+            rethrow;
     }
   }
 
@@ -67,12 +61,7 @@ class StrategyService {
       }
       return null;
     } catch (e) {
-      developer.log(
-        'Failed to fetch strategy $id',
-        name: 'StrategyService',
-        error: e,
-      );
-      rethrow;
+            rethrow;
     }
   }
 
@@ -94,12 +83,7 @@ class StrategyService {
       }
       return [];
     } catch (e) {
-      developer.log(
-        'Failed to fetch strategies PnL',
-        name: 'StrategyService',
-        error: e,
-      );
-      // Return empty list on error
+            // Return empty list on error
       return [];
     }
   }
@@ -130,12 +114,7 @@ class StrategyService {
       }
       return null;
     } catch (e) {
-      developer.log(
-        'Failed to fetch strategy PnL',
-        name: 'StrategyService',
-        error: e,
-      );
-      return null;
+            return null;
     }
   }
 
@@ -154,12 +133,7 @@ class StrategyService {
       }
       return null;
     } catch (e) {
-      developer.log(
-        'Failed to update strategy status',
-        name: 'StrategyService',
-        error: e,
-      );
-      return null;
+            return null;
     }
   }
 
@@ -171,12 +145,7 @@ class StrategyService {
       );
       return response.statusCode == 200 && response.data['success'] == true;
     } catch (e) {
-      developer.log(
-        'Failed to delete strategy',
-        name: 'StrategyService',
-        error: e,
-      );
-      return false;
+            return false;
     }
   }
 
@@ -200,12 +169,7 @@ class StrategyService {
         'allStrategies': [],
       };
     } catch (e) {
-      developer.log(
-        'Failed to fetch analytics',
-        name: 'StrategyService',
-        error: e,
-      );
-      return {
+            return {
         'summary': {},
         'topPerformers': [],
         'byExchange': [],

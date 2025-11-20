@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -27,13 +26,9 @@ class OKXInstrument {
     if (tickSz.contains('.')) {
       final decimalPart = tickSz.split('.')[1];
       precision = decimalPart.length;
-      developer.log(
-        '📐 TickSz: $tickSz → decimal part: "$decimalPart" → precision: $precision',
-      );
-    } else {
+          } else {
       precision = 0;
-      developer.log('📐 TickSz: $tickSz → no decimal → precision: 0');
-    }
+          }
 
     return OKXInstrument(
       instId: json['instId'] as String,
@@ -278,40 +273,27 @@ class OKXDataService {
     }
 
     try {
-      developer.log('🔍 Fetching instrument info for $symbol...');
-      final response = await _dio.get(
+            final response = await _dio.get(
         '/public/instruments',
         queryParameters: {'instType': 'SPOT', 'instId': symbol},
       );
 
-      developer.log(
-        '📡 Instrument API response code: ${response.data['code']}',
-      );
-
+      
       if (response.data['code'] == '0') {
         final List<dynamic> data = response.data['data'];
-        developer.log('📊 Instrument data length: ${data.length}');
-
+        
         if (data.isNotEmpty) {
           final instrument = OKXInstrument.fromJson(data[0]);
           _instrumentCache[symbol] = instrument; // Cache it
-          developer.log(
-            '✅ Instrument info for $symbol: tickSz=${instrument.tickSz}, precision=${instrument.pricePrecision}',
-          );
-          return instrument;
+                    return instrument;
         } else {
-          developer.log('⚠️ No instrument data returned for $symbol');
-        }
+                  }
       } else {
-        developer.log('⚠️ Instrument API error: ${response.data['msg']}');
-      }
+              }
     } catch (e, stackTrace) {
-      developer.log('❌ Error fetching instrument info for $symbol: $e');
-      developer.log('Stack trace: $stackTrace');
-    }
+                }
 
-    developer.log('⚠️ Returning null for $symbol, will default to 2 decimals');
-    return null;
+        return null;
   }
 
   /// Get price precision for a symbol (returns number of decimal places)
@@ -319,8 +301,7 @@ class OKXDataService {
     final instrument = await getInstrument(symbol);
     final precision =
         instrument?.pricePrecision ?? 4; // Default to 4 for crypto
-    developer.log('🎯 Final precision for $symbol: $precision decimals');
-    return precision;
+        return precision;
   }
 
   /// Get historical candlestick data
@@ -352,8 +333,7 @@ class OKXDataService {
         );
       }
     } catch (e) {
-      developer.log('Error getting historical klines: $e');
-      rethrow;
+            rethrow;
     }
   }
 
@@ -373,8 +353,7 @@ class OKXDataService {
       }
       throw Exception('Failed to get ticker: ${response.data['msg']}');
     } catch (e) {
-      developer.log('Error getting ticker: $e');
-      rethrow;
+            rethrow;
     }
   }
 
@@ -395,11 +374,9 @@ class OKXDataService {
           return tickers;
         }
       }
-      developer.log('Error getting tickers: ${response.data['msg']}');
-      throw Exception('Failed to get ticker: ${response.data['msg']}');
+            throw Exception('Failed to get ticker: ${response.data['msg']}');
     } catch (e) {
-      developer.log('Error getting ticker: $e');
-    }
+          }
     return [];
   }
 
@@ -419,8 +396,7 @@ class OKXDataService {
       }
       throw Exception('Failed to get order book: ${response.data['msg']}');
     } catch (e) {
-      developer.log('Error getting order book: $e');
-      rethrow;
+            rethrow;
     }
   }
 
@@ -441,8 +417,7 @@ class OKXDataService {
       }
       throw Exception('Failed to get trades: ${response.data['msg']}');
     } catch (e) {
-      developer.log('Error getting trades: $e');
-      rethrow;
+            rethrow;
     }
   }
 
@@ -456,11 +431,7 @@ class OKXDataService {
       if (isConnected &&
           _currentSymbol != null &&
           (_currentSymbol != symbol || _currentTimeframe != timeframe)) {
-        developer.log(
-          '🔄 WebSocket already connected, changing subscriptions from '
-          '$_currentSymbol ($_currentTimeframe) to $symbol ($timeframe)',
-        );
-        await changeSymbol(symbol, timeframe: timeframe);
+                await changeSymbol(symbol, timeframe: timeframe);
         return;
       }
 
@@ -487,12 +458,8 @@ class OKXDataService {
         _connectPublicWebSocket(symbol),
       ]);
 
-      developer.log(
-        '✅ WebSocket connected and subscribed to $symbol ($timeframe)',
-      );
-    } catch (e) {
-      developer.log('❌ Error connecting WebSocket: $e');
-      _scheduleReconnect();
+          } catch (e) {
+            _scheduleReconnect();
       // Don't rethrow to prevent app crashes
     }
   }
@@ -503,8 +470,7 @@ class OKXDataService {
     String timeframe = '15m',
   }) async {
     if (!isConnected) {
-      developer.log('⚠️ Not connected, calling connectWebSocket instead');
-      await connectWebSocket(newSymbol, timeframe: timeframe);
+            await connectWebSocket(newSymbol, timeframe: timeframe);
       return;
     }
 
@@ -512,10 +478,7 @@ class OKXDataService {
       final oldSymbol = _currentSymbol;
       final oldTimeframe = _currentTimeframe;
 
-      developer.log(
-        '🔄 Changing from $oldSymbol ($oldTimeframe) to $newSymbol ($timeframe)',
-      );
-
+      
       // Unsubscribe from old channels
       if (oldSymbol != null && oldTimeframe != null) {
         await _unsubscribeAll(oldSymbol, oldTimeframe);
@@ -531,10 +494,8 @@ class OKXDataService {
       // Subscribe to new channels
       await _subscribeAll(newSymbol, timeframe);
 
-      developer.log('✅ Successfully changed to $newSymbol ($timeframe)');
-    } catch (e) {
-      developer.log('❌ Error changing symbol: $e');
-      // If changing fails, try reconnecting
+          } catch (e) {
+            // If changing fails, try reconnecting
       await connectWebSocket(newSymbol, timeframe: timeframe);
     }
   }
@@ -553,12 +514,7 @@ class OKXDataService {
 
     if (_pendingBusinessUnsubscribes.isNotEmpty ||
         _pendingPublicUnsubscribes.isNotEmpty) {
-      developer.log(
-        '⚠️ Timeout waiting for unsubscribe confirmations. '
-        'Pending: Business=${_pendingBusinessUnsubscribes.length}, '
-        'Public=${_pendingPublicUnsubscribes.length}',
-      );
-      // Clear pending sets to avoid blocking
+            // Clear pending sets to avoid blocking
       _pendingBusinessUnsubscribes.clear();
       _pendingPublicUnsubscribes.clear();
     }
@@ -591,8 +547,7 @@ class OKXDataService {
   ) async {
     try {
       final currentUrl = businessWsUrls[_currentBusinessWsUrlIndex];
-      developer.log('📊 Connecting to OKX Business WebSocket: $currentUrl');
-
+      
       // Create WebSocket connection
       _businessWsChannel = WebSocketChannel.connect(
         Uri.parse(currentUrl),
@@ -619,10 +574,8 @@ class OKXDataService {
       // Start heartbeat for business channel
       _startBusinessHeartbeat();
 
-      developer.log('✅ Business WebSocket connected for candlesticks');
-    } catch (e) {
-      developer.log('❌ Error connecting Business WebSocket: $e');
-      _isBusinessConnected = false;
+          } catch (e) {
+            _isBusinessConnected = false;
       rethrow;
     }
   }
@@ -631,8 +584,7 @@ class OKXDataService {
   Future<void> _connectPublicWebSocket(String symbol) async {
     try {
       final currentUrl = publicWsUrls[_currentPublicWsUrlIndex];
-      developer.log('📡 Connecting to OKX Public WebSocket: $currentUrl');
-
+      
       // Create WebSocket connection
       _publicWsChannel = WebSocketChannel.connect(
         Uri.parse(currentUrl),
@@ -663,10 +615,8 @@ class OKXDataService {
       // Start heartbeat for public channel
       _startPublicHeartbeat();
 
-      developer.log('✅ Public WebSocket connected for market data');
-    } catch (e) {
-      developer.log('❌ Error connecting Public WebSocket: $e');
-      _isPublicConnected = false;
+          } catch (e) {
+            _isPublicConnected = false;
       rethrow;
     }
   }
@@ -682,8 +632,7 @@ class OKXDataService {
     };
 
     _businessWsChannel?.sink.add(jsonEncode(subscribeMessage));
-    developer.log('📊 Subscribed to $channelName for $symbol (Business WS)');
-  }
+      }
 
   /// Unsubscribe from candlestick updates (Business WebSocket)
   Future<void> _unsubscribeFromCandlesticks(
@@ -703,10 +652,7 @@ class OKXDataService {
     _pendingBusinessUnsubscribes.add(key);
 
     _businessWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-    developer.log(
-      '📊 Unsubscribed from $channelName for $symbol (Business WS)',
-    );
-  }
+      }
 
   /// Subscribe to ticker updates (Public WebSocket)
   Future<void> _subscribeToTicker(String symbol) async {
@@ -718,8 +664,7 @@ class OKXDataService {
     };
 
     _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
-    developer.log('📡 Subscribed to tickers for $symbol (Public WS)');
-  }
+      }
 
   /// Unsubscribe from ticker updates (Public WebSocket)
   Future<void> _unsubscribeFromTicker(String symbol) async {
@@ -735,8 +680,7 @@ class OKXDataService {
     _pendingPublicUnsubscribes.add(key);
 
     _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-    developer.log('📡 Unsubscribed from tickers for $symbol (Public WS)');
-  }
+      }
 
   /// Subscribe to order book updates (Public WebSocket)
   Future<void> _subscribeToOrderBook(String symbol) async {
@@ -748,8 +692,7 @@ class OKXDataService {
     };
 
     _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
-    developer.log('📡 Subscribed to books5 for $symbol (Public WS)');
-  }
+      }
 
   /// Unsubscribe from order book updates (Public WebSocket)
   Future<void> _unsubscribeFromOrderBook(String symbol) async {
@@ -765,8 +708,7 @@ class OKXDataService {
     _pendingPublicUnsubscribes.add(key);
 
     _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-    developer.log('📡 Unsubscribed from books5 for $symbol (Public WS)');
-  }
+      }
 
   /// Subscribe to trade updates (Public WebSocket)
   Future<void> _subscribeToTrades(String symbol) async {
@@ -778,8 +720,7 @@ class OKXDataService {
     };
 
     _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
-    developer.log('📡 Subscribed to trades for $symbol (Public WS)');
-  }
+      }
 
   /// Unsubscribe from trade updates (Public WebSocket)
   Future<void> _unsubscribeFromTrades(String symbol) async {
@@ -795,8 +736,7 @@ class OKXDataService {
     _pendingPublicUnsubscribes.add(key);
 
     _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-    developer.log('📡 Unsubscribed from trades for $symbol (Public WS)');
-  }
+      }
 
   /// Handle incoming Business WebSocket messages (candlesticks)
   void _handleBusinessWebSocketMessage(dynamic message) {
@@ -805,13 +745,11 @@ class OKXDataService {
 
       // Handle error responses
       if (data['event'] == 'error') {
-        developer.log('❌ Business WS error: ${data['code']} - ${data['msg']}');
-        return;
+                return;
       }
 
       if (data['event'] == 'subscribe') {
-        developer.log('✅ Business WS subscribed to: ${data['arg']}');
-        return;
+                return;
       }
 
       if (data['event'] == 'unsubscribe') {
@@ -820,8 +758,7 @@ class OKXDataService {
         final instId = arg['instId'];
         final key = '$channel:$instId';
         _pendingBusinessUnsubscribes.remove(key);
-        developer.log('✅ Business WS unsubscribed from: $arg');
-        return;
+                return;
       }
 
       if (data['data'] != null) {
@@ -833,18 +770,12 @@ class OKXDataService {
               .map((item) => OKXKline.fromList(item))
               .toList();
           _klineController.add(klines);
-          developer.log(
-            '📊 Business WS: Received ${klines.length} candlestick(s)',
-          );
-        }
+                  }
       } else {
         // Log unexpected message format for debugging
-        developer.log('⚠️ Business WS unexpected message: $data');
-      }
+              }
     } catch (e) {
-      developer.log('❌ Error handling Business WebSocket message: $e');
-      developer.log('   Raw message: $message');
-    }
+                }
   }
 
   /// Handle incoming Public WebSocket messages (tickers, order book, trades)
@@ -854,13 +785,11 @@ class OKXDataService {
 
       // Handle error responses
       if (data['event'] == 'error') {
-        developer.log('❌ Public WS error: ${data['code']} - ${data['msg']}');
-        return;
+                return;
       }
 
       if (data['event'] == 'subscribe') {
-        developer.log('✅ Public WS subscribed to: ${data['arg']}');
-        return;
+                return;
       }
 
       if (data['event'] == 'unsubscribe') {
@@ -869,8 +798,7 @@ class OKXDataService {
         final instId = arg['instId'];
         final key = '$channel:$instId';
         _pendingPublicUnsubscribes.remove(key);
-        developer.log('✅ Public WS unsubscribed from: $arg');
-        return;
+                return;
       }
 
       if (data['data'] != null) {
@@ -892,49 +820,39 @@ class OKXDataService {
         }
       } else {
         // Log unexpected message format for debugging
-        developer.log('⚠️ Public WS unexpected message: $data');
-      }
+              }
     } catch (e) {
-      developer.log('❌ Error handling Public WebSocket message: $e');
-      developer.log('   Raw message: $message');
-    }
+                }
   }
 
   /// Handle Business WebSocket errors
   void _handleBusinessWebSocketError(dynamic error) {
-    developer.log('❌ Business WebSocket error: $error');
-    _isBusinessConnected = false;
+        _isBusinessConnected = false;
     _scheduleReconnect();
   }
 
   /// Handle Business WebSocket connection closed
   void _handleBusinessWebSocketDone() {
-    developer.log('🔌 Business WebSocket connection closed');
-    _isBusinessConnected = false;
+        _isBusinessConnected = false;
     _scheduleReconnect();
   }
 
   /// Handle Public WebSocket errors
   void _handlePublicWebSocketError(dynamic error) {
-    developer.log('❌ Public WebSocket error: $error');
-    _isPublicConnected = false;
+        _isPublicConnected = false;
     _scheduleReconnect();
   }
 
   /// Handle Public WebSocket connection closed
   void _handlePublicWebSocketDone() {
-    developer.log('🔌 Public WebSocket connection closed');
-    _isPublicConnected = false;
+        _isPublicConnected = false;
     _scheduleReconnect();
   }
 
   /// Schedule reconnection with exponential backoff
   void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-      developer.log(
-        'Max reconnection attempts reached. Switching to fallback mode.',
-      );
-      _startFallbackMode();
+            _startFallbackMode();
       return;
     }
 
@@ -947,27 +865,16 @@ class OKXDataService {
             (_currentPublicWsUrlIndex + 1) % publicWsUrls.length;
         _currentBusinessWsUrlIndex =
             (_currentBusinessWsUrlIndex + 1) % businessWsUrls.length;
-        developer.log(
-          'Switching WebSocket URLs:\n'
-          '  Public: ${publicWsUrls[_currentPublicWsUrlIndex]}\n'
-          '  Business: ${businessWsUrls[_currentBusinessWsUrlIndex]}',
-        );
-      }
+              }
 
       // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, max 60s
       final delaySeconds = (1 << _reconnectAttempts).clamp(1, 60);
       _reconnectAttempts++;
 
-      developer.log(
-        'Scheduling reconnection attempt $_reconnectAttempts in ${delaySeconds}s',
-      );
-
+      
       _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
         if (!isConnected) {
-          developer.log(
-            'Attempting to reconnect WebSocket (attempt $_reconnectAttempts)...',
-          );
-          connectWebSocket(_currentSymbol!, timeframe: _currentTimeframe!);
+                    connectWebSocket(_currentSymbol!, timeframe: _currentTimeframe!);
         }
       });
     }
@@ -978,8 +885,7 @@ class OKXDataService {
     if (_useFallbackMode) return;
 
     _useFallbackMode = true;
-    developer.log('Starting fallback mode with REST API polling');
-
+    
     _fallbackTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (_currentSymbol != null) {
         try {
@@ -1004,8 +910,7 @@ class OKXDataService {
             }
           }
         } catch (e) {
-          developer.log('Fallback mode error: $e');
-        }
+                  }
       }
     });
   }
@@ -1059,8 +964,7 @@ class OKXDataService {
       await _publicWsChannel?.sink.close();
       await _businessWsChannel?.sink.close();
     } catch (e) {
-      developer.log('Error closing WebSocket: $e');
-    }
+          }
     _publicWsChannel = null;
     _businessWsChannel = null;
   }
