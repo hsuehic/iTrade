@@ -307,10 +307,10 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
       yPixel = Math.min(Math.max(yPixel, 0), chartHeight);
 
       var labelText = formatPriceLabel(price);
-      var labelWidth = Math.max(labelText.length * 8 + 8, 50);
+      var labelWidth = Math.max(labelText.length * 6.5 + 2, 45); // Minimal horizontal padding
       var labelHeight = 18;
       var lineColor = isDark ? '#666' : '#999';
-      var labelBg = isDark ? '#1a1a1a' : '#ffffff';
+      var labelBgTransparent = isDark ? 'rgba(26, 26, 26, 0.6)' : 'rgba(255, 255, 255, 0.6)'; // Semi-transparent background (0.6 opacity)
       var textColor = isDark ? '#fff' : '#000';
 
       // Get grid area to position label after first x-axis gridline
@@ -324,7 +324,7 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
         xPixel = gridLeft + 10;
       }
       
-      var labelX = xPixel + 6;
+      var labelX = xPixel - 10; // Moved left to overlap y-axis slightly (changed from +6 to -10)
       var lineEndX = labelX + labelWidth + 4;
 
       window.chart.setOption({
@@ -333,33 +333,38 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
             id: 'price-line',
             type: 'line',
             silent: true,
-            z: 100,
+            z: 998, // High z-index for line
             shape: { x1: lineEndX, y1: yPixel, x2: chartWidth, y2: yPixel },
             style: {
               stroke: lineColor,
               lineWidth: 1,
               lineDash: [4, 4],
-              opacity: 0.8
+              opacity: 1.0 // Fully opaque line
             }
           },
           {
             id: 'price-label',
             type: 'group',
             silent: true,
-            z: 100,
+            z: 1000, // Highest z-index - ensures label is always on top
+            z2: 1000, // Fine-grained z-index control
             position: [labelX, yPixel - labelHeight / 2],
             children: [
               {
                 type: 'rect',
+                z: 1001, // High z-index for background rect
+                z2: 1001,
                 shape: { x: 0, y: 0, width: labelWidth, height: labelHeight, r: 3 },
                 style: {
-                  fill: labelBg,
+                  fill: labelBgTransparent, // Semi-transparent background (0.6 opacity)
                   stroke: lineColor,
                   lineWidth: 1
                 }
               },
               {
                 type: 'text',
+                z: 1002, // Highest z-index for text - always on top
+                z2: 1002,
                 style: {
                   x: labelWidth / 2,
                   y: labelHeight / 2,
@@ -380,6 +385,10 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
     // Initialize chart with data
       function initChart(data, symbol, currentPrice, interval) {
         try {
+          // Clear any existing graphic elements (price indicators) when reinitializing
+          if (window.chart) {
+            window.chart.setOption({ graphic: [] }, false);
+          }
           
           // Store original data globally for tooltip access
           window.originalKlineData = data;
