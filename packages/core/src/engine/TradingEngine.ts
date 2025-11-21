@@ -1022,8 +1022,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
           if (result.action !== 'hold') {
             // Account data changes might trigger trading signals
-            // Note: symbol should come from the strategy's parameters
-            const symbol = strategy.context.symbol || '';
+            // 🔥 FIX: Use symbol from signal first, fallback to strategy context
+            // This is critical for strategies that return symbol in their signals (e.g., take profit)
+            const symbol = result.symbol || strategy.context.symbol || '';
             this._eventBus.emitStrategySignal({
               strategyName,
               symbol,

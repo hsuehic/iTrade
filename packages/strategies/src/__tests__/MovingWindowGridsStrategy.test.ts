@@ -2001,8 +2001,6 @@ describe('MovingWindowGridsStrategy', () => {
 
       await strategy.onOrderFilled(partialOrder);
 
-      let state = strategy.getStrategyState();
-
       // Fully filled - should generate TP
       const filledOrder = {
         ...partialOrder,
@@ -2017,6 +2015,197 @@ describe('MovingWindowGridsStrategy', () => {
       // PARTIALLY_FILLED and FILLED status. The TP signal is actually generated
       // when analyze() is called with the FILLED order status change.
       // Size remains 1000 because no TP order was created/filled in this test.
+    });
+  });
+
+  describe('Real-World Integration Scenario', () => {
+    it('should generate TP signal immediately when entry order transitions to FILLED status', async () => {
+      // This test simulates the real-world scenario where:
+      // 1. Strategy generates entry signal
+      // 2. TradingEngine creates order (status: NEW)
+      // 3. Exchange fills the order (status: FILLED)
+      // 4. TradingEngine receives filled order update
+      // 5. Strategy should return TP signal from analyze()
+
+      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
+
+      // Step 1: Strategy generates entry signal
+      const entrySignal = (await strategy.analyze({
+        exchangeName: 'binance',
+        symbol: 'BTC/USDT:USDT',
+        klines: [kline],
+      })) as StrategyOrderResult;
+
+      expect(entrySignal.action).toBe('buy');
+      expect(entrySignal.clientOrderId).toBeDefined();
+      expect(entrySignal.metadata?.signalType).toBe(SignalType.Entry);
+
+      // Step 2: TradingEngine creates order on exchange (initially NEW)
+      const newOrder = createOrder({
+        clientOrderId: entrySignal.clientOrderId!,
+        side: 'buy',
+        price: entrySignal.price!.toNumber(),
+        quantity: entrySignal.quantity!.toNumber(),
+        status: OrderStatus.NEW,
+      });
+
+      // Step 3: Strategy receives NEW order via analyze
+      const resultAfterNew = await strategy.analyze({
+        exchangeName: 'binance',
+        orders: [newOrder],
+      });
+
+      expect(resultAfterNew.action).toBe('hold'); // No signal for NEW order
+      let state = strategy.getStrategyState();
+      expect(state.currentSize).toBe(1000); // Size committed
+
+      // Step 4: Exchange fills the order (updateTime must be newer!)
+      const filledOrder = {
+        ...newOrder,
+        status: OrderStatus.FILLED,
+        executedQuantity: newOrder.quantity,
+        averagePrice: newOrder.price,
+        updateTime: new Date(Date.now() + 1000), // CRITICAL: Must be newer than original
+      };
+
+      // Step 5: Strategy receives FILLED order update via analyze
+      // THIS IS THE CRITICAL MOMENT - TP signal should be returned
+      const resultAfterFilled = (await strategy.analyze({
+        exchangeName: 'binance',
+        orders: [filledOrder],
+      })) as StrategyOrderResult;
+
+      // VERIFY: TP signal is generated and returned immediately
+      expect(resultAfterFilled.action).toBe('sell');
+      expect(resultAfterFilled.reason).toBe('take_profit');
+      expect(resultAfterFilled.metadata?.signalType).toBe(SignalType.TakeProfit);
+      expect(resultAfterFilled.metadata?.parentOrderId).toBe(entrySignal.clientOrderId);
+      expect(resultAfterFilled.price).toBeDefined();
+      expect(resultAfterFilled.quantity?.toNumber()).toBe(1000);
+
+      // Verify TP price calculation (based on actual entry price from signal)
+      const actualEntryPrice = entrySignal.price!.toNumber();
+      const expectedTpPrice = actualEntryPrice * 1.01; // 1% profit
+      expect(resultAfterFilled.price?.toNumber()).toBeCloseTo(expectedTpPrice, 0);
+
+      // Size should still be 1000 (will only reduce when TP order fills)
+      state = strategy.getStrategyState();
+      expect(state.currentSize).toBe(1000);
+    });
+
+    it('should handle complete entry -> TP order lifecycle', async () => {
+      // This test simulates the complete lifecycle from entry to TP execution
+
+      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
+
+      // 1. Generate entry signal
+      const entrySignal = (await strategy.analyze({
+        exchangeName: 'binance',
+        symbol: 'BTC/USDT:USDT',
+        klines: [kline],
+      })) as StrategyOrderResult;
+
+      expect(entrySignal.action).toBe('buy');
+
+      // 2. Entry order created (NEW)
+      const entryOrderNew = createOrder({
+        clientOrderId: entrySignal.clientOrderId!,
+        side: 'buy',
+        price: entrySignal.price!.toNumber(),
+        quantity: entrySignal.quantity!.toNumber(),
+        status: OrderStatus.NEW,
+      });
+
+      await strategy.analyze({ exchangeName: 'binance', orders: [entryOrderNew] });
+
+      // 3. Entry order filled
+      const entryOrderFilled = {
+        ...entryOrderNew,
+        status: OrderStatus.FILLED,
+        executedQuantity: entryOrderNew.quantity,
+        averagePrice: entryOrderNew.price,
+        updateTime: new Date(Date.now() + 1000),
+      };
+
+      const tpSignal = (await strategy.analyze({
+        exchangeName: 'binance',
+        orders: [entryOrderFilled],
+      })) as StrategyOrderResult;
+
+      expect(tpSignal.action).toBe('sell');
+      expect(tpSignal.reason).toBe('take_profit');
+
+      // 4. TP order created (NEW)
+      const tpOrderNew = createOrder({
+        clientOrderId: tpSignal.clientOrderId!,
+        side: 'sell',
+        price: tpSignal.price!.toNumber(),
+        quantity: tpSignal.quantity!.toNumber(),
+        status: OrderStatus.NEW,
+      });
+
+      await strategy.analyze({ exchangeName: 'binance', orders: [tpOrderNew] });
+
+      let state = strategy.getStrategyState();
+      expect(state.takeProfitOrders).toBe(1);
+
+      // 5. TP order filled
+      const tpOrderFilled = {
+        ...tpOrderNew,
+        status: OrderStatus.FILLED,
+        executedQuantity: tpOrderNew.quantity,
+        averagePrice: tpOrderNew.price,
+        updateTime: new Date(Date.now() + 2000),
+      };
+
+      await strategy.analyze({ exchangeName: 'binance', orders: [tpOrderFilled] });
+
+      // 6. Verify complete cycle
+      state = strategy.getStrategyState();
+      expect(state.currentSize).toBe(0); // Position closed
+      expect(state.takeProfitOrders).toBe(0); // TP order cleaned up
+    });
+
+    it('should fail gracefully if updateTime is not properly set', async () => {
+      // This test demonstrates what happens if updateTime is not set correctly
+      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
+
+      const entrySignal = (await strategy.analyze({
+        exchangeName: 'binance',
+        symbol: 'BTC/USDT:USDT',
+        klines: [kline],
+      })) as StrategyOrderResult;
+
+      const newOrder = createOrder({
+        clientOrderId: entrySignal.clientOrderId!,
+        side: 'buy',
+        price: 50000,
+        quantity: 1000,
+        status: OrderStatus.NEW,
+      });
+
+      await strategy.analyze({ exchangeName: 'binance', orders: [newOrder] });
+
+      // Try to update to FILLED but with SAME updateTime (or older)
+      const filledOrderSameTime = {
+        ...newOrder,
+        status: OrderStatus.FILLED,
+        executedQuantity: new Decimal(1000),
+        averagePrice: new Decimal(50000),
+        // updateTime is the same as newOrder.updateTime!
+      };
+
+      const result = await strategy.analyze({
+        exchangeName: 'binance',
+        orders: [filledOrderSameTime],
+      });
+
+      // The status change will be IGNORED because updateTime is not newer
+      // This would cause the issue the user is experiencing!
+      expect(result.action).toBe('hold'); // No TP signal generated
+
+      const state = strategy.getStrategyState();
+      expect(state.currentSize).toBe(1000); // Size still committed but no TP order
     });
   });
 });
