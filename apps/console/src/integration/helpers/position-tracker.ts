@@ -40,9 +40,12 @@ export class PositionTracker {
 
   async start(): Promise<void> {
     this.logger.info('Starting Position Tracker...');
-    this.timer = setTimeout(() => {
+
+    // Set up recurring flush timer (runs every DEBOUNCE_MS)
+    this.timer = setInterval(() => {
       this.flushAllPendingUpdates();
     }, this.DEBOUNCE_MS);
+
     // Listen for position updates using the correct event name
     this.eventBus.onPositionUpdate((data) => {
       this.logger.info(

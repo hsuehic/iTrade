@@ -274,7 +274,17 @@ export class OrderTracker {
 
   private async handleOrderCancelled(order: Order): Promise<void> {
     try {
-      this.totalCancelled++;
+      const existingOrder = this.orderManager.getOrder(order.id);
+      if (!existingOrder || existingOrder.status !== 'CANCELED') {
+        this.totalCancelled++;
+      }
+
+      // Update OrderManager's in-memory state
+      if (existingOrder) {
+        this.orderManager.updateOrder(order.id, order);
+      } else {
+        this.orderManager.addOrder(order);
+      }
 
       // Cancel any pending partial fill update for this order
       const pending = this.pendingPartialFills.get(order.id);
@@ -297,7 +307,17 @@ export class OrderTracker {
 
   private async handleOrderRejected(order: Order): Promise<void> {
     try {
-      this.totalRejected++;
+      const existingOrder = this.orderManager.getOrder(order.id);
+      if (!existingOrder || existingOrder.status !== 'REJECTED') {
+        this.totalRejected++;
+      }
+
+      // Update OrderManager's in-memory state
+      if (existingOrder) {
+        this.orderManager.updateOrder(order.id, order);
+      } else {
+        this.orderManager.addOrder(order);
+      }
 
       // Cancel any pending partial fill update for this order
       const pending = this.pendingPartialFills.get(order.id);

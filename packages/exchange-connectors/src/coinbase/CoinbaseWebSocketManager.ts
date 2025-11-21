@@ -159,11 +159,8 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       ...additionalParams,
     };
 
-    // Add JWT authentication for user channel and futures channels
-    if (
-      (channel === 'user' || channel === 'futures_balance_summary') &&
-      this.generateJWT
-    ) {
+    // Add JWT authentication for user channel
+    if (channel === 'user' && this.generateJWT) {
       const jwt = this.generateJWT();
       subscribeMessage.jwt = jwt;
       this.state.jwtToken = jwt;

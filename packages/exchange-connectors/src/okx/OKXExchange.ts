@@ -284,7 +284,9 @@ export class OKXExchange extends BaseExchange {
     }
 
     const data = response.data.data[0];
-    return this.transformOKXOrder(data, instId, side, type, quantity, price);
+    // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
+    const unifiedSymbol = this.denormalizeSymbol(instId);
+    return this.transformOKXOrder(data, unifiedSymbol, side, type, quantity, price);
   }
 
   private async setOkxLeverage(
@@ -383,9 +385,11 @@ export class OKXExchange extends BaseExchange {
     }
 
     const data = response.data.data[0];
+    // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
+    const unifiedSymbol = this.denormalizeSymbol(data.instId);
     return this.transformOKXOrder(
       data,
-      data.instId,
+      unifiedSymbol,
       data.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
       this.transformOKXOrderType(data.ordType),
       this.formatDecimal(data.sz),
@@ -424,16 +428,18 @@ export class OKXExchange extends BaseExchange {
       throw new Error(`OKX API error: ${response.data.msg}`);
     }
 
-    return response.data.data.map((order: any) =>
-      this.transformOKXOrder(
+    return response.data.data.map((order: any) => {
+      // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
+      const unifiedSymbol = this.denormalizeSymbol(order.instId);
+      return this.transformOKXOrder(
         order,
-        order.instId,
+        unifiedSymbol,
         order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
         this.transformOKXOrderType(order.ordType),
         this.formatDecimal(order.sz),
         order.px ? this.formatDecimal(order.px) : undefined,
-      ),
-    );
+      );
+    });
   }
 
   public async getOrderHistory(symbol?: string, limit = 100): Promise<Order[]> {
@@ -481,16 +487,18 @@ export class OKXExchange extends BaseExchange {
           throw new Error(`OKX API error: ${response.data.msg}`);
         }
 
-        const orders = response.data.data.map((order: any) =>
-          this.transformOKXOrder(
+        const orders = response.data.data.map((order: any) => {
+          // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
+          const unifiedSymbol = this.denormalizeSymbol(order.instId);
+          return this.transformOKXOrder(
             order,
-            order.instId,
+            unifiedSymbol,
             order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
             this.transformOKXOrderType(order.ordType),
             this.formatDecimal(order.sz),
             order.px ? this.formatDecimal(order.px) : undefined,
-          ),
-        );
+          );
+        });
 
         allOrders.push(...orders);
       }

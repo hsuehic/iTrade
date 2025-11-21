@@ -37,9 +37,11 @@ export class CoinbaseExchange extends BaseExchange {
   private symbolMap = new Map<string, string>(); // Coinbase product_id -> original symbol mapping
   private positionSymbolMap = new Map<string, string>(); // position_id -> product_id mapping
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
+  private balancePollingInterval: NodeJS.Timeout | null = null; // Periodic balance polling
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
   private static readonly MAINNET_WS_URL = 'wss://advanced-trade-ws.coinbase.com';
+  private static readonly BALANCE_POLL_INTERVAL = 5000; // Poll every 5 seconds
 
   constructor() {
     const envBase = process.env.COINBASE_BASE_URL;
@@ -341,15 +343,25 @@ export class CoinbaseExchange extends BaseExchange {
   }
 
   public async getBalances(): Promise<Balance[]> {
-    // Get spot account balances
-    const info = await this.getAccountInfo();
-    const spotBalances = info.balances;
+    // Check if user wants INTX-only balances
+    const accountType = process.env.COINBASE_ACCOUNT_TYPE || 'all';
 
-    // Get INTX perpetual account balances
-    const perpetualBalances = await this.getIntxBalances();
-
-    // Combine both
-    return [...spotBalances, ...perpetualBalances];
+    if (accountType === 'intx') {
+      // Return only INTX perpetual balances (USDC)
+      console.log('[Coinbase] COINBASE_ACCOUNT_TYPE=intx, returning INTX balances only');
+      return await this.getIntxBalances();
+    } else if (accountType === 'spot') {
+      // Return only spot balances
+      console.log('[Coinbase] COINBASE_ACCOUNT_TYPE=spot, returning spot balances only');
+      const info = await this.getAccountInfo();
+      return info.balances;
+    } else {
+      // Return both spot and INTX balances (default)
+      const info = await this.getAccountInfo();
+      const spotBalances = info.balances;
+      const perpetualBalances = await this.getIntxBalances();
+      return [...spotBalances, ...perpetualBalances];
+    }
   }
 
   /**
@@ -380,6 +392,7 @@ export class CoinbaseExchange extends BaseExchange {
       }
 
       const balances: Balance[] = [];
+      let hasOverallSummary = false;
 
       // Step 2: Get balances for each perpetual portfolio
       for (const account of perpetualAccounts) {
@@ -399,27 +412,82 @@ export class CoinbaseExchange extends BaseExchange {
             JSON.stringify(portfolioResp.data),
           );
 
-          // Response structure: { portfolios: [ {...}, {...} ] }
+          // Response structure: { portfolios: [ {...}, {...} ], summary: {...} }
           const portfolios = portfolioResp.data?.portfolios || [];
 
+          // We'll calculate the overall summary from individual portfolios
+          // Store individual portfolios first
+          const individualPortfolios: Balance[] = [];
+
+          // Add individual portfolio balances
           for (const portfolio of portfolios) {
             // Extract balance information from Coinbase INTX format
-            const collateral = portfolio.collateral || '0'; // Total collateral (available balance)
+            const collateral = portfolio.collateral || '0'; // Available collateral
             const positionNotional = portfolio.position_notional || '0'; // Used in positions
             const unrealizedPnl = portfolio.unrealized_pnl?.value || '0';
+            const marginType = portfolio.margin_type || 'UNKNOWN';
+            const totalBalance = portfolio.total_balance?.value || '0';
 
-            // Total = collateral + position value + unrealized PnL
-            const total = parseFloat(collateral) + parseFloat(positionNotional);
+            // Use total_balance from portfolio if available, otherwise calculate
+            const total =
+              totalBalance !== '0'
+                ? parseFloat(totalBalance)
+                : parseFloat(collateral) + parseFloat(positionNotional);
 
-            balances.push({
-              asset: 'USDC', // INTX uses USDC
+            // Free = collateral (buying power for this portfolio)
+            // Locked = total - collateral
+            const freeNum = parseFloat(collateral);
+            const lockedNum = Math.max(0, total - freeNum);
+
+            // Create readable margin type suffix
+            const marginSuffix =
+              marginType === 'MARGIN_TYPE_CROSS'
+                ? 'Cross'
+                : marginType === 'MARGIN_TYPE_ISOLATED'
+                  ? 'Isolated'
+                  : 'Unknown';
+
+            const portfolioBalance = {
+              asset: `USDC-${marginSuffix}`, // e.g., "USDC-Cross" or "USDC-Isolated"
               free: this.formatDecimal(collateral),
-              locked: this.formatDecimal(positionNotional),
+              locked: this.formatDecimal(lockedNum.toString()),
               total: this.formatDecimal(total.toString()),
-            });
+            };
+
+            individualPortfolios.push(portfolioBalance);
+            balances.push(portfolioBalance);
 
             console.log(
-              `[Coinbase] 💰 INTX Portfolio ${portfolio.portfolio_uuid}: Collateral=${collateral}, Position=${positionNotional}, Total=${total}, UnrealizedPnL=${unrealizedPnl}`,
+              `[Coinbase] 💰 INTX Portfolio ${portfolio.portfolio_uuid?.slice(0, 8)}... (${marginSuffix}): Free=${collateral} USDC, Locked=${lockedNum.toFixed(2)} USDC, Total=${total.toFixed(2)} USDC, UnrealizedPnL=${unrealizedPnl} USDC`,
+            );
+          }
+
+          // Calculate overall INTX summary from individual portfolios (if not already added)
+          if (individualPortfolios.length > 0 && !hasOverallSummary) {
+            const totalFree = individualPortfolios.reduce(
+              (sum, b) => sum + parseFloat(b.free.toString()),
+              0,
+            );
+            const totalLocked = individualPortfolios.reduce(
+              (sum, b) => sum + parseFloat(b.locked.toString()),
+              0,
+            );
+            const totalAmount = individualPortfolios.reduce(
+              (sum, b) => sum + parseFloat(b.total.toString()),
+              0,
+            );
+
+            balances.unshift({
+              asset: 'USDC-INTX-TOTAL', // Overall INTX balance (sum of all portfolios)
+              free: this.formatDecimal(totalFree.toString()),
+              locked: this.formatDecimal(totalLocked.toString()),
+              total: this.formatDecimal(totalAmount.toString()),
+            });
+
+            hasOverallSummary = true;
+
+            console.log(
+              `[Coinbase] 💰 INTX Overall Summary (calculated): Total=${totalAmount.toFixed(2)} USDC, Free=${totalFree.toFixed(2)} USDC, Locked=${totalLocked.toFixed(2)} USDC`,
             );
           }
         } catch (error: any) {
@@ -692,7 +760,7 @@ export class CoinbaseExchange extends BaseExchange {
     const channel = msg.channel || msg.type;
 
     // Debug: Log full message for user-related channels
-    if (channel === 'user' || channel === 'futures_balance_summary') {
+    if (channel === 'user') {
       console.log(
         `[Coinbase DEBUG] Full ${channel} message:`,
         JSON.stringify(msg, null, 2),
@@ -794,45 +862,6 @@ export class CoinbaseExchange extends BaseExchange {
                 trades: 0,
                 isClosed: isClosed, // Determined by comparing current time with close time
               } as Kline);
-            }
-          }
-        }
-        break;
-      case 'futures_balance_summary':
-        // Handle futures balance summary
-        console.log('[Coinbase] Received futures_balance_summary message');
-        if (msg.events) {
-          for (const e of msg.events) {
-            console.log('[Coinbase] Futures event keys:', Object.keys(e));
-
-            // Handle FCM balance summary
-            if (e.fcm_balance_summary) {
-              console.log(
-                `[Coinbase] Processing fcm_balance_summary:`,
-                e.fcm_balance_summary,
-              );
-
-              // Convert FCM balance to iTrade Balance format
-              const summary = e.fcm_balance_summary;
-              const balances: Balance[] = [];
-
-              // Create USD balance entry from available margin
-              // Always push balance even if 0 to show the account state
-              const totalUsd = parseFloat(summary.total_usd_balance || '0');
-              const availableMargin = parseFloat(summary.available_margin || '0');
-              const lockedMargin = totalUsd - availableMargin;
-
-              balances.push({
-                asset: 'USD',
-                free: this.formatDecimal(availableMargin.toString()),
-                locked: this.formatDecimal(lockedMargin.toString()),
-                total: this.formatDecimal(totalUsd.toString()),
-              });
-
-              console.log(
-                `[Coinbase] 💰 Futures Balance Update: ${balances.length} balances (Total: ${totalUsd} USD)`,
-              );
-              this.emit('accountUpdate', 'coinbase', balances);
             }
           }
         }
@@ -1028,30 +1057,49 @@ export class CoinbaseExchange extends BaseExchange {
     this.wsManager.setJWTGenerator(() => this.generateJWT());
 
     // Subscribe to user channel
-    // Coinbase Advanced Trade API: user channel provides order updates
-    // Try empty array first, as '*' may not be valid
-    console.log('[Coinbase] Attempting user channel subscription...');
+    // Coinbase Advanced Trade API: user channel provides order updates for INTX perpetuals
+    console.log('[Coinbase] Subscribing to user channel (INTX orders)...');
     this.wsManager.subscribe('user', []);
 
-    // Try subscribing to futures_balance_summary for position/balance updates
-    // This channel may provide real-time balance and position data
-    console.log('[Coinbase] Attempting futures_balance_summary channel subscription...');
-    try {
-      this.wsManager.subscribe('futures_balance_summary', []);
-    } catch (err) {
-      console.warn(
-        '[Coinbase] futures_balance_summary subscription failed (may not be available):',
-        (err as any)?.message || err,
-      );
-    }
+    // NOTE: futures_balance_summary is for FCM futures (USD), NOT INTX perpetuals (USDC)
+    // INTX perpetuals do NOT have a dedicated WebSocket channel for balance updates
+    // We use REST API polling instead (see refreshBalancesAndPositions)
+    console.log(
+      '[Coinbase] Note: INTX perpetuals do not have WebSocket balance updates, using REST API polling',
+    );
 
     console.log('[Coinbase] User data subscription requests sent');
 
-    // Coinbase doesn't push balance/position via WebSocket
-    // Fetch initial data immediately after subscription
-    console.log('[Coinbase] Fetching initial balance and position data...');
+    // Fetch initial INTX data via REST API
+    console.log('[Coinbase] Fetching initial INTX balance and position data...');
     await this.refreshBalancesAndPositions();
     console.log('[Coinbase] ✅ Initial account data loaded');
+
+    // Start periodic polling for INTX balances and positions
+    this.startBalancePolling();
+  }
+
+  private startBalancePolling(): void {
+    // Clear any existing interval
+    this.stopBalancePolling();
+
+    console.log(
+      `[Coinbase] Starting balance polling (every ${CoinbaseExchange.BALANCE_POLL_INTERVAL / 1000}s)`,
+    );
+
+    this.balancePollingInterval = setInterval(() => {
+      this.refreshBalancesAndPositions().catch((err) =>
+        console.warn('[Coinbase] Polling error:', err?.message || err),
+      );
+    }, CoinbaseExchange.BALANCE_POLL_INTERVAL);
+  }
+
+  private stopBalancePolling(): void {
+    if (this.balancePollingInterval) {
+      clearInterval(this.balancePollingInterval);
+      this.balancePollingInterval = null;
+      console.log('[Coinbase] Stopped balance polling');
+    }
   }
 
   /**
@@ -1059,6 +1107,7 @@ export class CoinbaseExchange extends BaseExchange {
    */
   public async disconnect(): Promise<void> {
     console.log('[Coinbase] Disconnecting...');
+    this.stopBalancePolling();
     this.wsManager.closeConnection();
     await super.disconnect();
   }
