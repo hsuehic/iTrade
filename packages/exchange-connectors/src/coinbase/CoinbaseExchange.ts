@@ -300,7 +300,7 @@ export class CoinbaseExchange extends BaseExchange {
   }
 
   public async getOpenOrders(_symbol?: string): Promise<Order[]> {
-    const params: any = { order_status: 'OPEN' };
+    const params = { order_status: 'OPEN' };
     const resp = await this.httpClient.get('/api/v3/brokerage/orders/historical/batch', {
       params,
     });
@@ -413,81 +413,31 @@ export class CoinbaseExchange extends BaseExchange {
           );
 
           // Response structure: { portfolios: [ {...}, {...} ], summary: {...} }
-          const portfolios = portfolioResp.data?.portfolios || [];
+          const summary = portfolioResp.data?.summary;
 
-          // We'll calculate the overall summary from individual portfolios
-          // Store individual portfolios first
-          const individualPortfolios: Balance[] = [];
+          // Return only the overall INTX balance (from API summary)
+          if (summary && !hasOverallSummary) {
+            const totalBalance = summary.total_balance?.value || '0';
+            const buyingPower = summary.buying_power?.value || '0';
+            const unrealizedPnl = summary.unrealized_pnl?.value || '0';
 
-          // Add individual portfolio balances
-          for (const portfolio of portfolios) {
-            // Extract balance information from Coinbase INTX format
-            const collateral = portfolio.collateral || '0'; // Available collateral
-            const positionNotional = portfolio.position_notional || '0'; // Used in positions
-            const unrealizedPnl = portfolio.unrealized_pnl?.value || '0';
-            const marginType = portfolio.margin_type || 'UNKNOWN';
-            const totalBalance = portfolio.total_balance?.value || '0';
+            // Free = buying_power (available for trading)
+            // Locked = total_balance - buying_power (used in positions/margin)
+            const totalNum = parseFloat(totalBalance);
+            const freeNum = parseFloat(buyingPower);
+            const lockedNum = Math.max(0, totalNum - freeNum);
 
-            // Use total_balance from portfolio if available, otherwise calculate
-            const total =
-              totalBalance !== '0'
-                ? parseFloat(totalBalance)
-                : parseFloat(collateral) + parseFloat(positionNotional);
-
-            // Free = collateral (buying power for this portfolio)
-            // Locked = total - collateral
-            const freeNum = parseFloat(collateral);
-            const lockedNum = Math.max(0, total - freeNum);
-
-            // Create readable margin type suffix
-            const marginSuffix =
-              marginType === 'MARGIN_TYPE_CROSS'
-                ? 'Cross'
-                : marginType === 'MARGIN_TYPE_ISOLATED'
-                  ? 'Isolated'
-                  : 'Unknown';
-
-            const portfolioBalance = {
-              asset: `USDC-${marginSuffix}`, // e.g., "USDC-Cross" or "USDC-Isolated"
-              free: this.formatDecimal(collateral),
+            balances.push({
+              asset: 'USDC', // Simple asset name for INTX perpetuals
+              free: this.formatDecimal(buyingPower),
               locked: this.formatDecimal(lockedNum.toString()),
-              total: this.formatDecimal(total.toString()),
-            };
-
-            individualPortfolios.push(portfolioBalance);
-            balances.push(portfolioBalance);
-
-            console.log(
-              `[Coinbase] 💰 INTX Portfolio ${portfolio.portfolio_uuid?.slice(0, 8)}... (${marginSuffix}): Free=${collateral} USDC, Locked=${lockedNum.toFixed(2)} USDC, Total=${total.toFixed(2)} USDC, UnrealizedPnL=${unrealizedPnl} USDC`,
-            );
-          }
-
-          // Calculate overall INTX summary from individual portfolios (if not already added)
-          if (individualPortfolios.length > 0 && !hasOverallSummary) {
-            const totalFree = individualPortfolios.reduce(
-              (sum, b) => sum + parseFloat(b.free.toString()),
-              0,
-            );
-            const totalLocked = individualPortfolios.reduce(
-              (sum, b) => sum + parseFloat(b.locked.toString()),
-              0,
-            );
-            const totalAmount = individualPortfolios.reduce(
-              (sum, b) => sum + parseFloat(b.total.toString()),
-              0,
-            );
-
-            balances.unshift({
-              asset: 'USDC-INTX-TOTAL', // Overall INTX balance (sum of all portfolios)
-              free: this.formatDecimal(totalFree.toString()),
-              locked: this.formatDecimal(totalLocked.toString()),
-              total: this.formatDecimal(totalAmount.toString()),
+              total: this.formatDecimal(totalBalance),
             });
 
             hasOverallSummary = true;
 
             console.log(
-              `[Coinbase] 💰 INTX Overall Summary (calculated): Total=${totalAmount.toFixed(2)} USDC, Free=${totalFree.toFixed(2)} USDC, Locked=${totalLocked.toFixed(2)} USDC`,
+              `[Coinbase] 💰 INTX Balance: Total=${totalBalance} USDC, Free=${buyingPower} USDC, Locked=${lockedNum.toFixed(4)} USDC, UnrealizedPnL=${unrealizedPnl} USDC`,
             );
           }
         } catch (error: any) {
