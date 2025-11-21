@@ -356,11 +356,18 @@ export class CoinbaseExchange extends BaseExchange {
       const info = await this.getAccountInfo();
       return info.balances;
     } else {
-      // Return both spot and INTX balances (default)
+      // Default: check if INTX is available, if so only return INTX (to avoid conflicts)
+      const intxBalances = await this.getIntxBalances();
+      if (intxBalances.length > 0) {
+        console.log(
+          '[Coinbase] INTX account detected, returning INTX balances only (1 USDC record)',
+        );
+        return intxBalances;
+      }
+      // Fallback to spot if no INTX
+      console.log('[Coinbase] No INTX account, returning spot balances');
       const info = await this.getAccountInfo();
-      const spotBalances = info.balances;
-      const perpetualBalances = await this.getIntxBalances();
-      return [...spotBalances, ...perpetualBalances];
+      return info.balances;
     }
   }
 
