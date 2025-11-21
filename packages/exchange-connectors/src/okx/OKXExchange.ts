@@ -1255,6 +1255,24 @@ export class OKXExchange extends BaseExchange {
       averagePrice = avgPx; // 🆕 Set average execution price
     }
 
+    // 🔥 CRITICAL FIX: Always ensure updateTime is set
+    // If uTime is not provided, use current time to ensure order updates are detected
+    const updateTime = data.uTime ? new Date(parseInt(data.uTime)) : new Date();
+    
+    // 🔍 Debug logging for order updates
+    console.log('[OKX] 📦 Order Update:', {
+      ordId: data.ordId,
+      clOrdId: data.clOrdId,
+      symbol,
+      state: data.state,
+      status: this.transformOKXOrderStatus(data.state || 'live'),
+      accFillSz: data.accFillSz,
+      sz: data.sz,
+      avgPx: data.avgPx,
+      uTime: data.uTime,
+      updateTime: updateTime.toISOString(),
+    });
+
     return {
       id: (data.ordId || uuidv4()).toString(),
       clientOrderId: data.clOrdId,
@@ -1266,10 +1284,11 @@ export class OKXExchange extends BaseExchange {
       status: this.transformOKXOrderStatus(data.state || 'live'),
       timeInForce: 'GTC' as TimeInForce,
       timestamp: data.cTime ? new Date(parseInt(data.cTime)) : new Date(),
-      updateTime: data.uTime ? new Date(parseInt(data.uTime)) : undefined,
+      updateTime, // 🔥 Now always set
       executedQuantity: data.accFillSz ? this.formatDecimal(data.accFillSz) : undefined,
       cummulativeQuoteQuantity,
       averagePrice, // 🆕 Include average execution price
+      exchange: this.name, // 🔥 Ensure exchange is set
     };
   }
 
