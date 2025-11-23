@@ -77,6 +77,11 @@ export default function StrategyPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [strategyToDelete, setStrategyToDelete] = useState<StrategyEntity | null>(null);
+
+  // Loading states for API operations
+  const [isCreating, setIsCreating] = useState(false);
+  const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
+  const [isUpdatingStatusId, setIsUpdatingStatusId] = useState<number | null>(null);
   // 使用策略配置系统获取默认值
   const getDefaultStrategyType = (): StrategyTypeKey => {
     const implementedStrategies = getImplementedStrategies();
@@ -321,6 +326,11 @@ export default function StrategyPage() {
 
   const createStrategy = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Prevent multiple submissions
+    if (isCreating) return;
+
+    setIsCreating(true);
     try {
       let parameters;
       try {
@@ -352,6 +362,8 @@ export default function StrategyPage() {
       fetchStrategies();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -390,9 +402,14 @@ export default function StrategyPage() {
     setNameAvailable(true); // Reset name validation
     setCheckingName(false);
     setNameError('');
+    setIsCreating(false); // Reset creating state
   };
 
   const updateStrategyStatus = async (id: number, newStatus: string) => {
+    // Prevent multiple status updates for the same strategy
+    if (isUpdatingStatusId === id) return;
+
+    setIsUpdatingStatusId(id);
     try {
       const response = await fetch(`/api/strategies/${id}/status`, {
         method: 'POST',
@@ -406,6 +423,8 @@ export default function StrategyPage() {
       fetchStrategies();
     } catch {
       toast.error('Failed to update strategy status');
+    } finally {
+      setIsUpdatingStatusId(null);
     }
   };
 
@@ -420,8 +439,9 @@ export default function StrategyPage() {
   };
 
   const confirmDeleteStrategy = async () => {
-    if (!strategyToDelete) return;
+    if (!strategyToDelete || isDeletingId === strategyToDelete.id) return;
 
+    setIsDeletingId(strategyToDelete.id);
     try {
       const response = await fetch(`/api/strategies/${strategyToDelete.id}`, {
         method: 'DELETE',
@@ -437,6 +457,8 @@ export default function StrategyPage() {
       closeDeleteDialog();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete strategy');
+    } finally {
+      setIsDeletingId(null);
     }
   };
 
@@ -1094,9 +1116,16 @@ export default function StrategyPage() {
                           ) : (
                             <Button
                               type="submit"
-                              disabled={!canProceedToNextStep || !canSubmit}
+                              disabled={!canProceedToNextStep || !canSubmit || isCreating}
                             >
-                              {isEditing ? 'Update Strategy' : 'Create Strategy'}
+                              {isCreating ? (
+                                <>
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                                  {isEditing ? 'Updating...' : 'Creating...'}
+                                </>
+                              ) : (
+                                <>{isEditing ? 'Update Strategy' : 'Create Strategy'}</>
+                              )}
                             </Button>
                           )}
                         </div>
@@ -1222,24 +1251,47 @@ export default function StrategyPage() {
                               variant="outline"
                               className="flex-1"
                               onClick={() => updateStrategyStatus(strategy.id, 'stopped')}
+                              disabled={isUpdatingStatusId === strategy.id}
                             >
-                              <IconPlayerPause className="h-4 w-4 mr-2" />
-                              Stop
+                              {isUpdatingStatusId === strategy.id ? (
+                                <>
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                                  Stopping...
+                                </>
+                              ) : (
+                                <>
+                                  <IconPlayerPause className="h-4 w-4 mr-2" />
+                                  Stop
+                                </>
+                              )}
                             </Button>
                           ) : (
                             <Button
                               className="flex-1"
                               onClick={() => updateStrategyStatus(strategy.id, 'active')}
+                              disabled={isUpdatingStatusId === strategy.id}
                             >
-                              <IconPlayerPlay className="h-4 w-4 mr-2" />
-                              Start
+                              {isUpdatingStatusId === strategy.id ? (
+                                <>
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                                  Starting...
+                                </>
+                              ) : (
+                                <>
+                                  <IconPlayerPlay className="h-4 w-4 mr-2" />
+                                  Start
+                                </>
+                              )}
                             </Button>
                           )}
                           <Button
                             variant="outline"
                             size="icon"
                             onClick={() => editStrategy(strategy)}
-                            disabled={strategy.status === 'active'}
+                            disabled={
+                              strategy.status === 'active' ||
+                              isUpdatingStatusId === strategy.id
+                            }
                           >
                             <IconEdit className="h-4 w-4" />
                           </Button>
@@ -1247,7 +1299,10 @@ export default function StrategyPage() {
                             variant="outline"
                             size="icon"
                             onClick={() => openDeleteDialog(strategy)}
-                            disabled={strategy.status === 'active'}
+                            disabled={
+                              strategy.status === 'active' ||
+                              isUpdatingStatusId === strategy.id
+                            }
                             className="hover:bg-destructive hover:text-destructive-foreground"
                           >
                             <IconTrash className="h-4 w-4" />
@@ -1314,6 +1369,7 @@ export default function StrategyPage() {
               variant="outline"
               onClick={closeDeleteDialog}
               className="min-w-[100px]"
+              disabled={isDeletingId !== null}
             >
               Cancel
             </Button>
@@ -1321,9 +1377,19 @@ export default function StrategyPage() {
               variant="destructive"
               onClick={confirmDeleteStrategy}
               className="min-w-[100px]"
+              disabled={isDeletingId !== null}
             >
-              <IconTrash className="h-4 w-4 mr-2" />
-              Delete
+              {isDeletingId !== null ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <IconTrash className="h-4 w-4 mr-2" />
+                  Delete
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>
