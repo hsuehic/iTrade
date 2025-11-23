@@ -108,7 +108,6 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
 export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
   private position: Position | null = null;
   private orders: Map<string, Order> = new Map();
-  private tickers: FixedLengthList<Ticker> = new FixedLengthList<Ticker>(15);
   private klines: FixedLengthList<Kline> = new FixedLengthList<Kline>(15);
   private baseSize!: number;
   private maxSize!: number;
@@ -187,13 +186,19 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
+    const price = takeProfitPrice;
+    const quantity = parentOrder.executedQuantity || parentOrder.quantity;
+    this._logger.info(
+      `🎯 [Take Profit Signal Generated] clientOrderId: ${clientOrderId}`,
+    );
+    this._logger.info(`   Price: ${price.toString()}, Quantity: ${quantity.toString()}`);
 
     return {
       action: 'sell',
       price: takeProfitPrice,
       symbol: this._symbol,
       leverage: this.leverage,
-      quantity: parentOrder.executedQuantity || parentOrder.quantity,
+      quantity: new Decimal(this.baseSize),
       reason: 'take_profit',
       metadata,
       tradeMode: this.tradeMode,
@@ -541,7 +546,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.orderMetadataMap.clear();
 
     // 清理市场数据
-    this.tickers = new FixedLengthList<Ticker>(15);
     this.klines = new FixedLengthList<Kline>(15);
 
     // 重置状态
