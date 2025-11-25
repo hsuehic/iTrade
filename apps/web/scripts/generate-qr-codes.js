@@ -6,8 +6,9 @@
  * Usage: node apps/web/scripts/generate-qr-codes.js
  *
  * This will generate:
- * - apps/web/public/qr-android.png
- * - apps/web/public/qr-ios.png
+ * - apps/web/public/qr-android.png (Google Play)
+ * - apps/web/public/qr-ios.png (App Store)
+ * - apps/web/public/qr-apk.png (Direct APK)
  */
 
 const qr = require('qr-image');
@@ -18,6 +19,7 @@ const path = require('path');
 const URLS = {
   android: 'https://play.google.com/store/apps/details?id=com.ihsueh.itrade',
   ios: 'https://apps.apple.com/sg/app/itrade-ihsueh/id6753905284',
+  apk: 'https://itrade.ihsueh.com/downloads/itrade.apk',
 };
 
 const OUTPUT_DIR = path.join(__dirname, '../public');
@@ -98,13 +100,17 @@ async function main() {
 
   await generateQRWithLogo(URLS.ios, path.join(OUTPUT_DIR, 'qr-ios.png'));
 
+  await generateQRWithLogo(URLS.apk, path.join(OUTPUT_DIR, 'qr-apk.png'));
+
   console.log('\n✨ All QR codes generated successfully!');
   console.log('\nGenerated files:');
-  console.log('  - apps/web/public/qr-android.png');
-  console.log('  - apps/web/public/qr-ios.png');
+  console.log('  - apps/web/public/qr-android.png (Google Play)');
+  console.log('  - apps/web/public/qr-ios.png (App Store)');
+  console.log('  - apps/web/public/qr-apk.png (Direct APK)');
   console.log('\n📱 URLs:');
-  console.log(`  - Android: ${URLS.android}`);
-  console.log(`  - iOS: ${URLS.ios}`);
+  console.log(`  - Google Play: ${URLS.android}`);
+  console.log(`  - App Store: ${URLS.ios}`);
+  console.log(`  - Direct APK: ${URLS.apk}`);
 }
 
 main().catch((error) => {

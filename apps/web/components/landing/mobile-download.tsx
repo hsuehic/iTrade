@@ -3,8 +3,7 @@
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Apple, Play, QrCode } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { QrCode } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 
@@ -49,52 +48,54 @@ export function MobileDownload() {
               fingertips.
             </p>
 
-            <div className="flex flex-col gap-4 sm:flex-row sm:gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-3">
               {/* iOS Download */}
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="group h-auto w-full justify-start gap-4 p-4 sm:w-auto"
+              <Link
+                href="https://apps.apple.com/sg/app/itrade-ihsueh/id6753905284"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-block transition-all duration-300 ease-out hover:scale-110"
               >
-                <Link
-                  href="https://apps.apple.com/sg/app/itrade-ihsueh/id6753905284"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-4"
-                >
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 transition-colors group-hover:bg-primary/20">
-                    <Apple className="size-7" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs text-muted-foreground">Download on the</div>
-                    <div className="text-base font-semibold">App Store</div>
-                  </div>
-                </Link>
-              </Button>
+                <Image
+                  src="/app_store.png"
+                  alt="Download on the App Store"
+                  width={180}
+                  height={54}
+                  className="h-[54px] w-auto rounded-lg shadow-md transition-all duration-300 ease-out group-hover:shadow-2xl group-hover:shadow-primary/20"
+                />
+              </Link>
 
-              {/* Android Download */}
-              <Button
-                asChild
-                size="lg"
-                variant="outline"
-                className="group h-auto w-full justify-start gap-4 p-4 sm:w-auto"
+              {/* Google Play Download */}
+              <Link
+                href="https://play.google.com/store/apps/details?id=com.ihsueh.itrade"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-block transition-all duration-300 ease-out hover:scale-110"
               >
-                <Link
-                  href="https://play.google.com/store/apps/details?id=com.ihsueh.itrade"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-4"
-                >
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 transition-colors group-hover:bg-primary/20">
-                    <Play className="size-7" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs text-muted-foreground">Get it on</div>
-                    <div className="text-base font-semibold">Google Play</div>
-                  </div>
-                </Link>
-              </Button>
+                <Image
+                  src="/googleplay.svg"
+                  alt="Get it on Google Play"
+                  width={180}
+                  height={54}
+                  className="h-[54px] w-auto rounded-lg shadow-md transition-all duration-300 ease-out group-hover:shadow-2xl group-hover:shadow-primary/20"
+                />
+              </Link>
+
+              {/* Direct APK Download */}
+              <Link
+                href="https://itrade.ihsueh.com/downloads/itrade.apk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-block transition-all duration-300 ease-out hover:scale-110"
+              >
+                <Image
+                  src="/android_apk.png"
+                  alt="Download Android APK"
+                  width={180}
+                  height={54}
+                  className="h-[54px] w-auto rounded-lg shadow-md transition-all duration-300 ease-out group-hover:shadow-2xl group-hover:shadow-primary/20"
+                />
+              </Link>
             </div>
 
             {/* QR Codes */}
@@ -103,30 +104,42 @@ export function MobileDownload() {
                 <QrCode className="size-4 text-primary" />
                 <span>Scan to Download</span>
               </div>
-              <div className="flex gap-6">
+              <div className="flex flex-wrap gap-6">
                 <div className="flex flex-col items-center gap-2">
                   <div className="rounded-lg border bg-white p-2">
                     <Image
                       src="/qr-ios.png"
-                      alt="iOS App QR Code"
+                      alt="App Store QR Code"
                       width={120}
                       height={120}
                       className="size-[120px]"
                     />
                   </div>
-                  <span className="text-xs text-muted-foreground">iOS</span>
+                  <span className="text-xs text-muted-foreground">App Store</span>
                 </div>
                 <div className="flex flex-col items-center gap-2">
                   <div className="rounded-lg border bg-white p-2">
                     <Image
                       src="/qr-android.png"
-                      alt="Android App QR Code"
+                      alt="Google Play QR Code"
                       width={120}
                       height={120}
                       className="size-[120px]"
                     />
                   </div>
-                  <span className="text-xs text-muted-foreground">Android</span>
+                  <span className="text-xs text-muted-foreground">Google Play</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <div className="rounded-lg border bg-white p-2">
+                    <Image
+                      src="/qr-apk.png"
+                      alt="Direct APK Download QR Code"
+                      width={120}
+                      height={120}
+                      className="size-[120px]"
+                    />
+                  </div>
+                  <span className="text-xs text-muted-foreground">Direct APK</span>
                 </div>
               </div>
             </div>
