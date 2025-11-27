@@ -33,11 +33,14 @@ export interface TradesSubscriptionConfig {
 
 /**
  * Klines subscription configuration
+ * 🆕 Now supports multiple intervals for strategies that need multiple timeframes
  */
 export interface KlinesSubscriptionConfig {
   enabled: boolean;
-  interval?: string; // Kline interval ('1m', '5m', '1h', etc.)
-  limit?: number; // Number of klines to fetch
+  // Support both single interval (legacy) and multiple intervals
+  interval?: string; // Deprecated: Use intervals array instead
+  intervals?: string[]; // Kline intervals (['1m', '5m', '1h'], etc.)
+  limit?: number; // Number of klines to fetch per interval
   pollInterval?: number; // REST polling interval in milliseconds
 }
 

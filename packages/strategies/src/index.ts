@@ -32,4 +32,9 @@ export {
   createStrategyInstance,
   getRegistryStats,
 } from './registry/strategy-factory';
-export { type StrategyRegistryConfig, type ParameterDefinition } from './type';
+export {
+  type StrategyRegistryConfig,
+  type ParameterDefinition,
+  type SubscriptionRequirements,
+  type InitialDataRequirements,
+} from './type';

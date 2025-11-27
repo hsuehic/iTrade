@@ -18,6 +18,7 @@ import {
   type StrategyTypeKey,
   getImplementedStrategies,
   getAllStrategiesWithImplementationStatus,
+  getStrategyConfig,
 } from '@itrade/strategies';
 
 import { SiteHeader } from '@/components/site-header';
@@ -136,6 +137,15 @@ export default function StrategyPage() {
       return getDefaultParametersForType(formData.type as StrategyTypeKey);
     }
   }, [formData.parameters, formData.type]);
+
+  // 🆕 Get current strategy configuration (including requirements)
+  const currentStrategyConfig = useMemo(() => {
+    return getStrategyConfig(formData.type as StrategyTypeKey);
+  }, [formData.type]);
+
+  // 🆕 Extract subscription and initial data requirements from strategy config
+  const subscriptionRequirements = currentStrategyConfig?.subscriptionRequirements;
+  const initialDataRequirements = currentStrategyConfig?.initialDataRequirements;
 
   // 🔄 Convert initialDataConfig from strategy config format to form format
   const convertInitialDataToFormFormat = useCallback(
@@ -1063,6 +1073,7 @@ export default function StrategyPage() {
                                     convertInitialDataToConfigFormat(initialDataConfig),
                                 });
                               }}
+                              requirements={initialDataRequirements}
                             />
                           </div>
                         )}
@@ -1077,6 +1088,7 @@ export default function StrategyPage() {
                                   subscription,
                                 });
                               }}
+                              requirements={subscriptionRequirements}
                             />
                           </div>
                         )}

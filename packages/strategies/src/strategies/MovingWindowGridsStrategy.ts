@@ -97,6 +97,47 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
         order: 4,
       },
     ],
+
+    // 🆕 Subscription requirements for MovingWindowGridsStrategy
+    subscriptionRequirements: {
+      klines: {
+        required: true,
+        allowMultipleIntervals: false, // This strategy works with a single timeframe
+        defaultIntervals: ['15m'], // Default to 15m klines
+        intervalsEditable: true, // User can choose different interval
+        description:
+          'Kline data is required to detect volatility breakouts. Select one interval.',
+      },
+      ticker: {
+        required: false,
+        editable: true,
+        description: 'Optional: Ticker data can be used for faster entry signals',
+      },
+    },
+
+    // 🆕 Initial data requirements for MovingWindowGridsStrategy
+    initialDataRequirements: {
+      klines: {
+        required: true,
+        defaultConfig: { '15m': 30 }, // Load 30 bars to establish price window
+        allowMultipleIntervals: false, // This strategy works best with a single timeframe
+        description:
+          'Historical klines are required to establish the initial price window. This strategy works with a single interval.',
+      },
+      fetchPositions: {
+        required: true,
+        description: 'Fetch current positions to track exposure',
+      },
+      fetchOpenOrders: {
+        required: true,
+        description: 'Fetch open orders to track entry and take-profit orders',
+      },
+      fetchBalance: {
+        required: true,
+        description: 'Fetch balance to ensure sufficient capital for grid orders',
+      },
+    },
+
     documentation: {
       overview: 'Places orders based on volatility and take profit ratio.',
       parameters:

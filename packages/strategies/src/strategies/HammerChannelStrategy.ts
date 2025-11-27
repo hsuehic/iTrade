@@ -154,6 +154,57 @@ export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerC
         order: 10,
       },
     ],
+
+    // 🆕 Subscription requirements for HammerChannelStrategy
+    subscriptionRequirements: {
+      klines: {
+        required: true,
+        allowMultipleIntervals: false, // Single interval only
+        defaultIntervals: ['15m'], // Default to 15m klines
+        intervalsEditable: true, // User can choose different interval
+        description:
+          'Kline data is required to detect hammer patterns. Select one interval (will be used for both initial data and subscriptions).',
+      },
+      ticker: {
+        required: false,
+        editable: true,
+        description: 'Optional: Ticker data can supplement kline analysis',
+      },
+    },
+
+    // 🆕 Initial data requirements for HammerChannelStrategy
+    initialDataRequirements: {
+      klines: {
+        required: true,
+        defaultConfig: { '15m': 15 }, // Load 15 bars to establish price channel
+        allowMultipleIntervals: false, // Single interval only
+        intervalsEditable: true, // User can select interval
+        limitsEditable: false, // Number of bars is FIXED at 15
+        description:
+          'Load 15 historical klines to establish price channel. The interval you select here will be used for both initial data and real-time subscriptions.',
+      },
+      fetchPositions: {
+        required: true,
+        editable: false, // Not editable (always required)
+        description: 'Fetch current positions to ensure position limits are respected',
+      },
+      fetchOpenOrders: {
+        required: true,
+        editable: false, // Not editable (always required)
+        description: 'Fetch open orders to track pending trades',
+      },
+      fetchBalance: {
+        required: true,
+        editable: false, // Not editable (always required)
+        description: 'Fetch balance to ensure sufficient capital',
+      },
+      fetchTicker: {
+        required: false,
+        editable: false, // Not shown in UI (not needed for this strategy)
+        description: 'Optional: Current ticker for price reference',
+      },
+    },
+
     documentation: {
       overview: 'Detects hammer patterns and signals based on channel position.',
       parameters: 'Adjust ratios for pattern strictness, thresholds for timing.',
@@ -543,6 +594,62 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    */
   protected async onCleanup(): Promise<void> {
     console.log('🔨 [HammerChannel] Strategy cleaned up');
+  }
+
+  /**
+   * 🆕 Get Initial Data Configuration
+   * Returns the initial data config based on strategy requirements
+   * - 15 klines bars (fixed, not editable by user)
+   * - Interval is taken from context (user selected in UI)
+   */
+  public override getInitialDataConfig() {
+    const contextConfig = this._context.initialDataConfig || {};
+
+    // Get the interval from context klines config
+    // User selects interval in UI, but we enforce 15 bars
+    let interval = '15m'; // Default
+    if (contextConfig.klines) {
+      const intervals = Object.keys(contextConfig.klines);
+      if (intervals.length > 0) {
+        interval = intervals[0]; // Use first (and should be only) interval
+      }
+    }
+
+    return {
+      klines: { [interval]: 15 }, // FIXED: Always 15 bars
+      fetchPositions: true, // Required
+      fetchOpenOrders: true, // Required
+      fetchBalance: true, // Required
+      // fetchTicker and fetchAccountInfo not included (not needed)
+    };
+  }
+
+  /**
+   * 🆕 Get Subscription Configuration
+   * Returns the subscription config that matches the initial data interval
+   * - Uses the same interval as initial data
+   * - Single interval only
+   */
+  public override getSubscriptionConfig() {
+    const contextConfig = this._context.initialDataConfig || {};
+
+    // Get the interval from initial data config to ensure consistency
+    let interval = '15m'; // Default
+    if (contextConfig.klines) {
+      const intervals = Object.keys(contextConfig.klines);
+      if (intervals.length > 0) {
+        interval = intervals[0]; // Use same interval as initial data
+      }
+    }
+
+    return {
+      klines: {
+        enabled: true,
+        intervals: [interval], // Use same interval as initial data
+      },
+      method: 'websocket' as const,
+      exchange: this._context.exchange,
+    };
   }
 
   /**

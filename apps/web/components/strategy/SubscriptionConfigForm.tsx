@@ -19,9 +19,11 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { IconSettings, IconBraces, IconForms } from '@tabler/icons-react';
+import { IconSettings, IconBraces, IconForms, IconInfoCircle } from '@tabler/icons-react';
 import dynamic from 'next/dynamic';
 import { SubscriptionConfig } from '@itrade/core';
+import { SubscriptionRequirements } from '@itrade/strategies';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const JsonEditor = dynamic(
   () => import('@/components/json-editor').then((mod) => mod.JsonEditor),
@@ -39,12 +41,36 @@ const SUPPORTED_EXCHANGES = [
   { id: 'coinbase', name: 'Coinbase' },
 ];
 
+const KLINE_INTERVALS = [
+  { value: '1m', label: '1 minute' },
+  { value: '3m', label: '3 minutes' },
+  { value: '5m', label: '5 minutes' },
+  { value: '15m', label: '15 minutes' },
+  { value: '30m', label: '30 minutes' },
+  { value: '1h', label: '1 hour' },
+  { value: '2h', label: '2 hours' },
+  { value: '4h', label: '4 hours' },
+  { value: '6h', label: '6 hours' },
+  { value: '8h', label: '8 hours' },
+  { value: '12h', label: '12 hours' },
+  { value: '1d', label: '1 day' },
+  { value: '3d', label: '3 days' },
+  { value: '1w', label: '1 week' },
+  { value: '1M', label: '1 month' },
+];
+
 interface SubscriptionConfigFormProps {
   value: SubscriptionConfig;
   onChange: (config: SubscriptionConfig) => void;
+  // 🆕 Strategy-specific subscription requirements
+  requirements?: SubscriptionRequirements;
 }
 
-export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFormProps) {
+export function SubscriptionConfigForm({
+  value,
+  onChange,
+  requirements,
+}: SubscriptionConfigFormProps) {
   const [mode, setMode] = useState<'form' | 'json'>('form');
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -62,6 +88,40 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
       onChange(parsed);
     } catch (error) {
       setJsonError((error as Error).message);
+    }
+  };
+
+  // 🆕 Get selected kline intervals (support both old single interval and new multiple intervals)
+  const getSelectedIntervals = (): string[] => {
+    if (!value.klines || typeof value.klines === 'boolean') return [];
+    if (value.klines.intervals) return value.klines.intervals;
+    if (value.klines.interval) return [value.klines.interval]; // Legacy support
+    return [];
+  };
+
+  // 🆕 Update kline intervals
+  const handleIntervalToggle = (interval: string, checked: boolean) => {
+    const currentIntervals = getSelectedIntervals();
+    let newIntervals: string[];
+
+    if (checked) {
+      newIntervals = [...currentIntervals, interval];
+    } else {
+      newIntervals = currentIntervals.filter((i) => i !== interval);
+    }
+
+    // If using multiple intervals or strategy allows it
+    if (requirements?.klines?.allowMultipleIntervals || newIntervals.length > 1) {
+      handleFormChange('klines', {
+        enabled: true,
+        intervals: newIntervals,
+      });
+    } else {
+      // Single interval mode (legacy compatibility)
+      handleFormChange('klines', {
+        enabled: true,
+        interval: newIntervals[0],
+      });
     }
   };
 
@@ -92,131 +152,254 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
 
           {/* Form Mode */}
           <TabsContent value="form" className="space-y-4 mt-4">
+            {/* Strategy Requirements Info */}
+            {requirements && (
+              <Alert>
+                <IconInfoCircle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  This strategy has specific subscription requirements. Required
+                  subscriptions are marked.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Data Type Toggles */}
             <div className="space-y-4">
               <h4 className="font-medium text-sm">Data Types</h4>
               <div className="grid grid-cols-2 gap-4">
-                {/* Ticker Data */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Ticker Data</Label>
-                    <Switch
-                      checked={Boolean(value.ticker ?? true)}
-                      onCheckedChange={(checked) => handleFormChange('ticker', checked)}
-                    />
-                  </div>
-                </div>
-
-                {/* Order Book */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Order Book</Label>
-                    <Switch
-                      checked={Boolean(value.orderbook ?? false)}
-                      onCheckedChange={(checked) =>
-                        handleFormChange(
-                          'orderbook',
-                          checked ? { enabled: true, depth: 20 } : false,
-                        )
-                      }
-                    />
-                  </div>
-                  {value.orderbook && (
-                    <div className="mt-2">
-                      <Label className="text-xs text-muted-foreground">Depth</Label>
-                      <Select
-                        value={
-                          typeof value.orderbook === 'object'
-                            ? String(value.orderbook.depth || 20)
-                            : '20'
+                {/* Ticker Data - Show if no requirements OR defined in requirements */}
+                {(requirements === undefined || requirements.ticker !== undefined) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm flex items-center gap-1">
+                        Ticker Data
+                        {requirements?.ticker?.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </Label>
+                      <Switch
+                        checked={Boolean(
+                          value.ticker ?? (requirements?.ticker?.required || false),
+                        )}
+                        onCheckedChange={(checked) => handleFormChange('ticker', checked)}
+                        disabled={
+                          requirements?.ticker?.required ||
+                          requirements?.ticker?.editable === false
                         }
-                        onValueChange={(v) =>
-                          handleFormChange('orderbook', {
-                            enabled: true,
-                            depth: Number(v),
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent container={false}>
-                          <SelectItem value="5">5 levels</SelectItem>
-                          <SelectItem value="10">10 levels</SelectItem>
-                          <SelectItem value="20">20 levels</SelectItem>
-                          <SelectItem value="50">50 levels</SelectItem>
-                          <SelectItem value="100">100 levels</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
-                  )}
-                </div>
-
-                {/* Trades */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Trades</Label>
-                    <Switch
-                      checked={Boolean(value.trades ?? false)}
-                      onCheckedChange={(checked) => handleFormChange('trades', checked)}
-                    />
+                    {requirements?.ticker?.description && (
+                      <p className="text-xs text-muted-foreground">
+                        {requirements.ticker.description}
+                      </p>
+                    )}
                   </div>
-                </div>
+                )}
 
-                {/* Kline Data */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Kline Data</Label>
-                    <Switch
-                      checked={Boolean(value.klines ?? true)}
-                      onCheckedChange={(checked) =>
-                        handleFormChange(
-                          'klines',
-                          checked ? { enabled: true, interval: '15m' } : false,
-                        )
-                      }
-                    />
-                  </div>
-                  {value.klines && (
-                    <div className="mt-2">
-                      <Label className="text-xs text-muted-foreground">Interval</Label>
-                      <Select
-                        value={
-                          typeof value.klines === 'object'
-                            ? value.klines.interval || '15m'
-                            : '15m'
+                {/* Order Book - Show if no requirements OR defined in requirements */}
+                {(requirements === undefined || requirements.orderbook !== undefined) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm flex items-center gap-1">
+                        Order Book
+                        {requirements?.orderbook?.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </Label>
+                      <Switch
+                        checked={Boolean(
+                          value.orderbook ?? (requirements?.orderbook?.required || false),
+                        )}
+                        onCheckedChange={(checked) =>
+                          handleFormChange(
+                            'orderbook',
+                            checked
+                              ? {
+                                  enabled: true,
+                                  depth: requirements?.orderbook?.defaultDepth || 20,
+                                }
+                              : false,
+                          )
                         }
-                        onValueChange={(v) =>
-                          handleFormChange('klines', {
-                            enabled: true,
-                            interval: v,
-                          })
+                        disabled={
+                          requirements?.orderbook?.required ||
+                          requirements?.orderbook?.editable === false
                         }
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent container={false}>
-                          <SelectItem value="1m">1 minute</SelectItem>
-                          <SelectItem value="3m">3 minutes</SelectItem>
-                          <SelectItem value="5m">5 minutes</SelectItem>
-                          <SelectItem value="15m">15 minutes</SelectItem>
-                          <SelectItem value="30m">30 minutes</SelectItem>
-                          <SelectItem value="1h">1 hour</SelectItem>
-                          <SelectItem value="2h">2 hours</SelectItem>
-                          <SelectItem value="4h">4 hours</SelectItem>
-                          <SelectItem value="6h">6 hours</SelectItem>
-                          <SelectItem value="8h">8 hours</SelectItem>
-                          <SelectItem value="12h">12 hours</SelectItem>
-                          <SelectItem value="1d">1 day</SelectItem>
-                          <SelectItem value="3d">3 days</SelectItem>
-                          <SelectItem value="1w">1 week</SelectItem>
-                          <SelectItem value="1M">1 month</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      />
                     </div>
-                  )}
-                </div>
+                    {value.orderbook && (
+                      <div className="mt-2">
+                        <Label className="text-xs text-muted-foreground">Depth</Label>
+                        <Select
+                          value={
+                            typeof value.orderbook === 'object'
+                              ? String(value.orderbook.depth || 20)
+                              : '20'
+                          }
+                          onValueChange={(v) =>
+                            handleFormChange('orderbook', {
+                              enabled: true,
+                              depth: Number(v),
+                            })
+                          }
+                          disabled={requirements?.orderbook?.depthEditable === false}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent container={false}>
+                            <SelectItem value="5">5 levels</SelectItem>
+                            <SelectItem value="10">10 levels</SelectItem>
+                            <SelectItem value="20">20 levels</SelectItem>
+                            <SelectItem value="50">50 levels</SelectItem>
+                            <SelectItem value="100">100 levels</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {requirements?.orderbook?.description && (
+                      <p className="text-xs text-muted-foreground">
+                        {requirements.orderbook.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Trades - Show if no requirements OR defined in requirements */}
+                {(requirements === undefined || requirements.trades !== undefined) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm flex items-center gap-1">
+                        Trades
+                        {requirements?.trades?.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </Label>
+                      <Switch
+                        checked={Boolean(
+                          value.trades ?? (requirements?.trades?.required || false),
+                        )}
+                        onCheckedChange={(checked) => handleFormChange('trades', checked)}
+                        disabled={
+                          requirements?.trades?.required ||
+                          requirements?.trades?.editable === false
+                        }
+                      />
+                    </div>
+                    {requirements?.trades?.description && (
+                      <p className="text-xs text-muted-foreground">
+                        {requirements.trades.description}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Kline Data - Show only if no requirements or klines is in requirements */}
+                {(!requirements || requirements.klines !== undefined) && (
+                  <div className="space-y-2 col-span-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm flex items-center gap-1">
+                        Kline Data
+                        {requirements?.klines?.required && (
+                          <span className="text-red-500">*</span>
+                        )}
+                      </Label>
+                      <Switch
+                        checked={Boolean(
+                          value.klines ?? (requirements?.klines?.required || false),
+                        )}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            const defaultIntervals = requirements?.klines
+                              ?.defaultIntervals || ['15m'];
+                            handleFormChange('klines', {
+                              enabled: true,
+                              intervals: defaultIntervals,
+                            });
+                          } else {
+                            handleFormChange('klines', false);
+                          }
+                        }}
+                        disabled={requirements?.klines?.required}
+                      />
+                    </div>
+
+                    {value.klines && (
+                      <div className="mt-3 space-y-2">
+                        {requirements?.klines?.description && (
+                          <p className="text-xs text-muted-foreground">
+                            {requirements.klines.description}
+                          </p>
+                        )}
+
+                        {/* Fixed intervals (user cannot change) */}
+                        {requirements?.klines?.fixedIntervals &&
+                        requirements.klines.fixedIntervals.length > 0 ? (
+                          <div className="border rounded-md p-3 bg-muted/30">
+                            <Label className="text-xs text-muted-foreground mb-2 block">
+                              Fixed Intervals (required by strategy)
+                            </Label>
+                            <div className="flex flex-wrap gap-2">
+                              {requirements.klines.fixedIntervals.map((interval) => (
+                                <div
+                                  key={interval}
+                                  className="px-2 py-1 bg-primary text-primary-foreground text-xs rounded"
+                                >
+                                  {KLINE_INTERVALS.find((i) => i.value === interval)
+                                    ?.label || interval}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Selectable intervals */}
+                            <Label className="text-xs text-muted-foreground">
+                              Select Intervals
+                              {requirements?.klines?.allowMultipleIntervals
+                                ? ' (multiple allowed)'
+                                : ' (select one)'}
+                            </Label>
+                            <div className="border rounded-md p-3 max-h-48 overflow-y-auto">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {KLINE_INTERVALS.map((interval) => {
+                                  const selectedIntervals = getSelectedIntervals();
+                                  const isSelected = selectedIntervals.includes(
+                                    interval.value,
+                                  );
+
+                                  return (
+                                    <div
+                                      key={interval.value}
+                                      className="flex items-center space-x-2"
+                                    >
+                                      <Checkbox
+                                        id={`interval-${interval.value}`}
+                                        checked={isSelected}
+                                        onCheckedChange={(checked) =>
+                                          handleIntervalToggle(
+                                            interval.value,
+                                            Boolean(checked),
+                                          )
+                                        }
+                                      />
+                                      <label
+                                        htmlFor={`interval-${interval.value}`}
+                                        className="text-xs cursor-pointer flex-1"
+                                      >
+                                        {interval.label}
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -319,7 +502,7 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
   "ticker": true,
   "klines": {
     "enabled": true,
-    "interval": "15m"
+    "intervals": ["15m", "1h"]
   },
   "orderbook": {
     "enabled": true,
@@ -341,7 +524,8 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
                   <strong>ticker</strong>: Real-time price updates
                 </li>
                 <li>
-                  <strong>klines</strong>: Candlestick data with specified interval
+                  <strong>klines</strong>: Candlestick data with specified intervals
+                  (supports multiple)
                 </li>
                 <li>
                   <strong>orderbook</strong>: Order book depth updates
@@ -350,6 +534,11 @@ export function SubscriptionConfigForm({ value, onChange }: SubscriptionConfigFo
                   <strong>trades</strong>: Recent trades stream
                 </li>
               </ul>
+              <p className="mt-2">
+                <strong>Note:</strong> Legacy single interval format{' '}
+                <code>interval: &quot;15m&quot;</code> is still supported, but{' '}
+                <code>intervals: [&quot;15m&quot;]</code> array format is recommended.
+              </p>
             </div>
           </TabsContent>
         </Tabs>

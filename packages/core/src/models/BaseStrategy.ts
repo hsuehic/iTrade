@@ -25,6 +25,8 @@ import {
   OrderSide,
   SignalType,
   InitialDataResult,
+  InitialDataConfig,
+  SubscriptionConfig,
 } from '../types';
 import { ConsoleLogger } from './ConsoleLogger';
 
@@ -303,6 +305,36 @@ export abstract class BaseStrategy<
     this._logger.debug(JSON.stringify(initialData, null, 2));
     // Derived classes should override this to process initial data
     // Example: Load klines into buffers, set initial positions, etc.
+  }
+
+  /**
+   * 🆕 Get Initial Data Configuration
+   * TradingEngine calls this method to determine what initial data to load
+   * before the strategy starts.
+   *
+   * Default implementation returns the config from context.
+   * Derived classes can override this to provide dynamic configuration
+   * based on strategy parameters.
+   *
+   * @returns InitialDataConfig - Configuration for initial data loading
+   */
+  public getInitialDataConfig(): InitialDataConfig {
+    return this._context.initialDataConfig || {};
+  }
+
+  /**
+   * 🆕 Get Subscription Configuration
+   * TradingEngine calls this method to determine what real-time data
+   * subscriptions to set up for this strategy.
+   *
+   * Default implementation returns the config from context.
+   * Derived classes can override this to provide dynamic configuration
+   * based on strategy parameters.
+   *
+   * @returns SubscriptionConfig - Configuration for real-time subscriptions
+   */
+  public getSubscriptionConfig(): SubscriptionConfig {
+    return this._context.subscription || {};
   }
 
   /**

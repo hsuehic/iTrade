@@ -59,6 +59,43 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
         unit: '%',
       },
     ],
+
+    // 🆕 Subscription requirements for MovingAverageStrategy
+    subscriptionRequirements: {
+      klines: {
+        required: true,
+        allowMultipleIntervals: true, // Can use multiple timeframes for confirmation
+        defaultIntervals: ['15m'], // Default to 15m klines
+        intervalsEditable: true, // User can choose different intervals
+        description:
+          'Kline data is required to calculate moving averages. You can select one or more intervals.',
+      },
+      ticker: {
+        required: false,
+        editable: true,
+        description: 'Optional: Ticker data can be used for price updates between klines',
+      },
+    },
+
+    // 🆕 Initial data requirements for MovingAverageStrategy
+    initialDataRequirements: {
+      klines: {
+        required: true,
+        defaultConfig: { '15m': 50 }, // Load 50 bars of 15m klines (enough for slow MA)
+        allowMultipleIntervals: true, // Strategy can benefit from multiple timeframes
+        description:
+          'Historical klines are required to initialize moving averages. You can load multiple intervals for multi-timeframe analysis (e.g., 15m + 1h).',
+      },
+      fetchPositions: {
+        required: true,
+        description: 'Fetch current positions to know existing exposure',
+      },
+      fetchOpenOrders: {
+        required: true,
+        description: 'Fetch open orders to avoid duplicate signals',
+      },
+    },
+
     documentation: {
       overview:
         'Generates buy signals when fast MA crosses above slow MA, and sell signals when it crosses below.',
