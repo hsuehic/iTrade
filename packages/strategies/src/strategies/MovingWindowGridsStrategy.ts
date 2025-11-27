@@ -1,10 +1,7 @@
-import { FixedLengthList } from '@itrade/utils';
 import {
   BaseStrategy,
   StrategyResult,
   StrategyConfig,
-  Ticker,
-  Kline,
   Order,
   OrderStatus,
   Position,
@@ -21,15 +18,11 @@ import { StrategyRegistryConfig } from '../type';
  * 📊 MovingWindowGridsStrategy 参数
  */
 export interface MovingWindowGridsParameters extends StrategyParameters {
-  windowSize: number;
-  gridSize: number;
-  gridCount: number;
   minVolatility: number;
   takeProfitRatio: number;
   baseSize: number;
   maxSize: number;
   leverage?: number;
-  tradeMode?: TradeMode;
 }
 
 export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<MovingWindowGridsParameters> =
@@ -149,7 +142,6 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
 export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsParameters> {
   private position: Position | null = null;
   private orders: Map<string, Order> = new Map();
-  private klines: FixedLengthList<Kline> = new FixedLengthList<Kline>(15);
   private baseSize!: number;
   private maxSize!: number;
   private size: number = 0;
@@ -172,7 +164,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.baseSize = config.parameters.baseSize;
     this.maxSize = config.parameters.maxSize;
     this.leverage = config.parameters.leverage ?? 10;
-    this.tradeMode = config.parameters.tradeMode ?? TradeMode.ISOLATED;
 
     // Note: Initial data will be processed via processInitialData() called by TradingEngine
     // after the strategy is added and initial data is loaded
@@ -310,6 +301,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * @returns StrategyResult if TP signal should be generated, null otherwise
    */
   private handleOrder(orders: Order[]): StrategyResult | null {
+    this._logger.info(`🆕 [handleOrder] Orders: \n`);
+    this._logger.info(JSON.stringify(orders, null, 2));
     for (const order of orders) {
       if (!order.clientOrderId) {
         this._logger.warn('⚠️ [Order] Order has no clientOrderId, skipping');
@@ -585,9 +578,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.orders.clear();
     this.takeProfitOrders.clear();
     this.orderMetadataMap.clear();
-
-    // 清理市场数据
-    this.klines = new FixedLengthList<Kline>(15);
 
     // 重置状态
     this.position = null;

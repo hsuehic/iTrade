@@ -109,7 +109,8 @@ export function InitialDataConfigForm({
         onChange({ ...value, ...updates });
       }
     }
-  }, [requirements, onChange, value]); // Only run when requirements change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requirements]); // Only run when requirements change (not value!)
 
   const addKlineConfig = () => {
     const newKlines = [...(value.klines || []), { interval: '15m', limit: 20 }];
