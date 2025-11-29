@@ -2,12 +2,17 @@ import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { ConsoleLogger } from '@itrade/core';
 
+interface SubscriptionInfo {
+  productIds: Set<string>;
+  params?: Record<string, any>; // Store additional params like granularity
+}
+
 interface WebSocketState {
   ws: WebSocket | null;
   reconnectAttempts: number;
   reconnectTimer: NodeJS.Timeout | null;
   heartbeatInterval: NodeJS.Timeout | null;
-  subscriptions: Map<string, Set<string>>; // channel -> Set<product_ids>
+  subscriptions: Map<string, SubscriptionInfo>; // channel -> SubscriptionInfo
   authenticated: boolean;
   jwtToken: string | null;
 }
@@ -135,12 +140,20 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     productIds: string[],
     additionalParams?: Record<string, any>,
   ): void {
-    // Track subscription first
+    // Track subscription first with params
     if (!this.state.subscriptions.has(channel)) {
-      this.state.subscriptions.set(channel, new Set());
+      this.state.subscriptions.set(channel, {
+        productIds: new Set(),
+        params: additionalParams,
+      });
     }
-    const channelSubs = this.state.subscriptions.get(channel)!;
-    productIds.forEach((pid) => channelSubs.add(pid));
+    const channelSub = this.state.subscriptions.get(channel)!;
+    productIds.forEach((pid) => channelSub.productIds.add(pid));
+
+    // Update params if provided (in case of re-subscription with different params)
+    if (additionalParams) {
+      channelSub.params = additionalParams;
+    }
 
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
       this.logger.info(
@@ -187,10 +200,10 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     }
 
     // Remove from tracking
-    const channelSubs = this.state.subscriptions.get(channel);
-    if (channelSubs) {
-      productIds.forEach((pid) => channelSubs.delete(pid));
-      if (channelSubs.size === 0) {
+    const channelSub = this.state.subscriptions.get(channel);
+    if (channelSub) {
+      productIds.forEach((pid) => channelSub.productIds.delete(pid));
+      if (channelSub.productIds.size === 0) {
         this.state.subscriptions.delete(channel);
       }
     }
@@ -215,8 +228,8 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    * Resubscribe to all tracked subscriptions
    */
   private resubscribeAll(): void {
-    for (const [channel, productIds] of this.state.subscriptions.entries()) {
-      const productIdsArray = Array.from(productIds);
+    for (const [channel, subInfo] of this.state.subscriptions.entries()) {
+      const productIdsArray = Array.from(subInfo.productIds);
       this.logger.info(
         `[Coinbase] Resubscribing to ${channel}:${productIdsArray.join(', ')}`,
       );
@@ -225,6 +238,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
         type: 'subscribe',
         product_ids: productIdsArray,
         channel: channel,
+        ...subInfo.params, // ✅ Include stored params (granularity, etc.)
       };
 
       // Add JWT for user channel
@@ -234,6 +248,9 @@ export class CoinbaseWebSocketManager extends EventEmitter {
         this.state.jwtToken = jwt;
       }
 
+      this.logger.info(
+        `[Coinbase] Resubscription message: ${JSON.stringify(subscribeMessage, null, 2)}`,
+      );
       this.state.ws?.send(JSON.stringify(subscribeMessage));
     }
   }

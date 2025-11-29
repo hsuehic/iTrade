@@ -10,6 +10,7 @@ import {
   TradeMode,
   SignalType,
   SignalMetaData,
+  InitialDataResult,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
@@ -155,6 +156,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   // 🆕 take profile order tracker
   private takeProfitOrders: Map<string, Order> = new Map();
 
+  // 🆕 Track last processed kline timestamp to avoid reprocessing
+  private lastProcessedKlineTime: number = 0;
+
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
     super(config);
 
@@ -164,9 +168,71 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.baseSize = config.parameters.baseSize;
     this.maxSize = config.parameters.maxSize;
     this.leverage = config.parameters.leverage ?? 10;
+    this.tradeMode = TradeMode.ISOLATED;
 
     // Note: Initial data will be processed via processInitialData() called by TradingEngine
     // after the strategy is added and initial data is loaded
+  }
+
+  /**
+   * Process initial data loaded by TradingEngine
+   * ⚠️ IMPORTANT: This method should NOT generate signals for historical klines
+   * It only loads positions and orders to understand current state
+   */
+  public override processInitialData(initialData: InitialDataResult): void {
+    // Load current positions to track size
+    if (initialData.positions && initialData.positions.length > 0) {
+      const position = initialData.positions.find(
+        (p) => p.symbol === this._context.symbol,
+      );
+      if (position) {
+        this.position = position;
+        this.size = position.quantity.abs().toNumber();
+        this._logger.info(
+          `  💼 Loaded position: ${position.quantity.toString()} @ ${position.avgPrice?.toString() || 'N/A'}`,
+        );
+      }
+    }
+
+    // Load open orders to track entry and take-profit orders
+    if (initialData.openOrders && initialData.openOrders.length > 0) {
+      this._logger.info(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
+      initialData.openOrders.forEach((order) => {
+        if (order.symbol === this._context.symbol) {
+          this.orders.set(order.id, order);
+
+          // Track take-profit orders separately
+          const metadata = this.orderMetadataMap.get(order.clientOrderId || '');
+          if (metadata?.signalType === SignalType.TakeProfit) {
+            this.takeProfitOrders.set(order.id, order);
+          }
+        }
+      });
+    }
+
+    // Load balance information (for logging only)
+    if (initialData.balance) {
+      this._logger.info(`  💰 Loaded balance information`);
+    }
+
+    // Real-time klines will be analyzed via analyze() method
+    if (initialData.klines) {
+      Object.entries(initialData.klines).forEach(([_interval, klines]) => {
+        // 🆕 Set lastProcessedKlineTime to the most recent historical kline
+        // This prevents reprocessing historical klines if they come through WebSocket
+        if (klines.length > 0) {
+          const mostRecentKline = klines[klines.length - 1];
+          const klineTime = mostRecentKline.openTime.getTime();
+          if (klineTime > this.lastProcessedKlineTime) {
+            this.lastProcessedKlineTime = klineTime;
+          }
+        }
+      });
+    }
+
+    this._logger.info(
+      `✅ Initial data loaded. Strategy ready for real-time analysis. Current size: ${this.size}/${this.maxSize}`,
+    );
   }
 
   /**
@@ -240,6 +306,14 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
     const { exchangeName, klines, orders, positions, symbol } = dataUpdate;
+
+    // 🆕 DEBUG: Log all incoming data updates
+    if (orders && orders.length > 0) {
+      this._logger.debug(
+        `📥 [analyze] Received ${orders.length} order update(s) from ${exchangeName}`,
+      );
+    }
+
     if (
       exchangeName === this._exchangeName ||
       this.context.subscription?.exchange?.includes(exchangeName || '')
@@ -249,9 +323,15 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       }
 
       if (orders) {
+        this._logger.debug(`   ✅ Exchange matches, processing orders...`);
         const signal = this.handleOrder(orders);
         if (signal) {
           return signal; // Return TP signal immediately if generated
+        }
+      } else {
+        // Log when no orders in the update
+        if (klines || positions) {
+          // Only log if this is not just a data feed update
         }
       }
 
@@ -261,11 +341,38 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         if (!!klines && klines.length > 0) {
           const kline = klines[klines.length - 1];
 
+          // 🆕 Check if kline interval matches expected interval
+          const klinesConfig = this.context.subscription?.klines;
+          let expectedIntervals: string[] = [];
+          if (klinesConfig && typeof klinesConfig === 'object') {
+            if (klinesConfig.intervals) {
+              expectedIntervals = klinesConfig.intervals;
+            } else if (klinesConfig.interval) {
+              expectedIntervals = [klinesConfig.interval];
+            }
+          }
+
+          if (
+            expectedIntervals.length > 0 &&
+            !expectedIntervals.includes(kline.interval)
+          ) {
+            return { action: 'hold' };
+          }
+
+          // 🆕 Prevent reprocessing the same kline timestamp
+          const klineTime = kline.openTime.getTime();
+          if (klineTime <= this.lastProcessedKlineTime) {
+            return { action: 'hold' };
+          }
+
           const { minVolatility } = this;
           // ✅ Process validated and closed kline
           const volatility = kline.high.minus(kline.low).dividedBy(kline.open).toNumber();
 
           if (volatility >= minVolatility && kline.isClosed) {
+            // Update last processed timestamp
+            this.lastProcessedKlineTime = klineTime;
+
             const price = kline.open.add(kline.close).dividedBy(2);
             if (kline.close.gt(kline.open)) {
               const tempSize = this.size + this.baseSize;
@@ -301,8 +408,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * @returns StrategyResult if TP signal should be generated, null otherwise
    */
   private handleOrder(orders: Order[]): StrategyResult | null {
-    this._logger.info(`🆕 [handleOrder] Orders: \n`);
-    this._logger.info(JSON.stringify(orders, null, 2));
+    this._logger.debug(`🆕 [handleOrder] Received ${orders.length} order(s)`);
+
     for (const order of orders) {
       if (!order.clientOrderId) {
         this._logger.warn('⚠️ [Order] Order has no clientOrderId, skipping');
@@ -311,14 +418,44 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
       const metadata = this.orderMetadataMap.get(order.clientOrderId);
 
+      this._logger.debug(
+        `📋 [Order] ${order.clientOrderId.substring(0, 8)}... | ` +
+          `Status: ${order.status} | ` +
+          `Side: ${order.side} | ` +
+          `Qty: ${order.quantity.toString()} | ` +
+          `Metadata: ${metadata ? metadata.signalType : 'NONE'}`,
+      );
+
       // Check if this is a NEW order (not seen before)
       if (!this.orders.has(order.clientOrderId)) {
         // 🔥 NEW ORDER - Handle like onOrderCreated
+
+        // 🆕 FIX: Handle orders without metadata (manual orders or after restart)
         if (!metadata) {
           this._logger.warn(
             `⚠️ [New Order] No metadata found for order: ${order.clientOrderId}`,
           );
-          continue;
+          this._logger.warn(
+            `   This order was not created by this strategy. ` +
+              `It might be a manual order or from a previous run.`,
+          );
+
+          // 🆕 Still track the order to detect status changes (like cancellation)
+          // This prevents "ghost orders" from affecting strategy state
+          this.orders.set(order.clientOrderId, order);
+
+          // 🆕 If order is already in a terminal state, handle it
+          if (
+            order.status === OrderStatus.CANCELED ||
+            order.status === OrderStatus.REJECTED ||
+            order.status === OrderStatus.EXPIRED
+          ) {
+            this._logger.info(
+              `   📊 Order already in terminal state: ${order.status}, no action needed`,
+            );
+          }
+
+          continue; // Skip further processing for orders without metadata
         }
 
         const signalType = metadata.signalType;
@@ -371,23 +508,54 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       // 🔥 EXISTING ORDER - Check for status changes
       const storedOrder = this.orders.get(order.clientOrderId)!;
 
-      // Skip if no update time or order is older than stored
-      if (!storedOrder?.updateTime || !order.updateTime) {
-        continue;
+      // 🆕 FIX: Better timestamp validation
+      if (!order.updateTime) {
+        this._logger.warn(
+          `⚠️ [Order Update] No updateTime for order: ${order.clientOrderId}, using current time`,
+        );
+        // Still process the order, just log the warning
       }
 
-      if (storedOrder.updateTime.getTime() >= order.updateTime.getTime()) {
+      // Only skip if we have both timestamps and new one is older
+      if (
+        storedOrder?.updateTime &&
+        order.updateTime &&
+        storedOrder.updateTime.getTime() >= order.updateTime.getTime()
+      ) {
+        this._logger.debug(
+          `   ⏭️ Order ${order.clientOrderId.substring(0, 8)}... is not newer, skipping`,
+        );
         continue; // Order is not newer, skip
       }
 
       // 🔥 ORDER STATUS CHANGED
       if (storedOrder.status !== order.status) {
+        this._logger.info(
+          `🔄 [Order Status Changed] ${order.clientOrderId.substring(0, 8)}... | ` +
+            `${storedOrder.status} → ${order.status}`,
+        );
+
         // Handle cancellation/rejection/expiration
         if (
           order.status === OrderStatus.CANCELED ||
           order.status === OrderStatus.REJECTED ||
           order.status === OrderStatus.EXPIRED
         ) {
+          this._logger.warn(
+            `   ❌ Order ${order.status}: ${order.clientOrderId.substring(0, 8)}...`,
+          );
+
+          // 🆕 FIX: Handle cancellation even for orders without metadata
+          if (!metadata) {
+            this._logger.warn(`   ⚠️ Cannot adjust strategy size: order has no metadata`);
+            this._logger.warn(
+              `   This might be a manual order or order from previous run`,
+            );
+            // Still update and remove from tracking
+            this.orders.delete(order.clientOrderId);
+            continue;
+          }
+
           const signal = this.handleOrderCancellation(order);
           if (signal) {
             return signal; // Return TP signal immediately
@@ -461,8 +629,13 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    */
   private handleOrderCancellation(order: Order): StrategyResult | null {
     if (!order.clientOrderId) {
+      this._logger.warn(`⚠️ [Order Cancellation] Order has no clientOrderId`);
       return null;
     }
+
+    this._logger.info(
+      `🗑️ [Order Cancellation] Processing ${order.status} order: ${order.clientOrderId.substring(0, 8)}...`,
+    );
 
     const metadata = this.orderMetadataMap.get(order.clientOrderId);
 
@@ -470,12 +643,19 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       this._logger.warn(
         `⚠️ [Order Cancellation] No metadata found for order: ${order.clientOrderId}`,
       );
+      this._logger.warn(
+        `   Cannot adjust strategy size without knowing order type (entry/TP)`,
+      );
       return null;
     }
 
     const signalType = metadata.signalType;
     const executedQty = order.executedQuantity || new Decimal(0);
     const totalQty = order.quantity;
+
+    this._logger.info(
+      `   Signal Type: ${signalType} | Executed: ${executedQty.toString()}/${totalQty.toString()}`,
+    );
 
     if (signalType === 'entry') {
       const hasGeneratedTP = this.findTakeProfitOrderByParentId(order.clientOrderId);
@@ -490,12 +670,34 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         // 🔥 关键：只释放未成交部分的大小承诺
         // The executed portion's size commitment will be released when TP fills
         const unfilledAmount = this.baseSize * (1 - executedQty.div(totalQty).toNumber());
+        const oldSize = this.size;
         this.size -= unfilledAmount;
 
-        // Generate and return TP signal immediately
+        this._logger.info(
+          `   📊 Entry partially filled and ${order.status.toLowerCase()}:`,
+        );
+        this._logger.info(
+          `      Filled: ${executedQty.toString()}/${totalQty.toString()} ` +
+            `(${executedQty.div(totalQty).mul(100).toFixed(2)}%)`,
+        );
+        this._logger.info(
+          `      Released unfilled size: ${unfilledAmount.toFixed(2)} ` +
+            `(${oldSize.toFixed(2)} → ${this.size.toFixed(2)})`,
+        );
+
+        // Generate and return TP signal immediately for the filled portion
+        this._logger.info(`      Generating TP signal for filled portion...`);
         return this.generateTakeProfitSignal(order);
       } else {
+        const oldSize = this.size;
         this.size -= this.baseSize;
+
+        this._logger.info(`   📊 Entry ${order.status.toLowerCase()} with NO fills:`);
+        this._logger.info(
+          `      Released full size: ${this.baseSize} ` +
+            `(${oldSize.toFixed(2)} → ${this.size.toFixed(2)})`,
+        );
+
         this.orders.delete(order.clientOrderId);
         this.orderMetadataMap.delete(order.clientOrderId);
       }
@@ -505,6 +707,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       if (executedQty.isZero()) {
         this.orders.delete(order.clientOrderId);
         this.orderMetadataMap.delete(order.clientOrderId);
+        this._logger.debug(`   🧹 Cleaned up unfilled entry order metadata`);
       }
     } else if (signalType === 'take_profit') {
       const parentOrderId = metadata.parentOrderId;
@@ -512,10 +715,21 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       if (executedQty.gt(0) && executedQty.lt(totalQty)) {
         const filledRatio = executedQty.div(totalQty).toNumber();
         const sizeToRelease = this.baseSize * filledRatio;
+        const oldSize = this.size;
         this.size -= sizeToRelease;
 
-        this._logger.warn(
-          `   📉 TP partially filled and canceled, released: ${sizeToRelease.toFixed(2)}, new size: ${this.size}`,
+        this._logger.info(`   📊 TP partially filled and ${order.status.toLowerCase()}:`);
+        this._logger.info(
+          `      Filled: ${executedQty.toString()}/${totalQty.toString()} ` +
+            `(${executedQty.div(totalQty).mul(100).toFixed(2)}%)`,
+        );
+        this._logger.info(
+          `      Released filled size: ${sizeToRelease.toFixed(2)} ` +
+            `(${oldSize.toFixed(2)} → ${this.size.toFixed(2)})`,
+        );
+      } else if (executedQty.isZero()) {
+        this._logger.info(
+          `   📊 TP ${order.status.toLowerCase()} with NO fills - no size adjustment needed`,
         );
       }
       // If fully filled, onOrderFilled already handled size adjustment
@@ -528,7 +742,12 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       if (parentOrderId) {
         this.orders.delete(parentOrderId);
         this.orderMetadataMap.delete(parentOrderId);
+        this._logger.debug(
+          `   🧹 Cleaned up parent entry order: ${parentOrderId.substring(0, 8)}...`,
+        );
       }
+
+      this._logger.debug(`   🧹 Cleaned up TP order and metadata`);
     }
 
     return null;

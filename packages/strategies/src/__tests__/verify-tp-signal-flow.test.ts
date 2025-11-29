@@ -244,7 +244,9 @@ describe('MovingWindowGridsStrategy - Production Flow Verification', () => {
     expect(result.action).toBe('hold');
 
     console.log('DIAGNOSIS: If you see this in production, your exchange connector');
-    console.log('is not properly updating the updateTime field when order status changes!\n');
+    console.log(
+      'is not properly updating the updateTime field when order status changes!\n',
+    );
   });
 
   it('DIAGNOSTIC: Should handle rapid order updates correctly', async () => {
@@ -316,4 +318,3 @@ describe('MovingWindowGridsStrategy - Production Flow Verification', () => {
     console.log('✅ Rapid updates handled correctly - TP generated on FILLED status\n');
   });
 });
-

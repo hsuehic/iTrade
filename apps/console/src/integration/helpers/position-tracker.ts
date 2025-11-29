@@ -39,8 +39,6 @@ export class PositionTracker {
   }
 
   async start(): Promise<void> {
-    this.logger.info('Starting Position Tracker...');
-
     // Set up recurring flush timer (runs every DEBOUNCE_MS)
     this.timer = setInterval(() => {
       this.flushAllPendingUpdates();
@@ -48,21 +46,11 @@ export class PositionTracker {
 
     // Listen for position updates using the correct event name
     this.eventBus.onPositionUpdate((data) => {
-      this.logger.info(
-        `[PositionTracker] Received positionUpdate event from ${data.exchange}: ${data.positions.length} positions`,
-      );
       // Process each position in the update
       data.positions.forEach((position) => {
-        this.logger.debug(
-          `[PositionTracker] Processing position: ${position.symbol} ${position.side} ${position.quantity.toString()}`,
-        );
         this.handlePositionUpdate(data.exchange, position);
       });
     });
-
-    this.logger.info(
-      `✅ Position Tracker started (debounce: ${this.DEBOUNCE_MS}ms per exchange-symbol)`,
-    );
   }
 
   async stop(): Promise<void> {
@@ -71,20 +59,6 @@ export class PositionTracker {
     if (this.timer) {
       clearTimeout(this.timer);
     }
-
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.info('📊 Position Tracker Final Report');
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.info(`   Total Updates Received: ${this.totalUpdates}`);
-    this.logger.info(`   Total Saved to Database: ${this.totalSaved}`);
-    this.logger.info(
-      `   Debounce Efficiency: ${((1 - this.totalSaved / Math.max(this.totalUpdates, 1)) * 100).toFixed(1)}% reduction`,
-    );
-
-    const runTime = Date.now() - this.startTime.getTime();
-    const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
-    this.logger.info(`   Running time: ${hours} hours`);
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
   private handlePositionUpdate(exchange: string, position: Position): void {
@@ -100,10 +74,6 @@ export class PositionTracker {
         symbol: position.symbol,
         timestamp: new Date(),
       });
-
-      this.logger.debug(
-        `📈 Position update queued: ${exchange} ${position.symbol} ${position.side} ${position.quantity.toString()} (${this.pendingUpdates.size} pending)`,
-      );
     } catch (error) {
       this.logger.error('❌ Failed to queue position update', error as Error);
     }
@@ -112,12 +82,7 @@ export class PositionTracker {
   private async flushAllPendingUpdates(): Promise<void> {
     if (this.pendingUpdates.size === 0) return;
 
-    this.logger.info(
-      `🔄 Flushing ${this.pendingUpdates.size} pending position updates...`,
-    );
-
     await this.upsertPositionEntity(Array.from(this.pendingUpdates.values()));
-    this.logger.info('✅ All pending position updates flushed');
   }
 
   /**

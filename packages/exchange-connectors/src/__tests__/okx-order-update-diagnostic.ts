@@ -1,12 +1,12 @@
 /**
  * OKX Order Update Diagnostic Script
- * 
+ *
  * This script helps diagnose why take profit orders are not being placed for OKX.
- * 
+ *
  * To run this test:
  * 1. Set your OKX credentials in .env file
  * 2. Run: pnpm test okx-order-update-diagnostic.ts
- * 
+ *
  * What to check:
  * 1. Are order updates being received from OKX WebSocket?
  * 2. Is updateTime being set correctly?
@@ -22,12 +22,7 @@ describe('OKX Order Update Diagnostic', () => {
 
   beforeAll(async () => {
     // Initialize OKX exchange
-    okx = new OKXExchange({
-      apiKey: process.env.OKX_API_KEY || '',
-      secretKey: process.env.OKX_SECRET_KEY || '',
-      passphrase: process.env.OKX_PASSPHRASE || '',
-      sandbox: process.env.OKX_SANDBOX === 'true',
-    });
+    okx = new OKXExchange();
 
     await okx.connect({
       apiKey: process.env.OKX_API_KEY || '',
@@ -86,11 +81,15 @@ describe('OKX Order Update Diagnostic', () => {
         if (history.length > 1) {
           const previous = history[history.length - 2];
           const current = history[history.length - 1];
-          
+
           console.log('🔍 STATUS TRANSITION DETECTED:');
-          console.log(`   Previous: ${previous.status} at ${previous.updateTime?.toISOString()}`);
-          console.log(`   Current:  ${current.status} at ${current.updateTime?.toISOString()}`);
-          
+          console.log(
+            `   Previous: ${previous.status} at ${previous.updateTime?.toISOString()}`,
+          );
+          console.log(
+            `   Current:  ${current.status} at ${current.updateTime?.toISOString()}`,
+          );
+
           if (previous.status !== current.status) {
             console.log(`   ✅ Status changed: ${previous.status} → ${current.status}`);
           } else {
@@ -102,7 +101,9 @@ describe('OKX Order Update Diagnostic', () => {
             console.log(`   Time difference: ${timeDiff}ms`);
             if (timeDiff <= 0) {
               console.log('   ⚠️ WARNING: Update time is not increasing!');
-              console.log('   This will prevent the strategy from detecting status changes!');
+              console.log(
+                '   This will prevent the strategy from detecting status changes!',
+              );
             }
           } else {
             console.log('   ⚠️ WARNING: Missing updateTime!');
@@ -144,4 +145,3 @@ describe('OKX Order Update Diagnostic', () => {
     console.log();
   });
 });
-

@@ -208,10 +208,6 @@ export class BalanceTracker {
 
       this.totalSaved++;
       this.pendingUpdates.delete(key);
-
-      this.logger.info(
-        `💾 Balance saved: ${exchange} | Total: ${totalBalance.toFixed(2)} | Available: ${availableBalance.toFixed(2)} | Locked: ${lockedBalance.toFixed(2)}`,
-      );
     } catch (error) {
       this.logger.error(`❌ Failed to save balance for ${key}`, error as Error);
       this.pendingUpdates.delete(key);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -73,6 +73,20 @@ export function SubscriptionConfigForm({
 }: SubscriptionConfigFormProps) {
   const [mode, setMode] = useState<'form' | 'json'>('form');
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // 🆕 Auto-initialize klines when required by strategy
+  useEffect(() => {
+    if (requirements?.klines?.required && !value.klines) {
+      const defaultIntervals = requirements.klines.defaultIntervals || ['1m'];
+      onChange({
+        ...value,
+        klines: {
+          enabled: true,
+          intervals: defaultIntervals,
+        },
+      });
+    }
+  }, [requirements, value, onChange]);
 
   const handleFormChange = (key: string, newValue: unknown) => {
     onChange({
@@ -305,13 +319,11 @@ export function SubscriptionConfigForm({
                         )}
                       </Label>
                       <Switch
-                        checked={Boolean(
-                          value.klines ?? (requirements?.klines?.required || false),
-                        )}
+                        checked={Boolean(value.klines)}
                         onCheckedChange={(checked) => {
                           if (checked) {
                             const defaultIntervals = requirements?.klines
-                              ?.defaultIntervals || ['15m'];
+                              ?.defaultIntervals || ['1m'];
                             handleFormChange('klines', {
                               enabled: true,
                               intervals: defaultIntervals,

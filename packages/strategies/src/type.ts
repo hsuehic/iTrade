@@ -133,13 +133,13 @@ export interface StrategyRegistryConfig<
   category: 'trend' | 'momentum' | 'volatility' | 'custom';
   defaultParameters: TParams;
   parameterDefinitions: ParameterDefinition[];
-  
+
   // 🆕 Strategy-specific subscription requirements
   subscriptionRequirements?: SubscriptionRequirements;
-  
+
   // 🆕 Strategy-specific initial data requirements
   initialDataRequirements?: InitialDataRequirements;
-  
+
   documentation?: {
     overview: string;
     parameters: string;

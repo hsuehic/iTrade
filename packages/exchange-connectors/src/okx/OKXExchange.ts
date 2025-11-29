@@ -940,7 +940,34 @@ export class OKXExchange extends BaseExchange {
         );
       } else if (channel === 'orders') {
         try {
+          // 🆕 DEBUG: Log ALL raw order updates from OKX
+          console.log('[OKX] 📨 Raw Order WebSocket Message:', {
+            instId: data.instId,
+            ordId: data.ordId,
+            clOrdId: data.clOrdId,
+            state: data.state, // ⚠️ This is the critical field for status
+            sz: data.sz,
+            accFillSz: data.accFillSz,
+            avgPx: data.avgPx,
+            side: data.side,
+            ordType: data.ordType,
+            uTime: data.uTime,
+            cTime: data.cTime,
+          });
+
           const order = this.transformOKXPrivateOrder(data);
+
+          // 🆕 DEBUG: Log transformed order
+          console.log('[OKX] 📦 Transformed Order:', {
+            id: order.id.substring(0, 12) + '...',
+            clientOrderId: order.clientOrderId?.substring(0, 8) + '...',
+            symbol: order.symbol,
+            status: order.status, // ⚠️ Verify this matches expected status
+            side: order.side,
+            quantity: order.quantity.toString(),
+            executedQuantity: order.executedQuantity?.toString() || '0',
+          });
+
           this.emit('orderUpdate', order.symbol, order);
         } catch (error) {
           console.error('[OKX] Error transforming order data:', error);
@@ -1117,6 +1144,14 @@ export class OKXExchange extends BaseExchange {
   }
 
   private transformOKXOrderStatus(state: string): OrderStatus {
+    // 🆕 OKX Order States (from OKX API v5 documentation):
+    // - live: Order is active and waiting to be filled
+    // - partially_filled: Order is partially filled
+    // - filled: Order is completely filled
+    // - canceled: Order is canceled by user
+    // - mmp_canceled: Order is canceled by Market Maker Protection
+    // - rejected: Order is rejected by system
+    // - expired: Order is expired (time in force)
     const statusMap: { [key: string]: OrderStatus } = {
       live: OrderStatus.NEW,
       partially_filled: OrderStatus.PARTIALLY_FILLED,
@@ -1124,7 +1159,17 @@ export class OKXExchange extends BaseExchange {
       canceled: OrderStatus.CANCELED,
       mmp_canceled: OrderStatus.CANCELED,
       rejected: OrderStatus.REJECTED,
+      expired: OrderStatus.EXPIRED,
     };
+
+    // 🆕 CRITICAL: Warn if we encounter an unknown status
+    if (!statusMap[state]) {
+      console.warn(
+        `[OKX] ⚠️ Unknown order state: "${state}" - defaulting to NEW. ` +
+          `Please update transformOKXOrderStatus mapping.`,
+      );
+      console.warn(`   Known states: ${Object.keys(statusMap).join(', ')}`);
+    }
 
     return statusMap[state] || OrderStatus.NEW;
   }
@@ -1258,7 +1303,7 @@ export class OKXExchange extends BaseExchange {
     // 🔥 CRITICAL FIX: Always ensure updateTime is set
     // If uTime is not provided, use current time to ensure order updates are detected
     const updateTime = data.uTime ? new Date(parseInt(data.uTime)) : new Date();
-    
+
     // 🔍 Debug logging for order updates
     console.log('[OKX] 📦 Order Update:', {
       ordId: data.ordId,
@@ -1312,23 +1357,6 @@ export class OKXExchange extends BaseExchange {
 
     if (Array.isArray(data.posData)) {
       for (const p of data.posData) {
-        // 🔍 Debug: Log each position's raw fields (including all available fields)
-        console.log('[OKX] 📍 Raw position fields:', {
-          instId: p.instId,
-          pos: p.pos,
-          avgPx: p.avgPx,
-          markPx: p.markPx,
-          lastPx: p.lastPx,
-          upl: p.upl,
-          uplRatio: p.uplRatio,
-          lever: p.lever,
-          mgnMode: p.mgnMode,
-          posSide: p.posSide,
-          notionalUsd: p.notionalUsd, // Position value in USD
-          uTime: p.uTime,
-          cTime: p.cTime,
-        });
-
         // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
         const unifiedSymbol = this.denormalizeSymbol(p.instId);
 

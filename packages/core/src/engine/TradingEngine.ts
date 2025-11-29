@@ -174,11 +174,25 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     // If engine is already running, load initial data and subscribe
     // (for strategies added dynamically after engine.start())
     if (this._isRunning) {
+      this.logger.info(
+        `🔧 [TRADING_ENGINE] Engine is running, initializing strategy: ${name}`,
+      );
+
       // Load initial data first (before subscribing to real-time data)
+      this.logger.debug(`🔧 [TRADING_ENGINE] Loading initial data for: ${name}`);
       await this.loadInitialDataForStrategy(name, strategy);
 
       // Then subscribe to real-time data
+      this.logger.debug(`🔧 [TRADING_ENGINE] Subscribing to data for: ${name}`);
       await this.subscribeStrategyData(name, strategy);
+
+      this.logger.info(
+        `✅ [TRADING_ENGINE] Strategy initialized and subscribed: ${name}`,
+      );
+    } else {
+      this.logger.info(
+        `⏳ [TRADING_ENGINE] Engine not running yet, will initialize on engine.start(): ${name}`,
+      );
     }
     // Otherwise, initial data will be loaded when engine.start() is called
   }
@@ -1015,9 +1029,29 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     exchangeName?: string;
   }): Promise<void> {
     try {
+      // 🆕 DEBUG: Log what we're sending to strategies
+      if (accountData.orders && accountData.orders.length > 0) {
+        this.logger.debug(
+          `📤 [onAccountUpdate] Sending ${accountData.orders.length} order update(s) to ${this._strategies.size} strategy(ies)`,
+        );
+        accountData.orders.forEach((order) => {
+          this.logger.debug(
+            `   Order: ${order.clientOrderId?.substring(0, 8)}... | ` +
+              `Status: ${order.status} | Exchange: ${accountData.exchangeName}`,
+          );
+        });
+      }
+
       // Process account data update with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
+          // 🆕 DEBUG: Log which strategy is receiving the update
+          if (accountData.orders && accountData.orders.length > 0) {
+            this.logger.debug(
+              `   → Sending to strategy: ${strategyName} (exchange: ${strategy.config.exchange})`,
+            );
+          }
+
           const result = await strategy.analyze(accountData);
 
           if (result.action !== 'hold') {
@@ -1086,21 +1120,15 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   ): Promise<void> {
     // Skip if already loaded (prevent duplicate loading)
     if (this._strategiesWithLoadedInitialData.has(name)) {
-      this.logger.debug(`Skipping initial data load for ${name} - already loaded`);
       return;
     }
 
     const context = strategy.context;
     if (!context?.initialDataConfig) {
-      // No initial data requested for this strategy
       return;
     }
 
     try {
-      this.logger.debug(
-        `Loading initial data for strategy ${name}: ${JSON.stringify(context.initialDataConfig)}`,
-      );
-
       const loadedData = await loadInitialDataForStrategy(
         strategy,
         this._exchanges,
@@ -1110,17 +1138,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Store the loaded data in strategy's context for reference
       context.loadedInitialData = loadedData;
 
-      // Call strategy's processInitialData method (required in IStrategy interface)
-      this.logger.debug(`Calling processInitialData on strategy ${name}`);
       strategy.processInitialData(loadedData);
 
       // Mark as loaded to prevent duplicate loading
       this._strategiesWithLoadedInitialData.add(name);
-
-      this.logger.info(`✅ Initial data loaded for strategy ${name}`);
     } catch (error) {
       this.logger.error(
-        `Failed to load initial data for strategy ${name}`,
+        `❌ [INITIAL_DATA] Failed to load for strategy ${name}`,
         error as Error,
       );
       // Continue even if initial data loading fails - strategy can still work with real-time data
@@ -1136,25 +1160,36 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   ): Promise<void> {
     const config = strategy.context.subscription;
     if (!config) {
-      this.logger.debug(`Strategy ${strategyName} has no subscription config`);
+      this.logger.warn(
+        `⚠️  [SUBSCRIBE] Strategy ${strategyName} has no subscription config - cannot subscribe to data!`,
+      );
       return;
     }
 
     const symbol = strategy.context.symbol;
     if (!symbol) {
-      this.logger.warn(`Strategy ${strategyName} has subscription config but no symbol`);
+      this.logger.warn(
+        `⚠️  [SUBSCRIBE] Strategy ${strategyName} has subscription config but no symbol - cannot subscribe!`,
+      );
       return;
     }
 
-    const exchanges = this.getTargetExchanges(strategy.context.exchange);
+    const exchanges = this.getTargetExchanges(config.exchange);
+    this.logger.info(`📡 [SUBSCRIBE] Auto-subscribing data for strategy ${strategyName}`);
     this.logger.info(
-      `Auto-subscribing data for strategy ${strategyName} (symbol: ${symbol}, exchanges: ${exchanges.map((e) => e.name).join(', ')})`,
+      `   Symbol: ${symbol}, Exchanges: ${exchanges.map((e) => e.name).join(', ')}`,
+    );
+    this.logger.info(
+      `   Config: ticker=${!!config.ticker}, orderbook=${!!config.orderbook}, trades=${!!config.trades}, klines=${!!config.klines}`,
     );
 
     for (const exchange of exchanges) {
+      this.logger.debug(`📡 [SUBSCRIBE] Processing exchange: ${exchange.name}`);
+
       // Subscribe to ticker
       if (config.ticker) {
         const tickerParams = this.normalizeDataConfig('ticker', config.ticker);
+        this.logger.debug(`   └─ Subscribing to ticker...`);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -1168,6 +1203,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Subscribe to orderbook
       if (this.isSubscriptionEnabled(config.orderbook)) {
         const orderbookParams = this.normalizeDataConfig('orderbook', config.orderbook!);
+        this.logger.debug(`   └─ Subscribing to orderbook...`);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -1181,6 +1217,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Subscribe to trades
       if (this.isSubscriptionEnabled(config.trades)) {
         const tradesParams = this.normalizeDataConfig('trades', config.trades!);
+        this.logger.debug(`   └─ Subscribing to trades...`);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -1194,6 +1231,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Subscribe to klines
       if (this.isSubscriptionEnabled(config.klines)) {
         const klinesParams = this.normalizeDataConfig('klines', config.klines!);
+        this.logger.debug(`   └─ Subscribing to klines...`);
         await this.subscriptionCoordinator.subscribe(
           strategyName,
           exchange,
@@ -1204,6 +1242,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         );
       }
     }
+
+    this.logger.info(
+      `✅ [SUBSCRIBE] Completed subscription for strategy ${strategyName}`,
+    );
   }
 
   /**

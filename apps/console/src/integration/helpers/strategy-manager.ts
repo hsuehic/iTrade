@@ -91,7 +91,9 @@ export class StrategyManager {
     // Start periodic database sync
     this.syncInterval = setInterval(() => {
       this.logger.info('Syncing strategies with database...');
-      this.syncStrategiesWithDatabase();
+      this.syncStrategiesWithDatabase().catch((error) => {
+        this.logger.error('Error during strategy sync', error as Error);
+      });
     }, this.SYNC_INTERVAL_MS);
 
     // Start periodic reporting
@@ -178,6 +180,8 @@ export class StrategyManager {
    */
   private async syncStrategiesWithDatabase(): Promise<void> {
     try {
+      this.logger.info(`🔄 [SYNC] ━━━━━━━━━━━━ Starting Strategy Sync ━━━━━━━━━━━━`);
+
       // Only fetch ACTIVE strategies from database (performance optimization)
       // 🆕 Filter by userId if provided
       const activeStrategies = await this.dataManager.getStrategies({
@@ -185,52 +189,65 @@ export class StrategyManager {
         status: StrategyStatus.ACTIVE,
       });
       const activeStrategyIds = new Set(activeStrategies.map((s) => s.id));
+
       this.logger.info(
-        `🔄 [SYNC] Active strategies: ${JSON.stringify(activeStrategyIds, null, 2)}`,
+        `🔄 [SYNC] Active strategies in DB: ${activeStrategies.length} (IDs: ${Array.from(activeStrategyIds).join(', ')})`,
+      );
+      this.logger.info(
+        `🔄 [SYNC] Strategies in TradeEngine: ${this.strategies.size} (IDs: ${Array.from(this.strategies.keys()).join(', ')})`,
       );
 
       let addedCount = 0;
       let removedCount = 0;
 
       // Step 1: Add new ACTIVE strategies to TradeEngine
+      this.logger.info(`🔄 [SYNC] Step 1: Checking for new strategies to add...`);
       for (const dbStrategy of activeStrategies) {
         if (!this.strategies.has(dbStrategy.id)) {
           this.logger.info(
-            `🔄 [SYNC] Adding strategy to TradeEngine: ${dbStrategy.name} (ID: ${dbStrategy.id})`,
+            `🔄 [SYNC] Found new strategy to add: ${dbStrategy.name} (ID: ${dbStrategy.id}, Type: ${dbStrategy.type}, Symbol: ${dbStrategy.symbol})`,
           );
           try {
             await this.addStrategy(dbStrategy);
             addedCount++;
+            this.logger.info(`✅ [SYNC] Successfully added strategy ${dbStrategy.id}`);
           } catch (error) {
             this.logger.error(
-              `Failed to add strategy ${dbStrategy.id} during sync`,
+              `❌ [SYNC] Failed to add strategy ${dbStrategy.id} during sync`,
               error as Error,
             );
           }
         }
       }
+      this.logger.info(`🔄 [SYNC] Step 1 complete: ${addedCount} strategies added`);
 
       // Step 2: Remove strategies from TradeEngine if they're no longer ACTIVE
       // A strategy should be removed if it's not in the active list (status changed or deleted)
+      this.logger.info(`🔄 [SYNC] Step 2: Checking for strategies to remove...`);
       for (const [id] of this.strategies) {
         if (!activeStrategyIds.has(id)) {
           const strategyName = this.strategies.get(id)?.name;
           this.logger.info(
-            `🔄 [SYNC] Removing strategy from TradeEngine: ${strategyName} (ID: ${id}, Reason: Not ACTIVE or deleted)`,
+            `🔄 [SYNC] Found strategy to remove: ${strategyName} (ID: ${id}, Reason: Not ACTIVE or deleted)`,
           );
           await this.removeStrategy(id);
           removedCount++;
+          this.logger.info(`✅ [SYNC] Successfully removed strategy ${id}`);
         }
       }
+      this.logger.info(`🔄 [SYNC] Step 2 complete: ${removedCount} strategies removed`);
 
-      // Log sync summary if there were changes
-      if (addedCount > 0 || removedCount > 0) {
-        this.logger.info(
-          `🔄 [SYNC] Complete: +${addedCount} added, -${removedCount} removed. Active in TradeEngine: ${this.strategies.size}`,
-        );
+      // Log sync summary
+      this.logger.info(`🔄 [SYNC] ━━━━━━━━━━━━ Sync Complete ━━━━━━━━━━━━`);
+      this.logger.info(
+        `🔄 [SYNC] Summary: +${addedCount} added, -${removedCount} removed. Active in TradeEngine: ${this.strategies.size}`,
+      );
+
+      if (addedCount === 0 && removedCount === 0) {
+        this.logger.info(`🔄 [SYNC] No changes needed - all strategies in sync`);
       }
     } catch (error) {
-      this.logger.error('Error syncing strategies with database', error as Error);
+      this.logger.error('❌ [SYNC] Error syncing strategies with database', error as Error);
     }
   }
 
@@ -238,6 +255,10 @@ export class StrategyManager {
     try {
       const strategyId = dbStrategy.id;
       //const dbStrategy = await this.dataManager.getStrategy(strategyId);
+
+      this.logger.info(
+        `🔧 [ADD_STRATEGY] Creating strategy instance: ${dbStrategy.name} (ID: ${strategyId})`,
+      );
 
       // Create strategy instance based on type
       const strategy = this.createStrategyInstance(dbStrategy);
@@ -308,7 +329,11 @@ export class StrategyManager {
       const engineName = `strategy_${strategyId}`;
 
       // Add to engine
+      this.logger.info(
+        `🔧 [ADD_STRATEGY] Adding to TradingEngine: ${engineName} (engine running: ${this.engine.isRunning})`,
+      );
       await this.engine.addStrategy(engineName, strategy);
+      this.logger.info(`✅ [ADD_STRATEGY] Successfully added to TradingEngine: ${engineName}`);
 
       // Track locally
       this.strategies.set(strategyId, {
@@ -365,6 +390,18 @@ export class StrategyManager {
   }
 
   private createStrategyInstance(dbStrategy: StrategyEntity): IStrategy {
+    const subscription =
+      dbStrategy.subscription || this.getDefaultSubscriptionConfig(dbStrategy.type);
+
+    this.logger.debug(
+      `🔧 [CREATE_STRATEGY] Creating instance with config:
+       - Type: ${dbStrategy.type}
+       - Symbol: ${dbStrategy.symbol || 'N/A'}
+       - Exchange: ${dbStrategy.exchange || 'N/A'}
+       - Subscription: ${JSON.stringify(subscription)}
+       - InitialData: ${JSON.stringify(dbStrategy.initialDataConfig || 'N/A')}`,
+    );
+
     return createStrategyInstance(
       dbStrategy.type as StrategyTypeKey,
       {
@@ -374,8 +411,7 @@ export class StrategyManager {
         logger: this.logger,
         // 🆕 Use subscription configuration from database
         // If not set in database, use default based on strategy type
-        subscription:
-          dbStrategy.subscription || this.getDefaultSubscriptionConfig(dbStrategy.type),
+        subscription,
         // 🆕 Use initialData configuration from database
         // This is the historical data to fetch when strategy starts
         initialDataConfig: dbStrategy.initialDataConfig,

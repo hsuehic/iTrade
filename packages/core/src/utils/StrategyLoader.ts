@@ -100,9 +100,6 @@ export async function loadInitialDataForStrategy(
     // Load klines for each configuration
     for (const klineConfig of klineConfigs) {
       const interval = klineConfig.interval as KlineInterval;
-      logger?.info(
-        `📡 Fetching initial klines: ${klineConfig.limit} bars at ${interval} interval for ${symbol}`,
-      );
       const klines = await exchange.getKlines(
         symbol,
         interval,
@@ -111,7 +108,6 @@ export async function loadInitialDataForStrategy(
         klineConfig.limit,
       );
       result.klines[interval] = klines;
-      logger?.info(`✅ Loaded ${klines.length} historical klines (${interval})`);
     }
   }
 

@@ -36,6 +36,7 @@ export class CoinbaseExchange extends BaseExchange {
   private wsManager: CoinbaseWebSocketManager;
   private symbolMap = new Map<string, string>(); // Coinbase product_id -> original symbol mapping
   private positionSymbolMap = new Map<string, string>(); // position_id -> product_id mapping
+  private subscribedGranularities = new Map<string, string>(); // productId -> granularity (in seconds)
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private balancePollingInterval: NodeJS.Timeout | null = null; // Periodic balance polling
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
@@ -202,21 +203,30 @@ export class CoinbaseExchange extends BaseExchange {
       { params },
     );
     const data = resp.data?.candles || resp.data || [];
-    return data.map((c: any) => ({
-      symbol, // Use unified symbol format
-      exchange: this.name, // Add exchange name
-      interval,
-      openTime: new Date(c.start || c.start_time || c.t || Date.now()),
-      closeTime: new Date(c.start || c.start_time || c.t || Date.now()),
-      open: this.formatDecimal(c.open || c.o),
-      high: this.formatDecimal(c.high || c.h),
-      low: this.formatDecimal(c.low || c.l),
-      close: this.formatDecimal(c.close || c.c),
-      volume: this.formatDecimal(c.volume || c.v || '0'),
-      quoteVolume: this.formatDecimal(c.quote_volume || '0'),
-      trades: c.num_trades || 0,
-      isClosed: true, // Historical klines from REST API are always closed
-    }));
+    const granularitySeconds = this.granularityToSeconds(granularity);
+    
+    return data.map((c: any) => {
+      // Coinbase returns Unix timestamps in seconds, convert to milliseconds
+      const startMs = (parseInt(c.start || c.start_time || c.t, 10) || 0) * 1000;
+      const openTime = new Date(startMs);
+      const closeTime = new Date(startMs + granularitySeconds * 1000);
+      
+      return {
+        symbol, // Use unified symbol format
+        exchange: this.name, // Add exchange name
+        interval,
+        openTime,
+        closeTime,
+        open: this.formatDecimal(c.open || c.o),
+        high: this.formatDecimal(c.high || c.h),
+        low: this.formatDecimal(c.low || c.l),
+        close: this.formatDecimal(c.close || c.c),
+        volume: this.formatDecimal(c.volume || c.v || '0'),
+        quoteVolume: this.formatDecimal(c.quote_volume || '0'),
+        trades: c.num_trades || 0,
+        isClosed: true, // Historical klines from REST API are always closed
+      };
+    });
   }
 
   public async createOrder(
@@ -276,10 +286,62 @@ export class CoinbaseExchange extends BaseExchange {
       body.margin_type = options.tradeMode.toUpperCase(); // ISOLATED or CROSS
     }
 
+    console.log('[Coinbase] Creating order:', {
+      product_id: productId,
+      side,
+      type,
+      quantity: quantity.toString(),
+      price: price?.toString(),
+      clientOrderId,
+      isPerpetual,
+      tradeMode: options?.tradeMode,
+      leverage: options?.leverage,
+    });
+
     const resp = await this.httpClient.post('/api/v3/brokerage/orders', body);
-    return this.transformOrder(
-      resp.data?.success_response?.order || resp.data?.order || body,
-    );
+
+    console.log('[Coinbase] Order response:', {
+      status: resp.status,
+      data: resp.data,
+      hasOrder: !!(resp.data?.success_response?.order || resp.data?.order),
+      hasError: !!(resp.data?.error_response || resp.data?.error),
+    });
+
+    // Extract order from response
+    const orderData = resp.data?.success_response?.order || resp.data?.order || resp.data;
+
+    // Check if order was actually created
+    if (!orderData || !orderData.order_id) {
+      const errorMsg =
+        resp.data?.error_response?.message ||
+        resp.data?.error?.message ||
+        resp.data?.error ||
+        resp.data?.message ||
+        JSON.stringify(resp.data);
+      console.error('[Coinbase] Order creation failed:', {
+        body,
+        response: resp.data,
+        errorMsg,
+      });
+      throw new Error(
+        `Coinbase order creation failed: ${errorMsg}. Full response: ${JSON.stringify(resp.data)}`,
+      );
+    }
+
+    console.log('[Coinbase] Order created successfully:', orderData.order_id);
+
+    // Transform order and ensure quantity is set from request if missing in response
+    const order = this.transformOrder(orderData);
+
+    // Coinbase API might not return quantity in response, use from request
+    if (!order.quantity || order.quantity.isZero()) {
+      order.quantity = quantity;
+    }
+
+    // Denormalize symbol back to unified format (WLD-PERP-INTX → WLD/USDC:USDC)
+    order.symbol = this.denormalizeSymbol(order.symbol);
+
+    return order;
   }
 
   public async cancelOrder(symbol: string, orderId: string): Promise<Order> {
@@ -359,9 +421,6 @@ export class CoinbaseExchange extends BaseExchange {
       // Default: check if INTX is available, if so only return INTX (to avoid conflicts)
       const intxBalances = await this.getIntxBalances();
       if (intxBalances.length > 0) {
-        console.log(
-          '[Coinbase] INTX account detected, returning INTX balances only (1 USDC record)',
-        );
         return intxBalances;
       }
       // Fallback to spot if no INTX
@@ -392,8 +451,6 @@ export class CoinbaseExchange extends BaseExchange {
         );
       });
 
-      console.log(`[Coinbase] Found ${perpetualAccounts.length} INTX accounts`);
-
       if (perpetualAccounts.length === 0) {
         return [];
       }
@@ -406,17 +463,10 @@ export class CoinbaseExchange extends BaseExchange {
         const portfolioUuid = account.portfolio_uuid || account.retail_portfolio_id;
         if (!portfolioUuid) continue;
 
-        console.log(`[Coinbase] Fetching INTX portfolio: ${portfolioUuid}`);
-
         try {
           // Try portfolio summary endpoint
           const portfolioResp = await this.httpClient.get(
             `/api/v3/brokerage/intx/portfolio/${portfolioUuid}`,
-          );
-
-          console.log(
-            '[Coinbase] INTX Portfolio response:',
-            JSON.stringify(portfolioResp.data),
           );
 
           // Response structure: { portfolios: [ {...}, {...} ], summary: {...} }
@@ -442,10 +492,6 @@ export class CoinbaseExchange extends BaseExchange {
             });
 
             hasOverallSummary = true;
-
-            console.log(
-              `[Coinbase] 💰 INTX Balance: Total=${totalBalance} USDC, Free=${buyingPower} USDC, Locked=${lockedNum.toFixed(4)} USDC, UnrealizedPnL=${unrealizedPnl} USDC`,
-            );
           }
         } catch (error: any) {
           console.warn(
@@ -485,19 +531,6 @@ export class CoinbaseExchange extends BaseExchange {
         );
       });
 
-      console.log(
-        `[Coinbase Debug] Found ${perpetualAccounts.length} potential perpetual accounts:`,
-        perpetualAccounts.map((acc: any) => ({
-          uuid: acc.uuid,
-          name: acc.name,
-          type: acc.type,
-          portfolio_uuid: acc.portfolio_uuid,
-          retail_portfolio_id: acc.retail_portfolio_id,
-          platform: acc.platform,
-          available_balance: acc.available_balance,
-        })),
-      );
-
       if (perpetualAccounts.length === 0) {
         // No perpetual accounts found - this is normal for spot-only accounts
         return [];
@@ -517,9 +550,6 @@ export class CoinbaseExchange extends BaseExchange {
           const portfolioPositions = positionsResp.data?.positions || [];
 
           for (const pos of portfolioPositions) {
-            // Debug: log raw position data
-            console.log('[Coinbase] Raw position data:', JSON.stringify(pos, null, 2));
-
             if (!pos.symbol || !pos.net_size) {
               console.warn('[Coinbase] Position missing symbol or net_size:', pos);
               continue;
@@ -534,9 +564,6 @@ export class CoinbaseExchange extends BaseExchange {
             // Build position_id -> product_symbol mapping for WebSocket handling
             if (positionId && productSymbol) {
               this.positionSymbolMap.set(positionId, productSymbol);
-              console.log(
-                `[Coinbase] Mapping position_id ${positionId} -> symbol ${productSymbol}`,
-              );
             }
 
             // Handle different data formats - some fields might be objects with 'value' property
@@ -715,14 +742,6 @@ export class CoinbaseExchange extends BaseExchange {
 
   protected handleWebSocketMessage(msg: any): void {
     const channel = msg.channel || msg.type;
-
-    // Debug: Log full message for user-related channels
-    if (channel === 'user') {
-      console.log(
-        `[Coinbase DEBUG] Full ${channel} message:`,
-        JSON.stringify(msg, null, 2),
-      );
-    }
     if (!channel) return;
 
     switch (channel) {
@@ -789,25 +808,28 @@ export class CoinbaseExchange extends BaseExchange {
       case 'candles':
         if (msg.events) {
           for (const e of msg.events) {
+            console.log(
+              '[Coinbase] Received candles message:',
+              JSON.stringify(e, null, 2),
+            );
             for (const c of e.candles || []) {
-              console.log(
-                '[Coinbase] Received candles message:',
-                JSON.stringify(c, null, 2),
-              );
               const originalSymbol = this.symbolMap.get(c.product_id) || c.product_id;
               const openTime = new Date(c.start * 1000);
-              const closeTime = new Date(
-                openTime.getTime() + (c.granularity || 300) * 1000,
-              );
+
+              // Coinbase WebSocket candles are always 5-minute intervals (300 seconds)
+              // Use stored interval label from subscription for labeling
+              const intervalLabel =
+                this.subscribedGranularities.get(c.product_id) || '5m';
+              const closeTime = new Date(openTime.getTime() + 300 * 1000); // Always 5 minutes
+
               // Coinbase doesn't have explicit isClosed field, so we determine it by comparing with current time
-              // If current time is past the expected close time, the candle is closed
               const now = Date.now();
               const isClosed = now >= closeTime.getTime();
 
               this.emit('kline', originalSymbol, {
                 symbol: originalSymbol,
-                exchange: this.name, // Add exchange name
-                interval: c.granularity?.toString() || '',
+                exchange: this.name,
+                interval: intervalLabel, // Use requested interval label (but data is still 5m)
                 openTime: openTime,
                 closeTime: closeTime,
                 open: this.formatDecimal(c.open),
@@ -817,7 +839,7 @@ export class CoinbaseExchange extends BaseExchange {
                 volume: this.formatDecimal(c.volume || '0'),
                 quoteVolume: this.formatDecimal('0'),
                 trades: 0,
-                isClosed: isClosed, // Determined by comparing current time with close time
+                isClosed: isClosed,
               } as Kline);
             }
           }
@@ -839,11 +861,60 @@ export class CoinbaseExchange extends BaseExchange {
             if (e.orders && e.orders.length > 0) {
               console.log(`[Coinbase] Processing ${e.orders.length} order updates`);
               for (const orderData of e.orders) {
-                const order = this.transformCoinbaseUserOrder(orderData);
-                console.log(
-                  `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
-                );
-                this.emit('orderUpdate', order.symbol, order);
+                // Check if critical fields are missing (size or price for limit orders)
+                const hasSizeInfo =
+                  orderData.base_size ||
+                  orderData.size ||
+                  orderData.order_size ||
+                  orderData.quantity ||
+                  orderData.leaves_quantity;
+
+                const orderType = orderData.order_type || orderData.type || 'LIMIT';
+                const needsPrice = orderType.toUpperCase().includes('LIMIT');
+                const hasPriceInfo = orderData.price || orderData.limit_price;
+
+                const isMissingCriticalData =
+                  !hasSizeInfo || (needsPrice && !hasPriceInfo);
+
+                if (isMissingCriticalData) {
+                  // WebSocket update is missing critical data - fetch via REST API
+                  const orderId = orderData.order_id || orderData.id;
+                  if (orderId) {
+                    console.log(
+                      `[Coinbase] ⚠️ Order ${orderId} missing data (size: ${!!hasSizeInfo}, price: ${!!hasPriceInfo}), fetching via REST API...`,
+                    );
+
+                    // Fetch complete order details asynchronously
+                    this.fetchAndEmitCompleteOrder(orderId, orderData.product_id).catch(
+                      (err) => {
+                        console.error(
+                          `[Coinbase] Failed to fetch order ${orderId}:`,
+                          err?.message || err,
+                        );
+                        // Fallback: emit the partial order we have
+                        const partialOrder = this.transformCoinbaseUserOrder(orderData);
+                        console.log(
+                          `[Coinbase] 📦 Order Update (partial): ${partialOrder.symbol} - ${partialOrder.status}`,
+                        );
+                        this.emit('orderUpdate', partialOrder.symbol, partialOrder);
+                      },
+                    );
+                  } else {
+                    // No order ID - emit partial order as fallback
+                    const order = this.transformCoinbaseUserOrder(orderData);
+                    console.log(
+                      `[Coinbase] 📦 Order Update (no ID): ${order.symbol} - ${order.status}`,
+                    );
+                    this.emit('orderUpdate', order.symbol, order);
+                  }
+                } else {
+                  // WebSocket has complete data - emit directly
+                  const order = this.transformCoinbaseUserOrder(orderData);
+                  console.log(
+                    `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
+                  );
+                  this.emit('orderUpdate', order.symbol, order);
+                }
               }
             }
 
@@ -976,9 +1047,19 @@ export class CoinbaseExchange extends BaseExchange {
   public async subscribeToKlines(symbol: string, interval: string): Promise<void> {
     const productId = this.normalizeSymbol(symbol);
     this.symbolMap.set(productId, symbol); // Store mapping
-    const granularity = this.mapIntervalToGranularity(interval);
-    console.log(`[Coinbase] Subscribing to klines: ${productId} @ ${interval}`);
-    this.wsManager.subscribe('candles', [productId], { granularity });
+
+    // Coinbase WebSocket candles channel ONLY supports 5-minute intervals
+    // For other intervals, SubscriptionCoordinator will automatically use REST API
+    // Store the requested interval for labeling purposes
+    this.subscribedGranularities.set(productId, interval);
+
+    console.log(
+      `[Coinbase] Subscribing to klines via WebSocket: ${productId} @ ${interval}`,
+    );
+    console.log(
+      `[Coinbase] WARNING: WebSocket only provides 5m candles. For other intervals, use REST API.`,
+    );
+    this.wsManager.subscribe('candles', [productId]);
   }
 
   /**
@@ -1070,6 +1151,48 @@ export class CoinbaseExchange extends BaseExchange {
   }
 
   /**
+   * Fetch complete order details via REST API and emit order update
+   */
+  private async fetchAndEmitCompleteOrder(
+    orderId: string,
+    productId?: string,
+  ): Promise<void> {
+    try {
+      // Fetch complete order details via REST API
+      const resp = await this.httpClient.get(
+        `/api/v3/brokerage/orders/historical/${orderId}`,
+      );
+      const orderData = resp.data?.orders
+        ? resp.data.orders[0]
+        : resp.data?.order || resp.data;
+
+      if (!orderData) {
+        throw new Error('Order not found in API response');
+      }
+
+      // Transform to iTrade Order format
+      const order = this.transformOrder(orderData);
+
+      // Denormalize symbol
+      const productIdToUse = orderData.product_id || productId || order.symbol;
+      order.symbol = this.denormalizeSymbol(productIdToUse);
+
+      console.log(
+        `[Coinbase] ✅ Fetched complete order: ${order.symbol} - ${order.status} - Qty: ${order.quantity.toString()}`,
+      );
+
+      // Emit the complete order update
+      this.emit('orderUpdate', order.symbol, order);
+    } catch (error: any) {
+      console.error(
+        `[Coinbase] Failed to fetch order ${orderId}:`,
+        error.response?.data || error.message,
+      );
+      throw error;
+    }
+  }
+
+  /**
    * Transform Coinbase user order data to iTrade Order format
    */
   private transformCoinbaseUserOrder(orderData: any): Order {
@@ -1077,6 +1200,35 @@ export class CoinbaseExchange extends BaseExchange {
     const productId = orderData.product_id || 'UNKNOWN';
     const symbol =
       productId !== 'UNKNOWN' ? this.denormalizeSymbol(productId) : productId;
+
+    // Extract quantity - check all possible field names that Coinbase uses
+    const quantity = this.formatDecimal(
+      orderData.base_size ||
+        orderData.size ||
+        orderData.order_size ||
+        orderData.quantity ||
+        orderData.leaves_quantity ||
+        '0',
+    );
+
+    // Debug: Log if quantity is zero to help diagnose field name issues
+    if (quantity.isZero()) {
+      console.warn(
+        '[Coinbase] Order quantity is zero. Available fields:',
+        JSON.stringify(
+          {
+            base_size: orderData.base_size,
+            size: orderData.size,
+            order_size: orderData.order_size,
+            quantity: orderData.quantity,
+            leaves_quantity: orderData.leaves_quantity,
+            all_keys: Object.keys(orderData),
+          },
+          null,
+          2,
+        ),
+      );
+    }
 
     const order: Order = {
       id: orderData.order_id || orderData.id || uuidv4(),
@@ -1087,7 +1239,7 @@ export class CoinbaseExchange extends BaseExchange {
           ? OrderSide.BUY
           : OrderSide.SELL,
       type: this.transformOrderType(orderData.order_type || orderData.type || 'LIMIT'),
-      quantity: this.formatDecimal(orderData.size || orderData.base_size || '0'),
+      quantity,
       price: orderData.price ? this.formatDecimal(orderData.price) : undefined,
       status: this.transformOrderStatus(orderData.status || 'NEW'),
       timeInForce: this.transformTimeInForce(orderData.time_in_force),
@@ -1313,9 +1465,6 @@ export class CoinbaseExchange extends BaseExchange {
   private async refreshBalancesAndPositions(): Promise<void> {
     try {
       const balances = await this.getBalances();
-      console.log(
-        `[Coinbase] 💰 Emitting accountUpdate with ${balances.length} balances`,
-      );
       if (balances?.length) {
         this.emit('accountUpdate', 'coinbase', balances);
       }
@@ -1325,9 +1474,6 @@ export class CoinbaseExchange extends BaseExchange {
 
     try {
       const positions = await this.getPositions();
-      console.log(
-        `[Coinbase] 📊 Emitting positionUpdate with ${positions.length} positions`,
-      );
       if (positions?.length) {
         this.emit('positionUpdate', 'coinbase', positions);
       }
@@ -1383,7 +1529,6 @@ export class CoinbaseExchange extends BaseExchange {
 
     const queryString = searchParams.toString();
     const requestPath = queryString ? `${pathname}?${queryString}` : pathname;
-    console.log('requestPath:', requestPath);
 
     // Ensure the actual request URL matches the signed path exactly
     config.url = requestPath;
@@ -1515,6 +1660,36 @@ export class CoinbaseExchange extends BaseExchange {
       '1d': 'ONE_DAY',
     };
     return map[interval] || 'UNKNOWN_GRANULARITY';
+  }
+
+  private granularityToSeconds(granularity: string): number {
+    const map: Record<string, number> = {
+      ONE_MINUTE: 60,
+      FIVE_MINUTE: 300,
+      FIFTEEN_MINUTE: 900,
+      THIRTY_MINUTE: 1800,
+      ONE_HOUR: 3600,
+      TWO_HOUR: 7200,
+      FOUR_HOUR: 14400,
+      SIX_HOUR: 21600,
+      ONE_DAY: 86400,
+    };
+    return map[granularity] || 300; // Default to 5 minutes if unknown
+  }
+
+  private secondsToInterval(seconds: number): string {
+    const map: Record<number, string> = {
+      60: '1m',
+      300: '5m',
+      900: '15m',
+      1800: '30m',
+      3600: '1h',
+      7200: '2h',
+      14400: '4h',
+      21600: '6h',
+      86400: '1d',
+    };
+    return map[seconds] || '5m'; // Default to 5m if unknown
   }
 
   private transformOrder(o: any): Order {

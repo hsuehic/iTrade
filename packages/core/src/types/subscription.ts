@@ -123,3 +123,10 @@ export const DEFAULT_KLINES_CONFIG: KlinesSubscriptionConfig = {
   limit: 1,
   pollInterval: 60000, // 1 minute
 };
+
+/**
+ * Coinbase WebSocket limitation: candles channel only supports 5-minute intervals
+ * For other intervals, REST API polling must be used
+ */
+export const COINBASE_WEBSOCKET_SUPPORTED_INTERVALS = ['5m'];
+export const COINBASE_WEBSOCKET_INTERVAL = '5m' as const;

@@ -11,6 +11,28 @@ export class OrderManager extends EventEmitter {
   private ordersByExchange = new Map<string, Set<string>>();
 
   public addOrder(order: Order): void {
+    const existingOrder = this.orders.get(order.id);
+
+    // If order already exists, clean up old indexes before re-adding
+    if (existingOrder) {
+      // Remove from old status index if status changed
+      if (existingOrder.status !== order.status) {
+        this.ordersByStatus.get(existingOrder.status)?.delete(order.id);
+      }
+
+      // Remove from old symbol index if symbol changed
+      if (existingOrder.symbol !== order.symbol) {
+        this.ordersBySymbol.get(existingOrder.symbol)?.delete(order.id);
+      }
+
+      // Remove from old exchange index if exchange changed
+      if (existingOrder.exchange !== order.exchange) {
+        if (existingOrder.exchange) {
+          this.ordersByExchange.get(existingOrder.exchange)?.delete(order.id);
+        }
+      }
+    }
+
     this.orders.set(order.id, order);
 
     // Index by symbol

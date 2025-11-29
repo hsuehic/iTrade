@@ -40,12 +40,10 @@ export class TypeOrmStrategyStateAdapter implements IStrategyStateManager {
     state: Partial<StrategyState>,
   ): Promise<void> {
     // TODO: 实现策略状态获取逻辑
-    console.log(`Saving strategy state for ${strategyId}:`, state);
   }
 
   async getStrategyState(strategyId: number): Promise<StrategyState | null> {
     // TODO: 实现策略状态获取逻辑
-    console.log(`Getting strategy state for ${strategyId}`);
     return null;
   }
 

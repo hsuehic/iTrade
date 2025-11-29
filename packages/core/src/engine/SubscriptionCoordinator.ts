@@ -70,7 +70,7 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
     }
 
     // Determine subscription method
-    const method = this.determineSubscriptionMethod(methodHint, exchange);
+    const method = this.determineSubscriptionMethod(methodHint, exchange, type, params);
 
     // Create data handler that will be called by the exchange
     const onData = async (_data: unknown) => {
@@ -276,7 +276,27 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
   private determineSubscriptionMethod(
     hint: SubscriptionMethod,
     exchange: IExchange,
+    type?: DataType,
+    params?: Record<string, unknown>,
   ): 'websocket' | 'rest' {
+    // Force REST for Coinbase klines with non-5m intervals
+    // Coinbase WebSocket candles channel only supports 5-minute intervals
+    if (exchange.name === 'coinbase' && type === 'klines') {
+      let interval: string | undefined;
+      if (params?.intervals && Array.isArray(params.intervals)) {
+        interval = params.intervals[0] as string;
+      } else if (params?.interval) {
+        interval = params.interval as string;
+      }
+
+      if (interval && interval !== '5m') {
+        this.logger.info(
+          `[Coinbase] Forcing REST API for ${interval} klines (WebSocket only supports 5m)`,
+        );
+        return 'rest';
+      }
+    }
+
     if (hint === 'rest') {
       return 'rest';
     }
@@ -316,7 +336,18 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
           await exchange.subscribeToTrades(symbol);
           break;
         case 'klines': {
-          const interval = (params.interval as string | undefined) || ('1m' as string);
+          // Support both intervals array (new) and interval string (legacy)
+          let interval: string;
+          if (params.intervals && Array.isArray(params.intervals)) {
+            // Use first interval from intervals array
+            interval = params.intervals[0] as string;
+          } else if (params.interval) {
+            // Legacy single interval
+            interval = params.interval as string;
+          } else {
+            // Default fallback
+            interval = '1m';
+          }
           await exchange.subscribeToKlines(symbol, interval);
           break;
         }
@@ -372,7 +403,15 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
             break;
           }
           case 'klines': {
-            const klineInterval = (params.interval as string | undefined) || '1m';
+            // Support both intervals array (new) and interval string (legacy)
+            let klineInterval: string;
+            if (params.intervals && Array.isArray(params.intervals)) {
+              klineInterval = params.intervals[0] as string;
+            } else if (params.interval) {
+              klineInterval = params.interval as string;
+            } else {
+              klineInterval = '1m';
+            }
             const klineLimit = (params.limit as number | undefined) || 1;
             const klines = await exchange.getKlines(
               symbol,
@@ -455,7 +494,15 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
           await exchange.unsubscribe(symbol, type);
           break;
         case 'klines': {
-          const interval = (params.interval as string | undefined) || ('1m' as string);
+          // Support both intervals array (new) and interval string (legacy)
+          let interval: string;
+          if (params.intervals && Array.isArray(params.intervals)) {
+            interval = params.intervals[0] as string;
+          } else if (params.interval) {
+            interval = params.interval as string;
+          } else {
+            interval = '1m';
+          }
           const klinesSymbol = `${symbol}@${interval}`;
           await exchange.unsubscribe(klinesSymbol, type);
           break;

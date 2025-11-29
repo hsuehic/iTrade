@@ -6,7 +6,7 @@ import { TickerCard, type TickerData } from './ticker-card';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Same order for both exchanges
-const COMMON_COINS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA'];
+const COMMON_COINS = ['BTC', 'ETH', 'SOL', 'APT', 'WLD', 'OP'];
 
 const BINANCE_COINS = COMMON_COINS.map((base) => ({
   symbol: `${base}USDT`,
