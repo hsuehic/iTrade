@@ -1,7 +1,8 @@
-import 'package:demo/widgets/tree_view.dart';
-import 'package:demo/widgets/tree_select.dart';
-import 'package:demo/widgets/select.dart';
 import 'package:flutter/material.dart';
+
+import 'widgets/select.dart';
+import 'widgets/tree_select.dart';
+import 'widgets/tree_view.dart';
 
 class DemoNode {
   const DemoNode({

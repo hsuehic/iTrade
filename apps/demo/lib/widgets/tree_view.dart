@@ -134,7 +134,6 @@ class _TreeViewState<T> extends State<TreeView<T>> {
 
   List<_TreeNode<T>> _roots = const [];
   final Map<String, _TreeNode<T>> _nodeById = {};
-  final Map<String, Set<String>> _subtreeIdsById = {};
   final Map<String, Set<String>> _leafIdsById = {};
 
   final Set<String> _expandedIds = <String>{};
@@ -207,7 +206,6 @@ class _TreeViewState<T> extends State<TreeView<T>> {
 
   void _parseAndIndex() {
     _nodeById.clear();
-    _subtreeIdsById.clear();
     _leafIdsById.clear();
 
     final roots = <_TreeNode<T>>[];
@@ -217,7 +215,6 @@ class _TreeViewState<T> extends State<TreeView<T>> {
     _roots = roots;
 
     for (final r in _roots) {
-      _computeSubtreeIds(r);
       _computeLeafIds(r);
     }
 
@@ -263,18 +260,6 @@ class _TreeViewState<T> extends State<TreeView<T>> {
     );
     _nodeById[id] = node;
     return node;
-  }
-
-  Set<String> _computeSubtreeIds(_TreeNode<T> node) {
-    final cached = _subtreeIdsById[node.id];
-    if (cached != null) return cached;
-
-    final out = <String>{node.id};
-    for (final c in node.children) {
-      out.addAll(_computeSubtreeIds(c));
-    }
-    _subtreeIdsById[node.id] = out;
-    return out;
   }
 
   Set<String> _computeLeafIds(_TreeNode<T> node) {

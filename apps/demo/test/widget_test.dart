@@ -7,7 +7,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:demo/tree_view_demo.dart';
+import '../lib/tree_view_demo.dart';
 
 void main() {
   testWidgets('App renders TreeDemo', (WidgetTester tester) async {

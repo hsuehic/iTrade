@@ -1,8 +1,10 @@
 import 'dart:async';
 
-import 'package:demo/widgets/tree_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+import 'select_shared.dart';
+import 'tree_view.dart';
 
 class TreeSelect<T> extends StatefulWidget {
   const TreeSelect({
@@ -61,13 +63,7 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
   String? _selectedId;
   Set<String> _selectedIds = <String>{};
 
-  // Match `Select` widget visuals.
-  static const double _tagSpacing = 6;
-  static const double _tagHorizontalPadding = 8;
-  static const double _tagVerticalPadding = 2;
-  static const double _tagIconSize = 12;
-  static const double _tagIconContainerSize = 16;
-  static const double _tagIconGap = 4;
+  late Map<String, T> _nodeById;
 
   @override
   void initState() {
@@ -77,6 +73,8 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
       widget.initialSelectedIds ?? const <String>{},
     );
 
+    _reindex();
+
     _focusNode.addListener(() {
       if (_focusNode.hasFocus) {
         _open();
@@ -84,6 +82,14 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
         _close();
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant TreeSelect<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data != widget.data || oldWidget.adapter != widget.adapter) {
+      _reindex();
+    }
   }
 
   @override
@@ -155,13 +161,25 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
       : _selectedIds.isNotEmpty;
 
   void _clearAll() {
-    _searchDebounceTimer?.cancel();
-    setState(() {
+    // antd-like: first clear keyword; if no keyword then clear selection.
+    if (_hasQuery) {
+      _searchDebounceTimer?.cancel();
       _queryController.clear();
-      _selectedId = null;
-      _selectedIds = <String>{};
-    });
-    widget.onSingleChanged?.call(null);
+      setState(() {});
+      _overlayEntry?.markNeedsBuild();
+      return;
+    }
+
+    if (!_hasSelection) return;
+
+    if (widget.selectionMode == TreeSelectionMode.single) {
+      setState(() => _selectedId = null);
+      widget.onSingleChanged?.call(null);
+      _overlayEntry?.markNeedsBuild();
+      return;
+    }
+
+    setState(() => _selectedIds = <String>{});
     widget.onMultiChanged?.call(<T>{});
     _overlayEntry?.markNeedsBuild();
   }
@@ -198,11 +216,14 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
     return out;
   }
 
+  void _reindex() {
+    _nodeById = _indexById(widget.data);
+  }
+
   Set<T> _selectedValues() {
     final out = <T>{};
-    final byId = _indexById(widget.data);
     for (final id in _selectedIds) {
-      final v = byId[id];
+      final v = _nodeById[id];
       if (v != null) out.add(v);
     }
     return out;
@@ -210,17 +231,16 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
 
   List<T> _selectedForTags() {
     final adapter = widget.adapter;
-    final byId = _indexById(widget.data);
 
     if (widget.selectionMode == TreeSelectionMode.single) {
       if (_selectedId == null) return const [];
-      final v = byId[_selectedId!];
+      final v = _nodeById[_selectedId!];
       return v == null ? const [] : [v];
     }
 
     final list = <T>[];
     for (final id in _selectedIds) {
-      final v = byId[id];
+      final v = _nodeById[id];
       // Tags should represent actual selected leaf nodes (not half-selected parents).
       if (v != null && adapter.childrenOf(v).isEmpty) list.add(v);
     }
@@ -238,50 +258,6 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
       visible: selected.take(max - 1).toList(),
       overflow: selected.length - (max - 1),
     );
-  }
-
-  Widget _tag({
-    required String text,
-    required bool closable,
-    VoidCallback? onClose,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: _tagHorizontalPadding,
-        vertical: _tagVerticalPadding,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE0E0E0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(text),
-          if (closable) ...[
-            const SizedBox(width: _tagIconGap),
-            InkWell(
-              onTap: onClose,
-              child: SizedBox(
-                width: _tagIconContainerSize,
-                height: _tagIconContainerSize,
-                child: const Icon(Icons.close, size: _tagIconSize),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _withSpacing(List<Widget> children, double spacing) {
-    final out = <Widget>[];
-    for (var i = 0; i < children.length; i++) {
-      if (i != 0) out.add(SizedBox(width: spacing));
-      out.add(children[i]);
-    }
-    return out;
   }
 
   Widget _suffix() {
@@ -424,13 +400,11 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
 
     final children = <Widget>[
       for (final v in packed.visible)
-        _tag(
+        SelectTag(
           text: adapter.labelOf(v),
-          closable: true,
           onClose: () => _removeSelectedId(adapter.idOf(v)),
         ),
-      if (packed.overflow > 0)
-        _tag(text: '+${packed.overflow}', closable: false),
+      if (packed.overflow > 0) SelectTag(text: '+${packed.overflow}'),
       ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 40, maxWidth: 240),
         child: IntrinsicWidth(
@@ -476,39 +450,45 @@ class _TreeSelectState<T> extends State<TreeSelect<T>> {
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: () => _focusNode.requestFocus(),
-          child: InputDecorator(
-            decoration: widget.decoration.copyWith(
-              suffixIcon: _suffix(),
-              // Don't show `decoration.labelText` inside the field; it would overlap
-              // with the TextField hint (placeholder).
-              //
-              // Note: `copyWith` can't unset, so we override with empty string.
-              labelText: '',
-              floatingLabelBehavior: FloatingLabelBehavior.never,
-              // Keep a stable input height across empty/typing/with-tags states.
-              contentPadding: widget.contentPadding,
-              // Placeholder is handled by the inner TextField hint.
-              hintText: null,
-            ),
-            isEmpty: !hasSelection && !hasQuery,
-            child: ConstrainedBox(
-              // Match `Select`'s sizing model so the field height aligns.
-              constraints: const BoxConstraints(minHeight: 28),
-              child: hasSelection
-                  ? SingleChildScrollView(
-                      controller: _tagScrollController,
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: _withSpacing(children, _tagSpacing),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: widget.fieldHeight),
+            child: InputDecorator(
+              decoration: widget.decoration.copyWith(
+                suffixIcon: _suffix(),
+                // Don't show `decoration.labelText` inside the field; it would overlap
+                // with the TextField hint (placeholder).
+                //
+                // Note: `copyWith` can't unset, so we override with empty string.
+                labelText: '',
+                floatingLabelBehavior: FloatingLabelBehavior.never,
+                // Keep a stable input height across empty/typing/with-tags states.
+                contentPadding: widget.contentPadding,
+                // Placeholder is handled by the inner TextField hint.
+                hintText: null,
+              ),
+              isEmpty: !hasSelection && !hasQuery,
+              child: ConstrainedBox(
+                // Match `Select`'s sizing model so the field height aligns.
+                constraints: const BoxConstraints(minHeight: 28),
+                child: hasSelection
+                    ? SingleChildScrollView(
+                        controller: _tagScrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: withHorizontalSpacing(
+                            children,
+                            SelectTagMetrics.spacing,
+                          ),
+                        ),
+                      )
+                    : Wrap(
+                        spacing: SelectTagMetrics.spacing,
+                        runSpacing: SelectTagMetrics.spacing,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: children,
                       ),
-                    )
-                  : Wrap(
-                      spacing: _tagSpacing,
-                      runSpacing: _tagSpacing,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: children,
-                    ),
+              ),
             ),
           ),
         ),

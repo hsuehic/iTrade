@@ -1,5 +1,6 @@
-import 'package:demo/tree_view_demo.dart';
 import 'package:flutter/material.dart';
+
+import 'tree_view_demo.dart';
 
 void main() {
   runApp(const MyApp());

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'select_shared.dart';
+
 enum SelectMode { single, multiple }
 
 /// Ant Design-like Select for Flutter.
@@ -50,12 +52,6 @@ class _SelectState<T> extends State<Select<T>> {
 
   OverlayEntry? _overlayEntry;
 
-  static const double _tagSpacing = 6;
-  static const double _tagHorizontalPadding = 8;
-  static const double _tagVerticalPadding = 2;
-  static const double _tagIconSize = 12;
-  static const double _tagIconContainerSize = 16;
-  static const double _tagIconGap = 4;
   static const double _queryMinWidth = 40;
   static const double _contentHorizontalFudge = 16;
   static const double _popupItemHeight = 48;
@@ -204,9 +200,9 @@ class _SelectState<T> extends State<Select<T>> {
     required bool closable,
   }) {
     final textWidth = _measureTextWidth(text, style);
-    final base = (_tagHorizontalPadding * 2) + textWidth;
+    final base = (SelectTagMetrics.horizontalPadding * 2) + textWidth;
     if (!closable) return base;
-    return base + _tagIconGap + _tagIconContainerSize;
+    return base + SelectTagMetrics.iconGap + SelectTagMetrics.iconContainerSize;
   }
 
   ({List<T> visible, int hidden}) _computeVisibleTags({
@@ -234,7 +230,7 @@ class _SelectState<T> extends State<Select<T>> {
 
       double reservedOnLastRow() {
         return _queryMinWidth +
-            (hasOverflow ? (_tagSpacing + overflowWidth) : 0);
+            (hasOverflow ? (SelectTagMetrics.spacing + overflowWidth) : 0);
       }
 
       for (final v in values) {
@@ -243,7 +239,7 @@ class _SelectState<T> extends State<Select<T>> {
           style: tagTextStyle,
           closable: true,
         );
-        final add = (lineWidth == 0 ? 0 : _tagSpacing) + w;
+        final add = (lineWidth == 0 ? 0 : SelectTagMetrics.spacing) + w;
 
         final limit = row == maxRows
             ? (maxWidth - reservedOnLastRow())
@@ -268,41 +264,6 @@ class _SelectState<T> extends State<Select<T>> {
 
     final visible = values.isEmpty ? <T>[] : <T>[values.first];
     return (visible: visible, hidden: values.length - visible.length);
-  }
-
-  Widget _tag({
-    required String text,
-    required bool closable,
-    VoidCallback? onClose,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: _tagHorizontalPadding,
-        vertical: _tagVerticalPadding,
-      ),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE0E0E0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(text),
-          if (closable) ...[
-            const SizedBox(width: _tagIconGap),
-            InkWell(
-              onTap: onClose,
-              child: SizedBox(
-                width: _tagIconContainerSize,
-                height: _tagIconContainerSize,
-                child: const Icon(Icons.close, size: _tagIconSize),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 
   Widget _suffix() {
@@ -479,15 +440,6 @@ class _SelectState<T> extends State<Select<T>> {
     );
   }
 
-  List<Widget> _withSpacing(List<Widget> children, double spacing) {
-    final out = <Widget>[];
-    for (var i = 0; i < children.length; i++) {
-      if (i != 0) out.add(SizedBox(width: spacing));
-      out.add(children[i]);
-    }
-    return out;
-  }
-
   @override
   Widget build(BuildContext context) {
     final hasSelection = widget.values.isNotEmpty;
@@ -517,9 +469,8 @@ class _SelectState<T> extends State<Select<T>> {
 
             final children = <Widget>[
               for (final v in packed.visible)
-                _tag(
+                SelectTag(
                   text: _asString(v),
-                  closable: true,
                   onClose: () {
                     final next = List<T>.from(widget.values)..remove(v);
                     widget.onChanged(next);
@@ -527,8 +478,7 @@ class _SelectState<T> extends State<Select<T>> {
                     _overlayEntry?.markNeedsBuild();
                   },
                 ),
-              if (packed.hidden > 0)
-                _tag(text: '+${packed.hidden}', closable: false),
+              if (packed.hidden > 0) SelectTag(text: '+${packed.hidden}'),
               ConstrainedBox(
                 constraints: const BoxConstraints(
                   minWidth: _queryMinWidth,
@@ -581,12 +531,15 @@ class _SelectState<T> extends State<Select<T>> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          children: _withSpacing(children, _tagSpacing),
+                          children: withHorizontalSpacing(
+                            children,
+                            SelectTagMetrics.spacing,
+                          ),
                         ),
                       )
                     : Wrap(
-                        spacing: _tagSpacing,
-                        runSpacing: _tagSpacing,
+                        spacing: SelectTagMetrics.spacing,
+                        runSpacing: SelectTagMetrics.spacing,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: children,
                       ),
