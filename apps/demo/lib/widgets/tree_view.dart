@@ -12,13 +12,60 @@ class TreeAdapter<T> {
   final String Function(T value) idOf;
   final String Function(T value) labelOf;
   final List<T> Function(T value) childrenOf;
+
+  /// A convention-based default adapter.
+  ///
+  /// It expects the node object to have:
+  /// - `id` (String)
+  /// - `label` (String)
+  /// - `children` (List<T>)
+  ///
+  /// This keeps demos concise while still allowing fully-custom adapters.
+  static TreeAdapter<T> defaultAdapter<T>() {
+    return TreeAdapter<T>(
+      idOf: (value) {
+        final v = value as dynamic;
+        final id = v.id;
+        if (id is String && id.trim().isNotEmpty) return id;
+        throw StateError(
+          'TreeView defaultAdapter expects node.id to be a non-empty String.',
+        );
+      },
+      labelOf: (value) {
+        final v = value as dynamic;
+        final label = v.label;
+        if (label is String) return label;
+        return value.toString();
+      },
+      childrenOf: (value) {
+        final v = value as dynamic;
+        final children = v.children;
+        if (children is List<T>) return children;
+        if (children is List) return children.cast<T>();
+        return List<T>.empty(growable: false);
+      },
+    );
+  }
 }
 
+/// Customize how a node's "content area" is rendered.
+///
+/// This renderer only replaces the right-side content widget (the part that
+/// defaults to the highlighted label). Expand/collapse + selection UI remains
+/// managed by `TreeView` itself.
+typedef TreeNodeRenderer<T> =
+    Widget Function(
+      BuildContext context,
+      T node,
+      List<T> ancestors,
+      String searchQuery,
+    );
+
 class TreeView<T> extends StatefulWidget {
-  const TreeView({
+  TreeView({
     super.key,
     required this.data,
-    required this.adapter,
+    TreeAdapter<T>? adapter,
     this.selectionMode = TreeSelectionMode.none,
     this.initialExpandedIds,
     this.initialSelectedId,
@@ -35,7 +82,9 @@ class TreeView<T> extends StatefulWidget {
     this.showSearch = true,
     this.indent = 20,
     this.rowHeight = 40,
-  }) : assert(
+    this.nodeRenderer,
+  }) : adapter = adapter ?? TreeAdapter.defaultAdapter<T>(),
+       assert(
          selectionMode != TreeSelectionMode.single ||
              initialSelectedIds == null,
          'initialSelectedIds is only valid for multiple selection mode.',
@@ -85,6 +134,12 @@ class TreeView<T> extends StatefulWidget {
 
   final double indent;
   final double rowHeight;
+
+  /// Optional custom renderer for each node row's content.
+  ///
+  /// If not provided, TreeView uses its default label renderer (with search
+  /// highlight).
+  final TreeNodeRenderer<T>? nodeRenderer;
 
   @override
   State<TreeView<T>> createState() => _TreeViewState<T>();
@@ -596,7 +651,18 @@ class _TreeViewState<T> extends State<TreeView<T>> {
                                   : const SizedBox.shrink(),
                             ),
                             if (selectionWidget != null) selectionWidget,
-                            Expanded(child: _buildLabel(context, node)),
+                            Expanded(
+                              child: widget.nodeRenderer != null
+                                  ? widget.nodeRenderer!(
+                                      context,
+                                      node.value,
+                                      row.ancestors
+                                          .map((a) => a.value)
+                                          .toList(growable: false),
+                                      _queryText,
+                                    )
+                                  : _buildLabel(context, node),
+                            ),
                           ],
                         ),
                       ),
