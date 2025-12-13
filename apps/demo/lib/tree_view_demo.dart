@@ -42,6 +42,10 @@ class _TreeDemoState extends State<TreeDemo> {
   DemoNode? _singleSelected;
   Set<DemoNode> _treeSelectSelected = <DemoNode>{};
   List<DemoNode> _selectSelected = <DemoNode>[];
+  DemoNode? _clickedNodeNonSelectable;
+  List<DemoNode> _clickedAncestorsNonSelectable = const <DemoNode>[];
+  DemoNode? _clickedNodeSelectable;
+  List<DemoNode> _clickedAncestorsSelectable = const <DemoNode>[];
 
   @override
   Widget build(BuildContext context) {
@@ -132,6 +136,28 @@ class _TreeDemoState extends State<TreeDemo> {
             'TreeSelect 已选: ${(_treeSelectSelected.toList()..sort((a, b) => a.id.compareTo(b.id))).map((e) => e.id).toList()}',
             style: Theme.of(context).textTheme.bodySmall,
           ),
+          const SizedBox(height: 24),
+          Text(
+            'TreeView（默认：非可选模式 TreeSelectionMode.none）',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          TreeView<DemoNode>(
+            data: data,
+            adapter: adapter,
+            // No selectionMode specified => defaults to TreeSelectionMode.none
+            onNodeClick: (node, ancestors) {
+              setState(() {
+                _clickedNodeNonSelectable = node;
+                _clickedAncestorsNonSelectable = ancestors;
+              });
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '点击回调: node=${_clickedNodeNonSelectable?.id ?? '-'}, path=${_clickedAncestorsNonSelectable.map((e) => e.id).toList()}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 16),
           Text(
             'Select（下拉 List + Tag，对齐 TreeSelect 的输入框/Tag 样式）',
@@ -156,6 +182,29 @@ class _TreeDemoState extends State<TreeDemo> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 24),
+          Text(
+            'TreeView（可选 + Node Click Callback）',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          TreeView<DemoNode>(
+            data: data,
+            adapter: adapter,
+            selectionMode: TreeSelectionMode.multiple,
+            onNodeClick: (node, ancestors) {
+              setState(() {
+                _clickedNodeSelectable = node;
+                _clickedAncestorsSelectable = ancestors;
+              });
+            },
+            onMultiSelectionChanged: (v) => setState(() => _selected = v),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '点击回调: node=${_clickedNodeSelectable?.id ?? '-'}, path=${_clickedAncestorsSelectable.map((e) => e.id).toList()}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
           Text(
             '复选（支持半选 + 搜索过滤）',
             style: Theme.of(context).textTheme.titleMedium,

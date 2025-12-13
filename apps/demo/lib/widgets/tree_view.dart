@@ -19,7 +19,7 @@ class TreeView<T> extends StatefulWidget {
     super.key,
     required this.data,
     required this.adapter,
-    this.selectionMode = TreeSelectionMode.multiple,
+    this.selectionMode = TreeSelectionMode.none,
     this.initialExpandedIds,
     this.initialSelectedId,
     this.initialSelectedIds,
@@ -28,6 +28,7 @@ class TreeView<T> extends StatefulWidget {
     this.selectedId,
     this.selectedIds,
     this.searchQuery,
+    this.onNodeClick,
     this.onSingleSelectionChanged,
     this.onMultiSelectionChanged,
     this.searchHintText = 'Search',
@@ -66,6 +67,12 @@ class TreeView<T> extends StatefulWidget {
   /// Controlled search query. When provided, TreeView will filter using this text and
   /// won't render the internal search input.
   final String? searchQuery;
+
+  /// Fires when a node row is clicked.
+  ///
+  /// - `node`: the clicked node's original data.
+  /// - `ancestors`: the clicked node's ancestor chain, from root -> parent (excluding self).
+  final void Function(T node, List<T> ancestors)? onNodeClick;
 
   /// Emits the selected typed value (or null).
   final ValueChanged<T?>? onSingleSelectionChanged;
@@ -111,6 +118,7 @@ class _FlatNode<T> {
     required this.isExpanded,
     required this.hasChildren,
     required this.filteredChildren,
+    required this.ancestors,
   });
 
   final _TreeNode<T> node;
@@ -118,6 +126,7 @@ class _FlatNode<T> {
   final bool isExpanded;
   final bool hasChildren;
   final List<_FilteredNode<T>> filteredChildren;
+  final List<_TreeNode<T>> ancestors;
 }
 
 class _TreeViewState<T> extends State<TreeView<T>> {
@@ -383,6 +392,7 @@ class _TreeViewState<T> extends State<TreeView<T>> {
     List<_FilteredNode<T>> nodes, {
     required int depth,
     required bool forceExpand,
+    required List<_TreeNode<T>> ancestors,
   }) {
     for (final fn in nodes) {
       final node = fn.node;
@@ -395,14 +405,17 @@ class _TreeViewState<T> extends State<TreeView<T>> {
           isExpanded: isExpanded,
           hasChildren: hasChildren,
           filteredChildren: fn.children,
+          ancestors: ancestors,
         ),
       );
       if (hasChildren && isExpanded) {
+        final nextAncestors = <_TreeNode<T>>[...ancestors, node];
         _flattenInto(
           out,
           fn.children,
           depth: depth + 1,
           forceExpand: forceExpand,
+          ancestors: nextAncestors,
         );
       }
     }
@@ -413,7 +426,13 @@ class _TreeViewState<T> extends State<TreeView<T>> {
     final q = _queryText;
     final forceExpand = q.isNotEmpty;
     final out = <_FlatNode<T>>[];
-    _flattenInto(out, filtered, depth: 0, forceExpand: forceExpand);
+    _flattenInto(
+      out,
+      filtered,
+      depth: 0,
+      forceExpand: forceExpand,
+      ancestors: <_TreeNode<T>>[],
+    );
     return out;
   }
 
@@ -543,20 +562,24 @@ class _TreeViewState<T> extends State<TreeView<T>> {
                     }
 
                     return InkWell(
-                      onTap: widget.selectionMode == TreeSelectionMode.none
-                          ? null
-                          : () {
-                              if (widget.selectionMode ==
-                                  TreeSelectionMode.single) {
-                                _setSingleSelected(node.id);
-                                return;
-                              }
-                              if (widget.selectionMode ==
-                                  TreeSelectionMode.multiple) {
-                                final v = _checkboxValueForNode(node);
-                                _toggleMultiSelected(node, v != true);
-                              }
-                            },
+                      onTap: () {
+                        widget.onNodeClick?.call(
+                          node.value,
+                          row.ancestors
+                              .map((a) => a.value)
+                              .toList(growable: false),
+                        );
+
+                        if (widget.selectionMode == TreeSelectionMode.single) {
+                          _setSingleSelected(node.id);
+                          return;
+                        }
+                        if (widget.selectionMode ==
+                            TreeSelectionMode.multiple) {
+                          final v = _checkboxValueForNode(node);
+                          _toggleMultiSelected(node, v != true);
+                        }
+                      },
                       child: SizedBox(
                         height: widget.rowHeight,
                         child: Row(
