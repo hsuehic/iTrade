@@ -1,0 +1,5 @@
+# app-ads.txt file for iTrade
+# This file is used for app advertising verification
+
+# Contact: xiaoweihsueh@gmail.com
+

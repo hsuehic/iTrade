@@ -18,11 +18,17 @@ const chain = (
     // - _next
     // - auth
     // - static files matching regex
+    // - SEO and verification files (robots.txt, sitemap files, app-ads.txt)
     if (
       pathname.startsWith('/.well-known/') ||
       pathname.startsWith('/api/') ||
       pathname.startsWith('/_next/') ||
       pathname.startsWith('/auth/') ||
+      pathname === '/robots.txt' ||
+      pathname === '/app-ads.txt' ||
+      pathname === '/sitemap.xml' ||
+      pathname === '/sitemap.xml.gz' ||
+      pathname === '/sitemap.txt' ||
       STATIC_FILE_REGEX.test(pathname)
     ) {
       return NextResponse.next();
