@@ -88,6 +88,17 @@ Future<void> main() async {
       // Continue app launch even if API init fails
     }
 
+    // Register push token to server (only if changed)
+    try {
+      if (firebaseReady) {
+        await NotificationService.instance.syncDeviceTokenToServer().timeout(
+          const Duration(seconds: 5),
+        );
+      }
+    } catch (e) {
+      // Push registration failed, continue app launch
+    }
+
     // Initialize theme service (should be fast)
     try {
       await ThemeService.instance.init().timeout(const Duration(seconds: 3));

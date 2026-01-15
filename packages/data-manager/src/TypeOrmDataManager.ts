@@ -24,6 +24,8 @@ import { DryRunTradeEntity } from './entities/DryRunTrade';
 import { DryRunResultEntity } from './entities/DryRunResult';
 import { AccountSnapshotEntity } from './entities/AccountSnapshot';
 import { EmailPreferencesEntity } from './entities/EmailPreferences';
+import { PushDeviceEntity } from './entities/PushDevice';
+import { PushNotificationLogEntity } from './entities/PushNotificationLog';
 import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
@@ -32,6 +34,7 @@ import {
   OrderRepository,
   PnLRepository,
   EmailPreferencesRepository,
+  PushDeviceRepository,
 } from './repositories';
 import {
   AccountSnapshotRepository,
@@ -77,6 +80,7 @@ export class TypeOrmDataManager implements IDataManager {
   private pnlRepository!: PnLRepository;
   private accountSnapshotRepository!: AccountSnapshotRepository;
   private emailPreferencesRepository!: EmailPreferencesRepository;
+  private pushDeviceRepository!: PushDeviceRepository;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -123,6 +127,8 @@ export class TypeOrmDataManager implements IDataManager {
         Account,
         Session,
         EmailPreferencesEntity,
+        PushDeviceEntity,
+        PushNotificationLogEntity,
         // Dry Run entities
         DryRunSessionEntity,
         DryRunOrderEntity,
@@ -145,6 +151,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.pnlRepository = new PnLRepository(this.dataSource);
     this.accountSnapshotRepository = new AccountSnapshotRepository(this.dataSource);
     this.emailPreferencesRepository = new EmailPreferencesRepository(this.dataSource);
+    this.pushDeviceRepository = new PushDeviceRepository(this.dataSource);
 
     this.isInitialized = true;
   }
@@ -900,5 +907,11 @@ export class TypeOrmDataManager implements IDataManager {
   getEmailPreferencesRepository(): EmailPreferencesRepository {
     this.ensureInitialized();
     return this.emailPreferencesRepository;
+  }
+
+  // Get PushDeviceRepository for push token registration & lookup
+  getPushDeviceRepository(): PushDeviceRepository {
+    this.ensureInitialized();
+    return this.pushDeviceRepository;
   }
 }

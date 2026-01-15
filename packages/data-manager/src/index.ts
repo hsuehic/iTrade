@@ -12,6 +12,7 @@ export {
   OrderRepository,
   PnLRepository,
   EmailPreferencesRepository,
+  PushDeviceRepository,
 } from './repositories';
 export type { EmailPreferencesData } from './repositories';
 export { AccountSnapshotRepository } from './repositories/AccountSnapshotRepository';
@@ -44,6 +45,14 @@ export { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
 export { DryRunTradeEntity } from './entities/DryRunTrade';
 export { DryRunResultEntity } from './entities/DryRunResult';
 export { EmailPreferencesEntity } from './entities/EmailPreferences';
+export { User } from './entities/User';
+export {
+  PushDeviceEntity,
+  PushEnvironment,
+  PushPlatform,
+  PushProvider,
+} from './entities/PushDevice';
+export { PushNotificationLogEntity } from './entities/PushNotificationLog';
 
 // Types and interfaces
 export type {

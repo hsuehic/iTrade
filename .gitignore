@@ -62,3 +62,4 @@ api-keys/
 .next/
 
 *firebase-admin.json
+apps/web/firebase-service-account.json

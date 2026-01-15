@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/notification.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
 import '../widgets/responsive_layout_builder.dart';
@@ -10,6 +11,7 @@ import 'change_password.dart';
 import 'delete_account.dart';
 import 'edit_profile.dart';
 import 'email_preferences.dart';
+import 'push_notification_history.dart';
 import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -26,16 +28,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _darkMode = false;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
+  bool _categoryGeneral = true;
+  bool _categoryMarketing = false;
+  bool _categoryTrading = true;
+  bool _categorySecurity = true;
+  bool _categorySystem = true;
   final AuthService _authService = AuthService.instance;
 
   Future<void> _loadSetting() async {
     final notificationsEnabled = await Preference.getNotificationsEnabled();
     final biometricEnabled = await Preference.getBiometricEnabled();
     final darkMode = await Preference.getDarkMode();
+    final cGeneral = await Preference.getPushCategoryEnabled('general');
+    final cMarketing = await Preference.getPushCategoryEnabled('marketing');
+    final cTrading = await Preference.getPushCategoryEnabled('trading');
+    final cSecurity = await Preference.getPushCategoryEnabled('security');
+    final cSystem = await Preference.getPushCategoryEnabled('system');
     setState(() {
       _notificationsEnabled = notificationsEnabled ?? false;
       _enableFaceId = biometricEnabled ?? false;
       _darkMode = darkMode ?? false;
+      _categoryGeneral = cGeneral;
+      _categoryMarketing = cMarketing;
+      _categoryTrading = cTrading;
+      _categorySecurity = cSecurity;
+      _categorySystem = cSystem;
     });
   }
 
@@ -247,6 +264,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onChanged: (v) {
                   setState(() => _notificationsEnabled = v);
                   Preference.setNotificationsEnabled(v);
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSectionHeader('Push Categories'),
+              const SizedBox(height: 8),
+              _buildSwitchTile(
+                icon: Icons.notifications_active_outlined,
+                title: 'General',
+                subtitle: 'General updates',
+                value: _categoryGeneral,
+                onChanged: (v) async {
+                  setState(() => _categoryGeneral = v);
+                  await NotificationService.instance.setCategoryEnabled('general', v);
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSwitchTile(
+                icon: Icons.campaign_outlined,
+                title: 'Marketing',
+                subtitle: 'Promotions and announcements',
+                value: _categoryMarketing,
+                onChanged: (v) async {
+                  setState(() => _categoryMarketing = v);
+                  await NotificationService.instance.setCategoryEnabled('marketing', v);
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSwitchTile(
+                icon: Icons.show_chart,
+                title: 'Trading',
+                subtitle: 'Trading alerts and signals',
+                value: _categoryTrading,
+                onChanged: (v) async {
+                  setState(() => _categoryTrading = v);
+                  await NotificationService.instance.setCategoryEnabled('trading', v);
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSwitchTile(
+                icon: Icons.security,
+                title: 'Security',
+                subtitle: 'Login and security alerts',
+                value: _categorySecurity,
+                onChanged: (v) async {
+                  setState(() => _categorySecurity = v);
+                  await NotificationService.instance.setCategoryEnabled('security', v);
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSwitchTile(
+                icon: Icons.settings,
+                title: 'System',
+                subtitle: 'System notices',
+                value: _categorySystem,
+                onChanged: (v) async {
+                  setState(() => _categorySystem = v);
+                  await NotificationService.instance.setCategoryEnabled('system', v);
+                },
+                isDark: isDark,
+              ),
+              _buildDivider(isDark),
+              _buildSettingTile(
+                icon: Icons.history,
+                title: 'Notification History',
+                subtitle: 'View recent push notifications',
+                trailing: Icons.chevron_right,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PushNotificationHistoryScreen(),
+                    ),
+                  );
                 },
                 isDark: isDark,
               ),

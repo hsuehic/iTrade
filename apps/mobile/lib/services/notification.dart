@@ -2,6 +2,10 @@ import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
+
+import 'api_client.dart';
+import 'preference.dart';
 
 class NotificationService {
   NotificationService._internal();
@@ -12,6 +16,17 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  static const List<String> supportedCategories = <String>[
+    'general',
+    'marketing',
+    'trading',
+    'security',
+    'system',
+  ];
+
+  static String topicForCategory(String category) {
+    return 'push_$category';
+  }
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -29,17 +44,15 @@ class NotificationService {
     );
     await _local.initialize(initSettings);
 
-    // Subscribe to topics with error handling
+    // Subscribe to baseline topics with error handling
     // Note: This may fail on iOS simulators as they don't support APNS
     try {
       await _messaging.subscribeToTopic('news');
-          } catch (e) {
-          }
+    } catch (_) {}
 
     try {
       await _messaging.subscribeToTopic('allUsers');
-          } catch (e) {
-          }
+    } catch (_) {}
 
     if (Platform.isIOS || Platform.isMacOS) {
       try {
@@ -51,6 +64,20 @@ class NotificationService {
       } catch (e) {
               }
     }
+
+    // Sync refreshed FCM token to server (best-effort, only if changed)
+    FirebaseMessaging.instance.onTokenRefresh.listen((token) async {
+      try {
+        final enabled = await Preference.getNotificationsEnabled();
+        if (enabled == false) return;
+        await syncDeviceTokenToServer(tokenOverride: token);
+      } catch (_) {}
+    });
+
+    // Apply per-category topic subscriptions from local preferences
+    try {
+      await applyCategorySubscriptions();
+    } catch (_) {}
 
     _initialized = true;
   }
@@ -76,6 +103,85 @@ class NotificationService {
     }
   }
 
+  Future<void> syncDeviceTokenToServer({String? tokenOverride}) async {
+    // ApiClient may not be initialized early in app boot
+    if (!ApiClient.instance.isInitialized) return;
+
+    final enabled = await Preference.getNotificationsEnabled();
+    if (enabled == false) return;
+
+    final token = tokenOverride ?? (await getDeviceToken());
+    if (token == null || token.isEmpty) return;
+
+    final platform = Platform.isIOS
+        ? 'ios'
+        : Platform.isAndroid
+        ? 'android'
+        : 'web';
+    final provider = 'fcm';
+    final appId = 'com.ihsueh.itrade';
+    final environment =
+        Platform.isIOS ? (kReleaseMode ? 'production' : 'sandbox') : null;
+
+    final deviceId = await Preference.getOrCreatePushDeviceId();
+
+    final lastKey = Preference.pushLastReportedTokenKey(platform, provider);
+    final lastReported = await Preference.getValue<String>(lastKey);
+    if (lastReported != null && lastReported == token) return;
+
+    try {
+      final res = await ApiClient.instance.postJson<dynamic>(
+        '/api/push/register',
+        data: {
+          'deviceId': deviceId,
+          'platform': platform,
+          'provider': provider,
+          'pushToken': token,
+          'appId': appId,
+          'environment': environment,
+        },
+      );
+
+      if (res.statusCode == 200) {
+        await Preference.setValue<String>(lastKey, token);
+      }
+    } catch (_) {
+      // Best-effort: don't break app startup if registration fails
+    }
+  }
+
+  Future<void> setCategoryEnabled(String category, bool enabled) async {
+    await Preference.setPushCategoryEnabled(category, enabled);
+    final notificationsEnabled = await Preference.getNotificationsEnabled();
+    if (notificationsEnabled == false) return;
+
+    final topic = topicForCategory(category);
+    try {
+      if (enabled) {
+        await _messaging.subscribeToTopic(topic);
+      } else {
+        await _messaging.unsubscribeFromTopic(topic);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> applyCategorySubscriptions() async {
+    final notificationsEnabled = await Preference.getNotificationsEnabled();
+    if (notificationsEnabled == false) return;
+
+    for (final category in supportedCategories) {
+      final enabled = await Preference.getPushCategoryEnabled(category);
+      final topic = topicForCategory(category);
+      try {
+        if (enabled) {
+          await _messaging.subscribeToTopic(topic);
+        } else {
+          await _messaging.unsubscribeFromTopic(topic);
+        }
+      } catch (_) {}
+    }
+  }
+
   void listenToMessages({void Function(RemoteMessage message)? onTap}) {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       _showLocal(message);
@@ -87,8 +193,43 @@ class NotificationService {
   }
 
   Future<void> _showLocal(RemoteMessage message) async {
-    final RemoteNotification? notification = message.notification;
+    RemoteNotification? notification = message.notification;
+
+    // Fallback for data-only messages (e.g., Android data pushes)
+    if (notification == null) {
+      final data = message.data;
+      // Try APS-style alert first
+      final apsAlert = (data['aps'] is Map) ? (data['aps'] as Map)['alert'] : null;
+      String? title;
+      String? body;
+      if (apsAlert is Map) {
+        title = apsAlert['title']?.toString();
+        body = apsAlert['body']?.toString();
+      }
+      title ??= data['title']?.toString();
+      body ??= data['body']?.toString();
+
+      if (title != null || body != null) {
+        notification = RemoteNotification(
+          title: title,
+          body: body,
+        );
+      }
+    }
+
     if (notification == null) return;
+
+    // Extract badge from APNS-style payload or fallback data fields
+    int? badgeCount;
+    try {
+      final dynamic apsRaw = message.data['aps'];
+      if (apsRaw is Map) {
+        final dynamic badgeRaw = apsRaw['badge'];
+        badgeCount = int.tryParse(badgeRaw?.toString() ?? '');
+      }
+    } catch (_) {}
+    badgeCount ??= int.tryParse(message.data['badge']?.toString() ?? '');
+    badgeCount ??= int.tryParse(message.data['unreadCount']?.toString() ?? '');
 
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -98,8 +239,10 @@ class NotificationService {
           priority: Priority.high,
           playSound: true,
         );
-    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
-    const NotificationDetails details = NotificationDetails(
+    final DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      badgeNumber: badgeCount,
+    );
+    final NotificationDetails details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
