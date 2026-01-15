@@ -35,6 +35,9 @@ export class OrderTracker {
   constructor(
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
+    private pushNotificationService?: {
+      notifyOrderFill(order: Order, kind: 'filled' | 'partial'): Promise<void>;
+    },
   ) {
     this.eventBus = EventBus.getInstance();
     this.orderManager = new OrderManager();
@@ -145,6 +148,7 @@ export class OrderTracker {
   private async handleOrderFilled(order: Order): Promise<void> {
     try {
       const existingOrder = this.orderManager.getOrder(order.id);
+      const shouldNotify = !existingOrder || existingOrder.status !== 'FILLED';
       if (!existingOrder || existingOrder.status !== 'FILLED') {
         this.totalFilled++;
       }
@@ -191,6 +195,10 @@ export class OrderTracker {
       this.logger.info(
         `💾 Order filled and updated: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
       );
+
+      if (shouldNotify) {
+        await this.pushNotificationService?.notifyOrderFill(order, 'filled');
+      }
     } catch (error) {
       this.logger.error('❌ Failed to update filled order', error as Error);
     }
@@ -266,6 +274,8 @@ export class OrderTracker {
       this.logger.info(
         `💾 Partial fill saved: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
       );
+
+      await this.pushNotificationService?.notifyOrderFill(order, 'partial');
     } catch (error) {
       this.logger.error(`❌ Failed to save partial fill for ${orderId}`, error as Error);
       this.pendingPartialFills.delete(orderId);

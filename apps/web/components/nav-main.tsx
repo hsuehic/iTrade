@@ -4,6 +4,7 @@ import {
   IconClockDollar,
   IconDeviceAnalytics,
   IconWorldDollar,
+  IconBell,
 } from '@tabler/icons-react';
 
 import {
@@ -40,6 +41,11 @@ export function NavMain({ pathname }: { pathname?: string | null }) {
       title: 'Market',
       url: '/market',
       icon: IconWorldDollar,
+    },
+    {
+      title: 'Push',
+      url: '/push',
+      icon: IconBell,
     },
   ];
 

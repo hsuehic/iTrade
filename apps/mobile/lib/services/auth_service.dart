@@ -11,6 +11,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import 'api_client.dart';
 import 'config.dart';
+import 'notification.dart';
 
 class OperationResult {
   final bool success;
@@ -117,6 +118,10 @@ class AuthService {
 
     if (response.statusCode == 200) {
       final res = await getUser();
+      // Best-effort: avoid blocking login on push registration.
+      unawaited(
+        NotificationService.instance.syncDeviceTokenToServer(force: true),
+      );
       return res;
     } else {
       return null;
@@ -174,6 +179,10 @@ class AuthService {
         return null;
       } else {
         final res = await getUser();
+        // Best-effort: avoid blocking login on push registration.
+        unawaited(
+          NotificationService.instance.syncDeviceTokenToServer(force: true),
+        );
         return res;
       }
 
@@ -226,7 +235,12 @@ class AuthService {
       ),
     );
     if (res.statusCode == 200) {
-      return await getUser();
+      final user = await getUser();
+      // Best-effort: avoid blocking login on push registration.
+      unawaited(
+        NotificationService.instance.syncDeviceTokenToServer(force: true),
+      );
+      return user;
     }
     return null;
   }

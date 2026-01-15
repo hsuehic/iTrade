@@ -14,6 +14,7 @@ import { StrategyManager } from './integration/helpers/strategy-manager';
 import { OrderTracker } from './integration/helpers/order-tracker';
 import { BalanceTracker } from './integration/helpers/balance-tracker';
 import { PositionTracker } from './integration/helpers/position-tracker';
+import { PushNotificationService } from './services/push-notification-service';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -189,7 +190,10 @@ async function main(userId?: string) {
   // ============================================================
   logger.info('📦 Step 3: Initializing trackers...');
 
-  const orderTracker = new OrderTracker(dataManager, logger);
+  const pushNotificationService = new PushNotificationService(dataManager, logger, {
+    defaultUserId: userId,
+  });
+  const orderTracker = new OrderTracker(dataManager, logger, pushNotificationService);
   await orderTracker.start();
 
   const balanceTracker = new BalanceTracker(dataManager, logger);

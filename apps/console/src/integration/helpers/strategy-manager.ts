@@ -247,7 +247,10 @@ export class StrategyManager {
         this.logger.info(`🔄 [SYNC] No changes needed - all strategies in sync`);
       }
     } catch (error) {
-      this.logger.error('❌ [SYNC] Error syncing strategies with database', error as Error);
+      this.logger.error(
+        '❌ [SYNC] Error syncing strategies with database',
+        error as Error,
+      );
     }
   }
 
@@ -333,7 +336,9 @@ export class StrategyManager {
         `🔧 [ADD_STRATEGY] Adding to TradingEngine: ${engineName} (engine running: ${this.engine.isRunning})`,
       );
       await this.engine.addStrategy(engineName, strategy);
-      this.logger.info(`✅ [ADD_STRATEGY] Successfully added to TradingEngine: ${engineName}`);
+      this.logger.info(
+        `✅ [ADD_STRATEGY] Successfully added to TradingEngine: ${engineName}`,
+      );
 
       // Track locally
       this.strategies.set(strategyId, {

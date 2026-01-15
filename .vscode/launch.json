@@ -7,7 +7,7 @@
       "request": "launch",
       "type": "dart",
       "flutterMode": "debug",
-      "deviceId": "E098C49E-1769-4DF6-8433-CB8C6ADEADEF"
+      "args": ["-d", "00008120-001A4110017BC01E"]
     },
     {
       "name": "mobile (profile mode)",

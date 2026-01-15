@@ -97,7 +97,7 @@ export async function verifyAppleToken(idToken: string, nonce?: string) {
   }
 }
 
-export const auth = betterAuth({
+export const auth: ReturnType<typeof betterAuth> = betterAuth({
   user: {
     deleteUser: {
       enabled: true,

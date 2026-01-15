@@ -1,20 +1,19 @@
 import 'dart:async';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:ihsueh_itrade/utils/responsive_layout.dart';
-import 'constant/network.dart';
 import 'design/themes/theme.dart';
 
-import 'services/api_client.dart';
-import 'services/notification.dart';
+import 'services/app_bootstrap.dart';
 import 'services/theme_service.dart';
 import 'screens/splash.dart';
 import 'screens/login.dart';
@@ -22,80 +21,37 @@ import 'screens/forgot_password.dart';
 import 'screens/strategy.dart';
 import 'screens/product.dart';
 import 'screens/profile.dart';
+import 'screens/push_notification_history.dart';
+import 'screens/push_notification_detail.dart';
 import 'widgets/design_bottom_nav.dart';
 import 'widgets/app_sidebar.dart';
 
-import 'firebase_options.dart';
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+RemoteMessage? pendingNotificationTap;
+
+void handleNotificationTap(RemoteMessage message) {
+  final navigator = appNavigatorKey.currentState;
+  if (navigator == null) {
+    pendingNotificationTap = message;
+    return;
+  }
+  pendingNotificationTap = null;
+  final args = PushNotificationDetailArgs.fromRemoteMessage(message);
+  navigator.pushNamedAndRemoveUntil('/push-history/detail', (route) => false, arguments: args);
+}
 
 Future<void> main() async {
   // Wrap entire initialization in try-catch to prevent white screen
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    
-    // Firebase initialization with timeout
-    bool firebaseReady = false;
-    try {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-                    throw TimeoutException('Firebase initialization timed out');
-        },
-      );
-      firebaseReady = true;
-          } catch (e) {
-      // If config files are missing, keep app running and log a hint.
-      // Add GoogleService-Info.plist (iOS) and google-services.json (Android), or configure via FlutterFire.
-          }
 
-    // Firebase messaging setup (non-blocking)
-    if (firebaseReady) {
-      try {
-        FirebaseMessaging.onBackgroundMessage(
-          firebaseMessagingBackgroundHandler,
-        );
-        await NotificationService.instance.initialize().timeout(
-          const Duration(seconds: 5),
-        );
-        await NotificationService.instance.requestPermissions().timeout(
-          const Duration(seconds: 5),
-        );
-        NotificationService.instance.listenToMessages();
-        await NotificationService.instance.getDeviceToken();
-      } catch (e) {
-        // Notification setup failed, continue without notifications
-      }
-    }
-
-    // API Client initialization with timeout
-    try {
-      await ApiClient.instance
-          .init(
-            baseUrl: NetworkParameter.host,
-            // Allow handshake during development if the cert is self-signed/misconfigured
-            insecureAllowBadCertForHosts: const <String>[
-              NetworkParameter.origin,
-            ],
-          )
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              throw TimeoutException('API Client initialization timed out');
-            },
-          );
-    } catch (e) {
-      // Continue app launch even if API init fails
-    }
-
-    // Initialize theme service (should be fast)
-    try {
-      await ThemeService.instance.init().timeout(const Duration(seconds: 3));
-    } catch (e) {
-      // Continue with default theme
-    }
+    // Load environment variables based on build target.
+    await _loadEnvFile();
 
     runApp(const MyApp());
+
+    AppBootstrap.instance.setNotificationTapHandler(handleNotificationTap);
+    unawaited(AppBootstrap.instance.start());
   } catch (e) {
     // Last resort error handler - show error screen
     // Still try to run app with error screen
@@ -141,6 +97,38 @@ Future<void> main() async {
   }
 }
 
+/// Load the appropriate .env file based on build mode or APP_ENV define.
+///
+/// - APP_ENV=production -> .env.production
+/// - APP_ENV=staging    -> .env.staging
+/// - APP_ENV=development|dev -> .env.development
+/// - Fallback to .env if specific file is missing.
+Future<void> _loadEnvFile() async {
+  final String envName = const String.fromEnvironment(
+    'APP_ENV',
+    defaultValue: kReleaseMode ? 'production' : 'development',
+  ).toLowerCase();
+
+  final String fileName;
+  if (envName == 'production' || envName == 'prod') {
+    fileName = '.env.production';
+  } else if (envName == 'staging' || envName == 'stage') {
+    fileName = '.env.staging';
+  } else if (envName == 'development' || envName == 'dev') {
+    fileName = '.env.development';
+  } else {
+    fileName = '.env';
+  }
+
+  try {
+    await dotenv.load(fileName: fileName);
+  } catch (_) {
+    try {
+      await dotenv.load(fileName: '.env');
+    } catch (_) {}
+  }
+}
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -152,13 +140,16 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   // Track if we're resuming from background (to avoid showing splash again)
   static bool _hasInitialized = false;
-  // 获取 Firebase Analytics 实例
-  static FirebaseAnalytics analytics = FirebaseAnalytics.instance;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (pendingNotificationTap != null) {
+        handleNotificationTap(pendingNotificationTap!);
+      }
+    });
   }
 
   @override
@@ -178,32 +169,40 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: ThemeService.instance.themeMode,
-      builder: (context, themeMode, child) {
-        // Initialize ScreenUtil with responsive design sizes
-        // - Phone: 375x10000 (iPhone SE/8 as standard, height disabled)
-        // - Tablet: 768x10000 (iPad as standard, height disabled)
-        // - Desktop: 1440x10000 (Desktop standard, height disabled)
-        // Height is set to large value to effectively disable height scaling
-        return ScreenUtilInit(
-          designSize: _getDesignSize(context),
-          // Minimum text adapt size (prevents text from being too small)
-          minTextAdapt: true,
-          // Split screen mode support
-          splitScreenMode: true,
-          builder: (context, child) {
-            return MaterialApp(
-              title: 'iTrade',
-              navigatorObservers: [
-                FirebaseAnalyticsObserver(
-                  analytics: analytics,
-                ), // 自动追踪 screen_view
-              ],
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppBootstrap.instance.firebaseReady,
+      builder: (context, firebaseReady, child) {
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: ThemeService.instance.themeMode,
+          builder: (context, themeMode, child) {
+            // Initialize ScreenUtil with responsive design sizes
+            // - Phone: 375x10000 (iPhone SE/8 as standard, height disabled)
+            // - Tablet: 768x10000 (iPad as standard, height disabled)
+            // - Desktop: 1440x10000 (Desktop standard, height disabled)
+            // Height is set to large value to effectively disable height scaling
+            return ScreenUtilInit(
+              designSize: _getDesignSize(context),
+              // Minimum text adapt size (prevents text from being too small)
+              minTextAdapt: true,
+              // Split screen mode support
+              splitScreenMode: true,
+              builder: (context, child) {
+                final List<NavigatorObserver> observers = <NavigatorObserver>[];
+                if (firebaseReady) {
+                  observers.add(
+                    FirebaseAnalyticsObserver(
+                      analytics: FirebaseAnalytics.instance,
+                    ),
+                  );
+                }
+                return MaterialApp(
+                  title: 'iTrade',
+                  navigatorObservers: observers,
 
               theme: AppTheme.brand,
               darkTheme: AppTheme.dark,
               themeMode: themeMode,
+              navigatorKey: appNavigatorKey,
               // Only show splash on first cold start, not when resuming from background
               home: _hasInitialized ? const AuthGate() : const SplashScreen(),
               routes: {
@@ -212,10 +211,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 '/home': (_) => const MyHomePage(title: 'iTrade'),
                 '/scan-qr': (_) => const QrScanScreen(),
                 '/profile': (_) => const ProfileScreen(),
+                '/push-history': (_) => const PushNotificationHistoryScreen(),
+                '/push-history/detail': (_) =>
+                    const PushNotificationDetailScreen(),
               },
               onGenerateRoute: (settings) {
                 // Handle deep links and external navigation
-                                return null; // Use default route handling
+                return null; // Use default route handling
+              },
+                );
               },
             );
           },
@@ -262,6 +266,9 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _checkSession() async {
     try {
+      await AppBootstrap.instance.ensureApiClientReady(
+        timeout: const Duration(seconds: 5),
+      );
       final User? user = await AuthService.instance.getUser();
       final bool ok = user != null;
       if (!mounted) return;
@@ -360,7 +367,7 @@ class _MyHomePageState extends State<MyHomePage> {
     final shouldUseSidebar = isTablet || isLargeScreen;
 
     // Debug: Print device info to understand layout detection
-    
+
     if (shouldUseSidebar) {
       // Tablet layout: Modern sidebar navigation
       return Scaffold(

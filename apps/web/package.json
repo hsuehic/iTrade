@@ -30,6 +30,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@itrade/core": "workspace:*",
     "@itrade/data-manager": "workspace:*",
+    "@itrade/push-notification": "workspace:*",
     "@itrade/strategies": "workspace:*",
     "@itrade/utils": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.10",

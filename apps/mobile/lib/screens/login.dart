@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -5,7 +7,9 @@ import 'package:flutter_svg/svg.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../constant/network.dart';
 import '../design/extensions/spacing_extension.dart';
+import '../services/api_client.dart';
 import '../services/preference.dart';
 import '../utils/responsive_layout.dart';
 
@@ -102,6 +106,165 @@ class _LoginScreenState extends State<LoginScreen> {
         duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  String? _validateBaseUrl(String value) {
+    final String trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return 'API base URL is required';
+    }
+
+    final String valueWithScheme =
+        trimmed.startsWith('http') ? trimmed : 'https://$trimmed';
+    final Uri? parsed = Uri.tryParse(valueWithScheme);
+    if (parsed == null || parsed.host.isEmpty || !parsed.hasScheme) {
+      return 'Enter a valid URL (e.g., https://itrade.ihsueh.com)';
+    }
+    if (parsed.scheme != 'http' && parsed.scheme != 'https') {
+      return 'Only http and https are supported';
+    }
+    return null;
+  }
+
+  Future<void> _applyApiBaseUrl(String baseUrl) async {
+    final String origin = Uri.parse(baseUrl).host;
+    await ApiClient.instance.updateBaseUrl(
+      baseUrl: baseUrl,
+      insecureAllowBadCertForHosts: <String>[origin],
+    );
+  }
+
+  Future<void> _showApiBaseUrlSheet() async {
+    final ThemeData theme = Theme.of(context);
+    final spacing = Theme.of(context).extension<AppSpacing>()!;
+    final String? savedValue = await Preference.getApiBaseUrl();
+    final String resolvedValue = NetworkParameter.resolveBaseUrl(savedValue);
+
+    if (!mounted) return;
+
+    final TextEditingController controller = TextEditingController(
+      text: savedValue ?? resolvedValue,
+    );
+    Timer? debounceTimer;
+    String? errorText;
+
+    Future<void> resetToDefault() async {
+      await Preference.clearApiBaseUrl();
+      final String defaultValue = NetworkParameter.resolveBaseUrl();
+      await _applyApiBaseUrl(defaultValue);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _showSnack('API_BASE_URL reset to default');
+    }
+
+    Future<void> saveValue(StateSetter setSheetState) async {
+      final String value = controller.text.trim();
+      final String? validationError = _validateBaseUrl(value);
+      if (validationError != null) {
+        setSheetState(() {
+          errorText = validationError;
+        });
+        return;
+      }
+
+      final String normalized = NetworkParameter.normalizeBaseUrl(value);
+      await Preference.setApiBaseUrl(normalized);
+      await _applyApiBaseUrl(normalized);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _showSnack('API_BASE_URL updated');
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      backgroundColor: theme.colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: spacing.md,
+                right: spacing.md,
+                top: spacing.md,
+                bottom:
+                    MediaQuery.of(context).viewInsets.bottom + spacing.md,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Server Settings',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: spacing.xs),
+                  Text(
+                    'Set API_BASE_URL for the backend server.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  SizedBox(height: spacing.sm),
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.done,
+                    autocorrect: false,
+                    decoration: InputDecoration(
+                      labelText: 'API_BASE_URL',
+                      hintText: NetworkParameter.defaultHost,
+                      errorText: errorText,
+                    ),
+                    onChanged: (value) {
+                      debounceTimer?.cancel();
+                      debounceTimer = Timer(
+                        const Duration(milliseconds: 500),
+                        () {
+                          final String? validationError =
+                              _validateBaseUrl(value);
+                          setSheetState(() {
+                            errorText = validationError;
+                          });
+                        },
+                      );
+                    },
+                  ),
+                  SizedBox(height: spacing.md),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: resetToDefault,
+                        child: const Text('Reset'),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      SizedBox(width: spacing.sm),
+                      FilledButton(
+                        onPressed: () => saveValue(setSheetState),
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    debounceTimer?.cancel();
+    controller.dispose();
   }
 
   Future<void> _handleGoogleSignIn() async {
@@ -256,36 +419,39 @@ class _LoginScreenState extends State<LoginScreen> {
           SizedBox(height: spacing.lg),
 
           // Logo - Use fixed size for better visibility
-          Container(
-            width: 100, // ✅ Fixed size
-            height: 100, // ✅ Fixed size
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  theme.colorScheme.primary,
-                  theme.colorScheme.primary.withValues(alpha: 0.7),
+          GestureDetector(
+            onLongPress: _showApiBaseUrlSheet,
+            child: Container(
+              width: 100, // ✅ Fixed size
+              height: 100, // ✅ Fixed size
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.primary.withValues(alpha: 0.7),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 15,
+                    spreadRadius: 2,
+                  ),
                 ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                  blurRadius: 15,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Center(
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/images/logo-512x512.png',
-                  width: 60, // ✅ Fixed size
-                  height: 60, // ✅ Fixed size
-                  fit: BoxFit.cover,
-                  cacheWidth: 120,
-                  cacheHeight: 120,
+              child: Center(
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/logo-512x512.png',
+                    width: 60, // ✅ Fixed size
+                    height: 60, // ✅ Fixed size
+                    fit: BoxFit.cover,
+                    cacheWidth: 120,
+                    cacheHeight: 120,
+                  ),
                 ),
               ),
             ),
@@ -572,38 +738,41 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Large logo
-                  Container(
-                    width: 180,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          theme.colorScheme.primary,
-                          theme.colorScheme.primary.withValues(alpha: 0.8),
+                  GestureDetector(
+                    onLongPress: _showApiBaseUrlSheet,
+                    child: Container(
+                      width: 180,
+                      height: 180,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            theme.colorScheme.primary,
+                            theme.colorScheme.primary.withValues(alpha: 0.8),
+                          ],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.2,
+                            ),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
                         ],
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.2,
+                      child: Center(
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/images/logo-512x512.png',
+                            width: 110,
+                            height: 110,
+                            fit: BoxFit.cover,
+                            cacheWidth: 220,
+                            cacheHeight: 220,
                           ),
-                          blurRadius: 20,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/images/logo-512x512.png',
-                          width: 110,
-                          height: 110,
-                          fit: BoxFit.cover,
-                          cacheWidth: 220,
-                          cacheHeight: 220,
                         ),
                       ),
                     ),

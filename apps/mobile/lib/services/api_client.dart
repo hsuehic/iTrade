@@ -60,18 +60,7 @@ class ApiClient {
 
     // Configure HTTP client for development scenarios that require
     // accepting self-signed or otherwise invalid certificates for specific hosts.
-    final IOHttpClientAdapter ioAdapter =
-        _dio.httpClientAdapter as IOHttpClientAdapter;
-    ioAdapter.createHttpClient = () {
-      final HttpClient client = HttpClient();
-      if (insecureAllowBadCertForHosts.isNotEmpty) {
-        client.badCertificateCallback =
-            (X509Certificate cert, String host, int port) {
-              return insecureAllowBadCertForHosts.contains(host);
-            };
-      }
-      return client;
-    };
+    _configureBadCertCallback(insecureAllowBadCertForHosts);
 
     // Interceptors
     _dio.interceptors.add(CookieManager(_cookieJar!));
@@ -90,6 +79,22 @@ class ApiClient {
     );
 
     _initialized = true;
+  }
+
+  Future<void> updateBaseUrl({
+    required String baseUrl,
+    List<String> insecureAllowBadCertForHosts = const <String>[],
+  }) async {
+    if (!_initialized) {
+      await init(
+        baseUrl: baseUrl,
+        insecureAllowBadCertForHosts: insecureAllowBadCertForHosts,
+      );
+      return;
+    }
+
+    _dio.options.baseUrl = baseUrl;
+    _configureBadCertCallback(insecureAllowBadCertForHosts);
   }
 
   Future<Response<T>> getJson<T>(
@@ -159,5 +164,20 @@ class ApiClient {
         'ApiClient not initialized. Call ApiClient.instance.init(...) first.',
       );
     }
+  }
+
+  void _configureBadCertCallback(List<String> insecureAllowBadCertForHosts) {
+    final IOHttpClientAdapter ioAdapter =
+        _dio.httpClientAdapter as IOHttpClientAdapter;
+    ioAdapter.createHttpClient = () {
+      final HttpClient client = HttpClient();
+      if (insecureAllowBadCertForHosts.isNotEmpty) {
+        client.badCertificateCallback =
+            (X509Certificate cert, String host, int port) {
+              return insecureAllowBadCertForHosts.contains(host);
+            };
+      }
+      return client;
+    };
   }
 }

@@ -204,13 +204,13 @@ export class CoinbaseExchange extends BaseExchange {
     );
     const data = resp.data?.candles || resp.data || [];
     const granularitySeconds = this.granularityToSeconds(granularity);
-    
+
     return data.map((c: any) => {
       // Coinbase returns Unix timestamps in seconds, convert to milliseconds
       const startMs = (parseInt(c.start || c.start_time || c.t, 10) || 0) * 1000;
       const openTime = new Date(startMs);
       const closeTime = new Date(startMs + granularitySeconds * 1000);
-      
+
       return {
         symbol, // Use unified symbol format
         exchange: this.name, // Add exchange name

@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 import '../main.dart' show MyHomePage;
+import '../services/app_bootstrap.dart';
 import './login.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  final bool skipNavigation;
+
+  const SplashScreen({super.key, this.skipNavigation = false});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -46,12 +49,17 @@ class _SplashScreenState extends State<SplashScreen>
     _controller.forward();
 
     // Navigate after delay
-    _navigateToNextScreen();
+    if (!widget.skipNavigation) {
+      _navigateToNextScreen();
+    }
   }
 
   Future<void> _navigateToNextScreen() async {
     try {
-      
+      await AppBootstrap.instance.ensureApiClientReady(
+        timeout: const Duration(seconds: 3),
+      );
+
       // Start loading user session in parallel with animation
       final userFuture = _checkUserSession();
 
@@ -61,14 +69,13 @@ class _SplashScreenState extends State<SplashScreen>
         isLoggedIn = await userFuture.timeout(
           const Duration(seconds: 2),
           onTimeout: () {
-                        return false;
+            return false;
           },
         );
       } catch (e) {
-                isLoggedIn = false;
+        isLoggedIn = false;
       }
 
-      
       // If already logged in (resuming from browser), skip animation delay
       // Otherwise, show full splash animation for better UX
       if (!isLoggedIn) {
@@ -81,7 +88,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       // Check if widget is still mounted before using context
       if (!mounted) {
-                return;
+        return;
       }
 
       // Navigate to appropriate screen with no transition animation
@@ -98,8 +105,8 @@ class _SplashScreenState extends State<SplashScreen>
             settings: RouteSettings(name: isLoggedIn ? '/home' : '/login'),
           ),
         );
-              } catch (e) {
-                // Fallback: try login route with no animation
+      } catch (e) {
+        // Fallback: try login route with no animation
         if (mounted) {
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
@@ -113,8 +120,8 @@ class _SplashScreenState extends State<SplashScreen>
           );
         }
       }
-    } catch (e, stackTrace) {
-            // Last resort: try to navigate to login
+    } catch (e) {
+      // Last resort: try to navigate to login
       if (mounted) {
         try {
           Navigator.of(context).pushReplacementNamed('/login');
@@ -129,17 +136,17 @@ class _SplashScreenState extends State<SplashScreen>
   /// This replaces the AuthGate logic for better UX
   Future<bool> _checkUserSession() async {
     try {
-            final user = await AuthService.instance.getUser().timeout(
+      final user = await AuthService.instance.getUser().timeout(
         const Duration(seconds: 5),
         onTimeout: () {
-                    return null;
+          return null;
         },
       );
       final isLoggedIn = user != null;
-            return isLoggedIn;
-    } catch (e, stackTrace) {
+      return isLoggedIn;
+    } catch (e) {
       // If session check fails, treat as logged out
-            return false;
+      return false;
     }
   }
 
@@ -171,8 +178,8 @@ class _SplashScreenState extends State<SplashScreen>
                   children: [
                     // Logo - Use fixed size for better visibility
                     Container(
-                      width: 140,   // ✅ Fixed size
-                      height: 140,  // ✅ Fixed size
+                      width: 140, // ✅ Fixed size
+                      height: 140, // ✅ Fixed size
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
@@ -188,8 +195,8 @@ class _SplashScreenState extends State<SplashScreen>
                             color: theme.colorScheme.primary.withValues(
                               alpha: 0.3,
                             ),
-                            blurRadius: 20,  // Fixed value
-                            spreadRadius: 5,  // Fixed value
+                            blurRadius: 20, // Fixed value
+                            spreadRadius: 5, // Fixed value
                           ),
                         ],
                       ),
@@ -197,17 +204,17 @@ class _SplashScreenState extends State<SplashScreen>
                         child: ClipOval(
                           child: Image.asset(
                             'assets/images/logo-512x512.png',
-                            width: 85,   // ✅ Fixed size
-                            height: 85,  // ✅ Fixed size
+                            width: 85, // ✅ Fixed size
+                            height: 85, // ✅ Fixed size
                             fit: BoxFit.cover,
                             cacheWidth:
                                 170, // 2x resolution for high-DPI screens
                             cacheHeight: 170,
                             errorBuilder: (context, error, stackTrace) {
-                                                            // Fallback to icon if image fails to load
+                              // Fallback to icon if image fails to load
                               return Icon(
                                 Icons.account_balance,
-                                size: 60,  // ✅ Fixed size
+                                size: 60, // ✅ Fixed size
                                 color: Colors.white,
                               );
                             },
@@ -216,32 +223,30 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 32),  // ✅ Fixed vertical spacing
-
+                    const SizedBox(height: 32), // ✅ Fixed vertical spacing
                     // Title - Use .sp for font size
                     Text(
                       'iTrade',
                       style: theme.textTheme.headlineLarge?.copyWith(
-                        fontSize: 32.sp,  // ✅ Adaptive font size
+                        fontSize: 32.sp, // ✅ Adaptive font size
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                     ),
 
-                    const SizedBox(height: 8),  // ✅ Fixed vertical spacing
-
+                    const SizedBox(height: 8), // ✅ Fixed vertical spacing
                     // Subtitle
                     Text(
                       'Intelligent & Strategic',
                       style: theme.textTheme.bodyLarge?.copyWith(
-                        fontSize: 16.sp,  // ✅ Adaptive font size
+                        fontSize: 16.sp, // ✅ Adaptive font size
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
                         letterSpacing: 0.5,
                       ),
                     ),
 
-                    const SizedBox(height: 48),  // ✅ Fixed vertical spacing
+                    const SizedBox(height: 48), // ✅ Fixed vertical spacing
                   ],
                 ),
               ),
