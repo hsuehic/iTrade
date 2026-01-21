@@ -68,6 +68,54 @@ export interface TypeOrmDataManagerConfig {
   maxQueryExecutionTime?: number;
 }
 
+/// The difference isn’t the entities array itself — it’s ensuring the class is loaded before TypeORM processes relations.
+
+/// EntityMap guarantees that all referenced entities exist as classes, so string relations ('account', 'strategies') can resolve.
+export const EntityMap: Record<string, any> = {
+  user: User,
+  account: Account,
+  session: Session,
+  strategies: StrategyEntity, // matches your decorator @OneToMany('strategies', ...)
+  klines: KlineEntity,
+  symbols: SymbolEntity,
+  data_quality: DataQualityEntity,
+  trades: TradeEntity,
+  orders: OrderEntity,
+  order_fills: OrderFillEntity,
+  positions: PositionEntity,
+  strategy_states: StrategyStateEntity,
+  account_info: AccountInfoEntity,
+  balances: BalanceEntity,
+  backtest_configs: BacktestConfigEntity,
+  backtest_results: BacktestResultEntity,
+  backtest_trades: BacktestTradeEntity,
+  equity_points: EquityPointEntity,
+  dry_run_sessions: DryRunSessionEntity,
+  dry_run_orders: DryRunOrderEntity,
+  dry_run_order_fills: DryRunOrderFillEntity,
+  dry_run_trades: DryRunTradeEntity,
+  dry_run_results: DryRunResultEntity,
+  account_snapshots: AccountSnapshotEntity,
+  email_preferences: EmailPreferencesEntity,
+  push_devices: PushDeviceEntity,
+  push_notification_logs: PushNotificationLogEntity,
+};
+
+export function resolveEntities(entities: any[]) {
+  return entities.map((e) => {
+    if (typeof e === 'string') {
+      const cls = EntityMap[e];
+      if (!cls) {
+        throw new Error(`[TypeOrm] Cannot resolve entity name "${e}"`);
+      }
+      return cls;
+    }
+    return e;
+  });
+}
+
+const entities = Object.values(EntityMap);
+
 export class TypeOrmDataManager implements IDataManager {
   public dataSource!: DataSource;
   private klineRepository!: Repository<KlineEntity>;
@@ -105,37 +153,7 @@ export class TypeOrmDataManager implements IDataManager {
       poolSize: this.config.poolSize,
       cache: this.config.cache,
       maxQueryExecutionTime: this.config.maxQueryExecutionTime,
-      entities: [
-        KlineEntity,
-        SymbolEntity,
-        DataQualityEntity,
-        TradeEntity,
-        OrderEntity,
-        OrderFillEntity,
-        PositionEntity,
-        StrategyEntity,
-        StrategyStateEntity,
-        AccountInfoEntity,
-        BalanceEntity,
-        AccountSnapshotEntity,
-        BacktestConfigEntity,
-        BacktestResultEntity,
-        BacktestTradeEntity,
-        EquityPointEntity,
-        // Auth and user management entities
-        User,
-        Account,
-        Session,
-        EmailPreferencesEntity,
-        PushDeviceEntity,
-        PushNotificationLogEntity,
-        // Dry Run entities
-        DryRunSessionEntity,
-        DryRunOrderEntity,
-        DryRunOrderFillEntity,
-        DryRunTradeEntity,
-        DryRunResultEntity,
-      ],
+      entities: resolveEntities(entities),
       extra: this.config.extra || {},
     });
 
