@@ -53,19 +53,19 @@ export class PushNotificationService {
 
   async notifyOrderFill(order: Order, kind: OrderNotificationKind): Promise<void> {
     if (!isPushEnabled()) {
-      this.logger.debug('📨 Push notifications disabled (Firebase not initialized).');
+      this.logger.info('📨 Push notifications disabled (Firebase not initialized).');
       return;
     }
 
     const userId = await this.resolveUserId(order);
     if (!userId) {
-      this.logger.debug(`📨 Push skipped: no user for order ${order.id}`);
+      this.logger.info(`📨 Push skipped: no user for order ${order.id}`);
       return;
     }
 
     const devices = await this.getActiveTokens(userId);
     if (devices.length === 0) {
-      this.logger.debug(`📨 Push skipped: no active devices for user ${userId}`);
+      this.logger.info(`📨 Push skipped: no active devices for user ${userId}`);
       return;
     }
 

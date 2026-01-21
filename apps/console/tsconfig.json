@@ -16,6 +16,7 @@
     { "path": "../../packages/exchange-connectors" },
     { "path": "../../packages/data-manager" },
     { "path": "../../packages/risk-manager" },
-    { "path": "../../packages/portfolio-manager" }
+    { "path": "../../packages/portfolio-manager" },
+    { "path": "../../packages/push-notification" }
   ]
 }

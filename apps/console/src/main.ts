@@ -14,10 +14,11 @@ import { StrategyManager } from './integration/helpers/strategy-manager';
 import { OrderTracker } from './integration/helpers/order-tracker';
 import { BalanceTracker } from './integration/helpers/balance-tracker';
 import { PositionTracker } from './integration/helpers/position-tracker';
-import { PushNotificationService } from './services/push-notification-service';
 
 // Load environment variables from .env file
 dotenv.config();
+
+import { PushNotificationService } from './services/push-notification-service';
 
 /**
  * iTrade Console Application - Main Entry Point
