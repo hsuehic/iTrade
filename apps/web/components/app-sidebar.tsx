@@ -1,11 +1,12 @@
 import * as React from 'react';
 import Image from 'next/image';
-import { headers } from 'next/headers';
+import Link from 'next/link';
 
 import { NavPortfolio } from '@/components/nav-portfolio';
 import { NavMain } from '@/components/nav-main';
 import { NavSecondary } from '@/components/nav-secondary';
 import { NavUser } from '@/components/nav-user';
+
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +18,6 @@ import {
 } from '@/components/ui/sidebar';
 
 export async function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const pathname = (await headers()).get('x-current-pathname');
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -27,16 +27,16 @@ export async function AppSidebar({ ...props }: React.ComponentProps<typeof Sideb
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5 !h-12"
             >
-              <a href="/">
+              <Link href="/">
                 <Image src="/logo.svg" width={38} height={38} alt="iTrade" />
                 <span className="text-base font-semibold">iTrade</span>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain pathname={pathname} />
+        <NavMain />
         <NavPortfolio />
         <NavSecondary className="mt-auto" />
       </SidebarContent>

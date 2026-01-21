@@ -1,3 +1,5 @@
+'use client';
+
 import {
   IconDashboard,
   IconClockBitcoin,
@@ -7,6 +9,10 @@ import {
   IconBell,
 } from '@tabler/icons-react';
 
+import Link from 'next/link';
+
+import { usePathname } from 'next/navigation';
+
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -15,7 +21,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-export function NavMain({ pathname }: { pathname?: string | null }) {
+export function NavMain() {
   const items = [
     {
       title: 'Dashboard',
@@ -49,6 +55,8 @@ export function NavMain({ pathname }: { pathname?: string | null }) {
     },
   ];
 
+  const pathname = usePathname();
+
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
@@ -74,13 +82,21 @@ export function NavMain({ pathname }: { pathname?: string | null }) {
         <SidebarMenu>
           {items.map((item) => {
             const { title, url } = item;
+            const isActive = pathname === url;
             return (
               <SidebarMenuItem key={title}>
-                <SidebarMenuButton isActive={pathname === url} tooltip={title} asChild>
-                  <a href={url}>
-                    {item.icon && <item.icon />}
-                    <span>{title}</span>
-                  </a>
+                <SidebarMenuButton isActive={isActive} tooltip={title} asChild>
+                  {isActive ? (
+                    <a>
+                      {item.icon && <item.icon />}
+                      <span>{title}</span>{' '}
+                    </a>
+                  ) : (
+                    <Link href={url}>
+                      {item.icon && <item.icon />}
+                      <span>{title}</span>
+                    </Link>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             );

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   IconDots,
   IconFolder,
@@ -62,10 +63,10 @@ export function NavPortfolio() {
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton isActive={pathname === item.url} asChild>
-              <a href={item.url}>
+              <Link href={item.url}>
                 <item.icon />
                 <span>{item.name}</span>
-              </a>
+              </Link>
             </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

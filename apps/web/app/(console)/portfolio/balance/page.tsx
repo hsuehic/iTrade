@@ -8,7 +8,7 @@ export const metadata = {
 export default function Page() {
   return (
     <SidebarInset>
-      <SiteHeader title="Backtest" />
+      <SiteHeader title="Balance" />
       <div></div>
     </SidebarInset>
   );
