@@ -44,7 +44,7 @@ export class PushDeviceEntity {
    * - Allows device registration before login (userId = null)
    * - When the user is deleted, keep the device record but null out userId
    */
-  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne('user', { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'userId' })
   user?: User | null;
 

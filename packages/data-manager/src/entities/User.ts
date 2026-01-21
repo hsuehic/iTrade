@@ -1,8 +1,8 @@
 import { Column, Entity, OneToMany } from 'typeorm';
 
-import { Account } from './Account';
-import { Session } from './Session';
-import { StrategyEntity } from './Strategy';
+import type { Account } from './Account';
+import type { Session } from './Session';
+import type { StrategyEntity } from './Strategy';
 
 @Entity('user', { schema: 'public' })
 export class User {
@@ -36,13 +36,17 @@ export class User {
   @Column('text', { name: 'role', nullable: true })
   role?: string | null;
 
-  @OneToMany(() => Account, (account: Account) => account.user, { onDelete: 'CASCADE' })
+  @OneToMany('account', (account: { user: User }) => account.user, {
+    onDelete: 'CASCADE',
+  })
   accounts?: Account[];
 
-  @OneToMany(() => Session, (session: Session) => session.user, { onDelete: 'CASCADE' })
+  @OneToMany('session', (session: { user: User }) => session.user, {
+    onDelete: 'CASCADE',
+  })
   sessions?: Session[];
 
-  @OneToMany(() => StrategyEntity, (strategy: StrategyEntity) => strategy.user, {
+  @OneToMany('strategies', (strategy: { user: User }) => strategy.user, {
     onDelete: 'CASCADE',
   })
   strategies?: StrategyEntity[];

@@ -33,7 +33,7 @@ export class DryRunSessionEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => StrategyEntity, { nullable: true })
+  @ManyToOne('strategies', { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
@@ -87,13 +87,13 @@ export class DryRunSessionEntity {
   @Column({ type: 'text', nullable: true })
   notes?: string;
 
-  @OneToMany(() => DryRunOrderEntity, (o: DryRunOrderEntity) => o.session)
+  @OneToMany('dry_run_orders', (o: DryRunOrderEntity) => o.session)
   orders?: DryRunOrderEntity[];
 
-  @OneToMany(() => DryRunTradeEntity, (t: DryRunTradeEntity) => t.session)
+  @OneToMany('dry_run_trades', (t: DryRunTradeEntity) => t.session)
   trades?: DryRunTradeEntity[];
 
-  @OneToMany(() => DryRunResultEntity, (r: DryRunResultEntity) => r.session)
+  @OneToMany('dry_run_results', (r: DryRunResultEntity) => r.session)
   results?: DryRunResultEntity[];
 
   @CreateDateColumn()

@@ -19,7 +19,7 @@ export class DryRunTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => DryRunSessionEntity, (s: DryRunSessionEntity) => s.trades, {
+  @ManyToOne('dry_run_sessions', (s: DryRunSessionEntity) => s.trades, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sessionId' })

@@ -1,6 +1,6 @@
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
-import { User } from './User';
+import type { User } from './User';
 
 @Entity('session', { schema: 'public' })
 export class Session {
@@ -28,7 +28,9 @@ export class Session {
   @Column('text', { name: 'userAgent', nullable: true })
   userAgent?: string | null;
 
-  @ManyToOne(() => User, (user: User) => user.sessions, { onDelete: 'CASCADE' })
+  @ManyToOne('user', (user: { sessions: Session[] }) => user.sessions, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn([{ name: 'userId', referencedColumnName: 'id' }])
   user!: User;
 }

@@ -32,7 +32,7 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'timestamp' })
   updateTime!: Date;
 
-  @OneToMany(() => BalanceEntity, (b: BalanceEntity) => b.accountInfo, {
+  @OneToMany('balances', (b: { accountInfo: AccountInfoEntity }) => b.accountInfo, {
     cascade: true,
   })
   balances!: BalanceEntity[];
@@ -46,7 +46,7 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'character varying', length: 255 })
   accountId!: string;
 
-  @ManyToOne(() => User, { nullable: false })
+  @ManyToOne('user', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

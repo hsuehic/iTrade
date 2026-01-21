@@ -20,9 +20,13 @@ export class BalanceEntity implements Balance {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => AccountInfoEntity, (account: AccountInfoEntity) => account.balances, {
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(
+    'account_info',
+    (account: { balances: BalanceEntity[] }) => account.balances,
+    {
+      onDelete: 'CASCADE',
+    },
+  )
   accountInfo!: AccountInfoEntity;
 
   @Column({ type: 'character varying', length: 20 })

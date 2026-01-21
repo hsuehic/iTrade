@@ -23,13 +23,13 @@ export class BacktestResultEntity implements BacktestResult {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => BacktestConfigEntity, (c: BacktestConfigEntity) => c.results, {
+  @ManyToOne('backtest_configs', (c: { results: BacktestResultEntity[] }) => c.results, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'configId' })
   config!: BacktestConfigEntity;
 
-  @ManyToOne(() => StrategyEntity, { nullable: true })
+  @ManyToOne('strategies', { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
@@ -87,12 +87,12 @@ export class BacktestResultEntity implements BacktestResult {
   @Column({ type: 'int' })
   avgTradeDuration!: number;
 
-  @OneToMany(() => EquityPointEntity, (e: EquityPointEntity) => e.result, {
+  @OneToMany('equity_points', (e: { result: BacktestResultEntity }) => e.result, {
     cascade: true,
   })
   equity!: EquityPointEntity[];
 
-  @OneToMany(() => BacktestTradeEntity, (t: BacktestTradeEntity) => t.result, {
+  @OneToMany('backtest_trades', (t: { result: BacktestResultEntity }) => t.result, {
     cascade: true,
   })
   trades!: BacktestTradeEntity[];

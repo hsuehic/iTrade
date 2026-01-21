@@ -22,7 +22,7 @@ export class StrategyStateEntity {
   /**
    * 关联的策略实体
    */
-  @ManyToOne(() => StrategyEntity, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('strategies', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'strategyId' })
   strategy!: StrategyEntity;
 

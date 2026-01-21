@@ -19,7 +19,7 @@ export class DryRunResultEntity implements BacktestResult {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(() => DryRunSessionEntity, (s: DryRunSessionEntity) => s.results, {
+  @ManyToOne('dry_run_sessions', (s: DryRunSessionEntity) => s.results, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sessionId' })
@@ -83,7 +83,7 @@ export class DryRunResultEntity implements BacktestResult {
   @Column({ type: 'jsonb', nullable: true })
   equity!: Array<{ timestamp: Date; value: Decimal }>;
 
-  @OneToMany(() => DryRunTradeEntity, (t: DryRunTradeEntity) => t.session, {
+  @OneToMany('dry_run_trades', (t: DryRunTradeEntity) => t.session, {
     cascade: true,
   })
   trades!: DryRunTradeEntity[];

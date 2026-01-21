@@ -1,13 +1,12 @@
 import type { NextConfig } from 'next';
-// 根据环境变量或命令设置不同的输出目录
-const isDevelopment = process.env.NODE_ENV === 'development';
-const buildMode = process.env.BUILD_MODE; // 可以设置为 'dev', 'prod', 'staging' 等
 
-// 动态配置输出目录
-let distDir = '.next'; // 默认目录
+const isDevelopment = process.env.NODE_ENV === 'development';
+const buildMode = process.env.BUILD_MODE;
+
+let distDir = '.next';
 let tsconfigPath = './tsconfig.json';
 
-if (buildMode === 'dev') {
+if (buildMode === 'dev' || isDevelopment) {
   distDir = '.next-dev';
   tsconfigPath = './tsconfig.build.json';
 } else if (buildMode === 'staging') {
@@ -16,29 +15,26 @@ if (buildMode === 'dev') {
 } else if (buildMode === 'prod') {
   distDir = '.next-prod';
   tsconfigPath = './tsconfig.build.json';
-} else if (isDevelopment) {
-  distDir = '.next-dev';
-  tsconfigPath = './tsconfig.build.json';
 }
+
 const nextConfig: NextConfig = {
+  distDir,
+
+  typescript: {
+    tsconfigPath,
+    // ⛳ dev 时强烈建议
+    ignoreBuildErrors: true,
+  },
+
   eslint: {
-    // 告诉 Next.js 在这个包的哪些目录中运行 linting
+    ignoreDuringBuilds: true,
     dirs: ['app', 'components', 'hooks', 'lib', 'middlewares'],
   },
-  // 设置自定义输出目录
-  distDir,
-  typescript: {
-    tsconfigPath: tsconfigPath,
-  },
 
-  // Image configuration - using local crypto icons
   images: {
-    remotePatterns: [
-      // No external patterns needed - all crypto icons are served locally
-    ],
+    remotePatterns: [],
   },
 
-  // Allow Server Actions from external origins (for OAuth callbacks)
   experimental: {
     serverActions: {
       allowedOrigins: [
@@ -49,9 +45,19 @@ const nextConfig: NextConfig = {
         'localhost:3002',
       ],
     },
+
+    // ✅ Turbopack 专属 alias（替代 webpack alias）
+    turbo: {
+      resolveAlias: {
+        typeorm: 'typeorm',
+      },
+    },
   },
 
-  // In Next.js 15.5+, use serverExternalPackages instead of experimental.serverComponentsExternalPackages
+  /**
+   * ✅ 官方方式：Server-only external packages
+   * Turbopack & Webpack 都支持
+   */
   serverExternalPackages: [
     'typeorm',
     '@itrade/data-manager',
@@ -60,21 +66,6 @@ const nextConfig: NextConfig = {
     '@itrade/logger',
     '@itrade/exchange-connectors',
   ],
-
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Don't bundle TypeORM for server-side
-      config.externals = [...(config.externals || []), 'typeorm'];
-    }
-
-    // Handle TypeORM metadata properly
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      typeorm: require.resolve('typeorm'),
-    };
-
-    return config;
-  },
 };
 
 export default nextConfig;

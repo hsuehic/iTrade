@@ -13,9 +13,9 @@ import {
 import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { PositionEntity } from './Position';
-import { StrategyEntity } from './Strategy';
-import { OrderFillEntity } from './OrderFill';
+import type { PositionEntity } from './Position';
+import type { StrategyEntity } from './Strategy';
+import type { OrderFillEntity } from './OrderFill';
 
 @Entity('orders')
 @Index(['symbol'])
@@ -110,7 +110,7 @@ export class OrderEntity implements Order {
   exchange?: string;
 
   // TypeORM relation - loads the full Strategy object when needed
-  @ManyToOne(() => StrategyEntity, (s) => s.orders, { nullable: true })
+  @ManyToOne('strategies', (s: { orders: OrderEntity[] }) => s.orders, { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
@@ -164,10 +164,12 @@ export class OrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   commissionAsset?: string;
 
-  @OneToMany(() => OrderFillEntity, (f) => f.order, { cascade: true })
+  @OneToMany('order_fills', (f: { order: OrderEntity }) => f.order, { cascade: true })
   fills?: OrderFillEntity[];
 
-  @ManyToOne(() => PositionEntity, (p) => p.orders, { nullable: true })
+  @ManyToOne('positions', (p: { orders: OrderEntity[] }) => p.orders, {
+    nullable: true,
+  })
   @JoinColumn({ name: 'positionId' })
   position?: PositionEntity;
 

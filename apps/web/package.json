@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "BUILD_MODE=dev next dev",
-    "dev:clean": "BUILD_MODE=dev next dev",
+    "dev": "BUILD_MODE=dev next dev --turbo",
+    "dev:clean": "BUILD_MODE=dev next dev --turbo",
     "build": "NODE_ENV=production BUILD_MODE=prod next build",
     "build:dev": "NODE_ENV=development BUILD_MODE=dev next build",
     "build:staging": "NODE_ENV=production BUILD_MODE=staging next build",

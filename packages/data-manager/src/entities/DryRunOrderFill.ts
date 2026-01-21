@@ -21,7 +21,7 @@ export class DryRunOrderFillEntity implements OrderFill {
   @Column({ type: 'text' })
   id!: string;
 
-  @ManyToOne(() => DryRunOrderEntity, (o: DryRunOrderEntity) => o.fills, {
+  @ManyToOne('dry_run_orders', (o: { fills: DryRunOrderFillEntity[] }) => o.fills, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'orderId' })
