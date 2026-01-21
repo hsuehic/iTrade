@@ -74,6 +74,7 @@ export class PushDeviceRepository {
               : 'environment = :environment',
             input.environment == null ? {} : { environment: input.environment },
           )
+          .callListeners(false)
           .execute();
 
         await repo
@@ -89,6 +90,7 @@ export class PushDeviceRepository {
             lastSeenAt: now,
           })
           .where('id = :id', { id: existingByToken.id })
+          .callListeners(false)
           .execute();
 
         return await repo.findOneByOrFail({ id: existingByToken.id });
@@ -116,6 +118,7 @@ export class PushDeviceRepository {
             lastSeenAt: now,
           })
           .where('id = :id', { id: existingByDevice.id })
+          .callListeners(false)
           .execute();
 
         return await repo.findOneByOrFail({ id: existingByDevice.id });
@@ -137,6 +140,7 @@ export class PushDeviceRepository {
           isActive: input.isActive ?? true,
           lastSeenAt: now,
         })
+        .callListeners(false)
         .execute();
 
       const insertedId = insertResult.identifiers[0]?.id as string | undefined;

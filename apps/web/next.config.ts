@@ -45,12 +45,12 @@ const nextConfig: NextConfig = {
         'localhost:3002',
       ],
     },
+  },
 
-    // ✅ Turbopack 专属 alias（替代 webpack alias）
-    turbo: {
-      resolveAlias: {
-        typeorm: 'typeorm',
-      },
+  // ✅ Turbopack 专属 alias（替代 webpack alias）
+  turbopack: {
+    resolveAlias: {
+      typeorm: 'typeorm',
     },
   },
 
@@ -65,6 +65,13 @@ const nextConfig: NextConfig = {
     '@itrade/utils',
     '@itrade/logger',
     '@itrade/exchange-connectors',
+  ],
+  allowedDevOrigins: [
+    'itrade.ihsueh.com',
+    'appleid.apple.com',
+    'accounts.google.com',
+    'localhost:3000',
+    'localhost:3002',
   ],
 };
 
