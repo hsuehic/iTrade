@@ -8,12 +8,17 @@ class PushNotificationDetailArgs {
   final DateTime timestamp;
   final Map<String, dynamic>? data;
 
+  /// When true, indicates the screen was opened directly from a notification tap
+  /// (not from the history list). This affects back navigation behavior.
+  final bool fromNotificationTap;
+
   PushNotificationDetailArgs({
     required this.title,
     required this.body,
     required this.category,
     required this.timestamp,
     required this.data,
+    this.fromNotificationTap = false,
   });
 
   factory PushNotificationDetailArgs.fromHistoryItem(
@@ -27,10 +32,14 @@ class PushNotificationDetailArgs {
       category: item.category?.toString() ?? 'general',
       timestamp: item.createdAt as DateTime,
       data: item.data as Map<String, dynamic>?,
+      fromNotificationTap: false,
     );
   }
 
-  factory PushNotificationDetailArgs.fromRemoteMessage(RemoteMessage message) {
+  factory PushNotificationDetailArgs.fromRemoteMessage(
+    RemoteMessage message, {
+    bool fromNotificationTap = false,
+  }) {
     final data = Map<String, dynamic>.from(message.data);
     final event = data['event']?.toString() ?? '';
     final category = data['category']?.toString() ??
@@ -48,12 +57,27 @@ class PushNotificationDetailArgs {
       category: category,
       timestamp: timestamp,
       data: data.isEmpty ? null : data,
+      fromNotificationTap: fromNotificationTap,
     );
   }
 }
 
 class PushNotificationDetailScreen extends StatelessWidget {
   const PushNotificationDetailScreen({super.key});
+
+  void _handleBackNavigation(BuildContext context, bool fromNotificationTap) {
+    if (fromNotificationTap) {
+      // Opened from notification tap: go to notification history, then user can go to home
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/push-history',
+        (route) => route.settings.name == '/home' || route.isFirst,
+      );
+    } else {
+      // Opened from history list: normal back navigation
+      Navigator.pop(context);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +86,17 @@ class PushNotificationDetailScreen extends StatelessWidget {
         ModalRoute.of(context)?.settings.arguments as PushNotificationDetailArgs?;
     if (args == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Notification')),
+        appBar: AppBar(
+          title: const Text('Notification'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/home',
+              (route) => false,
+            ),
+          ),
+        ),
         body: const Center(child: Text('No notification details available.')),
       );
     }
@@ -71,6 +105,10 @@ class PushNotificationDetailScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Notification Detail'),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleBackNavigation(context, args.fromNotificationTap),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),

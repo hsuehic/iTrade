@@ -36,8 +36,26 @@ void handleNotificationTap(RemoteMessage message) {
     return;
   }
   pendingNotificationTap = null;
-  final args = PushNotificationDetailArgs.fromRemoteMessage(message);
-  navigator.pushNamedAndRemoveUntil('/push-history/detail', (route) => false, arguments: args);
+
+  // Check if user is authenticated
+  final user = AuthService.instance.user;
+  if (user == null) {
+    // Not authenticated: store pending notification and let auth flow handle it
+    pendingNotificationTap = message;
+    navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+    return;
+  }
+
+  // Create args with flag indicating this was opened from notification tap
+  final args = PushNotificationDetailArgs.fromRemoteMessage(
+    message,
+    fromNotificationTap: true,
+  );
+
+  // Navigate directly to detail screen (no intermediate screens loaded)
+  // The detail screen's back button will handle navigation to history → home
+  navigator.pushNamedAndRemoveUntil('/home', (route) => false);
+  navigator.pushNamed('/push-history/detail', arguments: args);
 }
 
 Future<void> main() async {
@@ -199,26 +217,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   title: 'iTrade',
                   navigatorObservers: observers,
 
-              theme: AppTheme.brand,
-              darkTheme: AppTheme.dark,
-              themeMode: themeMode,
-              navigatorKey: appNavigatorKey,
-              // Only show splash on first cold start, not when resuming from background
-              home: _hasInitialized ? const AuthGate() : const SplashScreen(),
-              routes: {
-                '/login': (_) => const LoginScreen(),
-                '/forgot-password': (_) => const ForgotPasswordScreen(),
-                '/home': (_) => const MyHomePage(title: 'iTrade'),
-                '/scan-qr': (_) => const QrScanScreen(),
-                '/profile': (_) => const ProfileScreen(),
-                '/push-history': (_) => const PushNotificationHistoryScreen(),
-                '/push-history/detail': (_) =>
-                    const PushNotificationDetailScreen(),
-              },
-              onGenerateRoute: (settings) {
-                // Handle deep links and external navigation
-                return null; // Use default route handling
-              },
+                  theme: AppTheme.brand,
+                  darkTheme: AppTheme.dark,
+                  themeMode: themeMode,
+                  navigatorKey: appNavigatorKey,
+                  // Only show splash on first cold start, not when resuming from background
+                  home: _hasInitialized
+                      ? const AuthGate()
+                      : const SplashScreen(),
+                  routes: {
+                    '/login': (_) => const LoginScreen(),
+                    '/forgot-password': (_) => const ForgotPasswordScreen(),
+                    '/home': (_) => const MyHomePage(title: 'iTrade'),
+                    '/scan-qr': (_) => const QrScanScreen(),
+                    '/profile': (_) => const ProfileScreen(),
+                    '/push-history': (_) =>
+                        const PushNotificationHistoryScreen(),
+                    '/push-history/detail': (_) =>
+                        const PushNotificationDetailScreen(),
+                  },
+                  onGenerateRoute: (settings) {
+                    // Handle deep links and external navigation
+                    return null; // Use default route handling
+                  },
                 );
               },
             );
@@ -331,6 +352,15 @@ class _MyHomePageState extends State<MyHomePage> {
       const StatisticsScreen(),
       const ProfileScreen(),
     ];
+
+    // Check for pending notification tap (e.g., after login)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (pendingNotificationTap != null) {
+        final message = pendingNotificationTap!;
+        pendingNotificationTap = null;
+        handleNotificationTap(message);
+      }
+    });
 
     // Navigation items for both bottom bar and rail
     _navItems = [
