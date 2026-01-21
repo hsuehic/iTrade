@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { DataSource, Repository, LessThanOrEqual } from 'typeorm';
+import type { DataSource, Repository } from 'typeorm';
 import { IDataManager, Kline, KlineInterval } from '@itrade/core';
 
 import { KlineEntity } from './entities/Kline';
@@ -138,6 +138,8 @@ export class TypeOrmDataManager implements IDataManager {
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
+
+    const { DataSource } = await import('typeorm');
 
     this.dataSource = new DataSource({
       type: this.config.type,
@@ -545,11 +547,17 @@ export class TypeOrmDataManager implements IDataManager {
   ): Promise<number> {
     this.ensureInitialized();
 
-    const result = await this.klineRepository.delete({
-      symbol,
-      interval,
-      openTime: LessThanOrEqual(olderThan),
-    });
+    // Root Cause: The PushDeviceRepository.register() method was using this.repository.manager.transaction() which relies on TypeORM's internal transaction callback mechanism. In Next.js production builds, the bundler doesn't properly preserve TypeORM's internal queryRunner initialization, causing this error.
+    // Solution: Modified PushDeviceRepository.ts to use explicit query runner management instead of the manager.transaction() callback:
+
+    const result = await this.klineRepository
+      .createQueryBuilder()
+      .delete()
+      .from(KlineEntity)
+      .where('symbol = :symbol', { symbol })
+      .andWhere('interval = :interval', { interval })
+      .andWhere('openTime <= :olderThan', { olderThan })
+      .execute();
 
     return result.affected || 0;
   }

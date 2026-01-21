@@ -22,8 +22,10 @@ export interface RegisterPushDeviceInput {
 
 export class PushDeviceRepository {
   private repository: Repository<PushDeviceEntity>;
+  private dataSource: DataSource;
 
   constructor(dataSource: DataSource) {
+    this.dataSource = dataSource;
     this.repository = dataSource.getRepository(PushDeviceEntity);
   }
 
@@ -38,8 +40,13 @@ export class PushDeviceRepository {
   async register(input: RegisterPushDeviceInput): Promise<PushDeviceEntity> {
     const now = input.lastSeenAt ?? new Date();
 
-    return await this.repository.manager.transaction(async (manager) => {
-      const repo = manager.getRepository(PushDeviceEntity);
+    // Use queryRunner for transactions to ensure compatibility with Next.js production builds
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const repo = queryRunner.manager.getRepository(PushDeviceEntity);
 
       const existingByToken = await repo.findOne({
         where: {
@@ -50,34 +57,25 @@ export class PushDeviceRepository {
       });
 
       if (existingByToken) {
-        existingByToken.userId = input.userId ?? null;
-        existingByToken.deviceId = input.deviceId;
-        existingByToken.appId = input.appId;
-        existingByToken.appVersion = input.appVersion ?? null;
-        existingByToken.environment = input.environment ?? null;
-        existingByToken.isActive = input.isActive ?? true;
-        existingByToken.lastSeenAt = now;
-
         // Deactivate other rows for this device key (token rotated, etc.)
-        await repo
+        await queryRunner.manager
           .createQueryBuilder()
           .update(PushDeviceEntity)
           .set({ isActive: false })
           .where('id != :id', { id: existingByToken.id })
           .andWhere('platform = :platform', { platform: input.platform })
           .andWhere('provider = :provider', { provider: input.provider })
-          .andWhere('deviceId = :deviceId', { deviceId: input.deviceId })
-          .andWhere('appId = :appId', { appId: input.appId })
+          .andWhere('"deviceId" = :deviceId', { deviceId: input.deviceId })
+          .andWhere('"appId" = :appId', { appId: input.appId })
           .andWhere(
             input.environment == null
               ? 'environment IS NULL'
               : 'environment = :environment',
             input.environment == null ? {} : { environment: input.environment },
           )
-          .callListeners(false)
           .execute();
 
-        await repo
+        await queryRunner.manager
           .createQueryBuilder()
           .update(PushDeviceEntity)
           .set({
@@ -90,10 +88,11 @@ export class PushDeviceRepository {
             lastSeenAt: now,
           })
           .where('id = :id', { id: existingByToken.id })
-          .callListeners(false)
           .execute();
 
-        return await repo.findOneByOrFail({ id: existingByToken.id });
+        const result = await repo.findOneByOrFail({ id: existingByToken.id });
+        await queryRunner.commitTransaction();
+        return result;
       }
 
       const existingByDevice = await repo.findOne({
@@ -107,7 +106,7 @@ export class PushDeviceRepository {
       });
 
       if (existingByDevice) {
-        await repo
+        await queryRunner.manager
           .createQueryBuilder()
           .update(PushDeviceEntity)
           .set({
@@ -118,13 +117,14 @@ export class PushDeviceRepository {
             lastSeenAt: now,
           })
           .where('id = :id', { id: existingByDevice.id })
-          .callListeners(false)
           .execute();
 
-        return await repo.findOneByOrFail({ id: existingByDevice.id });
+        const result = await repo.findOneByOrFail({ id: existingByDevice.id });
+        await queryRunner.commitTransaction();
+        return result;
       }
 
-      const insertResult = await repo
+      const insertResult = await queryRunner.manager
         .createQueryBuilder()
         .insert()
         .into(PushDeviceEntity)
@@ -140,22 +140,30 @@ export class PushDeviceRepository {
           isActive: input.isActive ?? true,
           lastSeenAt: now,
         })
-        .callListeners(false)
         .execute();
 
       const insertedId = insertResult.identifiers[0]?.id as string | undefined;
+      let result: PushDeviceEntity;
       if (insertedId) {
-        return await repo.findOneByOrFail({ id: insertedId });
+        result = await repo.findOneByOrFail({ id: insertedId });
+      } else {
+        result = await repo.findOneOrFail({
+          where: {
+            platform: input.platform,
+            provider: input.provider,
+            pushToken: input.pushToken,
+          },
+        });
       }
 
-      return await repo.findOneOrFail({
-        where: {
-          platform: input.platform,
-          provider: input.provider,
-          pushToken: input.pushToken,
-        },
-      });
-    });
+      await queryRunner.commitTransaction();
+      return result;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   async getActiveTokensForUser(
