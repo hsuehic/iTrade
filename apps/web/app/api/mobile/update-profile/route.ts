@@ -1,7 +1,7 @@
-import { auth } from '@/lib/auth';
+import { getSession, getAuthFromRequest } from '@/lib/auth';
 
 export async function POST(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getSession(req);
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
@@ -14,6 +14,7 @@ export async function POST(req: Request) {
 
     // Update user profile using better-auth
     // Note: Email changes are not allowed for security reasons
+    const auth = getAuthFromRequest(req);
     const data = await auth.api.updateUser({
       body: {
         name,

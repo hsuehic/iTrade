@@ -7,7 +7,7 @@ import {
   PushProvider,
 } from '@itrade/data-manager';
 
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { getDataManager } from '@/lib/data-manager';
 import {
   sendToDevice,
@@ -75,7 +75,7 @@ function summarizeBatch(batch: BatchResponse) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await auth.api.getSession({ headers: request.headers });
+  const session = await getSession(request);
   if (!session?.user)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

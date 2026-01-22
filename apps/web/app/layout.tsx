@@ -6,7 +6,7 @@ import { GeistMono } from 'geist/font/mono';
 import { headers } from 'next/headers';
 
 import { SessionProvider } from '@/components/session-provider';
-import { auth } from '@/lib/auth';
+import { getAuthFromHeaders } from '@/lib/auth';
 import './globals.css';
 import Script from 'next/script';
 
@@ -46,8 +46,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // Get session once at the root level
+  // Use getAuthFromHeaders to get proper base URL for session validation in production
+  const requestHeaders = await headers();
+  const auth = getAuthFromHeaders(requestHeaders);
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: requestHeaders,
   });
 
   return (

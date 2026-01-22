@@ -1,6 +1,6 @@
 import { cookies, headers } from 'next/headers';
 
-import { auth } from '@/lib/auth';
+import { getAuthFromRequest } from '@/lib/auth';
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
   // onl
   cookiesList.delete('csrfToken');
 
+  const auth = getAuthFromRequest(req);
   const response = await auth.api.signInEmail({
     body,
     headers: headersList,

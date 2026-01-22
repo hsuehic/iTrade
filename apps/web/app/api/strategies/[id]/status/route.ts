@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -11,9 +11,7 @@ type RouteContext = {
 // POST /api/strategies/:id/status - Update strategy status (start/stop)
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const session = await getSession(request);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

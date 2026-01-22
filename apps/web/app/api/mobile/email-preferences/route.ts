@@ -1,11 +1,11 @@
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { getDataManager } from '@/lib/data-manager';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function POST(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getSession(req);
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getSession(req);
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {

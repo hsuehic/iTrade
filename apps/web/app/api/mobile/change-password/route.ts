@@ -1,8 +1,8 @@
-import { auth } from '@/lib/auth';
+import { getSession, getAuthFromRequest } from '@/lib/auth';
 import { headers } from 'next/headers';
 
 export async function POST(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getSession(req);
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     if (!newPassword || !currentPassword) {
       return Response.json({ error: 'Missing required fields' }, { status: 400 });
     }
+    const auth = getAuthFromRequest(req);
     const data = await auth.api.changePassword({
       body: {
         newPassword,

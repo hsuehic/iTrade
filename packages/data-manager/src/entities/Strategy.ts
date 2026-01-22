@@ -107,9 +107,15 @@ export class StrategyEntity {
   })
   orders?: OrderEntity[];
 
+  // TypeORM relation - loads the full User object when needed
   @ManyToOne('user', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
+
+  // User ID - explicit column for direct ID access and indexing
+  // This works with @JoinColumn above - they reference the same database column
+  @Column({ type: 'text' })
+  userId!: string;
 
   @CreateDateColumn()
   createdAt!: Date;

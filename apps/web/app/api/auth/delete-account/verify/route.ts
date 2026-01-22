@@ -1,4 +1,4 @@
-import { auth } from '@/lib/auth';
+import { getSession, getAuthFromRequest } from '@/lib/auth';
 import { cookies } from 'next/headers';
 import { DELETE_ACCOUNT_VERIFICATION_COOKIE } from '@/lib/verification-codes';
 
@@ -64,7 +64,7 @@ export async function DELETE(req: Request) {
     }
 
     // Verify user still has valid session (from send-code endpoint)
-    const session = await auth.api.getSession({ headers: req.headers });
+    const session = await getSession(req);
     if (!session) {
       return Response.json(
         { error: 'Session expired, please try again' },
@@ -80,6 +80,7 @@ export async function DELETE(req: Request) {
     // All verifications passed - delete the account using better-auth
     try {
       // Use existing session from req.headers (same pattern as mobile/delete-account)
+      const auth = getAuthFromRequest(req);
       await auth.api.deleteUser({
         headers: req.headers,
         body: {},

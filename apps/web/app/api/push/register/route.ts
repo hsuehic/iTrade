@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PushEnvironment, PushPlatform, PushProvider } from '@itrade/data-manager';
 
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { getDataManager } from '@/lib/data-manager';
 
 export const dynamic = 'force-dynamic';
@@ -39,9 +39,7 @@ function isPushEnvironment(value: string): value is PushEnvironment {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api
-      .getSession({ headers: request.headers })
-      .catch(() => null);
+    const session = await getSession(request).catch(() => null);
 
     const body = (await request.json()) as RegisterBody;
 

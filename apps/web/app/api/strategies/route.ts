@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -10,9 +10,7 @@ export const revalidate = 0;
 // GET /api/strategies - List all strategies for current user
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const session = await getSession(request);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -39,9 +37,7 @@ export async function GET(request: NextRequest) {
 // POST /api/strategies - Create new strategy
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const session = await getSession(request);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -1,10 +1,11 @@
-import { auth } from '@/lib/auth';
+import { getSession, getAuthFromRequest } from '@/lib/auth';
 
 export async function DELETE(req: Request) {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getSession(req);
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
+    const auth = getAuthFromRequest(req);
     await auth.api.deleteUser({
       headers: req.headers,
       body: {},

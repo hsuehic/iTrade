@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { initializeUserData } from '@/lib/init-user-data';
 
 export const dynamic = 'force-dynamic';
@@ -12,9 +12,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     // Verify the user is authenticated
-    const session = await auth.api.getSession({
-      headers: req.headers,
-    });
+    const session = await getSession(req);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

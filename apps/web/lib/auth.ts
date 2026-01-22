@@ -97,10 +97,14 @@ export async function verifyAppleToken(idToken: string, nonce?: string) {
   }
 }
 
-const baseURL =
-  process.env.BETTER_AUTH_DYNAMIC_BASE_URL === 'true'
-    ? undefined
-    : process.env.BETTER_AUTH_URL;
+// Use dynamic base URL detection if:
+// 1. BETTER_AUTH_DYNAMIC_BASE_URL is explicitly set to 'true'
+// 2. BETTER_AUTH_URL is not set (auto-detect from request)
+// 3. Running locally in production mode (localhost)
+const shouldUseDynamicBaseURL =
+  process.env.BETTER_AUTH_DYNAMIC_BASE_URL === 'true' || !process.env.BETTER_AUTH_URL;
+
+const baseURL = shouldUseDynamicBaseURL ? undefined : process.env.BETTER_AUTH_URL;
 const trustedOrigins = Array.from(
   new Set(
     [
@@ -246,3 +250,73 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
   });
 
 export const auth: ReturnType<typeof betterAuth> = createAuth();
+
+/**
+ * Get the base URL from headers (works with both Request.headers and Headers from next/headers).
+ * This is needed for API routes and server components to properly validate sessions.
+ */
+export const getBaseURLFromHeaders = (
+  headers: Headers | { get: (name: string) => string | null },
+): string | undefined => {
+  const forwardedProto = headers.get('x-forwarded-proto');
+  const forwardedHost = headers.get('x-forwarded-host');
+  const host = forwardedHost ?? headers.get('host');
+
+  if (!host) {
+    return undefined;
+  }
+
+  const protocol =
+    forwardedProto?.split(',')[0] ?? (host.startsWith('localhost') ? 'http' : 'https');
+  const hostname = host.split(',')[0];
+
+  return `${protocol}://${hostname}`;
+};
+
+/**
+ * Get the base URL from a request object.
+ * This is needed for API routes to properly validate sessions.
+ */
+export const getRequestBaseURL = (request: Request): string | undefined => {
+  return getBaseURLFromHeaders(request.headers);
+};
+
+/**
+ * Create an auth instance with the proper base URL from headers.
+ * Use this in server components and API routes for better production compatibility.
+ */
+export const getAuthFromHeaders = (
+  headers: Headers | { get: (name: string) => string | null },
+): ReturnType<typeof betterAuth> => {
+  return createAuth(getBaseURLFromHeaders(headers));
+};
+
+/**
+ * Create an auth instance with the proper base URL from the request.
+ * Use this in API routes instead of the singleton `auth` for better production compatibility.
+ */
+export const getAuthFromRequest = (request: Request): ReturnType<typeof betterAuth> => {
+  return createAuth(getRequestBaseURL(request));
+};
+
+/**
+ * Get session from request - the simplest way to get authenticated session in API routes.
+ * This automatically handles the base URL detection for production compatibility.
+ *
+ * Usage in API routes:
+ * ```ts
+ * import { getSession } from '@/lib/auth';
+ *
+ * export async function GET(request: NextRequest) {
+ *   const session = await getSession(request);
+ *   if (!session?.user) {
+ *     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+ *   }
+ *   // ... your logic
+ * }
+ * ```
+ */
+export const getSession = async (request: Request) => {
+  const auth = createAuth(getRequestBaseURL(request));
+  return auth.api.getSession({ headers: request.headers });
+};

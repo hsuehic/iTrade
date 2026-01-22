@@ -1,4 +1,4 @@
-import { auth } from '@/lib/auth';
+import { getAuthFromRequest } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { cookies } from 'next/headers';
 import {
@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     // Verify email and password first by signing in (creates session)
     let signInResponse: Response;
     try {
+      const auth = getAuthFromRequest(req);
       signInResponse = await auth.api.signInEmail({
         body: {
           email,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
-import { auth } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
 import { StrategyParameters } from '@itrade/core';
 
 type RouteContext = {
@@ -12,9 +12,7 @@ type RouteContext = {
 // GET /api/strategies/:id - Get single strategy
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const session = await getSession(request);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -50,9 +48,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 // PATCH /api/strategies/:id - Update strategy
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const session = await getSession(request);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -128,9 +124,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 // DELETE /api/strategies/:id - Delete strategy
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const session = await getSession(request);
 
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

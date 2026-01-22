@@ -1,7 +1,7 @@
 import { DataSource, Repository } from 'typeorm';
 import { normalizeSymbol, detectMarketType } from '@itrade/utils';
 
-import { StrategyEntity } from '../entities/Strategy';
+import { StrategyEntity, StrategyStatus, MarketType } from '../entities/Strategy';
 
 export class StrategyRepository {
   private repository: Repository<StrategyEntity>;
@@ -22,23 +22,45 @@ export class StrategyRepository {
     subscription?: Record<string, unknown>;
     userId: string;
   }): Promise<StrategyEntity> {
-    const { userId, ...strategyData } = data;
-
     // Automatically compute normalizedSymbol and marketType if symbol and exchange are provided
-    const entityData: any = { ...strategyData };
-    if (entityData.symbol && entityData.exchange) {
-      entityData.normalizedSymbol = normalizeSymbol(
-        entityData.symbol,
-        entityData.exchange,
-      );
-      entityData.marketType = detectMarketType(entityData.symbol);
+    let normalizedSymbol: string | undefined;
+    let marketType: MarketType | undefined;
+    if (data.symbol && data.exchange) {
+      normalizedSymbol = normalizeSymbol(data.symbol, data.exchange);
+      marketType = detectMarketType(data.symbol) as MarketType;
     }
 
-    const entity = this.repository.create(entityData);
-    (entity as any).user = { id: userId };
+    // Use insert() to bypass entity instantiation entirely
+    // This avoids TypeORM's cyclic dependency detection in Next.js production builds
 
-    const saved = await this.repository.save(entity);
-    return Array.isArray(saved) ? saved[0] : saved;
+    const result = await this.repository.insert({
+      name: data.name,
+      description: data.description,
+      type: data.type,
+      status: (data.status as StrategyStatus) || StrategyStatus.STOPPED,
+      exchange: data.exchange,
+      symbol: data.symbol,
+      normalizedSymbol,
+      marketType,
+      parameters: data.parameters,
+      initialDataConfig: data.initialDataConfig,
+      subscription: data.subscription,
+      userId: data.userId,
+    } as any);
+
+    // Get the inserted ID and fetch the complete entity
+    const insertedId = result.identifiers[0]?.id;
+    if (!insertedId) {
+      throw new Error('Failed to create strategy: no ID returned');
+    }
+
+    // Use findOne which doesn't trigger cyclic dependency
+    const created = await this.repository.findOne({ where: { id: insertedId } });
+    if (!created) {
+      throw new Error('Failed to fetch created strategy');
+    }
+
+    return created;
   }
 
   async findById(
