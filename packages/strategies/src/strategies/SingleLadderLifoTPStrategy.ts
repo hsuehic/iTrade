@@ -329,8 +329,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   // Order tracking
   private openEntryOrder: Order | null = null;
   private openTpOrder: Order | null = null;
-  private pendingEntrySignalId: string | null = null; // Track pending entry signal to prevent duplicates
-  private pendingTpSignalId: string | null = null; // Track pending TP signal to prevent duplicates
+  private initialEntrySignalGenerated: boolean = false; // Track if initial entry was generated
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
 
@@ -513,9 +512,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     this.orderMetadataMap.set(clientOrderId, metadata);
 
-    // Track pending signal to prevent duplicate entries before onOrderCreated is called
-    this.pendingEntrySignalId = clientOrderId;
-
     this._logger.info(`🟢 [LONG Entry Signal] clientOrderId: ${clientOrderId}`);
     this._logger.info(
       `   Price: ${price.toString()}, Amount: ${this.orderAmount}, Ref: ${this.referencePrice}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}`,
@@ -546,9 +542,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
-
-    // Track pending signal to prevent duplicate entries before onOrderCreated is called
-    this.pendingEntrySignalId = clientOrderId;
 
     this._logger.info(`🔴 [SHORT Entry Signal] clientOrderId: ${clientOrderId}`);
     this._logger.info(
@@ -608,9 +601,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     this.orderMetadataMap.set(clientOrderId, metadata);
 
-    // Track pending signal to prevent duplicate TP orders before onOrderCreated is called
-    this.pendingTpSignalId = clientOrderId;
-
     this._logger.info(`🎯 [TP Signal] clientOrderId: ${clientOrderId}`);
     this._logger.info(
       `   Entry Side: ${entrySide}, Entry Price: ${entryPrice.toString()}, TP Price: ${tpPrice.toString()}`,
@@ -659,17 +649,20 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.lastTicker = ticker;
     }
 
-    // Check if we need to place initial entry order (on startup)
-    // This is called after processInitialData and triggers the first entry
-    // Also check pendingEntrySignalId to prevent duplicate signals before onOrderCreated is called
+    // Generate INITIAL entry signal ONCE after initialization
+    // Subsequent entry signals are ONLY generated in response to order status changes:
+    // - handleTpFilled() → generates new entry after TP
+    // - handleOrderCancellation() → generates new entry after cancel
     if (
       this.initialDataProcessed &&
+      !this.initialEntrySignalGenerated &&
       !this.openEntryOrder &&
-      !this.openTpOrder &&
-      !this.pendingEntrySignalId
+      !this.openTpOrder
     ) {
       const signal = this.checkEntryConditions();
       if (signal && signal.action !== 'hold') {
+        this.initialEntrySignalGenerated = true;
+        this._logger.info(`📊 Initial entry signal generated`);
         return signal;
       }
     }
@@ -1032,9 +1025,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(`❌ Order ${order.status}: ${order.clientOrderId}`);
 
     if (metadata.signalType === SignalType.Entry) {
-      // Entry order canceled - clear open entry and pending signal
+      // Entry order canceled - clear open entry
       this.openEntryOrder = null;
-      this.pendingEntrySignalId = null;
       this._logger.info(`   Entry order cleared, attempting new entry...`);
 
       // Cleanup metadata
@@ -1043,9 +1035,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       // Immediately check for new entry after cancellation (ORDER-STATUS-ONLY approach)
       return this.checkEntryConditions();
     } else if (metadata.signalType === SignalType.TakeProfit) {
-      // TP order canceled - clear open TP and pending signal
+      // TP order canceled - clear open TP
       this.openTpOrder = null;
-      this.pendingTpSignalId = null;
       this._logger.info(`   TP order cleared`);
 
       // If we still have lastFilled, generate new TP
@@ -1071,13 +1062,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (metadata) {
       if (metadata.signalType === SignalType.Entry) {
         this.openEntryOrder = order;
-        // Clear pending signal ID now that order is tracked
-        this.pendingEntrySignalId = null;
         this._logger.info(`📝 Entry order created: ${order.clientOrderId}`);
       } else if (metadata.signalType === SignalType.TakeProfit) {
         this.openTpOrder = order;
-        // Clear pending signal ID now that order is tracked
-        this.pendingTpSignalId = null;
         this._logger.info(`📝 TP order created: ${order.clientOrderId}`);
       }
     }
@@ -1102,13 +1089,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.orderMetadataMap.clear();
     this.openEntryOrder = null;
     this.openTpOrder = null;
-    this.pendingEntrySignalId = null;
-    this.pendingTpSignalId = null;
     this.lastFilled = null;
     this.lastFilledDirection = null;
     this.positionAmount = 0;
     this.currentLevelRepeats = 0;
     this.initialDataProcessed = false;
+    this.initialEntrySignalGenerated = false;
     this.orderSequence = 0;
     this._logger.info(`🧹 [SingleLadderLifoTP] Strategy cleaned up`);
   }
@@ -1135,8 +1121,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       preferredDirection: this.preferredDirection,
       openEntryOrder: this.openEntryOrder?.clientOrderId || null,
       openTpOrder: this.openTpOrder?.clientOrderId || null,
-      pendingEntrySignalId: this.pendingEntrySignalId,
-      pendingTpSignalId: this.pendingTpSignalId,
+      initialEntrySignalGenerated: this.initialEntrySignalGenerated,
       positionLimits: {
         min: this.minPositionAmount,
         max: this.maxPositionAmount,

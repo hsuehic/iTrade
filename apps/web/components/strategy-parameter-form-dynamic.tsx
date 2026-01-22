@@ -81,10 +81,14 @@ export function StrategyParameterFormDynamic({
             <Input
               id={paramDef.name}
               type="number"
-              value={value as number}
-              onChange={(e) =>
-                handleParameterChange(paramDef.name, Number(e.target.value))
-              }
+              defaultValue={value as number}
+              onChange={(e) => {
+                // Use valueAsNumber which properly handles number inputs including negative
+                const numValue = e.target.valueAsNumber;
+                if (!isNaN(numValue)) {
+                  handleParameterChange(paramDef.name, numValue);
+                }
+              }}
               min={paramDef.min}
               max={paramDef.max}
               required={paramDef.required}
