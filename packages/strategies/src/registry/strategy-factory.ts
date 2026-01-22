@@ -21,6 +21,10 @@ import {
   HammerChannelStrategy,
   HammerChannelStrategyRegistryConfig,
 } from '../strategies/HammerChannelStrategy';
+import {
+  SingleLadderLifoTPStrategy,
+  SingleLadderLifoTPStrategyRegistryConfig,
+} from '../strategies/SingleLadderLifoTPStrategy';
 import { StrategyRegistryConfig } from '../type';
 
 // ============================================================================
@@ -37,7 +41,8 @@ import { StrategyRegistryConfig } from '../type';
 export type StrategyTypeKey =
   | 'MovingAverageStrategy'
   | 'MovingWindowGridsStrategy'
-  | 'HammerChannelStrategy';
+  | 'HammerChannelStrategy'
+  | 'SingleLadderLifoTPStrategy';
 
 /**
  * 策略构造函数类型
@@ -131,6 +136,11 @@ registry.register(
   'HammerChannelStrategy',
   HammerChannelStrategy,
   HammerChannelStrategyRegistryConfig,
+);
+registry.register(
+  'SingleLadderLifoTPStrategy',
+  SingleLadderLifoTPStrategy,
+  SingleLadderLifoTPStrategyRegistryConfig,
 );
 
 // ============================================================================
