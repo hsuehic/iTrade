@@ -258,9 +258,32 @@ export interface SignalMetaData {
   profitRatio?: number;
 }
 
-export type StrategyResult = StrategyOrderResult | StrategyHoldResult;
+/**
+ * Strategy Result Types
+ *
+ * A strategy can return:
+ * - StrategyOrderResult: Place a buy/sell order
+ * - StrategyCancelOrderResult: Cancel an existing order
+ * - StrategyHoldResult: Do nothing (hold)
+ *
+ * analyze() can return a single result or an array of results
+ * when multiple actions need to be taken simultaneously
+ * (e.g., place TP order + place next entry order)
+ */
+export type StrategyResult =
+  | StrategyOrderResult
+  | StrategyCancelOrderResult
+  | StrategyHoldResult;
 
-// TODO: support multiple orders per signal
+/**
+ * Result type for analyze() method - can be single or array
+ * Use array when strategy needs to return multiple signals at once
+ */
+export type StrategyAnalyzeResult = StrategyResult | StrategyResult[];
+
+/**
+ * Order placement result - buy or sell
+ */
 export interface StrategyOrderResult {
   action: 'buy' | 'sell';
   clientOrderId: string;
@@ -276,23 +299,67 @@ export interface StrategyOrderResult {
   metadata?: SignalMetaData;
 }
 
+/**
+ * Cancel order result - request to cancel an existing order
+ */
+export interface StrategyCancelOrderResult {
+  action: 'cancel';
+  /** Order ID to cancel (exchange order ID) */
+  orderId?: string;
+  /** Client order ID to cancel (strategy-generated ID) */
+  clientOrderId?: string;
+  /** Symbol of the order to cancel */
+  symbol?: string;
+  /** Reason for cancellation */
+  reason?: string;
+}
+
+/**
+ * Hold result - do nothing
+ */
 export interface StrategyHoldResult {
   action: 'hold';
   reason?: string;
 }
 
+/**
+ * Type guard: Check if result is an order (buy/sell)
+ */
 export function isOrderResult(value: StrategyResult): value is StrategyOrderResult {
-  if (value.action === 'buy' || value.action === 'hold') {
-    return true;
-  }
-  return false;
+  return value.action === 'buy' || value.action === 'sell';
 }
 
+/**
+ * Type guard: Check if result is a cancel order
+ */
+export function isCancelOrderResult(
+  value: StrategyResult,
+): value is StrategyCancelOrderResult {
+  return value.action === 'cancel';
+}
+
+/**
+ * Type guard: Check if result is a hold
+ */
 export function isHoldResult(value: StrategyResult): value is StrategyHoldResult {
-  if (value.action === 'hold') {
-    return true;
-  }
-  return false;
+  return value.action === 'hold';
+}
+
+/**
+ * Type guard: Check if result is actionable (buy, sell, or cancel)
+ */
+export function isActionableResult(
+  value: StrategyResult,
+): value is StrategyOrderResult | StrategyCancelOrderResult {
+  return value.action !== 'hold';
+}
+
+/**
+ * Normalize analyze result to array format
+ * Utility function for TradingEngine to process results uniformly
+ */
+export function normalizeAnalyzeResult(result: StrategyAnalyzeResult): StrategyResult[] {
+  return Array.isArray(result) ? result : [result];
 }
 
 // Exchange Types

@@ -18,7 +18,7 @@ import {
   ExchangeInfo,
   SymbolInfo,
   StrategyParameters,
-  StrategyResult,
+  StrategyAnalyzeResult,
   BacktestConfig,
   BacktestResult,
   RiskLimits,
@@ -156,7 +156,31 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   /** Get runtime context */
   readonly context: StrategyRuntimeContext;
 
-  analyze(dataUpdate: DataUpdate): Promise<StrategyResult>;
+  /**
+   * Analyze market/account data and return trading signals
+   *
+   * @param dataUpdate - Market data (ticker, orderbook, klines) or account data (orders, positions)
+   * @returns Single result or array of results for multiple simultaneous actions
+   *          - StrategyOrderResult: Place buy/sell order
+   *          - StrategyCancelOrderResult: Cancel existing order
+   *          - StrategyHoldResult: Do nothing
+   *
+   * @example
+   * // Single result
+   * return { action: 'buy', quantity: new Decimal(100), price: new Decimal(50000) };
+   *
+   * @example
+   * // Multiple results (e.g., TP order + next entry order)
+   * return [
+   *   { action: 'sell', quantity: new Decimal(100), price: new Decimal(51000), reason: 'take_profit' },
+   *   { action: 'buy', quantity: new Decimal(100), price: new Decimal(49000), reason: 'next_entry' }
+   * ];
+   *
+   * @example
+   * // Cancel order
+   * return { action: 'cancel', clientOrderId: 'E123...', reason: 'replace_with_better_price' };
+   */
+  analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult>;
 
   // Order lifecycle callbacks
   onOrderCreated?(order: Order): Promise<void>; // Called when order is created from strategy signal

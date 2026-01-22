@@ -1,6 +1,7 @@
 import {
   BaseStrategy,
   StrategyResult,
+  StrategyAnalyzeResult,
   StrategyConfig,
   Order,
   OrderStatus,
@@ -627,8 +628,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * - Entry signals are triggered by: initial startup, TP fills, entry cancellations
    * - NO ticker price monitoring for entry decisions
    * - Ticker is only used for optional monitoring/logging
+   *
+   * @returns Single result or array of results (e.g., TP + next entry after fill)
    */
-  public override async analyze(dataUpdate: DataUpdate): Promise<StrategyResult> {
+  public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
     const { ticker, orders, positions, symbol } = dataUpdate;
 
     // Handle position updates
@@ -637,10 +640,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     }
 
     // Handle order updates - this can trigger new entry/TP signals
+    // Returns array when entry fills (TP + next entry) or single result otherwise
     if (orders && orders.length > 0) {
-      const signal = this.handleOrderUpdates(orders);
-      if (signal) {
-        return signal;
+      const signals = this.handleOrderUpdates(orders);
+      if (signals.length > 0) {
+        return signals.length === 1 ? signals[0] : signals;
       }
     }
 
@@ -651,6 +655,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     // Generate INITIAL entry signal ONCE after initialization
     // Subsequent entry signals are ONLY generated in response to order status changes:
+    // - handleEntryFilled() → generates TP + next entry (if position allows)
     // - handleTpFilled() → generates new entry after TP
     // - handleOrderCancellation() → generates new entry after cancel
     if (
@@ -798,8 +803,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   /**
    * Handle order updates
+   * @returns Array of signals (can be multiple when entry fills: TP + next entry)
    */
-  private handleOrderUpdates(orders: Order[]): StrategyResult | null {
+  private handleOrderUpdates(orders: Order[]): StrategyResult[] {
+    const signals: StrategyResult[] = [];
+
     for (const order of orders) {
       if (!order.clientOrderId) continue;
 
@@ -826,10 +834,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
         // Handle FILLED status
         if (order.status === OrderStatus.FILLED) {
-          const signal = this.handleOrderFilled(order, metadata);
-          if (signal) {
-            return signal;
-          }
+          const filledSignals = this.handleOrderFilled(order, metadata);
+          signals.push(...filledSignals);
         }
 
         // Handle CANCELED/REJECTED/EXPIRED
@@ -838,43 +844,56 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           order.status === OrderStatus.REJECTED ||
           order.status === OrderStatus.EXPIRED
         ) {
-          const signal = this.handleOrderCancellation(order, metadata);
-          if (signal) {
-            return signal;
+          const cancelSignal = this.handleOrderCancellation(order, metadata);
+          if (cancelSignal) {
+            signals.push(cancelSignal);
           }
         }
       }
     }
 
-    return null;
+    return signals;
   }
 
   /**
    * Handle order filled event
+   * @returns Array of signals (entry fill → TP + next entry, TP fill → new entry)
    */
   private handleOrderFilled(
     order: Order,
     metadata: SignalMetaData | undefined,
-  ): StrategyResult | null {
+  ): StrategyResult[] {
     if (!metadata) {
       this._logger.warn(`⚠️ Order filled without metadata: ${order.clientOrderId}`);
-      return null;
+      return [];
     }
 
     if (metadata.signalType === SignalType.Entry) {
+      // Entry fill returns array: [TP signal, next entry signal (if allowed)]
       return this.handleEntryFilled(order);
     } else if (metadata.signalType === SignalType.TakeProfit) {
-      // handleTpFilled now returns a new entry signal (ORDER-STATUS-ONLY approach)
-      return this.handleTpFilled(order, metadata);
+      // TP fill returns single signal or empty
+      const signal = this.handleTpFilled(order, metadata);
+      return signal ? [signal] : [];
     }
 
-    return null;
+    return [];
   }
 
   /**
    * Handle entry order filled
+   *
+   * After entry fills:
+   * 1. Update position
+   * 2. Record lastFilled (LIFO)
+   * 3. Generate TP signal for this entry
+   * 4. Generate NEXT entry signal if position still allows (ladder continues)
+   * 5. Return array of signals [TP, next entry] for simultaneous execution
+   *
+   * @returns Array of signals: [TP signal, next entry signal (if allowed)]
    */
-  private handleEntryFilled(order: Order): StrategyResult | null {
+  private handleEntryFilled(order: Order): StrategyResult[] {
+    const signals: StrategyResult[] = [];
     const filledAmount = order.executedQuantity || order.quantity;
     const filledPrice = order.averagePrice || order.price!;
 
@@ -931,17 +950,67 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this._logger.info(
         `   ❌ Need to cancel existing TP: ${this.openTpOrder.clientOrderId}`,
       );
-      // Note: Actual cancellation would be done by TradingEngine
-      // For now, we just mark it as needing cancellation and generate new TP
+      // Add cancel signal for the existing TP order
+      signals.push({
+        action: 'cancel',
+        clientOrderId: this.openTpOrder.clientOrderId,
+        symbol: this._symbol,
+        reason: 'new_entry_filled_replacing_tp',
+      });
       this.openTpOrder = null;
     }
 
-    // Generate new TP signal for this entry
+    // Generate new TP signal for this entry (mandatory)
     const tpSignal = this.generateTakeProfitSignal();
     if (tpSignal) {
-      return tpSignal;
+      signals.push(tpSignal);
     }
 
+    // Check if we can place the NEXT entry order (ladder continues)
+    // This allows both TP and next entry to be pending simultaneously
+    const nextEntrySignal = this.generateNextEntrySignalIfAllowed(side);
+    if (nextEntrySignal) {
+      this._logger.info(
+        `   📤 Adding next ${side} entry signal (position allows continuation)`,
+      );
+      signals.push(nextEntrySignal);
+    }
+
+    return signals;
+  }
+
+  /**
+   * Generate next entry signal if position allows
+   *
+   * After an entry fills, check if we can continue the ladder in the same direction.
+   * This creates the "stacked" behavior where both TP and next entry are pending.
+   *
+   * @param currentSide - The side of the entry that just filled
+   * @returns Entry signal if position allows, null otherwise
+   */
+  private generateNextEntrySignalIfAllowed(
+    currentSide: EntrySide,
+  ): StrategyResult | null {
+    // Check if we can add another entry in the same direction
+    if (currentSide === 'LONG' && this.canAddLong()) {
+      // Calculate next long entry price (one level below reference)
+      const longEntryPrice = this.referencePrice * (1 - this.dropPercent);
+      this._logger.info(
+        `📊 Next Entry Check: Position=${this.positionAmount}, CanAddLong=true, Price=${longEntryPrice.toFixed(4)}`,
+      );
+      return this.generateLongEntrySignal(new Decimal(longEntryPrice));
+    } else if (currentSide === 'SHORT' && this.canAddShort()) {
+      // Calculate next short entry price (one level above reference)
+      const shortEntryPrice = this.referencePrice * (1 + this.risePercent);
+      this._logger.info(
+        `📊 Next Entry Check: Position=${this.positionAmount}, CanAddShort=true, Price=${shortEntryPrice.toFixed(4)}`,
+      );
+      return this.generateShortEntrySignal(new Decimal(shortEntryPrice));
+    }
+
+    this._logger.info(
+      `📊 Next Entry Check: Position=${this.positionAmount}, CanAddLong=${this.canAddLong()}, CanAddShort=${this.canAddShort()} - No next entry (position limit reached)`,
+    );
     return null;
   }
 
@@ -952,7 +1021,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * 1. Update position
    * 2. Update reference price (allows bi-directional ladder walking)
    * 3. Clear lastFilled but KEEP lastFilledDirection
-   * 4. Return entry signal to place new entry order
+   * 4. Check if entry order already pending (from previous entry fill)
+   * 5. Only generate new entry if no entry is pending
    */
   private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult | null {
     if (!this.lastFilled) {
@@ -1000,7 +1070,17 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.orderMetadataMap.delete(metadata.parentOrderId);
     }
 
-    // Immediately check for new entry after TP fills (ORDER-STATUS-ONLY approach)
+    // Check if there's already an entry order pending (from previous entry fill)
+    // With the array return approach, entry orders may already be placed when entry fills
+    if (this.openEntryOrder) {
+      this._logger.info(
+        `   📝 Entry order already pending: ${this.openEntryOrder.clientOrderId} - no new entry needed`,
+      );
+      return null;
+    }
+
+    // No entry pending - generate new entry signal
+    this._logger.info(`   🔄 No entry pending, generating new entry signal`);
     return this.checkEntryConditions();
   }
 

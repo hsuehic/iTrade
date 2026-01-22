@@ -13,7 +13,7 @@ import {
   StrategyParameters,
   StrategyConfig,
   StrategyRuntimeContext,
-  StrategyResult,
+  StrategyAnalyzeResult,
   Order,
   Position,
   Balance,
@@ -138,7 +138,17 @@ export abstract class BaseStrategy<
     return `${typePrefix}${strategyId}D${this.orderSequence}D${shortTimestamp}`;
   }
 
-  public abstract analyze(marketData: DataUpdate): Promise<StrategyResult>;
+  /**
+   * Analyze market/account data and return trading signals
+   *
+   * Subclasses must implement this method to define their trading logic.
+   * Can return a single result or an array of results for multiple
+   * simultaneous actions (e.g., place TP order + place next entry order).
+   *
+   * @param marketData - Market data (ticker, orderbook, klines) or account data (orders, positions)
+   * @returns Single result or array of results
+   */
+  public abstract analyze(marketData: DataUpdate): Promise<StrategyAnalyzeResult>;
 
   /**
    * Called when an order is created from this strategy's signal

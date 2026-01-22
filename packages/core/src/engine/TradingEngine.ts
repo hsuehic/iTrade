@@ -20,6 +20,12 @@ import {
   Position,
   Balance,
   StrategyResult,
+  StrategyAnalyzeResult,
+  isOrderResult,
+  isCancelOrderResult,
+  isHoldResult,
+  normalizeAnalyzeResult,
+  StrategyCancelOrderResult,
   Ticker,
   OrderBook,
   Trade,
@@ -265,28 +271,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
-      // Add exchange info to ticker if provided
-
       // Process ticker with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
           const result = await strategy.analyze({ ticker, exchangeName, symbol });
-
-          if (result.action !== 'hold') {
-            this._eventBus.emitStrategySignal({
-              strategyName,
-              symbol,
-              action: result.action,
-              quantity: result.quantity?.toNumber(),
-              price: result.price?.toNumber(),
-              confidence: result.confidence,
-              reason: result.reason,
-              timestamp: new Date(),
-            });
-
-            // Execute the strategy signal
-            await this.executeStrategySignal(strategyName, symbol, result);
-          }
+          await this.processStrategyResults(strategyName, symbol, result);
         } catch (error) {
           this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
@@ -314,21 +303,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       for (const [strategyName, strategy] of this._strategies) {
         try {
           const result = await strategy.analyze({ orderbook, exchangeName, symbol });
-
-          if (result.action !== 'hold') {
-            this._eventBus.emitStrategySignal({
-              strategyName,
-              symbol,
-              action: result.action,
-              quantity: result.quantity?.toNumber(),
-              price: result.price?.toNumber(),
-              confidence: result.confidence,
-              reason: result.reason,
-              timestamp: new Date(),
-            });
-
-            await this.executeStrategySignal(strategyName, symbol, result);
-          }
+          await this.processStrategyResults(strategyName, symbol, result);
         } catch (error) {
           this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
@@ -363,21 +338,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       for (const [strategyName, strategy] of this._strategies) {
         try {
           const result = await strategy.analyze({ trades, exchangeName, symbol });
-
-          if (result.action !== 'hold') {
-            this._eventBus.emitStrategySignal({
-              strategyName,
-              symbol,
-              action: result.action,
-              quantity: result.quantity?.toNumber(),
-              price: result.price?.toNumber(),
-              confidence: result.confidence,
-              reason: result.reason,
-              timestamp: new Date(),
-            });
-
-            await this.executeStrategySignal(strategyName, symbol, result);
-          }
+          await this.processStrategyResults(strategyName, symbol, result);
         } catch (error) {
           this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
@@ -414,21 +375,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             symbol,
             exchangeName,
           });
-
-          if (result.action !== 'hold') {
-            this._eventBus.emitStrategySignal({
-              strategyName,
-              symbol,
-              action: result.action,
-              quantity: result.quantity?.toNumber(),
-              price: result.price?.toNumber(),
-              confidence: result.confidence,
-              reason: result.reason,
-              timestamp: new Date(),
-            });
-
-            await this.executeStrategySignal(strategyName, symbol, result);
-          }
+          await this.processStrategyResults(strategyName, symbol, result);
         } catch (error) {
           this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
@@ -476,21 +423,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             exchangeName,
             symbol,
           });
-
-          if (result.action !== 'hold') {
-            this._eventBus.emitStrategySignal({
-              strategyName,
-              symbol,
-              action: result.action,
-              quantity: result.quantity?.toNumber(),
-              price: result.price?.toNumber(),
-              confidence: result.confidence,
-              reason: result.reason,
-              timestamp: new Date(),
-            });
-
-            await this.executeStrategySignal(strategyName, symbol, result);
-          }
+          await this.processStrategyResults(strategyName, symbol, result);
         } catch (error) {
           this.logger.error(`Error in strategy ${strategyName}`, error as Error);
           this._eventBus.emitStrategyError(strategyName, error as Error);
@@ -757,12 +690,126 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     return positions.find((p) => p.symbol === symbol);
   }
 
+  /**
+   * Process strategy analyze results (handles both single and array results)
+   *
+   * @param strategyName - Name of the strategy
+   * @param symbol - Trading symbol
+   * @param result - Single result or array of results from strategy.analyze()
+   * @param source - Optional source context for logging (e.g., 'account update')
+   */
+  private async processStrategyResults(
+    strategyName: string,
+    symbol: string,
+    result: StrategyAnalyzeResult,
+    source?: string,
+  ): Promise<void> {
+    // Normalize to array for uniform processing
+    const results = normalizeAnalyzeResult(result);
+
+    for (const signal of results) {
+      // Skip hold signals
+      if (isHoldResult(signal)) {
+        continue;
+      }
+
+      // Handle cancel order signals
+      if (isCancelOrderResult(signal)) {
+        await this.executeCancelOrder(strategyName, symbol, signal);
+        continue;
+      }
+
+      // Handle buy/sell signals
+      if (isOrderResult(signal)) {
+        const targetSymbol = signal.symbol || symbol;
+
+        // Log signal execution with source context
+        if (source) {
+          this.logger.info(
+            `🎯 Executing signal from ${strategyName} triggered by ${source} (reason: ${signal.reason || 'N/A'})`,
+          );
+        }
+
+        // Emit signal event
+        this._eventBus.emitStrategySignal({
+          strategyName,
+          symbol: targetSymbol,
+          action: signal.action,
+          quantity: signal.quantity?.toNumber(),
+          price: signal.price?.toNumber(),
+          confidence: signal.confidence,
+          reason: signal.reason,
+          timestamp: new Date(),
+        });
+
+        // Execute the order
+        await this.executeStrategySignal(strategyName, targetSymbol, signal);
+      }
+    }
+  }
+
+  /**
+   * Execute a cancel order signal from strategy
+   */
+  private async executeCancelOrder(
+    strategyName: string,
+    symbol: string,
+    signal: StrategyCancelOrderResult,
+  ): Promise<void> {
+    const targetSymbol = signal.symbol || symbol;
+
+    // Find the exchange for this strategy
+    const strategy = this._strategies.get(strategyName);
+    const exchangeConfig = strategy?.config?.exchange;
+    const exchangeName = Array.isArray(exchangeConfig)
+      ? exchangeConfig[0]
+      : exchangeConfig;
+
+    const exchange = exchangeName
+      ? this._exchanges.get(exchangeName)
+      : this.findExchangeForSymbol(targetSymbol);
+
+    if (!exchange) {
+      this.logger.error(
+        `Cannot cancel order: No exchange found for symbol ${targetSymbol}`,
+      );
+      return;
+    }
+
+    try {
+      this.logger.info(
+        `🚫 Cancelling order: ${signal.orderId || signal.clientOrderId} (reason: ${signal.reason})`,
+      );
+
+      const cancelledOrder = await exchange.cancelOrder(
+        targetSymbol,
+        signal.orderId || '',
+        signal.clientOrderId,
+      );
+
+      this.logger.logStrategy('Order cancelled', {
+        strategy: strategyName,
+        symbol: targetSymbol,
+        orderId: cancelledOrder.id,
+        clientOrderId: cancelledOrder.clientOrderId,
+        reason: signal.reason,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to cancel order for ${strategyName}`, error as Error, {
+        symbol: targetSymbol,
+        orderId: signal.orderId,
+        clientOrderId: signal.clientOrderId,
+      });
+    }
+  }
+
   private async executeStrategySignal(
     strategyName: string,
     symbol: string,
     signal: StrategyResult,
   ): Promise<void> {
-    if (signal.action === 'hold' || !signal.quantity) {
+    // Only process order results (buy/sell)
+    if (!isOrderResult(signal) || !signal.quantity) {
       return;
     }
 
@@ -770,11 +817,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const orderType = signal.price ? OrderType.LIMIT : OrderType.MARKET;
       const side = signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
 
-      // 🆕 Extract clientOrderId from signal metadata
+      // Extract clientOrderId from signal
       const clientOrderId = signal.clientOrderId;
 
       const executedOrder = await this.executeOrder({
-        // exchange: exchangeName,
         strategyName,
         symbol,
         side,
@@ -783,7 +829,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         price: signal.price,
         tradeMode: signal.tradeMode,
         leverage: signal.leverage,
-        clientOrderId, // 🆕 Pass clientOrderId from signal metadata
+        clientOrderId,
       });
 
       this.logger.logStrategy('Executed signal', {
@@ -797,7 +843,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         clientOrderId: executedOrder.clientOrderId,
       });
 
-      // 🆕 Notify strategy that order was created from its signal
+      // Notify strategy that order was created from its signal
       const strategy = this._strategies.get(strategyName);
       if (strategy && strategy.onOrderCreated) {
         await strategy.onOrderCreated(executedOrder);
@@ -1029,7 +1075,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     exchangeName?: string;
   }): Promise<void> {
     try {
-      // 🆕 DEBUG: Log what we're sending to strategies
+      // DEBUG: Log what we're sending to strategies
       if (accountData.orders && accountData.orders.length > 0) {
         this.logger.debug(
           `📤 [onAccountUpdate] Sending ${accountData.orders.length} order update(s) to ${this._strategies.size} strategy(ies)`,
@@ -1045,7 +1091,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Process account data update with all strategies
       for (const [strategyName, strategy] of this._strategies) {
         try {
-          // 🆕 DEBUG: Log which strategy is receiving the update
+          // DEBUG: Log which strategy is receiving the update
           if (accountData.orders && accountData.orders.length > 0) {
             this.logger.debug(
               `   → Sending to strategy: ${strategyName} (exchange: ${strategy.config.exchange})`,
@@ -1054,29 +1100,17 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
           const result = await strategy.analyze(accountData);
 
-          if (result.action !== 'hold') {
-            // Account data changes might trigger trading signals
-            // 🔥 FIX: Use symbol from signal first, fallback to strategy context
-            // This is critical for strategies that return symbol in their signals (e.g., take profit)
-            const symbol = result.symbol || strategy.context.symbol || '';
-            this._eventBus.emitStrategySignal({
-              strategyName,
-              symbol,
-              action: result.action,
-              quantity: result.quantity?.toNumber(),
-              price: result.price?.toNumber(),
-              confidence: result.confidence,
-              reason: result.reason || 'Account data update',
-              timestamp: new Date(),
-            });
+          // Use strategy context symbol as default
+          const defaultSymbol = strategy.context.symbol || '';
 
-            // 🆕 Execute signals generated from account updates (e.g., take profit, stop loss)
-            // This is critical for strategies that generate signals based on order fills
-            this.logger.info(
-              `🎯 Executing signal from ${strategyName} triggered by account update (reason: ${result.reason})`,
-            );
-            await this.executeStrategySignal(strategyName, symbol, result);
-          }
+          // Process all results (handles both single and array results)
+          // Pass 'account update' as source for proper logging
+          await this.processStrategyResults(
+            strategyName,
+            defaultSymbol,
+            result,
+            'account update',
+          );
         } catch (error) {
           this.logger.error(
             `Error in strategy ${strategyName} (account update)`,
