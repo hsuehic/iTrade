@@ -13,8 +13,13 @@ export {
   PnLRepository,
   EmailPreferencesRepository,
   PushDeviceRepository,
+  PushNotificationRepository,
 } from './repositories';
-export type { EmailPreferencesData } from './repositories';
+export type {
+  EmailPreferencesData,
+  GetNotificationsOptions,
+  UnreadCountResult,
+} from './repositories';
 export { AccountSnapshotRepository } from './repositories/AccountSnapshotRepository';
 export type {
   AccountSnapshotData,
@@ -53,6 +58,10 @@ export {
   PushProvider,
 } from './entities/PushDevice';
 export { PushNotificationLogEntity } from './entities/PushNotificationLog';
+export type {
+  PushNotificationCategory,
+  PushTargetType,
+} from './entities/PushNotificationLog';
 
 // Types and interfaces
 export type {

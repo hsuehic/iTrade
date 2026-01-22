@@ -35,6 +35,7 @@ import {
   PnLRepository,
   EmailPreferencesRepository,
   PushDeviceRepository,
+  PushNotificationRepository,
 } from './repositories';
 import {
   AccountSnapshotRepository,
@@ -129,6 +130,7 @@ export class TypeOrmDataManager implements IDataManager {
   private accountSnapshotRepository!: AccountSnapshotRepository;
   private emailPreferencesRepository!: EmailPreferencesRepository;
   private pushDeviceRepository!: PushDeviceRepository;
+  private pushNotificationRepository!: PushNotificationRepository;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -172,6 +174,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.accountSnapshotRepository = new AccountSnapshotRepository(this.dataSource);
     this.emailPreferencesRepository = new EmailPreferencesRepository(this.dataSource);
     this.pushDeviceRepository = new PushDeviceRepository(this.dataSource);
+    this.pushNotificationRepository = new PushNotificationRepository(this.dataSource);
 
     this.isInitialized = true;
   }
@@ -939,5 +942,11 @@ export class TypeOrmDataManager implements IDataManager {
   getPushDeviceRepository(): PushDeviceRepository {
     this.ensureInitialized();
     return this.pushDeviceRepository;
+  }
+
+  // Get PushNotificationRepository for notification inbox & unread count
+  getPushNotificationRepository(): PushNotificationRepository {
+    this.ensureInitialized();
+    return this.pushNotificationRepository;
   }
 }

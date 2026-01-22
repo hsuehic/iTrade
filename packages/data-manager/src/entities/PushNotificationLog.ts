@@ -13,6 +13,7 @@ export type PushNotificationCategory =
 @Entity('push_notification_logs')
 @Index(['createdAt'])
 @Index(['senderUserId'])
+@Index(['senderUserId', 'isRead', 'createdAt']) // For unread count queries
 @Index(['targetType'])
 @Index(['platform', 'provider'])
 export class PushNotificationLogEntity {
@@ -64,6 +65,19 @@ export class PushNotificationLogEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   result?: Record<string, unknown> | null;
+
+  /**
+   * Whether the notification has been read by the user.
+   * Used for badge count / unread count in the mobile app.
+   */
+  @Column({ type: 'boolean', default: false })
+  isRead!: boolean;
+
+  /**
+   * When the notification was read (null if unread).
+   */
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  readAt?: Date | null;
 
   @CreateDateColumn({ type: 'timestamp with time zone' })
   createdAt!: Date;
