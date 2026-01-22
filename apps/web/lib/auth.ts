@@ -229,11 +229,16 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
         clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
         disableImplicitSignUp: false,
       },
-      github: {
-        clientId: process.env.GITHUB_CLIENT_ID as string,
-        clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
-        disableImplicitSignUp: false,
-      },
+      // Only include GitHub provider when credentials are configured
+      ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+        ? {
+            github: {
+              clientId: process.env.GITHUB_CLIENT_ID,
+              clientSecret: process.env.GITHUB_CLIENT_SECRET,
+              disableImplicitSignUp: false,
+            },
+          }
+        : {}),
     },
     trustedOrigins,
     emailVerification: {
@@ -250,6 +255,26 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
   });
 
 export const auth: ReturnType<typeof betterAuth> = createAuth();
+
+// Cache auth instances by baseURL to avoid re-initialization on every request
+const authCache = new Map<string, ReturnType<typeof betterAuth>>();
+
+/**
+ * Get or create a cached auth instance for the given baseURL.
+ * This prevents Better Auth from being re-initialized on every request,
+ * which would log warnings and create unnecessary overhead.
+ */
+const getCachedAuth = (baseURL?: string): ReturnType<typeof betterAuth> => {
+  const cacheKey = baseURL || '__default__';
+
+  if (authCache.has(cacheKey)) {
+    return authCache.get(cacheKey)!;
+  }
+
+  const authInstance = baseURL ? createAuth(baseURL) : auth;
+  authCache.set(cacheKey, authInstance);
+  return authInstance;
+};
 
 /**
  * Get the base URL from headers (works with both Request.headers and Headers from next/headers).
@@ -284,19 +309,21 @@ export const getRequestBaseURL = (request: Request): string | undefined => {
 /**
  * Create an auth instance with the proper base URL from headers.
  * Use this in server components and API routes for better production compatibility.
+ * Uses caching to avoid re-initialization on every request.
  */
 export const getAuthFromHeaders = (
   headers: Headers | { get: (name: string) => string | null },
 ): ReturnType<typeof betterAuth> => {
-  return createAuth(getBaseURLFromHeaders(headers));
+  return getCachedAuth(getBaseURLFromHeaders(headers));
 };
 
 /**
  * Create an auth instance with the proper base URL from the request.
  * Use this in API routes instead of the singleton `auth` for better production compatibility.
+ * Uses caching to avoid re-initialization on every request.
  */
 export const getAuthFromRequest = (request: Request): ReturnType<typeof betterAuth> => {
-  return createAuth(getRequestBaseURL(request));
+  return getCachedAuth(getRequestBaseURL(request));
 };
 
 /**
