@@ -202,61 +202,61 @@ export const PerpetualsTable = memo(function PerpetualsTable({
 
       <CardContent className="p-0">
         {/* Table header */}
-        <div className="grid grid-cols-12 gap-2 border-b px-4 py-2">
-          <div className="col-span-1 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            #
-          </div>
-          <TableHeader
-            field="symbol"
-            label="Symbol"
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            colSpan={2}
-          />
-          <TableHeader
-            field="price"
-            label="Price"
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            align="right"
-            colSpan={2}
-          />
-          <TableHeader
-            field="change"
-            label="24h Change"
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            align="right"
-            colSpan={2}
-          />
-          <TableHeader
-            field="volume"
-            label="Volume"
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            align="right"
-            colSpan={2}
-          />
-          <TableHeader
-            field="funding"
-            label="Funding"
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            align="right"
-            colSpan={1}
-          />
-          <div className="col-span-2 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Chart
-          </div>
-        </div>
-
-        {/* Table body */}
+        {/* Table body with sticky header */}
         <div className="max-h-[600px] overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
+          {/* Table header */}
+          <div className="sticky top-0 z-10 bg-card grid grid-cols-12 gap-2 border-b px-4 py-2">
+            <div className="col-span-1 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              #
+            </div>
+            <TableHeader
+              field="symbol"
+              label="Symbol"
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              colSpan={2}
+            />
+            <TableHeader
+              field="price"
+              label="Price"
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              align="right"
+              colSpan={2}
+            />
+            <TableHeader
+              field="change"
+              label="24h Change"
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              align="right"
+              colSpan={2}
+            />
+            <TableHeader
+              field="volume"
+              label="Volume"
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              align="right"
+              colSpan={2}
+            />
+            <TableHeader
+              field="funding"
+              label="Funding"
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
+              align="right"
+              colSpan={1}
+            />
+            <div className="col-span-2 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Chart
+            </div>
+          </div>
           {filteredAndSortedTickers.map((ticker, index) => (
             <motion.div
               key={`${ticker.exchange}-${ticker.symbol}`}

@@ -1,3 +1,10 @@
+export { BacktestRepository } from './BacktestRepository';
+export type {
+  CreateBacktestConfigData,
+  BacktestConfigFilters,
+  BacktestResultFilters,
+  BacktestConfigWithStats,
+} from './BacktestRepository';
 export { StrategyRepository } from './StrategyRepository';
 export { OrderRepository } from './OrderRepository';
 export { PositionRepository } from './PositionRepository';
@@ -17,10 +24,3 @@ export type {
   DryRunSessionFilters,
   DryRunSessionWithStats,
 } from './DryRunSessionRepository';
-export { BacktestRepository } from './BacktestRepository';
-export type {
-  CreateBacktestConfigData,
-  BacktestConfigFilters,
-  BacktestResultFilters,
-  BacktestConfigWithStats,
-} from './BacktestRepository';
