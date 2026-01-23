@@ -256,7 +256,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
         </div>
 
         {/* Table body */}
-        <div className="max-h-[600px] overflow-y-auto">
+        <div className="max-h-[600px] overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
           {filteredAndSortedTickers.map((ticker, index) => (
             <motion.div
               key={`${ticker.exchange}-${ticker.symbol}`}
