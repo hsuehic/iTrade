@@ -1,8 +1,7 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import Image from 'next/image';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getCryptoIconUrl } from '@/lib/exchanges';
 
@@ -12,11 +11,31 @@ interface SymbolIconProps {
   className?: string;
 }
 
-export const SymbolIcon = memo(({ symbol, size = 'md', className }: SymbolIconProps) => {
-  // Extract base asset from symbol (e.g., BTC from BTC/USDT or BTCUSDT)
-  const baseAsset =
-    symbol.split('/')[0] || symbol.replace(/USDT|USD|EUR|BUSD|TUSD$/i, '');
+/**
+ * Extract the base asset from various symbol formats:
+ * - "BTC/USDT" → "BTC"
+ * - "BTC-USDT" → "BTC"
+ * - "BTCUSDT" → "BTC"
+ * - "BTC" → "BTC"
+ */
+function extractBaseAsset(symbol: string): string {
+  if (!symbol) return '';
 
+  // Handle symbols with separators: BTC/USDT, BTC-USDT, BTC-USDT-SWAP
+  if (symbol.includes('/')) {
+    return symbol.split('/')[0];
+  }
+  if (symbol.includes('-')) {
+    return symbol.split('-')[0];
+  }
+
+  // Handle concatenated symbols: BTCUSDT, ETHUSDT, TIAUSDT
+  // Remove common quote currencies from the end
+  return symbol.replace(/USDT|USDC|USD|EUR|BUSD|TUSD|BTC|ETH$/i, '');
+}
+
+export const SymbolIcon = memo(({ symbol, size = 'md', className }: SymbolIconProps) => {
+  const baseAsset = extractBaseAsset(symbol);
   const [imageError, setImageError] = useState(false);
 
   const sizeClasses = {
@@ -39,8 +58,8 @@ export const SymbolIcon = memo(({ symbol, size = 'md', className }: SymbolIconPr
 
   const iconUrl = getCryptoIconUrl(baseAsset);
 
-  if (!iconUrl || imageError) {
-    // Fallback: show first letter
+  if (!iconUrl || imageError || !baseAsset) {
+    // Fallback: show first letter in a colored circle
     return (
       <div
         className={cn(
@@ -50,7 +69,7 @@ export const SymbolIcon = memo(({ symbol, size = 'md', className }: SymbolIconPr
           className,
         )}
       >
-        {baseAsset.charAt(0)}
+        {baseAsset.charAt(0) || '?'}
       </div>
     );
   }

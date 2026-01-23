@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { IconSettings, IconHelp, IconSearch } from '@tabler/icons-react';
+import { IconSettings } from '@tabler/icons-react';
 import Link from 'next/link';
 
 import {
@@ -20,16 +20,6 @@ export function NavSecondary({
       title: 'Settings',
       url: '#',
       icon: IconSettings,
-    },
-    {
-      title: 'Get Help',
-      url: '#',
-      icon: IconHelp,
-    },
-    {
-      title: 'Search',
-      url: '#',
-      icon: IconSearch,
     },
   ];
   return (
