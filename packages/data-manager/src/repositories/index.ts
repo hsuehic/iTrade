@@ -1,5 +1,7 @@
 export { StrategyRepository } from './StrategyRepository';
 export { OrderRepository } from './OrderRepository';
+export { PositionRepository } from './PositionRepository';
+export type { PositionFilters } from './PositionRepository';
 export { PnLRepository } from './PnLRepository';
 export { EmailPreferencesRepository } from './EmailPreferencesRepository';
 export type { EmailPreferencesData } from './EmailPreferencesRepository';

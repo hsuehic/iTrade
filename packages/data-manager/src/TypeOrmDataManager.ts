@@ -32,11 +32,13 @@ import { Session } from './entities/Session';
 import {
   StrategyRepository,
   OrderRepository,
+  PositionRepository,
   PnLRepository,
   EmailPreferencesRepository,
   PushDeviceRepository,
   PushNotificationRepository,
 } from './repositories';
+import type { PositionFilters } from './repositories';
 import {
   AccountSnapshotRepository,
   AccountSnapshotData,
@@ -126,6 +128,7 @@ export class TypeOrmDataManager implements IDataManager {
   // Domain repositories
   private strategyRepository!: StrategyRepository;
   private orderRepository!: OrderRepository;
+  private positionRepository!: PositionRepository;
   private pnlRepository!: PnLRepository;
   private accountSnapshotRepository!: AccountSnapshotRepository;
   private emailPreferencesRepository!: EmailPreferencesRepository;
@@ -170,6 +173,7 @@ export class TypeOrmDataManager implements IDataManager {
     // Initialize domain repositories
     this.strategyRepository = new StrategyRepository(this.dataSource);
     this.orderRepository = new OrderRepository(this.dataSource);
+    this.positionRepository = new PositionRepository(this.dataSource);
     this.pnlRepository = new PnLRepository(this.dataSource);
     this.accountSnapshotRepository = new AccountSnapshotRepository(this.dataSource);
     this.emailPreferencesRepository = new EmailPreferencesRepository(this.dataSource);
@@ -829,6 +833,40 @@ export class TypeOrmDataManager implements IDataManager {
   }): Promise<OrderEntity[]> {
     this.ensureInitialized();
     return await this.orderRepository.findAll(filters);
+  }
+
+  // -------------------- Position Management --------------------
+  // Delegating to PositionRepository
+
+  async savePosition(position: Partial<PositionEntity>): Promise<PositionEntity> {
+    this.ensureInitialized();
+    return await this.positionRepository.save(position);
+  }
+
+  async updatePosition(id: number, updates: Partial<PositionEntity>): Promise<void> {
+    this.ensureInitialized();
+    await this.positionRepository.update(id, updates);
+  }
+
+  async getPosition(id: number): Promise<PositionEntity | null> {
+    this.ensureInitialized();
+    return await this.positionRepository.findById(id);
+  }
+
+  async getPositions(filters?: PositionFilters): Promise<PositionEntity[]> {
+    this.ensureInitialized();
+    return await this.positionRepository.findAll(filters);
+  }
+
+  async deletePosition(id: number): Promise<void> {
+    this.ensureInitialized();
+    await this.positionRepository.delete(id);
+  }
+
+  // Get PositionRepository for advanced queries
+  getPositionRepository(): PositionRepository {
+    this.ensureInitialized();
+    return this.positionRepository;
   }
 
   // -------------------- PnL Analytics --------------------
