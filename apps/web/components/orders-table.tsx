@@ -50,6 +50,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ExchangeLogo } from '@/components/exchange-logo';
+import { SymbolIcon } from '@/components/symbol-icon';
 import {
   Tooltip,
   TooltipContent,
@@ -57,6 +58,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { getDisplaySymbol, extractBaseCurrency } from '@/lib/exchanges';
 
 interface OrderData {
   id: string;
@@ -238,9 +240,19 @@ const columns: ColumnDef<OrderData>[] = [
         ) : null}
       </Button>
     ),
-    cell: ({ row }) => (
-      <span className="font-medium font-mono">{row.original.symbol}</span>
-    ),
+    cell: ({ row }) => {
+      const exchange = row.original.exchange || '';
+      const displaySymbol = exchange
+        ? getDisplaySymbol(row.original.symbol, exchange)
+        : row.original.symbol;
+      const baseCurrency = extractBaseCurrency(row.original.symbol);
+      return (
+        <div className="flex items-center gap-2">
+          <SymbolIcon symbol={baseCurrency} size="sm" />
+          <span className="font-medium font-mono">{displaySymbol}</span>
+        </div>
+      );
+    },
   },
   {
     accessorKey: 'exchange',

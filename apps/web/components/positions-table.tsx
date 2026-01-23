@@ -46,7 +46,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ExchangeLogo } from '@/components/exchange-logo';
+import { SymbolIcon } from '@/components/symbol-icon';
 import { cn } from '@/lib/utils';
+import { getDisplaySymbol, extractBaseCurrency } from '@/lib/exchanges';
 
 interface PositionData {
   id: number;
@@ -130,14 +132,21 @@ const columns: ColumnDef<PositionData>[] = [
         ) : null}
       </Button>
     ),
-    cell: ({ row }) => (
-      <div className="flex flex-col">
-        <span className="font-medium font-mono">{row.original.symbol}</span>
-        <span className="text-xs text-muted-foreground">
-          {row.original.leverage}x leverage
-        </span>
-      </div>
-    ),
+    cell: ({ row }) => {
+      const displaySymbol = getDisplaySymbol(row.original.symbol, row.original.exchange);
+      const baseCurrency = extractBaseCurrency(row.original.symbol);
+      return (
+        <div className="flex items-center gap-2">
+          <SymbolIcon symbol={baseCurrency} size="md" />
+          <div className="flex flex-col">
+            <span className="font-medium font-mono">{displaySymbol}</span>
+            <span className="text-xs text-muted-foreground">
+              {row.original.leverage}x leverage
+            </span>
+          </div>
+        </div>
+      );
+    },
   },
   {
     accessorKey: 'exchange',

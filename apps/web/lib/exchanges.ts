@@ -359,3 +359,97 @@ export function normalizeSymbolForExchange(symbol: string, exchangeId: string): 
       return symbol;
   }
 }
+
+/**
+ * Get display symbol in exchange-native format for UI display
+ * Shows the exchange-specific symbol format (e.g., WLD-USDT-SWAP for OKX, WLD-USDC-PERP for Coinbase)
+ *
+ * @param symbol - Normalized symbol (e.g., 'WLD/USDT:USDT', 'WLD/USDC:USDC')
+ * @param exchangeId - Exchange identifier
+ * @returns Exchange-native display format
+ *
+ * @example
+ * getDisplaySymbol('WLD/USDT:USDT', 'okx') // Returns: 'WLD-USDT-SWAP'
+ * getDisplaySymbol('WLD/USDC:USDC', 'coinbase') // Returns: 'WLD-USDC-PERP'
+ * getDisplaySymbol('BTC/USDT:USDT', 'binance') // Returns: 'BTCUSDT'
+ * getDisplaySymbol('BTC/USDT', 'binance') // Returns: 'BTCUSDT' (spot)
+ */
+export function getDisplaySymbol(symbol: string, exchangeId: string): string {
+  if (!symbol || !exchangeId) return symbol;
+
+  const upperSymbol = symbol.toUpperCase();
+  const exchange = exchangeId.toLowerCase();
+
+  // Check if it's a perpetual symbol (has :SETTLEMENT part)
+  const isPerpetual = upperSymbol.includes(':');
+
+  switch (exchange) {
+    case 'binance': {
+      // Binance: BTCUSDT for both spot and perpetual
+      if (isPerpetual) {
+        const [pair] = upperSymbol.split(':');
+        return pair.replace('/', '').replace(/-/g, '');
+      }
+      return upperSymbol.replace('/', '').replace(/-/g, '');
+    }
+
+    case 'okx': {
+      // OKX: BTC-USDT (spot), BTC-USDT-SWAP (perpetual)
+      if (isPerpetual) {
+        const [pair] = upperSymbol.split(':');
+        return pair.replace('/', '-') + '-SWAP';
+      }
+      return upperSymbol.replace('/', '-');
+    }
+
+    case 'coinbase': {
+      // Coinbase: BTC-USDC (spot), BTC-USDC-PERP (perpetual)
+      if (isPerpetual) {
+        const [pair] = upperSymbol.split(':');
+        return pair.replace('/', '-') + '-PERP';
+      }
+      return upperSymbol.replace('/', '-');
+    }
+
+    default:
+      return symbol;
+  }
+}
+
+/**
+ * Parse symbol info from normalized symbol
+ * @param symbol - Normalized symbol (e.g., 'WLD/USDT:USDT')
+ * @returns Parsed symbol info
+ */
+export function parseSymbol(symbol: string): {
+  base: string;
+  quote: string;
+  settlement?: string;
+  isPerpetual: boolean;
+} {
+  if (!symbol) {
+    return { base: '', quote: '', isPerpetual: false };
+  }
+
+  const upperSymbol = symbol.toUpperCase();
+
+  // Check for perpetual format: BASE/QUOTE:SETTLEMENT
+  if (upperSymbol.includes(':')) {
+    const [pair, settlement] = upperSymbol.split(':');
+    const [base, quote] = pair.split('/');
+    return {
+      base: base || '',
+      quote: quote || '',
+      settlement,
+      isPerpetual: true,
+    };
+  }
+
+  // Spot format: BASE/QUOTE
+  const [base, quote] = upperSymbol.split('/');
+  return {
+    base: base || '',
+    quote: quote || '',
+    isPerpetual: false,
+  };
+}
