@@ -211,10 +211,7 @@ export function ExchangeBalanceBreakdown({
                   axisLine={{ stroke: 'hsl(var(--border))' }}
                   width={80}
                 />
-                <Tooltip
-                  content={<CustomTooltip />}
-                  cursor={{ fill: 'hsl(var(--muted))', opacity: 0.3 }}
-                />
+                <Tooltip content={<CustomTooltip />} cursor={false} />
                 <Bar dataKey="total" radius={[0, 4, 4, 0]} animationDuration={500}>
                   {chartData.map((entry, index) => (
                     <rect key={`bar-${index}`} fill={entry.fill} />
