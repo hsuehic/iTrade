@@ -11,3 +11,16 @@ export type {
   GetNotificationsOptions,
   UnreadCountResult,
 } from './PushNotificationRepository';
+export { DryRunSessionRepository } from './DryRunSessionRepository';
+export type {
+  CreateDryRunSessionData,
+  DryRunSessionFilters,
+  DryRunSessionWithStats,
+} from './DryRunSessionRepository';
+export { BacktestRepository } from './BacktestRepository';
+export type {
+  CreateBacktestConfigData,
+  BacktestConfigFilters,
+  BacktestResultFilters,
+  BacktestConfigWithStats,
+} from './BacktestRepository';

@@ -14,11 +14,20 @@ export {
   EmailPreferencesRepository,
   PushDeviceRepository,
   PushNotificationRepository,
+  DryRunSessionRepository,
+  BacktestRepository,
 } from './repositories';
 export type {
   EmailPreferencesData,
   GetNotificationsOptions,
   UnreadCountResult,
+  CreateDryRunSessionData,
+  DryRunSessionFilters,
+  DryRunSessionWithStats,
+  CreateBacktestConfigData,
+  BacktestConfigFilters,
+  BacktestResultFilters,
+  BacktestConfigWithStats,
 } from './repositories';
 export { AccountSnapshotRepository } from './repositories/AccountSnapshotRepository';
 export type {
@@ -44,7 +53,7 @@ export { BacktestConfigEntity } from './entities/BacktestConfig';
 export { BacktestResultEntity } from './entities/BacktestResult';
 export { BacktestTradeEntity } from './entities/BacktestTrade';
 export { EquityPointEntity } from './entities/EquityPoint';
-export { DryRunSessionEntity } from './entities/DryRunSession';
+export { DryRunSessionEntity, DryRunStatus } from './entities/DryRunSession';
 export { DryRunOrderEntity } from './entities/DryRunOrder';
 export { DryRunOrderFillEntity } from './entities/DryRunOrderFill';
 export { DryRunTradeEntity } from './entities/DryRunTrade';
