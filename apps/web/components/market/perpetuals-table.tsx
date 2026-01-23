@@ -203,7 +203,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
       <CardContent className="p-0">
         {/* Table header */}
         {/* Table body with sticky header */}
-        <div className="max-h-[600px] overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
+        <div className="overflow-y-auto overflow-x-hidden">
           {/* Table header */}
           <div className="sticky top-0 z-10 bg-card grid grid-cols-12 gap-2 border-b px-4 py-2">
             <div className="col-span-1 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
