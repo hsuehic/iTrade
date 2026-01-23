@@ -1,23 +1,35 @@
+// IMPORTANT: Import reflect-metadata FIRST before any TypeORM-related imports
+// This is critical for production builds where bundler may reorder imports
+import 'reflect-metadata';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 
-let dataManagerInstance: TypeOrmDataManager | null = null;
-let initPromise: Promise<TypeOrmDataManager> | null = null;
+// Use globalThis to persist across module reloads in production
+// This prevents issues with Next.js module caching in serverless environments
+declare global {
+  var __dataManagerInstance: TypeOrmDataManager | undefined;
+
+  var __dataManagerInitPromise: Promise<TypeOrmDataManager> | undefined;
+}
 
 /**
  * Get or create the global DataManager instance
+ *
+ * Uses globalThis for persistence across Next.js serverless function invocations.
+ * This ensures proper class prototype chains are maintained in production builds.
  */
 export async function getDataManager(): Promise<TypeOrmDataManager> {
-  if (dataManagerInstance) {
-    return dataManagerInstance;
+  // Check if already initialized (persisted in globalThis for production)
+  if (globalThis.__dataManagerInstance) {
+    return globalThis.__dataManagerInstance;
   }
 
   // If initialization is already in progress, wait for it
-  if (initPromise) {
-    return initPromise;
+  if (globalThis.__dataManagerInitPromise) {
+    return globalThis.__dataManagerInitPromise;
   }
 
   // Start initialization
-  initPromise = (async () => {
+  globalThis.__dataManagerInitPromise = (async () => {
     const isDevelopment = process.env.NODE_ENV !== 'production';
 
     const dm = new TypeOrmDataManager({
@@ -52,7 +64,7 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
     });
 
     await dm.initialize();
-    dataManagerInstance = dm;
+    globalThis.__dataManagerInstance = dm;
 
     if (isDevelopment) {
       console.log('✅ DataManager initialized for Web API');
@@ -61,5 +73,5 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
     return dm;
   })();
 
-  return initPromise;
+  return globalThis.__dataManagerInitPromise;
 }
