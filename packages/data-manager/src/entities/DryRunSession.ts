@@ -12,11 +12,11 @@ import {
 } from 'typeorm';
 
 import { DecimalTransformer } from './Kline';
-import { StrategyEntity } from './Strategy';
-import { User } from './User';
-import { DryRunOrderEntity } from './DryRunOrder';
-import { DryRunTradeEntity } from './DryRunTrade';
-import { DryRunResultEntity } from './DryRunResult';
+import type { StrategyEntity } from './Strategy';
+import type { User } from './User';
+import type { DryRunOrderEntity } from './DryRunOrder';
+import type { DryRunTradeEntity } from './DryRunTrade';
+import type { DryRunResultEntity } from './DryRunResult';
 
 export enum DryRunStatus {
   RUNNING = 'running',
@@ -102,7 +102,7 @@ export class DryRunSessionEntity {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('user', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

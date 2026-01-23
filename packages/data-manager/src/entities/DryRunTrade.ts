@@ -10,7 +10,7 @@ import {
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { DryRunSessionEntity } from './DryRunSession';
+import type { DryRunSessionEntity } from './DryRunSession';
 
 @Entity('dry_run_trades')
 @Index(['entryTime'])

@@ -1,6 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
 
 import type { User } from './User';
+
 @Entity('account', { schema: 'public' })
 export class Account {
   @Column('text', { primary: true, name: 'id' })
@@ -48,7 +49,7 @@ export class Account {
   @Column('timestamp with time zone', { name: 'updatedAt' })
   updatedAt!: Date;
 
-  @ManyToOne('user', (user: { accounts: Account[] }) => user.accounts, {
+  @ManyToOne('user', (user: User) => user.accounts, {
     onDelete: 'CASCADE',
   })
   @JoinColumn([{ name: 'userId', referencedColumnName: 'id' }])

@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 
 import { DecimalTransformer } from './Kline';
-import { BacktestResultEntity } from './BacktestResult';
+import type { BacktestResultEntity } from './BacktestResult';
 
 @Entity('equity_points')
 @Index(['timestamp'])
@@ -17,7 +17,7 @@ export class EquityPointEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('backtest_results', (r: { equity: EquityPointEntity[] }) => r.equity, {
+  @ManyToOne('backtest_results', (r: BacktestResultEntity) => r.equity, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'resultId' })

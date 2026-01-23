@@ -12,10 +12,10 @@ import {
 import { BacktestResult } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { BacktestTradeEntity } from './BacktestTrade';
-import { EquityPointEntity } from './EquityPoint';
-import { StrategyEntity } from './Strategy';
-import { BacktestConfigEntity } from './BacktestConfig';
+import type { BacktestTradeEntity } from './BacktestTrade';
+import type { EquityPointEntity } from './EquityPoint';
+import type { StrategyEntity } from './Strategy';
+import type { BacktestConfigEntity } from './BacktestConfig';
 
 @Entity('backtest_results')
 @Index(['createdAt'])
@@ -23,7 +23,7 @@ export class BacktestResultEntity implements BacktestResult {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('backtest_configs', (c: { results: BacktestResultEntity[] }) => c.results, {
+  @ManyToOne('backtest_configs', (c: BacktestConfigEntity) => c.results, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'configId' })
@@ -87,12 +87,12 @@ export class BacktestResultEntity implements BacktestResult {
   @Column({ type: 'int' })
   avgTradeDuration!: number;
 
-  @OneToMany('equity_points', (e: { result: BacktestResultEntity }) => e.result, {
+  @OneToMany('equity_points', (e: EquityPointEntity) => e.result, {
     cascade: true,
   })
   equity!: EquityPointEntity[];
 
-  @OneToMany('backtest_trades', (t: { result: BacktestResultEntity }) => t.result, {
+  @OneToMany('backtest_trades', (t: BacktestTradeEntity) => t.result, {
     cascade: true,
   })
   trades!: BacktestTradeEntity[];

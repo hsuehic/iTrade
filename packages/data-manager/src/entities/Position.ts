@@ -80,7 +80,7 @@ export class PositionEntity implements Position {
   @Column({ type: 'timestamp' })
   timestamp!: Date;
 
-  @OneToMany('orders', (o: { position: PositionEntity }) => o.position)
+  @OneToMany('orders', (o: OrderEntity) => o.position)
   orders?: OrderEntity[];
 
   @CreateDateColumn()

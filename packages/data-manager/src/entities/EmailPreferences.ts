@@ -9,7 +9,7 @@ import {
   Index,
 } from 'typeorm';
 
-import { User } from './User';
+import type { User } from './User';
 
 @Entity('email_preferences')
 @Index(['user'], { unique: true })

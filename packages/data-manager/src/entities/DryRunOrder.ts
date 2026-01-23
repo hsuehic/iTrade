@@ -13,8 +13,8 @@ import {
 import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { DryRunSessionEntity } from './DryRunSession';
-import { DryRunOrderFillEntity } from './DryRunOrderFill';
+import type { DryRunSessionEntity } from './DryRunSession';
+import type { DryRunOrderFillEntity } from './DryRunOrderFill';
 
 @Entity('dry_run_orders')
 @Index(['symbol'])

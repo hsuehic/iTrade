@@ -5,4 +5,7 @@ export { EmailPreferencesRepository } from './EmailPreferencesRepository';
 export type { EmailPreferencesData } from './EmailPreferencesRepository';
 export { PushDeviceRepository } from './PushDeviceRepository';
 export { PushNotificationRepository } from './PushNotificationRepository';
-export type { GetNotificationsOptions, UnreadCountResult } from './PushNotificationRepository';
+export type {
+  GetNotificationsOptions,
+  UnreadCountResult,
+} from './PushNotificationRepository';

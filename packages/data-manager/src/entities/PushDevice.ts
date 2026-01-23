@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { User } from './User';
+import type { User } from './User';
 
 export enum PushPlatform {
   IOS = 'ios',

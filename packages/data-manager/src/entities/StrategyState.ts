@@ -9,7 +9,7 @@ import {
   Index,
 } from 'typeorm';
 
-import { StrategyEntity } from './Strategy';
+import type { StrategyEntity } from './Strategy';
 
 @Entity('strategy_states')
 @Index(['strategy'], { unique: true }) // 每个策略只能有一个状态记录

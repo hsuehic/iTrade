@@ -13,6 +13,7 @@ import type { StrategyParameters } from '@itrade/core';
 
 import type { OrderEntity } from './Order';
 import type { User } from './User';
+
 export enum StrategyStatus {
   ACTIVE = 'active',
   STOPPED = 'stopped',
@@ -102,7 +103,7 @@ export class StrategyEntity {
   @Column({ type: 'timestamp', nullable: true })
   lastExecutionTime?: Date;
 
-  @OneToMany('orders', (o: { strategy: StrategyEntity }) => o.strategy, {
+  @OneToMany('orders', (o: OrderEntity) => o.strategy, {
     onDelete: 'CASCADE',
   })
   orders?: OrderEntity[];

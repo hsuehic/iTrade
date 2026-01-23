@@ -11,8 +11,8 @@ import {
 import { BacktestResult } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { DryRunSessionEntity } from './DryRunSession';
-import { DryRunTradeEntity } from './DryRunTrade';
+import type { DryRunSessionEntity } from './DryRunSession';
+import type { DryRunTradeEntity } from './DryRunTrade';
 
 @Entity('dry_run_results')
 export class DryRunResultEntity implements BacktestResult {

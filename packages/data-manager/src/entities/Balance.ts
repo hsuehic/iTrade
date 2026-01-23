@@ -11,7 +11,7 @@ import {
 import { Balance } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { AccountInfoEntity } from './AccountInfo';
+import type { AccountInfoEntity } from './AccountInfo';
 
 @Entity('balances')
 @Index(['asset'])
@@ -20,13 +20,9 @@ export class BalanceEntity implements Balance {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne(
-    'account_info',
-    (account: { balances: BalanceEntity[] }) => account.balances,
-    {
-      onDelete: 'CASCADE',
-    },
-  )
+  @ManyToOne('account_info', (account: AccountInfoEntity) => account.balances, {
+    onDelete: 'CASCADE',
+  })
   accountInfo!: AccountInfoEntity;
 
   @Column({ type: 'character varying', length: 20 })

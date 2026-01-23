@@ -10,7 +10,7 @@ import {
 import { OrderFill } from '@itrade/core';
 
 import { DecimalTransformer } from './Kline';
-import { DryRunOrderEntity } from './DryRunOrder';
+import type { DryRunOrderEntity } from './DryRunOrder';
 
 @Entity('dry_run_order_fills')
 @Index(['timestamp'])
@@ -21,7 +21,7 @@ export class DryRunOrderFillEntity implements OrderFill {
   @Column({ type: 'text' })
   id!: string;
 
-  @ManyToOne('dry_run_orders', (o: { fills: DryRunOrderFillEntity[] }) => o.fills, {
+  @ManyToOne('dry_run_orders', (o: DryRunOrderEntity) => o.fills, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'orderId' })

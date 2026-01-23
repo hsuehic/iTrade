@@ -36,17 +36,17 @@ export class User {
   @Column('text', { name: 'role', nullable: true })
   role?: string | null;
 
-  @OneToMany('account', (account: { user: User }) => account.user, {
+  @OneToMany('account', (account: Account) => account.user, {
     onDelete: 'CASCADE',
   })
   accounts?: Account[];
 
-  @OneToMany('session', (session: { user: User }) => session.user, {
+  @OneToMany('session', (session: Session) => session.user, {
     onDelete: 'CASCADE',
   })
   sessions?: Session[];
 
-  @OneToMany('strategies', (strategy: { user: User }) => strategy.user, {
+  @OneToMany('strategies', (strategy: StrategyEntity) => strategy.user, {
     onDelete: 'CASCADE',
   })
   strategies?: StrategyEntity[];
