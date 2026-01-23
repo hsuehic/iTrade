@@ -223,7 +223,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                       _buildMetricItem(
                         context,
                         'Assets',
-                        widget.portfolio.summary.uniqueAssets.toString(),
+                        widget.portfolio.filteredUniqueAssetCount.toString(),
                         Icons.account_balance_wallet_outlined,
                       ),
                       _buildDivider(),

@@ -110,6 +110,10 @@ class PortfolioData {
   final List<AggregatedAsset> aggregatedAssets;
   final DateTime timestamp;
 
+  /// Minimum USD value threshold to display an asset ($0.01)
+  /// This should match the threshold used in AssetsList widget
+  static const double minValueThreshold = 0.01;
+
   PortfolioData({
     required this.summary,
     required this.assets,
@@ -117,6 +121,34 @@ class PortfolioData {
     required this.aggregatedAssets,
     required this.timestamp,
   });
+
+  /// Get the count of assets that pass the value threshold filter
+  /// (filters out dust assets with value below $0.01)
+  int get filteredAssetCount {
+    return assets.where((asset) {
+      if (asset.estimatedValue != null) {
+        return asset.estimatedValue! >= minValueThreshold;
+      }
+      // If no estimatedValue, show asset if it has meaningful balance or percentage
+      return asset.total > 0 || asset.percentage > 0;
+    }).length;
+  }
+
+  /// Get the count of unique assets that pass the value threshold filter
+  /// (aggregated across exchanges)
+  int get filteredUniqueAssetCount {
+    final uniqueAssets = <String>{};
+    for (final asset in assets) {
+      if (asset.estimatedValue != null) {
+        if (asset.estimatedValue! >= minValueThreshold) {
+          uniqueAssets.add(asset.asset);
+        }
+      } else if (asset.total > 0 || asset.percentage > 0) {
+        uniqueAssets.add(asset.asset);
+      }
+    }
+    return uniqueAssets.length;
+  }
 
   factory PortfolioData.fromJson(Map<String, dynamic> json) {
     final assetsByExchange = <String, List<PortfolioAsset>>{};

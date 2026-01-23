@@ -30,16 +30,14 @@ class _AssetsListState extends State<AssetsList> {
   _SortField _sortField = _SortField.value;
   _SortOrder _sortOrder = _SortOrder.descending;
 
-  /// Minimum USD value threshold to display an asset ($0.01)
-  static const double _minValueThreshold = 0.01;
-
   List<PortfolioAsset> get sortedAssets {
     // Filter out dust assets (value below threshold)
     // Show asset if: estimatedValue >= threshold, OR estimatedValue is null but has balance
+    // Uses shared threshold constant from PortfolioData for consistency
     final list = widget.assets.where((asset) {
       // If estimatedValue is available, use it for filtering
       if (asset.estimatedValue != null) {
-        return asset.estimatedValue! >= _minValueThreshold;
+        return asset.estimatedValue! >= PortfolioData.minValueThreshold;
       }
       // If no estimatedValue, show asset if it has meaningful balance or percentage
       return asset.total > 0 || asset.percentage > 0;
