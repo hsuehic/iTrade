@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { IconSettings } from '@tabler/icons-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 import {
   SidebarGroup,
@@ -15,27 +16,40 @@ import {
 export function NavSecondary({
   ...props
 }: React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const pathname = usePathname();
+
   const items = [
     {
       title: 'Settings',
-      url: '#',
+      url: '/settings',
       icon: IconSettings,
     },
   ];
+
   return (
     <SidebarGroup {...props}>
       <SidebarGroupContent>
         <SidebarMenu>
-          {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild>
-                <Link href={item.url}>
-                  <item.icon />
-                  <span>{item.title}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
+          {items.map((item) => {
+            const isActive = pathname === item.url;
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton isActive={isActive} tooltip={item.title} asChild>
+                  {isActive ? (
+                    <a>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </a>
+                  ) : (
+                    <Link href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </Link>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

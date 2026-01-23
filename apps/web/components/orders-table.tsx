@@ -87,6 +87,7 @@ interface OrdersTableProps {
   selectedExchange?: string;
   selectedStrategy?: number;
   refreshInterval?: number;
+  initialStatusFilter?: string;
 }
 
 const formatCurrency = (value: string | number | undefined) => {
@@ -492,6 +493,7 @@ export function OrdersTable({
   selectedExchange = 'all',
   selectedStrategy,
   refreshInterval = 30000,
+  initialStatusFilter,
 }: OrdersTableProps) {
   const [orders, setOrders] = React.useState<OrderData[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -502,7 +504,9 @@ export function OrdersTable({
   const [globalFilter, setGlobalFilter] = React.useState('');
   const [exchanges, setExchanges] = React.useState<string[]>([]);
   const [selectedFilterExchange, setSelectedFilterExchange] = React.useState('all');
-  const [selectedStatus, setSelectedStatus] = React.useState('all');
+  const [selectedStatus, setSelectedStatus] = React.useState(
+    initialStatusFilter || 'all',
+  );
   const [selectedSide, setSelectedSide] = React.useState('all');
   const [selectedType, setSelectedType] = React.useState('all');
   const [datePreset, setDatePreset] = React.useState(0); // Default to all time

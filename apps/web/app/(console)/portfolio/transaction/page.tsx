@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { ExchangeSelector } from '@/components/exchange-selector';
 import { OrdersTable } from '@/components/orders-table';
@@ -13,8 +14,21 @@ const REFRESH_INTERVAL = parseInt(
 );
 
 export default function TransactionPage() {
-  const [selectedExchange, setSelectedExchange] = useState('all');
+  const searchParams = useSearchParams();
+  const statusFilter = searchParams.get('status') || undefined;
+  const exchangeFilter = searchParams.get('exchange') || undefined;
+
+  // When URL has exchange filter, use it; otherwise use local state
+  const [localExchange, setLocalExchange] = useState('all');
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
+
+  // Derive the effective exchange from URL or local state
+  const selectedExchange = exchangeFilter || localExchange;
+
+  // When user changes via selector, only update local state (URL filter takes priority)
+  const handleExchangeChange = (value: string) => {
+    setLocalExchange(value);
+  };
 
   useEffect(() => {
     // Fetch available exchanges from orders API
@@ -43,6 +57,9 @@ export default function TransactionPage() {
     fetchExchanges();
   }, []);
 
+  // Use a key to reset OrdersTable when URL filters change
+  const tableKey = `${statusFilter || 'all'}-${exchangeFilter || 'all'}`;
+
   return (
     <SidebarInset>
       <SiteHeader
@@ -50,7 +67,7 @@ export default function TransactionPage() {
         links={
           <ExchangeSelector
             value={selectedExchange}
-            onChange={setSelectedExchange}
+            onChange={handleExchangeChange}
             exchanges={availableExchanges}
           />
         }
@@ -61,8 +78,10 @@ export default function TransactionPage() {
             {/* Orders Table */}
             <div className="px-4 lg:px-6">
               <OrdersTable
+                key={tableKey}
                 selectedExchange={selectedExchange}
                 refreshInterval={REFRESH_INTERVAL}
+                initialStatusFilter={statusFilter}
               />
             </div>
           </div>

@@ -1,15 +1,18 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
-  IconDots,
-  IconFolder,
-  IconShare3,
-  IconTrash,
   IconCoinBitcoin,
   IconCoins,
   IconReceiptDollar,
   IconCalendarDollar,
+  IconCircleCheck,
+  IconClock,
+  IconCircleX,
+  IconFilter,
+  IconBrandBinance,
+  IconCurrencyBitcoin,
 } from '@tabler/icons-react';
 import { usePathname } from 'next/navigation';
 
@@ -19,6 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import {
   SidebarGroup,
@@ -30,8 +34,23 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 
+// Transaction filter shortcuts
+const transactionFilters = {
+  status: [
+    { label: 'Filled', value: 'FILLED', icon: IconCircleCheck },
+    { label: 'Open', value: 'NEW', icon: IconClock },
+    { label: 'Cancelled', value: 'CANCELED', icon: IconCircleX },
+  ],
+  exchanges: [
+    { label: 'Binance', value: 'binance', icon: IconBrandBinance },
+    { label: 'OKX', value: 'okx', icon: IconCurrencyBitcoin },
+    { label: 'Coinbase', value: 'coinbase', icon: IconCurrencyBitcoin },
+  ],
+};
+
 export function NavPortfolio() {
   const pathname = usePathname();
+  const router = useRouter();
   const { isMobile } = useSidebar();
   const items = [
     {
@@ -53,8 +72,15 @@ export function NavPortfolio() {
       name: 'Transaction',
       url: '/portfolio/transaction',
       icon: IconReceiptDollar,
+      hasFilters: true,
     },
   ];
+
+  const handleFilterClick = (filterType: string, value: string) => {
+    const params = new URLSearchParams();
+    params.set(filterType, value);
+    router.push(`/portfolio/transaction?${params.toString()}`);
+  };
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
@@ -62,50 +88,61 @@ export function NavPortfolio() {
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
-            <SidebarMenuButton isActive={pathname === item.url} asChild>
+            <SidebarMenuButton
+              isActive={pathname === item.url || pathname?.startsWith(item.url + '?')}
+              asChild
+            >
               <Link href={item.url}>
                 <item.icon />
                 <span>{item.name}</span>
               </Link>
             </SidebarMenuButton>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuAction
-                  showOnHover
-                  className="data-[state=open]:bg-accent rounded-sm"
+            {item.hasFilters && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuAction
+                    showOnHover
+                    className="data-[state=open]:bg-accent rounded-sm"
+                  >
+                    <IconFilter className="size-4" />
+                    <span className="sr-only">Filter Orders</span>
+                  </SidebarMenuAction>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-36 rounded-lg"
+                  side={isMobile ? 'bottom' : 'right'}
+                  align={isMobile ? 'end' : 'start'}
                 >
-                  <IconDots />
-                  <span className="sr-only">More</span>
-                </SidebarMenuAction>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-24 rounded-lg"
-                side={isMobile ? 'bottom' : 'right'}
-                align={isMobile ? 'end' : 'start'}
-              >
-                <DropdownMenuItem>
-                  <IconFolder />
-                  <span>Open</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <IconShare3 />
-                  <span>Share</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive">
-                  <IconTrash />
-                  <span>Delete</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    By Status
+                  </DropdownMenuLabel>
+                  {transactionFilters.status.map((filter) => (
+                    <DropdownMenuItem
+                      key={filter.value}
+                      onClick={() => handleFilterClick('status', filter.value)}
+                    >
+                      <filter.icon className="size-4" />
+                      <span>{filter.label}</span>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    By Exchange
+                  </DropdownMenuLabel>
+                  {transactionFilters.exchanges.map((filter) => (
+                    <DropdownMenuItem
+                      key={filter.value}
+                      onClick={() => handleFilterClick('exchange', filter.value)}
+                    >
+                      <filter.icon className="size-4" />
+                      <span>{filter.label}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </SidebarMenuItem>
         ))}
-        <SidebarMenuItem>
-          <SidebarMenuButton className="text-sidebar-foreground/70">
-            <IconDots className="text-sidebar-foreground/70" />
-            <span>More</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
       </SidebarMenu>
     </SidebarGroup>
   );
