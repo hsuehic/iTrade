@@ -1,11 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:fl_chart/fl_chart.dart';
-import '../model/api.dart';
-import '../widgets/asset_list.dart';
+import '../models/portfolio.dart';
+import '../services/portfolio_service.dart';
+import '../services/api_client.dart';
 import '../widgets/custom_app_bar.dart';
-import '../widgets/responsive_layout_builder.dart';
+import '../widgets/portfolio/portfolio_summary_card.dart';
+import '../widgets/portfolio/asset_allocation_chart.dart';
+import '../widgets/portfolio/positions_list.dart';
+import '../widgets/portfolio/assets_list.dart';
+import '../widgets/portfolio/exchange_filter.dart';
 
+/// Professional portfolio screen with real API data.
 class PortfolioScreen extends StatefulWidget {
   const PortfolioScreen({super.key});
 
@@ -14,700 +20,422 @@ class PortfolioScreen extends StatefulWidget {
 }
 
 class _PortfolioScreenState extends State<PortfolioScreen>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   @override
   bool get wantKeepAlive => true;
-  String? _selectedSymbol;
+
+  // Data
+  PortfolioData _portfolioData = PortfolioData.empty();
+  PositionsData _positionsData = PositionsData.empty();
+  PnLData _pnlData = PnLData.empty();
+
+  // State
+  bool _isLoading = true;
+  bool _isRefreshing = false;
+  String? _error;
+  String _selectedExchange = 'all';
+  String? _selectedAsset;
+  int _selectedTab = 0; // 0: Holdings, 1: Positions
+
+  // Store all available exchanges (not affected by filtering)
+  List<String> _allExchanges = [];
+
+  // Animation
+  late TabController _tabController;
+
+  // Subscriptions
+  StreamSubscription<PortfolioData>? _portfolioSubscription;
+  StreamSubscription<List<Position>>? _positionsSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        setState(() {
+          _selectedTab = _tabController.index;
+        });
+      }
+    });
+    _loadData();
+    _setupStreams();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _portfolioSubscription?.cancel();
+    _positionsSubscription?.cancel();
+    PortfolioService.instance.stopAutoRefresh();
+    super.dispose();
+  }
+
+  void _setupStreams() {
+    _portfolioSubscription = PortfolioService.instance.portfolioStream.listen(
+      (data) {
+        if (mounted) {
+          setState(() {
+            _portfolioData = data;
+          });
+        }
+      },
+    );
+
+    _positionsSubscription = PortfolioService.instance.positionsStream.listen(
+      (positions) {
+        if (mounted) {
+          setState(() {
+            _positionsData = PositionsData(
+              positions: positions,
+              summary: _positionsData.summary,
+            );
+          });
+        }
+      },
+    );
+  }
+
+  Future<void> _loadData() async {
+    if (!ApiClient.instance.isInitialized) {
+      setState(() {
+        _isLoading = false;
+        _error = 'API client not initialized. Please login first.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      // First, fetch all exchanges if we don't have them yet
+      if (_allExchanges.isEmpty) {
+        final allData = await PortfolioService.instance.fetchPortfolioAssets(
+          exchange: 'all',
+        );
+        _allExchanges = List<String>.from(allData.summary.exchanges);
+      }
+
+      // Then fetch filtered data
+      final results = await Future.wait([
+        PortfolioService.instance.fetchPortfolioAssets(
+          exchange: _selectedExchange,
+        ),
+        PortfolioService.instance.fetchPositions(
+          exchange: _selectedExchange == 'all' ? null : _selectedExchange,
+        ),
+        PortfolioService.instance.fetchPnL(),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _portfolioData = results[0] as PortfolioData;
+          _positionsData = results[1] as PositionsData;
+          _pnlData = results[2] as PnLData;
+          _isLoading = false;
+        });
+
+        // Start auto-refresh after initial load
+        PortfolioService.instance.startAutoRefresh(exchange: _selectedExchange);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      await _loadData();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  void _onExchangeSelected(String exchange) {
+    setState(() {
+      _selectedExchange = exchange;
+      _selectedAsset = null;
+    });
+    _loadData();
+  }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
-    final assets = [
-      AssetItem(
-        symbol: 'USDT',
-        name: 'Tether',
-        iconUrl: 'https://cryptocurrencyliveprices.com/img/usdt-tether.png',
-        price: 1,
-        amount: 6000,
-        dailyChange: 0.12,
-      ),
-      AssetItem(
-        symbol: 'BTC',
-        name: 'Bitcoin',
-        iconUrl: 'https://cryptocurrencyliveprices.com/img/btc-bitcoin.png',
-        price: 68000,
-        amount: 0.05,
-        dailyChange: 1.25,
-      ),
-      AssetItem(
-        symbol: 'ETH',
-        name: 'Ethereum',
-        iconUrl: 'https://cryptocurrencyliveprices.com/img/eth-ethereum.png',
-        price: 3500,
-        amount: 1.2,
-        dailyChange: -0.85,
-      ),
-      AssetItem(
-        symbol: 'SOL',
-        name: 'Solana',
-        iconUrl: 'https://cryptocurrencyliveprices.com/img/sol-solana.png',
-        price: 180,
-        amount: 5,
-        dailyChange: 3.12,
-      ),
-    ];
-
-    final total = assets.fold<double>(0, (sum, a) => sum + a.value);
-    final dailyWeightedPct = total == 0
-        ? 0.0
-        : assets.fold<double>(0.0, (sum, a) => sum + a.value * a.dailyChange) /
-              total;
-    final chartData = assets.map((a) => _PieData(a.symbol, a.value)).toList();
+    super.build(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: const CustomAppBar(title: 'Portfolio'),
-      body: ResponsiveLayoutBuilder(
-        phone: (context) =>
-            _buildPhoneLayout(assets, total, dailyWeightedPct, chartData),
-        tablet: (context) =>
-            _buildTabletLayout(assets, total, dailyWeightedPct, chartData),
+      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFF5F7FA),
+      appBar: CustomAppBar(
+        title: 'Portfolio',
+        // No refresh icon - data updates automatically via PortfolioService
       ),
+      body: _buildBody(context),
     );
   }
 
-  // Phone layout - single column
-  Widget _buildPhoneLayout(
-    List<AssetItem> assets,
-    double total,
-    double dailyWeightedPct,
-    List<_PieData> chartData,
-  ) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 12, 16.w, 0),
-            child: _BalanceHeader(total: total, dailyPct: dailyWeightedPct),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.all(16.w),
-            child: _buildAllocationChart(chartData, total),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8),
-            child: _buildAssetsHeader(),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: PortfolioAssetList(
-            assets: assets,
-            shrinkWrap: true,
-            selectedSymbol: _selectedSymbol,
-            onTap: (asset) {
-              setState(() {
-                _selectedSymbol = _selectedSymbol == asset.symbol
-                    ? null
-                    : asset.symbol;
-              });
-            },
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
-      ],
-    );
-  }
+  Widget _buildBody(BuildContext context) {
+    if (_isLoading) {
+      return _buildLoadingState(context);
+    }
 
-  // Tablet layout - two columns
-  Widget _buildTabletLayout(
-    List<AssetItem> assets,
-    double total,
-    double dailyWeightedPct,
-    List<_PieData> chartData,
-  ) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(24.w, 16, 24.w, 0),
-            child: _BalanceHeader(total: total, dailyPct: dailyWeightedPct),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24.w),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Left: Allocation Chart
-                Expanded(
-                  flex: 2,
-                  child: _buildAllocationChart(chartData, total),
-                ),
-                const SizedBox(width: 24),
-                // Right: Assets List (top 3)
-                Expanded(
-                  flex: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildAssetsHeader(),
-                      const SizedBox(height: 8),
-                      ...assets
-                          .take(3)
-                          .map((asset) => _buildAssetListItem(asset)),
-                    ],
-                  ),
-                ),
-              ],
+    if (_error != null) {
+      return _buildErrorState(context);
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refreshData,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
+          SliverToBoxAdapter(
+            child: PortfolioSummaryCard(
+              portfolio: _portfolioData,
+              pnl: _pnlData,
             ),
           ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24.w),
-            child: Text(
-              'All Assets',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.w600,
+
+          // Exchange Filter - always use _allExchanges to keep all options visible
+          if (_allExchanges.isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.only(top: 16, bottom: 8),
+                child: ExchangeFilter(
+                  exchanges: _allExchanges,
+                  selectedExchange: _selectedExchange,
+                  onExchangeSelected: _onExchangeSelected,
+                ),
+              ),
+            ),
+
+          // Asset Allocation Chart
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: 16),
+              child: AssetAllocationChart(
+                assets: _portfolioData.aggregatedAssets,
+                selectedAsset: _selectedAsset,
+                onAssetSelected: (asset) {
+                  setState(() {
+                    _selectedAsset = asset;
+                  });
+                },
               ),
             ),
           ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 8)),
-        SliverPadding(
-          padding: EdgeInsets.symmetric(horizontal: 24.w),
-          sliver: SliverGrid(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 2.5,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => _buildAssetCard(assets[index]),
-              childCount: assets.length,
+
+          // Tab Bar
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: 20, left: 16.w, right: 16.w),
+              child: _buildTabBar(context),
             ),
           ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 16)),
-      ],
-    );
-  }
 
-  Widget _buildAllocationChart(List<_PieData> chartData, double total) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(0, 12, 12.w, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    'Allocation',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 200,
-              child: PieChart(
-                PieChartData(
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 0,
-                  pieTouchData: PieTouchData(
-                    touchCallback: (FlTouchEvent event, pieTouchResponse) {
-                      if (event is FlTapUpEvent &&
-                          pieTouchResponse != null &&
-                          pieTouchResponse.touchedSection != null) {
+          // Tab Content
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: _selectedTab == 0
+                  ? AssetsList(
+                      assets: _selectedExchange == 'all'
+                          ? _portfolioData.assets
+                          : _portfolioData.assetsByExchange[_selectedExchange] ?? [],
+                      selectedAsset: _selectedAsset,
+                      onAssetTap: (asset) {
                         setState(() {
-                          final index = pieTouchResponse
-                              .touchedSection!
-                              .touchedSectionIndex;
-                          _selectedSymbol =
-                              index >= 0 && index < chartData.length
-                              ? chartData[index].label
-                              : null;
+                          _selectedAsset = _selectedAsset == asset.asset
+                              ? null
+                              : asset.asset;
                         });
-                      }
-                    },
-                  ),
-                  sections: chartData.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final data = entry.value;
-                    final isSelected = _selectedSymbol == data.label;
-                    final percentage = total == 0
-                        ? 0
-                        : (data.value / total * 100);
-
-                    final colors = [
-                      Colors.blue.shade300,
-                      Colors.orange.shade300,
-                      Colors.green.shade300,
-                      Colors.purple.shade300,
-                      Colors.red.shade300,
-                      Colors.teal.shade300,
-                    ];
-
-                    return PieChartSectionData(
-                      color: colors[index % colors.length],
-                      value: data.value,
-                      title: '${percentage.toStringAsFixed(1)}%',
-                      radius: isSelected ? 110 : 100,
-                      titleStyle: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                      titlePositionPercentageOffset: 0.6,
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            _buildChartLegend(context, chartData, total),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAssetsHeader() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          'Assets',
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-            fontSize: 14.sp,
-            fontWeight: FontWeight.w600,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAssetListItem(AssetItem asset) {
-    final changeColor = asset.dailyChange >= 0
-        ? Colors.green
-        : Theme.of(context).colorScheme.error;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _selectedSymbol == asset.symbol
-            ? Theme.of(context).primaryColor.withValues(alpha: 0.1)
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: _selectedSymbol == asset.symbol
-              ? Theme.of(context).primaryColor
-              : Colors.grey.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        children: [
-          Image.network(
-            asset.iconUrl,
-            width: 28.w,
-            height: 28.w,
-            errorBuilder: (context, error, stackTrace) =>
-                Icon(Icons.currency_bitcoin, size: 28.w),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  asset.symbol,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12.sp,
-                  ),
-                ),
-                Text(
-                  '\$${asset.value.toStringAsFixed(2)}',
-                  style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                ),
-              ],
+                      },
+                    )
+                  : PositionsList(
+                      positions: _positionsData.positions,
+                      selectedExchange: _selectedExchange,
+                    ),
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Icon(
-                asset.dailyChange >= 0
-                    ? Icons.trending_up
-                    : Icons.trending_down,
-                size: 16.w,
-                color: changeColor,
-              ),
-              Text(
-                '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
-                style: TextStyle(
-                  fontSize: 10.sp,
-                  color: changeColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+
+          // Bottom padding
+          SliverToBoxAdapter(
+            child: SizedBox(height: 24),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildAssetCard(AssetItem asset) {
-    final changeColor = asset.dailyChange >= 0
-        ? Colors.green
-        : Theme.of(context).colorScheme.error;
+  Widget _buildTabBar(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedSymbol = _selectedSymbol == asset.symbol
-              ? null
-              : asset.symbol;
-        });
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _selectedSymbol == asset.symbol
-              ? theme.primaryColor.withValues(alpha: 0.1)
-              : (isDark
-                    ? Colors.grey[900]
-                    : Colors.white.withValues(alpha: 0.5)),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _selectedSymbol == asset.symbol
-                ? theme.primaryColor
-                : (isDark
-                      ? Colors.grey[850]!
-                      : Colors.grey.withValues(alpha: 0.08)),
-          ),
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF1A1F2E)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.05),
         ),
-        child: Row(
-          children: [
-            Image.network(
-              asset.iconUrl,
-              width: 32.w,
-              height: 32.w,
-              errorBuilder: (context, error, stackTrace) =>
-                  Icon(Icons.currency_bitcoin, size: 32.w),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    asset.symbol,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14.sp,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '\$${asset.value.toStringAsFixed(2)}',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+      ),
+      child: TabBar(
+        controller: _tabController,
+        indicator: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: theme.colorScheme.primary,
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorPadding: EdgeInsets.all(4),
+        dividerColor: Colors.transparent,
+        labelColor: Colors.white,
+        unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,
+        labelStyle: TextStyle(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: TextStyle(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w500,
+        ),
+        tabs: [
+          Tab(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  asset.dailyChange >= 0
-                      ? Icons.trending_up
-                      : Icons.trending_down,
-                  size: 12.w,
-                  color: changeColor,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: changeColor,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Icon(Icons.account_balance_wallet_outlined, size: 16.w),
+                SizedBox(width: 6.w),
+                Text('Holdings'),
               ],
             ),
-          ],
-        ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.show_chart_rounded, size: 16.w),
+                SizedBox(width: 6.w),
+                Text('Positions'),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildChartLegend(
-    BuildContext context,
-    List<_PieData> chartData,
-    double total,
-  ) {
-    final colors = [
-      Colors.blue.shade300,
-      Colors.orange.shade300,
-      Colors.green.shade300,
-      Colors.purple.shade300,
-      Colors.red.shade300,
-      Colors.teal.shade300,
-    ];
+  Widget _buildLoadingState(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Center(
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: chartData.asMap().entries.map((entry) {
-          final index = entry.key;
-          final data = entry.value;
-
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 12.w, // ✅ Uniform scaling
-                height: 12.w, // ✅ Uniform scaling
-                decoration: BoxDecoration(
-                  color: colors[index % colors.length],
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                data.label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontSize: 12.sp,
-                ), // ✅ Adaptive font
-              ),
-            ],
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _PieData {
-  final String label;
-  final double value;
-  _PieData(this.label, this.value);
-}
-
-class _BalanceHeader extends StatefulWidget {
-  final double total;
-  final double dailyPct; // weighted daily % change
-
-  const _BalanceHeader({required this.total, required this.dailyPct});
-
-  @override
-  State<_BalanceHeader> createState() => _BalanceHeaderState();
-}
-
-class _BalanceHeaderState extends State<_BalanceHeader> {
-  String _period = '1D';
-  bool _isBalanceHidden = false;
-
-  static const Map<String, int> _periodDays = {
-    '1D': 1,
-    '7D': 7,
-    '1M': 30,
-    'YTD': 365,
-  };
-
-  double get _selectedPct {
-    final factor = _periodDays[_period] ?? 1;
-    return widget.dailyPct * factor;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final changeColor = _selectedPct >= 0
-        ? Colors.green
-        : theme.colorScheme.error;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Total Balance',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 12.sp, // ✅ Adaptive font
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isBalanceHidden = !_isBalanceHidden;
-                });
-              },
-              child: Icon(
-                _isBalanceHidden ? Icons.visibility_off : Icons.visibility,
-                size: 16.w, // ✅ Uniform scaling
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-        TweenAnimationBuilder<double>(
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.easeOut,
-          tween: Tween(begin: widget.total - 10, end: widget.total),
-          builder: (context, value, _) => SizedBox(
-            height: theme.textTheme.displaySmall?.fontSize != null
-                ? (theme.textTheme.displaySmall!.fontSize! * 1.2)
-                : null,
-            child: Text(
-              _isBalanceHidden ? '••••••' : '\$${value.toStringAsFixed(2)}',
-              style: theme.textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 48.w,
+            height: 48.w,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                theme.colorScheme.primary,
               ),
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _selectedPct >= 0 ? Icons.trending_up : Icons.trending_down,
-                  size: 16.w, // ✅ Uniform scaling
-                  color: changeColor,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  _isBalanceHidden
-                      ? '••••%'
-                      : '${_selectedPct >= 0 ? '+' : ''}${_selectedPct.toStringAsFixed(2)}%',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: changeColor,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
+          SizedBox(height: 16),
+          Text(
+            'Loading portfolio...',
+            style: TextStyle(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w500,
+              color: isDark ? Colors.white60 : Colors.black54,
             ),
-            const SizedBox(width: 12),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                setState(() {
-                  _period = value;
-                });
-              },
-              position: PopupMenuPosition.under,
-              color: theme.brightness == Brightness.dark
-                  ? const Color(0xFF2A2A2A)
-                  : Colors.white,
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8), // ✅ Uniform radius
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(32.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 64.w,
+              color: theme.colorScheme.error.withValues(alpha: 0.7),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Failed to load portfolio',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
               ),
-              padding: EdgeInsets.zero,
-              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                for (final period in ['1D', '7D', '1M', 'YTD'])
-                  PopupMenuItem<String>(
-                    value: period,
-                    height: 36,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 12.w, // ✅ Width-adapted
-                      vertical: 0, // ✅ Fixed vertical
-                    ),
-                    child: Text(
-                      period,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12.sp, // ✅ Adaptive font
-                        fontWeight: period == _period ? FontWeight.bold : null,
-                        color: theme.brightness == Brightness.dark
-                            ? Colors.grey[200]
-                            : Colors.grey[800],
-                      ),
-                    ),
-                  ),
-              ],
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: 8.w,
-                  vertical: 4,
-                ), // ✅ Width-adapted horizontal
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(6), // ✅ Uniform radius
+            ),
+            SizedBox(height: 8),
+            Text(
+              _error ?? 'Unknown error occurred',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+            ),
+            SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              icon: Icon(Icons.refresh_rounded, size: 18.w),
+              label: Text(
+                'Try Again',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w600,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _period,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 12.sp, // ✅ Adaptive font
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      size: 16.w, // ✅ Uniform scaling
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ],
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 }

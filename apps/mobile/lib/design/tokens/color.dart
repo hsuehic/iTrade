@@ -38,4 +38,44 @@ class ColorTokens {
   static const brandOnSurface = Color(0xFF212529);
   static const brandError = Color(0xFFDC3545);
   static const brandOnError = Color(0xFFFFFFFF);
+
+  // ============================================
+  // Harmonious Palette - Ocean/Teal Theme
+  // ============================================
+
+  // Card Gradients (light mode) - Teal to Deep Ocean
+  static const gradientStart = Color(0xFF20B2AA); // Light Sea Green
+  static const gradientEnd = Color(0xFF2C6B7D); // Deep Teal Blue
+
+  // Card Gradients (dark mode) - Subtle dark gradient
+  static const gradientStartDark = Color(0xFF1A2F38); // Dark teal
+  static const gradientEndDark = Color(0xFF0D1B21); // Deep dark
+
+  // Harmonious Chart Colors - Ocean/Nature inspired
+  // Primary colors flow from teal → blue → purple → warm accents
+  static const chartTeal = Color(0xFF14B8A6); // Teal 500
+  static const chartCyan = Color(0xFF06B6D4); // Cyan 500
+  static const chartBlue = Color(0xFF3B82F6); // Blue 500
+  static const chartIndigo = Color(0xFF6366F1); // Indigo 500
+  static const chartViolet = Color(0xFF8B5CF6); // Violet 500
+  static const chartEmerald = Color(0xFF10B981); // Emerald 500
+  static const chartAmber = Color(0xFFF59E0B); // Amber 500
+  static const chartRose = Color(0xFFF43F5E); // Rose 500
+  static const chartSky = Color(0xFF0EA5E9); // Sky 500
+  static const chartLime = Color(0xFF84CC16); // Lime 500
+
+  // Exchange Brand Colors (softened for harmony)
+  static const exchangeBinance = Color(0xFFF0B90B); // Binance Gold
+  static const exchangeOkx = Color(0xFF1E2329); // OKX Dark (softened from pure black)
+  static const exchangeCoinbase = Color(0xFF0052FF); // Coinbase Blue
+  static const exchangeKucoin = Color(0xFF24AE8F); // KuCoin Teal
+  static const exchangeBybit = Color(0xFFF7A600); // Bybit Orange
+  static const exchangeGateio = Color(0xFF17E0D4); // Gate.io Cyan
+  static const exchangeHuobi = Color(0xFF2B5082); // Huobi Blue (warmer)
+
+  // Semantic Colors
+  static const profitGreen = Color(0xFF10B981); // Emerald 500
+  static const lossRed = Color(0xFFEF4444); // Red 500
+  static const warningAmber = Color(0xFFF59E0B); // Amber 500
+  static const infoBlue = Color(0xFF3B82F6); // Blue 500
 }
