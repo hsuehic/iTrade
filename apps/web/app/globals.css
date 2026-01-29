@@ -117,12 +117,13 @@
     @apply border-border outline-ring/50;
   }
   
-  html, body {
-    overscroll-behavior: none; /* Prevent bounce/pull-to-refresh effects */
-    overflow-x: hidden; /* Prevent horizontal scroll */
+  html {
+    overflow-y: auto; /* Force vertical scroll availability */
   }
   
   body {
+    overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal scroll */
     @apply bg-background text-foreground;
     /* Prevent momentum scrolling on iOS Safari */
     -webkit-overflow-scrolling: touch;

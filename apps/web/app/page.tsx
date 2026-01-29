@@ -22,10 +22,10 @@ export default async function Home() {
   return (
     <div className="relative flex min-h-screen flex-col">
       {/* Full-page animated chart background - positioned below header */}
-      <div className="fixed inset-0 top-16 -z-10">
+      <div className="fixed inset-0 top-16 -z-10" style={{ pointerEvents: 'none' }}>
         <ChartBackground />
         {/* Gradient overlay for better content readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/50 to-background/90" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/50 to-background/90" style={{ pointerEvents: 'none' }} />
       </div>
 
       <LandingHeader isAuthenticated={isAuthenticated} />
@@ -37,7 +37,7 @@ export default async function Home() {
       {/* Footer */}
       <footer className="relative border-t bg-background/80 py-8 backdrop-blur-sm">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
-          <p>&copy; {new Date().getFullYear()} iTrade. All rights reserved.</p>
+          <p>&copy; 2026 iTrade. All rights reserved.</p>
           <p className="mt-2">Trade responsibly. Cryptocurrency trading involves risk.</p>
           <div className="mt-4 flex items-center justify-center gap-4">
             <a

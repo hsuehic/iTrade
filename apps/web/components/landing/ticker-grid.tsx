@@ -93,26 +93,22 @@ export function TickerGrid() {
   const okxWsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Track visible cards for optimization
+  // Data buffers for throttling
+  const latestBinanceDataRef = useRef<Map<string, TickerData>>(new Map());
+  const latestOkxDataRef = useRef<Map<string, TickerData>>(new Map());
+  
+  // Track visible cards (kept for potential future optimization or debugging)
   const visibleCardsRef = useRef<Set<string>>(new Set());
-  const pendingUpdatesRef = useRef<Map<string, TickerData>>(new Map());
 
   // Handle visibility change for ticker cards
   const handleVisibilityChange = useCallback((tickerId: string, visible: boolean) => {
+    // With global throttling, individual visibility tracking for updates is less critical for performance
+    // but can still be kept if we want to pause purely rendering processing (though React handles hidden nodes well).
+    // For this 'global flush' approach, we will simplify and just let the global interval handle updates.
+    // We can keep `visibleCardsRef` if we want to resume precise 'pause when offscreen' logic later, 
+    // but for now, the 1s throttle solves the main "slow" issue.
     if (visible) {
       visibleCardsRef.current.add(tickerId);
-      // Apply any pending updates when card becomes visible
-      const pendingUpdate = pendingUpdatesRef.current.get(tickerId);
-      if (pendingUpdate) {
-        const setTickers =
-          pendingUpdate.exchange === 'Binance' ? setBinanceTickers : setOkxTickers;
-        setTickers((prev) =>
-          prev.map((t) =>
-            `${t.exchange}-${t.symbol}` === tickerId ? { ...t, ...pendingUpdate } : t,
-          ),
-        );
-        pendingUpdatesRef.current.delete(tickerId);
-      }
     } else {
       visibleCardsRef.current.delete(tickerId);
     }
@@ -148,23 +144,69 @@ export function TickerGrid() {
         exchange,
       };
 
-      // Only update if card is visible
-      if (visibleCardsRef.current.has(tickerId) || visibleCardsRef.current.size === 0) {
-        const setTickers = exchange === 'Binance' ? setBinanceTickers : setOkxTickers;
-        setTickers((prev) => {
-          const index = prev.findIndex((t) => t.symbol === displaySymbol);
-          if (index !== -1) {
-            const updated = [...prev];
-            updated[index] = fullTickerData; // Replace entire object to ensure update
-            return updated;
-          }
-          return prev; // Don't add if not found (should not happen with initialized array)
-        });
+      // Update the latest data refs immediately
+      if (exchange === 'Binance') {
+        latestBinanceDataRef.current.set(displaySymbol, fullTickerData);
       } else {
-        // Queue update for later
-        pendingUpdatesRef.current.set(tickerId, fullTickerData);
+        latestOkxDataRef.current.set(displaySymbol, fullTickerData);
       }
     };
+
+    // Throttled update flush loop
+    const flushUpdates = () => {
+      // Flush Binance updates if needed
+      if (latestBinanceDataRef.current.size > 0) {
+        setBinanceTickers((prev) => {
+          let hasChanges = false;
+          const next = prev.map((t) => {
+            const update = latestBinanceDataRef.current.get(t.symbol);
+            if (update) {
+              hasChanges = true;
+              return update;
+            }
+            return t;
+          });
+          
+          if (hasChanges) {
+            // Clear the buffer after applying updates
+            // Note: We clear individually or just keep them? 
+            // Clearing ensures we don't re-process, but keeping is fine if mapped by key.
+            // But we want to know if we need to re-render.
+            // Optimization: Only create new array if hasChanges.
+            return next;
+          }
+          return prev;
+        });
+        // We can optionally clear the map here if we want to ensure we only update strict new data,
+        // but overwriting map entries is cheap.
+        // Let's clear it to avoid re-scanning the map unnecessarily if no NEW data arrived.
+        latestBinanceDataRef.current.clear();
+      }
+
+      // Flush OKX updates if needed
+      if (latestOkxDataRef.current.size > 0) {
+        setOkxTickers((prev) => {
+          let hasChanges = false;
+          const next = prev.map((t) => {
+            const update = latestOkxDataRef.current.get(t.symbol);
+            if (update) {
+              hasChanges = true;
+              return update;
+            }
+            return t;
+          });
+          
+          if (hasChanges) {
+            return next;
+          }
+          return prev;
+        });
+        latestOkxDataRef.current.clear();
+      }
+    };
+
+    // Start the flush loop (every 1000ms = 1s)
+    const intervalId = setInterval(flushUpdates, 1000);
 
     // Connect to Binance WebSocket
     const connectBinance = () => {
@@ -309,6 +351,7 @@ export function TickerGrid() {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      clearInterval(intervalId);
     };
   }, []);
 

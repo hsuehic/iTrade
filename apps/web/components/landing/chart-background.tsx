@@ -256,6 +256,7 @@ export function ChartBackground() {
       style={{
         opacity: 0.6,
         filter: 'blur(1px)',
+        pointerEvents: 'none',
       }}
     />
   );
