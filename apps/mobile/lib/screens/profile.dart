@@ -191,6 +191,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             _buildDivider(isDark),
             _buildSettingTile(
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Exchange Accounts',
+              subtitle: 'Manage your trading accounts',
+              trailing: Icons.chevron_right,
+              onTap: () {
+                Navigator.pushNamed(context, '/exchange-accounts');
+              },
+              isDark: isDark,
+            ),
+            _buildDivider(isDark),
+            _buildSettingTile(
               icon: Icons.delete_forever,
               title: 'Delete Account',
               subtitle: 'Delete your account and all data',
@@ -626,6 +637,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           builder: (context) => const EmailPreferencesScreen(),
                         ),
                       );
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
+                  _buildSettingTile(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: 'Exchange Accounts',
+                    subtitle: 'Manage your trading accounts',
+                    trailing: Icons.chevron_right,
+                    onTap: () {
+                      Navigator.pushNamed(context, '/exchange-accounts');
                     },
                     isDark: isDark,
                   ),

@@ -21,6 +21,7 @@ import 'screens/forgot_password.dart';
 import 'screens/strategy.dart';
 import 'screens/product.dart';
 import 'screens/profile.dart';
+import 'screens/exchange_accounts.dart';
 import 'screens/push_notification_history.dart';
 import 'screens/push_notification_detail.dart';
 import 'widgets/design_bottom_nav.dart';
@@ -231,6 +232,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                     '/home': (_) => const MyHomePage(title: 'iTrade'),
                     '/scan-qr': (_) => const QrScanScreen(),
                     '/profile': (_) => const ProfileScreen(),
+                    '/exchange-accounts': (_) => const ExchangeAccountsScreen(),
                     '/push-history': (_) =>
                         const PushNotificationHistoryScreen(),
                     '/push-history/detail': (_) =>

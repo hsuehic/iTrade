@@ -46,6 +46,18 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'character varying', length: 255 })
   accountId!: string;
 
+  @Column({ type: 'text', nullable: true })
+  apiKey!: string;
+
+  @Column({ type: 'text', nullable: true })
+  secretKey!: string;
+
+  @Column({ type: 'text', nullable: true })
+  passphrase?: string;
+
+  @Column({ type: 'boolean', default: true })
+  isActive!: boolean;
+
   @ManyToOne('user', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
