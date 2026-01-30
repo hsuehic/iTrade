@@ -24,3 +24,5 @@ export type {
   DryRunSessionFilters,
   DryRunSessionWithStats,
 } from './DryRunSessionRepository';
+export { BalanceHistoryRepository } from './BalanceHistoryRepository';
+

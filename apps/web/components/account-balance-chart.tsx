@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Loader2 } from 'lucide-react';
 
 interface ChartDataPoint {
   date: string;
@@ -300,7 +300,9 @@ export function AccountBalanceChart({
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         {loading ? (
-          <Skeleton className="h-[450px] w-full rounded-md" />
+          <div className="flex h-[450px] w-full items-center justify-center rounded-md bg-transparent">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
         ) : chartData.length === 0 ? (
           <div className="flex h-[450px] items-center justify-center text-muted-foreground">
             <div className="text-center space-y-2">

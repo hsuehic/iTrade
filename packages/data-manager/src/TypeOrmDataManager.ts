@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import type { DataSource, Repository } from 'typeorm';
+import { Decimal } from 'decimal.js';
 import { IDataManager, Kline, KlineInterval } from '@itrade/core';
 
 import { KlineEntity } from './entities/Kline';
@@ -13,6 +14,16 @@ import { StrategyEntity } from './entities/Strategy';
 import { StrategyStateEntity } from './entities/StrategyState';
 import { AccountInfoEntity } from './entities/AccountInfo';
 import { BalanceEntity } from './entities/Balance';
+import {
+  BalanceMonthEntity,
+  BalanceWeekEntity,
+  BalanceDayEntity,
+  BalanceHourEntity,
+  Balance30MinEntity,
+  Balance15MinEntity,
+  Balance5MinEntity,
+  BalanceMinEntity,
+} from './entities/BalanceHistory';
 import { BacktestConfigEntity } from './entities/BacktestConfig';
 import { BacktestResultEntity } from './entities/BacktestResult';
 import { BacktestTradeEntity } from './entities/BacktestTrade';
@@ -37,6 +48,7 @@ import {
   EmailPreferencesRepository,
   PushDeviceRepository,
   PushNotificationRepository,
+  BalanceHistoryRepository,
 } from './repositories';
 import type { PositionFilters } from './repositories';
 import {
@@ -89,6 +101,14 @@ export const EntityMap: Record<string, any> = {
   strategy_states: StrategyStateEntity,
   account_info: AccountInfoEntity,
   balances: BalanceEntity,
+  balance_month: BalanceMonthEntity,
+  balance_week: BalanceWeekEntity,
+  balance_day: BalanceDayEntity,
+  balance_hour: BalanceHourEntity,
+  balance_30min: Balance30MinEntity,
+  balance_15min: Balance15MinEntity,
+  balance_5min: Balance5MinEntity,
+  balance_min: BalanceMinEntity,
   backtest_configs: BacktestConfigEntity,
   backtest_results: BacktestResultEntity,
   backtest_trades: BacktestTradeEntity,
@@ -134,6 +154,7 @@ export class TypeOrmDataManager implements IDataManager {
   private emailPreferencesRepository!: EmailPreferencesRepository;
   private pushDeviceRepository!: PushDeviceRepository;
   private pushNotificationRepository!: PushNotificationRepository;
+  private balanceHistoryRepository!: BalanceHistoryRepository;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -179,6 +200,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.emailPreferencesRepository = new EmailPreferencesRepository(this.dataSource);
     this.pushDeviceRepository = new PushDeviceRepository(this.dataSource);
     this.pushNotificationRepository = new PushNotificationRepository(this.dataSource);
+    this.balanceHistoryRepository = new BalanceHistoryRepository(this.dataSource);
 
     this.isInitialized = true;
   }
@@ -436,6 +458,25 @@ export class TypeOrmDataManager implements IDataManager {
       `getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`,
     );
     return [];
+  }
+
+  async updateBalanceHistory(
+    accountInfo: AccountInfoEntity,
+    free: Decimal,
+    locked: Decimal,
+    total: Decimal,
+    timestamp: Date,
+    saving: Decimal = new Decimal(0),
+  ): Promise<void> {
+    this.ensureInitialized();
+    await this.balanceHistoryRepository.updateBalance(
+      accountInfo,
+      free,
+      locked,
+      saving,
+      total,
+      timestamp,
+    );
   }
 
   // -------------------- Dry Run helpers --------------------
@@ -935,10 +976,10 @@ export class TypeOrmDataManager implements IDataManager {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'hour' | 'day' | 'week' = 'day',
+    interval: 'minute' | 'hour' | 'day' | 'week' = 'day',
   ) {
     this.ensureInitialized();
-    return await this.accountSnapshotRepository.getBalanceTimeSeries(
+    return await this.balanceHistoryRepository.getBalanceTimeSeries(
       exchange,
       startTime,
       endTime,

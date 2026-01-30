@@ -19,6 +19,7 @@ export interface PollingResult {
   success: boolean;
   balances?: Balance[];
   positions?: Position[];
+  totalEquity?: Decimal;
   error?: string;
 }
 
@@ -29,6 +30,7 @@ export interface AccountSnapshotData {
   totalBalance: Decimal;
   availableBalance: Decimal;
   lockedBalance: Decimal;
+  savingBalance?: Decimal;
   totalPositionValue: Decimal;
   unrealizedPnl: Decimal;
   positionCount: number;
@@ -175,7 +177,7 @@ export class AccountPollingService extends EventEmitter {
         result.balances &&
         result.positions
       ) {
-        await this.saveSnapshot(exchangeName, result.balances, result.positions);
+        await this.saveSnapshot(exchangeName, result.balances, result.positions, result.totalEquity);
       }
     }
 
@@ -199,11 +201,12 @@ export class AccountPollingService extends EventEmitter {
           attempt: attempt + 1,
         });
 
-        // 并行获取 balances 和 positions
-        const [balances, positions] = await Promise.all([
-          exchange.getBalances(),
+        // 并行获取 accountInfo 和 positions
+        const [accountInfo, positions] = await Promise.all([
+          exchange.getAccountInfo(),
           exchange.getPositions(),
         ]);
+        const balances = accountInfo.balances;
 
         this.logger?.info('Exchange poll successful', {
           exchange: exchangeName,
@@ -216,6 +219,7 @@ export class AccountPollingService extends EventEmitter {
           exchange: exchangeName,
           balances,
           positions,
+          totalEquity: accountInfo.totalEquity,
           timestamp,
         });
 
@@ -225,6 +229,7 @@ export class AccountPollingService extends EventEmitter {
           success: true,
           balances,
           positions,
+          totalEquity: accountInfo.totalEquity,
         };
       } catch (error) {
         attempt++;
@@ -277,6 +282,7 @@ export class AccountPollingService extends EventEmitter {
     exchange: string,
     balances: Balance[],
     positions: Position[],
+    totalEquity?: Decimal,
   ): Promise<void> {
     if (!this.dataManager) {
       this.logger?.warn('DataManager not set, skipping persistence');
@@ -285,13 +291,17 @@ export class AccountPollingService extends EventEmitter {
 
     try {
       // 计算统计数据
-      const totalBalance = balances.reduce((sum, b) => sum.add(b.total), new Decimal(0));
+      const totalBalance = totalEquity ?? balances.reduce((sum, b) => sum.add(b.total), new Decimal(0));
       const availableBalance = balances.reduce(
         (sum, b) => sum.add(b.free),
         new Decimal(0),
       );
       const lockedBalance = balances.reduce(
         (sum, b) => sum.add(b.locked),
+        new Decimal(0),
+      );
+      const savingBalance = balances.reduce(
+        (sum, b) => sum.add(b.saving || new Decimal(0)),
         new Decimal(0),
       );
       const totalPositionValue = positions.reduce(
@@ -309,6 +319,7 @@ export class AccountPollingService extends EventEmitter {
         totalBalance,
         availableBalance,
         lockedBalance,
+        savingBalance,
         totalPositionValue,
         unrealizedPnl,
         positionCount: positions.length,
@@ -316,6 +327,7 @@ export class AccountPollingService extends EventEmitter {
           asset: b.asset,
           free: b.free,
           locked: b.locked,
+          saving: b.saving,
           total: b.total,
         })),
         positions: positions.map((p) => ({
@@ -390,7 +402,7 @@ export class AccountPollingService extends EventEmitter {
         result.balances &&
         result.positions
       ) {
-        await this.saveSnapshot(exchangeName, result.balances, result.positions);
+        await this.saveSnapshot(exchangeName, result.balances, result.positions, result.totalEquity);
       }
     }
 

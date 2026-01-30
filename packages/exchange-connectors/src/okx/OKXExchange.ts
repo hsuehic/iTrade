@@ -517,35 +517,155 @@ export class OKXExchange extends BaseExchange {
   }
 
   public async getAccountInfo(): Promise<AccountInfo> {
-    const signedData = this.signOKXRequest('GET', '/api/v5/account/balance', {});
-    const response = await this.httpClient.get(signedData.endpoint, {
-      headers: signedData.headers,
-    });
+    // 1. Get Trading Account Balance
+    const tradingBalanceSigned = this.signOKXRequest('GET', '/api/v5/account/balance', {});
+    const tradingBalanceResponse = await this.httpClient.get(
+      tradingBalanceSigned.endpoint,
+      {
+        headers: tradingBalanceSigned.headers,
+      },
+    );
 
-    if (response.data.code !== '0') {
-      throw new Error(`OKX API error: ${response.data.msg}`);
+    if (tradingBalanceResponse.data.code !== '0') {
+      throw new Error(`OKX API error: ${tradingBalanceResponse.data.msg}`);
     }
 
-    const data = response.data.data[0];
-    const balances: Balance[] = [];
+    const tradingData = tradingBalanceResponse.data.data[0];
 
-    if (data.details) {
-      data.details.forEach((detail: any) => {
-        balances.push({
+    const updateTime = new Date(parseInt(tradingData.uTime));
+    const balancesMap = new Map<string, Balance>();
+
+    // Process Trading Balances
+    if (tradingData.details) {
+      tradingData.details.forEach((detail: any) => {
+        balancesMap.set(detail.ccy, {
           asset: detail.ccy,
           free: this.formatDecimal(detail.availBal),
           locked: this.formatDecimal(detail.frozenBal),
+          saving: new Decimal(0), // Initialize saving
           total: this.formatDecimal(detail.bal),
         });
       });
     }
 
+    // 2. Get Funding Account Balance
+    try {
+      const fundingBalanceSigned = this.signOKXRequest('GET', '/api/v5/asset/balances', {
+        ccy: '', // Fetch all currencies
+      });
+      const fundingBalanceResponse = await this.httpClient.get(
+        fundingBalanceSigned.endpoint,
+        {
+          headers: fundingBalanceSigned.headers,
+        },
+      );
+
+
+      if (fundingBalanceResponse.data.code === '0') {
+        const fundingData = fundingBalanceResponse.data.data;
+        fundingData.forEach((detail: any) => {
+          const asset = detail.ccy;
+          const free = this.formatDecimal(detail.availBal);
+          const locked = this.formatDecimal(detail.frozenBal);
+          const total = this.formatDecimal(detail.bal);
+
+          if (balancesMap.has(asset)) {
+            // Merge with existing trading balance
+            const existing = balancesMap.get(asset)!;
+            existing.free = existing.free.add(free);
+            existing.locked = existing.locked.add(locked);
+            existing.total = existing.total.add(total);
+          } else {
+            // Add new funding balance
+            balancesMap.set(asset, {
+              asset,
+              free,
+              locked,
+              saving: new Decimal(0), // Initialize saving
+              total,
+            });
+          }
+        });
+      } else {
+        console.warn(
+          `[OKX] Failed to fetch funding balance: ${fundingBalanceResponse.data.msg}`,
+        );
+      }
+    } catch (error: any) {
+      console.warn(`[OKX] Error fetching funding balance: ${error.message}`);
+    }
+
+    // 3. Get Simple Earn Balance
+    try {
+      // Get all simple earn balances (flexible and fixed)
+      const earnBalanceSigned = this.signOKXRequest('GET', '/api/v5/finance/savings/balance', {
+        ccy: '', // Fetch all
+      });
+      const earnBalanceResponse = await this.httpClient.get(
+        earnBalanceSigned.endpoint,
+        {
+          headers: earnBalanceSigned.headers,
+        },
+      );
+
+      if (earnBalanceResponse.data.code === '0') {
+         const earnData = earnBalanceResponse.data.data;
+         earnData.forEach((detail: any) => {
+           const asset = detail.ccy;
+           // For Simple Earn, "amt" is the principal amount
+           const amount = this.formatDecimal(detail.amt);
+           
+           if (balancesMap.has(asset)) {
+             const existing = balancesMap.get(asset)!;
+             // Add to saving and total
+             existing.saving = (existing.saving || new Decimal(0)).add(amount);
+             existing.total = existing.total.add(amount);
+           } else {
+             balancesMap.set(asset, {
+               asset,
+               free: new Decimal(0),
+               locked: new Decimal(0),
+               saving: amount,
+               total: amount,
+             });
+           }
+         });
+      }
+    } catch (error: any) {
+       console.warn(`[OKX] Error fetching simple earn balance: ${error.message}`);
+    }
+
+    // 4. Get Total Asset Valuation (Total Equity in USD)
+    let totalEquity: Decimal | undefined;
+    try {
+      const valuationSigned = this.signOKXRequest(
+        'GET',
+        '/api/v5/asset/asset-valuation',
+        { ccy: 'USD' },
+      );
+      const valuationResponse = await this.httpClient.get(valuationSigned.endpoint, {
+        headers: valuationSigned.headers,
+      });
+
+      if (valuationResponse.data.code === '0' && valuationResponse.data.data.length > 0) {
+        // totalBal: The total valuation of the account in the requested currency (USD)
+        totalEquity = this.formatDecimal(valuationResponse.data.data[0].totalBal);
+      }
+    } catch (error: any) {
+      console.warn(`[OKX] Error fetching asset valuation: ${error.message}`);
+      // Fallback: Use trading account total equity if available
+      if (tradingData.totalEq) {
+        totalEquity = this.formatDecimal(tradingData.totalEq);
+      }
+    }
+
     return {
-      balances,
+      balances: Array.from(balancesMap.values()),
       canTrade: true,
       canWithdraw: true,
       canDeposit: true,
-      updateTime: new Date(parseInt(data.uTime)),
+      updateTime,
+      totalEquity,
     };
   }
 

@@ -48,6 +48,16 @@ export { StrategyStatus, MarketType } from './entities/Strategy';
 export { StrategyStateEntity } from './entities/StrategyState';
 export { AccountInfoEntity } from './entities/AccountInfo';
 export { BalanceEntity } from './entities/Balance';
+export {
+  BalanceMonthEntity,
+  BalanceWeekEntity,
+  BalanceDayEntity,
+  BalanceHourEntity,
+  Balance30MinEntity,
+  Balance15MinEntity,
+  Balance5MinEntity,
+  BalanceMinEntity,
+} from './entities/BalanceHistory';
 export { AccountSnapshotEntity } from './entities/AccountSnapshot';
 export { BacktestConfigEntity } from './entities/BacktestConfig';
 export { BacktestResultEntity } from './entities/BacktestResult';

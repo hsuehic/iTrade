@@ -204,6 +204,15 @@ export class BalanceTracker {
           conflictPaths: ['accountInfo', 'asset'],
           skipUpdateIfNoValuesChanged: true,
         });
+
+        // Update balance history (Total Account Value)
+        await this.dataManager.updateBalanceHistory(
+          { id: existingAccountInfo.id } as AccountInfoEntity,
+          availableBalance,
+          lockedBalance,
+          totalBalance,
+          timestamp,
+        );
       }
 
       this.totalSaved++;

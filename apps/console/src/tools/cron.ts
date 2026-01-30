@@ -170,10 +170,58 @@ async function initialize() {
     );
   });
 
-  accountPollingService.on('snapshotSaved', (snapshot: any) => {
+  accountPollingService.on('snapshotSaved', async (snapshot: any) => {
     logger.info(
       `💾 ${snapshot.exchange} snapshot saved: Equity=${snapshot.totalBalance.toFixed(2)}, Positions=${snapshot.positionCount}`,
     );
+
+    // Sync to Balance History Tables
+    const userId = process.env.USER_ID;
+    if (!userId) {
+      logger.debug('⚠️ Skipping balance history sync: USER_ID not set');
+      return;
+    }
+
+    try {
+      const accountInfoRepo = dataManager.dataSource.getRepository(
+        (await import('@itrade/data-manager')).AccountInfoEntity,
+      );
+
+      // Ensure AccountInfo exists
+      await accountInfoRepo.upsert(
+        {
+          user: { id: userId },
+          exchange: snapshot.exchange,
+          accountId: snapshot.exchange,
+          canTrade: true,
+          canWithdraw: true,
+          canDeposit: true,
+          updateTime: snapshot.timestamp,
+        },
+        {
+          conflictPaths: ['user', 'exchange'],
+          skipUpdateIfNoValuesChanged: true,
+        },
+      );
+
+      const accountInfo = await accountInfoRepo.findOne({
+        where: { user: { id: userId }, exchange: snapshot.exchange },
+      });
+
+      if (accountInfo) {
+        await dataManager.updateBalanceHistory(
+          accountInfo,
+          snapshot.availableBalance,
+          snapshot.lockedBalance,
+          snapshot.totalBalance,
+          snapshot.timestamp,
+          snapshot.savingBalance, // New saving balance
+        );
+        logger.info(`✅ Synced balance history for ${snapshot.exchange}`);
+      }
+    } catch (error: any) {
+      logger.error(`❌ Failed to sync balance history: ${error.message}`);
+    }
   });
 
   accountPollingService.on('error', (error: Error) => {

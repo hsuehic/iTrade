@@ -214,6 +214,7 @@ export interface Balance {
   asset: string;
   free: Decimal;
   locked: Decimal;
+  saving?: Decimal;
   total: Decimal;
 }
 
@@ -239,6 +240,7 @@ export interface AccountInfo {
   canWithdraw: boolean;
   canDeposit: boolean;
   updateTime: Date;
+  totalEquity?: Decimal; // Total equity in USD (or reference currency)
 }
 
 export enum SignalType {

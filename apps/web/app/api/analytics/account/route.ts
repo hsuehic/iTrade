@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const dm = await getDataManager();
 
     // Calculate date range
-    const endTime = new Date();
+    const endTime = new Date(Date.now() + 5 * 60 * 1000); // Add 5 minutes buffer for clock skew
     const startTime = new Date();
 
     switch (period) {
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
           exchangeName,
           startTime,
           endTime,
-          period === '1h' || period === '1d' || period === '7d' ? 'hour' : 'day',
+          period === '1h' ? 'minute' : period === '1d' || period === '7d' ? 'hour' : 'day',
         ),
       };
     });
