@@ -20,7 +20,7 @@ export function NavSecondary({
 
   const items = [
     {
-      title: 'ExchangeAccounts',
+      title: 'Accounts',
       url: '/accounts',
       icon: IconWallet,
     },
