@@ -610,10 +610,12 @@ export class OKXExchange extends BaseExchange {
 
       if (earnBalanceResponse.data.code === '0') {
          const earnData = earnBalanceResponse.data.data;
+         console.log(`[OKX] Simple Earn Data Count: ${earnData.length}`); // DEBUG LOG
          earnData.forEach((detail: any) => {
            const asset = detail.ccy;
            // For Simple Earn, "amt" is the principal amount
            const amount = this.formatDecimal(detail.amt);
+           console.log(`[OKX] Found Saving for ${asset}: ${amount}`); // DEBUG LOG
            
            if (balancesMap.has(asset)) {
              const existing = balancesMap.get(asset)!;
@@ -630,6 +632,8 @@ export class OKXExchange extends BaseExchange {
              });
            }
          });
+      } else {
+        console.warn(`[OKX] Simple Earn API non-zero code: ${earnBalanceResponse.data.code}, msg: ${earnBalanceResponse.data.msg}`);
       }
     } catch (error: any) {
        console.warn(`[OKX] Error fetching simple earn balance: ${error.message}`);

@@ -32,6 +32,7 @@ export class BalanceTracker {
   private readonly DEBOUNCE_MS = 2000; // 2 seconds debounce
 
   constructor(
+    private userId: string,
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
   ) {
@@ -118,10 +119,10 @@ export class BalanceTracker {
 
     try {
       const { accountInfo, exchange, timestamp } = update;
-      const userId = process.env.USER_ID;
+      const userId = this.userId;
 
       if (!userId) {
-        this.logger.error('❌ USER_ID not found in environment variables');
+        this.logger.error('❌ userId not provided to BalanceTracker');
         return;
       }
 
@@ -197,6 +198,7 @@ export class BalanceTracker {
           asset: balance.asset,
           free: balance.free,
           locked: balance.locked,
+          saving: balance.saving || new Decimal(0),
           total: balance.total,
         }));
 
@@ -206,6 +208,10 @@ export class BalanceTracker {
         });
 
         // Update balance history (Total Account Value)
+        // DISABLED: BalanceTracker calculates total by summing balances, which ignores totalEquity (Unrealized PnL).
+        // This causes it to overwrite correct values from AccountPollingService with incorrect lower values.
+        // Let AccountPollingService handle history updates.
+        /*
         await this.dataManager.updateBalanceHistory(
           { id: existingAccountInfo.id } as AccountInfoEntity,
           availableBalance,
@@ -213,6 +219,7 @@ export class BalanceTracker {
           totalBalance,
           timestamp,
         );
+        */
       }
 
       this.totalSaved++;

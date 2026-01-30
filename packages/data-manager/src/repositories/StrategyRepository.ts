@@ -108,7 +108,6 @@ export class StrategyRepository {
     // Use cache for frequently accessed queries
     return await query
       .orderBy('strategy.createdAt', 'DESC')
-      .cache(30000) // Cache for 30 seconds
       .getMany();
   }
 

@@ -25,6 +25,7 @@ export interface PollingResult {
 
 export interface AccountSnapshotData {
   id?: number;
+  accountInfoId?: number; // Optional account link
   exchange: string;
   timestamp: Date;
   totalBalance: Decimal;
@@ -86,12 +87,26 @@ export class AccountPollingService extends EventEmitter {
     });
   }
 
+  private exchangeMetadata: Map<string, { accountInfoId?: number }> = new Map();
+
   /**
    * 注册交易所
    */
-  registerExchange(name: string, exchange: IExchange): void {
-    this.exchanges.set(name.toLowerCase(), exchange);
-    this.logger?.info('Exchange registered', { exchange: name });
+  registerExchange(
+    name: string,
+    exchange: IExchange,
+    metadata: { accountInfoId?: number } = {},
+  ): void {
+    const key = name.toLowerCase();
+    this.exchanges.set(key, exchange);
+    this.exchangeMetadata.set(key, metadata);
+    
+    // Ensure it's in the polling list
+    if (!this.config.exchanges.includes(key)) {
+      this.config.exchanges.push(key);
+    }
+    
+    this.logger?.info('Exchange registered and added to polling list', { exchange: name, metadata });
   }
 
   /**
@@ -177,7 +192,14 @@ export class AccountPollingService extends EventEmitter {
         result.balances &&
         result.positions
       ) {
-        await this.saveSnapshot(exchangeName, result.balances, result.positions, result.totalEquity);
+        const metadata = this.exchangeMetadata.get(exchangeName.toLowerCase());
+        await this.saveSnapshot(
+          exchangeName, 
+          result.balances, 
+          result.positions, 
+          result.totalEquity,
+          metadata?.accountInfoId
+        );
       }
     }
 
@@ -283,6 +305,7 @@ export class AccountPollingService extends EventEmitter {
     balances: Balance[],
     positions: Position[],
     totalEquity?: Decimal,
+    accountInfoId?: number,
   ): Promise<void> {
     if (!this.dataManager) {
       this.logger?.warn('DataManager not set, skipping persistence');
@@ -315,6 +338,7 @@ export class AccountPollingService extends EventEmitter {
 
       const snapshot: AccountSnapshotData = {
         exchange,
+        accountInfoId,
         timestamp: new Date(),
         totalBalance,
         availableBalance,
@@ -402,7 +426,14 @@ export class AccountPollingService extends EventEmitter {
         result.balances &&
         result.positions
       ) {
-        await this.saveSnapshot(exchangeName, result.balances, result.positions, result.totalEquity);
+        const metadata = this.exchangeMetadata.get(exchangeName.toLowerCase());
+        await this.saveSnapshot(
+          exchangeName, 
+          result.balances, 
+          result.positions, 
+          result.totalEquity,
+          metadata?.accountInfoId
+        );
       }
     }
 

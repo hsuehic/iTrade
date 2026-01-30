@@ -63,17 +63,37 @@ export class BalanceHistoryRepository {
     total: Decimal,
     period: Date
   ) {
-    await repo.upsert(
-      {
-        accountInfo: { id: accountInfo.id },
-        free,
-        locked,
-        saving,
-        total,
-        period,
-      },
-      ['accountInfo', 'period'] 
-    );
+    try {
+      await repo.upsert(
+        {
+          accountInfo: { id: accountInfo.id },
+          free,
+          locked,
+          saving,
+          total,
+          period,
+        },
+        ['accountInfo', 'period'] // TypeORM should handle relation translation, but if not we might need 'accountInfoId'
+      );
+    } catch (error) {
+      console.error(`[BalanceHistoryRepository] Error in upsert:`, error);
+      // Fallback: try with explicit id if relation name fails
+      try {
+        await repo.upsert(
+          {
+            account_info_id: accountInfo.id,
+            free,
+            locked,
+            saving,
+            total,
+            period,
+          } as any,
+          ['account_info_id', 'period']
+        );
+      } catch (innerError) {
+         console.error(`[BalanceHistoryRepository] Fallback upsert also failed:`, innerError);
+      }
+    }
   }
 
   private getStartOfMonth(date: Date): Date {
@@ -111,7 +131,7 @@ export class BalanceHistoryRepository {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'minute' | 'hour' | 'day' | 'week'
+    interval: 'minute' | '5min' | 'hour' | 'day' | 'week'
   ): Promise<any[]> {
     let repo: Repository<any>;
     
@@ -119,6 +139,9 @@ export class BalanceHistoryRepository {
     switch (interval) {
       case 'minute':
         repo = this.minRepo;
+        break;
+      case '5min':
+        repo = this.min5Repo;
         break;
       case 'hour':
         repo = this.hourRepo;
@@ -134,7 +157,7 @@ export class BalanceHistoryRepository {
 
     const results = await repo.createQueryBuilder('balance')
       .leftJoin('balance.accountInfo', 'account')
-      .where('account.exchange = :exchange', { exchange })
+      .where('LOWER(account.exchange::text) = LOWER(:exchange)', { exchange })
       .andWhere('balance.period >= :start', { start: startTime })
       .andWhere('balance.period <= :end', { end: endTime })
       .orderBy('balance.period', 'ASC')

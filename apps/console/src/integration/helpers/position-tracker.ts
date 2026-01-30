@@ -31,6 +31,7 @@ export class PositionTracker {
   private timer?: NodeJS.Timeout;
 
   constructor(
+    private userId: string,
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
   ) {
@@ -100,10 +101,10 @@ export class PositionTracker {
 
   private async upsertPositionEntity(updates: DebouncedPositionUpdate[]): Promise<void> {
     const repo = this.dataManager.dataSource.getRepository(PositionEntity);
-    const userId = process.env.USER_ID;
+    const userId = this.userId;
 
     if (!userId) {
-      this.logger.error('❌ USER_ID not found in environment variables');
+      this.logger.error('❌ userId not provided to PositionTracker');
       return;
     }
 

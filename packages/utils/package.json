@@ -7,16 +7,19 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
     "./CryptoUtils": {
+      "source": "./src/CryptoUtils.ts",
       "types": "./dist/CryptoUtils.d.ts",
       "import": "./dist/CryptoUtils.mjs",
       "require": "./dist/CryptoUtils.js"
     },
     "./ConfigUtils": {
+      "source": "./src/ConfigUtils.ts",
       "types": "./dist/ConfigUtils.d.ts",
       "import": "./dist/ConfigUtils.mjs",
       "require": "./dist/ConfigUtils.js"

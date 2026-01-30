@@ -121,12 +121,15 @@ export async function GET(request: Request) {
           exchangeName,
           startTime,
           endTime,
-          period === '1h' ? 'minute' : period === '1d' || period === '7d' ? 'hour' : 'day',
+          period === '1h' ? 'minute' : period === '1d' ? '5min' : period === '7d' ? 'hour' : 'day',
         ),
       };
     });
 
     const historicalData = await Promise.all(historyPromises);
+
+    // Note: Chart data now exclusively uses balance_xxx tables
+    // No fallback to account_snapshots to ensure data consistency
 
     const chartData: { [key: string]: ChartDataPoint } = {};
 
@@ -140,10 +143,10 @@ export async function GET(request: Request) {
           roundedTime.setSeconds(0, 0); // Round to minute
           dateKey = roundedTime.toISOString();
         } else if (period === '1d') {
-          // For 1 day: aggregate to 10-minute intervals
+          // For 1 day: use 5-minute intervals (matching balance_5min table)
           const roundedTime = new Date(point.timestamp);
           const minutes = roundedTime.getMinutes();
-          const roundedMinutes = Math.floor(minutes / 10) * 10; // Round to 10-minute intervals
+          const roundedMinutes = Math.floor(minutes / 5) * 5; // Round to 5-minute intervals
           roundedTime.setMinutes(roundedMinutes, 0, 0);
           dateKey = roundedTime.toISOString();
         } else if (period === '7d') {

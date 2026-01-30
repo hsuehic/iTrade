@@ -85,7 +85,6 @@ export class OrderRepository {
     // Add cache for better performance
     return await query
       .orderBy('order.timestamp', 'DESC')
-      .cache(30000) // Cache for 30 seconds
       .getMany();
   }
 }

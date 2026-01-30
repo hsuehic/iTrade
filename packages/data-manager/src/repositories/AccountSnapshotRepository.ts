@@ -6,6 +6,7 @@ import { AccountSnapshotEntity } from '../entities/AccountSnapshot';
 
 export interface AccountSnapshotData {
   id?: number;
+  accountInfoId?: number;
   exchange: string;
   timestamp: Date;
   totalBalance: Decimal;
@@ -50,6 +51,7 @@ export class AccountSnapshotRepository {
       totalPositionValue: data.totalPositionValue,
       unrealizedPnl: data.unrealizedPnl,
       positionCount: data.positionCount,
+      accountInfo: data.accountInfoId ? { id: data.accountInfoId } : undefined,
       balances: data.balances.map((b) => ({
         asset: b.asset,
         free: b.free.toString(),
@@ -75,10 +77,10 @@ export class AccountSnapshotRepository {
    * 获取最新的账户快照
    */
   async getLatest(exchange: string): Promise<AccountSnapshotData | null> {
-    const entity = await this.repository.findOne({
-      where: { exchange },
-      order: { timestamp: 'DESC' },
-    });
+    const entity = await this.repository.createQueryBuilder('snapshot')
+      .where('LOWER(snapshot.exchange::text) = LOWER(:exchange)', { exchange })
+      .orderBy('snapshot.timestamp', 'DESC')
+      .getOne();
 
     return entity ? this.entityToData(entity) : null;
   }
@@ -87,21 +89,23 @@ export class AccountSnapshotRepository {
    * 获取所有交易所的最新快照
    */
   async getLatestForAllExchanges(): Promise<AccountSnapshotData[]> {
-    const exchanges = await this.repository
+    const rawSnapshots = await this.repository
       .createQueryBuilder('snapshot')
-      .select('DISTINCT snapshot.exchange', 'exchange')
+      .select('DISTINCT ON (LOWER(snapshot.exchange)) snapshot.*')
+      .orderBy('LOWER(snapshot.exchange)')
+      .addOrderBy('snapshot.timestamp', 'DESC')
       .getRawMany();
+    
+    // We need to convert raw rows back to data objects
+    // Since getRawMany doesn't apply transformers, we have to be careful
+    // but the entityToData method expects an entity with decimals.
+    // Re-querying by ID might be safer if we want full transformation.
+    
+    const ids = rawSnapshots.map(s => s.id);
+    if (ids.length === 0) return [];
 
-    const results: AccountSnapshotData[] = [];
-
-    for (const { exchange } of exchanges) {
-      const latest = await this.getLatest(exchange);
-      if (latest) {
-        results.push(latest);
-      }
-    }
-
-    return results;
+    const entities = await this.repository.findByIds(ids);
+    return entities.map(e => this.entityToData(e));
   }
 
   /**
@@ -149,13 +153,12 @@ export class AccountSnapshotRepository {
     // Use QueryBuilder for better performance with indexes
     const entities = await this.repository
       .createQueryBuilder('snapshot')
-      .where('snapshot.exchange = :exchange', { exchange })
+      .where('LOWER(snapshot.exchange) = LOWER(:exchange)', { exchange })
       .andWhere('snapshot.timestamp BETWEEN :startTime AND :endTime', {
         startTime,
         endTime,
       })
       .orderBy('snapshot.timestamp', 'ASC')
-      .cache(30000) // Cache for 30 seconds
       .getMany();
 
     return entities.map((e) => this.entityToData(e));
@@ -249,46 +252,64 @@ export class AccountSnapshotRepository {
     endTime: Date,
     interval: 'hour' | 'day' | 'week' = 'day',
   ): Promise<Array<{ timestamp: Date; balance: Decimal }>> {
-    // Determine PostgreSQL date_trunc interval and sampling strategy
     let truncInterval: string;
-    let maxPoints = 500; // Maximum data points to return (reasonable for charts)
-
     switch (interval) {
       case 'hour':
         truncInterval = 'hour';
-        maxPoints = 24 * 7; // 7 days worth of hourly data
         break;
       case 'week':
         truncInterval = 'week';
-        maxPoints = 52; // 1 year worth of weekly data
         break;
       case 'day':
       default:
         truncInterval = 'day';
-        maxPoints = 90; // 90 days worth of daily data
         break;
     }
 
-    // Use database-level aggregation with date_trunc for efficient downsampling
-    // This gets one representative snapshot per time period
-    const rawResults = await this.repository.query(
-      `
-      SELECT DISTINCT ON (date_trunc($1, timestamp)) 
-        timestamp, 
-        "totalBalance"
-      FROM account_snapshots
-      WHERE exchange = $2 
-        AND timestamp BETWEEN $3 AND $4
-      ORDER BY date_trunc($1, timestamp), timestamp DESC
-      LIMIT $5
-      `,
-      [truncInterval, exchange, startTime, endTime, maxPoints],
-    );
+    // Use QueryBuilder for better portability and correct column naming
+    const queryBuilder = this.repository.createQueryBuilder('snapshot')
+      .select('snapshot.timestamp', 'timestamp')
+      .addSelect('snapshot.totalBalance', 'balance')
+      .where('snapshot.exchange = :exchange', { exchange })
+      .andWhere('snapshot.timestamp BETWEEN :startTime AND :endTime', {
+        startTime,
+        endTime,
+      })
+      .orderBy(`date_trunc('${truncInterval}', snapshot.timestamp)`, 'ASC')
+      .addOrderBy('snapshot.timestamp', 'DESC');
 
-    return rawResults.map((row: any) => ({
-      timestamp: new Date(row.timestamp),
-      balance: new Decimal(row.totalBalance),
-    }));
+    // TypeORM doesn't support DISTINCT ON natively in some versions via easy methods, 
+    // but we can use raw query if we are careful about column names.
+    // However, for recent data, a simple orderBy might be enough if we just want points.
+    
+    const rawResults = await queryBuilder.getRawMany();
+
+    // Since we want one per interval, we filter in JS to be safe
+    const result: Array<{ timestamp: Date; balance: Decimal }> = [];
+    const seenIntervals = new Set<string>();
+
+    for (const row of rawResults) {
+      const date = new Date(row.timestamp);
+      let key: string;
+      
+      if (truncInterval === 'day') {
+        key = date.toISOString().split('T')[0];
+      } else if (truncInterval === 'hour') {
+        key = date.toISOString().substring(0, 13);
+      } else {
+        key = date.toISOString().substring(0, 10);
+      }
+
+      if (!seenIntervals.has(key)) {
+        result.push({
+          timestamp: date,
+          balance: new Decimal(row.balance),
+        });
+        seenIntervals.add(key);
+      }
+    }
+
+    return result.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   }
 
   /**

@@ -4,6 +4,8 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -27,6 +29,13 @@ export class AccountSnapshotEntity {
 
   @Column({ type: 'character varying', length: 50 })
   exchange!: string;
+
+  @ManyToOne('account_info', {
+    onDelete: 'CASCADE',
+    nullable: true,
+  })
+  @JoinColumn({ name: 'account_info_id' })
+  accountInfo?: any;
 
   @Column({ type: 'timestamp' })
   timestamp!: Date;

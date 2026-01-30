@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -19,6 +20,7 @@ export abstract class BaseBalanceHistoryEntity {
   @ManyToOne('account_info', {
     onDelete: 'CASCADE',
   })
+  @JoinColumn({ name: 'account_info_id' })
   accountInfo!: AccountInfoEntity;
 
   @Column({

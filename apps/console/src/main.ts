@@ -87,10 +87,6 @@ async function main() {
     synchronize: false, // Use migrations in production
     logging: process.env.DB_LOGGING === 'true' ? ['error', 'warn'] : false,
     poolSize: 20,
-    cache: {
-      type: 'database',
-      duration: 30000, // 30 seconds cache
-    },
   });
 
   await dataManager.initialize();

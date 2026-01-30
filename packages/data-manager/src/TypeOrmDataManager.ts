@@ -982,7 +982,7 @@ export class TypeOrmDataManager implements IDataManager {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'minute' | 'hour' | 'day' | 'week' = 'day',
+    interval: 'minute' | '5min' | 'hour' | 'day' | 'week' = 'day',
   ) {
     this.ensureInitialized();
     return await this.balanceHistoryRepository.getBalanceTimeSeries(

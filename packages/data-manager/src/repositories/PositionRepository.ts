@@ -71,7 +71,6 @@ export class PositionRepository {
     // Add cache for better performance
     return await query
       .orderBy('position.timestamp', 'DESC')
-      .cache(30000) // Cache for 30 seconds
       .getMany();
   }
 

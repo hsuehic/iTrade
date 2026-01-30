@@ -3,6 +3,7 @@ import {
   TradingEngine,
   LogLevel,
   IExchange,
+  AccountPollingService,
 } from '@itrade/core';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
@@ -29,6 +30,7 @@ export class BotInstance {
   private balanceTracker: BalanceTracker;
   private positionTracker: PositionTracker;
   private pushNotificationService: PushNotificationService;
+  private pollingService: AccountPollingService;
   private exchanges = new Map<string, IExchange>();
   private isRunning = false;
 
@@ -51,8 +53,8 @@ export class BotInstance {
     });
     
     this.orderTracker = new OrderTracker(dataManager, logger, this.pushNotificationService);
-    this.balanceTracker = new BalanceTracker(dataManager, logger);
-    this.positionTracker = new PositionTracker(dataManager, logger);
+    this.balanceTracker = new BalanceTracker(userId, dataManager, logger);
+    this.positionTracker = new PositionTracker(userId, dataManager, logger);
     
     this.strategyManager = new StrategyManager(
       this.engine,
@@ -60,6 +62,46 @@ export class BotInstance {
       logger,
       userId
     );
+
+    this.pollingService = new AccountPollingService({
+      pollingInterval: 60000, // 1 minute
+      enablePersistence: true,
+      retryAttempts: 3,
+    }, logger);
+    this.pollingService.setDataManager(dataManager);
+
+    // Setup snapshot listener to update balance history
+    this.setupPollingListeners();
+  }
+
+  private setupPollingListeners() {
+    this.pollingService.on('snapshotSaved', async (snapshot: any) => {
+      try {
+        if (!snapshot.accountInfoId) return;
+
+        const accountRepo = this.dataManager.dataSource.getRepository(AccountInfoEntity);
+        const accountInfo = await accountRepo.findOne({ where: { id: snapshot.accountInfoId } });
+
+        if (accountInfo) {
+          const snapshotTotal = new Decimal(snapshot.totalBalance);
+          const calculatedTotal = new Decimal(snapshot.availableBalance).add(new Decimal(snapshot.lockedBalance));
+          
+          this.logger.info(`[BalanceSync] ${snapshot.exchange} - Snapshot Total: ${snapshotTotal}, Calc(Free+Locked): ${calculatedTotal}, Diff: ${snapshotTotal.minus(calculatedTotal)}`);
+
+          await this.dataManager.updateBalanceHistory(
+            accountInfo,
+            snapshot.availableBalance,
+            snapshot.lockedBalance,
+            snapshot.totalBalance,
+            snapshot.timestamp,
+            snapshot.savingBalance
+          );
+          this.logger.debug(`Synced balance history for ${snapshot.exchange} (User: ${this.userId})`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to sync balance history for ${snapshot.exchange}`, error as Error);
+      }
+    });
   }
 
   public async initialize(): Promise<void> {
@@ -69,6 +111,8 @@ export class BotInstance {
     await this.orderTracker.start();
     await this.balanceTracker.start();
     await this.positionTracker.start();
+    // pollingService will be started after exchanges are loaded
+
 
     // Load Exchanges
     await this.loadExchanges();
@@ -83,6 +127,7 @@ export class BotInstance {
     if (this.isRunning) return;
     
     await this.engine.start();
+    await this.pollingService.start();
     this.isRunning = true;
     this.logger.info(`🚀 Bot started for user ${this.userId}`);
   }
@@ -99,6 +144,9 @@ export class BotInstance {
     await this.orderTracker.stop();
     await this.balanceTracker.stop();
     await this.positionTracker.stop();
+
+    // Stop Polling Service
+    await this.pollingService.stop();
 
     // Stop Engine
     await this.engine.stop();
@@ -178,6 +226,10 @@ export class BotInstance {
         if (exchange) {
           await exchange.connect(connectOptions);
           await this.engine.addExchange(exchangeName, exchange);
+          
+          // Add to polling service
+          this.pollingService.registerExchange(exchangeName, exchange, { accountInfoId: account.id });
+          
           this.exchanges.set(exchangeName, exchange);
           this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
           successCount++;

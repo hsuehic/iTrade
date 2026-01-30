@@ -90,6 +90,14 @@ export class BinanceExchange extends BaseExchange {
         : BinanceExchange.FUTURES_MAINNET_URL,
       timeout: 30000,
     });
+
+    // Add request interceptor for authentication on futures client
+    this.futuresClient.interceptors.request.use((config) => {
+      if (this.credentials) {
+        return this.addAuthentication(config);
+      }
+      return config;
+    });
   }
 
   /**
@@ -395,21 +403,79 @@ export class BinanceExchange extends BaseExchange {
   }
 
   public async getAccountInfo(): Promise<AccountInfo> {
-    const params = this.signRequest({ timestamp: Date.now() });
-    const response = await this.httpClient.get('/api/v3/account', { params });
+    const timestamp = Date.now();
+    const spotParams = this.signRequest({ timestamp });
+    const futuresParams = this.signRequest({ timestamp });
 
-    const data = response.data;
-    return {
-      balances: data.balances.map((balance: any) => ({
+    // Fetch Spot and Futures data in parallel
+    const [spotRes, futuresRes] = await Promise.allSettled([
+      this.httpClient.get('/api/v3/account', { params: spotParams }),
+      this.futuresClient.get('/fapi/v2/account', { params: futuresParams }),
+    ]);
+
+    let balances: Balance[] = [];
+    let canTrade = false;
+    let canWithdraw = false;
+    let canDeposit = false;
+    let updateTime = new Date();
+
+    // Process Spot Data
+    if (spotRes.status === 'fulfilled') {
+      const data = spotRes.value.data;
+      balances = data.balances.map((balance: any) => ({
         asset: balance.asset,
         free: this.formatDecimal(balance.free),
         locked: this.formatDecimal(balance.locked),
         total: this.formatDecimal(balance.free).add(this.formatDecimal(balance.locked)),
-      })),
-      canTrade: data.canTrade,
-      canWithdraw: data.canWithdraw,
-      canDeposit: data.canDeposit,
-      updateTime: this.formatTimestamp(data.updateTime),
+      }));
+      canTrade = data.canTrade;
+      canWithdraw = data.canWithdraw;
+      canDeposit = data.canDeposit;
+      updateTime = this.formatTimestamp(data.updateTime);
+    } else {
+      console.warn('[Binance] Failed to fetch spot account info:', spotRes.reason);
+    }
+
+    // Process Futures Data
+    if (futuresRes.status === 'fulfilled') {
+      const data = futuresRes.value.data;
+      const futuresAssets = data.assets || [];
+
+      for (const asset of futuresAssets) {
+        // Futures API returns 'walletBalance' (total) and 'availableBalance' (free)
+        // We calculate 'locked' as walletBalance - availableBalance
+        const total = this.formatDecimal(asset.walletBalance);
+        const free = this.formatDecimal(asset.availableBalance);
+        const locked = total.sub(free);
+
+        const existing = balances.find((b) => b.asset === asset.asset);
+
+        if (existing) {
+          existing.free = existing.free.add(free);
+          existing.locked = existing.locked.add(locked);
+          existing.total = existing.total.add(total);
+        } else {
+          balances.push({
+            asset: asset.asset,
+            free,
+            locked,
+            total,
+          });
+        }
+      }
+    } else {
+      console.warn(
+        '[Binance] Failed to fetch futures account info:',
+        futuresRes.reason,
+      );
+    }
+
+    return {
+      balances,
+      canTrade, // Mostly from spot
+      canWithdraw,
+      canDeposit,
+      updateTime,
     };
   }
 
@@ -419,9 +485,31 @@ export class BinanceExchange extends BaseExchange {
   }
 
   public async getPositions(): Promise<Position[]> {
-    // Binance Spot doesn't have traditional positions, return empty array
-    // For futures, this would query the futures API
-    return [];
+    try {
+      const params = this.signRequest({ timestamp: Date.now() });
+      const response = await this.futuresClient.get('/fapi/v2/positionRisk', {
+        params,
+      });
+
+      return response.data
+        .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
+        .map((pos: any) => {
+          const quantity = new Decimal(pos.positionAmt);
+          return {
+            symbol: pos.symbol,
+            side: quantity.isPositive() ? 'long' : 'short',
+            quantity: quantity.abs(),
+            avgPrice: this.formatDecimal(pos.entryPrice),
+            markPrice: this.formatDecimal(pos.markPrice),
+            unrealizedPnl: this.formatDecimal(pos.unRealizedProfit),
+            leverage: parseInt(pos.leverage),
+            timestamp: new Date(parseInt(pos.updateTime)),
+          };
+        });
+    } catch (error) {
+      console.error('[Binance] Failed to fetch positions:', error);
+      return [];
+    }
   }
 
   public async getExchangeInfo(): Promise<ExchangeInfo> {
