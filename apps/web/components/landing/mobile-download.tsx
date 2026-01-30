@@ -83,7 +83,7 @@ export function MobileDownload() {
 
               {/* Direct APK Download */}
               <Link
-                href="https://itrade.ihsueh.com/downloads/itrade.apk"
+                href="https://drive.google.com/file/d/15Tu1rmfbbSKJ-gdLvgjlsfXc3qRXMHk1/view?usp=sharing"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group inline-block transition-all duration-300 ease-out hover:scale-110"
