@@ -10,6 +10,9 @@ import {
   Kline,
   StrategyResult,
   isHoldResult,
+  isActionableResult,
+  isCancelOrderResult,
+  normalizeAnalyzeResult,
   KlineInterval,
 } from '@itrade/core';
 
@@ -66,15 +69,19 @@ export class BacktestEngine implements IBacktestEngine {
     // Process each kline
     for (const kline of klines) {
       // Analyze with strategy
-      const result = await strategy.analyze({
-        klines: [kline],
-        exchangeName: Array.isArray(exchange) ? exchange[0] : exchange,
-        symbol,
-      });
+      const results = normalizeAnalyzeResult(
+        await strategy.analyze({
+          klines: [kline],
+          exchangeName: Array.isArray(exchange) ? exchange[0] : exchange,
+          symbol,
+        }),
+      );
 
-      // Execute trades based on strategy signals
-      if (result.action !== 'hold' && result.quantity) {
-        await this.executeTrade(symbol, result, kline, config);
+      for (const result of results) {
+        // Execute trades based on strategy signals
+        if (result.action !== 'hold') {
+          await this.executeTrade(symbol, result, kline, config);
+        }
       }
 
       // Update equity curve
@@ -92,7 +99,10 @@ export class BacktestEngine implements IBacktestEngine {
     kline: Kline,
     config: BacktestConfig,
   ): Promise<void> {
-    if (isHoldResult(signal)) return;
+    if (!isActionableResult(signal)) return;
+    if (isCancelOrderResult(signal)) return; // Backtest engine currently loops simplified logic, skipping cancels
+    
+    // Now signal is guaranteed to be StrategyOrderResult
     if (!signal.quantity) return;
 
     const price = signal.price || kline.close;

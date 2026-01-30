@@ -3,6 +3,8 @@ import {
   IStrategy,
   Kline,
   StrategyResult,
+  isOrderResult,
+  normalizeAnalyzeResult,
   OrderSide,
   BacktestResult,
 } from '@itrade/core';
@@ -76,70 +78,74 @@ export class DryRunEngine {
       );
 
       for (const k of klines) {
-        const result: StrategyResult = await strategy.analyze({ klines: [k] });
-        if (result.action === 'hold' || !result.quantity) {
-          equity.push({ timestamp: k.closeTime, value: balance });
-          continue;
-        }
+        const results = normalizeAnalyzeResult(await strategy.analyze({ klines: [k] }));
 
-        const side = result.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
-        const price = result.price ?? k.close;
-        const commission = price.mul(result.quantity).mul(params.commission);
+        for (const result of results) {
+          if (!isOrderResult(result) || !result.quantity) {
+            continue;
+          }
 
-        // Persist order
-        const order: Partial<DryRunOrderEntity> = {
-          id: `${symbol}_${k.closeTime.getTime()}`,
-          clientOrderId: undefined,
-          session,
-          symbol,
-          side: side as any,
-          type: 'MARKET' as any,
-          quantity: result.quantity as any,
-          price: price as any,
-          stopPrice: undefined,
-          status: 'FILLED' as any,
-          timeInForce: 'GTC' as any,
-          timestamp: k.closeTime,
-          updateTime: k.closeTime,
-          executedQuantity: result.quantity as any,
-          cummulativeQuoteQuantity: price.mul(result.quantity) as any,
-          fills: [],
-        };
-        await (this.dataManager as any).dataSource
-          .getRepository(DryRunOrderEntity)
-          .save(order as DryRunOrderEntity);
+          const side = result.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+          const price = result.price ?? k.close;
+          const commission = price.mul(result.quantity).mul(params.commission);
 
-        // Update equity
-        if (side === OrderSide.BUY) {
-          const cost = price.mul(result.quantity).add(commission);
-          balance = balance.sub(cost);
-        } else {
-          const proceeds = price.mul(result.quantity).sub(commission);
-          balance = balance.add(proceeds);
-        }
-        equity.push({ timestamp: k.closeTime, value: balance });
-
-        // Persist trade if sell (close)
-        if (side === OrderSide.SELL) {
-          const pnl = price.mul(result.quantity).sub(commission);
-          const trade: Partial<DryRunTradeEntity> = {
+          // Persist order
+          const order: Partial<DryRunOrderEntity> = {
+            id: `${symbol}_${k.closeTime.getTime()}_${side}`, // Added side to uniqueness to avoid collision if mulitple orders
+            clientOrderId: undefined,
             session,
             symbol,
-            side: OrderSide.SELL as any,
-            entryPrice: price as any,
-            exitPrice: price as any,
+            side: side as any,
+            type: 'MARKET' as any,
             quantity: result.quantity as any,
-            entryTime: k.openTime,
-            exitTime: k.closeTime,
-            pnl: pnl as any,
-            commission: commission as any,
-            duration: 1,
+            price: price as any,
+            stopPrice: undefined,
+            status: 'FILLED' as any,
+            timeInForce: 'GTC' as any,
+            timestamp: k.closeTime,
+            updateTime: k.closeTime,
+            executedQuantity: result.quantity as any,
+            cummulativeQuoteQuantity: price.mul(result.quantity) as any,
+            fills: [],
           };
           await (this.dataManager as any).dataSource
-            .getRepository(DryRunTradeEntity)
-            .save(trade as DryRunTradeEntity);
-          trades.push(trade);
+            .getRepository(DryRunOrderEntity)
+            .save(order as DryRunOrderEntity);
+
+          // Update equity
+          if (side === OrderSide.BUY) {
+            const cost = price.mul(result.quantity).add(commission);
+            balance = balance.sub(cost);
+          } else {
+            const proceeds = price.mul(result.quantity).sub(commission);
+            balance = balance.add(proceeds);
+          }
+
+          // Persist trade if sell (close)
+          if (side === OrderSide.SELL) {
+            const pnl = price.mul(result.quantity).sub(commission);
+            const trade: Partial<DryRunTradeEntity> = {
+              session,
+              symbol,
+              side: OrderSide.SELL as any,
+              entryPrice: price as any,
+              exitPrice: price as any,
+              quantity: result.quantity as any,
+              entryTime: k.openTime,
+              exitTime: k.closeTime,
+              pnl: pnl as any,
+              commission: commission as any,
+              duration: 1,
+            };
+            await (this.dataManager as any).dataSource
+              .getRepository(DryRunTradeEntity)
+              .save(trade as DryRunTradeEntity);
+            trades.push(trade);
+          }
         }
+        
+        // Record equity after processing all potential signals for this kline
+        equity.push({ timestamp: k.closeTime, value: balance });
       }
     }
 
