@@ -11,7 +11,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { StrategyEntity } from './Strategy';
 import type { User } from './User';
 import type { DryRunOrderEntity } from './DryRunOrder';
@@ -62,7 +62,7 @@ export class DryRunSessionEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   initialBalance!: Decimal;
 
@@ -71,7 +71,7 @@ export class DryRunSessionEntity {
     precision: 10,
     scale: 6,
     default: 0,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission!: Decimal;
 
@@ -80,7 +80,7 @@ export class DryRunSessionEntity {
     precision: 10,
     scale: 6,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   slippage?: Decimal;
 

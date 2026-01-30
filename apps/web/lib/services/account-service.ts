@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import { getDataManager } from '@/lib/data-manager';
 import { AccountInfoEntity } from '@itrade/data-manager';
 import { CryptoUtils } from '@itrade/utils/CryptoUtils';
@@ -15,7 +16,7 @@ export interface AccountDto {
 
 export async function getUserAccounts(userId: string) {
   const dm = await getDataManager();
-  const repo = dm.dataSource.getRepository(AccountInfoEntity);
+  const repo = dm.getAccountInfoRepository();
 
   const accounts = await repo.find({
     where: { user: { id: userId } },
@@ -51,7 +52,7 @@ export async function upsertAccount(data: AccountDto) {
   if (!encryptionKey) throw new Error('Server configuration error: ENCRYPTION_KEY missing');
 
   const dm = await getDataManager();
-  const repo = dm.dataSource.getRepository(AccountInfoEntity);
+  const repo = dm.getAccountInfoRepository();
 
   // Encrypt keys
   const encryptedApiKey = CryptoUtils.encrypt(data.apiKey, encryptionKey);
@@ -94,7 +95,7 @@ export async function upsertAccount(data: AccountDto) {
 
 export async function removeAccount(id: number, userId: string) {
   const dm = await getDataManager();
-  const repo = dm.dataSource.getRepository(AccountInfoEntity);
+  const repo = dm.getAccountInfoRepository();
   const result = await repo.delete({ id, user: { id: userId } });
   return result.affected ? result.affected > 0 : false;
 }

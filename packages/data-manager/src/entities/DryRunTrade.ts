@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { DryRunSessionEntity } from './DryRunSession';
 
 @Entity('dry_run_trades')
@@ -35,7 +35,7 @@ export class DryRunTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   entryPrice!: Decimal;
 
@@ -43,7 +43,7 @@ export class DryRunTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   exitPrice!: Decimal;
 
@@ -51,7 +51,7 @@ export class DryRunTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -65,7 +65,7 @@ export class DryRunTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   pnl!: Decimal;
 
@@ -73,7 +73,7 @@ export class DryRunTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 10,
     scale: 6,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission!: Decimal;
 

@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { BacktestResult } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { DryRunSessionEntity } from './DryRunSession';
 import type { DryRunTradeEntity } from './DryRunTrade';
 
@@ -29,7 +29,7 @@ export class DryRunResultEntity implements BacktestResult {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   totalReturn!: Decimal;
 
@@ -37,7 +37,7 @@ export class DryRunResultEntity implements BacktestResult {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   annualizedReturn!: Decimal;
 
@@ -45,7 +45,7 @@ export class DryRunResultEntity implements BacktestResult {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   sharpeRatio!: Decimal;
 
@@ -53,7 +53,7 @@ export class DryRunResultEntity implements BacktestResult {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   maxDrawdown!: Decimal;
 
@@ -61,7 +61,7 @@ export class DryRunResultEntity implements BacktestResult {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   winRate!: Decimal;
 
@@ -69,7 +69,7 @@ export class DryRunResultEntity implements BacktestResult {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   profitFactor!: Decimal;
 

@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { BacktestResultEntity } from './BacktestResult';
 
 @Entity('equity_points')
@@ -30,7 +30,7 @@ export class EquityPointEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   value!: Decimal;
 }

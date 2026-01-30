@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import { Trade } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 
 @Entity('trades')
 @Index(['symbol', 'timestamp'])
@@ -20,7 +20,7 @@ export class TradeEntity implements Trade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   price!: Decimal;
 
@@ -28,7 +28,7 @@ export class TradeEntity implements Trade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 

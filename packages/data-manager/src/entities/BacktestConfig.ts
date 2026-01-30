@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { BacktestConfig } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { BacktestResultEntity } from './BacktestResult';
 import type { User } from './User';
 
@@ -31,7 +31,7 @@ export class BacktestConfigEntity implements BacktestConfig {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   initialBalance!: Decimal;
 
@@ -39,7 +39,7 @@ export class BacktestConfigEntity implements BacktestConfig {
     type: 'decimal',
     precision: 10,
     scale: 6,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission!: Decimal;
 
@@ -48,7 +48,7 @@ export class BacktestConfigEntity implements BacktestConfig {
     precision: 10,
     scale: 6,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   slippage?: Decimal;
 

@@ -8,19 +8,8 @@ import {
 } from 'typeorm';
 import { Decimal } from 'decimal.js';
 
-// Custom transformer for Decimal type
-export class DecimalTransformer {
-  to(value: Decimal): string {
-    return value ? value.toString() : '0';
-  }
+import { decimalTransformer } from '../utils/transformers';
 
-  from(value: string): Decimal {
-    return new Decimal(value || '0');
-  }
-}
-
-// Create a SINGLE shared instance outside the class
-const decimalTransformer = new DecimalTransformer();
 
 @Entity('klines')
 @Index(['symbol', 'interval', 'openTime'], { unique: true })

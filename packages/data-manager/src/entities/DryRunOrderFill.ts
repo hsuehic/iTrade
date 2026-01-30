@@ -9,7 +9,7 @@ import {
 } from 'typeorm';
 import { OrderFill } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { DryRunOrderEntity } from './DryRunOrder';
 
 @Entity('dry_run_order_fills')
@@ -31,7 +31,7 @@ export class DryRunOrderFillEntity implements OrderFill {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   price!: Decimal;
 
@@ -39,7 +39,7 @@ export class DryRunOrderFillEntity implements OrderFill {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -47,7 +47,7 @@ export class DryRunOrderFillEntity implements OrderFill {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission!: Decimal;
 

@@ -20,7 +20,15 @@ declare global {
 export async function getDataManager(): Promise<TypeOrmDataManager> {
   // Check if already initialized (persisted in globalThis for production)
   if (globalThis.__dataManagerInstance) {
-    return globalThis.__dataManagerInstance;
+    // If the instance exists but is missing the new method (due to HMR/caching issues),
+    // clear it and re-initialize.
+    if (typeof (globalThis.__dataManagerInstance as any).getAccountInfoRepository !== 'function') {
+      console.warn('⚠️ Existing DataManager instance is outdated. Re-initializing...');
+      globalThis.__dataManagerInstance = undefined;
+      globalThis.__dataManagerInitPromise = undefined;
+    } else {
+      return globalThis.__dataManagerInstance;
+    }
   }
 
   // If initialization is already in progress, wait for it

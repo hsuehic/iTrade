@@ -1205,7 +1205,6 @@ cd packages/data-manager && pnpm run sync-schema
 - Adds/updates all indexes
 - Updates enum types
 - Creates foreign key relationships
-- Updates the query-result-cache table
 
 #### Complete Workflow
 

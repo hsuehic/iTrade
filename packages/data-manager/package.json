@@ -7,8 +7,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./constants": {
+      "types": "./dist/constants/exchanges.d.ts",
+      "import": "./dist/constants/exchanges.js",
+      "require": "./dist/constants/exchanges.js"
     }
   },
   "scripts": {

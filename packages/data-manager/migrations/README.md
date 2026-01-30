@@ -21,7 +21,6 @@ This will:
 - ✅ Create all tables from entity definitions
 - ✅ Add all indexes defined with `@Index()` decorators
 - ✅ Update existing tables if schema changed
-- ✅ Create the `query-result-cache` table automatically (for TypeORM query caching)
 
 ### Verify Schema
 

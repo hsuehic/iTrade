@@ -137,8 +137,6 @@ export function resolveEntities(entities: any[]) {
   });
 }
 
-const entities = Object.values(EntityMap);
-
 export class TypeOrmDataManager implements IDataManager {
   public dataSource!: DataSource;
   private klineRepository!: Repository<KlineEntity>;
@@ -155,6 +153,7 @@ export class TypeOrmDataManager implements IDataManager {
   private pushDeviceRepository!: PushDeviceRepository;
   private pushNotificationRepository!: PushNotificationRepository;
   private balanceHistoryRepository!: BalanceHistoryRepository;
+  private accountInfoRepository!: Repository<AccountInfoEntity>;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -166,6 +165,7 @@ export class TypeOrmDataManager implements IDataManager {
     if (this.isInitialized) return;
 
     const { DataSource } = await import('typeorm');
+    const allEntities = Object.values(EntityMap);
 
     this.dataSource = new DataSource({
       type: this.config.type,
@@ -181,7 +181,7 @@ export class TypeOrmDataManager implements IDataManager {
       poolSize: this.config.poolSize,
       cache: this.config.cache,
       maxQueryExecutionTime: this.config.maxQueryExecutionTime,
-      entities: resolveEntities(entities),
+      entities: resolveEntities(allEntities),
       extra: this.config.extra || {},
     });
 
@@ -201,8 +201,14 @@ export class TypeOrmDataManager implements IDataManager {
     this.pushDeviceRepository = new PushDeviceRepository(this.dataSource);
     this.pushNotificationRepository = new PushNotificationRepository(this.dataSource);
     this.balanceHistoryRepository = new BalanceHistoryRepository(this.dataSource);
+    this.accountInfoRepository = this.dataSource.getRepository(AccountInfoEntity);
 
     this.isInitialized = true;
+  }
+
+  getAccountInfoRepository(): Repository<AccountInfoEntity> {
+    this.ensureInitialized();
+    return this.accountInfoRepository;
   }
 
   async close(): Promise<void> {

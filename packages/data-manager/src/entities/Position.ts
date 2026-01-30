@@ -12,7 +12,7 @@ import {
 } from 'typeorm';
 import { Position } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { OrderEntity } from './Order';
 import type { User } from './User';
 
@@ -41,7 +41,7 @@ export class PositionEntity implements Position {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -49,7 +49,7 @@ export class PositionEntity implements Position {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   avgPrice!: Decimal;
 
@@ -57,7 +57,7 @@ export class PositionEntity implements Position {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   markPrice!: Decimal;
 
@@ -65,7 +65,7 @@ export class PositionEntity implements Position {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   unrealizedPnl!: Decimal;
 
@@ -73,7 +73,7 @@ export class PositionEntity implements Position {
     type: 'decimal',
     precision: 10,
     scale: 2,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   leverage!: Decimal;
 

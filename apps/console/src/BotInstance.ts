@@ -120,8 +120,7 @@ export class BotInstance {
     });
 
     if (accounts.length === 0) {
-      this.logger.warn(`⚠️  No active accounts found for user ${this.userId}`);
-      return;
+      throw new Error(`No active accounts found for user ${this.userId}`);
     }
 
     const encryptionKey = process.env.ENCRYPTION_KEY;
@@ -130,6 +129,8 @@ export class BotInstance {
     }
 
     const USE_MAINNET_FOR_DATA = true; // Or from config
+    let successCount = 0;
+    let skipCount = 0;
 
     for (const account of accounts) {
       try {
@@ -137,7 +138,12 @@ export class BotInstance {
         let exchange: IExchange | null = null;
         let connectOptions: any = {};
 
-        if (!account.apiKey || !account.secretKey) continue;
+        // Validate credentials exist
+        if (!account.apiKey || !account.secretKey) {
+          this.logger.warn(`   ⚠️  ${exchangeName} account missing credentials, skipping`);
+          skipCount++;
+          continue;
+        }
 
         const apiKey = CryptoUtils.decrypt(account.apiKey, encryptionKey);
         const secretKey = CryptoUtils.decrypt(account.secretKey, encryptionKey);
@@ -151,7 +157,11 @@ export class BotInstance {
             connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
             break;
           case 'okx':
-            if (!passphrase) continue;
+            if (!passphrase) {
+              this.logger.warn(`   ⚠️  OKX account missing passphrase, skipping`);
+              skipCount++;
+              continue;
+            }
             exchange = new OKXExchange(!USE_MAINNET_FOR_DATA);
             connectOptions = { apiKey, secretKey, passphrase, sandbox: !USE_MAINNET_FOR_DATA };
             break;
@@ -159,6 +169,10 @@ export class BotInstance {
             exchange = new CoinbaseExchange();
             connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
             break;
+          default:
+            this.logger.warn(`   ⚠️  Unknown exchange type: ${exchangeName}, skipping`);
+            skipCount++;
+            continue;
         }
 
         if (exchange) {
@@ -166,11 +180,24 @@ export class BotInstance {
           await this.engine.addExchange(exchangeName, exchange);
           this.exchanges.set(exchangeName, exchange);
           this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
+          successCount++;
         }
       } catch (error) {
         this.logger.error(`   ❌ Failed to load ${account.exchange} for user ${this.userId}`, error as Error);
+        skipCount++;
       }
     }
+
+    // Ensure at least one exchange was loaded successfully
+    if (successCount === 0) {
+      throw new Error(
+        `No valid exchanges loaded for user ${this.userId}. ` +
+        `Found ${accounts.length} accounts, ${skipCount} skipped/failed. ` +
+        `Please ensure accounts have valid API credentials.`
+      );
+    }
+
+    this.logger.info(`   📊 Loaded ${successCount} exchange(s) for user ${this.userId} (${skipCount} skipped)`);
   }
 
   public getOrderTrackers() {

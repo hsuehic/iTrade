@@ -178,21 +178,6 @@ maxQueryExecutionTime: 5000 // Log queries > 5s
 - ✅ Query timeouts set
 - ✅ Slow query logging enabled
 
-### Monitoring
-
-```typescript
-// Check slow queries in logs
-// Look for: "query is slow: ... execution time: XXXXms"
-
-// Verify indexes
-psql $DATABASE_URL -c "\d tablename"
-
-// Check cache hit rate
-// Cache table size indicates usage
-psql $DATABASE_URL -c "SELECT COUNT(*) FROM \"query-result-cache\""
-```
-
----
 
 ## 📚 Documentation
 

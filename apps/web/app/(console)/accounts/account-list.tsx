@@ -14,6 +14,7 @@ import { AccountForm } from './account-form';
 import { deleteAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit } from 'lucide-react';
+import { getExchangeDisplayName, SupportedExchange } from '@itrade/data-manager/constants';
 
 interface Account {
   id: number;
@@ -87,7 +88,9 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
             ) : (
               accounts.map((account) => (
                 <TableRow key={account.id}>
-                  <TableCell className="font-medium capitalize">{account.exchange}</TableCell>
+                  <TableCell className="font-medium">
+                    {getExchangeDisplayName(account.exchange as SupportedExchange)}
+                  </TableCell>
                   <TableCell>{account.accountId}</TableCell>
                   <TableCell>
                     <span className={`px-2 py-1 rounded-full text-xs ${account.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>

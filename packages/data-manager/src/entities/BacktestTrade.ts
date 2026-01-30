@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { BacktestResultEntity } from './BacktestResult';
 
 @Entity('backtest_trades')
@@ -26,7 +26,7 @@ export class BacktestTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   entryPrice!: Decimal;
 
@@ -34,7 +34,7 @@ export class BacktestTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   exitPrice!: Decimal;
 
@@ -42,7 +42,7 @@ export class BacktestTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -56,7 +56,7 @@ export class BacktestTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   pnl!: Decimal;
 
@@ -64,7 +64,7 @@ export class BacktestTradeEntity implements BacktestTrade {
     type: 'decimal',
     precision: 10,
     scale: 6,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission!: Decimal;
 

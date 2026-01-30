@@ -13,7 +13,6 @@ config();
  * What it does:
  * - Creates/updates all tables from entity classes
  * - Adds all indexes defined with @Index() decorators
- * - Creates the query-result-cache table (for query caching)
  * - Updates foreign key relationships
  *
  * Usage:
@@ -30,11 +29,6 @@ const configuration = {
   password: process.env.DB_PASSWORD!,
   database: process.env.DB_DB!,
   synchronize: true, // Auto-sync schema with entities
-  // Enable cache to auto-create query-result-cache table
-  cache: {
-    type: 'database' as const,
-    duration: 30000, // Cache duration in ms
-  },
 };
 console.log(configuration);
 const dataManager = new TypeOrmDataManager(configuration);

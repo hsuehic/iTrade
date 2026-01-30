@@ -12,6 +12,7 @@ import {
 
 import type { BalanceEntity } from './Balance';
 import type { User } from './User';
+import { SupportedExchange } from '../constants/exchanges';
 
 @Entity('account_info')
 @Index(['user'])
@@ -40,7 +41,11 @@ export class AccountInfoEntity implements AccountInfo {
   @CreateDateColumn()
   createdAt!: Date;
 
-  @Column({ type: 'character varying', length: 50 })
+  @Column({
+    type: 'enum',
+    enum: SupportedExchange,
+    comment: 'Exchange name (binance, okx, coinbase)',
+  })
   exchange!: string;
 
   @Column({ type: 'character varying', length: 255 })

@@ -10,6 +10,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./CryptoUtils": {
+      "types": "./dist/CryptoUtils.d.ts",
+      "import": "./dist/CryptoUtils.mjs",
+      "require": "./dist/CryptoUtils.js"
+    },
+    "./ConfigUtils": {
+      "types": "./dist/ConfigUtils.d.ts",
+      "import": "./dist/ConfigUtils.mjs",
+      "require": "./dist/ConfigUtils.js"
     }
   },
   "scripts": {

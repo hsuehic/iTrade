@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { IconSettings } from '@tabler/icons-react';
+import { IconSettings, IconWallet } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -19,6 +19,11 @@ export function NavSecondary({
   const pathname = usePathname();
 
   const items = [
+    {
+      title: 'ExchangeAccounts',
+      url: '/accounts',
+      icon: IconWallet,
+    },
     {
       title: 'Settings',
       url: '/settings',

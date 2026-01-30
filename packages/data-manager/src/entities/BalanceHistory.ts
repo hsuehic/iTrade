@@ -9,7 +9,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import { AccountInfoEntity } from './AccountInfo';
 
 export abstract class BaseBalanceHistoryEntity {
@@ -25,7 +25,7 @@ export abstract class BaseBalanceHistoryEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   free!: Decimal;
 
@@ -33,7 +33,7 @@ export abstract class BaseBalanceHistoryEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   locked!: Decimal;
 
@@ -41,7 +41,7 @@ export abstract class BaseBalanceHistoryEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   total!: Decimal;
 
@@ -49,7 +49,7 @@ export abstract class BaseBalanceHistoryEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
     default: 0,
   })
   saving!: Decimal;

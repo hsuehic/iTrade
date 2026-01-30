@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 import { auth } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
+import { isValidExchange } from '@itrade/data-manager';
 
 export interface AccountDto {
   id?: number;
@@ -31,6 +32,10 @@ export async function getAccounts() {
 export async function saveAccount(data: AccountDto) {
   const user = await getUser();
   if (!user) throw new Error('Unauthorized');
+
+  if (!isValidExchange(data.exchange)) {
+    throw new Error('Invalid exchange');
+  }
 
   await accountService.upsertAccount({
       ...data,

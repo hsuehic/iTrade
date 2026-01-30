@@ -2,7 +2,7 @@ import { Decimal } from 'decimal.js';
 import { Column, Entity, Index, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { OrderFill } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { OrderEntity } from './Order';
 
 @Entity('order_fills')
@@ -23,7 +23,7 @@ export class OrderFillEntity implements OrderFill {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   price!: Decimal;
 
@@ -31,7 +31,7 @@ export class OrderFillEntity implements OrderFill {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -39,7 +39,7 @@ export class OrderFillEntity implements OrderFill {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission!: Decimal;
 

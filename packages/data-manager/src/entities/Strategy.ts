@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import type { StrategyParameters } from '@itrade/core';
 
+import { SupportedExchange } from '../constants/exchanges';
 import type { OrderEntity } from './Order';
 import type { User } from './User';
 
@@ -57,7 +58,11 @@ export class StrategyEntity {
   })
   status!: StrategyStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({
+    type: 'enum',
+    enum: SupportedExchange,
+    nullable: true,
+  })
   exchange?: string;
 
   @Column({ type: 'text', nullable: true })

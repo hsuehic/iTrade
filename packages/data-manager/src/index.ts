@@ -36,7 +36,8 @@ export type {
 } from './repositories/AccountSnapshotRepository';
 
 // Entity exports
-export { KlineEntity, DecimalTransformer } from './entities/Kline';
+export { KlineEntity } from './entities/Kline';
+export { DecimalTransformer, decimalTransformer } from './utils/transformers';
 export { SymbolEntity } from './entities/Symbol';
 export { DataQualityEntity } from './entities/DataQuality';
 export { TradeEntity } from './entities/Trade';
@@ -81,6 +82,15 @@ export type {
   PushNotificationCategory,
   PushTargetType,
 } from './entities/PushNotificationLog';
+
+// Constants
+export {
+  SupportedExchange,
+  SUPPORTED_EXCHANGES,
+  isValidExchange,
+  getExchangeDisplayName,
+} from './constants/exchanges';
+export type { ExchangeName } from './constants/exchanges';
 
 // Types and interfaces
 export type {

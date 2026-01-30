@@ -12,7 +12,7 @@ import {
 } from 'typeorm';
 import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { DryRunSessionEntity } from './DryRunSession';
 import type { DryRunOrderFillEntity } from './DryRunOrderFill';
 
@@ -49,7 +49,7 @@ export class DryRunOrderEntity implements Order {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -58,7 +58,7 @@ export class DryRunOrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   price?: Decimal | undefined;
 
@@ -67,7 +67,7 @@ export class DryRunOrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   stopPrice?: Decimal | undefined;
 
@@ -88,7 +88,7 @@ export class DryRunOrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   executedQuantity?: Decimal | undefined;
 
@@ -97,7 +97,7 @@ export class DryRunOrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 

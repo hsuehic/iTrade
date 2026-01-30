@@ -1,10 +1,12 @@
+import { SupportedExchange } from '@itrade/data-manager/constants';
+
 /**
  * Supported exchanges configuration
  */
 
 export const SUPPORTED_EXCHANGES = [
   {
-    id: 'binance',
+    id: SupportedExchange.BINANCE,
     name: 'Binance',
     description: 'Most popular',
     symbolFormat: 'BTC/USDT (Spot), BTC/USDT:USDT (Futures)',
@@ -16,7 +18,7 @@ export const SUPPORTED_EXCHANGES = [
     futuresFormat: 'BTC/USDT:USDT', // Perpetual futures (unified format)
   },
   {
-    id: 'coinbase',
+    id: SupportedExchange.COINBASE,
     name: 'Coinbase',
     description: 'US-based',
     symbolFormat: 'BTC/USDC (Spot), BTC/USDC:USDC (Perp)',
@@ -28,7 +30,7 @@ export const SUPPORTED_EXCHANGES = [
     futuresFormat: 'BTC/USDC:USDC', // Perpetual (USDC-based)
   },
   {
-    id: 'okx',
+    id: SupportedExchange.OKX,
     name: 'OKX',
     description: 'Global',
     symbolFormat: 'BTC/USDT (Spot), BTC/USDT:USDT (Swap)',

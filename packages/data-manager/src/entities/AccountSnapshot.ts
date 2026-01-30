@@ -8,7 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 
 /**
  * AccountSnapshot Entity - 账户快照实体
@@ -35,7 +35,7 @@ export class AccountSnapshotEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   totalBalance!: Decimal;
 
@@ -43,7 +43,7 @@ export class AccountSnapshotEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   availableBalance!: Decimal;
 
@@ -51,7 +51,7 @@ export class AccountSnapshotEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   lockedBalance!: Decimal;
 
@@ -59,7 +59,7 @@ export class AccountSnapshotEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   totalPositionValue!: Decimal;
 
@@ -67,7 +67,7 @@ export class AccountSnapshotEntity {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   unrealizedPnl!: Decimal;
 

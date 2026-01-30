@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
+import { isValidExchange } from '@itrade/data-manager';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,9 +28,13 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     
-    // Validate body? Simple check for now
+    // Validate body
     if (!body.exchange || !body.apiKey || !body.secretKey) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    if (!isValidExchange(body.exchange)) {
+        return NextResponse.json({ error: 'Invalid exchange' }, { status: 400 });
     }
 
     const account = await accountService.upsertAccount({

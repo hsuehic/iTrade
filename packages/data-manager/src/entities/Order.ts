@@ -12,7 +12,7 @@ import {
 } from 'typeorm';
 import { Order, OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { PositionEntity } from './Position';
 import type { StrategyEntity } from './Strategy';
 import type { OrderFillEntity } from './OrderFill';
@@ -45,7 +45,7 @@ export class OrderEntity implements Order {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   quantity!: Decimal;
 
@@ -54,7 +54,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   price?: Decimal | undefined;
 
@@ -63,7 +63,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   stopLoss?: Decimal | undefined;
 
@@ -72,7 +72,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   takeProfit?: Decimal | undefined;
 
@@ -93,7 +93,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   executedQuantity?: Decimal | undefined;
 
@@ -102,7 +102,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
@@ -130,7 +130,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   realizedPnl?: Decimal;
 
@@ -139,7 +139,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   unrealizedPnl?: Decimal;
 
@@ -148,7 +148,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   averagePrice?: Decimal;
 
@@ -157,7 +157,7 @@ export class OrderEntity implements Order {
     precision: 28,
     scale: 10,
     nullable: true,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   commission?: Decimal;
 

@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { Balance } from '@itrade/core';
 
-import { DecimalTransformer } from './Kline';
+import { decimalTransformer } from '../utils/transformers';
 import type { AccountInfoEntity } from './AccountInfo';
 
 @Entity('balances')
@@ -32,7 +32,7 @@ export class BalanceEntity implements Balance {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   free!: Decimal;
 
@@ -40,7 +40,7 @@ export class BalanceEntity implements Balance {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   locked!: Decimal;
 
@@ -48,7 +48,7 @@ export class BalanceEntity implements Balance {
     type: 'decimal',
     precision: 28,
     scale: 10,
-    transformer: new DecimalTransformer(),
+    transformer: decimalTransformer,
   })
   total!: Decimal;
 

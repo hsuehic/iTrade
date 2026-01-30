@@ -40,32 +40,59 @@ export class BotManager {
       const accounts = await accountRepo.find({
         where: { isActive: true },
         relations: ['user'],
-        select: {
-            user: { id: true },
-            exchange: true,
-        }
       });
 
+      // Filter accounts to only include those with valid credentials
+      const validAccounts = accounts.filter(acc => {
+        // Must have user, apiKey, and secretKey
+        if (!acc.user?.id || !acc.apiKey || !acc.secretKey) {
+          return false;
+        }
+        
+        // OKX requires passphrase
+        if (acc.exchange.toLowerCase() === 'okx' && !acc.passphrase) {
+          this.logger.warn(`⚠️  OKX account for user ${acc.user.id} missing passphrase, skipping`);
+          return false;
+        }
+        
+        return true;
+      });
+
+      // Get unique user IDs who have at least one valid account
       const activeUserIds = new Set<string>();
-      accounts.forEach(acc => {
+      validAccounts.forEach(acc => {
         if (acc.user?.id) activeUserIds.add(acc.user.id);
       });
+
+      this.logger.info(`📊 Found ${activeUserIds.size} users with valid exchange accounts (${validAccounts.length} total accounts)`);
 
       // Start new bots
       for (const userId of activeUserIds) {
         if (!this.bots.has(userId)) {
           this.logger.info(`🆕 Found new active user: ${userId}. Starting bot...`);
           const bot = new BotInstance(userId, this.dataManager, this.logger);
-          await bot.initialize(); // Load exchanges, trackers
-          await bot.start();      // Start engine
-          this.bots.set(userId, bot);
+          
+          try {
+            await bot.initialize(); // Load exchanges, trackers
+            await bot.start();      // Start engine
+            this.bots.set(userId, bot);
+            this.logger.info(`✅ Bot successfully started for user ${userId}`);
+          } catch (error) {
+            this.logger.error(`❌ Failed to initialize bot for user ${userId}:`, error as Error);
+            // Clean up if initialization failed
+            try {
+              await bot.stop();
+            } catch (stopError) {
+              // Ignore stop errors
+            }
+          }
         }
       }
 
       // Stop removed bots
       for (const [userId, bot] of this.bots) {
         if (!activeUserIds.has(userId)) {
-           this.logger.info(`🗑️ User ${userId} no longer active. Stopping bot...`);
+           this.logger.info(`🗑️ User ${userId} no longer has valid accounts. Stopping bot...`);
            await bot.stop();
            this.bots.delete(userId);
         }

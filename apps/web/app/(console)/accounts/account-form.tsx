@@ -32,6 +32,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 import { saveAccount } from '@/app/actions/accounts';
+import { SupportedExchange, SUPPORTED_EXCHANGES, getExchangeDisplayName } from '@itrade/data-manager/constants';
 
 interface AccountFormProps {
   open: boolean;
@@ -97,9 +98,11 @@ export function AccountForm({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="binance">Binance</SelectItem>
-                      <SelectItem value="okx">OKX</SelectItem>
-                      <SelectItem value="coinbase">Coinbase</SelectItem>
+                      {SUPPORTED_EXCHANGES.map((ex) => (
+                        <SelectItem key={ex} value={ex}>
+                          {getExchangeDisplayName(ex as SupportedExchange)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
