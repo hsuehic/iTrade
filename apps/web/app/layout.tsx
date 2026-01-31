@@ -4,11 +4,13 @@ import { Toaster } from 'sonner';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { headers } from 'next/headers';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
+import Script from 'next/script';
 
 import { SessionProvider } from '@/components/session-provider';
 import { getAuthFromHeaders } from '@/lib/auth';
 import './globals.css';
-import Script from 'next/script';
 
 const geistSans = GeistSans;
 const geistMono = GeistMono;
@@ -45,6 +47,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   // Get session once at the root level
   // Use getAuthFromHeaders to get proper base URL for session validation in production
   const requestHeaders = await headers();
@@ -54,7 +59,7 @@ export default async function RootLayout({
   });
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -75,27 +80,29 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        {/* Global Providers */}
-        <SessionProvider session={session}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="dark"
-            enableSystem={false}
-            disableTransitionOnChange
-          >
-            {/* Route-specific layouts handle their own structure */}
-            {children}
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          {/* Global Providers */}
+          <SessionProvider session={session}>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="dark"
+              enableSystem={false}
+              disableTransitionOnChange
+            >
+              {/* Route-specific layouts handle their own structure */}
+              {children}
 
-            {/* Global Notifications */}
-            <Toaster
-              position="top-center"
-              richColors={true}
-              toastOptions={{
-                duration: 3000,
-              }}
-            />
-          </ThemeProvider>
-        </SessionProvider>
+              {/* Global Notifications */}
+              <Toaster
+                position="top-center"
+                richColors={true}
+                toastOptions={{
+                  duration: 3000,
+                }}
+              />
+            </ThemeProvider>
+          </SessionProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

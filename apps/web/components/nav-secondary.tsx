@@ -4,6 +4,7 @@ import * as React from 'react';
 import { IconSettings, IconWallet } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import {
   SidebarGroup,
@@ -16,16 +17,17 @@ import {
 export function NavSecondary({
   ...props
 }: React.ComponentPropsWithoutRef<typeof SidebarGroup>) {
+  const t = useTranslations('nav.secondary');
   const pathname = usePathname();
 
   const items = [
     {
-      title: 'Accounts',
+      title: t('accounts'),
       url: '/accounts',
       icon: IconWallet,
     },
     {
-      title: 'Settings',
+      title: t('settings'),
       url: '/settings',
       icon: IconSettings,
     },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
 
 import { ExchangeSelector } from '@/components/exchange-selector';
@@ -14,6 +15,7 @@ const REFRESH_INTERVAL = parseInt(
 );
 
 export default function TransactionPage() {
+  const t = useTranslations('portfolio.transaction');
   const searchParams = useSearchParams();
   const statusFilter = searchParams.get('status') || undefined;
   const exchangeFilter = searchParams.get('exchange') || undefined;
@@ -63,7 +65,7 @@ export default function TransactionPage() {
   return (
     <SidebarInset>
       <SiteHeader
-        title="Transactions"
+        title={t('title')}
         links={
           <ExchangeSelector
             value={selectedExchange}

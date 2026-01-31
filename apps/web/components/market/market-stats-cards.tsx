@@ -2,6 +2,7 @@
 
 import { memo } from 'react';
 import { motion } from 'framer-motion';
+import { useTranslations } from 'next-intl';
 import {
   TrendingUp,
   TrendingDown,
@@ -80,6 +81,7 @@ export const MarketStatsCards = memo(function MarketStatsCards({
   stats,
   className,
 }: MarketStatsCardsProps) {
+  const t = useTranslations('market.stats');
   // Handle division by zero
   const gainersPercent =
     stats.tickersCount > 0
@@ -92,39 +94,39 @@ export const MarketStatsCards = memo(function MarketStatsCards({
 
   const cards = [
     {
-      title: '24h Volume',
+      title: t('volume24h.title'),
       value: formatLargeNumber(stats.totalVolume24h),
       icon: DollarSign,
       iconColor: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
       accentColor: 'bg-blue-500',
-      subValue: `${stats.tickersCount} perpetuals tracked`,
+      subValue: t('volume24h.subValue', { count: stats.tickersCount }),
     },
     {
-      title: 'Open Interest',
+      title: t('openInterest.title'),
       value: formatLargeNumber(stats.totalOpenInterest),
       icon: Layers,
       iconColor: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
       accentColor: 'bg-purple-500',
-      subValue: 'Total across all markets',
+      subValue: t('openInterest.subValue'),
     },
     {
-      title: 'Gainers',
+      title: t('gainers.title'),
       value: stats.gainersCount.toString(),
       icon: TrendingUp,
       iconColor: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
       accentColor: 'bg-emerald-500',
-      subValue: `${gainersPercent}% of market is up`,
+      subValue: t('gainers.subValue', { percent: gainersPercent }),
     },
     {
-      title: 'Losers',
+      title: t('losers.title'),
       value: stats.losersCount.toString(),
       icon: TrendingDown,
       iconColor: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
       accentColor: 'bg-rose-500',
-      subValue: `${losersPercent}% of market is down`,
+      subValue: t('losers.subValue', { percent: losersPercent }),
     },
     {
-      title: 'Avg Funding',
+      title: t('avgFunding.title'),
       value: `${(stats.avgFundingRate * 100).toFixed(4)}%`,
       icon: Percent,
       iconColor:
@@ -132,15 +134,21 @@ export const MarketStatsCards = memo(function MarketStatsCards({
           ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400'
           : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
       accentColor: stats.avgFundingRate >= 0 ? 'bg-teal-500' : 'bg-amber-500',
-      subValue: stats.avgFundingRate >= 0 ? 'Longs pay shorts' : 'Shorts pay longs',
+      subValue:
+        stats.avgFundingRate >= 0 ? t('avgFunding.longs') : t('avgFunding.shorts'),
     },
     {
-      title: 'Market Activity',
-      value: stats.tickersCount > 15 ? 'High' : stats.tickersCount > 8 ? 'Medium' : 'Low',
+      title: t('activity.title'),
+      value:
+        stats.tickersCount > 15
+          ? t('activity.level.high')
+          : stats.tickersCount > 8
+            ? t('activity.level.medium')
+            : t('activity.level.low'),
       icon: Activity,
       iconColor: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
       accentColor: 'bg-cyan-500',
-      subValue: `${stats.tickersCount} active perpetuals`,
+      subValue: t('activity.subValue', { count: stats.tickersCount }),
     },
   ];
 

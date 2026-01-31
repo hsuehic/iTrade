@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
+import { useTranslations } from 'next-intl';
 import { TickerCard, type TickerData } from './ticker-card';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -60,6 +61,8 @@ const trimTrailingZeros = (priceStr: string): string => {
 };
 
 export function TickerGrid() {
+  const t = useTranslations('landing.ticker');
+
   // Initialize with placeholder data in correct order
   const [binanceTickers, setBinanceTickers] = useState<TickerData[]>(
     BINANCE_COINS.map((coin) => ({
@@ -130,9 +133,6 @@ export function TickerGrid() {
       } else if (symbol.endsWith('USDT')) {
         displaySymbol = symbol.replace('USDT', '/USDT'); // Binance: BTCUSDT -> BTC/USDT
       }
-
-      // Use displaySymbol for tickerId to match the IDs used in rendering
-      const tickerId = `${exchange}-${displaySymbol}`;
 
       const fullTickerData: TickerData = {
         symbol: displaySymbol,
@@ -359,13 +359,13 @@ export function TickerGrid() {
     return (
       <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8">
         <div className="mb-8 text-center">
-          <h2 className="mb-2 text-3xl font-bold">Live Market Data</h2>
-          <p className="text-muted-foreground">Connecting to exchanges...</p>
+          <h2 className="mb-2 text-3xl font-bold">{t('loadingTitle')}</h2>
+          <p className="text-muted-foreground">{t('loadingSubtitle')}</p>
         </div>
         <div className="space-y-12">
           {/* Binance Skeleton */}
           <div>
-            <h3 className="mb-4 text-xl font-semibold">Binance</h3>
+            <h3 className="mb-4 text-xl font-semibold">{t('binance')}</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {BINANCE_COINS.map((coin) => (
                 <div key={coin.symbol} className="space-y-3 rounded-lg border p-4">
@@ -379,7 +379,7 @@ export function TickerGrid() {
           </div>
           {/* OKX Skeleton */}
           <div>
-            <h3 className="mb-4 text-xl font-semibold">OKX</h3>
+            <h3 className="mb-4 text-xl font-semibold">{t('okx')}</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {OKX_COINS.map((coin) => (
                 <div key={coin.symbol} className="space-y-3 rounded-lg border p-4">
@@ -399,9 +399,9 @@ export function TickerGrid() {
   return (
     <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8">
       <div className="mb-8 text-center">
-        <h2 className="mb-2 text-3xl font-bold">Live Market Data</h2>
+        <h2 className="mb-2 text-3xl font-bold">{t('title')}</h2>
         <div className="flex items-center justify-center gap-2">
-          <p className="text-muted-foreground">Real-time market data and indexes</p>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
         </div>
       </div>
 
@@ -416,7 +416,7 @@ export function TickerGrid() {
               height={32}
               className="rounded-full"
             />
-            <h3 className="text-xl font-semibold">Binance</h3>
+            <h3 className="text-xl font-semibold">{t('binance')}</h3>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {binanceTickers.map((ticker, index) => {
@@ -445,7 +445,7 @@ export function TickerGrid() {
               height={32}
               className="rounded-full"
             />
-            <h3 className="text-xl font-semibold">OKX</h3>
+            <h3 className="text-xl font-semibold">{t('okx')}</h3>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {okxTickers.map((ticker, index) => {

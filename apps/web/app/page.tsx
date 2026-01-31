@@ -5,14 +5,19 @@ import { TickerGrid } from '@/components/landing/ticker-grid';
 import { MobileDownload } from '@/components/landing/mobile-download';
 import { ChartBackground } from '@/components/landing/chart-background';
 import { auth } from '@/lib/auth';
+import { getTranslations } from 'next-intl/server';
 
-export const metadata = {
-  title: 'iTrade - Intelligent & Strategic Crypto Trading ',
-  description:
-    'Trade smarter with AI-powered strategies across multiple exchanges. Real-time analytics, automated execution, and risk management built for professionals.',
-};
+export async function generateMetadata() {
+  const t = await getTranslations('landing.meta');
+
+  return {
+    title: t('title'),
+    description: t('description'),
+  };
+}
 
 export default async function Home() {
+  const t = await getTranslations('landing.footer');
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -40,8 +45,8 @@ export default async function Home() {
       {/* Footer */}
       <footer className="relative border-t bg-background/80 py-8 backdrop-blur-sm">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
-          <p>&copy; 2026 iTrade. All rights reserved.</p>
-          <p className="mt-2">Trade responsibly. Cryptocurrency trading involves risk.</p>
+          <p>{t('rights')}</p>
+          <p className="mt-2">{t('risk')}</p>
           <div className="mt-4 flex items-center justify-center gap-4">
             <a
               href="/privacy.html"
@@ -49,7 +54,7 @@ export default async function Home() {
               rel="noopener noreferrer"
               className="underline transition-colors hover:text-foreground"
             >
-              Privacy Policy
+              {t('privacy')}
             </a>
             <span>•</span>
             <a
@@ -58,7 +63,7 @@ export default async function Home() {
               rel="noopener noreferrer"
               className="underline transition-colors hover:text-foreground"
             >
-              Terms of Service
+              {t('terms')}
             </a>
           </div>
         </div>

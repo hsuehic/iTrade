@@ -3,6 +3,7 @@
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useTranslations } from 'next-intl';
 import { ProfileSettings } from '@/components/settings/profile-settings';
 import { SecuritySettings } from '@/components/settings/security-settings';
 import { EmailPreferencesSettings } from '@/components/settings/email-preferences-settings';
@@ -17,9 +18,11 @@ import {
 } from '@tabler/icons-react';
 
 export default function SettingsPage() {
+  const t = useTranslations('settings');
+
   return (
     <SidebarInset>
-      <SiteHeader title="Settings" />
+      <SiteHeader title={t('title')} />
       <div className="flex flex-1 flex-col main-content">
         <div className="@container/main flex flex-1 flex-col gap-2">
           <div className="flex flex-col gap-6 py-6 px-4 lg:px-6">
@@ -27,23 +30,23 @@ export default function SettingsPage() {
               <TabsList className="mb-6 flex-wrap h-auto gap-1">
                 <TabsTrigger value="profile" className="gap-2">
                   <IconUser className="size-4" />
-                  <span className="hidden sm:inline">Profile</span>
+                  <span className="hidden sm:inline">{t('tabs.profile')}</span>
                 </TabsTrigger>
                 <TabsTrigger value="security" className="gap-2">
                   <IconLock className="size-4" />
-                  <span className="hidden sm:inline">Security</span>
+                  <span className="hidden sm:inline">{t('tabs.security')}</span>
                 </TabsTrigger>
                 <TabsTrigger value="notifications" className="gap-2">
                   <IconMail className="size-4" />
-                  <span className="hidden sm:inline">Notifications</span>
+                  <span className="hidden sm:inline">{t('tabs.notifications')}</span>
                 </TabsTrigger>
                 <TabsTrigger value="appearance" className="gap-2">
                   <IconPalette className="size-4" />
-                  <span className="hidden sm:inline">Appearance</span>
+                  <span className="hidden sm:inline">{t('tabs.appearance')}</span>
                 </TabsTrigger>
                 <TabsTrigger value="danger" className="gap-2 text-destructive">
                   <IconAlertTriangle className="size-4" />
-                  <span className="hidden sm:inline">Danger Zone</span>
+                  <span className="hidden sm:inline">{t('tabs.danger')}</span>
                 </TabsTrigger>
               </TabsList>
 

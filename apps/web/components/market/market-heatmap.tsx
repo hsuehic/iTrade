@@ -3,6 +3,7 @@
 import { memo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUp, ArrowDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
@@ -26,6 +27,7 @@ interface HeatmapCellProps {
 }
 
 const HeatmapCell = memo(function HeatmapCell({ ticker, size, index }: HeatmapCellProps) {
+  const t = useTranslations('market.heatmap');
   const [isHovered, setIsHovered] = useState(false);
 
   const backgroundColor = getHeatmapColor(ticker.change24h);
@@ -114,10 +116,10 @@ const HeatmapCell = memo(function HeatmapCell({ ticker, size, index }: HeatmapCe
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <div className="text-muted-foreground">Price:</div>
+              <div className="text-muted-foreground">{t('tooltip.price')}:</div>
               <div className="font-medium">${ticker.priceStr}</div>
 
-              <div className="text-muted-foreground">24h Change:</div>
+              <div className="text-muted-foreground">{t('tooltip.change24h')}:</div>
               <div
                 className={cn(
                   'font-medium',
@@ -128,10 +130,10 @@ const HeatmapCell = memo(function HeatmapCell({ ticker, size, index }: HeatmapCe
                 {ticker.change24h.toFixed(2)}%
               </div>
 
-              <div className="text-muted-foreground">24h High:</div>
+              <div className="text-muted-foreground">{t('tooltip.high24h')}:</div>
               <div className="font-medium">${formatPrice(ticker.high24h)}</div>
 
-              <div className="text-muted-foreground">24h Low:</div>
+              <div className="text-muted-foreground">{t('tooltip.low24h')}:</div>
               <div className="font-medium">${formatPrice(ticker.low24h)}</div>
             </div>
           </div>
@@ -145,6 +147,7 @@ export const MarketHeatmap = memo(function MarketHeatmap({
   tickers,
   className,
 }: MarketHeatmapProps) {
+  const t = useTranslations('market.heatmap');
   // Sort by volume to give larger cells to more important coins
   const sortedTickers = [...tickers].sort((a, b) => b.volume24h - a.volume24h);
 
@@ -161,7 +164,7 @@ export const MarketHeatmap = memo(function MarketHeatmap({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <span className="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent">
-              Market Heatmap
+              {t('title')}
             </span>
           </CardTitle>
           <div className="flex items-center gap-3 text-xs">

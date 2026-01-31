@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { AccountList } from './account-list';
 import { getAccounts } from '@/app/actions/accounts';
 import {
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
 };
 
 export default async function AccountsPage() {
+  const t = await getTranslations('accounts');
   const requestHeaders = await headers();
   const auth = getAuthFromHeaders(requestHeaders);
   const session = await auth.api.getSession({
@@ -33,14 +35,12 @@ export default async function AccountsPage() {
 
   return (
     <SidebarInset>
-      <SiteHeader title="Accounts" />
+      <SiteHeader title={t('title')} />
       <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
         <Card>
           <CardHeader>
-            <CardTitle>Manage Exchange Accounts</CardTitle>
-            <CardDescription>
-              Connect your exchange accounts (Binance, OKX, Coinbase) to enable trading.
-            </CardDescription>
+            <CardTitle>{t('manageTitle')}</CardTitle>
+            <CardDescription>{t('manageDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
             <AccountList initialAccounts={accounts as any} />

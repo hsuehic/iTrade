@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { CartesianGrid, XAxis, YAxis, Area, AreaChart } from 'recharts';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
@@ -34,21 +35,6 @@ interface ChartDataPoint {
   [exchange: string]: string | number;
 }
 
-const chartConfig = {
-  binance: {
-    label: 'Binance',
-    color: '#F3BA2F', // 黄色
-  },
-  okx: {
-    label: 'OKX',
-    color: 'hsl(142,76%,36%)', // 绿色
-  },
-  coinbase: {
-    label: 'Coinbase',
-    color: '#2463EB', // 深蓝色
-  },
-} satisfies ChartConfig;
-
 interface AccountBalanceChartProps {
   selectedExchange: string;
   refreshInterval?: number; // 轮询间隔（毫秒），默认 5000ms (5秒)
@@ -58,12 +44,29 @@ export function AccountBalanceChart({
   selectedExchange,
   refreshInterval = 5000,
 }: AccountBalanceChartProps) {
+  const t = useTranslations('dashboard.balanceChart');
+  const locale = useLocale();
   const isMobile = useIsMobile();
   const [timeRange, setTimeRange] = React.useState('1d');
   const [chartData, setChartData] = React.useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [exchanges, setExchanges] = React.useState<string[]>([]);
   const updateTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const chartConfig = {
+    binance: {
+      label: t('exchange.binance'),
+      color: '#F3BA2F',
+    },
+    okx: {
+      label: t('exchange.okx'),
+      color: 'hsl(142,76%,36%)',
+    },
+    coinbase: {
+      label: t('exchange.coinbase'),
+      color: '#2463EB',
+    },
+  } satisfies ChartConfig;
 
   React.useEffect(() => {
     if (isMobile) {
@@ -165,7 +168,7 @@ export function AccountBalanceChart({
   const formatCurrency = (value: number) => {
     // Smart formatting based on value magnitude
     if (value >= 1000000) {
-      return new Intl.NumberFormat('en-US', {
+      return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'USD',
         minimumFractionDigits: 1,
@@ -174,14 +177,14 @@ export function AccountBalanceChart({
         compactDisplay: 'short',
       }).format(value);
     } else if (value >= 10000) {
-      return new Intl.NumberFormat('en-US', {
+      return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'USD',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }).format(value);
     } else {
-      return new Intl.NumberFormat('en-US', {
+      return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'USD',
         minimumFractionDigits: 2,
@@ -191,7 +194,7 @@ export function AccountBalanceChart({
   };
 
   const formatTooltipCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -202,16 +205,16 @@ export function AccountBalanceChart({
   const getPeriodLabel = () => {
     switch (timeRange) {
       case '7d':
-        return 'Last 7 days';
+        return t('period.last7Days');
       case '90d':
-        return 'Last 3 months';
+        return t('period.last3Months');
       case '1d':
-        return 'Last 1 day';
+        return t('period.last1Day');
       case '1h':
-        return 'Last 1 hour';
+        return t('period.last1Hour');
       case '30d':
       default:
-        return 'Last 30 days';
+        return t('period.last30Days');
     }
   };
 
@@ -247,12 +250,16 @@ export function AccountBalanceChart({
   return (
     <Card className="@container/card">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">Account Balance</CardTitle>
+        <CardTitle className="flex items-center gap-2">{t('title')}</CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
             {selectedExchange === 'all'
-              ? `Portfolio value over time • ${getPeriodLabel()}`
-              : `${selectedExchange.charAt(0).toUpperCase() + selectedExchange.slice(1)} balance • ${getPeriodLabel()}`}
+              ? t('subtitleAll', { period: getPeriodLabel() })
+              : t('subtitleSingle', {
+                  exchange:
+                    selectedExchange.charAt(0).toUpperCase() + selectedExchange.slice(1),
+                  period: getPeriodLabel(),
+                })}
           </span>
           <span className="@[540px]/card:hidden">{getPeriodLabel()}</span>
         </CardDescription>
@@ -264,35 +271,35 @@ export function AccountBalanceChart({
             variant="outline"
             className="hidden *:data-[slot=toggle-group-item]:!px-3 @[767px]/card:flex"
           >
-            <ToggleGroupItem value="90d">3 months</ToggleGroupItem>
-            <ToggleGroupItem value="30d">30 days</ToggleGroupItem>
-            <ToggleGroupItem value="7d">7 days</ToggleGroupItem>
-            <ToggleGroupItem value="1d">1 day</ToggleGroupItem>
-            <ToggleGroupItem value="1h">1 hour</ToggleGroupItem>
+            <ToggleGroupItem value="90d">{t('range.3m')}</ToggleGroupItem>
+            <ToggleGroupItem value="30d">{t('range.30d')}</ToggleGroupItem>
+            <ToggleGroupItem value="7d">{t('range.7d')}</ToggleGroupItem>
+            <ToggleGroupItem value="1d">{t('range.1d')}</ToggleGroupItem>
+            <ToggleGroupItem value="1h">{t('range.1h')}</ToggleGroupItem>
           </ToggleGroup>
           <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger
               className="flex w-40 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[767px]/card:hidden"
               size="sm"
-              aria-label="Select time range"
+              aria-label={t('rangeSelectLabel')}
             >
-              <SelectValue placeholder="Last 30 days" />
+              <SelectValue placeholder={t('period.last30Days')} />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
               <SelectItem value="90d" className="rounded-lg">
-                Last 3 months
+                {t('period.last3Months')}
               </SelectItem>
               <SelectItem value="30d" className="rounded-lg">
-                Last 30 days
+                {t('period.last30Days')}
               </SelectItem>
               <SelectItem value="7d" className="rounded-lg">
-                Last 7 days
+                {t('period.last7Days')}
               </SelectItem>
               <SelectItem value="1d" className="rounded-lg">
-                Last 1 day
+                {t('period.last1Day')}
               </SelectItem>
               <SelectItem value="1h" className="rounded-lg">
-                Last 1 hour
+                {t('period.last1Hour')}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -306,8 +313,8 @@ export function AccountBalanceChart({
         ) : chartData.length === 0 ? (
           <div className="flex h-[450px] items-center justify-center text-muted-foreground">
             <div className="text-center space-y-2">
-              <p className="text-lg font-medium">No data available</p>
-              <p className="text-sm">Start trading to see your account balance history</p>
+              <p className="text-lg font-medium">{t('empty.title')}</p>
+              <p className="text-sm">{t('empty.description')}</p>
             </div>
           </div>
         ) : (
@@ -373,19 +380,19 @@ export function AccountBalanceChart({
                 tickFormatter={(value) => {
                   const date = new Date(value);
                   if (timeRange === '1h') {
-                    return date.toLocaleTimeString('en-US', {
+                    return date.toLocaleTimeString(locale, {
                       hour: '2-digit',
                       minute: '2-digit',
                       hour12: false,
                     });
                   } else if (timeRange === '1d') {
-                    return date.toLocaleTimeString('en-US', {
+                    return date.toLocaleTimeString(locale, {
                       hour: '2-digit',
                       minute: '2-digit',
                       hour12: false,
                     });
                   } else {
-                    return date.toLocaleDateString('en-US', {
+                    return date.toLocaleDateString(locale, {
                       month: 'short',
                       day: 'numeric',
                     });
@@ -416,14 +423,14 @@ export function AccountBalanceChart({
                   let formattedDate;
 
                   if (timeRange === '1h') {
-                    formattedDate = date.toLocaleString('en-US', {
+                    formattedDate = date.toLocaleString(locale, {
                       weekday: 'short',
                       hour: '2-digit',
                       minute: '2-digit',
                       hour12: true,
                     });
                   } else if (timeRange === '1d') {
-                    formattedDate = date.toLocaleString('en-US', {
+                    formattedDate = date.toLocaleString(locale, {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
@@ -431,7 +438,7 @@ export function AccountBalanceChart({
                       hour12: true,
                     });
                   } else {
-                    formattedDate = date.toLocaleDateString('en-US', {
+                    formattedDate = date.toLocaleDateString(locale, {
                       weekday: 'short',
                       month: 'short',
                       day: 'numeric',
@@ -477,7 +484,7 @@ export function AccountBalanceChart({
                         <div className="mt-2 pt-2 border-t border-border/50">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium text-muted-foreground">
-                              Total
+                              {t('total')}
                             </span>
                             <span className="text-sm font-semibold text-foreground tabular-nums">
                               {formatTooltipCurrency(

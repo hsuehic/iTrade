@@ -9,6 +9,7 @@ import {
   IconRocket,
   IconChevronDown,
 } from '@tabler/icons-react';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import {
@@ -68,6 +69,8 @@ export function TradingDashboardCards({
   selectedExchange,
   refreshInterval = 5000,
 }: TradingDashboardCardsProps) {
+  const t = useTranslations('dashboard.cards');
+  const locale = useLocale();
   const [accountData, setAccountData] = useState<AccountSummary | null>(null);
   const [_strategyData, setStrategyData] = useState<StrategySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -186,7 +189,7 @@ export function TradingDashboardCards({
   }
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -205,6 +208,12 @@ export function TradingDashboardCards({
   const totalRealizedPnl = accountData?.totalRealizedPnl || 0;
   const totalUnrealizedPnl = accountData?.totalUnrealizedPnl || 0;
   const balanceChange = accountData?.balanceChange || 0;
+  const periodLabels: Record<string, string> = {
+    '1d': t('period.day'),
+    '1w': t('period.week'),
+    '1m': t('period.month'),
+    '1y': t('period.year'),
+  };
 
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
@@ -214,7 +223,7 @@ export function TradingDashboardCards({
           <div className="flex items-center justify-between">
             <CardDescription className="flex items-center gap-2">
               <IconWallet className="size-4" />
-              Balance
+              {t('balanceTitle')}
             </CardDescription>
             <Badge
               variant="outline"
@@ -238,7 +247,7 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {balanceChange >= 0 ? 'Growing' : 'Declining'} this month
+            {balanceChange >= 0 ? t('balanceTrend.up') : t('balanceTrend.down')}
             {balanceChange >= 0 ? (
               <IconTrendingUp className="size-4 text-green-500" />
             ) : (
@@ -247,8 +256,8 @@ export function TradingDashboardCards({
           </div>
           <div className="text-muted-foreground">
             {selectedExchange === 'all'
-              ? 'Cash balance across all exchanges'
-              : `Cash balance on ${selectedExchange}`}
+              ? t('balanceFooterAll')
+              : t('balanceFooterSingle', { exchange: selectedExchange })}
           </div>
         </CardFooter>
       </Card>
@@ -259,7 +268,7 @@ export function TradingDashboardCards({
           <div className="flex items-center justify-between">
             <CardDescription className="flex items-center gap-2">
               <IconChartLine className="size-4" />
-              Balance Change
+              {t('balanceChangeTitle')}
             </CardDescription>
             <div className="flex items-center gap-2">
               <Badge
@@ -292,10 +301,10 @@ export function TradingDashboardCards({
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium items-center">
             {balanceChangeData?.change === 0 && balanceChangeData?.changeValue === 0
-              ? 'No change'
+              ? t('balanceChangeStatus.none')
               : (balanceChangeData?.changeValue || 0) >= 0
-                ? 'Balance increased'
-                : 'Balance decreased'}
+                ? t('balanceChangeStatus.increased')
+                : t('balanceChangeStatus.decreased')}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -304,23 +313,17 @@ export function TradingDashboardCards({
                   className="h-6 px-2 text-xs bg-muted/50 hover:bg-muted border border-transparent hover:border-border data-[state=open]:border-primary data-[state=open]:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/5 focus-visible:outline-none focus-visible:ring-0 focus:outline-none focus:ring-0 transition-colors"
                 >
                   <span className="mr-1">
-                    {balanceChangePeriod === '1d'
-                      ? 'Day'
-                      : balanceChangePeriod === '1w'
-                        ? 'Week'
-                        : balanceChangePeriod === '1m'
-                          ? 'Month'
-                          : 'Year'}
+                    {periodLabels[balanceChangePeriod] || balanceChangePeriod}
                   </span>
                   <IconChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-20" align="start">
                 {[
-                  { value: '1d', label: 'Day' },
-                  { value: '1w', label: 'Week' },
-                  { value: '1m', label: 'Month' },
-                  { value: '1y', label: 'Year' },
+                  { value: '1d', label: periodLabels['1d'] },
+                  { value: '1w', label: periodLabels['1w'] },
+                  { value: '1m', label: periodLabels['1m'] },
+                  { value: '1y', label: periodLabels['1y'] },
                 ].map((period) => (
                   <DropdownMenuItem
                     key={period.value}
@@ -338,15 +341,15 @@ export function TradingDashboardCards({
             balanceChangeData?.changeValue === 0 &&
             balanceChangePeriod === '1d'
               ? selectedExchange === 'all'
-                ? 'Daily comparison requires more historical data across exchanges'
-                : 'Insufficient data for daily comparison'
+                ? t('balanceChangeDescription.noDataAll')
+                : t('balanceChangeDescription.noDataSingle')
               : balanceChangePeriod === '1d'
-                ? 'Change in the last 24 hours'
+                ? t('balanceChangeDescription.lastDay')
                 : balanceChangePeriod === '1w'
-                  ? 'Change in the last week'
+                  ? t('balanceChangeDescription.lastWeek')
                   : balanceChangePeriod === '1m'
-                    ? 'Change in the last month'
-                    : 'Change in the last year'}
+                    ? t('balanceChangeDescription.lastMonth')
+                    : t('balanceChangeDescription.lastYear')}
           </div>
         </CardFooter>
       </Card>
@@ -357,7 +360,7 @@ export function TradingDashboardCards({
           <div className="flex items-center justify-between">
             <CardDescription className="flex items-center gap-2">
               <IconChartLine className="size-4" />
-              Realized P&L
+              {t('realizedTitle')}
             </CardDescription>
             <Badge
               variant="outline"
@@ -372,7 +375,7 @@ export function TradingDashboardCards({
               ) : (
                 <IconTrendingDown className="size-3" />
               )}
-              {totalRealizedPnl >= 0 ? 'Profit' : 'Loss'}
+              {totalRealizedPnl >= 0 ? t('profit') : t('loss')}
             </Badge>
           </div>
           <CardTitle
@@ -387,11 +390,11 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {totalRealizedPnl >= 0 ? 'Closed profitable trades' : 'Closed losing trades'}
+            {totalRealizedPnl >= 0
+              ? t('realizedStatus.positive')
+              : t('realizedStatus.negative')}
           </div>
-          <div className="text-muted-foreground">
-            Locked-in profits and losses from completed trades
-          </div>
+          <div className="text-muted-foreground">{t('realizedDescription')}</div>
         </CardFooter>
       </Card>
 
@@ -401,7 +404,7 @@ export function TradingDashboardCards({
           <div className="flex items-center justify-between">
             <CardDescription className="flex items-center gap-2">
               <IconRocket className="size-4" />
-              Unrealized P&L
+              {t('unrealizedTitle')}
             </CardDescription>
             <Badge
               variant="outline"
@@ -434,11 +437,12 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            {totalUnrealizedPnl >= 0 ? 'Profitable positions' : 'Positions underwater'}
+            {totalUnrealizedPnl >= 0
+              ? t('unrealizedStatus.positive')
+              : t('unrealizedStatus.negative')}
           </div>
           <div className="text-muted-foreground">
-            {accountData?.totalPositions || 0} open position
-            {accountData?.totalPositions !== 1 ? 's' : ''}
+            {t('openPositions', { count: accountData?.totalPositions || 0 })}
           </div>
         </CardFooter>
       </Card>

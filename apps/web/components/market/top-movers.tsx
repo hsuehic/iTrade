@@ -3,6 +3,7 @@
 import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Rocket, Skull } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { MiniSparkline } from './mini-sparkline';
@@ -101,6 +102,7 @@ export const TopMovers = memo(function TopMovers({
   type,
   className,
 }: TopMoversProps) {
+  const t = useTranslations('market.topMovers');
   // Sort and take top 5
   const sorted = [...tickers]
     .sort((a, b) =>
@@ -118,14 +120,14 @@ export const TopMovers = memo(function TopMovers({
             <>
               <Rocket className="size-5 text-green-500" />
               <span className="bg-gradient-to-r from-green-500 to-emerald-500 bg-clip-text text-transparent">
-                Top Gainers
+                {t('gainers')}
               </span>
             </>
           ) : (
             <>
               <Skull className="size-5 text-red-500" />
               <span className="bg-gradient-to-r from-red-500 to-rose-500 bg-clip-text text-transparent">
-                Top Losers
+                {t('losers')}
               </span>
             </>
           )}
@@ -143,7 +145,7 @@ export const TopMovers = memo(function TopMovers({
 
         {sorted.length === 0 && (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            No {type} to display
+            {isGainers ? t('emptyGainers') : t('emptyLosers')}
           </div>
         )}
       </CardContent>

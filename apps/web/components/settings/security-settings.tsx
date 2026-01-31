@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Loader2, Check, Eye, EyeOff, Shield } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,7 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export function SecuritySettings() {
+  const t = useTranslations('settings.security');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -42,19 +44,19 @@ export function SecuritySettings() {
         }
 
         if (value.length < 8) {
-          setNewPasswordError('Password must be at least 8 characters');
+          setNewPasswordError(t('errors.minLength'));
         } else if (!/[A-Z]/.test(value)) {
-          setNewPasswordError('Password must contain at least one uppercase letter');
+          setNewPasswordError(t('errors.uppercase'));
         } else if (!/[a-z]/.test(value)) {
-          setNewPasswordError('Password must contain at least one lowercase letter');
+          setNewPasswordError(t('errors.lowercase'));
         } else if (!/[0-9]/.test(value)) {
-          setNewPasswordError('Password must contain at least one number');
+          setNewPasswordError(t('errors.number'));
         } else {
           setNewPasswordError(null);
         }
       }, 500);
     };
-  }, []);
+  }, [t]);
 
   // Debounced validation for confirm password using useMemo + setTimeout
   const validateConfirmPassword = useMemo(() => {
@@ -68,13 +70,13 @@ export function SecuritySettings() {
         }
 
         if (value !== newPwd) {
-          setConfirmPasswordError('Passwords do not match');
+          setConfirmPasswordError(t('errors.mismatch'));
         } else {
           setConfirmPasswordError(null);
         }
       }, 500);
     };
-  }, []);
+  }, [t]);
 
   const handleCurrentPasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCurrentPassword(e.target.value);
@@ -103,22 +105,22 @@ export function SecuritySettings() {
     let hasErrors = false;
 
     if (!currentPassword) {
-      setCurrentPasswordError('Current password is required');
+      setCurrentPasswordError(t('errors.currentRequired'));
       hasErrors = true;
     }
 
     if (!newPassword) {
-      setNewPasswordError('New password is required');
+      setNewPasswordError(t('errors.newRequired'));
       hasErrors = true;
     } else if (newPasswordError) {
       hasErrors = true;
     }
 
     if (!confirmPassword) {
-      setConfirmPasswordError('Please confirm your new password');
+      setConfirmPasswordError(t('errors.confirmRequired'));
       hasErrors = true;
     } else if (newPassword !== confirmPassword) {
-      setConfirmPasswordError('Passwords do not match');
+      setConfirmPasswordError(t('errors.mismatch'));
       hasErrors = true;
     }
 
@@ -141,18 +143,17 @@ export function SecuritySettings() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Failed to change password');
+        throw new Error(data.error || data.message || t('errors.updateFailed'));
       }
 
-      toast.success('Password changed successfully');
+      toast.success(t('messages.updated'));
 
       // Clear form
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to change password';
+      const message = error instanceof Error ? error.message : t('errors.updateFailed');
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -173,23 +174,20 @@ export function SecuritySettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Shield className="size-5" />
-          Change Password
+          {t('title')}
         </CardTitle>
-        <CardDescription>
-          Update your password to keep your account secure. We recommend using a strong,
-          unique password.
-        </CardDescription>
+        <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <Alert>
             <AlertDescription>
-              <strong>Password requirements:</strong>
+              <strong>{t('requirements.title')}</strong>
               <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
-                <li>At least 8 characters long</li>
-                <li>Contains at least one uppercase letter (A-Z)</li>
-                <li>Contains at least one lowercase letter (a-z)</li>
-                <li>Contains at least one number (0-9)</li>
+                <li>{t('requirements.minLength')}</li>
+                <li>{t('requirements.uppercase')}</li>
+                <li>{t('requirements.lowercase')}</li>
+                <li>{t('requirements.number')}</li>
               </ul>
             </AlertDescription>
           </Alert>
@@ -197,13 +195,13 @@ export function SecuritySettings() {
           {/* Current Password */}
           <div className="space-y-2">
             <Label htmlFor="currentPassword">
-              Current Password <span className="text-destructive">*</span>
+              {t('currentPassword')} <span className="text-destructive">*</span>
             </Label>
             <div className="relative">
               <Input
                 id="currentPassword"
                 type={showCurrentPassword ? 'text' : 'password'}
-                placeholder="Enter your current password"
+                placeholder={t('currentPasswordPlaceholder')}
                 value={currentPassword}
                 onChange={handleCurrentPasswordChange}
                 aria-invalid={!!currentPasswordError}
@@ -218,7 +216,7 @@ export function SecuritySettings() {
                 size="sm"
                 className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                 onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
+                aria-label={showCurrentPassword ? t('hidePassword') : t('showPassword')}
               >
                 {showCurrentPassword ? (
                   <EyeOff className="size-4" />
@@ -241,13 +239,13 @@ export function SecuritySettings() {
           {/* New Password */}
           <div className="space-y-2">
             <Label htmlFor="newPassword">
-              New Password <span className="text-destructive">*</span>
+              {t('newPassword')} <span className="text-destructive">*</span>
             </Label>
             <div className="relative">
               <Input
                 id="newPassword"
                 type={showNewPassword ? 'text' : 'password'}
-                placeholder="Enter your new password"
+                placeholder={t('newPasswordPlaceholder')}
                 value={newPassword}
                 onChange={handleNewPasswordChange}
                 aria-invalid={!!newPasswordError}
@@ -260,7 +258,7 @@ export function SecuritySettings() {
                 size="sm"
                 className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                aria-label={showNewPassword ? t('hidePassword') : t('showPassword')}
               >
                 {showNewPassword ? (
                   <EyeOff className="size-4" />
@@ -283,13 +281,13 @@ export function SecuritySettings() {
           {/* Confirm Password */}
           <div className="space-y-2">
             <Label htmlFor="confirmPassword">
-              Confirm New Password <span className="text-destructive">*</span>
+              {t('confirmPassword')} <span className="text-destructive">*</span>
             </Label>
             <div className="relative">
               <Input
                 id="confirmPassword"
                 type={showConfirmPassword ? 'text' : 'password'}
-                placeholder="Confirm your new password"
+                placeholder={t('confirmPasswordPlaceholder')}
                 value={confirmPassword}
                 onChange={handleConfirmPasswordChange}
                 aria-invalid={!!confirmPasswordError}
@@ -304,7 +302,7 @@ export function SecuritySettings() {
                 size="sm"
                 className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                aria-label={showConfirmPassword ? t('hidePassword') : t('showPassword')}
               >
                 {showConfirmPassword ? (
                   <EyeOff className="size-4" />
@@ -333,12 +331,12 @@ export function SecuritySettings() {
             {isSubmitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Changing...
+                {t('changing')}
               </>
             ) : (
               <>
                 <Check className="size-4" />
-                Change Password
+                {t('submit')}
               </>
             )}
           </Button>

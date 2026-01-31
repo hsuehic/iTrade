@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -29,6 +30,8 @@ interface Account {
 }
 
 export function AccountList({ initialAccounts }: { initialAccounts: Account[] }) {
+  const t = useTranslations('accounts.list');
+  const locale = useLocale();
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(undefined);
@@ -44,13 +47,13 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this account?')) return;
+    if (!confirm(t('confirmDelete'))) return;
     try {
       await deleteAccount(id);
       setAccounts(accounts.filter((a) => a.id !== id));
-      toast.success('Account deleted');
+      toast.success(t('messages.deleted'));
     } catch (error) {
-      toast.error('Failed to delete account');
+      toast.error(t('errors.deleteFailed'));
     }
   };
 
@@ -63,9 +66,9 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Exchange Accounts</h2>
+        <h2 className="text-xl font-bold">{t('title')}</h2>
         <Button onClick={handleAdd}>
-          <Plus className="mr-2 h-4 w-4" /> Add Account
+          <Plus className="mr-2 h-4 w-4" /> {t('add')}
         </Button>
       </div>
 
@@ -73,19 +76,19 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Exchange</TableHead>
-              <TableHead>Account Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>API Key</TableHead>
-              <TableHead>Updated</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead>{t('table.exchange')}</TableHead>
+              <TableHead>{t('table.accountName')}</TableHead>
+              <TableHead>{t('table.status')}</TableHead>
+              <TableHead>{t('table.apiKey')}</TableHead>
+              <TableHead>{t('table.updated')}</TableHead>
+              <TableHead className="text-right">{t('table.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {accounts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  No accounts found. Add one to start trading.
+                  {t('empty')}
                 </TableCell>
               </TableRow>
             ) : (
@@ -99,12 +102,12 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
                     <span
                       className={`px-2 py-1 rounded-full text-xs ${account.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}
                     >
-                      {account.isActive ? 'Active' : 'Inactive'}
+                      {account.isActive ? t('status.active') : t('status.inactive')}
                     </span>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{account.apiKey}</TableCell>
                   <TableCell>
-                    {new Date(account.updatedTime).toLocaleDateString()}
+                    {new Date(account.updatedTime).toLocaleDateString(locale)}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { BalanceOverviewCards } from '@/components/balance-overview-cards';
 import { AccountBalanceChart } from '@/components/account-balance-chart';
@@ -15,6 +16,7 @@ const REFRESH_INTERVAL = parseInt(
 );
 
 export default function BalancePage() {
+  const t = useTranslations('portfolio.balance');
   const [selectedExchange, setSelectedExchange] = useState('all');
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
 
@@ -41,7 +43,7 @@ export default function BalancePage() {
   return (
     <SidebarInset>
       <SiteHeader
-        title="Balance"
+        title={t('title')}
         links={
           <ExchangeSelector
             value={selectedExchange}

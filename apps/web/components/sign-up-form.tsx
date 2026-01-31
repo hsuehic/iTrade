@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { signUp } from '@/lib/auth-client';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 export function SignUpForm() {
+  const t = useTranslations('auth.signUp');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -36,18 +38,18 @@ export function SignUpForm() {
   return (
     <div className="grid gap-4 p-6 md:p-8">
       <div className="flex flex-col items-center text-center">
-        <h1 className="text-2xl font-bold">Sign up</h1>
+        <h1 className="text-2xl font-bold">{t('title')}</h1>
         <p className="text-muted-foreground text-balance">
-          Welcome to iTrade world. Already have an account, back to{' '}
-          <a href="/auth/sign-in">sign in</a>;
+          {t('subtitle')} <a href="/auth/sign-in">{t('signInLink')}</a>
+          {t('subtitleEnd')}
         </p>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="grid gap-2">
-          <Label htmlFor="first-name">First name</Label>
+          <Label htmlFor="first-name">{t('firstNameLabel')}</Label>
           <Input
             id="first-name"
-            placeholder="Max"
+            placeholder={t('firstNamePlaceholder')}
             required
             onChange={(e) => {
               setFirstName(e.target.value);
@@ -56,10 +58,10 @@ export function SignUpForm() {
           />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="last-name">Last name</Label>
+          <Label htmlFor="last-name">{t('lastNameLabel')}</Label>
           <Input
             id="last-name"
-            placeholder="Robinson"
+            placeholder={t('lastNamePlaceholder')}
             required
             onChange={(e) => {
               setLastName(e.target.value);
@@ -69,11 +71,11 @@ export function SignUpForm() {
         </div>
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">{t('emailLabel')}</Label>
         <Input
           id="email"
           type="email"
-          placeholder="m@example.com"
+          placeholder={t('emailPlaceholder')}
           required
           onChange={(e) => {
             setEmail(e.target.value);
@@ -82,35 +84,35 @@ export function SignUpForm() {
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t('passwordLabel')}</Label>
         <Input
           id="password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
-          placeholder="Password"
+          placeholder={t('passwordPlaceholder')}
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Confirm Password</Label>
+        <Label htmlFor="password">{t('confirmPasswordLabel')}</Label>
         <Input
           id="password_confirmation"
           type="password"
           value={passwordConfirmation}
           onChange={(e) => setPasswordConfirmation(e.target.value)}
           autoComplete="new-password"
-          placeholder="Confirm Password"
+          placeholder={t('confirmPasswordPlaceholder')}
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="image">Profile Image (optional)</Label>
+        <Label htmlFor="image">{t('profileImageLabel')}</Label>
         <div className="flex items-end gap-4">
           {imagePreview && (
             <div className="relative w-16 h-16 rounded-sm overflow-hidden">
               <Image
                 src={imagePreview}
-                alt="Profile preview"
+                alt={t('profileImagePreviewAlt')}
                 layout="fill"
                 objectFit="cover"
               />
@@ -157,9 +159,8 @@ export function SignUpForm() {
                 toast.error(ctx.error.message);
               },
               onSuccess: async () => {
-                toast.success('Account created successfully', {
-                  description:
-                    'A verification email has been sent to your email address, please check your email to verify your account.',
+                toast.success(t('messages.created'), {
+                  description: t('messages.verifyEmail'),
                 });
                 router.push('/auth/sign-in');
               },
@@ -167,7 +168,7 @@ export function SignUpForm() {
           });
         }}
       >
-        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Create an account'}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : t('submit')}
       </Button>
     </div>
   );

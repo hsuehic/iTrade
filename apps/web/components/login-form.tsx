@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { IconApple, IconGithub, IconGoogle } from '@/components/icons';
 export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
+  const t = useTranslations('auth.login');
   const router = useRouter();
   const searchParams = useSearchParams();
   const callback = (searchParams.get('callbackUrl') as string) || '/dashboard';
@@ -27,7 +29,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
       callbackURL: callback,
     });
     if (res.error) {
-      setError(res.error.message || 'Failed to sign in');
+      setError(res.error.message || t('errors.signInFailed'));
       setLoading(false);
       return;
     }
@@ -45,17 +47,15 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
     <form className="p-6 md:p-8" onSubmit={handleSubmit} {...props}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col items-center text-center">
-          <h1 className="text-2xl font-bold">Welcome back</h1>
-          <p className="text-muted-foreground text-balance">
-            Login to your iTrade account
-          </p>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground text-balance">{t('subtitle')}</p>
         </div>
         <div className="grid gap-3">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{t('emailLabel')}</Label>
           <Input
             id="email"
             type="email"
-            placeholder="mail@example.com"
+            placeholder={t('emailPlaceholder')}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -63,12 +63,12 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
         </div>
         <div className="grid gap-3">
           <div className="flex items-center">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t('passwordLabel')}</Label>
             <a
               href="/auth/forget-password"
               className="ml-auto text-sm underline-offset-2 hover:underline"
             >
-              Forgot your password?
+              {t('forgotPassword')}
             </a>
           </div>
           <Input
@@ -81,11 +81,11 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
         </div>
         {error && <p className="text-red-500">{error}</p>}
         <Button type="submit" className="w-full" disabled={isPending || loading}>
-          Login
+          {t('submit')}
         </Button>
         <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
           <span className="bg-card text-muted-foreground relative z-10 px-2">
-            Or continue with
+            {t('continueWith')}
           </span>
         </div>
         <div className="grid grid-cols-3 gap-4 center">
@@ -96,7 +96,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             onClick={() => signIn.social({ provider: 'apple', callbackURL: callback })}
           >
             <IconApple />
-            <span className="sr-only">Login with Apple</span>
+            <span className="sr-only">{t('social.apple')}</span>
           </Button>
           <Button
             variant="outline"
@@ -105,7 +105,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             onClick={() => signIn.social({ provider: 'google', callbackURL: callback })}
           >
             <IconGoogle />
-            <span className="sr-only">Login with Google</span>
+            <span className="sr-only">{t('social.google')}</span>
           </Button>
           <Button
             variant="outline"
@@ -114,13 +114,13 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             onClick={() => signIn.social({ provider: 'github', callbackURL: callback })}
           >
             <IconGithub />
-            <span className="sr-only">Login with Github</span>
+            <span className="sr-only">{t('social.github')}</span>
           </Button>
         </div>
         <div className="text-center text-sm">
-          Don&apos;t have an account?{' '}
+          {t('noAccount')}{' '}
           <a href="/auth/sign-up" className="underline underline-offset-4">
-            Sign up
+            {t('signUp')}
           </a>
         </div>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 import Image from 'next/image';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import type { StrategyEntity } from '@itrade/data-manager';
 import {
@@ -73,6 +74,7 @@ import {
 import { SubscriptionConfig } from '@itrade/core';
 
 export default function StrategyPage() {
+  const t = useTranslations('strategy');
   const [strategies, setStrategies] = useState<StrategyEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -199,21 +201,25 @@ export default function StrategyPage() {
   const [nameError, setNameError] = useState('');
 
   const steps = [
-    { id: 'basic', label: 'Basic Info', description: 'Name, type, and trading pair' },
+    {
+      id: 'basic',
+      label: t('steps.basic.label'),
+      description: t('steps.basic.description'),
+    },
     {
       id: 'parameters',
-      label: 'Parameters',
-      description: 'Strategy parameters for data analysis',
+      label: t('steps.parameters.label'),
+      description: t('steps.parameters.description'),
     },
     {
       id: 'initial-data',
-      label: 'Initial Data',
-      description: 'Historical data to initalize strategy (optional)',
+      label: t('steps.initialData.label'),
+      description: t('steps.initialData.description'),
     },
     {
       id: 'subscriptions',
-      label: 'Subscriptions',
-      description: 'Real-time data that for analysis (optional)',
+      label: t('steps.subscriptions.label'),
+      description: t('steps.subscriptions.description'),
     },
   ];
 
@@ -242,21 +248,21 @@ export default function StrategyPage() {
         if (response.ok) {
           setNameAvailable(data.available);
           if (!data.available) {
-            setNameError('Strategy name already exists');
+            setNameError(t('errors.nameExists'));
           }
         } else {
-          setNameError('Failed to check name availability');
+          setNameError(t('errors.checkNameFailed'));
           setNameAvailable(false);
         }
       } catch (error) {
-        console.error('Error checking name:', error);
-        setNameError('Failed to check name availability');
+        console.error(t('errors.checkNameConsole'), error);
+        setNameError(t('errors.checkNameFailed'));
         setNameAvailable(false);
       } finally {
         setCheckingName(false);
       }
     },
-    [editingId],
+    [editingId, t],
   );
 
   // Validate current step
@@ -317,22 +323,22 @@ export default function StrategyPage() {
     }
   }, [currentStep]);
 
-  useEffect(() => {
-    fetchStrategies();
-  }, []);
-
-  const fetchStrategies = async () => {
+  const fetchStrategies = useCallback(async () => {
     try {
       const response = await fetch('/api/strategies', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch strategies');
+      if (!response.ok) throw new Error(t('errors.fetchStrategies'));
       const data = await response.json();
       setStrategies(data.strategies);
     } catch {
-      toast.error('Failed to load strategies');
+      toast.error(t('errors.loadStrategies'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    fetchStrategies();
+  }, [fetchStrategies]);
 
   const createStrategy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -346,7 +352,7 @@ export default function StrategyPage() {
       try {
         parameters = JSON.parse(formData.parameters);
       } catch {
-        toast.error('Invalid JSON in parameters field');
+        toast.error(t('errors.invalidParametersJson'));
         return;
       }
 
@@ -362,16 +368,16 @@ export default function StrategyPage() {
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
-          error.error || `Failed to ${isEditing ? 'update' : 'create'} strategy`,
+          error.error || t(isEditing ? 'errors.updateStrategy' : 'errors.createStrategy'),
         );
       }
 
-      toast.success(`Strategy ${isEditing ? 'updated' : 'created'} successfully`);
+      toast.success(t(isEditing ? 'messages.updated' : 'messages.created'));
       setIsCreateDialogOpen(false);
       resetForm();
       fetchStrategies();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'An error occurred');
+      toast.error(error instanceof Error ? error.message : t('errors.generic'));
     } finally {
       setIsCreating(false);
     }
@@ -427,12 +433,12 @@ export default function StrategyPage() {
         body: JSON.stringify({ status: newStatus }),
       });
 
-      if (!response.ok) throw new Error('Failed to update strategy status');
+      if (!response.ok) throw new Error(t('errors.updateStatus'));
 
-      toast.success(`Strategy ${newStatus === 'active' ? 'started' : 'stopped'}`);
+      toast.success(t(newStatus === 'active' ? 'messages.started' : 'messages.stopped'));
       fetchStrategies();
     } catch {
-      toast.error('Failed to update strategy status');
+      toast.error(t('errors.updateStatus'));
     } finally {
       setIsUpdatingStatusId(null);
     }
@@ -459,14 +465,14 @@ export default function StrategyPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete strategy');
+        throw new Error(error.error || t('errors.deleteStrategy'));
       }
 
-      toast.success('Strategy deleted successfully');
+      toast.success(t('messages.deleted'));
       fetchStrategies();
       closeDeleteDialog();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete strategy');
+      toast.error(error instanceof Error ? error.message : t('errors.deleteStrategy'));
     } finally {
       setIsDeletingId(null);
     }
@@ -480,7 +486,17 @@ export default function StrategyPage() {
         paused: 'outline',
         error: 'destructive',
       };
-    return <Badge variant={variants[status] || 'default'}>{status.toUpperCase()}</Badge>;
+    const label =
+      status === 'active'
+        ? t('status.active')
+        : status === 'stopped'
+          ? t('status.stopped')
+          : status === 'paused'
+            ? t('status.paused')
+            : status === 'error'
+              ? t('status.error')
+              : status.toUpperCase();
+    return <Badge variant={variants[status] || 'default'}>{label}</Badge>;
   };
 
   const getStatusColor = (status: string) => {
@@ -501,19 +517,15 @@ export default function StrategyPage() {
   return (
     <>
       <SidebarInset>
-        <SiteHeader title="Strategy Management" />
+        <SiteHeader title={t('title')} />
         <div className="flex flex-1 flex-col">
           <div className="@container/main flex flex-1 flex-col gap-2">
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
               {/* Header */}
               <div className="flex justify-between items-start px-4 lg:px-6">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight">
-                    Trading Strategies
-                  </h2>
-                  <p className="text-muted-foreground mt-1">
-                    Create, manage and monitor your automated trading strategies
-                  </p>
+                  <h2 className="text-2xl font-bold tracking-tight">{t('heading')}</h2>
+                  <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
                 </div>
                 <Dialog
                   open={isCreateDialogOpen}
@@ -525,18 +537,18 @@ export default function StrategyPage() {
                   <DialogTrigger asChild>
                     <Button size="lg">
                       <IconPlus className="mr-2 h-4 w-4" />
-                      New Strategy
+                      {t('actions.new')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>
-                        {isEditing ? 'Edit Strategy' : 'Create New Strategy'}
+                        {isEditing ? t('dialog.editTitle') : t('dialog.createTitle')}
                       </DialogTitle>
                       <DialogDescription>
                         {isEditing
-                          ? 'Update your trading strategy configuration'
-                          : 'Configure a new automated trading strategy'}
+                          ? t('dialog.editDescription')
+                          : t('dialog.createDescription')}
                       </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={createStrategy} className="space-y-6">
@@ -612,11 +624,12 @@ export default function StrategyPage() {
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
                                 <Label htmlFor="name">
-                                  Strategy Name <span className="text-red-500">*</span>
+                                  {t('fields.name')}{' '}
+                                  <span className="text-red-500">*</span>
                                 </Label>
                                 <Input
                                   id="name"
-                                  placeholder="e.g., BTC MA Cross"
+                                  placeholder={t('fields.namePlaceholder')}
                                   value={formData.name}
                                   onChange={(e) => {
                                     setFormData({
@@ -638,7 +651,7 @@ export default function StrategyPage() {
                                 />
                                 {checkingName && (
                                   <p className="text-xs text-muted-foreground">
-                                    Checking name availability...
+                                    {t('states.checkingName')}
                                   </p>
                                 )}
                                 {nameError && (
@@ -649,13 +662,14 @@ export default function StrategyPage() {
                                   formData.name &&
                                   nameAvailable && (
                                     <p className="text-xs text-green-600">
-                                      ✓ Name is available
+                                      {t('states.nameAvailable')}
                                     </p>
                                   )}
                               </div>
                               <div className="space-y-2">
                                 <Label htmlFor="type">
-                                  Strategy Type <span className="text-red-500">*</span>
+                                  {t('fields.type')}{' '}
+                                  <span className="text-red-500">*</span>
                                 </Label>
                                 <Select
                                   value={formData.type}
@@ -693,7 +707,7 @@ export default function StrategyPage() {
                                               </span>
                                               {!strategy.implemented && (
                                                 <span className="text-xs text-muted-foreground">
-                                                  Coming Soon
+                                                  {t('states.comingSoon')}
                                                 </span>
                                               )}
                                             </div>
@@ -710,7 +724,8 @@ export default function StrategyPage() {
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <Label htmlFor="exchange">
-                                    Exchange(s) <span className="text-red-500">*</span>
+                                    {t('fields.exchanges')}{' '}
+                                    <span className="text-red-500">*</span>
                                   </Label>
                                   <div className="flex items-center space-x-2">
                                     <Checkbox
@@ -741,7 +756,7 @@ export default function StrategyPage() {
                                       htmlFor="multiple-exchanges"
                                       className="text-sm text-muted-foreground cursor-pointer"
                                     >
-                                      Multiple
+                                      {t('fields.multiple')}
                                     </label>
                                   </div>
                                 </div>
@@ -767,7 +782,9 @@ export default function StrategyPage() {
                                     }}
                                   >
                                     <SelectTrigger>
-                                      <SelectValue placeholder="Select exchange" />
+                                      <SelectValue
+                                        placeholder={t('fields.exchangePlaceholder')}
+                                      />
                                     </SelectTrigger>
                                     <SelectContent container={false}>
                                       {SUPPORTED_EXCHANGES.map((exchange) => {
@@ -908,13 +925,14 @@ export default function StrategyPage() {
 
                                 <p className="text-xs text-muted-foreground">
                                   {useMultipleExchanges
-                                    ? 'Select multiple exchanges for cross-exchange strategies'
-                                    : 'Select your trading platform'}
+                                    ? t('fields.exchangeMultipleHint')
+                                    : t('fields.exchangeSingleHint')}
                                 </p>
                               </div>
                               <div className="space-y-2">
                                 <Label htmlFor="symbol">
-                                  Trading Pair <span className="text-red-500">*</span>
+                                  {t('fields.tradingPair')}{' '}
+                                  <span className="text-red-500">*</span>
                                 </Label>
                                 <Select
                                   value={formData.symbol}
@@ -923,7 +941,9 @@ export default function StrategyPage() {
                                   }
                                 >
                                   <SelectTrigger>
-                                    <SelectValue placeholder="Select trading pair" />
+                                    <SelectValue
+                                      placeholder={t('fields.tradingPairPlaceholder')}
+                                    />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {getTradingPairsForExchange(
@@ -949,8 +969,8 @@ export default function StrategyPage() {
                                           <span className="text-xs text-muted-foreground">
                                             (
                                             {pair.type === 'perpetual'
-                                              ? '⚡ Perp'
-                                              : '💼 Spot'}
+                                              ? t('fields.perpLabel')
+                                              : t('fields.spotLabel')}
                                             )
                                           </span>
                                         </div>
@@ -959,16 +979,16 @@ export default function StrategyPage() {
                                   </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
-                                  Format:{' '}
+                                  {t('fields.symbolFormat')}{' '}
                                   {getSymbolFormatHint(
                                     Array.isArray(formData.exchange)
                                       ? formData.exchange[0]
                                       : formData.exchange,
                                   )}{' '}
-                                  • Backend normalizes automatically
+                                  • {t('fields.symbolNormalized')}
                                   {useMultipleExchanges && (
                                     <span className="block text-yellow-600 mt-1">
-                                      ⚠️ Using first exchange for symbol format
+                                      {t('fields.symbolMultipleWarning')}
                                     </span>
                                   )}
                                 </p>
@@ -976,10 +996,12 @@ export default function StrategyPage() {
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="description">Description</Label>
+                              <Label htmlFor="description">
+                                {t('fields.description')}
+                              </Label>
                               <Textarea
                                 id="description"
-                                placeholder="Describe your strategy's approach and goals..."
+                                placeholder={t('fields.descriptionPlaceholder')}
                                 value={formData.description}
                                 onChange={(e) =>
                                   setFormData({
@@ -998,13 +1020,13 @@ export default function StrategyPage() {
                             <div className="flex items-center justify-between mb-4">
                               <div>
                                 <Label className="text-base font-medium">
-                                  Strategy Parameters{' '}
+                                  {t('fields.parameters')}{' '}
                                   <span className="text-red-500">*</span>
                                 </Label>
                                 <p className="text-sm text-muted-foreground">
                                   {showAdvancedMode
-                                    ? 'Configure parameters using JSON format'
-                                    : 'Configure parameters using form inputs'}
+                                    ? t('fields.parametersJsonHint')
+                                    : t('fields.parametersFormHint')}
                                 </p>
                               </div>
                               <Button
@@ -1016,12 +1038,12 @@ export default function StrategyPage() {
                                 {showAdvancedMode ? (
                                   <>
                                     <IconSettings className="h-4 w-4 mr-2" />
-                                    Form Mode
+                                    {t('fields.formMode')}
                                   </>
                                 ) : (
                                   <>
                                     <IconClock className="h-4 w-4 mr-2" />
-                                    JSON Mode
+                                    {t('fields.jsonMode')}
                                   </>
                                 )}
                               </Button>
@@ -1046,8 +1068,7 @@ export default function StrategyPage() {
                                   )}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                  Advanced mode: Edit parameters in JSON format. Switch to
-                                  form mode for guided parameter configuration.
+                                  {t('fields.parametersAdvancedHint')}
                                 </p>
                               </div>
                             ) : (
@@ -1105,7 +1126,7 @@ export default function StrategyPage() {
                             resetForm();
                           }}
                         >
-                          Cancel
+                          {t('actions.cancel')}
                         </Button>
                         <div className="flex gap-2">
                           {currentStep > 0 && (
@@ -1114,7 +1135,7 @@ export default function StrategyPage() {
                               variant="outline"
                               onClick={handlePrevious}
                             >
-                              Previous
+                              {t('actions.previous')}
                             </Button>
                           )}
                           {currentStep < steps.length - 1 ? (
@@ -1123,7 +1144,7 @@ export default function StrategyPage() {
                               onClick={handleNext}
                               disabled={!canProceedToNextStep}
                             >
-                              Next
+                              {t('actions.next')}
                             </Button>
                           ) : (
                             <Button
@@ -1133,10 +1154,16 @@ export default function StrategyPage() {
                               {isCreating ? (
                                 <>
                                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                                  {isEditing ? 'Updating...' : 'Creating...'}
+                                  {isEditing
+                                    ? t('actions.updating')
+                                    : t('actions.creating')}
                                 </>
                               ) : (
-                                <>{isEditing ? 'Update Strategy' : 'Create Strategy'}</>
+                                <>
+                                  {isEditing
+                                    ? t('actions.updateStrategy')
+                                    : t('actions.createStrategy')}
+                                </>
                               )}
                             </Button>
                           )}
@@ -1154,7 +1181,7 @@ export default function StrategyPage() {
                     <div className="text-center space-y-3">
                       <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
                       <p className="text-sm text-muted-foreground">
-                        Loading strategies...
+                        {t('states.loading')}
                       </p>
                     </div>
                   </div>
@@ -1164,14 +1191,13 @@ export default function StrategyPage() {
                       <div className="rounded-full bg-muted p-4 mb-4">
                         <IconChartLine className="h-8 w-8 text-muted-foreground" />
                       </div>
-                      <h3 className="text-lg font-semibold mb-2">No strategies yet</h3>
+                      <h3 className="text-lg font-semibold mb-2">{t('empty.title')}</h3>
                       <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-                        Get started by creating your first automated trading strategy.
-                        Configure parameters, set your trading pair, and start trading.
+                        {t('empty.description')}
                       </p>
                       <Button onClick={() => setIsCreateDialogOpen(true)}>
                         <IconPlus className="mr-2 h-4 w-4" />
-                        Create Your First Strategy
+                        {t('empty.action')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -1207,7 +1233,9 @@ export default function StrategyPage() {
 
                           <div className="space-y-2">
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">Exchange</span>
+                              <span className="text-muted-foreground">
+                                {t('card.exchange')}
+                              </span>
                               <Badge
                                 variant="outline"
                                 className="font-medium gap-1.5 flex items-center"
@@ -1219,17 +1247,21 @@ export default function StrategyPage() {
                                 {strategy.exchange
                                   ? strategy.exchange.charAt(0).toUpperCase() +
                                     strategy.exchange.slice(1)
-                                  : 'Not set'}
+                                  : t('card.notSet')}
                               </Badge>
                             </div>
                             <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">Trading Pair</span>
+                              <span className="text-muted-foreground">
+                                {t('card.tradingPair')}
+                              </span>
                               <div className="flex items-center gap-2">
                                 {strategy.symbol && (
                                   <SymbolIcon symbol={strategy.symbol} size="sm" />
                                 )}
                                 <span className="font-mono font-medium">
-                                  {strategy.normalizedSymbol || strategy.symbol || 'N/A'}
+                                  {strategy.normalizedSymbol ||
+                                    strategy.symbol ||
+                                    t('card.notAvailable')}
                                 </span>
                                 {strategy.marketType &&
                                   strategy.marketType !== 'spot' && (
@@ -1237,8 +1269,8 @@ export default function StrategyPage() {
                                       className="text-xs"
                                       title={
                                         strategy.marketType === 'perpetual'
-                                          ? 'Perpetual'
-                                          : 'Futures'
+                                          ? t('card.perpetual')
+                                          : t('card.futures')
                                       }
                                     >
                                       {strategy.marketType === 'perpetual' ? '⚡' : '📈'}
@@ -1250,8 +1282,11 @@ export default function StrategyPage() {
                               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
                                 <IconClock className="h-3 w-3" />
                                 <span>
-                                  Last run:{' '}
-                                  {new Date(strategy.lastExecutionTime).toLocaleString()}
+                                  {t('card.lastRun', {
+                                    time: new Date(
+                                      strategy.lastExecutionTime,
+                                    ).toLocaleString(),
+                                  })}
                                 </span>
                               </div>
                             )}
@@ -1268,12 +1303,12 @@ export default function StrategyPage() {
                               {isUpdatingStatusId === strategy.id ? (
                                 <>
                                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                                  Stopping...
+                                  {t('actions.stopping')}
                                 </>
                               ) : (
                                 <>
                                   <IconPlayerPause className="h-4 w-4 mr-2" />
-                                  Stop
+                                  {t('actions.stop')}
                                 </>
                               )}
                             </Button>
@@ -1286,12 +1321,12 @@ export default function StrategyPage() {
                               {isUpdatingStatusId === strategy.id ? (
                                 <>
                                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                                  Starting...
+                                  {t('actions.starting')}
                                 </>
                               ) : (
                                 <>
                                   <IconPlayerPlay className="h-4 w-4 mr-2" />
-                                  Start
+                                  {t('actions.start')}
                                 </>
                               )}
                             </Button>
@@ -1336,22 +1371,22 @@ export default function StrategyPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <IconTrash className="h-5 w-5" />
-              Delete Strategy
+              {t('delete.title')}
             </DialogTitle>
             <DialogDescription className="pt-2">
-              Are you sure you want to delete this strategy?
+              {t('delete.description')}
             </DialogDescription>
           </DialogHeader>
           {strategyToDelete && (
             <div className="py-4">
               <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Name:</span>
+                  <span className="text-sm font-medium">{t('delete.name')}</span>
                   <span className="text-sm font-semibold">{strategyToDelete.name}</span>
                 </div>
                 {strategyToDelete.symbol && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Symbol:</span>
+                    <span className="text-sm font-medium">{t('delete.symbol')}</span>
                     <div className="flex items-center gap-2">
                       <SymbolIcon symbol={strategyToDelete.symbol} size="sm" />
                       <span className="text-sm font-mono">{strategyToDelete.symbol}</span>
@@ -1360,7 +1395,7 @@ export default function StrategyPage() {
                 )}
                 {strategyToDelete.exchange && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Exchange:</span>
+                    <span className="text-sm font-medium">{t('delete.exchange')}</span>
                     <div className="flex items-center gap-2">
                       <ExchangeLogo exchange={strategyToDelete.exchange} size="sm" />
                       <span className="text-sm capitalize">
@@ -1370,10 +1405,7 @@ export default function StrategyPage() {
                   </div>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground mt-4">
-                This action cannot be undone. This will permanently delete the strategy
-                and all associated data.
-              </p>
+              <p className="text-sm text-muted-foreground mt-4">{t('delete.warning')}</p>
             </div>
           )}
           <div className="flex justify-end gap-3">
@@ -1383,7 +1415,7 @@ export default function StrategyPage() {
               className="min-w-[100px]"
               disabled={isDeletingId !== null}
             >
-              Cancel
+              {t('actions.cancel')}
             </Button>
             <Button
               variant="destructive"
@@ -1394,12 +1426,12 @@ export default function StrategyPage() {
               {isDeletingId !== null ? (
                 <>
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                  Deleting...
+                  {t('actions.deleting')}
                 </>
               ) : (
                 <>
                   <IconTrash className="h-4 w-4 mr-2" />
-                  Delete
+                  {t('actions.delete')}
                 </>
               )}
             </Button>

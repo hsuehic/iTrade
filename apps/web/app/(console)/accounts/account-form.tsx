@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -51,6 +52,7 @@ export function AccountForm({
   onSuccess,
   initialData,
 }: AccountFormProps) {
+  const t = useTranslations('accounts.form');
   const [loading, setLoading] = useState(false);
   const form = useForm({
     defaultValues: initialData || {
@@ -67,11 +69,11 @@ export function AccountForm({
     try {
       setLoading(true);
       await saveAccount({ ...data, id: initialData?.id });
-      toast.success('Account saved successfully');
+      toast.success(t('messages.saved'));
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      toast.error('Failed to save account');
+      toast.error(t('errors.saveFailed'));
       console.error(error);
     } finally {
       setLoading(false);
@@ -82,10 +84,8 @@ export function AccountForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{initialData ? 'Edit Account' : 'Add Account'}</DialogTitle>
-          <DialogDescription>
-            Enter your exchange API credentials. They will be encrypted securely.
-          </DialogDescription>
+          <DialogTitle>{initialData ? t('titleEdit') : t('titleAdd')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -94,11 +94,11 @@ export function AccountForm({
               name="exchange"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Exchange</FormLabel>
+                  <FormLabel>{t('fields.exchange')}</FormLabel>
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select exchange" />
+                        <SelectValue placeholder={t('fields.exchangePlaceholder')} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -118,11 +118,11 @@ export function AccountForm({
               name="accountId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Account Name / ID</FormLabel>
+                  <FormLabel>{t('fields.accountId')}</FormLabel>
                   <FormControl>
-                    <Input placeholder="Main Account" {...field} />
+                    <Input placeholder={t('fields.accountIdPlaceholder')} {...field} />
                   </FormControl>
-                  <FormDescription>A nickname to identify this account.</FormDescription>
+                  <FormDescription>{t('fields.accountIdDescription')}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -132,9 +132,9 @@ export function AccountForm({
               name="apiKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>API Key</FormLabel>
+                  <FormLabel>{t('fields.apiKey')}</FormLabel>
                   <FormControl>
-                    <Input placeholder="API Key" {...field} />
+                    <Input placeholder={t('fields.apiKeyPlaceholder')} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -145,9 +145,13 @@ export function AccountForm({
               name="secretKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Secret Key</FormLabel>
+                  <FormLabel>{t('fields.secretKey')}</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Secret Key" {...field} />
+                    <Input
+                      type="password"
+                      placeholder={t('fields.secretKeyPlaceholder')}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -159,9 +163,13 @@ export function AccountForm({
                 name="passphrase"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Passphrase</FormLabel>
+                    <FormLabel>{t('fields.passphrase')}</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="Passphrase" {...field} />
+                      <Input
+                        type="password"
+                        placeholder={t('fields.passphrasePlaceholder')}
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -174,10 +182,10 @@ export function AccountForm({
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                   <div className="space-y-0.5">
-                    <FormLabel className="text-base">Active Status</FormLabel>
-                    <FormDescription>
-                      Enable or disable trading for this account.
-                    </FormDescription>
+                    <FormLabel className="text-base">
+                      {t('fields.activeStatus')}
+                    </FormLabel>
+                    <FormDescription>{t('fields.activeDescription')}</FormDescription>
                   </div>
                   <FormControl>
                     <Switch checked={field.value} onCheckedChange={field.onChange} />
@@ -187,7 +195,7 @@ export function AccountForm({
             />
             <DialogFooter>
               <Button type="submit" disabled={loading}>
-                {loading ? 'Saving...' : 'Save changes'}
+                {loading ? t('saving') : t('save')}
               </Button>
             </DialogFooter>
           </form>

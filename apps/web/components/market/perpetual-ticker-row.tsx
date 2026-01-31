@@ -3,6 +3,7 @@
 import { memo, useEffect, useState } from 'react';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { TrendingUp, TrendingDown, Flame } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { MiniSparkline } from './mini-sparkline';
 import { cn } from '@/lib/utils';
@@ -24,6 +25,7 @@ export const PerpetualTickerRow = memo(function PerpetualTickerRow({
   rank,
   onSelect,
 }: PerpetualTickerRowProps) {
+  const t = useTranslations('market.perpetuals');
   const controls = useAnimation();
   const [prevPrice, setPrevPrice] = useState(ticker.price);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | null>(null);
@@ -101,7 +103,7 @@ export const PerpetualTickerRow = memo(function PerpetualTickerRow({
         </div>
         <div>
           <div className="font-semibold">{ticker.base}</div>
-          <div className="text-xs text-muted-foreground">Perpetual</div>
+          <div className="text-xs text-muted-foreground">{t('perpetual')}</div>
         </div>
       </div>
 
@@ -130,7 +132,7 @@ export const PerpetualTickerRow = memo(function PerpetualTickerRow({
           </motion.div>
         </AnimatePresence>
         <div className="text-xs text-muted-foreground">
-          Mark: ${formatPrice(ticker.markPrice)}
+          {t('mark')}: ${formatPrice(ticker.markPrice)}
         </div>
       </div>
 
@@ -163,7 +165,7 @@ export const PerpetualTickerRow = memo(function PerpetualTickerRow({
         <div className="font-medium tabular-nums">
           {formatLargeNumber(ticker.volume24h)}
         </div>
-        <div className="text-xs text-muted-foreground">Volume</div>
+        <div className="text-xs text-muted-foreground">{t('table.volume')}</div>
       </div>
 
       {/* Funding Rate */}
@@ -177,7 +179,7 @@ export const PerpetualTickerRow = memo(function PerpetualTickerRow({
           {isHighFunding && <Flame className="size-3 text-orange-500" />}
           {formatFundingRate(ticker.fundingRate)}
         </div>
-        <div className="text-xs text-muted-foreground">Funding</div>
+        <div className="text-xs text-muted-foreground">{t('table.funding')}</div>
       </div>
 
       {/* Mini Chart */}

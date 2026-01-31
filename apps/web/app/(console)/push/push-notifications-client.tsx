@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +56,8 @@ type PushLog = {
 };
 
 export function PushNotificationsClient() {
+  const t = useTranslations('push.client');
+  const locale = useLocale();
   const [sendPlatform, setSendPlatform] = React.useState('web');
   const [sendProvider, setSendProvider] = React.useState('fcm');
   const [listPlatform, setListPlatform] = React.useState('all');
@@ -119,7 +122,7 @@ export function PushNotificationsClient() {
       ]);
 
       if (!devicesRes.ok) {
-        let errorMessage = `Failed to load devices (${devicesRes.status})`;
+        let errorMessage = t('errors.loadDevices', { status: devicesRes.status });
         try {
           const errorJson = await devicesRes.json();
           errorMessage = errorJson.error || errorMessage;
@@ -129,7 +132,7 @@ export function PushNotificationsClient() {
         throw new Error(errorMessage);
       }
       if (!logsRes.ok) {
-        let errorMessage = `Failed to load logs (${logsRes.status})`;
+        let errorMessage = t('errors.loadLogs', { status: logsRes.status });
         try {
           const errorJson = await logsRes.json();
           errorMessage = errorJson.error || errorMessage;
@@ -146,17 +149,16 @@ export function PushNotificationsClient() {
       setDevices(Array.isArray(devicesJson.devices) ? devicesJson.devices : []);
       setLogs(Array.isArray(logsJson.logs) ? logsJson.logs : []);
     } catch (e) {
-      const errorMessage =
-        e instanceof Error ? e.message : 'An unexpected error occurred';
+      const errorMessage = e instanceof Error ? e.message : t('errors.unexpected');
       toast.error(errorMessage);
-      console.error('Error refreshing push notifications:', e);
+      console.error(t('errors.refreshConsole'), e);
       // Set empty arrays on error to prevent UI issues
       setDevices([]);
       setLogs([]);
     } finally {
       setLoading(false);
     }
-  }, [listPlatform, listProvider]);
+  }, [listPlatform, listProvider, t]);
 
   React.useEffect(() => {
     void refresh();
@@ -206,12 +208,10 @@ export function PushNotificationsClient() {
             ? (parsed as Record<string, unknown>)
             : undefined;
       } else {
-        throw new Error('Payload must be a JSON object');
+        throw new Error(t('errors.payloadObject'));
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Invalid JSON in data payload',
-      );
+      toast.error(error instanceof Error ? error.message : t('errors.payloadInvalid'));
       return;
     }
 
@@ -256,15 +256,15 @@ export function PushNotificationsClient() {
                 };
 
     if (target.type === 'user' && !target.userId) {
-      toast.error('User ID or Email is required');
+      toast.error(t('errors.userRequired'));
       return;
     }
     if (target.type === 'topic' && !target.topic) {
-      toast.error('Topic is required');
+      toast.error(t('errors.topicRequired'));
       return;
     }
     if (target.type === 'tokens' && target.tokens.length === 0) {
-      toast.error('At least one token is required');
+      toast.error(t('errors.tokensRequired'));
       return;
     }
 
@@ -288,10 +288,15 @@ export function PushNotificationsClient() {
 
       const json = await res.json();
       if (!res.ok) {
-        throw new Error(json?.error || 'Failed to send');
+        throw new Error(json?.error || t('errors.sendFailed'));
       }
 
-      toast.success(`Sent. success=${json.successCount}, failed=${json.failureCount}`);
+      toast.success(
+        t('messages.sent', {
+          success: json.successCount,
+          failed: json.failureCount,
+        }),
+      );
       setTitle('');
       setBody('');
       await refresh();
@@ -305,48 +310,48 @@ export function PushNotificationsClient() {
   return (
     <Tabs defaultValue="send" className="w-full">
       <TabsList>
-        <TabsTrigger value="send">Send</TabsTrigger>
-        <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-        <TabsTrigger value="export">Export</TabsTrigger>
+        <TabsTrigger value="send">{t('tabs.send')}</TabsTrigger>
+        <TabsTrigger value="dashboard">{t('tabs.dashboard')}</TabsTrigger>
+        <TabsTrigger value="export">{t('tabs.export')}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="send" className="mt-6">
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Target</CardTitle>
+              <CardTitle>{t('send.targetTitle')}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
-                <Label>Platform</Label>
+                <Label>{t('fields.platform')}</Label>
                 <Select value={sendPlatform} onValueChange={setSendPlatform}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="web">web</SelectItem>
-                    <SelectItem value="ios">ios</SelectItem>
-                    <SelectItem value="android">android</SelectItem>
+                    <SelectItem value="web">{t('values.web')}</SelectItem>
+                    <SelectItem value="ios">{t('values.ios')}</SelectItem>
+                    <SelectItem value="android">{t('values.android')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid gap-2">
-                <Label>Provider</Label>
+                <Label>{t('fields.provider')}</Label>
                 <Select value={sendProvider} onValueChange={setSendProvider}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="fcm">fcm</SelectItem>
-                    <SelectItem value="apns">apns</SelectItem>
-                    <SelectItem value="webpush">webpush</SelectItem>
+                    <SelectItem value="fcm">{t('values.fcm')}</SelectItem>
+                    <SelectItem value="apns">{t('values.apns')}</SelectItem>
+                    <SelectItem value="webpush">{t('values.webpush')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid gap-2">
-                <Label>Target type</Label>
+                <Label>{t('fields.targetType')}</Label>
                 <Select
                   value={targetType}
                   onValueChange={(v) =>
@@ -357,18 +362,18 @@ export function PushNotificationsClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">user</SelectItem>
-                    <SelectItem value="topic">topic</SelectItem>
-                    <SelectItem value="tokens">tokens</SelectItem>
-                    <SelectItem value="all">all (active)</SelectItem>
-                    <SelectItem value="filter">filter (dimensions)</SelectItem>
+                    <SelectItem value="user">{t('targetType.user')}</SelectItem>
+                    <SelectItem value="topic">{t('targetType.topic')}</SelectItem>
+                    <SelectItem value="tokens">{t('targetType.tokens')}</SelectItem>
+                    <SelectItem value="all">{t('targetType.all')}</SelectItem>
+                    <SelectItem value="filter">{t('targetType.filter')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {targetType === 'user' && (
                 <div className="grid gap-2">
-                  <Label>User ID or Email</Label>
+                  <Label>{t('target.userLabel')}</Label>
                   <div className="relative">
                     <Input
                       value={userSearchQuery}
@@ -394,7 +399,7 @@ export function PushNotificationsClient() {
                         // Delay to allow click on suggestion
                         setTimeout(() => setShowSuggestions(false), 200);
                       }}
-                      placeholder="Enter user ID or email..."
+                      placeholder={t('target.userPlaceholder')}
                     />
                     {showSuggestions && userSuggestions.length > 0 && (
                       <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-auto">
@@ -415,7 +420,7 @@ export function PushNotificationsClient() {
                               </div>
                             )}
                             <div className="text-xs text-muted-foreground">
-                              ID: {user.id}
+                              {t('target.userIdLabel', { id: user.id })}
                             </div>
                           </button>
                         ))}
@@ -424,7 +429,7 @@ export function PushNotificationsClient() {
                   </div>
                   {targetUserId && (
                     <p className="text-xs text-muted-foreground">
-                      Selected User ID: {targetUserId}
+                      {t('target.selectedUserId', { id: targetUserId })}
                     </p>
                   )}
                 </div>
@@ -432,7 +437,7 @@ export function PushNotificationsClient() {
 
               {targetType === 'topic' && (
                 <div className="grid gap-2">
-                  <Label>Topic</Label>
+                  <Label>{t('target.topicLabel')}</Label>
                   <Input
                     value={targetTopic}
                     onChange={(e) => setTargetTopic(e.target.value)}
@@ -442,7 +447,7 @@ export function PushNotificationsClient() {
 
               {targetType === 'tokens' && (
                 <div className="grid gap-2">
-                  <Label>Tokens (comma or newline separated)</Label>
+                  <Label>{t('target.tokensLabel')}</Label>
                   <Textarea
                     rows={6}
                     value={targetTokens}
@@ -453,7 +458,7 @@ export function PushNotificationsClient() {
 
               {targetType === 'all' && (
                 <div className="grid gap-2">
-                  <Label>Limit (max 500)</Label>
+                  <Label>{t('target.limitLabel')}</Label>
                   <Input
                     value={targetAllLimit}
                     onChange={(e) => setTargetAllLimit(e.target.value)}
@@ -464,56 +469,56 @@ export function PushNotificationsClient() {
               {targetType === 'filter' && (
                 <div className="grid gap-4">
                   <div className="grid gap-2">
-                    <Label>User ID (optional)</Label>
+                    <Label>{t('filter.userId')}</Label>
                     <Input
                       value={filterUserId}
                       onChange={(e) => setFilterUserId(e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>Device ID (optional)</Label>
+                    <Label>{t('filter.deviceId')}</Label>
                     <Input
                       value={filterDeviceId}
                       onChange={(e) => setFilterDeviceId(e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>App ID (optional)</Label>
+                    <Label>{t('filter.appId')}</Label>
                     <Input
                       value={filterAppId}
                       onChange={(e) => setFilterAppId(e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>App Version (optional)</Label>
+                    <Label>{t('filter.appVersion')}</Label>
                     <Input
-                      placeholder="1.0.9+18"
+                      placeholder={t('filter.appVersionPlaceholder')}
                       value={filterAppVersion}
                       onChange={(e) => setFilterAppVersion(e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>Environment (optional)</Label>
+                    <Label>{t('filter.environment')}</Label>
                     <Input
-                      placeholder="sandbox / production"
+                      placeholder={t('filter.environmentPlaceholder')}
                       value={filterEnvironment}
                       onChange={(e) => setFilterEnvironment(e.target.value)}
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>Active</Label>
+                    <Label>{t('filter.active')}</Label>
                     <Select value={filterIsActive} onValueChange={setFilterIsActive}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="true">true</SelectItem>
-                        <SelectItem value="false">false</SelectItem>
+                        <SelectItem value="true">{t('values.true')}</SelectItem>
+                        <SelectItem value="false">{t('values.false')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label>Limit (max 500)</Label>
+                    <Label>{t('filter.limit')}</Label>
                     <Input
                       value={filterLimit}
                       onChange={(e) => setFilterLimit(e.target.value)}
@@ -526,30 +531,30 @@ export function PushNotificationsClient() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Message</CardTitle>
+              <CardTitle>{t('send.messageTitle')}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
-                <Label>Category</Label>
+                <Label>{t('fields.category')}</Label>
                 <Select value={category} onValueChange={setCategory}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="general">general</SelectItem>
-                    <SelectItem value="marketing">marketing</SelectItem>
-                    <SelectItem value="trading">trading</SelectItem>
-                    <SelectItem value="security">security</SelectItem>
-                    <SelectItem value="system">system</SelectItem>
+                    <SelectItem value="general">{t('category.general')}</SelectItem>
+                    <SelectItem value="marketing">{t('category.marketing')}</SelectItem>
+                    <SelectItem value="trading">{t('category.trading')}</SelectItem>
+                    <SelectItem value="security">{t('category.security')}</SelectItem>
+                    <SelectItem value="system">{t('category.system')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Title</Label>
+                <Label>{t('fields.title')}</Label>
                 <Input value={title} onChange={(e) => setTitle(e.target.value)} />
               </div>
               <div className="grid gap-2">
-                <Label>Body</Label>
+                <Label>{t('fields.body')}</Label>
                 <Textarea
                   rows={4}
                   value={body}
@@ -557,7 +562,7 @@ export function PushNotificationsClient() {
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Data (JSON)</Label>
+                <Label>{t('fields.dataJson')}</Label>
                 <Textarea
                   rows={6}
                   value={dataJson}
@@ -567,10 +572,10 @@ export function PushNotificationsClient() {
 
               <div className="flex gap-2">
                 <Button onClick={onSend} disabled={loading}>
-                  {loading ? 'Sending…' : 'Send'}
+                  {loading ? t('actions.sending') : t('actions.send')}
                 </Button>
                 <Button variant="outline" onClick={refresh} disabled={loading}>
-                  Refresh
+                  {t('actions.refresh')}
                 </Button>
               </div>
             </CardContent>
@@ -582,17 +587,17 @@ export function PushNotificationsClient() {
         <div className="grid gap-6">
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={refresh} disabled={loading}>
-              {loading ? 'Loading…' : 'Refresh'}
+              {loading ? t('actions.loading') : t('actions.refresh')}
             </Button>
             <Select value={listPlatform} onValueChange={setListPlatform}>
               <SelectTrigger className="w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">all platforms</SelectItem>
-                <SelectItem value="web">web</SelectItem>
-                <SelectItem value="ios">ios</SelectItem>
-                <SelectItem value="android">android</SelectItem>
+                <SelectItem value="all">{t('values.allPlatforms')}</SelectItem>
+                <SelectItem value="web">{t('values.web')}</SelectItem>
+                <SelectItem value="ios">{t('values.ios')}</SelectItem>
+                <SelectItem value="android">{t('values.android')}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={listProvider} onValueChange={setListProvider}>
@@ -600,40 +605,44 @@ export function PushNotificationsClient() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">all providers</SelectItem>
-                <SelectItem value="fcm">fcm</SelectItem>
-                <SelectItem value="apns">apns</SelectItem>
-                <SelectItem value="webpush">webpush</SelectItem>
+                <SelectItem value="all">{t('values.allProviders')}</SelectItem>
+                <SelectItem value="fcm">{t('values.fcm')}</SelectItem>
+                <SelectItem value="apns">{t('values.apns')}</SelectItem>
+                <SelectItem value="webpush">{t('values.webpush')}</SelectItem>
               </SelectContent>
             </Select>
-            <Badge variant="outline">devices: {devices.length}</Badge>
-            <Badge variant="outline">logs: {logs.length}</Badge>
+            <Badge variant="outline">
+              {t('dashboard.devicesCount', { count: devices.length })}
+            </Badge>
+            <Badge variant="outline">
+              {t('dashboard.logsCount', { count: logs.length })}
+            </Badge>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Registered devices (latest)</CardTitle>
+              <CardTitle>{t('dashboard.devicesTitle')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Platform</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Device</TableHead>
-                      <TableHead>App</TableHead>
-                      <TableHead>Version</TableHead>
-                      <TableHead>Active</TableHead>
-                      <TableHead>Last seen</TableHead>
+                      <TableHead>{t('dashboard.table.platform')}</TableHead>
+                      <TableHead>{t('dashboard.table.provider')}</TableHead>
+                      <TableHead>{t('dashboard.table.user')}</TableHead>
+                      <TableHead>{t('dashboard.table.device')}</TableHead>
+                      <TableHead>{t('dashboard.table.app')}</TableHead>
+                      <TableHead>{t('dashboard.table.version')}</TableHead>
+                      <TableHead>{t('dashboard.table.active')}</TableHead>
+                      <TableHead>{t('dashboard.table.lastSeen')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {devices.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-muted-foreground">
-                          No devices
+                          {t('dashboard.emptyDevices')}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -642,7 +651,7 @@ export function PushNotificationsClient() {
                           <TableCell>{d.platform}</TableCell>
                           <TableCell>{d.provider}</TableCell>
                           <TableCell className="max-w-[240px] truncate">
-                            {d.userId ?? '(anonymous)'}
+                            {d.userId ?? t('dashboard.anonymous')}
                           </TableCell>
                           <TableCell className="max-w-[200px] truncate">
                             {d.deviceId}
@@ -651,11 +660,15 @@ export function PushNotificationsClient() {
                             {d.appId}
                           </TableCell>
                           <TableCell className="max-w-[160px] truncate">
-                            {d.appVersion ?? '—'}
+                            {d.appVersion ?? t('dashboard.emptyValue')}
                           </TableCell>
-                          <TableCell>{d.isActive ? 'true' : 'false'}</TableCell>
+                          <TableCell>
+                            {d.isActive ? t('values.true') : t('values.false')}
+                          </TableCell>
                           <TableCell className="max-w-[220px] truncate">
-                            {d.lastSeenAt || 'N/A'}
+                            {d.lastSeenAt
+                              ? new Date(d.lastSeenAt).toLocaleString(locale)
+                              : t('dashboard.notAvailable')}
                           </TableCell>
                         </TableRow>
                       ))
@@ -668,36 +681,38 @@ export function PushNotificationsClient() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Send logs (latest)</CardTitle>
+              <CardTitle>{t('dashboard.logsTitle')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Target</TableHead>
-                      <TableHead>Platform</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>OK</TableHead>
-                      <TableHead>Fail</TableHead>
+                      <TableHead>{t('dashboard.logsTable.time')}</TableHead>
+                      <TableHead>{t('dashboard.logsTable.category')}</TableHead>
+                      <TableHead>{t('dashboard.logsTable.target')}</TableHead>
+                      <TableHead>{t('dashboard.logsTable.platform')}</TableHead>
+                      <TableHead>{t('dashboard.logsTable.provider')}</TableHead>
+                      <TableHead>{t('dashboard.logsTable.ok')}</TableHead>
+                      <TableHead>{t('dashboard.logsTable.fail')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {logs.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-muted-foreground">
-                          No logs
+                          {t('dashboard.emptyLogs')}
                         </TableCell>
                       </TableRow>
                     ) : (
                       logs.map((l) => (
                         <TableRow key={l.id}>
                           <TableCell className="max-w-[220px] truncate">
-                            {l.createdAt || 'N/A'}
+                            {l.createdAt
+                              ? new Date(l.createdAt).toLocaleString(locale)
+                              : t('dashboard.notAvailable')}
                           </TableCell>
-                          <TableCell>{l.category ?? 'general'}</TableCell>
+                          <TableCell>{l.category ?? t('category.general')}</TableCell>
                           <TableCell>{l.targetType}</TableCell>
                           <TableCell>{l.platform}</TableCell>
                           <TableCell>{l.provider}</TableCell>
@@ -718,27 +733,31 @@ export function PushNotificationsClient() {
         <div className="grid gap-4">
           <Card>
             <CardHeader>
-              <CardTitle>Export CSV</CardTitle>
+              <CardTitle>{t('export.title')}</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline">
                   <a href="/api/push/export?type=devices&format=csv">
-                    Export devices (CSV)
+                    {t('export.devicesCsv')}
                   </a>
                 </Button>
                 <Button asChild variant="outline">
-                  <a href="/api/push/export?type=logs&format=csv">Export logs (CSV)</a>
+                  <a href="/api/push/export?type=logs&format=csv">
+                    {t('export.logsCsv')}
+                  </a>
                 </Button>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline">
                   <a href="/api/push/export?type=devices&format=json">
-                    Export devices (JSON)
+                    {t('export.devicesJson')}
                   </a>
                 </Button>
                 <Button asChild variant="outline">
-                  <a href="/api/push/export?type=logs&format=json">Export logs (JSON)</a>
+                  <a href="/api/push/export?type=logs&format=json">
+                    {t('export.logsJson')}
+                  </a>
                 </Button>
               </div>
             </CardContent>

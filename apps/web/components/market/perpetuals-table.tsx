@@ -3,6 +3,7 @@
 import { memo, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Search, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -73,6 +74,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
   onSelectTicker,
   className,
 }: PerpetualsTableProps) {
+  const t = useTranslations('market.perpetuals');
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<MarketFilter>('all');
   const [sortField, setSortField] = useState<SortField>('volume');
@@ -142,11 +144,11 @@ export const PerpetualsTable = memo(function PerpetualsTable({
   }, [tickers, searchQuery, filter, sortField, sortDirection]);
 
   const filterOptions: { value: MarketFilter; label: string }[] = [
-    { value: 'all', label: 'All Perpetuals' },
-    { value: 'gainers', label: 'Gainers Only' },
-    { value: 'losers', label: 'Losers Only' },
-    { value: 'volume', label: 'High Volume (>$100M)' },
-    { value: 'funding', label: 'Notable Funding' },
+    { value: 'all', label: t('filters.all') },
+    { value: 'gainers', label: t('filters.gainers') },
+    { value: 'losers', label: t('filters.losers') },
+    { value: 'volume', label: t('filters.volume') },
+    { value: 'funding', label: t('filters.funding') },
   ];
 
   return (
@@ -155,10 +157,10 @@ export const PerpetualsTable = memo(function PerpetualsTable({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="flex items-center gap-2">
             <span className="bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">
-              Perpetual Futures
+              {t('title')}
             </span>
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-normal text-primary">
-              {filteredAndSortedTickers.length} markets
+              {t('marketCount', { count: filteredAndSortedTickers.length })}
             </span>
           </CardTitle>
 
@@ -167,7 +169,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder={t('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 w-48 pl-9"
@@ -211,7 +213,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
             </div>
             <TableHeader
               field="symbol"
-              label="Symbol"
+              label={t('table.symbol')}
               sortField={sortField}
               sortDirection={sortDirection}
               onSort={handleSort}
@@ -219,7 +221,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
             />
             <TableHeader
               field="price"
-              label="Price"
+              label={t('table.price')}
               sortField={sortField}
               sortDirection={sortDirection}
               onSort={handleSort}
@@ -228,7 +230,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
             />
             <TableHeader
               field="change"
-              label="24h Change"
+              label={t('table.change24h')}
               sortField={sortField}
               sortDirection={sortDirection}
               onSort={handleSort}
@@ -237,7 +239,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
             />
             <TableHeader
               field="volume"
-              label="Volume"
+              label={t('table.volume')}
               sortField={sortField}
               sortDirection={sortDirection}
               onSort={handleSort}
@@ -246,7 +248,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
             />
             <TableHeader
               field="funding"
-              label="Funding"
+              label={t('table.funding')}
               sortField={sortField}
               sortDirection={sortDirection}
               onSort={handleSort}
@@ -254,7 +256,7 @@ export const PerpetualsTable = memo(function PerpetualsTable({
               colSpan={1}
             />
             <div className="col-span-2 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Chart
+              {t('table.chart')}
             </div>
           </div>
           {filteredAndSortedTickers.map((ticker, index) => (
@@ -275,10 +277,8 @@ export const PerpetualsTable = memo(function PerpetualsTable({
           {filteredAndSortedTickers.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <Search className="mb-2 size-8" />
-              <p>No perpetuals found</p>
-              {searchQuery && (
-                <p className="text-sm">Try adjusting your search or filter</p>
-              )}
+              <p>{t('empty.title')}</p>
+              {searchQuery && <p className="text-sm">{t('empty.subtitle')}</p>}
             </div>
           )}
         </div>

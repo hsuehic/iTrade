@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   IconSearch,
   IconSortAscending,
@@ -105,9 +106,9 @@ const formatPercentage = (value: string | number) => {
   return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
 };
 
-const formatDate = (dateStr: string) => {
+const formatDate = (dateStr: string, locale: string) => {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -115,245 +116,12 @@ const formatDate = (dateStr: string) => {
   });
 };
 
-const columns: ColumnDef<PositionData>[] = [
-  {
-    accessorKey: 'symbol',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Symbol
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const displaySymbol = getDisplaySymbol(row.original.symbol, row.original.exchange);
-      const baseCurrency = extractBaseCurrency(row.original.symbol);
-      return (
-        <div className="flex items-center gap-2">
-          <SymbolIcon symbol={baseCurrency} size="md" />
-          <div className="flex flex-col">
-            <span className="font-medium font-mono">{displaySymbol}</span>
-            <span className="text-xs text-muted-foreground">
-              {row.original.leverage}x leverage
-            </span>
-          </div>
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: 'exchange',
-    header: 'Exchange',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <ExchangeLogo exchange={row.original.exchange} className="h-5 w-5" />
-        <span className="capitalize">{row.original.exchange}</span>
-      </div>
-    ),
-    filterFn: (row, id, value) => {
-      return value === 'all' || row.getValue(id) === value;
-    },
-  },
-  {
-    accessorKey: 'side',
-    header: 'Side',
-    cell: ({ row }) => (
-      <Badge
-        variant="outline"
-        className={cn(
-          'font-medium',
-          row.original.side === 'long'
-            ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-            : 'border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400',
-        )}
-      >
-        {row.original.side === 'long' ? (
-          <IconTrendingUp className="mr-1 h-3 w-3" />
-        ) : (
-          <IconTrendingDown className="mr-1 h-3 w-3" />
-        )}
-        {row.original.side.toUpperCase()}
-      </Badge>
-    ),
-    filterFn: (row, id, value) => {
-      return value === 'all' || row.getValue(id) === value;
-    },
-  },
-  {
-    accessorKey: 'quantity',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Quantity
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <div className="text-right font-mono tabular-nums">
-        {formatNumber(row.original.quantity)}
-      </div>
-    ),
-    sortingFn: (rowA, rowB) =>
-      parseFloat(rowA.original.quantity) - parseFloat(rowB.original.quantity),
-  },
-  {
-    accessorKey: 'avgPrice',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Avg Price
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <div className="text-right font-mono tabular-nums">
-        {formatCurrency(row.original.avgPrice)}
-      </div>
-    ),
-    sortingFn: (rowA, rowB) =>
-      parseFloat(rowA.original.avgPrice) - parseFloat(rowB.original.avgPrice),
-  },
-  {
-    accessorKey: 'markPrice',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Mark Price
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <div className="text-right font-mono tabular-nums">
-        {formatCurrency(row.original.markPrice)}
-      </div>
-    ),
-    sortingFn: (rowA, rowB) =>
-      parseFloat(rowA.original.markPrice) - parseFloat(rowB.original.markPrice),
-  },
-  {
-    accessorKey: 'marketValue',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Market Value
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <div className="text-right font-medium font-mono tabular-nums">
-        {formatCurrency(row.original.marketValue)}
-      </div>
-    ),
-    sortingFn: (rowA, rowB) =>
-      parseFloat(rowA.original.marketValue) - parseFloat(rowB.original.marketValue),
-  },
-  {
-    accessorKey: 'unrealizedPnl',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Unrealized PnL
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const pnl = parseFloat(row.original.unrealizedPnl);
-      const pnlPct = parseFloat(row.original.pnlPercentage);
-      const isPositive = pnl >= 0;
-
-      return (
-        <div
-          className={cn(
-            'text-right font-mono tabular-nums',
-            isPositive
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-rose-600 dark:text-rose-400',
-          )}
-        >
-          <div className="font-medium">
-            {isPositive ? '+' : ''}
-            {formatCurrency(pnl)}
-          </div>
-          <div className="text-xs opacity-80">{formatPercentage(pnlPct)}</div>
-        </div>
-      );
-    },
-    sortingFn: (rowA, rowB) =>
-      parseFloat(rowA.original.unrealizedPnl) - parseFloat(rowB.original.unrealizedPnl),
-  },
-  {
-    accessorKey: 'updatedAt',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Updated
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <div className="text-right text-sm text-muted-foreground">
-        {formatDate(row.original.updatedAt)}
-      </div>
-    ),
-    sortingFn: (rowA, rowB) =>
-      new Date(rowA.original.updatedAt).getTime() -
-      new Date(rowB.original.updatedAt).getTime(),
-  },
-];
-
 export function PositionsTable({
   selectedExchange = 'all',
   refreshInterval = 30000,
 }: PositionsTableProps) {
+  const t = useTranslations('positions');
+  const locale = useLocale();
   const [positions, setPositions] = React.useState<PositionData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
@@ -366,6 +134,254 @@ export function PositionsTable({
   const [selectedSide, setSelectedSide] = React.useState('all');
   const [totalPnl, setTotalPnl] = React.useState('0');
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
+
+  const getSideLabel = React.useCallback(
+    (side: string) =>
+      side === 'long' ? t('side.long') : side === 'short' ? t('side.short') : side,
+    [t],
+  );
+
+  const columns = React.useMemo<ColumnDef<PositionData>[]>(
+    () => [
+      {
+        accessorKey: 'symbol',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.symbol')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => {
+          const displaySymbol = getDisplaySymbol(
+            row.original.symbol,
+            row.original.exchange,
+          );
+          const baseCurrency = extractBaseCurrency(row.original.symbol);
+          return (
+            <div className="flex items-center gap-2">
+              <SymbolIcon symbol={baseCurrency} size="md" />
+              <div className="flex flex-col">
+                <span className="font-medium font-mono">{displaySymbol}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('cells.leverage', { value: row.original.leverage })}
+                </span>
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'exchange',
+        header: t('columns.exchange'),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <ExchangeLogo exchange={row.original.exchange} className="h-5 w-5" />
+            <span className="capitalize">{row.original.exchange}</span>
+          </div>
+        ),
+        filterFn: (row, id, value) => {
+          return value === 'all' || row.getValue(id) === value;
+        },
+      },
+      {
+        accessorKey: 'side',
+        header: t('columns.side'),
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={cn(
+              'font-medium',
+              row.original.side === 'long'
+                ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400',
+            )}
+          >
+            {row.original.side === 'long' ? (
+              <IconTrendingUp className="mr-1 h-3 w-3" />
+            ) : (
+              <IconTrendingDown className="mr-1 h-3 w-3" />
+            )}
+            {getSideLabel(row.original.side)}
+          </Badge>
+        ),
+        filterFn: (row, id, value) => {
+          return value === 'all' || row.getValue(id) === value;
+        },
+      },
+      {
+        accessorKey: 'quantity',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.quantity')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <div className="text-right font-mono tabular-nums">
+            {formatNumber(row.original.quantity)}
+          </div>
+        ),
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.quantity) - parseFloat(rowB.original.quantity),
+      },
+      {
+        accessorKey: 'avgPrice',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.avgPrice')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <div className="text-right font-mono tabular-nums">
+            {formatCurrency(row.original.avgPrice)}
+          </div>
+        ),
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.avgPrice) - parseFloat(rowB.original.avgPrice),
+      },
+      {
+        accessorKey: 'markPrice',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.markPrice')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <div className="text-right font-mono tabular-nums">
+            {formatCurrency(row.original.markPrice)}
+          </div>
+        ),
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.markPrice) - parseFloat(rowB.original.markPrice),
+      },
+      {
+        accessorKey: 'marketValue',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.marketValue')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <div className="text-right font-medium font-mono tabular-nums">
+            {formatCurrency(row.original.marketValue)}
+          </div>
+        ),
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.marketValue) - parseFloat(rowB.original.marketValue),
+      },
+      {
+        accessorKey: 'unrealizedPnl',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.unrealizedPnl')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => {
+          const pnl = parseFloat(row.original.unrealizedPnl);
+          const pnlPct = parseFloat(row.original.pnlPercentage);
+          const isPositive = pnl >= 0;
+
+          return (
+            <div
+              className={cn(
+                'text-right font-mono tabular-nums',
+                isPositive
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-rose-600 dark:text-rose-400',
+              )}
+            >
+              <div className="font-medium">
+                {isPositive ? '+' : ''}
+                {formatCurrency(pnl)}
+              </div>
+              <div className="text-xs opacity-80">{formatPercentage(pnlPct)}</div>
+            </div>
+          );
+        },
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.unrealizedPnl) -
+          parseFloat(rowB.original.unrealizedPnl),
+      },
+      {
+        accessorKey: 'updatedAt',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.updated')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <div className="text-right text-sm text-muted-foreground">
+            {formatDate(row.original.updatedAt, locale)}
+          </div>
+        ),
+        sortingFn: (rowA, rowB) =>
+          new Date(rowA.original.updatedAt).getTime() -
+          new Date(rowB.original.updatedAt).getTime(),
+      },
+    ],
+    [getSideLabel, locale, t],
+  );
 
   const fetchData = React.useCallback(async () => {
     try {
@@ -384,11 +400,11 @@ export function PositionsTable({
         setLastRefresh(new Date());
       }
     } catch (error) {
-      console.error('Failed to fetch positions:', error);
+      console.error(t('errors.fetchPositions'), error);
     } finally {
       setLoading(false);
     }
-  }, [selectedExchange]);
+  }, [selectedExchange, t]);
 
   React.useEffect(() => {
     fetchData();
@@ -442,7 +458,7 @@ export function PositionsTable({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Positions</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -462,10 +478,10 @@ export function PositionsTable({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <div className="flex flex-col gap-1">
-          <CardTitle>Positions</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
           <div className="flex items-center gap-4 text-sm">
             <span className="text-muted-foreground">
-              {positions.length} open position{positions.length !== 1 ? 's' : ''}
+              {t('stats.openPositions', { count: positions.length })}
             </span>
             <span
               className={cn(
@@ -475,7 +491,7 @@ export function PositionsTable({
                   : 'text-rose-600 dark:text-rose-400',
               )}
             >
-              Total PnL: {isPnlPositive ? '+' : ''}
+              {t('stats.totalPnl')}: {isPnlPositive ? '+' : ''}
               {formatCurrency(totalPnl)}
             </span>
           </div>
@@ -483,7 +499,9 @@ export function PositionsTable({
         <div className="flex items-center gap-2">
           {lastRefresh && (
             <span className="text-xs text-muted-foreground">
-              Updated {formatDate(lastRefresh.toISOString())}
+              {t('stats.updated', {
+                time: formatDate(lastRefresh.toISOString(), locale),
+              })}
             </span>
           )}
           <Button variant="outline" size="sm" onClick={fetchData}>
@@ -497,7 +515,7 @@ export function PositionsTable({
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search positions..."
+              placeholder={t('filters.searchPlaceholder')}
               value={globalFilter ?? ''}
               onChange={(e) => setGlobalFilter(e.target.value)}
               className="pl-9"
@@ -522,10 +540,10 @@ export function PositionsTable({
                 onValueChange={setSelectedFilterExchange}
               >
                 <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="All Exchanges" />
+                  <SelectValue placeholder={t('filters.allExchanges')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Exchanges</SelectItem>
+                  <SelectItem value="all">{t('filters.allExchanges')}</SelectItem>
                   {exchanges.map((exchange) => (
                     <SelectItem key={exchange} value={exchange}>
                       <div className="flex items-center gap-2">
@@ -542,20 +560,20 @@ export function PositionsTable({
           <div className="flex items-center gap-2">
             <Select value={selectedSide} onValueChange={setSelectedSide}>
               <SelectTrigger className="w-[130px]">
-                <SelectValue placeholder="All Sides" />
+                <SelectValue placeholder={t('filters.allSides')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Sides</SelectItem>
+                <SelectItem value="all">{t('filters.allSides')}</SelectItem>
                 <SelectItem value="long">
                   <div className="flex items-center gap-2">
                     <IconTrendingUp className="h-4 w-4 text-emerald-500" />
-                    Long
+                    {t('side.long')}
                   </div>
                 </SelectItem>
                 <SelectItem value="short">
                   <div className="flex items-center gap-2">
                     <IconTrendingDown className="h-4 w-4 text-rose-500" />
-                    Short
+                    {t('side.short')}
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -576,7 +594,7 @@ export function PositionsTable({
               className="text-muted-foreground"
             >
               <IconX className="h-4 w-4 mr-1" />
-              Clear filters
+              {t('filters.clear')}
             </Button>
           )}
         </div>
@@ -614,8 +632,8 @@ export function PositionsTable({
                     {globalFilter ||
                     selectedFilterExchange !== 'all' ||
                     selectedSide !== 'all'
-                      ? 'No positions found matching your filters.'
-                      : 'No open positions.'}
+                      ? t('empty.filtered')
+                      : t('empty.default')}
                   </TableCell>
                 </TableRow>
               )}
@@ -627,17 +645,18 @@ export function PositionsTable({
         {table.getPageCount() > 1 && (
           <div className="flex items-center justify-between space-x-2 py-4">
             <div className="text-sm text-muted-foreground">
-              Showing{' '}
-              {table.getState().pagination.pageIndex *
-                table.getState().pagination.pageSize +
-                1}{' '}
-              to{' '}
-              {Math.min(
-                (table.getState().pagination.pageIndex + 1) *
-                  table.getState().pagination.pageSize,
-                table.getFilteredRowModel().rows.length,
-              )}{' '}
-              of {table.getFilteredRowModel().rows.length} positions
+              {t('pagination.showing', {
+                start:
+                  table.getState().pagination.pageIndex *
+                    table.getState().pagination.pageSize +
+                  1,
+                end: Math.min(
+                  (table.getState().pagination.pageIndex + 1) *
+                    table.getState().pagination.pageSize,
+                  table.getFilteredRowModel().rows.length,
+                ),
+                total: table.getFilteredRowModel().rows.length,
+              })}
             </div>
             <div className="flex items-center space-x-2">
               <Button
@@ -647,10 +666,13 @@ export function PositionsTable({
                 disabled={!table.getCanPreviousPage()}
               >
                 <IconChevronLeft className="h-4 w-4" />
-                Previous
+                {t('pagination.previous')}
               </Button>
               <div className="text-sm text-muted-foreground">
-                Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                {t('pagination.page', {
+                  current: table.getState().pagination.pageIndex + 1,
+                  total: table.getPageCount(),
+                })}
               </div>
               <Button
                 variant="outline"
@@ -658,7 +680,7 @@ export function PositionsTable({
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
-                Next
+                {t('pagination.next')}
                 <IconChevronRight className="h-4 w-4" />
               </Button>
             </div>

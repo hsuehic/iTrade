@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { Check, Moon, Sun, Monitor, Palette } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -51,6 +52,7 @@ const getSnapshot = () => true;
 const getServerSnapshot = () => false;
 
 export function AppearanceSettings() {
+  const t = useTranslations('settings.appearance');
   const { theme, setTheme, systemTheme } = useTheme();
 
   // Avoid hydration mismatch using useSyncExternalStore
@@ -62,9 +64,9 @@ export function AppearanceSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Palette className="size-5" />
-            Appearance
+            {t('title')}
           </CardTitle>
-          <CardDescription>Customize the appearance of the application.</CardDescription>
+          <CardDescription>{t('description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -88,16 +90,14 @@ export function AppearanceSettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Palette className="size-5" />
-          Appearance
+          {t('title')}
         </CardTitle>
-        <CardDescription>
-          Customize the appearance of the application. Choose your preferred theme.
-        </CardDescription>
+        <CardDescription>{t('descriptionExtended')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Theme Selection */}
         <div className="space-y-4">
-          <Label>Theme</Label>
+          <Label>{t('themeLabel')}</Label>
           <div className="grid gap-4 sm:grid-cols-3">
             {themeOptions.map((option) => {
               const Icon = option.icon;
@@ -118,8 +118,10 @@ export function AppearanceSettings() {
                     {isSelected && <Check className="size-4 text-primary" />}
                   </div>
                   <div className="text-left">
-                    <p className="font-medium">{option.label}</p>
-                    <p className="text-xs text-muted-foreground">{option.description}</p>
+                    <p className="font-medium">{t(`options.${option.value}.label`)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t(`options.${option.value}.description`)}
+                    </p>
                   </div>
                 </Button>
               );
@@ -137,12 +139,12 @@ export function AppearanceSettings() {
             )}
             <div>
               <p className="text-sm font-medium">
-                Currently using {effectiveTheme} theme
+                {t('currentTheme', { theme: effectiveTheme ?? 'system' })}
               </p>
               <p className="text-xs text-muted-foreground">
                 {currentTheme === 'system'
-                  ? `Following your system preference (${systemTheme})`
-                  : 'Manually selected theme'}
+                  ? t('systemPreference', { theme: systemTheme ?? 'system' })
+                  : t('manualPreference')}
               </p>
             </div>
           </div>
@@ -150,7 +152,7 @@ export function AppearanceSettings() {
 
         {/* Theme Preview */}
         <div className="space-y-4">
-          <Label>Preview</Label>
+          <Label>{t('preview')}</Label>
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Light Preview */}
             <div
@@ -167,7 +169,7 @@ export function AppearanceSettings() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Sun className="size-4" />
-                  <span className="text-sm font-medium">Light Mode</span>
+                  <span className="text-sm font-medium">{t('previewLight')}</span>
                 </div>
                 <div
                   className="h-2 w-3/4 rounded"
@@ -181,7 +183,7 @@ export function AppearanceSettings() {
                   className="mt-3 rounded px-3 py-1.5 text-xs inline-block"
                   style={{ backgroundColor: '#18181b', color: '#fafafa' }}
                 >
-                  Button
+                  {t('previewButton')}
                 </div>
               </div>
             </div>
@@ -201,7 +203,7 @@ export function AppearanceSettings() {
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Moon className="size-4" />
-                  <span className="text-sm font-medium">Dark Mode</span>
+                  <span className="text-sm font-medium">{t('previewDark')}</span>
                 </div>
                 <div
                   className="h-2 w-3/4 rounded"
@@ -215,7 +217,7 @@ export function AppearanceSettings() {
                   className="mt-3 rounded px-3 py-1.5 text-xs inline-block"
                   style={{ backgroundColor: '#fafafa', color: '#18181b' }}
                 >
-                  Button
+                  {t('previewButton')}
                 </div>
               </div>
             </div>

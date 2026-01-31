@@ -8,6 +8,7 @@ import {
   IconWorldDollar,
   IconBell,
 } from '@tabler/icons-react';
+import { useTranslations } from 'next-intl';
 
 import Link from 'next/link';
 
@@ -22,34 +23,35 @@ import {
 } from '@/components/ui/sidebar';
 
 export function NavMain() {
+  const t = useTranslations('nav.main');
   const items = [
     {
-      title: 'Dashboard',
+      title: t('dashboard'),
       url: '/dashboard',
       icon: IconDashboard,
     },
     {
-      title: 'Strategy',
+      title: t('strategy'),
       url: '/strategy',
       icon: IconDeviceAnalytics,
     },
     {
-      title: 'Dry run',
+      title: t('dryRun'),
       url: '/dry-run',
       icon: IconClockBitcoin,
     },
     {
-      title: 'Becktesting',
+      title: t('backtest'),
       url: '/backtest',
       icon: IconClockDollar,
     },
     {
-      title: 'Market',
+      title: t('market'),
       url: '/market',
       icon: IconWorldDollar,
     },
     {
-      title: 'Push',
+      title: t('push'),
       url: '/push',
       icon: IconBell,
     },

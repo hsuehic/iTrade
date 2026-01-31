@@ -6,8 +6,10 @@ import Image from 'next/image';
 import { QrCode } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 export function MobileDownload() {
+  const t = useTranslations('landing.mobile');
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
@@ -33,20 +35,17 @@ export function MobileDownload() {
           >
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border bg-background/50 px-4 py-2 text-sm backdrop-blur-sm">
               <QrCode className="size-4 text-primary" />
-              <span>Trade on the Go</span>
+              <span>{t('badge')}</span>
             </div>
 
             <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Download iTrade
-              <br />
-              <span className="text-primary">Mobile App</span>
+              {t.rich('title', {
+                accent: (chunks) => <span className="text-primary">{chunks}</span>,
+                br: () => <br />,
+              })}
             </h2>
 
-            <p className="mb-8 text-lg text-muted-foreground">
-              Take control of your crypto portfolio anywhere, anytime. Real-time market
-              data, instant order execution, and advanced trading tools at your
-              fingertips.
-            </p>
+            <p className="mb-8 text-lg text-muted-foreground">{t('description')}</p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-3">
               {/* iOS Download */}
@@ -102,7 +101,7 @@ export function MobileDownload() {
             <div className="mt-8 rounded-xl border bg-background/50 p-6 backdrop-blur-sm">
               <div className="mb-4 flex items-center gap-2 text-sm font-medium">
                 <QrCode className="size-4 text-primary" />
-                <span>Scan to Download</span>
+                <span>{t('scanToDownload')}</span>
               </div>
               <div className="flex flex-wrap gap-6">
                 <div className="flex flex-col items-center gap-2">
@@ -115,7 +114,7 @@ export function MobileDownload() {
                       className="size-[120px]"
                     />
                   </div>
-                  <span className="text-xs text-muted-foreground">App Store</span>
+                  <span className="text-xs text-muted-foreground">{t('appStore')}</span>
                 </div>
                 <div className="flex flex-col items-center gap-2">
                   <div className="rounded-lg border bg-white p-2">
@@ -127,7 +126,7 @@ export function MobileDownload() {
                       className="size-[120px]"
                     />
                   </div>
-                  <span className="text-xs text-muted-foreground">Google Play</span>
+                  <span className="text-xs text-muted-foreground">{t('googlePlay')}</span>
                 </div>
                 <div className="flex flex-col items-center gap-2">
                   <div className="rounded-lg border bg-white p-2">
@@ -139,7 +138,7 @@ export function MobileDownload() {
                       className="size-[120px]"
                     />
                   </div>
-                  <span className="text-xs text-muted-foreground">Direct APK</span>
+                  <span className="text-xs text-muted-foreground">{t('directApk')}</span>
                 </div>
               </div>
             </div>
@@ -148,19 +147,19 @@ export function MobileDownload() {
             <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-primary" />
-                <span>Real-time Prices</span>
+                <span>{t('features.realtimePrices')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-primary" />
-                <span>Instant Notifications</span>
+                <span>{t('features.instantNotifications')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-primary" />
-                <span>Multi-Exchange</span>
+                <span>{t('features.multiExchange')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-2 rounded-full bg-primary" />
-                <span>Secure Trading</span>
+                <span>{t('features.secureTrading')}</span>
               </div>
             </div>
           </motion.div>

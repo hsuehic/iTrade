@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { TradingDashboardCards } from '@/components/trading-dashboard-cards';
 import { AccountBalanceChart } from '@/components/account-balance-chart';
@@ -16,6 +17,7 @@ const REFRESH_INTERVAL = parseInt(
 );
 
 export default function Page() {
+  const t = useTranslations('dashboard');
   const [selectedExchange, setSelectedExchange] = useState('all');
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
 
@@ -42,7 +44,7 @@ export default function Page() {
   return (
     <SidebarInset>
       <SiteHeader
-        title="Trading Dashboard"
+        title={t('title')}
         links={
           <ExchangeSelector
             value={selectedExchange}

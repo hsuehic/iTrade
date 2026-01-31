@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { resetPassword } from '@/lib/auth-client';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
 export function ResetPasswordForm() {
+  const t = useTranslations('auth.resetPassword');
   const [password, setPassword] = useState('');
   const [cpassword, setCpassword] = useState('');
   const [error, setError] = useState('');
@@ -21,17 +23,15 @@ export function ResetPasswordForm() {
   return (
     <div className="grid gap-4 p-6 md:p-8">
       <div className="flex flex-col items-center text-center">
-        <h1 className="text-2xl font-bold">Reset Password</h1>
-        <p className="text-muted-foreground text-balance">
-          Please input your new password.
-        </p>
+        <h1 className="text-2xl font-bold">{t('title')}</h1>
+        <p className="text-muted-foreground text-balance">{t('subtitle')}</p>
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password">{t('passwordLabel')}</Label>
         <Input
           id="password"
           type="password"
-          placeholder="Fill in new password"
+          placeholder={t('passwordPlaceholder')}
           required
           onChange={(e) => {
             setPassword(e.target.value);
@@ -40,14 +40,14 @@ export function ResetPasswordForm() {
         />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="cpassword">Comfirm Password</Label>
+        <Label htmlFor="cpassword">{t('confirmPasswordLabel')}</Label>
         <Input
           id="cpassword"
           type="password"
           value={cpassword}
           onChange={(e) => setCpassword(e.target.value)}
           autoComplete="new-password"
-          placeholder="Confirm new password"
+          placeholder={t('confirmPasswordPlaceholder')}
         />
       </div>
 
@@ -58,10 +58,10 @@ export function ResetPasswordForm() {
         disabled={loading}
         onClick={async () => {
           if (password !== cpassword) {
-            setError('Password not match');
+            setError(t('errors.mismatch'));
             return;
           } else if (password.length < 6) {
-            setError('Minimun 6 characters');
+            setError(t('errors.minLength'));
             return;
           }
           await resetPassword({
@@ -78,14 +78,14 @@ export function ResetPasswordForm() {
                 toast.error(ctx.error.message);
               },
               onSuccess: async () => {
-                toast.success('Reset password successfully, please sign in.');
+                toast.success(t('messages.success'));
                 router.push('/dashboard');
               },
             },
           });
         }}
       >
-        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Reset Password'}
+        {loading ? <Loader2 size={16} className="animate-spin" /> : t('submit')}
       </Button>
     </div>
   );

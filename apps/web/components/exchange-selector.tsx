@@ -1,6 +1,7 @@
 'use client';
 
 import { IconBuildingBank } from '@tabler/icons-react';
+import { useTranslations } from 'next-intl';
 
 import {
   Select,
@@ -18,13 +19,15 @@ interface ExchangeSelectorProps {
 }
 
 export function ExchangeSelector({ value, onChange, exchanges }: ExchangeSelectorProps) {
+  const t = useTranslations('exchangeSelector');
+
   return (
     <div className="flex items-center gap-2">
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-[180px]">
-          <SelectValue placeholder="Select exchange">
+          <SelectValue placeholder={t('placeholder')}>
             {value === 'all' ? (
-              'All Exchanges'
+              t('allExchanges')
             ) : (
               <ExchangeLogo
                 exchange={value}
@@ -39,7 +42,7 @@ export function ExchangeSelector({ value, onChange, exchanges }: ExchangeSelecto
           <SelectItem value="all">
             <div className="flex items-center gap-2">
               <IconBuildingBank className="size-4" />
-              <span>All Exchanges</span>
+              <span>{t('allExchanges')}</span>
             </div>
           </SelectItem>
           {exchanges.map((exchange) => (

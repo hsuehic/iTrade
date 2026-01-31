@@ -8,6 +8,7 @@ import {
   IconUserCircle,
 } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { useSession } from './session-provider';
 
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/sidebar';
 
 export function NavUser() {
+  const t = useTranslations('nav.user');
   const { isMobile } = useSidebar();
   const router = useRouter();
   const user = useSession()?.user;
@@ -79,15 +81,15 @@ export function NavUser() {
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <IconUserCircle />
-                Account
+                {t('account')}
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconCreditCard />
-                Billing
+                {t('billing')}
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconNotification />
-                Notifications
+                {t('notifications')}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
@@ -99,7 +101,7 @@ export function NavUser() {
               }}
             >
               <IconLogout />
-              Log out
+              {t('logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

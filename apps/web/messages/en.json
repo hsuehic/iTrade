@@ -1,0 +1,1398 @@
+{
+  "navigation": {
+    "mobileApp": "Mobile App",
+    "dashboard": "Dashboard",
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "language": "Language",
+    "english": "English",
+    "chinese": "中文"
+  },
+  "landing": {
+    "meta": {
+      "title": "iTrade - Intelligent & Strategic Crypto Trading",
+      "description": "Trade smarter with AI-powered strategies across multiple exchanges. Real-time analytics, automated execution, and risk management built for professionals."
+    },
+    "hero": {
+      "badge": "Intelligent & Strategic Crypto Trading",
+      "title": "Markets thrive on <emphasis>chaos</emphasis>",
+      "subtitle": "For the bold, chaos isn't a downfall — it's a <emphasis>ladder to rise</emphasis>",
+      "description": "Trade smarter with AI-powered strategies across multiple exchanges. Real-time analytics, automated execution, and risk management built for professionals.",
+      "cta": {
+        "dashboard": "Go to Dashboard",
+        "getStarted": "Get Started Free",
+        "signIn": "Sign In"
+      },
+      "features": {
+        "multiExchangeTitle": "Multi-Exchange",
+        "multiExchangeDescription": "Trade on Binance, OKX, and Coinbase from one platform",
+        "realTimeTitle": "Real-Time",
+        "realTimeDescription": "Live market data and instant order execution",
+        "riskTitle": "Risk Management",
+        "riskDescription": "Built-in stop-loss, position sizing, and portfolio tracking"
+      }
+    },
+    "ticker": {
+      "title": "Live Market Data",
+      "subtitle": "Real-time market data and indexes",
+      "loadingTitle": "Live Market Data",
+      "loadingSubtitle": "Connecting to exchanges...",
+      "binance": "Binance",
+      "okx": "OKX"
+    },
+    "mobile": {
+      "badge": "Trade on the Go",
+      "title": "Download iTrade<br/><accent>Mobile App</accent>",
+      "description": "Take control of your crypto portfolio anywhere, anytime. Real-time market data, instant order execution, and advanced trading tools at your fingertips.",
+      "scanToDownload": "Scan to Download",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "directApk": "Direct APK",
+      "features": {
+        "realtimePrices": "Real-time Prices",
+        "instantNotifications": "Instant Notifications",
+        "multiExchange": "Multi-Exchange",
+        "secureTrading": "Secure Trading"
+      }
+    },
+    "footer": {
+      "rights": "© 2026 iTrade. All rights reserved.",
+      "risk": "Trade responsibly. Cryptocurrency trading involves risk.",
+      "privacy": "Privacy Policy",
+      "terms": "Terms of Service"
+    }
+  },
+  "auth": {
+    "terms": "By clicking continue, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
+    "logoAlt": "iTrade Logo",
+    "promoAlt": "Trading Platform Preview",
+    "meta": {
+      "title": "Authentication",
+      "description": "Sign in or create an account to start trading",
+      "signInTitle": "Sign in",
+      "signUpTitle": "Sign up",
+      "forgetPasswordTitle": "Forgot password",
+      "resetPasswordTitle": "Reset password",
+      "deleteAccountTitle": "Delete account"
+    },
+    "login": {
+      "title": "Welcome back",
+      "subtitle": "Login to your iTrade account",
+      "emailLabel": "Email",
+      "emailPlaceholder": "mail@example.com",
+      "passwordLabel": "Password",
+      "forgotPassword": "Forgot your password?",
+      "submit": "Login",
+      "continueWith": "Or continue with",
+      "social": {
+        "apple": "Login with Apple",
+        "google": "Login with Google",
+        "github": "Login with Github"
+      },
+      "noAccount": "Don't have an account?",
+      "signUp": "Sign up",
+      "errors": {
+        "signInFailed": "Failed to sign in"
+      }
+    },
+    "signUp": {
+      "title": "Sign up",
+      "subtitle": "Welcome to iTrade world. Already have an account, back to",
+      "subtitleEnd": ";",
+      "signInLink": "sign in",
+      "firstNameLabel": "First name",
+      "firstNamePlaceholder": "Max",
+      "lastNameLabel": "Last name",
+      "lastNamePlaceholder": "Robinson",
+      "emailLabel": "Email",
+      "emailPlaceholder": "m@example.com",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Password",
+      "confirmPasswordLabel": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm Password",
+      "profileImageLabel": "Profile Image (optional)",
+      "profileImagePreviewAlt": "Profile preview",
+      "submit": "Create an account",
+      "messages": {
+        "created": "Account created successfully",
+        "verifyEmail": "A verification email has been sent to your email address, please check your email to verify your account."
+      }
+    },
+    "forgetPassword": {
+      "title": "Send Reset Password Link",
+      "description": "Please input your register email address, we will send a reset password link to your email. Back to",
+      "descriptionEnd": ";",
+      "signInLink": "sign in",
+      "emailLabel": "Email Address",
+      "emailPlaceholder": "name@example.com",
+      "submit": "Send Reset Password Link",
+      "sent": {
+        "line1": "We sent a password reset link to {email}.",
+        "line2": "Please check your inbox and click the link to reset your password.",
+        "back": "Back to sign in"
+      },
+      "messages": {
+        "sent": "Password reset email sent"
+      },
+      "errors": {
+        "emailRequired": "Email is required",
+        "emailInvalid": "Invalid email address format"
+      }
+    },
+    "resetPassword": {
+      "title": "Reset Password",
+      "subtitle": "Please input your new password.",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Fill in new password",
+      "confirmPasswordLabel": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm new password",
+      "submit": "Reset Password",
+      "messages": {
+        "success": "Reset password successfully, please sign in."
+      },
+      "errors": {
+        "mismatch": "Password not match",
+        "minLength": "Minimum 6 characters"
+      }
+    },
+    "deleteAccount": {
+      "title": "Delete Account",
+      "subtitle": "This action cannot be undone. Your account and all associated data will be permanently deleted.",
+      "warning": {
+        "title": "Warning",
+        "description": "Please make sure you want to delete your account. All your data, including strategies, trades, and portfolios will be permanently removed."
+      },
+      "emailLabel": "Email Address",
+      "emailPlaceholder": "name@example.com",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "passwordHint": "We need to verify your identity before sending the verification code",
+      "sendCode": "Send Verification Code",
+      "cancel": "Cancel",
+      "verify": {
+        "description": "A verification code has been sent to {email}. Please check your inbox and enter the code below.",
+        "codeLabel": "Verification Code",
+        "codePlaceholder": "Enter 6-digit code",
+        "codeHint": "The code will expire in 10 minutes"
+      },
+      "confirmDelete": "Confirm and Delete Account",
+      "back": "Back",
+      "success": {
+        "title": "Account Deleted",
+        "description": "Your account has been successfully deleted.",
+        "note": "Thank you for being part of our community. We appreciate the time you spent with iTrade. We wish you all the best in your future trading endeavors.",
+        "redirect": "Redirecting to home page in 3 seconds..."
+      },
+      "messages": {
+        "codeSent": "Verification code sent to your email",
+        "deleted": "Account deleted successfully"
+      },
+      "errors": {
+        "emailRequired": "Email is required",
+        "emailInvalid": "Invalid email address format",
+        "passwordRequired": "Password is required",
+        "sendCodeFailed": "Failed to send verification code",
+        "codeRequired": "Verification code is required",
+        "deleteFailed": "Failed to delete account"
+      }
+    }
+  },
+  "exchangeSelector": {
+    "placeholder": "Select exchange",
+    "allExchanges": "All Exchanges"
+  },
+  "nav": {
+    "main": {
+      "dashboard": "Dashboard",
+      "strategy": "Strategy",
+      "dryRun": "Dry run",
+      "backtest": "Backtesting",
+      "market": "Market",
+      "push": "Push"
+    },
+    "portfolio": {
+      "label": "Portfolio",
+      "balance": "Balance",
+      "assets": "Assets",
+      "position": "Position",
+      "transaction": "Transaction",
+      "filterOrders": "Filter Orders",
+      "byStatus": "By Status",
+      "byExchange": "By Exchange",
+      "status": {
+        "filled": "Filled",
+        "open": "Open",
+        "cancelled": "Cancelled"
+      },
+      "exchange": {
+        "binance": "Binance",
+        "okx": "OKX",
+        "coinbase": "Coinbase"
+      }
+    },
+    "secondary": {
+      "accounts": "Accounts",
+      "settings": "Settings"
+    },
+    "user": {
+      "account": "Account",
+      "billing": "Billing",
+      "notifications": "Notifications",
+      "logout": "Log out"
+    }
+  },
+  "dashboard": {
+    "title": "Trading Dashboard",
+    "cards": {
+      "balanceTitle": "Balance",
+      "balanceTrend": {
+        "up": "Growing this month",
+        "down": "Declining this month"
+      },
+      "balanceFooterAll": "Cash balance across all exchanges",
+      "balanceFooterSingle": "Cash balance on {exchange}",
+      "balanceChangeTitle": "Balance Change",
+      "balanceChangeStatus": {
+        "none": "No change",
+        "increased": "Balance increased",
+        "decreased": "Balance decreased"
+      },
+      "balanceChangeDescription": {
+        "noDataAll": "Daily comparison requires more historical data across exchanges",
+        "noDataSingle": "Insufficient data for daily comparison",
+        "lastDay": "Change in the last 24 hours",
+        "lastWeek": "Change in the last week",
+        "lastMonth": "Change in the last month",
+        "lastYear": "Change in the last year"
+      },
+      "period": {
+        "day": "Day",
+        "week": "Week",
+        "month": "Month",
+        "year": "Year"
+      },
+      "realizedTitle": "Realized P&L",
+      "unrealizedTitle": "Unrealized P&L",
+      "profit": "Profit",
+      "loss": "Loss",
+      "realizedStatus": {
+        "positive": "Closed profitable trades",
+        "negative": "Closed losing trades"
+      },
+      "realizedDescription": "Locked-in profits and losses from completed trades",
+      "unrealizedStatus": {
+        "positive": "Profitable positions",
+        "negative": "Positions underwater"
+      },
+      "openPositions": "{count, plural, one {# open position} other {# open positions}}"
+    },
+    "balanceChart": {
+      "title": "Account Balance",
+      "subtitleAll": "Portfolio value over time • {period}",
+      "subtitleSingle": "{exchange} balance • {period}",
+      "range": {
+        "3m": "3 months",
+        "30d": "30 days",
+        "7d": "7 days",
+        "1d": "1 day",
+        "1h": "1 hour"
+      },
+      "rangeSelectLabel": "Select time range",
+      "period": {
+        "last7Days": "Last 7 days",
+        "last3Months": "Last 3 months",
+        "last1Day": "Last 1 day",
+        "last1Hour": "Last 1 hour",
+        "last30Days": "Last 30 days"
+      },
+      "empty": {
+        "title": "No data available",
+        "description": "Start trading to see your account balance history"
+      },
+      "total": "Total",
+      "exchange": {
+        "binance": "Binance",
+        "okx": "OKX",
+        "coinbase": "Coinbase"
+      }
+    },
+    "performance": {
+      "title": "Performance Analytics",
+      "description": "Top performing strategies, exchanges, and trading pairs",
+      "tabs": {
+        "strategies": "Strategies",
+        "exchanges": "Exchanges",
+        "symbols": "Symbols"
+      },
+      "empty": {
+        "strategies": "No strategies found. Create a strategy to start trading.",
+        "exchanges": "No exchange data available.",
+        "symbols": "No symbol data available."
+      },
+      "table": {
+        "strategy": "Strategy",
+        "symbol": "Symbol",
+        "exchange": "Exchange",
+        "pnl": "P&L",
+        "roi": "ROI",
+        "orders": "Orders",
+        "status": "Status",
+        "totalStrategies": "Total Strategies",
+        "active": "Active",
+        "totalPnl": "Total P&L",
+        "avgPnl": "Avg P&L"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      }
+    }
+  },
+  "accounts": {
+    "title": "Accounts",
+    "manageTitle": "Manage Exchange Accounts",
+    "manageDescription": "Connect your exchange accounts (Binance, OKX, Coinbase) to enable trading.",
+    "list": {
+      "title": "Exchange Accounts",
+      "add": "Add Account",
+      "confirmDelete": "Are you sure you want to delete this account?",
+      "empty": "No accounts found. Add one to start trading.",
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "table": {
+        "exchange": "Exchange",
+        "accountName": "Account Name",
+        "status": "Status",
+        "apiKey": "API Key",
+        "updated": "Updated",
+        "actions": "Actions"
+      },
+      "messages": {
+        "deleted": "Account deleted"
+      },
+      "errors": {
+        "deleteFailed": "Failed to delete account"
+      }
+    },
+    "form": {
+      "titleAdd": "Add Account",
+      "titleEdit": "Edit Account",
+      "description": "Enter your exchange API credentials. They will be encrypted securely.",
+      "fields": {
+        "exchange": "Exchange",
+        "exchangePlaceholder": "Select exchange",
+        "accountId": "Account Name / ID",
+        "accountIdPlaceholder": "Main Account",
+        "accountIdDescription": "A nickname to identify this account.",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "API Key",
+        "secretKey": "Secret Key",
+        "secretKeyPlaceholder": "Secret Key",
+        "passphrase": "Passphrase",
+        "passphrasePlaceholder": "Passphrase",
+        "activeStatus": "Active Status",
+        "activeDescription": "Enable or disable trading for this account."
+      },
+      "save": "Save changes",
+      "saving": "Saving...",
+      "messages": {
+        "saved": "Account saved successfully"
+      },
+      "errors": {
+        "saveFailed": "Failed to save account"
+      }
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "profile": "Profile",
+      "security": "Security",
+      "notifications": "Notifications",
+      "appearance": "Appearance",
+      "danger": "Danger Zone"
+    },
+    "profile": {
+      "title": "Profile Information",
+      "description": "Update your personal information and profile picture.",
+      "pictureTitle": "Profile Picture",
+      "pictureHint": "Enter a URL for your profile picture",
+      "imageUrlLabel": "Profile Image URL",
+      "imageUrlPlaceholder": "https://example.com/avatar.jpg",
+      "imageUrlHint": "Leave empty to use default avatar",
+      "displayNameLabel": "Display Name",
+      "displayNamePlaceholder": "Your name",
+      "emailLabel": "Email Address",
+      "emailHint": "Email cannot be changed for security reasons",
+      "save": "Save Changes",
+      "saving": "Saving...",
+      "unsaved": "You have unsaved changes",
+      "messages": {
+        "updated": "Profile updated successfully"
+      },
+      "errors": {
+        "nameRequired": "Name is required",
+        "nameMin": "Name must be at least 2 characters",
+        "nameMax": "Name must be less than 50 characters",
+        "updateFailed": "Failed to update profile"
+      }
+    },
+    "security": {
+      "title": "Change Password",
+      "description": "Update your password to keep your account secure. We recommend using a strong, unique password.",
+      "requirements": {
+        "title": "Password requirements:",
+        "minLength": "At least 8 characters long",
+        "uppercase": "Contains at least one uppercase letter (A-Z)",
+        "lowercase": "Contains at least one lowercase letter (a-z)",
+        "number": "Contains at least one number (0-9)"
+      },
+      "currentPassword": "Current Password",
+      "currentPasswordPlaceholder": "Enter your current password",
+      "newPassword": "New Password",
+      "newPasswordPlaceholder": "Enter your new password",
+      "confirmPassword": "Confirm New Password",
+      "confirmPasswordPlaceholder": "Confirm your new password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "submit": "Change Password",
+      "changing": "Changing...",
+      "messages": {
+        "updated": "Password changed successfully"
+      },
+      "errors": {
+        "currentRequired": "Current password is required",
+        "newRequired": "New password is required",
+        "confirmRequired": "Please confirm your new password",
+        "mismatch": "Passwords do not match",
+        "minLength": "Password must be at least 8 characters",
+        "uppercase": "Password must contain at least one uppercase letter",
+        "lowercase": "Password must contain at least one lowercase letter",
+        "number": "Password must contain at least one number",
+        "updateFailed": "Failed to change password"
+      }
+    },
+    "email": {
+      "title": "Email Preferences",
+      "description": "Choose which emails you would like to receive. You can update these settings at any time.",
+      "sections": {
+        "trading": {
+          "title": "Trading Notifications",
+          "alerts": {
+            "title": "Trading Alerts",
+            "description": "Get notified when your strategies execute trades"
+          },
+          "price": {
+            "title": "Price Alerts",
+            "description": "Receive alerts when assets hit your price targets"
+          },
+          "orders": {
+            "title": "Order Updates",
+            "description": "Get notified about order fills and cancellations"
+          }
+        },
+        "security": {
+          "title": "Account & Security",
+          "activity": {
+            "title": "Account Activity",
+            "description": "Receive notifications for important account activities"
+          }
+        },
+        "reports": {
+          "title": "Reports & Updates",
+          "weekly": {
+            "title": "Weekly Reports",
+            "description": "Receive weekly performance summaries and insights"
+          },
+          "product": {
+            "title": "Product Updates",
+            "description": "Stay informed about new features and improvements"
+          },
+          "news": {
+            "title": "News & Tips",
+            "description": "Get trading tips and market news"
+          }
+        },
+        "marketing": {
+          "title": "Marketing",
+          "emails": {
+            "title": "Marketing Emails",
+            "description": "Receive promotional offers and announcements"
+          }
+        }
+      },
+      "save": "Save Preferences",
+      "saving": "Saving...",
+      "unsaved": "You have unsaved changes",
+      "messages": {
+        "saved": "Email preferences saved successfully"
+      },
+      "errors": {
+        "loadFailed": "Failed to load email preferences",
+        "saveFailed": "Failed to save email preferences"
+      }
+    },
+    "appearance": {
+      "title": "Appearance",
+      "description": "Customize the appearance of the application.",
+      "descriptionExtended": "Customize the appearance of the application. Choose your preferred theme.",
+      "themeLabel": "Theme",
+      "options": {
+        "light": {
+          "label": "Light",
+          "description": "A bright, clean appearance for daytime use"
+        },
+        "dark": {
+          "label": "Dark",
+          "description": "A darker palette that reduces eye strain"
+        },
+        "system": {
+          "label": "System",
+          "description": "Automatically match your device settings"
+        }
+      },
+      "currentTheme": "Currently using {theme} theme",
+      "systemPreference": "Following your system preference ({theme})",
+      "manualPreference": "Manually selected theme",
+      "preview": "Preview",
+      "previewLight": "Light Mode",
+      "previewDark": "Dark Mode",
+      "previewButton": "Button"
+    },
+    "danger": {
+      "title": "Danger Zone",
+      "description": "Actions in this section are irreversible. Please proceed with caution.",
+      "warning": {
+        "title": "Warning",
+        "description": "The actions below can result in permanent data loss. Please make sure you understand the consequences before proceeding."
+      },
+      "deleteAccount": {
+        "title": "Delete Account",
+        "description": "Permanently delete your account and all associated data. This includes all your strategies, trades, portfolios, and settings.",
+        "action": "Delete Account"
+      },
+      "deleted": {
+        "title": "What gets deleted?",
+        "items": {
+          "profile": "Your user profile and personal information",
+          "strategies": "All trading strategies you've created",
+          "trades": "Historical trade data and orders",
+          "portfolio": "Portfolio information and balance history",
+          "backtests": "Backtest configurations and results",
+          "notifications": "Email preferences and notification settings",
+          "sessions": "All sessions and login history"
+        }
+      },
+      "before": {
+        "title": "Before you delete",
+        "items": {
+          "export": "Export any data you want to keep",
+          "stopStrategies": "Stop all running strategies",
+          "closePositions": "Close any open positions on exchanges",
+          "irreversible": "This action cannot be undone"
+        }
+      }
+    }
+  },
+  "market": {
+    "title": "Market",
+    "meta": {
+      "title": "Market",
+      "description": "Real-time perpetual futures market data, funding rates, and price movements"
+    },
+    "dashboard": {
+      "title": "Perpetual Futures",
+      "status": {
+        "live": "Live",
+        "connecting": "Connecting..."
+      },
+      "lastUpdate": "Last update: {time}",
+      "reconnect": "Reconnect",
+      "tabs": {
+        "table": "📊 Table View",
+        "heatmap": "🎨 Heatmap",
+        "analysis": "📈 Analysis"
+      }
+    },
+    "stats": {
+      "volume24h": {
+        "title": "24h Volume",
+        "subValue": "{count} perpetuals tracked"
+      },
+      "openInterest": {
+        "title": "Open Interest",
+        "subValue": "Total across all markets"
+      },
+      "gainers": {
+        "title": "Gainers",
+        "subValue": "{percent}% of market is up"
+      },
+      "losers": {
+        "title": "Losers",
+        "subValue": "{percent}% of market is down"
+      },
+      "avgFunding": {
+        "title": "Avg Funding",
+        "longs": "Longs pay shorts",
+        "shorts": "Shorts pay longs"
+      },
+      "activity": {
+        "title": "Market Activity",
+        "level": {
+          "high": "High",
+          "medium": "Medium",
+          "low": "Low"
+        },
+        "subValue": "{count} active perpetuals"
+      }
+    },
+    "topMovers": {
+      "gainers": "Top Gainers",
+      "losers": "Top Losers",
+      "emptyGainers": "No gainers to display",
+      "emptyLosers": "No losers to display"
+    },
+    "funding": {
+      "title": "Funding Rates",
+      "tooltip": "Funding rates are periodic payments between long and short traders. Positive rates mean longs pay shorts, negative rates mean shorts pay longs.",
+      "average": "Avg:",
+      "shortsPay": "Shorts pay",
+      "longsPay": "Longs pay",
+      "longsPayShorts": "Longs pay shorts",
+      "shortsPayLongs": "Shorts pay longs",
+      "annualized": "Annualized",
+      "loading": "Loading funding rates...",
+      "time": {
+        "now": "Now",
+        "remaining": "{hours}h {minutes}m"
+      }
+    },
+    "perpetuals": {
+      "title": "Perpetual Futures",
+      "marketCount": "{count} markets",
+      "searchPlaceholder": "Search...",
+      "filters": {
+        "all": "All Perpetuals",
+        "gainers": "Gainers Only",
+        "losers": "Losers Only",
+        "volume": "High Volume (>$100M)",
+        "funding": "Notable Funding"
+      },
+      "table": {
+        "symbol": "Symbol",
+        "price": "Price",
+        "change24h": "24h Change",
+        "volume": "Volume",
+        "funding": "Funding",
+        "chart": "Chart"
+      },
+      "perpetual": "Perpetual",
+      "mark": "Mark",
+      "empty": {
+        "title": "No perpetuals found",
+        "subtitle": "Try adjusting your search or filter"
+      }
+    },
+    "heatmap": {
+      "title": "Market Heatmap",
+      "tooltip": {
+        "price": "Price",
+        "change24h": "24h Change",
+        "high24h": "24h High",
+        "low24h": "24h Low"
+      }
+    }
+  }
+  ,
+  "dryRun": {
+    "title": "Paper Trading (Dry Run)",
+    "heroTitle": "Paper Trading",
+    "heroDescription": "Test your strategies with real-time market data without risking real capital",
+    "actions": {
+      "refresh": "Refresh",
+      "newSession": "New Session",
+      "cancel": "Cancel",
+      "creating": "Creating...",
+      "startSession": "Start Session"
+    },
+    "createDialog": {
+      "title": "Create Paper Trading Session",
+      "description": "Start a new paper trading session to test your strategy with simulated capital",
+      "strategyLabel": "Strategy (Optional)",
+      "strategyPlaceholder": "Select a strategy to test",
+      "noStrategy": "No strategy (manual trading)",
+      "strategyOption": "{name} ({type})",
+      "nameLabel": "Session Name",
+      "namePlaceholder": "e.g., BTC Strategy Test",
+      "initialBalanceLabel": "Initial Balance ($)",
+      "commissionLabel": "Commission (%)",
+      "slippageLabel": "Slippage (%)",
+      "notesLabel": "Notes",
+      "notesPlaceholder": "Add any notes about this test session..."
+    },
+    "stats": {
+      "totalSessions": "Total Sessions",
+      "totalSessionsHint": "All time paper trading sessions",
+      "running": "Running",
+      "runningHint": "Active sessions in progress",
+      "completed": "Completed",
+      "completedHint": "Finished sessions with results",
+      "successRate": "Success Rate",
+      "successRateHint": "Sessions with positive returns"
+    },
+    "loadingSessions": "Loading sessions...",
+    "empty": {
+      "title": "No paper trading sessions yet",
+      "description": "Start a paper trading session to test your strategies with simulated capital using real market data.",
+      "action": "Create Your First Session"
+    },
+    "sessionTitle": "Session #{id}",
+    "sessionStrategyLabel": "Strategy:",
+    "sessionManual": "Manual trading",
+    "sessionStarted": "Started {time}",
+    "session": {
+      "initialBalance": "Initial Balance",
+      "trades": "Trades",
+      "totalPnl": "Total P&L",
+      "return": "Return",
+      "winRate": "Win Rate",
+      "maxDrawdown": "Max Drawdown"
+    },
+    "tabs": {
+      "overview": "Overview",
+      "trades": "Trades",
+      "metrics": "Metrics"
+    },
+    "overview": {
+      "totalReturn": "Total Return",
+      "winRate": "Win Rate",
+      "sharpeRatio": "Sharpe Ratio",
+      "maxDrawdown": "Max Drawdown"
+    },
+    "info": {
+      "title": "Session Information",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "running": "Running...",
+      "initialBalance": "Initial Balance",
+      "commission": "Commission",
+      "symbols": "Symbols",
+      "allSymbols": "All",
+      "timeframe": "Timeframe",
+      "defaultTimeframe": "1h",
+      "notes": "Notes"
+    },
+    "trades": {
+      "empty": "No trades recorded yet",
+      "table": {
+        "symbol": "Symbol",
+        "side": "Side",
+        "entry": "Entry",
+        "exit": "Exit",
+        "quantity": "Qty",
+        "pnl": "P&L",
+        "duration": "Duration"
+      },
+      "side": {
+        "buy": "Buy",
+        "sell": "Sell"
+      }
+    },
+    "metrics": {
+      "returnTitle": "Return Metrics",
+      "totalReturn": "Total Return",
+      "annualizedReturn": "Annualized Return",
+      "profitFactor": "Profit Factor",
+      "riskTitle": "Risk Metrics",
+      "sharpeRatio": "Sharpe Ratio",
+      "maxDrawdown": "Max Drawdown",
+      "winRate": "Win Rate",
+      "activityTitle": "Trading Activity",
+      "totalTrades": "Total Trades",
+      "avgTradeDuration": "Avg Trade Duration",
+      "empty": "No metrics available yet"
+    },
+    "status": {
+      "running": "RUNNING",
+      "completed": "COMPLETED",
+      "failed": "FAILED",
+      "canceled": "CANCELED"
+    },
+    "messages": {
+      "created": "Dry run session created successfully",
+      "deleted": "Session deleted successfully",
+      "stopped": "Session stopped successfully",
+      "statusUpdated": "Session {action} successfully"
+    },
+    "errors": {
+      "fetchSessions": "Failed to fetch sessions",
+      "fetchStrategies": "Failed to fetch strategies",
+      "create": "Failed to create session",
+      "loadSessions": "Failed to load dry run sessions",
+      "updateStatus": "Failed to update status",
+      "delete": "Failed to delete session",
+      "generic": "An error occurred"
+    },
+    "duration": {
+      "seconds": "{count}s",
+      "minutes": "{count}m",
+      "hours": "{count}h",
+      "days": "{count}d"
+    }
+  },
+  "push": {
+    "title": "Push notifications",
+    "cardTitle": "Push Notifications",
+    "client": {
+      "tabs": {
+        "send": "Send",
+        "dashboard": "Dashboard",
+        "export": "Export"
+      },
+      "fields": {
+        "platform": "Platform",
+        "provider": "Provider",
+        "targetType": "Target type",
+        "category": "Category",
+        "title": "Title",
+        "body": "Body",
+        "dataJson": "Data (JSON)"
+      },
+      "values": {
+        "web": "web",
+        "ios": "ios",
+        "android": "android",
+        "fcm": "fcm",
+        "apns": "apns",
+        "webpush": "webpush",
+        "true": "true",
+        "false": "false",
+        "allPlatforms": "all platforms",
+        "allProviders": "all providers"
+      },
+      "targetType": {
+        "user": "user",
+        "topic": "topic",
+        "tokens": "tokens",
+        "all": "all (active)",
+        "filter": "filter (dimensions)"
+      },
+      "target": {
+        "userLabel": "User ID or Email",
+        "userPlaceholder": "Enter user ID or email...",
+        "userIdLabel": "ID: {id}",
+        "selectedUserId": "Selected User ID: {id}",
+        "topicLabel": "Topic",
+        "tokensLabel": "Tokens (comma or newline separated)",
+        "limitLabel": "Limit (max 500)"
+      },
+      "filter": {
+        "userId": "User ID (optional)",
+        "deviceId": "Device ID (optional)",
+        "appId": "App ID (optional)",
+        "appVersion": "App Version (optional)",
+        "appVersionPlaceholder": "1.0.9+18",
+        "environment": "Environment (optional)",
+        "environmentPlaceholder": "sandbox / production",
+        "active": "Active",
+        "limit": "Limit (max 500)"
+      },
+      "category": {
+        "general": "general",
+        "marketing": "marketing",
+        "trading": "trading",
+        "security": "security",
+        "system": "system"
+      },
+      "send": {
+        "targetTitle": "Target",
+        "messageTitle": "Message"
+      },
+      "actions": {
+        "send": "Send",
+        "sending": "Sending…",
+        "refresh": "Refresh",
+        "loading": "Loading…"
+      },
+      "dashboard": {
+        "devicesCount": "devices: {count}",
+        "logsCount": "logs: {count}",
+        "devicesTitle": "Registered devices (latest)",
+        "logsTitle": "Send logs (latest)",
+        "table": {
+          "platform": "Platform",
+          "provider": "Provider",
+          "user": "User",
+          "device": "Device",
+          "app": "App",
+          "version": "Version",
+          "active": "Active",
+          "lastSeen": "Last seen"
+        },
+        "logsTable": {
+          "time": "Time",
+          "category": "Category",
+          "target": "Target",
+          "platform": "Platform",
+          "provider": "Provider",
+          "ok": "OK",
+          "fail": "Fail"
+        },
+        "emptyDevices": "No devices",
+        "emptyLogs": "No logs",
+        "anonymous": "(anonymous)",
+        "emptyValue": "—",
+        "notAvailable": "N/A"
+      },
+      "export": {
+        "title": "Export CSV",
+        "devicesCsv": "Export devices (CSV)",
+        "logsCsv": "Export logs (CSV)",
+        "devicesJson": "Export devices (JSON)",
+        "logsJson": "Export logs (JSON)"
+      },
+      "messages": {
+        "sent": "Sent. success={success}, failed={failed}"
+      },
+      "errors": {
+        "unexpected": "An unexpected error occurred",
+        "refreshConsole": "Error refreshing push notifications:",
+        "payloadObject": "Payload must be a JSON object",
+        "payloadInvalid": "Invalid JSON in data payload",
+        "userRequired": "User ID or Email is required",
+        "topicRequired": "Topic is required",
+        "tokensRequired": "At least one token is required",
+        "sendFailed": "Failed to send",
+        "loadDevices": "Failed to load devices ({status})",
+        "loadLogs": "Failed to load logs ({status})"
+      }
+    }
+  }
+  ,
+  "backtest": {
+    "title": "Strategy Backtesting",
+    "heading": "Backtesting",
+    "subtitle": "Test your trading strategies against historical market data to validate performance",
+    "actions": {
+      "refresh": "Refresh",
+      "new": "New Backtest",
+      "cancel": "Cancel",
+      "creating": "Creating...",
+      "createConfig": "Create Configuration",
+      "view": "View"
+    },
+    "dialog": {
+      "title": "Create Backtest Configuration",
+      "description": "Configure a new backtest to evaluate strategy performance on historical data"
+    },
+    "fields": {
+      "startDate": "Start Date",
+      "endDate": "End Date",
+      "exchange": "Exchange",
+      "exchangePlaceholder": "Select exchange",
+      "tradingPairs": "Trading Pairs",
+      "selectedPairs": "Selected: {count} pair(s)",
+      "initialBalance": "Initial Balance ($)",
+      "timeframe": "Timeframe",
+      "commission": "Commission (%)",
+      "slippage": "Slippage (%)"
+    },
+    "timeframes": {
+      "1m": "1 Minute",
+      "5m": "5 Minutes",
+      "15m": "15 Minutes",
+      "30m": "30 Minutes",
+      "1h": "1 Hour",
+      "4h": "4 Hours",
+      "1d": "1 Day"
+    },
+    "pairTypes": {
+      "perp": "Perp",
+      "spot": "Spot"
+    },
+    "stats": {
+      "configurations": "Configurations",
+      "configurationsHelp": "Backtest configurations saved",
+      "totalRuns": "Total Runs",
+      "totalRunsHelp": "Backtest results generated",
+      "profitable": "Profitable",
+      "profitableHelp": "Configs with positive best result",
+      "successRate": "Success Rate",
+      "successRateHelp": "Percentage of profitable configs"
+    },
+    "states": {
+      "loading": "Loading configurations..."
+    },
+    "empty": {
+      "title": "No backtest configurations yet",
+      "description": "Create a backtest configuration to start testing your strategies against historical market data.",
+      "action": "Create Your First Backtest"
+    },
+    "config": {
+      "symbols": "{symbols}",
+      "initial": "${amount} initial",
+      "runs": "{count} run(s)"
+    },
+    "results": {
+      "best": "Best Result",
+      "bestStrategy": "({name})"
+    },
+    "metrics": {
+      "totalReturn": "Total Return",
+      "annualizedReturn": "Annualized Return",
+      "profitFactor": "Profit Factor",
+      "sharpeRatio": "Sharpe Ratio",
+      "maxDrawdown": "Max Drawdown",
+      "winRate": "Win Rate",
+      "totalTrades": "Total Trades"
+    },
+    "tabs": {
+      "results": "Results",
+      "configuration": "Configuration",
+      "analysis": "Analysis"
+    },
+    "details": {
+      "title": "Backtest Configuration",
+      "symbols": "{symbols}"
+    },
+    "trades": {
+      "title": "Trade History",
+      "count": "{count} trades executed",
+      "table": {
+        "symbol": "Symbol",
+        "side": "Side",
+        "entry": "Entry",
+        "exit": "Exit",
+        "quantity": "Qty",
+        "pnl": "P&L",
+        "duration": "Duration"
+      },
+      "side": {
+        "buy": "BUY",
+        "sell": "SELL"
+      },
+      "showing": "Showing 20 of {count} trades",
+      "empty": "No trades recorded"
+    },
+    "configDetails": {
+      "title": "Backtest Parameters",
+      "dateRange": "Date Range",
+      "timeframe": "Timeframe",
+      "initialBalance": "Initial Balance",
+      "commission": "Commission",
+      "slippage": "Slippage",
+      "notSet": "Not set",
+      "symbols": "Symbols"
+    },
+    "analysis": {
+      "returnMetrics": "Return Metrics",
+      "riskMetrics": "Risk Metrics",
+      "tradingStats": "Trading Statistics",
+      "avgTradeDuration": "Avg Trade Duration",
+      "winningTrades": "Winning Trades",
+      "losingTrades": "Losing Trades",
+      "performanceRating": "Performance Rating",
+      "riskAdjustedReturn": "Risk-Adjusted Return",
+      "winConsistency": "Win Consistency",
+      "riskControl": "Risk Control",
+      "high": "High",
+      "moderate": "Moderate",
+      "low": "Low",
+      "needsImprovement": "Needs Improvement",
+      "empty": "No analysis data available"
+    },
+    "badges": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Poor",
+      "lowRisk": "Low Risk",
+      "moderate": "Moderate",
+      "highRisk": "High Risk"
+    },
+    "errors": {
+      "fetchConfigs": "Failed to fetch configs",
+      "loadConfigs": "Failed to load backtest configurations",
+      "fetchStrategies": "Failed to fetch strategies",
+      "selectSymbol": "Please select at least one trading pair",
+      "createConfig": "Failed to create config",
+      "generic": "An error occurred",
+      "deleteConfig": "Failed to delete config",
+      "fetchDetails": "Failed to fetch config details",
+      "fetchResultDetails": "Failed to fetch result details"
+    },
+    "messages": {
+      "created": "Backtest configuration created successfully",
+      "deleted": "Configuration deleted successfully"
+    }
+  },
+  "portfolio": {
+    "assets": {
+      "title": "Assets"
+    },
+    "balance": {
+      "title": "Balance"
+    },
+    "position": {
+      "title": "Positions"
+    },
+    "transaction": {
+      "title": "Transactions"
+    }
+  },
+  "strategy": {
+    "title": "Strategy Management",
+    "heading": "Trading Strategies",
+    "subtitle": "Create, manage and monitor your automated trading strategies",
+    "actions": {
+      "new": "New Strategy",
+      "cancel": "Cancel",
+      "previous": "Previous",
+      "next": "Next",
+      "creating": "Creating...",
+      "updating": "Updating...",
+      "createStrategy": "Create Strategy",
+      "updateStrategy": "Update Strategy",
+      "start": "Start",
+      "stop": "Stop",
+      "starting": "Starting...",
+      "stopping": "Stopping...",
+      "deleting": "Deleting...",
+      "delete": "Delete"
+    },
+    "dialog": {
+      "createTitle": "Create New Strategy",
+      "editTitle": "Edit Strategy",
+      "createDescription": "Configure a new automated trading strategy",
+      "editDescription": "Update your trading strategy configuration"
+    },
+    "steps": {
+      "basic": {
+        "label": "Basic Info",
+        "description": "Name, type, and trading pair"
+      },
+      "parameters": {
+        "label": "Parameters",
+        "description": "Strategy parameters for data analysis"
+      },
+      "initialData": {
+        "label": "Initial Data",
+        "description": "Historical data to initalize strategy (optional)"
+      },
+      "subscriptions": {
+        "label": "Subscriptions",
+        "description": "Real-time data that for analysis (optional)"
+      }
+    },
+    "fields": {
+      "name": "Strategy Name",
+      "namePlaceholder": "e.g., BTC MA Cross",
+      "type": "Strategy Type",
+      "exchanges": "Exchange(s)",
+      "multiple": "Multiple",
+      "exchangePlaceholder": "Select exchange",
+      "exchangeMultipleHint": "Select multiple exchanges for cross-exchange strategies",
+      "exchangeSingleHint": "Select your trading platform",
+      "tradingPair": "Trading Pair",
+      "tradingPairPlaceholder": "Select trading pair",
+      "perpLabel": "⚡ Perp",
+      "spotLabel": "💼 Spot",
+      "symbolFormat": "Format:",
+      "symbolNormalized": "Backend normalizes automatically",
+      "symbolMultipleWarning": "⚠️ Using first exchange for symbol format",
+      "description": "Description",
+      "descriptionPlaceholder": "Describe your strategy's approach and goals...",
+      "parameters": "Strategy Parameters",
+      "parametersJsonHint": "Configure parameters using JSON format",
+      "parametersFormHint": "Configure parameters using form inputs",
+      "formMode": "Form Mode",
+      "jsonMode": "JSON Mode",
+      "parametersAdvancedHint": "Advanced mode: Edit parameters in JSON format. Switch to form mode for guided parameter configuration."
+    },
+    "states": {
+      "checkingName": "Checking name availability...",
+      "nameAvailable": "✓ Name is available",
+      "comingSoon": "Coming Soon",
+      "loading": "Loading strategies..."
+    },
+    "errors": {
+      "nameExists": "Strategy name already exists",
+      "checkNameFailed": "Failed to check name availability",
+      "checkNameConsole": "Error checking name:",
+      "fetchStrategies": "Failed to fetch strategies",
+      "loadStrategies": "Failed to load strategies",
+      "invalidParametersJson": "Invalid JSON in parameters field",
+      "updateStrategy": "Failed to update strategy",
+      "createStrategy": "Failed to create strategy",
+      "generic": "An error occurred",
+      "updateStatus": "Failed to update strategy status",
+      "deleteStrategy": "Failed to delete strategy"
+    },
+    "messages": {
+      "updated": "Strategy updated successfully",
+      "created": "Strategy created successfully",
+      "started": "Strategy started",
+      "stopped": "Strategy stopped",
+      "deleted": "Strategy deleted successfully"
+    },
+    "empty": {
+      "title": "No strategies yet",
+      "description": "Get started by creating your first automated trading strategy. Configure parameters, set your trading pair, and start trading.",
+      "action": "Create Your First Strategy"
+    },
+    "card": {
+      "exchange": "Exchange",
+      "tradingPair": "Trading Pair",
+      "notSet": "Not set",
+      "notAvailable": "N/A",
+      "perpetual": "Perpetual",
+      "futures": "Futures",
+      "lastRun": "Last run: {time}"
+    },
+    "status": {
+      "active": "ACTIVE",
+      "stopped": "STOPPED",
+      "paused": "PAUSED",
+      "error": "ERROR"
+    },
+    "delete": {
+      "title": "Delete Strategy",
+      "description": "Are you sure you want to delete this strategy?",
+      "name": "Name:",
+      "symbol": "Symbol:",
+      "exchange": "Exchange:",
+      "warning": "This action cannot be undone. This will permanently delete the strategy and all associated data."
+    }
+  },
+  "orders": {
+    "title": "Orders",
+    "transactionHistory": "Transaction History",
+    "columns": {
+      "time": "Time",
+      "symbol": "Symbol",
+      "exchange": "Exchange",
+      "side": "Side",
+      "type": "Type",
+      "quantity": "Quantity",
+      "price": "Price",
+      "status": "Status",
+      "strategy": "Strategy",
+      "pnl": "PnL"
+    },
+    "cells": {
+      "updated": "Updated: {time}",
+      "filled": "Filled: {quantity}",
+      "market": "MARKET",
+      "avg": "Avg: {value}",
+      "strategyId": "ID: {id}"
+    },
+    "filters": {
+      "searchPlaceholder": "Search orders...",
+      "dateRange": "Date range",
+      "label": "Filters:",
+      "exchange": "Exchange",
+      "allExchanges": "All Exchanges",
+      "status": "Status",
+      "allStatus": "All Status",
+      "side": "Side",
+      "allSides": "All Sides",
+      "type": "Type",
+      "allTypes": "All Types",
+      "clear": "Clear"
+    },
+    "datePresets": {
+      "today": "Today",
+      "days": "{count} days",
+      "allTime": "All time"
+    },
+    "stats": {
+      "orders": "{count} order(s)",
+      "filled": "{count} filled",
+      "totalPnl": "Total PnL",
+      "buys": "{count} buys",
+      "sells": "{count} sells",
+      "updated": "Updated {time}"
+    },
+    "empty": {
+      "filtered": "No orders found matching your filters.",
+      "default": "No orders found for the selected time period."
+    },
+    "pagination": {
+      "showing": "Showing {start} to {end} of {total} orders",
+      "perPage": "{count} / page",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {current} of {total}"
+    },
+    "status": {
+      "new": "NEW",
+      "filled": "FILLED",
+      "partiallyFilled": "PARTIALLY FILLED",
+      "canceled": "CANCELED",
+      "rejected": "REJECTED",
+      "expired": "EXPIRED"
+    },
+    "side": {
+      "buy": "BUY",
+      "sell": "SELL"
+    },
+    "type": {
+      "market": "MARKET",
+      "limit": "LIMIT",
+      "stopLoss": "STOP LOSS",
+      "stopLossLimit": "STOP LOSS LIMIT",
+      "takeProfit": "TAKE PROFIT",
+      "takeProfitLimit": "TAKE PROFIT LIMIT"
+    },
+    "errors": {
+      "fetchOrders": "Failed to fetch orders"
+    }
+  },
+  "positions": {
+    "title": "Positions",
+    "columns": {
+      "symbol": "Symbol",
+      "exchange": "Exchange",
+      "side": "Side",
+      "quantity": "Quantity",
+      "avgPrice": "Avg Price",
+      "markPrice": "Mark Price",
+      "marketValue": "Market Value",
+      "unrealizedPnl": "Unrealized PnL",
+      "updated": "Updated"
+    },
+    "cells": {
+      "leverage": "{value}x leverage"
+    },
+    "filters": {
+      "searchPlaceholder": "Search positions...",
+      "allExchanges": "All Exchanges",
+      "allSides": "All Sides",
+      "clear": "Clear filters"
+    },
+    "stats": {
+      "openPositions": "{count} open position(s)",
+      "totalPnl": "Total PnL",
+      "updated": "Updated {time}"
+    },
+    "side": {
+      "long": "Long",
+      "short": "Short"
+    },
+    "empty": {
+      "filtered": "No positions found matching your filters.",
+      "default": "No open positions."
+    },
+    "pagination": {
+      "showing": "Showing {start} to {end} of {total} positions",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {current} of {total}"
+    },
+    "errors": {
+      "fetchPositions": "Failed to fetch positions"
+    }
+  }
+}

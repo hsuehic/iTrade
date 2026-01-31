@@ -1,0 +1,1396 @@
+{
+  "navigation": {
+    "mobileApp": "移动应用",
+    "dashboard": "仪表盘",
+    "signIn": "登录",
+    "signUp": "注册",
+    "language": "语言",
+    "english": "English",
+    "chinese": "中文"
+  },
+  "landing": {
+    "meta": {
+      "title": "iTrade - 智能与策略的加密交易",
+      "description": "在多个交易所使用 AI 策略进行更聪明的交易。实时分析、自动执行与风险管理，为专业人士打造。"
+    },
+    "hero": {
+      "badge": "智能与策略的加密交易",
+      "title": "市场在<emphasis>混沌</emphasis>中繁荣",
+      "subtitle": "对勇者而言，混沌不是坠落——而是攀登的<emphasis>阶梯</emphasis>",
+      "description": "在多个交易所使用 AI 策略进行更聪明的交易。实时分析、自动执行与风险管理，为专业人士打造。",
+      "cta": {
+        "dashboard": "前往概览",
+        "getStarted": "免费开始",
+        "signIn": "登录"
+      },
+      "features": {
+        "multiExchangeTitle": "多交易所",
+        "multiExchangeDescription": "在一个平台上交易 Binance、OKX 和 Coinbase",
+        "realTimeTitle": "实时",
+        "realTimeDescription": "实时行情与即时订单执行",
+        "riskTitle": "风险管理",
+        "riskDescription": "内置止损、仓位管理与投资组合跟踪"
+      }
+    },
+    "ticker": {
+      "title": "实时行情",
+      "subtitle": "实时市场数据与指数",
+      "loadingTitle": "实时行情",
+      "loadingSubtitle": "连接交易所中...",
+      "binance": "Binance",
+      "okx": "OKX"
+    },
+    "mobile": {
+      "badge": "随时交易",
+      "title": "下载 iTrade<accent>移动应用</accent>",
+      "description": "随时随地掌控你的加密资产组合。实时行情、即时下单与高级交易工具触手可得。",
+      "scanToDownload": "扫码下载",
+      "appStore": "App Store",
+      "googlePlay": "Google Play",
+      "directApk": "APK安装文件",
+      "features": {
+        "realtimePrices": "实时价格",
+        "instantNotifications": "即时通知",
+        "multiExchange": "多交易所",
+        "secureTrading": "安全交易"
+      }
+    },
+    "footer": {
+      "rights": "© 2026 iTrade. 保留所有权利。",
+      "risk": "交易需谨慎，加密货币交易具有风险。",
+      "privacy": "隐私政策",
+      "terms": "服务条款"
+    }
+  },
+  "auth": {
+    "terms": "继续即表示你同意我们的<terms>服务条款</terms>与<privacy>隐私政策</privacy>。",
+    "logoAlt": "iTrade 标志",
+    "promoAlt": "交易平台预览",
+    "meta": {
+      "title": "认证",
+      "description": "登录或创建账户以开始交易",
+      "signInTitle": "登录",
+      "signUpTitle": "注册",
+      "forgetPasswordTitle": "忘记密码",
+      "resetPasswordTitle": "重置密码",
+      "deleteAccountTitle": "删除账户"
+    },
+    "login": {
+      "title": "欢迎回来",
+      "subtitle": "登录你的 iTrade 账户",
+      "emailLabel": "邮箱",
+      "emailPlaceholder": "mail@example.com",
+      "passwordLabel": "密码",
+      "forgotPassword": "忘记密码？",
+      "submit": "登录",
+      "continueWith": "或使用以下方式继续",
+      "social": {
+        "apple": "使用 Apple 登录",
+        "google": "使用 Google 登录",
+        "github": "使用 Github 登录"
+      },
+      "noAccount": "还没有账户？",
+      "signUp": "注册",
+      "errors": {
+        "signInFailed": "登录失败"
+      }
+    },
+    "signUp": {
+      "title": "注册",
+      "subtitle": "欢迎来到 iTrade。已有账户？返回",
+      "subtitleEnd": "；",
+      "signInLink": "登录",
+      "firstNameLabel": "名",
+      "firstNamePlaceholder": "小明",
+      "lastNameLabel": "姓",
+      "lastNamePlaceholder": "张",
+      "emailLabel": "邮箱",
+      "emailPlaceholder": "m@example.com",
+      "passwordLabel": "密码",
+      "passwordPlaceholder": "密码",
+      "confirmPasswordLabel": "确认密码",
+      "confirmPasswordPlaceholder": "确认密码",
+      "profileImageLabel": "头像（可选）",
+      "profileImagePreviewAlt": "头像预览",
+      "submit": "创建账户",
+      "messages": {
+        "created": "账户创建成功",
+        "verifyEmail": "验证邮件已发送至你的邮箱，请查收并完成验证。"
+      }
+    },
+    "forgetPassword": {
+      "title": "发送重置密码链接",
+      "description": "请输入注册邮箱，我们将发送重置密码链接。返回",
+      "descriptionEnd": "；",
+      "signInLink": "登录",
+      "emailLabel": "邮箱地址",
+      "emailPlaceholder": "name@example.com",
+      "submit": "发送重置密码链接",
+      "sent": {
+        "line1": "我们已向 {email} 发送重置密码链接。",
+        "line2": "请检查收件箱并点击链接重置密码。",
+        "back": "返回登录"
+      },
+      "messages": {
+        "sent": "重置密码邮件已发送"
+      },
+      "errors": {
+        "emailRequired": "请输入邮箱",
+        "emailInvalid": "邮箱格式不正确"
+      }
+    },
+    "resetPassword": {
+      "title": "重置密码",
+      "subtitle": "请输入新密码。",
+      "passwordLabel": "密码",
+      "passwordPlaceholder": "输入新密码",
+      "confirmPasswordLabel": "确认密码",
+      "confirmPasswordPlaceholder": "确认新密码",
+      "submit": "重置密码",
+      "messages": {
+        "success": "密码重置成功，请登录。"
+      },
+      "errors": {
+        "mismatch": "两次输入的密码不一致",
+        "minLength": "至少 6 个字符"
+      }
+    },
+    "deleteAccount": {
+      "title": "删除账户",
+      "subtitle": "此操作无法撤销，账户及相关数据将被永久删除。",
+      "warning": {
+        "title": "警告",
+        "description": "请确认你要删除账户。包括策略、交易与资产数据将被永久移除。"
+      },
+      "emailLabel": "邮箱地址",
+      "emailPlaceholder": "name@example.com",
+      "passwordLabel": "密码",
+      "passwordPlaceholder": "输入密码",
+      "passwordHint": "发送验证码前需要验证你的身份",
+      "sendCode": "发送验证码",
+      "cancel": "取消",
+      "verify": {
+        "description": "验证码已发送至 {email}，请查收并输入。",
+        "codeLabel": "验证码",
+        "codePlaceholder": "输入 6 位验证码",
+        "codeHint": "验证码将在 10 分钟后过期"
+      },
+      "confirmDelete": "确认并删除账户",
+      "back": "返回",
+      "success": {
+        "title": "账户已删除",
+        "description": "你的账户已成功删除。",
+        "note": "感谢你成为社区的一员。感谢与你共度的时光，祝你交易顺利。",
+        "redirect": "3 秒后返回首页..."
+      },
+      "messages": {
+        "codeSent": "验证码已发送至邮箱",
+        "deleted": "账户删除成功"
+      },
+      "errors": {
+        "emailRequired": "请输入邮箱",
+        "emailInvalid": "邮箱格式不正确",
+        "passwordRequired": "请输入密码",
+        "sendCodeFailed": "发送验证码失败",
+        "codeRequired": "请输入验证码",
+        "deleteFailed": "删除账户失败"
+      }
+    }
+  },
+  "exchangeSelector": {
+    "placeholder": "选择交易所",
+    "allExchanges": "全部交易所"
+  },
+  "nav": {
+    "main": {
+      "dashboard": "仪表盘",
+      "strategy": "策略",
+      "dryRun": "模拟运行",
+      "backtest": "回测",
+      "market": "市场",
+      "push": "推送"
+    },
+    "portfolio": {
+      "label": "资产组合",
+      "balance": "余额",
+      "assets": "资产",
+      "position": "持仓",
+      "transaction": "交易",
+      "filterOrders": "筛选订单",
+      "byStatus": "按状态",
+      "byExchange": "按交易所",
+      "status": {
+        "filled": "已成交",
+        "open": "进行中",
+        "cancelled": "已取消"
+      },
+      "exchange": {
+        "binance": "Binance",
+        "okx": "OKX",
+        "coinbase": "Coinbase"
+      }
+    },
+    "secondary": {
+      "accounts": "账户",
+      "settings": "设置"
+    },
+    "user": {
+      "account": "账户",
+      "billing": "账单",
+      "notifications": "通知",
+      "logout": "退出登录"
+    }
+  },
+  "dashboard": {
+    "title": "交易仪表盘",
+    "cards": {
+      "balanceTitle": "余额",
+      "balanceTrend": {
+        "up": "本月增长",
+        "down": "本月下降"
+      },
+      "balanceFooterAll": "全交易所现金余额",
+      "balanceFooterSingle": "{exchange} 现金余额",
+      "balanceChangeTitle": "余额变化",
+      "balanceChangeStatus": {
+        "none": "无变化",
+        "increased": "余额增加",
+        "decreased": "余额减少"
+      },
+      "balanceChangeDescription": {
+        "noDataAll": "跨交易所日度对比需要更多历史数据",
+        "noDataSingle": "日度对比数据不足",
+        "lastDay": "过去 24 小时变化",
+        "lastWeek": "过去一周变化",
+        "lastMonth": "过去一月变化",
+        "lastYear": "过去一年变化"
+      },
+      "period": {
+        "day": "日",
+        "week": "周",
+        "month": "月",
+        "year": "年"
+      },
+      "realizedTitle": "已实现盈亏",
+      "unrealizedTitle": "未实现盈亏",
+      "profit": "盈利",
+      "loss": "亏损",
+      "realizedStatus": {
+        "positive": "已平仓盈利",
+        "negative": "已平仓亏损"
+      },
+      "realizedDescription": "已完成交易的盈亏",
+      "unrealizedStatus": {
+        "positive": "持仓盈利",
+        "negative": "持仓浮亏"
+      },
+      "openPositions": "{count, plural, one {# 个持仓} other {# 个持仓}}"
+    },
+    "balanceChart": {
+      "title": "账户余额",
+      "subtitleAll": "组合价值走势 • {period}",
+      "subtitleSingle": "{exchange} 余额 • {period}",
+      "range": {
+        "3m": "3 个月",
+        "30d": "30 天",
+        "7d": "7 天",
+        "1d": "1 天",
+        "1h": "1 小时"
+      },
+      "rangeSelectLabel": "选择时间范围",
+      "period": {
+        "last7Days": "过去 7 天",
+        "last3Months": "过去 3 个月",
+        "last1Day": "过去 1 天",
+        "last1Hour": "过去 1 小时",
+        "last30Days": "过去 30 天"
+      },
+      "empty": {
+        "title": "暂无数据",
+        "description": "开始交易后可查看账户余额历史"
+      },
+      "total": "总计",
+      "exchange": {
+        "binance": "Binance",
+        "okx": "OKX",
+        "coinbase": "Coinbase"
+      }
+    },
+    "performance": {
+      "title": "绩效分析",
+      "description": "策略、交易所与交易对的表现概览",
+      "tabs": {
+        "strategies": "策略",
+        "exchanges": "交易所",
+        "symbols": "交易对"
+      },
+      "empty": {
+        "strategies": "暂无策略。创建策略开始交易。",
+        "exchanges": "暂无交易所数据。",
+        "symbols": "暂无交易对数据。"
+      },
+      "table": {
+        "strategy": "策略",
+        "symbol": "交易对",
+        "exchange": "交易所",
+        "pnl": "盈亏",
+        "roi": "收益率",
+        "orders": "订单",
+        "status": "状态",
+        "totalStrategies": "策略总数",
+        "active": "活跃",
+        "totalPnl": "总盈亏",
+        "avgPnl": "平均盈亏"
+      },
+      "status": {
+        "active": "运行中",
+        "inactive": "已停用"
+      }
+    }
+  },
+  "accounts": {
+    "title": "账户",
+    "manageTitle": "管理交易所账户",
+    "manageDescription": "连接交易所账户（Binance、OKX、Coinbase）以启用交易。",
+    "list": {
+      "title": "交易所账户",
+      "add": "添加账户",
+      "confirmDelete": "确定要删除此账户吗？",
+      "empty": "暂无账户。添加一个开始交易。",
+      "status": {
+        "active": "启用",
+        "inactive": "停用"
+      },
+      "table": {
+        "exchange": "交易所",
+        "accountName": "账户名称",
+        "status": "状态",
+        "apiKey": "API Key",
+        "updated": "更新时间",
+        "actions": "操作"
+      },
+      "messages": {
+        "deleted": "账户已删除"
+      },
+      "errors": {
+        "deleteFailed": "删除账户失败"
+      }
+    },
+    "form": {
+      "titleAdd": "添加账户",
+      "titleEdit": "编辑账户",
+      "description": "请输入交易所 API 凭证，我们会进行安全加密。",
+      "fields": {
+        "exchange": "交易所",
+        "exchangePlaceholder": "选择交易所",
+        "accountId": "账户名称 / ID",
+        "accountIdPlaceholder": "主账户",
+        "accountIdDescription": "用于识别该账户的昵称。",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "API Key",
+        "secretKey": "Secret Key",
+        "secretKeyPlaceholder": "Secret Key",
+        "passphrase": "Passphrase",
+        "passphrasePlaceholder": "Passphrase",
+        "activeStatus": "启用状态",
+        "activeDescription": "启用或停用该账户的交易。"
+      },
+      "save": "保存更改",
+      "saving": "保存中...",
+      "messages": {
+        "saved": "账户保存成功"
+      },
+      "errors": {
+        "saveFailed": "保存账户失败"
+      }
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "tabs": {
+      "profile": "资料",
+      "security": "安全",
+      "notifications": "通知",
+      "appearance": "外观",
+      "danger": "风险区域"
+    },
+    "profile": {
+      "title": "个人信息",
+      "description": "更新你的个人信息与头像。",
+      "pictureTitle": "头像",
+      "pictureHint": "输入头像图片的 URL",
+      "imageUrlLabel": "头像图片 URL",
+      "imageUrlPlaceholder": "https://example.com/avatar.jpg",
+      "imageUrlHint": "留空将使用默认头像",
+      "displayNameLabel": "显示名称",
+      "displayNamePlaceholder": "你的名称",
+      "emailLabel": "邮箱地址",
+      "emailHint": "出于安全原因，邮箱不可修改",
+      "save": "保存更改",
+      "saving": "保存中...",
+      "unsaved": "你有未保存的更改",
+      "messages": {
+        "updated": "个人资料更新成功"
+      },
+      "errors": {
+        "nameRequired": "请输入名称",
+        "nameMin": "名称至少 2 个字符",
+        "nameMax": "名称需少于 50 个字符",
+        "updateFailed": "更新个人资料失败"
+      }
+    },
+    "security": {
+      "title": "修改密码",
+      "description": "更新密码以保障账户安全，建议使用强密码。",
+      "requirements": {
+        "title": "密码要求：",
+        "minLength": "至少 8 个字符",
+        "uppercase": "至少包含一个大写字母 (A-Z)",
+        "lowercase": "至少包含一个小写字母 (a-z)",
+        "number": "至少包含一个数字 (0-9)"
+      },
+      "currentPassword": "当前密码",
+      "currentPasswordPlaceholder": "输入当前密码",
+      "newPassword": "新密码",
+      "newPasswordPlaceholder": "输入新密码",
+      "confirmPassword": "确认新密码",
+      "confirmPasswordPlaceholder": "再次输入新密码",
+      "showPassword": "显示密码",
+      "hidePassword": "隐藏密码",
+      "submit": "修改密码",
+      "changing": "修改中...",
+      "messages": {
+        "updated": "密码修改成功"
+      },
+      "errors": {
+        "currentRequired": "请输入当前密码",
+        "newRequired": "请输入新密码",
+        "confirmRequired": "请确认新密码",
+        "mismatch": "两次输入的密码不一致",
+        "minLength": "密码至少 8 个字符",
+        "uppercase": "密码需包含大写字母",
+        "lowercase": "密码需包含小写字母",
+        "number": "密码需包含数字",
+        "updateFailed": "修改密码失败"
+      }
+    },
+    "email": {
+      "title": "邮件偏好",
+      "description": "选择你希望接收的邮件类型，你可以随时更新这些设置。",
+      "sections": {
+        "trading": {
+          "title": "交易通知",
+          "alerts": {
+            "title": "交易提醒",
+            "description": "当策略执行交易时通知你"
+          },
+          "price": {
+            "title": "价格提醒",
+            "description": "当资产触达你的价格目标时提醒你"
+          },
+          "orders": {
+            "title": "订单更新",
+            "description": "订单成交或取消时通知你"
+          }
+        },
+        "security": {
+          "title": "账户与安全",
+          "activity": {
+            "title": "账户活动",
+            "description": "重要账户活动通知"
+          }
+        },
+        "reports": {
+          "title": "报告与更新",
+          "weekly": {
+            "title": "周报",
+            "description": "每周绩效总结与洞察"
+          },
+          "product": {
+            "title": "产品更新",
+            "description": "了解新功能与改进"
+          },
+          "news": {
+            "title": "新闻与提示",
+            "description": "获取交易技巧与市场资讯"
+          }
+        },
+        "marketing": {
+          "title": "营销",
+          "emails": {
+            "title": "营销邮件",
+            "description": "接收促销与公告信息"
+          }
+        }
+      },
+      "save": "保存偏好",
+      "saving": "保存中...",
+      "unsaved": "你有未保存的更改",
+      "messages": {
+        "saved": "邮件偏好已保存"
+      },
+      "errors": {
+        "loadFailed": "加载邮件偏好失败",
+        "saveFailed": "保存邮件偏好失败"
+      }
+    },
+    "appearance": {
+      "title": "外观",
+      "description": "自定义应用外观。",
+      "descriptionExtended": "自定义应用外观，选择你的主题。",
+      "themeLabel": "主题",
+      "options": {
+        "light": {
+          "label": "浅色",
+          "description": "明亮清爽，适合日间使用"
+        },
+        "dark": {
+          "label": "深色",
+          "description": "更暗的配色，减轻眼睛疲劳"
+        },
+        "system": {
+          "label": "系统",
+          "description": "自动匹配设备设置"
+        }
+      },
+      "currentTheme": "当前使用 {theme} 主题",
+      "systemPreference": "跟随系统偏好（{theme}）",
+      "manualPreference": "手动选择主题",
+      "preview": "预览",
+      "previewLight": "浅色模式",
+      "previewDark": "深色模式",
+      "previewButton": "按钮"
+    },
+    "danger": {
+      "title": "风险区域",
+      "description": "此区域的操作不可撤销，请谨慎处理。",
+      "warning": {
+        "title": "警告",
+        "description": "以下操作可能导致永久数据丢失，请在继续前确认影响。"
+      },
+      "deleteAccount": {
+        "title": "删除账户",
+        "description": "永久删除账户及相关数据，包括策略、交易、资产与设置。",
+        "action": "删除账户"
+      },
+      "deleted": {
+        "title": "将被删除的内容",
+        "items": {
+          "profile": "用户资料与个人信息",
+          "strategies": "已创建的交易策略",
+          "trades": "历史交易数据与订单",
+          "portfolio": "资产组合信息与余额历史",
+          "backtests": "回测配置与结果",
+          "notifications": "邮件偏好与通知设置",
+          "sessions": "所有会话与登录记录"
+        }
+      },
+      "before": {
+        "title": "删除前请注意",
+        "items": {
+          "export": "导出需要保留的数据",
+          "stopStrategies": "停止所有运行中的策略",
+          "closePositions": "关闭交易所中的未平仓持仓",
+          "irreversible": "此操作无法撤销"
+        }
+      }
+    }
+  },
+  "market": {
+    "title": "市场",
+    "meta": {
+      "title": "市场",
+      "description": "实时永续合约市场数据、资金费率与价格变化"
+    },
+    "dashboard": {
+      "title": "永续合约",
+      "status": {
+        "live": "实时",
+        "connecting": "连接中..."
+      },
+      "lastUpdate": "最后更新：{time}",
+      "reconnect": "重新连接",
+      "tabs": {
+        "table": "📊 表格视图",
+        "heatmap": "🎨 热力图",
+        "analysis": "📈 分析"
+      }
+    },
+    "stats": {
+      "volume24h": {
+        "title": "24小时成交量",
+        "subValue": "跟踪 {count} 个永续合约"
+      },
+      "openInterest": {
+        "title": "未平仓量",
+        "subValue": "全市场合计"
+      },
+      "gainers": {
+        "title": "上涨",
+        "subValue": "市场上涨占比 {percent}%"
+      },
+      "losers": {
+        "title": "下跌",
+        "subValue": "市场下跌占比 {percent}%"
+      },
+      "avgFunding": {
+        "title": "平均资金费率",
+        "longs": "多头支付空头",
+        "shorts": "空头支付多头"
+      },
+      "activity": {
+        "title": "市场活跃度",
+        "level": {
+          "high": "高",
+          "medium": "中",
+          "low": "低"
+        },
+        "subValue": "{count} 个活跃永续合约"
+      }
+    },
+    "topMovers": {
+      "gainers": "涨幅榜",
+      "losers": "跌幅榜",
+      "emptyGainers": "暂无上涨标的",
+      "emptyLosers": "暂无下跌标的"
+    },
+    "funding": {
+      "title": "资金费率",
+      "tooltip": "资金费率是多空之间的周期性支付。正值代表多头支付空头，负值代表空头支付多头。",
+      "average": "平均：",
+      "shortsPay": "空头支付",
+      "longsPay": "多头支付",
+      "longsPayShorts": "多头支付空头",
+      "shortsPayLongs": "空头支付多头",
+      "annualized": "年化",
+      "loading": "加载资金费率中...",
+      "time": {
+        "now": "现在",
+        "remaining": "{hours}小时 {minutes}分钟"
+      }
+    },
+    "perpetuals": {
+      "title": "永续合约",
+      "marketCount": "{count} 个市场",
+      "searchPlaceholder": "搜索...",
+      "filters": {
+        "all": "全部永续合约",
+        "gainers": "仅涨幅",
+        "losers": "仅跌幅",
+        "volume": "高成交量 (>$100M)",
+        "funding": "显著资金费率"
+      },
+      "table": {
+        "symbol": "交易对",
+        "price": "价格",
+        "change24h": "24小时变化",
+        "volume": "成交量",
+        "funding": "资金费率",
+        "chart": "走势"
+      },
+      "perpetual": "永续",
+      "mark": "标记价",
+      "empty": {
+        "title": "未找到永续合约",
+        "subtitle": "尝试调整搜索或筛选条件"
+      }
+    },
+    "heatmap": {
+      "title": "市场热力图",
+      "tooltip": {
+        "price": "价格",
+        "change24h": "24小时变化",
+        "high24h": "24小时最高",
+        "low24h": "24小时最低"
+      }
+    }
+  },
+  "dryRun": {
+    "title": "模拟交易（Dry Run）",
+    "heroTitle": "模拟交易",
+    "heroDescription": "使用实时行情测试策略，无需承担真实风险",
+    "actions": {
+      "refresh": "刷新",
+      "newSession": "新建会话",
+      "cancel": "取消",
+      "creating": "创建中...",
+      "startSession": "开始会话"
+    },
+    "createDialog": {
+      "title": "创建模拟交易会话",
+      "description": "使用模拟资金测试策略表现",
+      "strategyLabel": "策略（可选）",
+      "strategyPlaceholder": "选择要测试的策略",
+      "noStrategy": "无策略（手动交易）",
+      "strategyOption": "{name}（{type}）",
+      "nameLabel": "会话名称",
+      "namePlaceholder": "例如：BTC 策略测试",
+      "initialBalanceLabel": "初始余额（$）",
+      "commissionLabel": "手续费（%）",
+      "slippageLabel": "滑点（%）",
+      "notesLabel": "备注",
+      "notesPlaceholder": "为本次测试添加备注..."
+    },
+    "stats": {
+      "totalSessions": "会话总数",
+      "totalSessionsHint": "历史所有模拟交易会话",
+      "running": "运行中",
+      "runningHint": "正在执行的会话",
+      "completed": "已完成",
+      "completedHint": "已结束并生成结果的会话",
+      "successRate": "成功率",
+      "successRateHint": "收益为正的会话占比"
+    },
+    "loadingSessions": "加载会话中...",
+    "empty": {
+      "title": "暂无模拟交易会话",
+      "description": "创建模拟交易会话，用实时行情和模拟资金测试策略。",
+      "action": "创建首个会话"
+    },
+    "sessionTitle": "会话 #{id}",
+    "sessionStrategyLabel": "策略：",
+    "sessionManual": "手动交易",
+    "sessionStarted": "开始于 {time}",
+    "session": {
+      "initialBalance": "初始余额",
+      "trades": "交易次数",
+      "totalPnl": "总盈亏",
+      "return": "回报",
+      "winRate": "胜率",
+      "maxDrawdown": "最大回撤"
+    },
+    "tabs": {
+      "overview": "概览",
+      "trades": "交易记录",
+      "metrics": "指标"
+    },
+    "overview": {
+      "totalReturn": "总回报",
+      "winRate": "胜率",
+      "sharpeRatio": "夏普比率",
+      "maxDrawdown": "最大回撤"
+    },
+    "info": {
+      "title": "会话信息",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
+      "running": "运行中...",
+      "initialBalance": "初始余额",
+      "commission": "手续费",
+      "symbols": "交易对",
+      "allSymbols": "全部",
+      "timeframe": "周期",
+      "defaultTimeframe": "1h",
+      "notes": "备注"
+    },
+    "trades": {
+      "empty": "暂无交易记录",
+      "table": {
+        "symbol": "交易对",
+        "side": "方向",
+        "entry": "开仓",
+        "exit": "平仓",
+        "quantity": "数量",
+        "pnl": "盈亏",
+        "duration": "持仓时长"
+      },
+      "side": {
+        "buy": "买入",
+        "sell": "卖出"
+      }
+    },
+    "metrics": {
+      "returnTitle": "收益指标",
+      "totalReturn": "总回报",
+      "annualizedReturn": "年化回报",
+      "profitFactor": "收益因子",
+      "riskTitle": "风险指标",
+      "sharpeRatio": "夏普比率",
+      "maxDrawdown": "最大回撤",
+      "winRate": "胜率",
+      "activityTitle": "交易活动",
+      "totalTrades": "总交易数",
+      "avgTradeDuration": "平均持仓时长",
+      "empty": "暂无指标数据"
+    },
+    "status": {
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "canceled": "已取消"
+    },
+    "messages": {
+      "created": "模拟交易会话创建成功",
+      "deleted": "会话删除成功",
+      "stopped": "会话已停止",
+      "statusUpdated": "会话{action}成功"
+    },
+    "errors": {
+      "fetchSessions": "获取会话失败",
+      "fetchStrategies": "获取策略失败",
+      "create": "创建会话失败",
+      "loadSessions": "加载模拟交易会话失败",
+      "updateStatus": "更新状态失败",
+      "delete": "删除会话失败",
+      "generic": "发生错误"
+    },
+    "duration": {
+      "seconds": "{count}秒",
+      "minutes": "{count}分",
+      "hours": "{count}小时",
+      "days": "{count}天"
+    }
+  },
+  "push": {
+    "title": "推送通知",
+    "cardTitle": "推送通知",
+    "client": {
+      "tabs": {
+        "send": "发送",
+        "dashboard": "面板",
+        "export": "导出"
+      },
+      "fields": {
+        "platform": "平台",
+        "provider": "服务商",
+        "targetType": "目标类型",
+        "category": "分类",
+        "title": "标题",
+        "body": "内容",
+        "dataJson": "数据（JSON）"
+      },
+      "values": {
+        "web": "web",
+        "ios": "ios",
+        "android": "android",
+        "fcm": "fcm",
+        "apns": "apns",
+        "webpush": "webpush",
+        "true": "true",
+        "false": "false",
+        "allPlatforms": "全部平台",
+        "allProviders": "全部服务商"
+      },
+      "targetType": {
+        "user": "用户",
+        "topic": "主题",
+        "tokens": "Token 列表",
+        "all": "全部（活跃）",
+        "filter": "筛选（维度）"
+      },
+      "target": {
+        "userLabel": "用户 ID 或邮箱",
+        "userPlaceholder": "输入用户 ID 或邮箱...",
+        "userIdLabel": "ID：{id}",
+        "selectedUserId": "已选用户 ID：{id}",
+        "topicLabel": "主题",
+        "tokensLabel": "Tokens（逗号或换行分隔）",
+        "limitLabel": "数量上限（最多 500）"
+      },
+      "filter": {
+        "userId": "用户 ID（可选）",
+        "deviceId": "设备 ID（可选）",
+        "appId": "应用 ID（可选）",
+        "appVersion": "应用版本（可选）",
+        "appVersionPlaceholder": "1.0.9+18",
+        "environment": "环境（可选）",
+        "environmentPlaceholder": "sandbox / production",
+        "active": "启用",
+        "limit": "数量上限（最多 500）"
+      },
+      "category": {
+        "general": "general",
+        "marketing": "marketing",
+        "trading": "trading",
+        "security": "security",
+        "system": "system"
+      },
+      "send": {
+        "targetTitle": "目标",
+        "messageTitle": "消息"
+      },
+      "actions": {
+        "send": "发送",
+        "sending": "发送中…",
+        "refresh": "刷新",
+        "loading": "加载中…"
+      },
+      "dashboard": {
+        "devicesCount": "设备：{count}",
+        "logsCount": "日志：{count}",
+        "devicesTitle": "已注册设备（最新）",
+        "logsTitle": "发送日志（最新）",
+        "table": {
+          "platform": "平台",
+          "provider": "服务商",
+          "user": "用户",
+          "device": "设备",
+          "app": "应用",
+          "version": "版本",
+          "active": "启用",
+          "lastSeen": "最近活跃"
+        },
+        "logsTable": {
+          "time": "时间",
+          "category": "分类",
+          "target": "目标",
+          "platform": "平台",
+          "provider": "服务商",
+          "ok": "成功",
+          "fail": "失败"
+        },
+        "emptyDevices": "暂无设备",
+        "emptyLogs": "暂无日志",
+        "anonymous": "（匿名）",
+        "emptyValue": "—",
+        "notAvailable": "N/A"
+      },
+      "export": {
+        "title": "导出 CSV",
+        "devicesCsv": "导出设备（CSV）",
+        "logsCsv": "导出日志（CSV）",
+        "devicesJson": "导出设备（JSON）",
+        "logsJson": "导出日志（JSON）"
+      },
+      "messages": {
+        "sent": "发送完成。成功={success}，失败={failed}"
+      },
+      "errors": {
+        "unexpected": "发生未知错误",
+        "refreshConsole": "刷新推送通知出错：",
+        "payloadObject": "数据必须是 JSON 对象",
+        "payloadInvalid": "数据 JSON 格式无效",
+        "userRequired": "需要用户 ID 或邮箱",
+        "topicRequired": "需要主题",
+        "tokensRequired": "至少需要一个 token",
+        "sendFailed": "发送失败",
+        "loadDevices": "加载设备失败（{status}）",
+        "loadLogs": "加载日志失败（{status}）"
+      }
+    }
+  },
+  "backtest": {
+    "title": "策略回测",
+    "heading": "回测",
+    "subtitle": "使用历史市场数据验证交易策略表现",
+    "actions": {
+      "refresh": "刷新",
+      "new": "新建回测",
+      "cancel": "取消",
+      "creating": "创建中...",
+      "createConfig": "创建配置",
+      "view": "查看"
+    },
+    "dialog": {
+      "title": "创建回测配置",
+      "description": "配置新的回测，用历史数据评估策略表现"
+    },
+    "fields": {
+      "startDate": "开始日期",
+      "endDate": "结束日期",
+      "exchange": "交易所",
+      "exchangePlaceholder": "选择交易所",
+      "tradingPairs": "交易对",
+      "selectedPairs": "已选：{count} 个交易对",
+      "initialBalance": "初始资金（$）",
+      "timeframe": "时间周期",
+      "commission": "手续费（%）",
+      "slippage": "滑点（%）"
+    },
+    "timeframes": {
+      "1m": "1 分钟",
+      "5m": "5 分钟",
+      "15m": "15 分钟",
+      "30m": "30 分钟",
+      "1h": "1 小时",
+      "4h": "4 小时",
+      "1d": "1 天"
+    },
+    "pairTypes": {
+      "perp": "永续",
+      "spot": "现货"
+    },
+    "stats": {
+      "configurations": "配置数量",
+      "configurationsHelp": "已保存的回测配置",
+      "totalRuns": "总运行次数",
+      "totalRunsHelp": "已生成的回测结果",
+      "profitable": "盈利配置",
+      "profitableHelp": "最佳结果为正的配置",
+      "successRate": "成功率",
+      "successRateHelp": "盈利配置占比"
+    },
+    "states": {
+      "loading": "加载配置中..."
+    },
+    "empty": {
+      "title": "暂无回测配置",
+      "description": "创建回测配置以开始用历史数据测试策略表现。",
+      "action": "创建首个回测"
+    },
+    "config": {
+      "symbols": "{symbols}",
+      "initial": "初始资金 ${amount}",
+      "runs": "{count} 次运行"
+    },
+    "results": {
+      "best": "最佳结果",
+      "bestStrategy": "（{name}）"
+    },
+    "metrics": {
+      "totalReturn": "总收益",
+      "annualizedReturn": "年化收益",
+      "profitFactor": "利润因子",
+      "sharpeRatio": "夏普比率",
+      "maxDrawdown": "最大回撤",
+      "winRate": "胜率",
+      "totalTrades": "交易总数"
+    },
+    "tabs": {
+      "results": "结果",
+      "configuration": "配置",
+      "analysis": "分析"
+    },
+    "details": {
+      "title": "回测配置",
+      "symbols": "{symbols}"
+    },
+    "trades": {
+      "title": "交易记录",
+      "count": "已执行 {count} 笔交易",
+      "table": {
+        "symbol": "交易对",
+        "side": "方向",
+        "entry": "入场",
+        "exit": "出场",
+        "quantity": "数量",
+        "pnl": "盈亏",
+        "duration": "持续时间"
+      },
+      "side": {
+        "buy": "买入",
+        "sell": "卖出"
+      },
+      "showing": "显示 20 / {count} 笔交易",
+      "empty": "暂无交易记录"
+    },
+    "configDetails": {
+      "title": "回测参数",
+      "dateRange": "日期范围",
+      "timeframe": "时间周期",
+      "initialBalance": "初始资金",
+      "commission": "手续费",
+      "slippage": "滑点",
+      "notSet": "未设置",
+      "symbols": "交易对"
+    },
+    "analysis": {
+      "returnMetrics": "收益指标",
+      "riskMetrics": "风险指标",
+      "tradingStats": "交易统计",
+      "avgTradeDuration": "平均持仓时长",
+      "winningTrades": "盈利交易",
+      "losingTrades": "亏损交易",
+      "performanceRating": "综合评分",
+      "riskAdjustedReturn": "风险调整收益",
+      "winConsistency": "胜率稳定性",
+      "riskControl": "风险控制",
+      "high": "高",
+      "moderate": "中",
+      "low": "低",
+      "needsImprovement": "需改进",
+      "empty": "暂无分析数据"
+    },
+    "badges": {
+      "excellent": "优秀",
+      "good": "良好",
+      "fair": "一般",
+      "poor": "较差",
+      "lowRisk": "低风险",
+      "moderate": "中等",
+      "highRisk": "高风险"
+    },
+    "errors": {
+      "fetchConfigs": "获取配置失败",
+      "loadConfigs": "加载回测配置失败",
+      "fetchStrategies": "获取策略失败",
+      "selectSymbol": "请至少选择一个交易对",
+      "createConfig": "创建配置失败",
+      "generic": "发生错误",
+      "deleteConfig": "删除配置失败",
+      "fetchDetails": "获取配置详情失败",
+      "fetchResultDetails": "获取结果详情失败"
+    },
+    "messages": {
+      "created": "回测配置创建成功",
+      "deleted": "配置已删除"
+    }
+  },
+  "portfolio": {
+    "assets": {
+      "title": "资产"
+    },
+    "balance": {
+      "title": "余额"
+    },
+    "position": {
+      "title": "持仓"
+    },
+    "transaction": {
+      "title": "交易记录"
+    }
+  },
+  "strategy": {
+    "title": "策略管理",
+    "heading": "交易策略",
+    "subtitle": "创建、管理并监控自动化交易策略",
+    "actions": {
+      "new": "新建策略",
+      "cancel": "取消",
+      "previous": "上一步",
+      "next": "下一步",
+      "creating": "创建中...",
+      "updating": "更新中...",
+      "createStrategy": "创建策略",
+      "updateStrategy": "更新策略",
+      "start": "启动",
+      "stop": "停止",
+      "starting": "启动中...",
+      "stopping": "停止中...",
+      "deleting": "删除中...",
+      "delete": "删除"
+    },
+    "dialog": {
+      "createTitle": "创建新策略",
+      "editTitle": "编辑策略",
+      "createDescription": "配置新的自动化交易策略",
+      "editDescription": "更新交易策略配置"
+    },
+    "steps": {
+      "basic": {
+        "label": "基础信息",
+        "description": "名称、类型与交易对"
+      },
+      "parameters": {
+        "label": "参数",
+        "description": "用于数据分析的策略参数"
+      },
+      "initialData": {
+        "label": "初始数据",
+        "description": "策略启动所需历史数据（可选）"
+      },
+      "subscriptions": {
+        "label": "订阅",
+        "description": "用于分析的实时数据（可选）"
+      }
+    },
+    "fields": {
+      "name": "策略名称",
+      "namePlaceholder": "例如：BTC MA Cross",
+      "type": "策略类型",
+      "exchanges": "交易所",
+      "multiple": "多选",
+      "exchangePlaceholder": "选择交易所",
+      "exchangeMultipleHint": "选择多个交易所用于跨所策略",
+      "exchangeSingleHint": "选择你的交易平台",
+      "tradingPair": "交易对",
+      "tradingPairPlaceholder": "选择交易对",
+      "perpLabel": "⚡ 永续",
+      "spotLabel": "💼 现货",
+      "symbolFormat": "格式：",
+      "symbolNormalized": "后端会自动规范化",
+      "symbolMultipleWarning": "⚠️ 使用第一个交易所的交易对格式",
+      "description": "描述",
+      "descriptionPlaceholder": "描述策略思路与目标...",
+      "parameters": "策略参数",
+      "parametersJsonHint": "使用 JSON 格式配置参数",
+      "parametersFormHint": "使用表单输入配置参数",
+      "formMode": "表单模式",
+      "jsonMode": "JSON 模式",
+      "parametersAdvancedHint": "高级模式：以 JSON 格式编辑参数。切换到表单模式可进行引导式配置。"
+    },
+    "states": {
+      "checkingName": "正在检查名称可用性...",
+      "nameAvailable": "✓ 名称可用",
+      "comingSoon": "即将上线",
+      "loading": "加载策略中..."
+    },
+    "errors": {
+      "nameExists": "策略名称已存在",
+      "checkNameFailed": "检查名称可用性失败",
+      "checkNameConsole": "检查名称出错：",
+      "fetchStrategies": "获取策略失败",
+      "loadStrategies": "加载策略失败",
+      "invalidParametersJson": "参数 JSON 格式无效",
+      "updateStrategy": "更新策略失败",
+      "createStrategy": "创建策略失败",
+      "generic": "发生错误",
+      "updateStatus": "更新策略状态失败",
+      "deleteStrategy": "删除策略失败"
+    },
+    "messages": {
+      "updated": "策略更新成功",
+      "created": "策略创建成功",
+      "started": "策略已启动",
+      "stopped": "策略已停止",
+      "deleted": "策略删除成功"
+    },
+    "empty": {
+      "title": "暂无策略",
+      "description": "创建你的第一条自动化交易策略，配置参数、设置交易对并开始交易。",
+      "action": "创建首个策略"
+    },
+    "card": {
+      "exchange": "交易所",
+      "tradingPair": "交易对",
+      "notSet": "未设置",
+      "notAvailable": "N/A",
+      "perpetual": "永续",
+      "futures": "期货",
+      "lastRun": "上次运行：{time}"
+    },
+    "status": {
+      "active": "运行中",
+      "stopped": "已停止",
+      "paused": "已暂停",
+      "error": "异常"
+    },
+    "delete": {
+      "title": "删除策略",
+      "description": "确定要删除此策略吗？",
+      "name": "名称：",
+      "symbol": "交易对：",
+      "exchange": "交易所：",
+      "warning": "此操作不可撤销，将永久删除该策略及其所有关联数据。"
+    }
+  },
+  "orders": {
+    "title": "订单",
+    "transactionHistory": "交易历史",
+    "columns": {
+      "time": "时间",
+      "symbol": "交易对",
+      "exchange": "交易所",
+      "side": "方向",
+      "type": "类型",
+      "quantity": "数量",
+      "price": "价格",
+      "status": "状态",
+      "strategy": "策略",
+      "pnl": "盈亏"
+    },
+    "cells": {
+      "updated": "更新于：{time}",
+      "filled": "已成交：{quantity}",
+      "market": "市价",
+      "avg": "均价：{value}",
+      "strategyId": "ID：{id}"
+    },
+    "filters": {
+      "searchPlaceholder": "搜索订单...",
+      "dateRange": "时间范围",
+      "label": "筛选：",
+      "exchange": "交易所",
+      "allExchanges": "全部交易所",
+      "status": "状态",
+      "allStatus": "全部状态",
+      "side": "方向",
+      "allSides": "全部方向",
+      "type": "类型",
+      "allTypes": "全部类型",
+      "clear": "清除"
+    },
+    "datePresets": {
+      "today": "今天",
+      "days": "{count} 天",
+      "allTime": "全部时间"
+    },
+    "stats": {
+      "orders": "{count} 笔订单",
+      "filled": "已成交 {count} 笔",
+      "totalPnl": "总盈亏",
+      "buys": "{count} 买",
+      "sells": "{count} 卖",
+      "updated": "更新于 {time}"
+    },
+    "empty": {
+      "filtered": "未找到符合筛选条件的订单。",
+      "default": "所选时间范围内无订单。"
+    },
+    "pagination": {
+      "showing": "显示第 {start} - {end} 条，共 {total} 条订单",
+      "perPage": "每页 {count} 条",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {current} / {total} 页"
+    },
+    "status": {
+      "new": "新订单",
+      "filled": "已成交",
+      "partiallyFilled": "部分成交",
+      "canceled": "已取消",
+      "rejected": "已拒绝",
+      "expired": "已过期"
+    },
+    "side": {
+      "buy": "买入",
+      "sell": "卖出"
+    },
+    "type": {
+      "market": "市价",
+      "limit": "限价",
+      "stopLoss": "止损",
+      "stopLossLimit": "止损限价",
+      "takeProfit": "止盈",
+      "takeProfitLimit": "止盈限价"
+    },
+    "errors": {
+      "fetchOrders": "获取订单失败"
+    }
+  },
+  "positions": {
+    "title": "持仓",
+    "columns": {
+      "symbol": "交易对",
+      "exchange": "交易所",
+      "side": "方向",
+      "quantity": "数量",
+      "avgPrice": "均价",
+      "markPrice": "标记价格",
+      "marketValue": "市值",
+      "unrealizedPnl": "未实现盈亏",
+      "updated": "更新"
+    },
+    "cells": {
+      "leverage": "{value}x 杠杆"
+    },
+    "filters": {
+      "searchPlaceholder": "搜索持仓...",
+      "allExchanges": "全部交易所",
+      "allSides": "全部方向",
+      "clear": "清除筛选"
+    },
+    "stats": {
+      "openPositions": "{count} 个持仓",
+      "totalPnl": "总盈亏",
+      "updated": "更新于 {time}"
+    },
+    "side": {
+      "long": "多头",
+      "short": "空头"
+    },
+    "empty": {
+      "filtered": "未找到符合筛选条件的持仓。",
+      "default": "暂无持仓。"
+    },
+    "pagination": {
+      "showing": "显示第 {start} - {end} 条，共 {total} 条持仓",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {current} / {total} 页"
+    },
+    "errors": {
+      "fetchPositions": "获取持仓失败"
+    }
+  }
+}

@@ -3,6 +3,7 @@
 import { memo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Flame, Info, TrendingUp, TrendingDown } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { SymbolIcon } from '@/components/symbol-icon';
 import {
@@ -22,22 +23,28 @@ interface FundingRatesProps {
 /**
  * Helper to calculate time until next funding
  */
-function calculateTimeUntilFunding(fundingTime: number, now: number): string {
+function calculateTimeUntilFunding(
+  fundingTime: number,
+  now: number,
+  t: (key: string, values?: Record<string, number>) => string,
+): string {
   const diff = fundingTime - now;
-  if (diff <= 0) return 'Now';
+  if (diff <= 0) return t('time.now');
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  return `${hours}h ${minutes}m`;
+  return t('time.remaining', { hours, minutes });
 }
 
 const FundingBar = memo(function FundingBar({
   ticker,
   index,
   maxRate,
+  t,
 }: {
   ticker: PerpetualTicker;
   index: number;
   maxRate: number;
+  t: (key: string, values?: Record<string, number>) => string;
 }) {
   const [isHovered, setIsHovered] = useState(false);
   const [timeUntilFunding, setTimeUntilFunding] = useState('--');
@@ -49,7 +56,7 @@ const FundingBar = memo(function FundingBar({
   // Update time countdown every minute
   useEffect(() => {
     const updateTime = () => {
-      setTimeUntilFunding(calculateTimeUntilFunding(ticker.fundingTime, Date.now()));
+      setTimeUntilFunding(calculateTimeUntilFunding(ticker.fundingTime, Date.now(), t));
     };
 
     // Initial update
@@ -59,7 +66,7 @@ const FundingBar = memo(function FundingBar({
     const interval = setInterval(updateTime, 60000);
 
     return () => clearInterval(interval);
-  }, [ticker.fundingTime]);
+  }, [ticker.fundingTime, t]);
 
   return (
     <motion.div
@@ -147,8 +154,10 @@ const FundingBar = memo(function FundingBar({
             className="mt-2 overflow-hidden border-t pt-2 text-xs text-muted-foreground"
           >
             <div className="flex justify-between">
-              <span>Annualized: {(rate * 3 * 365 * 100).toFixed(2)}%</span>
-              <span>{isPositive ? 'Longs pay Shorts' : 'Shorts pay Longs'}</span>
+              <span>
+                {t('annualized')}: {(rate * 3 * 365 * 100).toFixed(2)}%
+              </span>
+              <span>{isPositive ? t('longsPayShorts') : t('shortsPayLongs')}</span>
             </div>
           </motion.div>
         )}
@@ -161,6 +170,7 @@ export const FundingRates = memo(function FundingRates({
   tickers,
   className,
 }: FundingRatesProps) {
+  const t = useTranslations('market.funding');
   // Sort by absolute funding rate
   const sorted = [...tickers].sort(
     (a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate),
@@ -180,7 +190,7 @@ export const FundingRates = memo(function FundingRates({
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <span className="bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">
-              Funding Rates
+              {t('title')}
             </span>
             <TooltipProvider>
               <Tooltip>
@@ -188,17 +198,13 @@ export const FundingRates = memo(function FundingRates({
                   <Info className="size-4 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  <p>
-                    Funding rates are periodic payments between long and short traders.
-                    Positive rates mean longs pay shorts, negative rates mean shorts pay
-                    longs.
-                  </p>
+                  <p>{t('tooltip')}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </CardTitle>
           <div className="text-sm text-muted-foreground">
-            Avg:{' '}
+            {t('average')}{' '}
             <span className={avgRate >= 0 ? 'text-green-500' : 'text-red-500'}>
               {formatFundingRate(avgRate)}
             </span>
@@ -210,12 +216,12 @@ export const FundingRates = memo(function FundingRates({
         <div className="mb-4 flex items-center justify-center gap-8 text-xs text-muted-foreground">
           <div className="flex items-center gap-2">
             <div className="h-3 w-6 rounded-l-full bg-red-500/80" />
-            <span>Shorts pay</span>
+            <span>{t('shortsPay')}</span>
           </div>
           <div className="h-4 w-px bg-border" />
           <div className="flex items-center gap-2">
             <div className="h-3 w-6 rounded-r-full bg-green-500/80" />
-            <span>Longs pay</span>
+            <span>{t('longsPay')}</span>
           </div>
         </div>
 
@@ -227,13 +233,14 @@ export const FundingRates = memo(function FundingRates({
               ticker={ticker}
               index={index}
               maxRate={maxRate}
+              t={t}
             />
           ))}
         </div>
 
         {sorted.length === 0 && (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            Loading funding rates...
+            {t('loading')}
           </div>
         )}
       </CardContent>

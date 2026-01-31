@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   IconPlus,
@@ -114,6 +115,8 @@ interface EquityPoint {
 }
 
 export default function BacktestPage() {
+  const t = useTranslations('backtest');
+  const locale = useLocale();
   const [configs, setConfigs] = useState<BacktestConfig[]>([]);
   const [_strategies, setStrategies] = useState<StrategyEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,26 +143,26 @@ export default function BacktestPage() {
   const fetchConfigs = useCallback(async () => {
     try {
       const response = await fetch('/api/backtest', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch configs');
+      if (!response.ok) throw new Error(t('errors.fetchConfigs'));
       const data = await response.json();
       setConfigs(data.configs);
     } catch {
-      toast.error('Failed to load backtest configurations');
+      toast.error(t('errors.loadConfigs'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchStrategies = useCallback(async () => {
     try {
       const response = await fetch('/api/strategies', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch strategies');
+      if (!response.ok) throw new Error(t('errors.fetchStrategies'));
       const data = await response.json();
       setStrategies(data.strategies);
     } catch {
-      console.error('Failed to fetch strategies');
+      console.error(t('errors.fetchStrategies'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchConfigs();
@@ -180,7 +183,7 @@ export default function BacktestPage() {
     if (isCreating) return;
 
     if (formData.symbols.length === 0) {
-      toast.error('Please select at least one trading pair');
+      toast.error(t('errors.selectSymbol'));
       return;
     }
 
@@ -202,15 +205,15 @@ export default function BacktestPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create config');
+        throw new Error(error.error || t('errors.createConfig'));
       }
 
-      toast.success('Backtest configuration created successfully');
+      toast.success(t('messages.created'));
       setIsCreateDialogOpen(false);
       resetForm();
       fetchConfigs();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'An error occurred');
+      toast.error(error instanceof Error ? error.message : t('errors.generic'));
     } finally {
       setIsCreating(false);
     }
@@ -244,13 +247,13 @@ export default function BacktestPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete config');
+        throw new Error(error.error || t('errors.deleteConfig'));
       }
 
-      toast.success('Configuration deleted successfully');
+      toast.success(t('messages.deleted'));
       fetchConfigs();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete config');
+      toast.error(error instanceof Error ? error.message : t('errors.deleteConfig'));
     } finally {
       setIsDeletingId(null);
     }
@@ -269,7 +272,7 @@ export default function BacktestPage() {
         setSelectedConfig(data.config);
       }
     } catch {
-      console.error('Failed to fetch config details');
+      console.error(t('errors.fetchDetails'));
     }
   };
 
@@ -288,7 +291,7 @@ export default function BacktestPage() {
         setEquityPoints(data.result.equity || []);
       }
     } catch {
-      console.error('Failed to fetch result details');
+      console.error(t('errors.fetchResultDetails'));
     }
   };
 
@@ -349,28 +352,28 @@ export default function BacktestPage() {
     switch (type) {
       case 'sharpe':
         if (value >= 2) {
-          label = 'Excellent';
+          label = t('badges.excellent');
           variant = 'default';
         } else if (value >= 1) {
-          label = 'Good';
+          label = t('badges.good');
           variant = 'secondary';
         } else if (value >= 0) {
-          label = 'Fair';
+          label = t('badges.fair');
           variant = 'outline';
         } else {
-          label = 'Poor';
+          label = t('badges.poor');
           variant = 'destructive';
         }
         break;
       case 'drawdown':
         if (value <= 0.05) {
-          label = 'Low Risk';
+          label = t('badges.lowRisk');
           variant = 'default';
         } else if (value <= 0.15) {
-          label = 'Moderate';
+          label = t('badges.moderate');
           variant = 'secondary';
         } else {
-          label = 'High Risk';
+          label = t('badges.highRisk');
           variant = 'destructive';
         }
         break;
@@ -394,43 +397,37 @@ export default function BacktestPage() {
 
   return (
     <SidebarInset>
-      <SiteHeader title="Strategy Backtesting" />
+      <SiteHeader title={t('title')} />
       <div className="flex flex-1 flex-col">
         <div className="@container/main flex flex-1 flex-col gap-2">
           <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
             {/* Header */}
             <div className="flex justify-between items-start px-4 lg:px-6">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">Backtesting</h2>
-                <p className="text-muted-foreground mt-1">
-                  Test your trading strategies against historical market data to validate
-                  performance
-                </p>
+                <h2 className="text-2xl font-bold tracking-tight">{t('heading')}</h2>
+                <p className="text-muted-foreground mt-1">{t('subtitle')}</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => fetchConfigs()}>
                   <IconRefresh className="h-4 w-4 mr-2" />
-                  Refresh
+                  {t('actions.refresh')}
                 </Button>
                 <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                   <DialogTrigger asChild>
                     <Button size="lg">
                       <IconPlus className="mr-2 h-4 w-4" />
-                      New Backtest
+                      {t('actions.new')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-lg">
                     <DialogHeader>
-                      <DialogTitle>Create Backtest Configuration</DialogTitle>
-                      <DialogDescription>
-                        Configure a new backtest to evaluate strategy performance on
-                        historical data
-                      </DialogDescription>
+                      <DialogTitle>{t('dialog.title')}</DialogTitle>
+                      <DialogDescription>{t('dialog.description')}</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={createConfig} className="space-y-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="startDate">Start Date</Label>
+                          <Label htmlFor="startDate">{t('fields.startDate')}</Label>
                           <Input
                             id="startDate"
                             type="date"
@@ -442,7 +439,7 @@ export default function BacktestPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="endDate">End Date</Label>
+                          <Label htmlFor="endDate">{t('fields.endDate')}</Label>
                           <Input
                             id="endDate"
                             type="date"
@@ -456,7 +453,7 @@ export default function BacktestPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="exchange">Exchange</Label>
+                        <Label htmlFor="exchange">{t('fields.exchange')}</Label>
                         <Select
                           value={formData.exchange}
                           onValueChange={(value: ExchangeId) =>
@@ -464,7 +461,7 @@ export default function BacktestPage() {
                           }
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select exchange" />
+                            <SelectValue placeholder={t('fields.exchangePlaceholder')} />
                           </SelectTrigger>
                           <SelectContent>
                             {SUPPORTED_EXCHANGES.map((exchange) => (
@@ -477,7 +474,7 @@ export default function BacktestPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Trading Pairs</Label>
+                        <Label>{t('fields.tradingPairs')}</Label>
                         <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
                           {availablePairs.map((pair) => (
                             <label
@@ -506,21 +503,29 @@ export default function BacktestPage() {
                               />
                               <span className="text-sm font-medium">{pair.name}</span>
                               <span className="text-xs text-muted-foreground">
-                                ({pair.type === 'perpetual' ? 'Perp' : 'Spot'})
+                                (
+                                {pair.type === 'perpetual'
+                                  ? t('pairTypes.perp')
+                                  : t('pairTypes.spot')}
+                                )
                               </span>
                             </label>
                           ))}
                         </div>
                         {formData.symbols.length > 0 && (
                           <p className="text-xs text-muted-foreground">
-                            Selected: {formData.symbols.length} pair(s)
+                            {t('fields.selectedPairs', {
+                              count: formData.symbols.length,
+                            })}
                           </p>
                         )}
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="initialBalance">Initial Balance ($)</Label>
+                          <Label htmlFor="initialBalance">
+                            {t('fields.initialBalance')}
+                          </Label>
                           <Input
                             id="initialBalance"
                             type="number"
@@ -533,7 +538,7 @@ export default function BacktestPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="timeframe">Timeframe</Label>
+                          <Label htmlFor="timeframe">{t('fields.timeframe')}</Label>
                           <Select
                             value={formData.timeframe}
                             onValueChange={(value) =>
@@ -544,13 +549,13 @@ export default function BacktestPage() {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="1m">1 Minute</SelectItem>
-                              <SelectItem value="5m">5 Minutes</SelectItem>
-                              <SelectItem value="15m">15 Minutes</SelectItem>
-                              <SelectItem value="30m">30 Minutes</SelectItem>
-                              <SelectItem value="1h">1 Hour</SelectItem>
-                              <SelectItem value="4h">4 Hours</SelectItem>
-                              <SelectItem value="1d">1 Day</SelectItem>
+                              <SelectItem value="1m">{t('timeframes.1m')}</SelectItem>
+                              <SelectItem value="5m">{t('timeframes.5m')}</SelectItem>
+                              <SelectItem value="15m">{t('timeframes.15m')}</SelectItem>
+                              <SelectItem value="30m">{t('timeframes.30m')}</SelectItem>
+                              <SelectItem value="1h">{t('timeframes.1h')}</SelectItem>
+                              <SelectItem value="4h">{t('timeframes.4h')}</SelectItem>
+                              <SelectItem value="1d">{t('timeframes.1d')}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -558,7 +563,7 @@ export default function BacktestPage() {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="commission">Commission (%)</Label>
+                          <Label htmlFor="commission">{t('fields.commission')}</Label>
                           <Input
                             id="commission"
                             type="number"
@@ -574,7 +579,7 @@ export default function BacktestPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="slippage">Slippage (%)</Label>
+                          <Label htmlFor="slippage">{t('fields.slippage')}</Label>
                           <Input
                             id="slippage"
                             type="number"
@@ -601,18 +606,18 @@ export default function BacktestPage() {
                             resetForm();
                           }}
                         >
-                          Cancel
+                          {t('actions.cancel')}
                         </Button>
                         <Button type="submit" disabled={isCreating}>
                           {isCreating ? (
                             <>
                               <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                              Creating...
+                              {t('actions.creating')}
                             </>
                           ) : (
                             <>
                               <IconCheck className="h-4 w-4 mr-2" />
-                              Create Configuration
+                              {t('actions.createConfig')}
                             </>
                           )}
                         </Button>
@@ -627,31 +632,31 @@ export default function BacktestPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4 lg:px-6">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Configurations</CardDescription>
+                  <CardDescription>{t('stats.configurations')}</CardDescription>
                   <CardTitle className="text-3xl">{totalConfigs}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconChartHistogram className="h-3 w-3" />
-                    Backtest configurations saved
+                    {t('stats.configurationsHelp')}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Total Runs</CardDescription>
+                  <CardDescription>{t('stats.totalRuns')}</CardDescription>
                   <CardTitle className="text-3xl">{totalResults}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconReportAnalytics className="h-3 w-3" />
-                    Backtest results generated
+                    {t('stats.totalRunsHelp')}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Profitable</CardDescription>
+                  <CardDescription>{t('stats.profitable')}</CardDescription>
                   <CardTitle className="text-3xl text-green-600">
                     {profitableConfigs}
                   </CardTitle>
@@ -659,13 +664,13 @@ export default function BacktestPage() {
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconTrendingUp className="h-3 w-3" />
-                    Configs with positive best result
+                    {t('stats.profitableHelp')}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Success Rate</CardDescription>
+                  <CardDescription>{t('stats.successRate')}</CardDescription>
                   <CardTitle className="text-3xl">
                     {totalConfigs > 0
                       ? `${Math.round((profitableConfigs / totalConfigs) * 100)}%`
@@ -675,7 +680,7 @@ export default function BacktestPage() {
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconTarget className="h-3 w-3" />
-                    Percentage of profitable configs
+                    {t('stats.successRateHelp')}
                   </div>
                 </CardContent>
               </Card>
@@ -687,9 +692,7 @@ export default function BacktestPage() {
                 <div className="flex items-center justify-center py-20">
                   <div className="text-center space-y-3">
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-                    <p className="text-sm text-muted-foreground">
-                      Loading configurations...
-                    </p>
+                    <p className="text-sm text-muted-foreground">{t('states.loading')}</p>
                   </div>
                 </div>
               ) : configs.length === 0 ? (
@@ -698,16 +701,13 @@ export default function BacktestPage() {
                     <div className="rounded-full bg-muted p-4 mb-4">
                       <IconChartHistogram className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">
-                      No backtest configurations yet
-                    </h3>
+                    <h3 className="text-lg font-semibold mb-2">{t('empty.title')}</h3>
                     <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-                      Create a backtest configuration to start testing your strategies
-                      against historical market data.
+                      {t('empty.description')}
                     </p>
                     <Button onClick={() => setIsCreateDialogOpen(true)}>
                       <IconPlus className="mr-2 h-4 w-4" />
-                      Create Your First Backtest
+                      {t('empty.action')}
                     </Button>
                   </CardContent>
                 </Card>
@@ -720,16 +720,25 @@ export default function BacktestPage() {
                           <div>
                             <CardTitle className="text-lg flex items-center gap-2">
                               <IconCalendar className="h-4 w-4 text-muted-foreground" />
-                              {new Date(config.startDate).toLocaleDateString()} -{' '}
-                              {new Date(config.endDate).toLocaleDateString()}
+                              {new Date(config.startDate).toLocaleDateString(
+                                locale,
+                              )} - {new Date(config.endDate).toLocaleDateString(locale)}
                               <Badge variant="outline" className="ml-2">
                                 {config.timeframe}
                               </Badge>
                             </CardTitle>
                             <CardDescription className="mt-1">
-                              {config.symbols.join(', ')} • $
-                              {formatNumber(config.initialBalance)} initial •{' '}
-                              {config.resultsCount || 0} run(s)
+                              {t('config.symbols', {
+                                symbols: config.symbols.join(', '),
+                              })}{' '}
+                              •{' '}
+                              {t('config.initial', {
+                                amount: formatNumber(config.initialBalance),
+                              })}{' '}
+                              •{' '}
+                              {t('config.runs', {
+                                count: config.resultsCount || 0,
+                              })}
                             </CardDescription>
                           </div>
                           <div className="flex gap-2">
@@ -739,7 +748,7 @@ export default function BacktestPage() {
                               onClick={() => viewConfigDetails(config)}
                             >
                               <IconEye className="h-4 w-4 mr-1" />
-                              View
+                              {t('actions.view')}
                             </Button>
                             <Button
                               variant="outline"
@@ -762,14 +771,16 @@ export default function BacktestPage() {
                           <div className="bg-muted/50 rounded-lg p-4">
                             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
                               <IconTrendingUp className="h-3 w-3" />
-                              Best Result{' '}
+                              {t('results.best')}{' '}
                               {config.bestResult.strategy &&
-                                `(${config.bestResult.strategy.name})`}
+                                t('results.bestStrategy', {
+                                  name: config.bestResult.strategy.name,
+                                })}
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Total Return
+                                  {t('metrics.totalReturn')}
                                 </div>
                                 <div
                                   className={`font-bold text-lg ${getMetricColor(
@@ -785,7 +796,7 @@ export default function BacktestPage() {
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Sharpe Ratio
+                                  {t('metrics.sharpeRatio')}
                                 </div>
                                 <div
                                   className={`font-bold text-lg ${getMetricColor(
@@ -798,7 +809,7 @@ export default function BacktestPage() {
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Max Drawdown
+                                  {t('metrics.maxDrawdown')}
                                 </div>
                                 <div
                                   className={`font-bold text-lg ${getMetricColor(
@@ -811,7 +822,7 @@ export default function BacktestPage() {
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Win Rate
+                                  {t('metrics.winRate')}
                                 </div>
                                 <div
                                   className={`font-bold text-lg ${getMetricColor(
@@ -824,7 +835,7 @@ export default function BacktestPage() {
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Total Trades
+                                  {t('metrics.totalTrades')}
                                 </div>
                                 <div className="font-bold text-lg">
                                   {config.bestResult.totalTrades}
@@ -849,14 +860,16 @@ export default function BacktestPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <IconChartHistogram className="h-5 w-5" />
-              Backtest Configuration
+              {t('details.title')}
             </DialogTitle>
             <DialogDescription>
               {selectedConfig && (
                 <>
-                  {new Date(selectedConfig.startDate).toLocaleDateString()} -{' '}
-                  {new Date(selectedConfig.endDate).toLocaleDateString()} •{' '}
-                  {selectedConfig.symbols.join(', ')}
+                  {new Date(selectedConfig.startDate).toLocaleDateString(locale)} -{' '}
+                  {new Date(selectedConfig.endDate).toLocaleDateString(locale)} •{' '}
+                  {t('details.symbols', {
+                    symbols: selectedConfig.symbols.join(', '),
+                  })}
                 </>
               )}
             </DialogDescription>
@@ -865,9 +878,9 @@ export default function BacktestPage() {
           {selectedConfig && (
             <Tabs defaultValue="results" className="mt-4">
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="results">Results</TabsTrigger>
-                <TabsTrigger value="config">Configuration</TabsTrigger>
-                <TabsTrigger value="analysis">Analysis</TabsTrigger>
+                <TabsTrigger value="results">{t('tabs.results')}</TabsTrigger>
+                <TabsTrigger value="config">{t('tabs.configuration')}</TabsTrigger>
+                <TabsTrigger value="analysis">{t('tabs.analysis')}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="results" className="space-y-4">
@@ -876,7 +889,7 @@ export default function BacktestPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Total Return</CardDescription>
+                        <CardDescription>{t('metrics.totalReturn')}</CardDescription>
                         <CardTitle
                           className={`text-2xl flex items-center ${getMetricColor(
                             parseFloat(selectedResult.totalReturn),
@@ -894,7 +907,7 @@ export default function BacktestPage() {
                     </Card>
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Sharpe Ratio</CardDescription>
+                        <CardDescription>{t('metrics.sharpeRatio')}</CardDescription>
                         <CardTitle className="text-2xl flex items-center">
                           {formatNumber(selectedResult.sharpeRatio)}
                           {getMetricBadge(
@@ -906,7 +919,7 @@ export default function BacktestPage() {
                     </Card>
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Max Drawdown</CardDescription>
+                        <CardDescription>{t('metrics.maxDrawdown')}</CardDescription>
                         <CardTitle className="text-2xl flex items-center">
                           <IconAlertTriangle
                             className={`h-5 w-5 mr-1 ${getMetricColor(
@@ -924,7 +937,7 @@ export default function BacktestPage() {
                     </Card>
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Win Rate</CardDescription>
+                        <CardDescription>{t('metrics.winRate')}</CardDescription>
                         <CardTitle
                           className={`text-2xl ${getMetricColor(
                             parseFloat(selectedResult.winRate),
@@ -942,22 +955,32 @@ export default function BacktestPage() {
                 {resultTrades.length > 0 ? (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Trade History</CardTitle>
+                      <CardTitle className="text-base">{t('trades.title')}</CardTitle>
                       <CardDescription>
-                        {resultTrades.length} trades executed
+                        {t('trades.count', { count: resultTrades.length })}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>Symbol</TableHead>
-                            <TableHead>Side</TableHead>
-                            <TableHead className="text-right">Entry</TableHead>
-                            <TableHead className="text-right">Exit</TableHead>
-                            <TableHead className="text-right">Qty</TableHead>
-                            <TableHead className="text-right">P&L</TableHead>
-                            <TableHead className="text-right">Duration</TableHead>
+                            <TableHead>{t('trades.table.symbol')}</TableHead>
+                            <TableHead>{t('trades.table.side')}</TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.entry')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.exit')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.quantity')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.pnl')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.duration')}
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -975,7 +998,9 @@ export default function BacktestPage() {
                                       : 'bg-red-500/10 text-red-600'
                                   }
                                 >
-                                  {trade.side}
+                                  {trade.side === 'BUY'
+                                    ? t('trades.side.buy')
+                                    : t('trades.side.sell')}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
@@ -1006,7 +1031,7 @@ export default function BacktestPage() {
                       </Table>
                       {resultTrades.length > 20 && (
                         <div className="text-center py-2 text-sm text-muted-foreground">
-                          Showing 20 of {resultTrades.length} trades
+                          {t('trades.showing', { count: resultTrades.length })}
                         </div>
                       )}
                     </CardContent>
@@ -1015,7 +1040,7 @@ export default function BacktestPage() {
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <IconChartLine className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No trades recorded</p>
+                      <p className="text-muted-foreground">{t('trades.empty')}</p>
                     </CardContent>
                   </Card>
                 )}
@@ -1024,42 +1049,56 @@ export default function BacktestPage() {
               <TabsContent value="config" className="space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Backtest Parameters</CardTitle>
+                    <CardTitle className="text-base">
+                      {t('configDetails.title')}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-sm text-muted-foreground">Date Range</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('configDetails.dateRange')}
+                      </div>
                       <div className="font-medium">
-                        {new Date(selectedConfig.startDate).toLocaleDateString()} -{' '}
-                        {new Date(selectedConfig.endDate).toLocaleDateString()}
+                        {new Date(selectedConfig.startDate).toLocaleDateString(locale)} -{' '}
+                        {new Date(selectedConfig.endDate).toLocaleDateString(locale)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Timeframe</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('configDetails.timeframe')}
+                      </div>
                       <div className="font-medium">{selectedConfig.timeframe}</div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Initial Balance</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('configDetails.initialBalance')}
+                      </div>
                       <div className="font-medium">
                         ${formatNumber(selectedConfig.initialBalance)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Commission</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('configDetails.commission')}
+                      </div>
                       <div className="font-medium">
                         {(parseFloat(selectedConfig.commission) * 100).toFixed(2)}%
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Slippage</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('configDetails.slippage')}
+                      </div>
                       <div className="font-medium">
                         {selectedConfig.slippage
                           ? `${(parseFloat(selectedConfig.slippage) * 100).toFixed(2)}%`
-                          : 'Not set'}
+                          : t('configDetails.notSet')}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Symbols</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('configDetails.symbols')}
+                      </div>
                       <div className="font-medium">
                         {selectedConfig.symbols.join(', ')}
                       </div>
@@ -1073,11 +1112,15 @@ export default function BacktestPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Return Metrics</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('analysis.returnMetrics')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Total Return</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.totalReturn')}
+                          </span>
                           <span
                             className={`font-bold ${getMetricColor(
                               parseFloat(selectedResult.totalReturn),
@@ -1088,7 +1131,9 @@ export default function BacktestPage() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Annualized Return</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.annualizedReturn')}
+                          </span>
                           <span
                             className={`font-bold ${getMetricColor(
                               parseFloat(selectedResult.annualizedReturn),
@@ -1099,7 +1144,9 @@ export default function BacktestPage() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Profit Factor</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.profitFactor')}
+                          </span>
                           <span className="font-bold">
                             {formatNumber(selectedResult.profitFactor)}
                           </span>
@@ -1109,11 +1156,15 @@ export default function BacktestPage() {
 
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Risk Metrics</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('analysis.riskMetrics')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Sharpe Ratio</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.sharpeRatio')}
+                          </span>
                           <span
                             className={`font-bold ${getMetricColor(
                               parseFloat(selectedResult.sharpeRatio),
@@ -1124,7 +1175,9 @@ export default function BacktestPage() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Max Drawdown</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.maxDrawdown')}
+                          </span>
                           <span
                             className={`font-bold ${getMetricColor(
                               parseFloat(selectedResult.maxDrawdown),
@@ -1135,7 +1188,9 @@ export default function BacktestPage() {
                           </span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-muted-foreground">Win Rate</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.winRate')}
+                          </span>
                           <span
                             className={`font-bold ${getMetricColor(
                               parseFloat(selectedResult.winRate),
@@ -1150,23 +1205,29 @@ export default function BacktestPage() {
 
                     <Card className="col-span-2">
                       <CardHeader>
-                        <CardTitle className="text-base">Trading Statistics</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('analysis.tradingStats')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Total Trades</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.totalTrades')}
+                          </span>
                           <span className="font-bold">{selectedResult.totalTrades}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
-                            Avg Trade Duration
+                            {t('analysis.avgTradeDuration')}
                           </span>
                           <span className="font-bold">
                             {formatDuration(selectedResult.avgTradeDuration)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Winning Trades</span>
+                          <span className="text-muted-foreground">
+                            {t('analysis.winningTrades')}
+                          </span>
                           <span className="font-bold text-green-600">
                             {Math.round(
                               selectedResult.totalTrades *
@@ -1175,7 +1236,9 @@ export default function BacktestPage() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Losing Trades</span>
+                          <span className="text-muted-foreground">
+                            {t('analysis.losingTrades')}
+                          </span>
                           <span className="font-bold text-red-600">
                             {Math.round(
                               selectedResult.totalTrades *
@@ -1189,21 +1252,25 @@ export default function BacktestPage() {
                     {/* Performance Rating */}
                     <Card className="col-span-2">
                       <CardHeader>
-                        <CardTitle className="text-base">Performance Rating</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('analysis.performanceRating')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-4">
                           <div>
                             <div className="flex justify-between mb-1">
-                              <span className="text-sm">Risk-Adjusted Return</span>
+                              <span className="text-sm">
+                                {t('analysis.riskAdjustedReturn')}
+                              </span>
                               <span className="text-sm font-medium">
                                 {parseFloat(selectedResult.sharpeRatio) >= 2
-                                  ? 'Excellent'
+                                  ? t('badges.excellent')
                                   : parseFloat(selectedResult.sharpeRatio) >= 1
-                                    ? 'Good'
+                                    ? t('badges.good')
                                     : parseFloat(selectedResult.sharpeRatio) >= 0
-                                      ? 'Fair'
-                                      : 'Poor'}
+                                      ? t('badges.fair')
+                                      : t('badges.poor')}
                               </span>
                             </div>
                             <Progress
@@ -1216,13 +1283,15 @@ export default function BacktestPage() {
                           </div>
                           <div>
                             <div className="flex justify-between mb-1">
-                              <span className="text-sm">Win Consistency</span>
+                              <span className="text-sm">
+                                {t('analysis.winConsistency')}
+                              </span>
                               <span className="text-sm font-medium">
                                 {parseFloat(selectedResult.winRate) >= 0.6
-                                  ? 'High'
+                                  ? t('analysis.high')
                                   : parseFloat(selectedResult.winRate) >= 0.5
-                                    ? 'Moderate'
-                                    : 'Low'}
+                                    ? t('analysis.moderate')
+                                    : t('analysis.low')}
                               </span>
                             </div>
                             <Progress
@@ -1232,13 +1301,13 @@ export default function BacktestPage() {
                           </div>
                           <div>
                             <div className="flex justify-between mb-1">
-                              <span className="text-sm">Risk Control</span>
+                              <span className="text-sm">{t('analysis.riskControl')}</span>
                               <span className="text-sm font-medium">
                                 {parseFloat(selectedResult.maxDrawdown) <= 0.1
-                                  ? 'Excellent'
+                                  ? t('badges.excellent')
                                   : parseFloat(selectedResult.maxDrawdown) <= 0.2
-                                    ? 'Good'
-                                    : 'Needs Improvement'}
+                                    ? t('badges.good')
+                                    : t('analysis.needsImprovement')}
                               </span>
                             </div>
                             <Progress
@@ -1257,7 +1326,7 @@ export default function BacktestPage() {
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <IconActivity className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No analysis data available</p>
+                      <p className="text-muted-foreground">{t('analysis.empty')}</p>
                     </CardContent>
                   </Card>
                 )}

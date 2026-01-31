@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, Zap, Shield } from 'lucide-react';
 
@@ -10,6 +11,8 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
+  const t = useTranslations('landing.hero');
+
   return (
     <section className="relative min-h-[600px] overflow-hidden py-20 sm:py-32">
       {/* Background decoration */}
@@ -30,7 +33,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             className="mb-8 inline-flex items-center gap-2 rounded-full border bg-background/50 px-4 py-2 text-sm backdrop-blur-sm"
           >
             <Zap className="size-4 text-primary" />
-            <span>Intelligent & Strategic Crypto Trading</span>
+            <span>{t('badge')}</span>
           </motion.div>
 
           {/* Main Heading */}
@@ -40,10 +43,13 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl"
           >
-            Markets thrive on{' '}
-            <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              chaos
-            </span>
+            {t.rich('title', {
+              emphasis: (chunks) => (
+                <span className="bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                  {chunks}
+                </span>
+              ),
+            })}
           </motion.h1>
 
           <motion.p
@@ -52,8 +58,11 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="mb-4 text-lg font-medium text-foreground/90 sm:text-xl md:text-2xl"
           >
-            For the bold, chaos isn&apos;t a downfall — it&apos;s a{' '}
-            <span className="font-bold text-primary">ladder to rise</span>
+            {t.rich('subtitle', {
+              emphasis: (chunks) => (
+                <span className="font-bold text-primary">{chunks}</span>
+              ),
+            })}
           </motion.p>
 
           <motion.p
@@ -62,8 +71,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="mx-auto mb-10 max-w-2xl text-base text-muted-foreground sm:text-lg"
           >
-            Trade smarter with AI-powered strategies across multiple exchanges. Real-time
-            analytics, automated execution, and risk management built for professionals.
+            {t('description')}
           </motion.p>
 
           {/* CTA Buttons */}
@@ -77,19 +85,19 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
               <Button asChild size="lg" className="text-base">
                 <Link href="/dashboard">
                   <TrendingUp className="mr-2 size-5" />
-                  Go to Dashboard
+                  {t('cta.dashboard')}
                 </Link>
               </Button>
             ) : (
               <>
                 <Button asChild size="lg" className="text-base">
                   <Link href="/auth/sign-up">
-                    Get Started Free
+                    {t('cta.getStarted')}
                     <TrendingUp className="ml-2 size-5" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="text-base">
-                  <Link href="/auth/sign-in">Sign In</Link>
+                  <Link href="/auth/sign-in">{t('cta.signIn')}</Link>
                 </Button>
               </>
             )}
@@ -104,18 +112,18 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
           >
             <FeatureCard
               icon={<TrendingUp className="size-6" />}
-              title="Multi-Exchange"
-              description="Trade on Binance, OKX, and Coinbase from one platform"
+              title={t('features.multiExchangeTitle')}
+              description={t('features.multiExchangeDescription')}
             />
             <FeatureCard
               icon={<Zap className="size-6" />}
-              title="Real-Time"
-              description="Live market data and instant order execution"
+              title={t('features.realTimeTitle')}
+              description={t('features.realTimeDescription')}
             />
             <FeatureCard
               icon={<Shield className="size-6" />}
-              title="Risk Management"
-              description="Built-in stop-loss, position sizing, and portfolio tracking"
+              title={t('features.riskTitle')}
+              description={t('features.riskDescription')}
             />
           </motion.div>
         </div>

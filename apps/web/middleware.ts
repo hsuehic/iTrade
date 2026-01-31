@@ -1,10 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { defaultLocale, isLocale } from './i18n/routing';
 import { withAuth } from './middlewares/auth';
 import { withPathHeader } from './middlewares/path-header';
 
+const LOCALE_COOKIE = 'NEXT_LOCALE';
+const LOCALE_HEADER = 'x-itrade-locale';
+
 const STATIC_FILE_REGEX =
   /\.(js|css|json|html|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|otf|map)$/i;
+
+const resolveLocale = (request: NextRequest) => {
+  const cookieLocale = request.cookies.get(LOCALE_COOKIE)?.value;
+  return isLocale(cookieLocale) ? cookieLocale : defaultLocale;
+};
+
+const applyLocale = (request: NextRequest, locale: string) => {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(LOCALE_HEADER, locale);
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+  response.cookies.set(LOCALE_COOKIE, locale, { path: '/' });
+  return response;
+};
 
 const chain = (
   ...middlewares: Array<(req: NextRequest, res: NextResponse) => NextResponse>
@@ -16,14 +38,12 @@ const chain = (
     // - assetlinks
     // - API routes
     // - _next
-    // - auth
     // - static files matching regex
     // - SEO and verification files (robots.txt, sitemap files, app-ads.txt)
     if (
       pathname.startsWith('/.well-known/') ||
       pathname.startsWith('/api/') ||
       pathname.startsWith('/_next/') ||
-      pathname.startsWith('/auth/') ||
       pathname === '/robots.txt' ||
       pathname === '/app-ads.txt' ||
       pathname === '/sitemap.xml' ||
@@ -34,10 +54,10 @@ const chain = (
       return NextResponse.next();
     }
 
-    return middlewares.reduce(
-      (res, middleware) => middleware(req, res),
-      NextResponse.next(),
-    );
+    const locale = resolveLocale(req);
+    const response = applyLocale(req, locale);
+
+    return middlewares.reduce((res, middleware) => middleware(req, res), response);
   };
 };
 

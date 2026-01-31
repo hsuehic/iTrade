@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Loader2, Check, User } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 import { useSession } from '@/components/session-provider';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/card';
 
 export function ProfileSettings() {
+  const t = useTranslations('settings.profile');
   const session = useSession();
   const user = session?.user;
 
@@ -42,17 +44,17 @@ export function ProfileSettings() {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         if (!value.trim()) {
-          setNameError('Name is required');
+          setNameError(t('errors.nameRequired'));
         } else if (value.trim().length < 2) {
-          setNameError('Name must be at least 2 characters');
+          setNameError(t('errors.nameMin'));
         } else if (value.trim().length > 50) {
-          setNameError('Name must be less than 50 characters');
+          setNameError(t('errors.nameMax'));
         } else {
           setNameError(null);
         }
       }, 500);
     };
-  }, []);
+  }, [t]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -72,7 +74,7 @@ export function ProfileSettings() {
 
     // Final validation
     if (!name.trim()) {
-      setNameError('Name is required');
+      setNameError(t('errors.nameRequired'));
       return;
     }
 
@@ -95,16 +97,16 @@ export function ProfileSettings() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to update profile');
+        throw new Error(data.error || t('errors.updateFailed'));
       }
 
-      toast.success('Profile updated successfully');
+      toast.success(t('messages.updated'));
       setHasChanges(false);
 
       // Refresh the page to update session
       window.location.reload();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update profile';
+      const message = error instanceof Error ? error.message : t('errors.updateFailed');
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -124,10 +126,8 @@ export function ProfileSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Profile Information</CardTitle>
-        <CardDescription>
-          Update your personal information and profile picture.
-        </CardDescription>
+        <CardTitle>{t('title')}</CardTitle>
+        <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -140,37 +140,33 @@ export function ProfileSettings() {
               </AvatarFallback>
             </Avatar>
             <div className="space-y-1">
-              <p className="text-sm font-medium">Profile Picture</p>
-              <p className="text-xs text-muted-foreground">
-                Enter a URL for your profile picture
-              </p>
+              <p className="text-sm font-medium">{t('pictureTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('pictureHint')}</p>
             </div>
           </div>
 
           {/* Image URL */}
           <div className="space-y-2">
-            <Label htmlFor="imageUrl">Profile Image URL</Label>
+            <Label htmlFor="imageUrl">{t('imageUrlLabel')}</Label>
             <Input
               id="imageUrl"
               type="url"
-              placeholder="https://example.com/avatar.jpg"
+              placeholder={t('imageUrlPlaceholder')}
               value={imageUrl}
               onChange={handleImageUrlChange}
             />
-            <p className="text-xs text-muted-foreground">
-              Leave empty to use default avatar
-            </p>
+            <p className="text-xs text-muted-foreground">{t('imageUrlHint')}</p>
           </div>
 
           {/* Name */}
           <div className="space-y-2">
             <Label htmlFor="name">
-              Display Name <span className="text-destructive">*</span>
+              {t('displayNameLabel')} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="name"
               type="text"
-              placeholder="Your name"
+              placeholder={t('displayNamePlaceholder')}
               value={name}
               onChange={handleNameChange}
               aria-invalid={!!nameError}
@@ -186,7 +182,7 @@ export function ProfileSettings() {
 
           {/* Email (read-only) */}
           <div className="space-y-2">
-            <Label htmlFor="email">Email Address</Label>
+            <Label htmlFor="email">{t('emailLabel')}</Label>
             <Input
               id="email"
               type="email"
@@ -194,9 +190,7 @@ export function ProfileSettings() {
               disabled
               className="bg-muted"
             />
-            <p className="text-xs text-muted-foreground">
-              Email cannot be changed for security reasons
-            </p>
+            <p className="text-xs text-muted-foreground">{t('emailHint')}</p>
           </div>
 
           {/* Submit Button */}
@@ -209,17 +203,17 @@ export function ProfileSettings() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Saving...
+                  {t('saving')}
                 </>
               ) : (
                 <>
                   <Check className="size-4" />
-                  Save Changes
+                  {t('save')}
                 </>
               )}
             </Button>
             {hasChanges && (
-              <p className="text-sm text-muted-foreground">You have unsaved changes</p>
+              <p className="text-sm text-muted-foreground">{t('unsaved')}</p>
             )}
           </div>
         </form>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Wifi, WifiOff, Zap } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -29,6 +30,8 @@ const PRICE_HISTORY_LENGTH = 30;
 const RECONNECT_DELAY = 3000;
 
 export function MarketDashboard() {
+  const t = useTranslations('market.dashboard');
+  const locale = useLocale();
   const [tickers, setTickers] = useState<Map<string, PerpetualTicker>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<
@@ -264,7 +267,7 @@ export function MarketDashboard() {
             className="flex items-center gap-2"
           >
             <Zap className="size-6 text-yellow-500" />
-            <h2 className="text-2xl font-bold">Perpetual Futures</h2>
+            <h2 className="text-2xl font-bold">{t('title')}</h2>
           </motion.div>
 
           <Badge
@@ -280,19 +283,19 @@ export function MarketDashboard() {
             ) : (
               <WifiOff className="size-3" />
             )}
-            {connectionStatus === 'connected' ? 'Live' : 'Connecting...'}
+            {connectionStatus === 'connected' ? t('status.live') : t('status.connecting')}
           </Badge>
         </div>
 
         <div className="flex items-center gap-4">
           {lastUpdate && (
             <span className="text-xs text-muted-foreground">
-              Last update: {lastUpdate.toLocaleTimeString()}
+              {t('lastUpdate', { time: lastUpdate.toLocaleTimeString(locale) })}
             </span>
           )}
           <Button variant="outline" size="sm" onClick={handleReconnect} className="gap-2">
             <RefreshCw className="size-4" />
-            Reconnect
+            {t('reconnect')}
           </Button>
         </div>
       </div>
@@ -304,13 +307,13 @@ export function MarketDashboard() {
       <Tabs defaultValue="table" className="space-y-4">
         <TabsList className="bg-muted/50">
           <TabsTrigger value="table" className="gap-2">
-            📊 Table View
+            {t('tabs.table')}
           </TabsTrigger>
           <TabsTrigger value="heatmap" className="gap-2">
-            🎨 Heatmap
+            {t('tabs.heatmap')}
           </TabsTrigger>
           <TabsTrigger value="analysis" className="gap-2">
-            📈 Analysis
+            {t('tabs.analysis')}
           </TabsTrigger>
         </TabsList>
 

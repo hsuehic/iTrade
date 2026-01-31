@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Loader2, Check, Mail, Bell, TrendingUp, Shield, Newspaper } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -39,6 +40,7 @@ const defaultPreferences: EmailPreferences = {
 };
 
 export function EmailPreferencesSettings() {
+  const t = useTranslations('settings.email');
   const [preferences, setPreferences] = useState<EmailPreferences>(defaultPreferences);
   const [originalPreferences, setOriginalPreferences] =
     useState<EmailPreferences>(defaultPreferences);
@@ -60,14 +62,14 @@ export function EmailPreferencesSettings() {
         }
       } catch (error) {
         console.error('Failed to fetch email preferences:', error);
-        toast.error('Failed to load email preferences');
+        toast.error(t('errors.loadFailed'));
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchPreferences();
-  }, []);
+  }, [t]);
 
   // Check for changes
   useEffect(() => {
@@ -101,15 +103,14 @@ export function EmailPreferencesSettings() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Failed to save preferences');
+        throw new Error(data.error || data.message || t('errors.saveFailed'));
       }
 
-      toast.success('Email preferences saved successfully');
+      toast.success(t('messages.saved'));
       setOriginalPreferences(preferences);
       setHasChanges(false);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to save email preferences';
+      const message = error instanceof Error ? error.message : t('errors.saveFailed');
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -131,12 +132,9 @@ export function EmailPreferencesSettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Mail className="size-5" />
-          Email Preferences
+          {t('title')}
         </CardTitle>
-        <CardDescription>
-          Choose which emails you would like to receive. You can update these settings at
-          any time.
-        </CardDescription>
+        <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -144,16 +142,16 @@ export function EmailPreferencesSettings() {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <TrendingUp className="size-4 text-muted-foreground" />
-              <h3 className="font-medium">Trading Notifications</h3>
+              <h3 className="font-medium">{t('sections.trading.title')}</h3>
             </div>
             <div className="space-y-4 pl-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="tradingAlerts" className="cursor-pointer">
-                    Trading Alerts
+                    {t('sections.trading.alerts.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Get notified when your strategies execute trades
+                    {t('sections.trading.alerts.description')}
                   </p>
                 </div>
                 <Switch
@@ -166,10 +164,10 @@ export function EmailPreferencesSettings() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="priceAlerts" className="cursor-pointer">
-                    Price Alerts
+                    {t('sections.trading.price.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive alerts when assets hit your price targets
+                    {t('sections.trading.price.description')}
                   </p>
                 </div>
                 <Switch
@@ -182,10 +180,10 @@ export function EmailPreferencesSettings() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="orderUpdates" className="cursor-pointer">
-                    Order Updates
+                    {t('sections.trading.orders.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Get notified about order fills and cancellations
+                    {t('sections.trading.orders.description')}
                   </p>
                 </div>
                 <Switch
@@ -203,16 +201,16 @@ export function EmailPreferencesSettings() {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Shield className="size-4 text-muted-foreground" />
-              <h3 className="font-medium">Account & Security</h3>
+              <h3 className="font-medium">{t('sections.security.title')}</h3>
             </div>
             <div className="space-y-4 pl-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="accountActivity" className="cursor-pointer">
-                    Account Activity
+                    {t('sections.security.activity.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive notifications for important account activities
+                    {t('sections.security.activity.description')}
                   </p>
                 </div>
                 <Switch
@@ -230,16 +228,16 @@ export function EmailPreferencesSettings() {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Bell className="size-4 text-muted-foreground" />
-              <h3 className="font-medium">Reports & Updates</h3>
+              <h3 className="font-medium">{t('sections.reports.title')}</h3>
             </div>
             <div className="space-y-4 pl-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="weeklyReports" className="cursor-pointer">
-                    Weekly Reports
+                    {t('sections.reports.weekly.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive weekly performance summaries and insights
+                    {t('sections.reports.weekly.description')}
                   </p>
                 </div>
                 <Switch
@@ -252,10 +250,10 @@ export function EmailPreferencesSettings() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="productUpdates" className="cursor-pointer">
-                    Product Updates
+                    {t('sections.reports.product.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Stay informed about new features and improvements
+                    {t('sections.reports.product.description')}
                   </p>
                 </div>
                 <Switch
@@ -268,10 +266,10 @@ export function EmailPreferencesSettings() {
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="newsAndTips" className="cursor-pointer">
-                    News & Tips
+                    {t('sections.reports.news.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Get trading tips and market news
+                    {t('sections.reports.news.description')}
                   </p>
                 </div>
                 <Switch
@@ -289,16 +287,16 @@ export function EmailPreferencesSettings() {
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Newspaper className="size-4 text-muted-foreground" />
-              <h3 className="font-medium">Marketing</h3>
+              <h3 className="font-medium">{t('sections.marketing.title')}</h3>
             </div>
             <div className="space-y-4 pl-6">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label htmlFor="marketingEmails" className="cursor-pointer">
-                    Marketing Emails
+                    {t('sections.marketing.emails.title')}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Receive promotional offers and announcements
+                    {t('sections.marketing.emails.description')}
                   </p>
                 </div>
                 <Switch
@@ -320,17 +318,17 @@ export function EmailPreferencesSettings() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Saving...
+                  {t('saving')}
                 </>
               ) : (
                 <>
                   <Check className="size-4" />
-                  Save Preferences
+                  {t('save')}
                 </>
               )}
             </Button>
             {hasChanges && (
-              <p className="text-sm text-muted-foreground">You have unsaved changes</p>
+              <p className="text-sm text-muted-foreground">{t('unsaved')}</p>
             )}
           </div>
         </form>

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import {
   IconCoinBitcoin,
   IconCoins,
@@ -49,32 +50,39 @@ const transactionFilters = {
 };
 
 export function NavPortfolio() {
+  const t = useTranslations('nav.portfolio');
   const pathname = usePathname();
   const router = useRouter();
   const { isMobile } = useSidebar();
   const items = [
     {
-      name: 'Balance',
+      name: t('balance'),
       url: '/portfolio/balance',
       icon: IconCalendarDollar,
     },
     {
-      name: 'Assets',
+      name: t('assets'),
       url: '/portfolio/assets',
       icon: IconCoinBitcoin,
     },
     {
-      name: 'Position',
+      name: t('position'),
       url: '/portfolio/position',
       icon: IconCoins,
     },
     {
-      name: 'Transaction',
+      name: t('transaction'),
       url: '/portfolio/transaction',
       icon: IconReceiptDollar,
       hasFilters: true,
     },
   ];
+
+  const statusLabelKey: Record<string, string> = {
+    filled: 'filled',
+    new: 'open',
+    canceled: 'cancelled',
+  };
 
   const handleFilterClick = (filterType: string, value: string) => {
     const params = new URLSearchParams();
@@ -84,7 +92,7 @@ export function NavPortfolio() {
 
   return (
     <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Portfolio</SidebarGroupLabel>
+      <SidebarGroupLabel>{t('label')}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
@@ -105,7 +113,7 @@ export function NavPortfolio() {
                     className="data-[state=open]:bg-accent rounded-sm"
                   >
                     <IconFilter className="size-4" />
-                    <span className="sr-only">Filter Orders</span>
+                    <span className="sr-only">{t('filterOrders')}</span>
                   </SidebarMenuAction>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -114,7 +122,7 @@ export function NavPortfolio() {
                   align={isMobile ? 'end' : 'start'}
                 >
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    By Status
+                    {t('byStatus')}
                   </DropdownMenuLabel>
                   {transactionFilters.status.map((filter) => (
                     <DropdownMenuItem
@@ -122,12 +130,14 @@ export function NavPortfolio() {
                       onClick={() => handleFilterClick('status', filter.value)}
                     >
                       <filter.icon className="size-4" />
-                      <span>{filter.label}</span>
+                      <span>
+                        {t(`status.${statusLabelKey[filter.value.toLowerCase()]}`)}
+                      </span>
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs text-muted-foreground">
-                    By Exchange
+                    {t('byExchange')}
                   </DropdownMenuLabel>
                   {transactionFilters.exchanges.map((filter) => (
                     <DropdownMenuItem
@@ -135,7 +145,7 @@ export function NavPortfolio() {
                       onClick={() => handleFilterClick('exchange', filter.value)}
                     >
                       <filter.icon className="size-4" />
-                      <span>{filter.label}</span>
+                      <span>{t(`exchange.${filter.value}`)}</span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

@@ -1,20 +1,24 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
-
+import { getTranslations } from 'next-intl/server';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-export const metadata: Metadata = {
-  title: {
-    default: 'Authentication',
-    template: '%s - iTrade',
-  },
-  description: 'Sign in or create an account to start trading',
-  icons: {
-    icon: '/favicon/favicon.ico',
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations('auth.meta');
+
+  return {
+    title: {
+      default: t('title'),
+      template: '%s - iTrade',
+    },
+    description: t('description'),
+    icons: {
+      icon: '/favicon/favicon.ico',
+    },
+  };
+}
 
 /**
  * Auth Layout
@@ -26,7 +30,9 @@ export const metadata: Metadata = {
  *
  * Note: SessionProvider is handled globally in app/layout.tsx
  */
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
+export default async function AuthLayout({ children }: { children: React.ReactNode }) {
+  const t = await getTranslations('auth');
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-muted p-4 md:p-10">
       <div className="w-full max-w-sm md:max-w-3xl">
@@ -38,7 +44,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           >
             <Image
               src="/logo.svg"
-              alt="iTrade Logo"
+              alt={t('logoAlt')}
               width={32}
               height={32}
               className="size-8"
@@ -57,7 +63,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               <div className="relative hidden min-h-[538px] w-full bg-muted md:block md:w-[384px]">
                 <Image
                   src="/promote.png"
-                  alt="Trading Platform Preview"
+                  alt={t('promoAlt')}
                   fill
                   sizes="(min-width: 768px) 384px, 0px"
                   priority
@@ -71,21 +77,24 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
           {/* Terms and Privacy */}
           <p className="text-center text-xs text-muted-foreground">
-            By clicking continue, you agree to our{' '}
-            <Link
-              href="/privacy.html"
-              className="underline underline-offset-4 transition-colors hover:text-primary"
-            >
-              Terms of Service
-            </Link>{' '}
-            and{' '}
-            <Link
-              href="/privacy.html"
-              className="underline underline-offset-4 transition-colors hover:text-primary"
-            >
-              Privacy Policy
-            </Link>
-            .
+            {t.rich('terms', {
+              terms: (chunks) => (
+                <Link
+                  href="/terms.html"
+                  className="underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  {chunks}
+                </Link>
+              ),
+              privacy: (chunks) => (
+                <Link
+                  href="/privacy.html"
+                  className="underline underline-offset-4 transition-colors hover:text-primary"
+                >
+                  {chunks}
+                </Link>
+              ),
+            })}
           </p>
         </div>
       </div>

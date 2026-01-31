@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { IconTrendingDown, IconTrendingUp, IconCheck, IconX } from '@tabler/icons-react';
+import { useLocale, useTranslations } from 'next-intl';
 
 import {
   Card,
@@ -77,6 +78,8 @@ const StrategySymbol = ({
 };
 
 export function StrategyPerformanceTable() {
+  const t = useTranslations('dashboard.performance');
+  const locale = useLocale();
   const [topStrategies, setTopStrategies] = useState<Strategy[]>([]);
   const [exchangeStats, setExchangeStats] = useState<ExchangeStats[]>([]);
   const [symbolStats, setSymbolStats] = useState<SymbolStats[]>([]);
@@ -107,7 +110,7 @@ export function StrategyPerformanceTable() {
   }, []);
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -131,36 +134,34 @@ export function StrategyPerformanceTable() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Performance Analytics</CardTitle>
-        <CardDescription>
-          Top performing strategies, exchanges, and trading pairs
-        </CardDescription>
+        <CardTitle>{t('title')}</CardTitle>
+        <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="strategies" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="strategies">Strategies</TabsTrigger>
-            <TabsTrigger value="exchanges">Exchanges</TabsTrigger>
-            <TabsTrigger value="symbols">Symbols</TabsTrigger>
+            <TabsTrigger value="strategies">{t('tabs.strategies')}</TabsTrigger>
+            <TabsTrigger value="exchanges">{t('tabs.exchanges')}</TabsTrigger>
+            <TabsTrigger value="symbols">{t('tabs.symbols')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="strategies" className="mt-4">
             {topStrategies.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">
-                No strategies found. Create a strategy to start trading.
+                {t('empty.strategies')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Strategy</TableHead>
-                      <TableHead>Symbol</TableHead>
-                      <TableHead>Exchange</TableHead>
-                      <TableHead className="text-right">P&L</TableHead>
-                      <TableHead className="text-right">ROI</TableHead>
-                      <TableHead className="text-right">Orders</TableHead>
-                      <TableHead className="text-center">Status</TableHead>
+                      <TableHead>{t('table.strategy')}</TableHead>
+                      <TableHead>{t('table.symbol')}</TableHead>
+                      <TableHead>{t('table.exchange')}</TableHead>
+                      <TableHead className="text-right">{t('table.pnl')}</TableHead>
+                      <TableHead className="text-right">{t('table.roi')}</TableHead>
+                      <TableHead className="text-right">{t('table.orders')}</TableHead>
+                      <TableHead className="text-center">{t('table.status')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -218,12 +219,12 @@ export function StrategyPerformanceTable() {
                           {strategy.status === 'active' ? (
                             <Badge className="bg-green-500/10 text-green-700 dark:text-green-400">
                               <IconCheck className="size-3" />
-                              Active
+                              {t('status.active')}
                             </Badge>
                           ) : (
                             <Badge variant="secondary">
                               <IconX className="size-3" />
-                              Inactive
+                              {t('status.inactive')}
                             </Badge>
                           )}
                         </TableCell>
@@ -238,18 +239,20 @@ export function StrategyPerformanceTable() {
           <TabsContent value="exchanges" className="mt-4">
             {exchangeStats.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">
-                No exchange data available.
+                {t('empty.exchanges')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Exchange</TableHead>
-                      <TableHead className="text-right">Total Strategies</TableHead>
-                      <TableHead className="text-right">Active</TableHead>
-                      <TableHead className="text-right">Total P&L</TableHead>
-                      <TableHead className="text-right">Avg P&L</TableHead>
+                      <TableHead>{t('table.exchange')}</TableHead>
+                      <TableHead className="text-right">
+                        {t('table.totalStrategies')}
+                      </TableHead>
+                      <TableHead className="text-right">{t('table.active')}</TableHead>
+                      <TableHead className="text-right">{t('table.totalPnl')}</TableHead>
+                      <TableHead className="text-right">{t('table.avgPnl')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -302,18 +305,20 @@ export function StrategyPerformanceTable() {
           <TabsContent value="symbols" className="mt-4">
             {symbolStats.length === 0 ? (
               <div className="py-8 text-center text-muted-foreground">
-                No symbol data available.
+                {t('empty.symbols')}
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Symbol</TableHead>
-                      <TableHead className="text-right">Total Strategies</TableHead>
-                      <TableHead className="text-right">Active</TableHead>
-                      <TableHead className="text-right">Total P&L</TableHead>
-                      <TableHead className="text-right">Avg P&L</TableHead>
+                      <TableHead>{t('table.symbol')}</TableHead>
+                      <TableHead className="text-right">
+                        {t('table.totalStrategies')}
+                      </TableHead>
+                      <TableHead className="text-right">{t('table.active')}</TableHead>
+                      <TableHead className="text-right">{t('table.totalPnl')}</TableHead>
+                      <TableHead className="text-right">{t('table.avgPnl')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

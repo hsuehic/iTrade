@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { ExchangeSelector } from '@/components/exchange-selector';
 import { PositionsTable } from '@/components/positions-table';
@@ -13,6 +14,7 @@ const REFRESH_INTERVAL = parseInt(
 );
 
 export default function PositionPage() {
+  const t = useTranslations('portfolio.position');
   const [selectedExchange, setSelectedExchange] = useState('all');
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
 
@@ -38,7 +40,7 @@ export default function PositionPage() {
   return (
     <SidebarInset>
       <SiteHeader
-        title="Positions"
+        title={t('title')}
         links={
           <ExchangeSelector
             value={selectedExchange}

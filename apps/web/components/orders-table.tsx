@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   IconSearch,
   IconSortAscending,
@@ -120,10 +121,10 @@ const formatNumber = (value: string | number | undefined, decimals: number = 4) 
   return num.toFixed(decimals);
 };
 
-const formatDate = (dateStr: string | undefined) => {
+const formatDate = (dateStr: string | undefined, locale: string) => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', {
+  return date.toLocaleDateString(locale, {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -131,10 +132,10 @@ const formatDate = (dateStr: string | undefined) => {
   });
 };
 
-const formatFullDate = (dateStr: string | undefined) => {
+const formatFullDate = (dateStr: string | undefined, locale: string) => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
-  return date.toLocaleString('en-US', {
+  return date.toLocaleString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -185,281 +186,6 @@ const getSideColor = (side: string) => {
     : 'border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400';
 };
 
-const columns: ColumnDef<OrderData>[] = [
-  {
-    accessorKey: 'timestamp',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Time
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="text-sm whitespace-nowrap cursor-help">
-              {formatDate(row.original.timestamp)}
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{formatFullDate(row.original.timestamp)}</p>
-            {row.original.updateTime && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Updated: {formatFullDate(row.original.updateTime)}
-              </p>
-            )}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    ),
-    sortingFn: (rowA, rowB) =>
-      new Date(rowA.original.timestamp).getTime() -
-      new Date(rowB.original.timestamp).getTime(),
-  },
-  {
-    accessorKey: 'symbol',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Symbol
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const exchange = row.original.exchange || '';
-      const displaySymbol = exchange
-        ? getDisplaySymbol(row.original.symbol, exchange)
-        : row.original.symbol;
-      const baseCurrency = extractBaseCurrency(row.original.symbol);
-      return (
-        <div className="flex items-center gap-2">
-          <SymbolIcon symbol={baseCurrency} size="sm" />
-          <span className="font-medium font-mono">{displaySymbol}</span>
-        </div>
-      );
-    },
-  },
-  {
-    accessorKey: 'exchange',
-    header: 'Exchange',
-    cell: ({ row }) => {
-      const exchange = row.original.exchange;
-      if (!exchange) return <span className="text-muted-foreground">-</span>;
-      return (
-        <div className="flex items-center gap-2">
-          <ExchangeLogo exchange={exchange} className="h-4 w-4" />
-          <span className="capitalize text-sm">{exchange}</span>
-        </div>
-      );
-    },
-    filterFn: (row, id, value) => {
-      if (value === 'all') return true;
-      return row.getValue(id) === value;
-    },
-  },
-  {
-    accessorKey: 'side',
-    header: 'Side',
-    cell: ({ row }) => (
-      <Badge
-        variant="outline"
-        className={cn('font-medium', getSideColor(row.original.side))}
-      >
-        {row.original.side}
-      </Badge>
-    ),
-    filterFn: (row, id, value) => {
-      if (value === 'all') return true;
-      return row.getValue(id) === value;
-    },
-  },
-  {
-    accessorKey: 'type',
-    header: 'Type',
-    cell: ({ row }) => (
-      <Badge variant="secondary" className="font-mono text-xs">
-        {row.original.type}
-      </Badge>
-    ),
-    filterFn: (row, id, value) => {
-      if (value === 'all') return true;
-      return row.getValue(id) === value;
-    },
-  },
-  {
-    accessorKey: 'quantity',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Quantity
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const qty = formatNumber(row.original.quantity);
-      const execQty = row.original.executedQuantity
-        ? formatNumber(row.original.executedQuantity)
-        : null;
-      return (
-        <div className="text-right font-mono tabular-nums">
-          <div>{qty}</div>
-          {execQty && execQty !== qty && (
-            <div className="text-xs text-muted-foreground">Filled: {execQty}</div>
-          )}
-        </div>
-      );
-    },
-    sortingFn: (rowA, rowB) =>
-      parseFloat(rowA.original.quantity) - parseFloat(rowB.original.quantity),
-  },
-  {
-    accessorKey: 'price',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Price
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const price = row.original.price;
-      const avgPrice = row.original.averagePrice;
-      return (
-        <div className="text-right font-mono tabular-nums">
-          <div>{price ? formatCurrency(price) : 'MARKET'}</div>
-          {avgPrice && price !== avgPrice && (
-            <div className="text-xs text-muted-foreground">
-              Avg: {formatCurrency(avgPrice)}
-            </div>
-          )}
-        </div>
-      );
-    },
-    sortingFn: (rowA, rowB) => {
-      const priceA = parseFloat(rowA.original.price || '0');
-      const priceB = parseFloat(rowB.original.price || '0');
-      return priceA - priceB;
-    },
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({ row }) => (
-      <Badge
-        variant="outline"
-        className={cn('font-medium gap-1', getStatusColor(row.original.status))}
-      >
-        {getStatusIcon(row.original.status)}
-        {row.original.status}
-      </Badge>
-    ),
-    filterFn: (row, id, value) => {
-      if (value === 'all') return true;
-      return row.getValue(id) === value;
-    },
-  },
-  {
-    accessorKey: 'strategyName',
-    header: 'Strategy',
-    cell: ({ row }) => {
-      const name = row.original.strategyName;
-      if (!name) return <span className="text-muted-foreground">-</span>;
-      return (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Badge variant="outline" className="max-w-[120px] truncate cursor-help">
-                {name}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>{name}</p>
-              {row.original.strategyId && (
-                <p className="text-xs text-muted-foreground">
-                  ID: {row.original.strategyId}
-                </p>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      );
-    },
-  },
-  {
-    accessorKey: 'realizedPnl',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        PnL
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
-    cell: ({ row }) => {
-      const pnl = row.original.realizedPnl;
-      if (!pnl) return <span className="text-muted-foreground text-right">-</span>;
-
-      const pnlNum = parseFloat(pnl);
-      const isPositive = pnlNum >= 0;
-
-      return (
-        <div
-          className={cn(
-            'text-right font-mono tabular-nums font-medium',
-            isPositive
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-rose-600 dark:text-rose-400',
-          )}
-        >
-          {isPositive ? '+' : ''}
-          {formatCurrency(pnl)}
-        </div>
-      );
-    },
-    sortingFn: (rowA, rowB) => {
-      const pnlA = parseFloat(rowA.original.realizedPnl || '0');
-      const pnlB = parseFloat(rowB.original.realizedPnl || '0');
-      return pnlA - pnlB;
-    },
-  },
-];
-
 const STATUS_OPTIONS = [
   'all',
   'NEW',
@@ -481,13 +207,7 @@ const TYPE_OPTIONS = [
 ];
 
 // Date range presets
-const DATE_PRESETS = [
-  { label: 'Today', days: 1 },
-  { label: '7 days', days: 7 },
-  { label: '30 days', days: 30 },
-  { label: '90 days', days: 90 },
-  { label: 'All time', days: 0 },
-];
+const DATE_PRESETS = [1, 7, 30, 90, 0];
 
 export function OrdersTable({
   selectedExchange = 'all',
@@ -495,6 +215,8 @@ export function OrdersTable({
   refreshInterval = 30000,
   initialStatusFilter,
 }: OrdersTableProps) {
+  const t = useTranslations('orders');
+  const locale = useLocale();
   const [orders, setOrders] = React.useState<OrderData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
@@ -511,6 +233,346 @@ export function OrdersTable({
   const [selectedType, setSelectedType] = React.useState('all');
   const [datePreset, setDatePreset] = React.useState(0); // Default to all time
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
+
+  const getStatusLabel = React.useCallback(
+    (status: string) => {
+      switch (status.toUpperCase()) {
+        case 'NEW':
+          return t('status.new');
+        case 'FILLED':
+          return t('status.filled');
+        case 'PARTIALLY_FILLED':
+          return t('status.partiallyFilled');
+        case 'CANCELED':
+          return t('status.canceled');
+        case 'REJECTED':
+          return t('status.rejected');
+        case 'EXPIRED':
+          return t('status.expired');
+        default:
+          return status;
+      }
+    },
+    [t],
+  );
+
+  const getSideLabel = React.useCallback(
+    (side: string) => (side.toUpperCase() === 'BUY' ? t('side.buy') : t('side.sell')),
+    [t],
+  );
+
+  const getTypeLabel = React.useCallback(
+    (type: string) => {
+      switch (type.toUpperCase()) {
+        case 'MARKET':
+          return t('type.market');
+        case 'LIMIT':
+          return t('type.limit');
+        case 'STOP_LOSS':
+          return t('type.stopLoss');
+        case 'STOP_LOSS_LIMIT':
+          return t('type.stopLossLimit');
+        case 'TAKE_PROFIT':
+          return t('type.takeProfit');
+        case 'TAKE_PROFIT_LIMIT':
+          return t('type.takeProfitLimit');
+        default:
+          return type.replace(/_/g, ' ');
+      }
+    },
+    [t],
+  );
+
+  const getDatePresetLabel = React.useCallback(
+    (days: number) => {
+      if (days === 0) return t('datePresets.allTime');
+      if (days === 1) return t('datePresets.today');
+      return t('datePresets.days', { count: days });
+    },
+    [t],
+  );
+
+  const columns = React.useMemo<ColumnDef<OrderData>[]>(
+    () => [
+      {
+        accessorKey: 'timestamp',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.time')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-sm whitespace-nowrap cursor-help">
+                  {formatDate(row.original.timestamp, locale)}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{formatFullDate(row.original.timestamp, locale)}</p>
+                {row.original.updateTime && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {t('cells.updated', {
+                      time: formatFullDate(row.original.updateTime, locale),
+                    })}
+                  </p>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ),
+        sortingFn: (rowA, rowB) =>
+          new Date(rowA.original.timestamp).getTime() -
+          new Date(rowB.original.timestamp).getTime(),
+      },
+      {
+        accessorKey: 'symbol',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.symbol')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => {
+          const exchange = row.original.exchange || '';
+          const displaySymbol = exchange
+            ? getDisplaySymbol(row.original.symbol, exchange)
+            : row.original.symbol;
+          const baseCurrency = extractBaseCurrency(row.original.symbol);
+          return (
+            <div className="flex items-center gap-2">
+              <SymbolIcon symbol={baseCurrency} size="sm" />
+              <span className="font-medium font-mono">{displaySymbol}</span>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'exchange',
+        header: t('columns.exchange'),
+        cell: ({ row }) => {
+          const exchange = row.original.exchange;
+          if (!exchange) return <span className="text-muted-foreground">-</span>;
+          return (
+            <div className="flex items-center gap-2">
+              <ExchangeLogo exchange={exchange} className="h-4 w-4" />
+              <span className="capitalize text-sm">{exchange}</span>
+            </div>
+          );
+        },
+        filterFn: (row, id, value) => {
+          if (value === 'all') return true;
+          return row.getValue(id) === value;
+        },
+      },
+      {
+        accessorKey: 'side',
+        header: t('columns.side'),
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={cn('font-medium', getSideColor(row.original.side))}
+          >
+            {getSideLabel(row.original.side)}
+          </Badge>
+        ),
+        filterFn: (row, id, value) => {
+          if (value === 'all') return true;
+          return row.getValue(id) === value;
+        },
+      },
+      {
+        accessorKey: 'type',
+        header: t('columns.type'),
+        cell: ({ row }) => (
+          <Badge variant="secondary" className="font-mono text-xs">
+            {getTypeLabel(row.original.type)}
+          </Badge>
+        ),
+        filterFn: (row, id, value) => {
+          if (value === 'all') return true;
+          return row.getValue(id) === value;
+        },
+      },
+      {
+        accessorKey: 'quantity',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.quantity')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => {
+          const qty = formatNumber(row.original.quantity);
+          const execQty = row.original.executedQuantity
+            ? formatNumber(row.original.executedQuantity)
+            : null;
+          return (
+            <div className="text-right font-mono tabular-nums">
+              <div>{qty}</div>
+              {execQty && execQty !== qty && (
+                <div className="text-xs text-muted-foreground">
+                  {t('cells.filled', { quantity: execQty })}
+                </div>
+              )}
+            </div>
+          );
+        },
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.quantity) - parseFloat(rowB.original.quantity),
+      },
+      {
+        accessorKey: 'price',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.price')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => {
+          const price = row.original.price;
+          const avgPrice = row.original.averagePrice;
+          return (
+            <div className="text-right font-mono tabular-nums">
+              <div>{price ? formatCurrency(price) : t('cells.market')}</div>
+              {avgPrice && price !== avgPrice && (
+                <div className="text-xs text-muted-foreground">
+                  {t('cells.avg', { value: formatCurrency(avgPrice) })}
+                </div>
+              )}
+            </div>
+          );
+        },
+        sortingFn: (rowA, rowB) => {
+          const priceA = parseFloat(rowA.original.price || '0');
+          const priceB = parseFloat(rowB.original.price || '0');
+          return priceA - priceB;
+        },
+      },
+      {
+        accessorKey: 'status',
+        header: t('columns.status'),
+        cell: ({ row }) => (
+          <Badge
+            variant="outline"
+            className={cn('font-medium gap-1', getStatusColor(row.original.status))}
+          >
+            {getStatusIcon(row.original.status)}
+            {getStatusLabel(row.original.status)}
+          </Badge>
+        ),
+        filterFn: (row, id, value) => {
+          if (value === 'all') return true;
+          return row.getValue(id) === value;
+        },
+      },
+      {
+        accessorKey: 'strategyName',
+        header: t('columns.strategy'),
+        cell: ({ row }) => {
+          const name = row.original.strategyName;
+          if (!name) return <span className="text-muted-foreground">-</span>;
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="max-w-[120px] truncate cursor-help">
+                    {name}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{name}</p>
+                  {row.original.strategyId && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('cells.strategyId', { id: row.original.strategyId })}
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
+      },
+      {
+        accessorKey: 'realizedPnl',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.pnl')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) => {
+          const pnl = row.original.realizedPnl;
+          if (!pnl) return <span className="text-muted-foreground text-right">-</span>;
+
+          const pnlNum = parseFloat(pnl);
+          const isPositive = pnlNum >= 0;
+
+          return (
+            <div
+              className={cn(
+                'text-right font-mono tabular-nums font-medium',
+                isPositive
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-rose-600 dark:text-rose-400',
+              )}
+            >
+              {isPositive ? '+' : ''}
+              {formatCurrency(pnl)}
+            </div>
+          );
+        },
+        sortingFn: (rowA, rowB) => {
+          const pnlA = parseFloat(rowA.original.realizedPnl || '0');
+          const pnlB = parseFloat(rowB.original.realizedPnl || '0');
+          return pnlA - pnlB;
+        },
+      },
+    ],
+    [getSideLabel, getStatusLabel, getTypeLabel, locale, t],
+  );
 
   const fetchData = React.useCallback(async () => {
     try {
@@ -552,11 +614,11 @@ export function OrdersTable({
         setLastRefresh(new Date());
       }
     } catch (error) {
-      console.error('Failed to fetch orders:', error);
+      console.error(t('errors.fetchOrders'), error);
     } finally {
       setLoading(false);
     }
-  }, [selectedExchange, selectedStrategy, datePreset]);
+  }, [datePreset, selectedExchange, selectedStrategy, t]);
 
   React.useEffect(() => {
     fetchData();
@@ -680,7 +742,7 @@ export function OrdersTable({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Orders</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -701,11 +763,11 @@ export function OrdersTable({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <div className="flex flex-col gap-1">
-          <CardTitle>Transaction History</CardTitle>
+          <CardTitle>{t('transactionHistory')}</CardTitle>
           <div className="flex items-center gap-4 text-sm flex-wrap">
             <span className="text-muted-foreground">
-              {stats.total} order{stats.total !== 1 ? 's' : ''}
-              {stats.filled > 0 && ` (${stats.filled} filled)`}
+              {t('stats.orders', { count: stats.total })}
+              {stats.filled > 0 && ` (${t('stats.filled', { count: stats.filled })})`}
             </span>
             {stats.totalPnl !== 0 && (
               <span
@@ -716,17 +778,17 @@ export function OrdersTable({
                     : 'text-rose-600 dark:text-rose-400',
                 )}
               >
-                Total PnL: {stats.totalPnl >= 0 ? '+' : ''}
+                {t('stats.totalPnl')}: {stats.totalPnl >= 0 ? '+' : ''}
                 {formatCurrency(stats.totalPnl)}
               </span>
             )}
             <span className="text-muted-foreground">
               <span className="text-emerald-600 dark:text-emerald-400">
-                {stats.buyOrders} buys
+                {t('stats.buys', { count: stats.buyOrders })}
               </span>
               {' / '}
               <span className="text-rose-600 dark:text-rose-400">
-                {stats.sellOrders} sells
+                {t('stats.sells', { count: stats.sellOrders })}
               </span>
             </span>
           </div>
@@ -734,7 +796,9 @@ export function OrdersTable({
         <div className="flex items-center gap-2">
           {lastRefresh && (
             <span className="text-xs text-muted-foreground hidden md:inline">
-              Updated {formatDate(lastRefresh.toISOString())}
+              {t('stats.updated', {
+                time: formatDate(lastRefresh.toISOString(), locale),
+              })}
             </span>
           )}
           <Button variant="outline" size="sm" onClick={fetchData}>
@@ -749,7 +813,7 @@ export function OrdersTable({
             <div className="relative flex-1 min-w-[200px] max-w-sm">
               <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search orders..."
+                placeholder={t('filters.searchPlaceholder')}
                 value={globalFilter ?? ''}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 className="pl-9"
@@ -773,12 +837,12 @@ export function OrdersTable({
                 onValueChange={(v) => setDatePreset(parseInt(v))}
               >
                 <SelectTrigger className="w-[130px]">
-                  <SelectValue placeholder="Date range" />
+                  <SelectValue placeholder={t('filters.dateRange')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {DATE_PRESETS.map((preset) => (
-                    <SelectItem key={preset.days} value={preset.days.toString()}>
-                      {preset.label}
+                  {DATE_PRESETS.map((days) => (
+                    <SelectItem key={days} value={days.toString()}>
+                      {getDatePresetLabel(days)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -790,7 +854,7 @@ export function OrdersTable({
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:flex-wrap">
             <div className="flex items-center gap-2">
               <IconFilter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Filters:</span>
+              <span className="text-sm text-muted-foreground">{t('filters.label')}</span>
             </div>
 
             {exchanges.length > 0 && (
@@ -799,10 +863,10 @@ export function OrdersTable({
                 onValueChange={setSelectedFilterExchange}
               >
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Exchange" />
+                  <SelectValue placeholder={t('filters.exchange')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Exchanges</SelectItem>
+                  <SelectItem value="all">{t('filters.allExchanges')}</SelectItem>
                   {exchanges.map((exchange) => (
                     <SelectItem key={exchange} value={exchange}>
                       <div className="flex items-center gap-2">
@@ -817,12 +881,12 @@ export function OrdersTable({
 
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
               <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t('filters.status')} />
               </SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map((status) => (
                   <SelectItem key={status} value={status}>
-                    {status === 'all' ? 'All Status' : status}
+                    {status === 'all' ? t('filters.allStatus') : getStatusLabel(status)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -830,12 +894,12 @@ export function OrdersTable({
 
             <Select value={selectedSide} onValueChange={setSelectedSide}>
               <SelectTrigger className="w-[110px]">
-                <SelectValue placeholder="Side" />
+                <SelectValue placeholder={t('filters.side')} />
               </SelectTrigger>
               <SelectContent>
                 {SIDE_OPTIONS.map((side) => (
                   <SelectItem key={side} value={side}>
-                    {side === 'all' ? 'All Sides' : side}
+                    {side === 'all' ? t('filters.allSides') : getSideLabel(side)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -843,12 +907,12 @@ export function OrdersTable({
 
             <Select value={selectedType} onValueChange={setSelectedType}>
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder={t('filters.type')} />
               </SelectTrigger>
               <SelectContent>
                 {TYPE_OPTIONS.map((type) => (
                   <SelectItem key={type} value={type}>
-                    {type === 'all' ? 'All Types' : type.replace(/_/g, ' ')}
+                    {type === 'all' ? t('filters.allTypes') : getTypeLabel(type)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -862,7 +926,7 @@ export function OrdersTable({
                 className="text-muted-foreground"
               >
                 <IconX className="h-4 w-4 mr-1" />
-                Clear
+                {t('filters.clear')}
               </Button>
             )}
           </div>
@@ -898,9 +962,7 @@ export function OrdersTable({
               ) : (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
-                    {hasFilters
-                      ? 'No orders found matching your filters.'
-                      : 'No orders found for the selected time period.'}
+                    {hasFilters ? t('empty.filtered') : t('empty.default')}
                   </TableCell>
                 </TableRow>
               )}
@@ -913,17 +975,18 @@ export function OrdersTable({
           <div className="flex items-center justify-between space-x-2 py-4">
             <div className="flex items-center gap-4">
               <div className="text-sm text-muted-foreground">
-                Showing{' '}
-                {table.getState().pagination.pageIndex *
-                  table.getState().pagination.pageSize +
-                  1}{' '}
-                to{' '}
-                {Math.min(
-                  (table.getState().pagination.pageIndex + 1) *
-                    table.getState().pagination.pageSize,
-                  table.getFilteredRowModel().rows.length,
-                )}{' '}
-                of {table.getFilteredRowModel().rows.length} orders
+                {t('pagination.showing', {
+                  start:
+                    table.getState().pagination.pageIndex *
+                      table.getState().pagination.pageSize +
+                    1,
+                  end: Math.min(
+                    (table.getState().pagination.pageIndex + 1) *
+                      table.getState().pagination.pageSize,
+                    table.getFilteredRowModel().rows.length,
+                  ),
+                  total: table.getFilteredRowModel().rows.length,
+                })}
               </div>
               <Select
                 value={table.getState().pagination.pageSize.toString()}
@@ -935,7 +998,7 @@ export function OrdersTable({
                 <SelectContent>
                   {[10, 20, 50, 100].map((size) => (
                     <SelectItem key={size} value={size.toString()}>
-                      {size} / page
+                      {t('pagination.perPage', { count: size })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -949,10 +1012,13 @@ export function OrdersTable({
                 disabled={!table.getCanPreviousPage()}
               >
                 <IconChevronLeft className="h-4 w-4" />
-                Previous
+                {t('pagination.previous')}
               </Button>
               <div className="text-sm text-muted-foreground">
-                Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+                {t('pagination.page', {
+                  current: table.getState().pagination.pageIndex + 1,
+                  total: table.getPageCount(),
+                })}
               </div>
               <Button
                 variant="outline"
@@ -960,7 +1026,7 @@ export function OrdersTable({
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
-                Next
+                {t('pagination.next')}
                 <IconChevronRight className="h-4 w-4" />
               </Button>
             </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { AssetAllocationChart } from '@/components/asset-allocation-chart';
 import { AssetsTable } from '@/components/assets-table';
@@ -14,6 +15,7 @@ const REFRESH_INTERVAL = parseInt(
 );
 
 export default function AssetsPage() {
+  const t = useTranslations('portfolio.assets');
   const [selectedExchange, setSelectedExchange] = useState('all');
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
 
@@ -39,7 +41,7 @@ export default function AssetsPage() {
   return (
     <SidebarInset>
       <SiteHeader
-        title="Assets"
+        title={t('title')}
         links={
           <ExchangeSelector
             value={selectedExchange}

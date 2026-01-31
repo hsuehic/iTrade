@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   IconPlus,
@@ -100,6 +101,8 @@ interface DryRunTrade {
 }
 
 export default function DryRunPage() {
+  const t = useTranslations('dryRun');
+  const locale = useLocale();
   const [sessions, setSessions] = useState<DryRunSession[]>([]);
   const [strategies, setStrategies] = useState<StrategyEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,26 +126,26 @@ export default function DryRunPage() {
   const fetchSessions = useCallback(async () => {
     try {
       const response = await fetch('/api/dry-run', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch sessions');
+      if (!response.ok) throw new Error(t('errors.fetchSessions'));
       const data = await response.json();
       setSessions(data.sessions);
     } catch {
-      toast.error('Failed to load dry run sessions');
+      toast.error(t('errors.loadSessions'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchStrategies = useCallback(async () => {
     try {
       const response = await fetch('/api/strategies', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Failed to fetch strategies');
+      if (!response.ok) throw new Error(t('errors.fetchStrategies'));
       const data = await response.json();
       setStrategies(data.strategies);
     } catch {
       console.error('Failed to fetch strategies');
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchSessions();
@@ -166,15 +169,15 @@ export default function DryRunPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create session');
+        throw new Error(error.error || t('errors.create'));
       }
 
-      toast.success('Dry run session created successfully');
+      toast.success(t('messages.created'));
       setIsCreateDialogOpen(false);
       resetForm();
       fetchSessions();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'An error occurred');
+      toast.error(error instanceof Error ? error.message : t('errors.generic'));
     } finally {
       setIsCreating(false);
     }
@@ -204,13 +207,17 @@ export default function DryRunPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to update status');
+        throw new Error(error.error || t('errors.updateStatus'));
       }
 
-      toast.success(`Session ${action === 'stop' ? 'stopped' : action} successfully`);
+      toast.success(
+        action === 'stop'
+          ? t('messages.stopped')
+          : t('messages.statusUpdated', { action }),
+      );
       fetchSessions();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update status');
+      toast.error(error instanceof Error ? error.message : t('errors.updateStatus'));
     } finally {
       setIsUpdatingId(null);
     }
@@ -227,13 +234,13 @@ export default function DryRunPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete session');
+        throw new Error(error.error || t('errors.delete'));
       }
 
-      toast.success('Session deleted successfully');
+      toast.success(t('messages.deleted'));
       fetchSessions();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete session');
+      toast.error(error instanceof Error ? error.message : t('errors.delete'));
     } finally {
       setIsDeletingId(null);
     }
@@ -275,7 +282,7 @@ export default function DryRunPage() {
         {status === 'running' && (
           <span className="mr-1 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
         )}
-        {status.toUpperCase()}
+        {t(`status.${status}`)}
       </Badge>
     );
   };
@@ -284,7 +291,7 @@ export default function DryRunPage() {
     if (value === undefined || value === null) return '-';
     const num = typeof value === 'string' ? parseFloat(value) : value;
     if (isNaN(num)) return '-';
-    return num.toLocaleString(undefined, {
+    return num.toLocaleString(locale, {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     });
@@ -298,10 +305,11 @@ export default function DryRunPage() {
   };
 
   const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-    return `${Math.floor(seconds / 86400)}d`;
+    if (seconds < 60) return t('duration.seconds', { count: seconds });
+    if (seconds < 3600) return t('duration.minutes', { count: Math.floor(seconds / 60) });
+    if (seconds < 86400)
+      return t('duration.hours', { count: Math.floor(seconds / 3600) });
+    return t('duration.days', { count: Math.floor(seconds / 86400) });
   };
 
   // Calculate summary stats
@@ -311,42 +319,40 @@ export default function DryRunPage() {
 
   return (
     <SidebarInset>
-      <SiteHeader title="Paper Trading (Dry Run)" />
+      <SiteHeader title={t('title')} />
       <div className="flex flex-1 flex-col">
         <div className="@container/main flex flex-1 flex-col gap-2">
           <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
             {/* Header */}
             <div className="flex justify-between items-start px-4 lg:px-6">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight">Paper Trading</h2>
-                <p className="text-muted-foreground mt-1">
-                  Test your strategies with real-time market data without risking real
-                  capital
-                </p>
+                <h2 className="text-2xl font-bold tracking-tight">{t('heroTitle')}</h2>
+                <p className="text-muted-foreground mt-1">{t('heroDescription')}</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => fetchSessions()}>
                   <IconRefresh className="h-4 w-4 mr-2" />
-                  Refresh
+                  {t('actions.refresh')}
                 </Button>
                 <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                   <DialogTrigger asChild>
                     <Button size="lg">
                       <IconPlus className="mr-2 h-4 w-4" />
-                      New Session
+                      {t('actions.newSession')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-lg">
                     <DialogHeader>
-                      <DialogTitle>Create Paper Trading Session</DialogTitle>
+                      <DialogTitle>{t('createDialog.title')}</DialogTitle>
                       <DialogDescription>
-                        Start a new paper trading session to test your strategy with
-                        simulated capital
+                        {t('createDialog.description')}
                       </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={createSession} className="space-y-4">
                       <div className="space-y-2">
-                        <Label htmlFor="strategy">Strategy (Optional)</Label>
+                        <Label htmlFor="strategy">
+                          {t('createDialog.strategyLabel')}
+                        </Label>
                         <Select
                           value={formData.strategyId}
                           onValueChange={(value) =>
@@ -354,16 +360,23 @@ export default function DryRunPage() {
                           }
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select a strategy to test" />
+                            <SelectValue
+                              placeholder={t('createDialog.strategyPlaceholder')}
+                            />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">No strategy (manual trading)</SelectItem>
+                            <SelectItem value="">
+                              {t('createDialog.noStrategy')}
+                            </SelectItem>
                             {strategies.map((strategy) => (
                               <SelectItem
                                 key={strategy.id}
                                 value={strategy.id.toString()}
                               >
-                                {strategy.name} ({strategy.type})
+                                {t('createDialog.strategyOption', {
+                                  name: strategy.name,
+                                  type: strategy.type,
+                                })}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -371,10 +384,10 @@ export default function DryRunPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="name">Session Name</Label>
+                        <Label htmlFor="name">{t('createDialog.nameLabel')}</Label>
                         <Input
                           id="name"
-                          placeholder="e.g., BTC Strategy Test"
+                          placeholder={t('createDialog.namePlaceholder')}
                           value={formData.name}
                           onChange={(e) =>
                             setFormData({ ...formData, name: e.target.value })
@@ -384,7 +397,9 @@ export default function DryRunPage() {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="initialBalance">Initial Balance ($)</Label>
+                          <Label htmlFor="initialBalance">
+                            {t('createDialog.initialBalanceLabel')}
+                          </Label>
                           <Input
                             id="initialBalance"
                             type="number"
@@ -397,7 +412,9 @@ export default function DryRunPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="commission">Commission (%)</Label>
+                          <Label htmlFor="commission">
+                            {t('createDialog.commissionLabel')}
+                          </Label>
                           <Input
                             id="commission"
                             type="number"
@@ -415,7 +432,9 @@ export default function DryRunPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="slippage">Slippage (%)</Label>
+                        <Label htmlFor="slippage">
+                          {t('createDialog.slippageLabel')}
+                        </Label>
                         <Input
                           id="slippage"
                           type="number"
@@ -432,10 +451,10 @@ export default function DryRunPage() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="notes">Notes</Label>
+                        <Label htmlFor="notes">{t('createDialog.notesLabel')}</Label>
                         <Textarea
                           id="notes"
-                          placeholder="Add any notes about this test session..."
+                          placeholder={t('createDialog.notesPlaceholder')}
                           value={formData.notes}
                           onChange={(e) =>
                             setFormData({ ...formData, notes: e.target.value })
@@ -454,18 +473,18 @@ export default function DryRunPage() {
                             resetForm();
                           }}
                         >
-                          Cancel
+                          {t('actions.cancel')}
                         </Button>
                         <Button type="submit" disabled={isCreating}>
                           {isCreating ? (
                             <>
                               <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                              Creating...
+                              {t('actions.creating')}
                             </>
                           ) : (
                             <>
                               <IconPlayerPlay className="h-4 w-4 mr-2" />
-                              Start Session
+                              {t('actions.startSession')}
                             </>
                           )}
                         </Button>
@@ -480,19 +499,19 @@ export default function DryRunPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 px-4 lg:px-6">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Total Sessions</CardDescription>
+                  <CardDescription>{t('stats.totalSessions')}</CardDescription>
                   <CardTitle className="text-3xl">{totalSessions}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconChartLine className="h-3 w-3" />
-                    All time paper trading sessions
+                    {t('stats.totalSessionsHint')}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Running</CardDescription>
+                  <CardDescription>{t('stats.running')}</CardDescription>
                   <CardTitle className="text-3xl text-green-600">
                     {runningCount}
                   </CardTitle>
@@ -500,13 +519,13 @@ export default function DryRunPage() {
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconActivity className="h-3 w-3" />
-                    Active sessions in progress
+                    {t('stats.runningHint')}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Completed</CardDescription>
+                  <CardDescription>{t('stats.completed')}</CardDescription>
                   <CardTitle className="text-3xl text-blue-600">
                     {completedCount}
                   </CardTitle>
@@ -514,13 +533,13 @@ export default function DryRunPage() {
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconClock className="h-3 w-3" />
-                    Finished sessions with results
+                    {t('stats.completedHint')}
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardDescription>Success Rate</CardDescription>
+                  <CardDescription>{t('stats.successRate')}</CardDescription>
                   <CardTitle className="text-3xl">
                     {completedCount > 0
                       ? `${Math.round(
@@ -538,7 +557,7 @@ export default function DryRunPage() {
                 <CardContent>
                   <div className="text-xs text-muted-foreground flex items-center gap-1">
                     <IconTrendingUp className="h-3 w-3" />
-                    Sessions with positive returns
+                    {t('stats.successRateHint')}
                   </div>
                 </CardContent>
               </Card>
@@ -550,7 +569,9 @@ export default function DryRunPage() {
                 <div className="flex items-center justify-center py-20">
                   <div className="text-center space-y-3">
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto" />
-                    <p className="text-sm text-muted-foreground">Loading sessions...</p>
+                    <p className="text-sm text-muted-foreground">
+                      {t('loadingSessions')}
+                    </p>
                   </div>
                 </div>
               ) : sessions.length === 0 ? (
@@ -559,16 +580,13 @@ export default function DryRunPage() {
                     <div className="rounded-full bg-muted p-4 mb-4">
                       <IconChartLine className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h3 className="text-lg font-semibold mb-2">
-                      No paper trading sessions yet
-                    </h3>
+                    <h3 className="text-lg font-semibold mb-2">{t('empty.title')}</h3>
                     <p className="text-sm text-muted-foreground mb-4 text-center max-w-sm">
-                      Start a paper trading session to test your strategies with simulated
-                      capital using real market data.
+                      {t('empty.description')}
                     </p>
                     <Button onClick={() => setIsCreateDialogOpen(true)}>
                       <IconPlus className="mr-2 h-4 w-4" />
-                      Create Your First Session
+                      {t('empty.action')}
                     </Button>
                   </CardContent>
                 </Card>
@@ -580,22 +598,27 @@ export default function DryRunPage() {
                         <div className="flex items-start justify-between">
                           <div>
                             <CardTitle className="text-lg flex items-center gap-2">
-                              {session.name || `Session #${session.id}`}
+                              {session.name || t('sessionTitle', { id: session.id })}
                               {getStatusBadge(session.status)}
                             </CardTitle>
                             <CardDescription className="mt-1">
                               {session.strategy ? (
                                 <>
-                                  Strategy:{' '}
+                                  {t('sessionStrategyLabel')}{' '}
                                   <span className="font-medium">
                                     {session.strategy.name}
                                   </span>
                                   {' • '}
                                 </>
                               ) : (
-                                'Manual trading • '
+                                <>
+                                  {t('sessionManual')}
+                                  {' • '}
+                                </>
                               )}
-                              Started {new Date(session.startTime).toLocaleString()}
+                              {t('sessionStarted', {
+                                time: new Date(session.startTime).toLocaleString(locale),
+                              })}
                             </CardDescription>
                           </div>
                           <div className="flex gap-2">
@@ -644,18 +667,22 @@ export default function DryRunPage() {
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                           <div>
                             <div className="text-xs text-muted-foreground">
-                              Initial Balance
+                              {t('session.initialBalance')}
                             </div>
                             <div className="font-medium">
                               ${formatNumber(session.initialBalance)}
                             </div>
                           </div>
                           <div>
-                            <div className="text-xs text-muted-foreground">Trades</div>
+                            <div className="text-xs text-muted-foreground">
+                              {t('session.trades')}
+                            </div>
                             <div className="font-medium">{session.tradesCount || 0}</div>
                           </div>
                           <div>
-                            <div className="text-xs text-muted-foreground">Total P&L</div>
+                            <div className="text-xs text-muted-foreground">
+                              {t('session.totalPnl')}
+                            </div>
                             <div
                               className={`font-medium ${
                                 parseFloat(session.totalPnL || '0') >= 0
@@ -671,7 +698,7 @@ export default function DryRunPage() {
                             <>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Return
+                                  {t('session.return')}
                                 </div>
                                 <div
                                   className={`font-medium ${
@@ -685,7 +712,7 @@ export default function DryRunPage() {
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Win Rate
+                                  {t('session.winRate')}
                                 </div>
                                 <div className="font-medium">
                                   {formatPercent(session.latestResult.winRate)}
@@ -693,7 +720,7 @@ export default function DryRunPage() {
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
-                                  Max Drawdown
+                                  {t('session.maxDrawdown')}
                                 </div>
                                 <div className="font-medium text-orange-600">
                                   {formatPercent(session.latestResult.maxDrawdown)}
@@ -719,13 +746,16 @@ export default function DryRunPage() {
             <div className="flex items-center justify-between">
               <div>
                 <DialogTitle className="flex items-center gap-2">
-                  {selectedSession?.name || `Session #${selectedSession?.id}`}
+                  {selectedSession?.name ||
+                    t('sessionTitle', { id: selectedSession?.id ?? '-' })}
                   {selectedSession && getStatusBadge(selectedSession.status)}
                 </DialogTitle>
                 <DialogDescription>
                   {selectedSession?.strategy
-                    ? `Strategy: ${selectedSession.strategy.name}`
-                    : 'Manual trading session'}
+                    ? t('details.strategySession', {
+                        name: selectedSession.strategy.name,
+                      })
+                    : t('details.manualSession')}
                 </DialogDescription>
               </div>
             </div>
@@ -734,9 +764,9 @@ export default function DryRunPage() {
           {selectedSession && (
             <Tabs defaultValue="overview" className="mt-4">
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="trades">Trades</TabsTrigger>
-                <TabsTrigger value="metrics">Metrics</TabsTrigger>
+                <TabsTrigger value="overview">{t('tabs.overview')}</TabsTrigger>
+                <TabsTrigger value="trades">{t('tabs.trades')}</TabsTrigger>
+                <TabsTrigger value="metrics">{t('tabs.metrics')}</TabsTrigger>
               </TabsList>
 
               <TabsContent value="overview" className="space-y-4">
@@ -745,7 +775,7 @@ export default function DryRunPage() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Total Return</CardDescription>
+                        <CardDescription>{t('overview.totalReturn')}</CardDescription>
                         <CardTitle
                           className={`text-2xl ${
                             parseFloat(selectedSession.latestResult.totalReturn) >= 0
@@ -759,7 +789,7 @@ export default function DryRunPage() {
                     </Card>
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Win Rate</CardDescription>
+                        <CardDescription>{t('overview.winRate')}</CardDescription>
                         <CardTitle className="text-2xl">
                           {formatPercent(selectedSession.latestResult.winRate)}
                         </CardTitle>
@@ -767,7 +797,7 @@ export default function DryRunPage() {
                     </Card>
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Sharpe Ratio</CardDescription>
+                        <CardDescription>{t('overview.sharpeRatio')}</CardDescription>
                         <CardTitle className="text-2xl">
                           {formatNumber(selectedSession.latestResult.sharpeRatio)}
                         </CardTitle>
@@ -775,7 +805,7 @@ export default function DryRunPage() {
                     </Card>
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardDescription>Max Drawdown</CardDescription>
+                        <CardDescription>{t('overview.maxDrawdown')}</CardDescription>
                         <CardTitle className="text-2xl text-orange-600">
                           {formatPercent(selectedSession.latestResult.maxDrawdown)}
                         </CardTitle>
@@ -787,45 +817,57 @@ export default function DryRunPage() {
                 {/* Session Info */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Session Information</CardTitle>
+                    <CardTitle className="text-base">{t('info.title')}</CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-sm text-muted-foreground">Start Time</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('info.startTime')}
+                      </div>
                       <div className="font-medium">
-                        {new Date(selectedSession.startTime).toLocaleString()}
+                        {new Date(selectedSession.startTime).toLocaleString(locale)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">End Time</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('info.endTime')}
+                      </div>
                       <div className="font-medium">
                         {selectedSession.endTime
-                          ? new Date(selectedSession.endTime).toLocaleString()
-                          : 'Running...'}
+                          ? new Date(selectedSession.endTime).toLocaleString(locale)
+                          : t('info.running')}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Initial Balance</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('info.initialBalance')}
+                      </div>
                       <div className="font-medium">
                         ${formatNumber(selectedSession.initialBalance)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Commission</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('info.commission')}
+                      </div>
                       <div className="font-medium">
                         {(parseFloat(selectedSession.commission) * 100).toFixed(2)}%
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Symbols</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('info.symbols')}
+                      </div>
                       <div className="font-medium">
-                        {selectedSession.symbols?.join(', ') || 'All'}
+                        {selectedSession.symbols?.join(', ') || t('info.allSymbols')}
                       </div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Timeframe</div>
+                      <div className="text-sm text-muted-foreground">
+                        {t('info.timeframe')}
+                      </div>
                       <div className="font-medium">
-                        {selectedSession.timeframe || '1h'}
+                        {selectedSession.timeframe || t('info.defaultTimeframe')}
                       </div>
                     </div>
                   </CardContent>
@@ -834,7 +876,7 @@ export default function DryRunPage() {
                 {selectedSession.notes && (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Notes</CardTitle>
+                      <CardTitle className="text-base">{t('info.notes')}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-muted-foreground">{selectedSession.notes}</p>
@@ -848,7 +890,7 @@ export default function DryRunPage() {
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <IconChartLine className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No trades recorded yet</p>
+                      <p className="text-muted-foreground">{t('trades.empty')}</p>
                     </CardContent>
                   </Card>
                 ) : (
@@ -856,13 +898,23 @@ export default function DryRunPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Symbol</TableHead>
-                          <TableHead>Side</TableHead>
-                          <TableHead className="text-right">Entry</TableHead>
-                          <TableHead className="text-right">Exit</TableHead>
-                          <TableHead className="text-right">Qty</TableHead>
-                          <TableHead className="text-right">P&L</TableHead>
-                          <TableHead className="text-right">Duration</TableHead>
+                          <TableHead>{t('trades.table.symbol')}</TableHead>
+                          <TableHead>{t('trades.table.side')}</TableHead>
+                          <TableHead className="text-right">
+                            {t('trades.table.entry')}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t('trades.table.exit')}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t('trades.table.quantity')}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t('trades.table.pnl')}
+                          </TableHead>
+                          <TableHead className="text-right">
+                            {t('trades.table.duration')}
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -878,7 +930,7 @@ export default function DryRunPage() {
                                     : 'bg-red-500/10 text-red-600'
                                 }
                               >
-                                {trade.side}
+                                {t(`trades.side.${trade.side.toLowerCase()}`)}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
@@ -916,11 +968,15 @@ export default function DryRunPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Return Metrics</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('metrics.returnTitle')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Total Return</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.totalReturn')}
+                          </span>
                           <span
                             className={`font-medium ${
                               parseFloat(selectedSession.latestResult.totalReturn) >= 0
@@ -932,7 +988,9 @@ export default function DryRunPage() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Annualized Return</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.annualizedReturn')}
+                          </span>
                           <span
                             className={`font-medium ${
                               parseFloat(selectedSession.latestResult.annualizedReturn) >=
@@ -945,7 +1003,9 @@ export default function DryRunPage() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Profit Factor</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.profitFactor')}
+                          </span>
                           <span className="font-medium">
                             {formatNumber(selectedSession.latestResult.profitFactor)}
                           </span>
@@ -955,23 +1015,31 @@ export default function DryRunPage() {
 
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Risk Metrics</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('metrics.riskTitle')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Sharpe Ratio</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.sharpeRatio')}
+                          </span>
                           <span className="font-medium">
                             {formatNumber(selectedSession.latestResult.sharpeRatio)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Max Drawdown</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.maxDrawdown')}
+                          </span>
                           <span className="font-medium text-orange-600">
                             {formatPercent(selectedSession.latestResult.maxDrawdown)}
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Win Rate</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.winRate')}
+                          </span>
                           <span className="font-medium">
                             {formatPercent(selectedSession.latestResult.winRate)}
                           </span>
@@ -981,18 +1049,22 @@ export default function DryRunPage() {
 
                     <Card className="col-span-2">
                       <CardHeader>
-                        <CardTitle className="text-base">Trading Activity</CardTitle>
+                        <CardTitle className="text-base">
+                          {t('metrics.activityTitle')}
+                        </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Total Trades</span>
+                          <span className="text-muted-foreground">
+                            {t('metrics.totalTrades')}
+                          </span>
                           <span className="font-medium">
                             {selectedSession.latestResult.totalTrades}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
-                            Avg Trade Duration
+                            {t('metrics.avgTradeDuration')}
                           </span>
                           <span className="font-medium">
                             {formatDuration(
@@ -1007,7 +1079,7 @@ export default function DryRunPage() {
                   <Card>
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <IconActivity className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No metrics available yet</p>
+                      <p className="text-muted-foreground">{t('metrics.empty')}</p>
                     </CardContent>
                   </Card>
                 )}

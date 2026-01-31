@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 type Step = 'email' | 'verify' | 'success';
 
 export function DeleteAccountForm() {
+  const t = useTranslations('auth.deleteAccount');
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,15 +27,15 @@ export function DeleteAccountForm() {
   const handleSendCode = async () => {
     const emailRegex = /^[\w.-]+@[a-zA-Z\d.-]+\.[a-zA-Z]{2,}$/;
     if (!email) {
-      setError('Email is required');
+      setError(t('errors.emailRequired'));
       return;
     }
     if (!emailRegex.test(email)) {
-      setError('Invalid email address format');
+      setError(t('errors.emailInvalid'));
       return;
     }
     if (!password) {
-      setError('Password is required');
+      setError(t('errors.passwordRequired'));
       return;
     }
 
@@ -50,10 +52,10 @@ export function DeleteAccountForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to send verification code');
+        throw new Error(data.error || t('errors.sendCodeFailed'));
       }
 
-      toast.success('Verification code sent to your email');
+      toast.success(t('messages.codeSent'));
       setStep('verify');
     } catch (err) {
       const errorMessage = (err as Error).message;
@@ -66,7 +68,7 @@ export function DeleteAccountForm() {
 
   const handleDeleteAccount = async () => {
     if (!verificationCode) {
-      setError('Verification code is required');
+      setError(t('errors.codeRequired'));
       return;
     }
 
@@ -83,11 +85,11 @@ export function DeleteAccountForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete account');
+        throw new Error(data.error || t('errors.deleteFailed'));
       }
 
       setStep('success');
-      toast.success('Account deleted successfully');
+      toast.success(t('messages.deleted'));
 
       // Redirect to home page after 3 seconds
       setTimeout(() => {
@@ -106,30 +108,24 @@ export function DeleteAccountForm() {
     <div className="grid gap-4 p-6 md:p-8 max-w-md mx-auto">
       <div className="flex flex-col items-center text-center mb-4">
         <AlertTriangle className="h-12 w-12 text-destructive mb-2" />
-        <h1 className="text-2xl font-bold">Delete Account</h1>
-        <p className="text-sm text-muted-foreground mt-2">
-          This action cannot be undone. Your account and all associated data will be
-          permanently deleted.
-        </p>
+        <h1 className="text-2xl font-bold">{t('title')}</h1>
+        <p className="text-sm text-muted-foreground mt-2">{t('subtitle')}</p>
       </div>
 
       {step === 'email' && (
         <>
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Warning</AlertTitle>
-            <AlertDescription>
-              Please make sure you want to delete your account. All your data, including
-              strategies, trades, and portfolios will be permanently removed.
-            </AlertDescription>
+            <AlertTitle>{t('warning.title')}</AlertTitle>
+            <AlertDescription>{t('warning.description')}</AlertDescription>
           </Alert>
 
           <div className="grid gap-2">
-            <Label htmlFor="email">Email Address</Label>
+            <Label htmlFor="email">{t('emailLabel')}</Label>
             <Input
               id="email"
               type="email"
-              placeholder="name@example.com"
+              placeholder={t('emailPlaceholder')}
               required
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -140,11 +136,11 @@ export function DeleteAccountForm() {
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t('passwordLabel')}</Label>
             <Input
               id="password"
               type="password"
-              placeholder="Enter your password"
+              placeholder={t('passwordPlaceholder')}
               required
               onChange={(e) => {
                 setPassword(e.target.value);
@@ -152,9 +148,7 @@ export function DeleteAccountForm() {
               }}
               value={password}
             />
-            <p className="text-xs text-muted-foreground">
-              We need to verify your identity before sending the verification code
-            </p>
+            <p className="text-xs text-muted-foreground">{t('passwordHint')}</p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -167,11 +161,7 @@ export function DeleteAccountForm() {
               disabled={loading}
               onClick={handleSendCode}
             >
-              {loading ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                'Send Verification Code'
-              )}
+              {loading ? <Loader2 size={16} className="animate-spin" /> : t('sendCode')}
             </Button>
             <Button
               type="button"
@@ -179,7 +169,7 @@ export function DeleteAccountForm() {
               className="w-full"
               onClick={() => router.push('/')}
             >
-              Cancel
+              {t('cancel')}
             </Button>
           </div>
         </>
@@ -188,18 +178,15 @@ export function DeleteAccountForm() {
       {step === 'verify' && (
         <>
           <Alert>
-            <AlertDescription>
-              A verification code has been sent to <strong>{email}</strong>. Please check
-              your inbox and enter the code below.
-            </AlertDescription>
+            <AlertDescription>{t('verify.description', { email })}</AlertDescription>
           </Alert>
 
           <div className="grid gap-2">
-            <Label htmlFor="code">Verification Code</Label>
+            <Label htmlFor="code">{t('verify.codeLabel')}</Label>
             <Input
               id="code"
               type="text"
-              placeholder="Enter 6-digit code"
+              placeholder={t('verify.codePlaceholder')}
               required
               maxLength={6}
               onChange={(e) => {
@@ -208,9 +195,7 @@ export function DeleteAccountForm() {
               }}
               value={verificationCode}
             />
-            <p className="text-xs text-muted-foreground">
-              The code will expire in 10 minutes
-            </p>
+            <p className="text-xs text-muted-foreground">{t('verify.codeHint')}</p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -226,7 +211,7 @@ export function DeleteAccountForm() {
               {loading ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
-                'Confirm and Delete Account'
+                t('confirmDelete')
               )}
             </Button>
             <Button
@@ -236,7 +221,7 @@ export function DeleteAccountForm() {
               onClick={() => setStep('email')}
               disabled={loading}
             >
-              Back
+              {t('back')}
             </Button>
           </div>
         </>
@@ -261,22 +246,15 @@ export function DeleteAccountForm() {
           </div>
 
           <div>
-            <h2 className="text-xl font-semibold">Account Deleted</h2>
-            <p className="mt-2 text-muted-foreground">
-              Your account has been successfully deleted.
-            </p>
+            <h2 className="text-xl font-semibold">{t('success.title')}</h2>
+            <p className="mt-2 text-muted-foreground">{t('success.description')}</p>
           </div>
 
           <div className="rounded-lg bg-muted p-4">
-            <p className="text-sm">
-              Thank you for being part of our community. We appreciate the time you spent
-              with iTrade. We wish you all the best in your future trading endeavors.
-            </p>
+            <p className="text-sm">{t('success.note')}</p>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            Redirecting to home page in 3 seconds...
-          </p>
+          <p className="text-xs text-muted-foreground">{t('success.redirect')}</p>
         </div>
       )}
     </div>

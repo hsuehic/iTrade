@@ -2,14 +2,18 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { ThemeSwitcher } from '@/components/theme-switcher';
+import { LocaleSwitcher } from '@/components/locale-switcher';
 
 interface LandingHeaderProps {
   isAuthenticated: boolean;
 }
 
 export function LandingHeader({ isAuthenticated }: LandingHeaderProps) {
+  const t = useTranslations('navigation');
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -29,22 +33,24 @@ export function LandingHeader({ isAuthenticated }: LandingHeaderProps) {
         <nav className="flex items-center gap-2 sm:gap-4">
           {/* Mobile Download Link */}
           <Button asChild variant="ghost" size="sm" className="hidden sm:flex">
-            <Link href="#mobile-download">Mobile App</Link>
+            <Link href="/#mobile-download">{t('mobileApp')}</Link>
           </Button>
+
+          <LocaleSwitcher />
 
           <ThemeSwitcher />
 
           {isAuthenticated ? (
             <Button asChild size="sm">
-              <Link href="/dashboard">Dashboard</Link>
+              <Link href="/dashboard">{t('dashboard')}</Link>
             </Button>
           ) : (
             <>
               <Button asChild variant="ghost" size="sm">
-                <Link href="/auth/sign-in">Sign In</Link>
+                <Link href="/auth/sign-in">{t('signIn')}</Link>
               </Button>
               <Button asChild size="sm" className="hidden sm:flex">
-                <Link href="/auth/sign-up">Sign Up</Link>
+                <Link href="/auth/sign-up">{t('signUp')}</Link>
               </Button>
             </>
           )}
