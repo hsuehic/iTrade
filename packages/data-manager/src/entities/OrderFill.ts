@@ -14,7 +14,7 @@ export class OrderFillEntity implements OrderFill {
   @Column({ type: 'text', unique: true })
   id!: string;
 
-  @ManyToOne('orders', (o: OrderEntity) => o.fills, {
+  @ManyToOne('orders', 'fills', {
     onDelete: 'CASCADE',
   })
   order!: OrderEntity;

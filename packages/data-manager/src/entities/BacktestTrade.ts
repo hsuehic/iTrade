@@ -10,7 +10,7 @@ export class BacktestTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('backtest_results', (r: BacktestResultEntity) => r.trades, {
+  @ManyToOne('backtest_results', 'trades', {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'resultId' })

@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
+import { getSession } from '@/lib/auth';
 
 export interface AssetData {
   asset: string;
@@ -30,6 +31,11 @@ export interface AssetsSummary {
  */
 export async function GET(request: Request) {
   try {
+    const session = await getSession(request);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const exchangeFilter = searchParams.get('exchange') || 'all';
     const minValue = parseFloat(searchParams.get('minValue') || '0');
@@ -38,7 +44,7 @@ export async function GET(request: Request) {
     const snapshotRepo = dm.getAccountSnapshotRepository();
 
     // Get latest snapshots for all exchanges
-    const latestSnapshots = await snapshotRepo.getLatestForAllExchanges();
+    const latestSnapshots = await snapshotRepo.getLatestForAllExchanges(session.user.id);
 
     if (latestSnapshots.length === 0) {
       return NextResponse.json({

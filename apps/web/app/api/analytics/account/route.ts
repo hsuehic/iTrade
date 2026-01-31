@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
+import { getSession } from '@/lib/auth';
 
 // Transform historical data for chart
 export interface ChartDataPoint {
@@ -17,6 +18,12 @@ export interface ChartDataPoint {
  */
 export async function GET(request: Request) {
   try {
+    const session = await getSession(request);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userId = session.user.id;
     const { searchParams } = new URL(request.url);
     const exchange = searchParams.get('exchange') || 'all';
     const period = searchParams.get('period') || '30d';
@@ -59,9 +66,9 @@ export async function GET(request: Request) {
 
     let latestSnapshots;
     if (exchange === 'all') {
-      latestSnapshots = await snapshotRepo.getLatestForAllExchanges();
+      latestSnapshots = await snapshotRepo.getLatestForAllExchanges(userId);
     } else {
-      const snapshot = await snapshotRepo.getLatest(exchange);
+      const snapshot = await snapshotRepo.getLatest(exchange, userId);
       latestSnapshots = snapshot ? [snapshot] : [];
     }
 
@@ -122,6 +129,7 @@ export async function GET(request: Request) {
           startTime,
           endTime,
           period === '1h' ? 'minute' : period === '1d' ? '5min' : period === '7d' ? 'hour' : 'day',
+          userId,
         ),
       };
     });

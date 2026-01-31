@@ -40,6 +40,7 @@ import { PushNotificationLogEntity } from './entities/PushNotificationLog';
 import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
+import { Verification } from './entities/Verification';
 import {
   StrategyRepository,
   OrderRepository,
@@ -90,6 +91,7 @@ export const EntityMap: Record<string, any> = {
   user: User,
   account: Account,
   session: Session,
+  verification: Verification,
   strategies: StrategyEntity, // matches your decorator @OneToMany('strategies', ...)
   klines: KlineEntity,
   symbols: SymbolEntity,
@@ -125,16 +127,20 @@ export const EntityMap: Record<string, any> = {
 };
 
 export function resolveEntities(entities: any[]) {
-  return entities.map((e) => {
+  const resolved = entities.map((e) => {
     if (typeof e === 'string') {
       const cls = EntityMap[e];
       if (!cls) {
-        throw new Error(`[TypeOrm] Cannot resolve entity name "${e}"`);
+        console.warn(`[TypeOrm] Cannot resolve entity name "${e}"`);
+        return null;
       }
       return cls;
     }
     return e;
-  });
+  }).filter(e => !!e);
+  
+  // Use a Set to ensure unique class constructors, then convert back to array
+  return Array.from(new Set(resolved));
 }
 
 export class TypeOrmDataManager implements IDataManager {
@@ -875,6 +881,7 @@ export class TypeOrmDataManager implements IDataManager {
     status?: string;
     startDate?: Date;
     endDate?: Date;
+    userId?: string;
     includeStrategy?: boolean;
     includeFills?: boolean;
   }): Promise<OrderEntity[]> {
@@ -983,6 +990,7 @@ export class TypeOrmDataManager implements IDataManager {
     startTime: Date,
     endTime: Date,
     interval: 'minute' | '5min' | 'hour' | 'day' | 'week' = 'day',
+    userId?: string,
   ) {
     this.ensureInitialized();
     return await this.balanceHistoryRepository.getBalanceTimeSeries(
@@ -990,6 +998,7 @@ export class TypeOrmDataManager implements IDataManager {
       startTime,
       endTime,
       interval,
+      userId,
     );
   }
 

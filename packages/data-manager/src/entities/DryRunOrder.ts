@@ -30,7 +30,7 @@ export class DryRunOrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   clientOrderId?: string | undefined;
 
-  @ManyToOne('dry_run_sessions', (s: DryRunSessionEntity) => s.orders, {
+  @ManyToOne('dry_run_sessions', 'orders', {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'sessionId' })
@@ -101,7 +101,7 @@ export class DryRunOrderEntity implements Order {
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
-  @OneToMany('dry_run_order_fills', (f: DryRunOrderFillEntity) => f.order, {
+  @OneToMany('dry_run_order_fills', 'order', {
     cascade: true,
   })
   fills?: DryRunOrderFillEntity[] | undefined;

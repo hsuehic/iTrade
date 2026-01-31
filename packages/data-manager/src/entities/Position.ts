@@ -23,10 +23,13 @@ import type { User } from './User';
 @Index(['user', 'symbol'])
 @Index(['exchange'])
 @Index(['exchange', 'symbol'])
-@Index(['user', 'exchange', 'symbol'], { unique: true })
+@Index(['userId', 'exchange', 'symbol'], { unique: true })
 export class PositionEntity implements Position {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ type: 'text' })
+  userId!: string;
 
   @Column({ type: 'character varying', length: 20 })
   symbol!: string;
@@ -80,7 +83,7 @@ export class PositionEntity implements Position {
   @Column({ type: 'timestamp' })
   timestamp!: Date;
 
-  @OneToMany('orders', (o: OrderEntity) => o.position)
+  @OneToMany('orders', 'position')
   orders?: OrderEntity[];
 
   @CreateDateColumn()
@@ -89,7 +92,7 @@ export class PositionEntity implements Position {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @ManyToOne('user', { nullable: false })
+  @ManyToOne('user', 'positions', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

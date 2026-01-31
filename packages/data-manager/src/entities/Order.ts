@@ -110,7 +110,7 @@ export class OrderEntity implements Order {
   exchange?: string;
 
   // TypeORM relation - loads the full Strategy object when needed
-  @ManyToOne('strategies', (s: StrategyEntity) => s.orders, { nullable: true })
+  @ManyToOne('strategies', 'orders', { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
@@ -164,10 +164,10 @@ export class OrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   commissionAsset?: string;
 
-  @OneToMany('order_fills', (f: OrderFillEntity) => f.order, { cascade: true })
+  @OneToMany('order_fills', 'order', { cascade: true })
   fills?: OrderFillEntity[];
 
-  @ManyToOne('positions', (p: PositionEntity) => p.orders, {
+  @ManyToOne('positions', 'orders', {
     nullable: true,
   })
   @JoinColumn({ name: 'positionId' })

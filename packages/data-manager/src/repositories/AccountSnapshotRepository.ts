@@ -1,4 +1,4 @@
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Decimal } from 'decimal.js';
 import { Balance, Position } from '@itrade/core';
 
@@ -39,7 +39,7 @@ export class AccountSnapshotRepository {
   }
 
   /**
-   * 保存账户快照
+   * get account snapshot
    */
   async save(data: AccountSnapshotData): Promise<AccountSnapshotEntity> {
     const entity = this.repository.create({
@@ -74,45 +74,57 @@ export class AccountSnapshotRepository {
   }
 
   /**
-   * 获取最新的账户快照
+   * get latest account snapshot
    */
-  async getLatest(exchange: string): Promise<AccountSnapshotData | null> {
-    const entity = await this.repository.createQueryBuilder('snapshot')
-      .where('LOWER(snapshot.exchange::text) = LOWER(:exchange)', { exchange })
-      .orderBy('snapshot.timestamp', 'DESC')
-      .getOne();
+  async getLatest(exchange: string, userId?: string): Promise<AccountSnapshotData | null> {
+    const query = this.repository.createQueryBuilder('snapshot')
+      .leftJoinAndSelect('snapshot.accountInfo', 'accountInfo')
+      .where('LOWER(snapshot.exchange::text) = LOWER(:exchange)', { exchange });
+
+    if (userId) {
+      query.leftJoin('accountInfo.user', 'user')
+           .andWhere('user.id = :userId', { userId });
+    }
+
+    const entity = await query.orderBy('snapshot.timestamp', 'DESC').getOne();
 
     return entity ? this.entityToData(entity) : null;
   }
 
   /**
-   * 获取所有交易所的最新快照
+   * get all latest account snapshots for all exchanges
    */
-  async getLatestForAllExchanges(): Promise<AccountSnapshotData[]> {
-    const rawSnapshots = await this.repository
+  async getLatestForAllExchanges(userId?: string): Promise<AccountSnapshotData[]> {
+    const query = this.repository
       .createQueryBuilder('snapshot')
       .select('DISTINCT ON (LOWER(snapshot.exchange)) snapshot.*')
+      .leftJoin('snapshot.accountInfo', 'accountInfo');
+
+    if (userId) {
+      query.leftJoin('accountInfo.user', 'user')
+           .where('user.id = :userId', { userId });
+    }
+
+    const rawSnapshots = await query
       .orderBy('LOWER(snapshot.exchange)')
       .addOrderBy('snapshot.timestamp', 'DESC')
       .getRawMany();
     
-    // We need to convert raw rows back to data objects
-    // Since getRawMany doesn't apply transformers, we have to be careful
-    // but the entityToData method expects an entity with decimals.
-    // Re-querying by ID might be safer if we want full transformation.
-    
     const ids = rawSnapshots.map(s => s.id);
     if (ids.length === 0) return [];
 
-    const entities = await this.repository.findByIds(ids);
+    const entities = await this.repository.find({
+      where: { id: In(ids) }
+    });
     return entities.map(e => this.entityToData(e));
   }
 
   /**
-   * 查询账户快照历史
+   * query account snapshot history
    */
-  async query(options: AccountSnapshotQueryOptions): Promise<AccountSnapshotData[]> {
-    const queryBuilder = this.repository.createQueryBuilder('snapshot');
+  async query(options: AccountSnapshotQueryOptions & { userId?: string }): Promise<AccountSnapshotData[]> {
+    const queryBuilder = this.repository.createQueryBuilder('snapshot')
+      .leftJoinAndSelect('snapshot.accountInfo', 'accountInfo');
 
     if (options.exchange) {
       queryBuilder.andWhere('snapshot.exchange = :exchange', {
@@ -131,6 +143,11 @@ export class AccountSnapshotRepository {
         endTime: options.endTime,
       });
     }
+    
+    if (options.userId) {
+      queryBuilder.leftJoin('accountInfo.user', 'user')
+                  .andWhere('user.id = :userId', { userId: options.userId });
+    }
 
     queryBuilder.orderBy('snapshot.timestamp', 'DESC');
 
@@ -143,23 +160,29 @@ export class AccountSnapshotRepository {
   }
 
   /**
-   * 获取账户历史快照（时间范围）
+   * get account history snapshots (time range)
    */
   async getHistory(
     exchange: string,
     startTime: Date,
     endTime: Date,
+    userId?: string
   ): Promise<AccountSnapshotData[]> {
-    // Use QueryBuilder for better performance with indexes
-    const entities = await this.repository
+    const query = this.repository
       .createQueryBuilder('snapshot')
+      .leftJoinAndSelect('snapshot.accountInfo', 'accountInfo')
       .where('LOWER(snapshot.exchange) = LOWER(:exchange)', { exchange })
       .andWhere('snapshot.timestamp BETWEEN :startTime AND :endTime', {
         startTime,
         endTime,
-      })
-      .orderBy('snapshot.timestamp', 'ASC')
-      .getMany();
+      });
+
+    if (userId) {
+      query.leftJoin('accountInfo.user', 'user')
+           .andWhere('user.id = :userId', { userId });
+    }
+
+    const entities = await query.orderBy('snapshot.timestamp', 'ASC').getMany();
 
     return entities.map((e) => this.entityToData(e));
   }

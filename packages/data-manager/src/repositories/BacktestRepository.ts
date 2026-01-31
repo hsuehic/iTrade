@@ -4,7 +4,7 @@ import { Decimal } from 'decimal.js';
 import { BacktestConfigEntity } from '../entities/BacktestConfig';
 import { BacktestResultEntity } from '../entities/BacktestResult';
 import { BacktestTradeEntity } from '../entities/BacktestTrade';
-import type { EquityPointEntity } from '../entities/EquityPoint';
+import { EquityPointEntity } from '../entities/EquityPoint';
 
 export interface CreateBacktestConfigData {
   startDate: Date;
@@ -51,7 +51,7 @@ export class BacktestRepository {
     this.configRepository = dataSource.getRepository(BacktestConfigEntity);
     this.resultRepository = dataSource.getRepository(BacktestResultEntity);
     this.tradeRepository = dataSource.getRepository(BacktestTradeEntity);
-    this.equityRepository = dataSource.getRepository('EquityPointEntity');
+    this.equityRepository = dataSource.getRepository(EquityPointEntity);
   }
 
   // Config CRUD operations

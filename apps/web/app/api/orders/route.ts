@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       status?: string;
       startDate?: Date;
       endDate?: Date;
+      userId?: string;
     }
 
     const filters: OrderFilters = {};
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
     if (status) filters.status = status;
     if (startDate) filters.startDate = new Date(startDate);
     if (endDate) filters.endDate = new Date(endDate);
+    filters.userId = session.user.id;
 
     const dataManager = await getDataManager();
     const orders = await dataManager.getOrders(filters);

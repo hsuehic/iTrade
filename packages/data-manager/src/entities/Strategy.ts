@@ -14,6 +14,9 @@ import type { StrategyParameters } from '@itrade/core';
 import { SupportedExchange } from '../constants/exchanges';
 import type { OrderEntity } from './Order';
 import type { User } from './User';
+import type { DryRunSessionEntity } from './DryRunSession';
+import type { BacktestResultEntity } from './BacktestResult';
+import type { StrategyStateEntity } from './StrategyState';
 
 export enum StrategyStatus {
   ACTIVE = 'active',
@@ -108,13 +111,22 @@ export class StrategyEntity {
   @Column({ type: 'timestamp', nullable: true })
   lastExecutionTime?: Date;
 
-  @OneToMany('orders', (o: OrderEntity) => o.strategy, {
+  @OneToMany('orders', 'strategy', {
     onDelete: 'CASCADE',
   })
   orders?: OrderEntity[];
 
+  @OneToMany('dry_run_sessions', 'strategy')
+  dryRunSessions?: DryRunSessionEntity[];
+
+  @OneToMany('backtest_results', 'strategy')
+  backtestResults?: BacktestResultEntity[];
+
+  @OneToMany('strategy_states', 'strategy')
+  state?: StrategyStateEntity[];
+
   // TypeORM relation - loads the full User object when needed
-  @ManyToOne('user', { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('user', 'strategies', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

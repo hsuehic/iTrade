@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
+import { getSession } from '@/lib/auth';
 
 export interface ExchangeGroup {
   exchange: string;
@@ -23,6 +24,11 @@ interface SymbolGroup {
  */
 export async function GET(request: Request) {
   try {
+    const session = await getSession(request);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
 
@@ -30,7 +36,7 @@ export async function GET(request: Request) {
     const strategyRepo = dm.getStrategyRepository();
 
     // Get all strategies with performance data
-    const strategies = await strategyRepo.findAll();
+    const strategies = await strategyRepo.findAll({ userId: session.user.id });
 
     // Calculate performance for each strategy
     const strategyStats = await Promise.all(

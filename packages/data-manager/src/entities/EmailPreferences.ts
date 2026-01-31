@@ -17,7 +17,7 @@ export class EmailPreferencesEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('user', { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('user', 'emailPreferences', { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

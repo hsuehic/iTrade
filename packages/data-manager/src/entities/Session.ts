@@ -28,7 +28,7 @@ export class Session {
   @Column('text', { name: 'userAgent', nullable: true })
   userAgent?: string | null;
 
-  @ManyToOne('user', (user: User) => user.sessions, {
+  @ManyToOne('user', 'sessions', {
     onDelete: 'CASCADE',
   })
   @JoinColumn([{ name: 'userId', referencedColumnName: 'id' }])

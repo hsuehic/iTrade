@@ -20,7 +20,7 @@ export class BalanceEntity implements Balance {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('account_info', (account: AccountInfoEntity) => account.balances, {
+  @ManyToOne('account_info', 'balances', {
     onDelete: 'CASCADE',
   })
   accountInfo!: AccountInfoEntity;

@@ -47,6 +47,7 @@ export class OrderRepository {
     status?: string;
     startDate?: Date;
     endDate?: Date;
+    userId?: string;
     includeStrategy?: boolean;
     includeFills?: boolean;
   }): Promise<OrderEntity[]> {
@@ -79,6 +80,17 @@ export class OrderRepository {
     if (filters?.endDate) {
       query.andWhere('order.timestamp <= :endDate', {
         endDate: filters.endDate,
+      });
+    }
+    
+    if (filters?.userId) {
+      // Must join strategy or position to filter by userId
+      if (!filters.includeStrategy) {
+        query.leftJoin('order.strategy', 'strategy');
+      }
+      query.leftJoin('order.position', 'position');
+      query.andWhere('(strategy.userId = :userId OR position.userId = :userId)', {
+        userId: filters.userId,
       });
     }
 

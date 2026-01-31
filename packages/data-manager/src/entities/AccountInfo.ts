@@ -33,7 +33,7 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'timestamp' })
   updateTime!: Date;
 
-  @OneToMany('balances', (b: BalanceEntity) => b.accountInfo, {
+  @OneToMany('balances', 'accountInfo', {
     cascade: true,
   })
   balances!: BalanceEntity[];
@@ -63,7 +63,7 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 
-  @ManyToOne('user', { nullable: false })
+  @ManyToOne('user', 'accountInfos', { nullable: false })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

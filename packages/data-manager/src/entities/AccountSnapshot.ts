@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 
 import { decimalTransformer } from '../utils/transformers';
+import type { AccountInfoEntity } from './AccountInfo';
 
 /**
  * AccountSnapshot Entity - 账户快照实体
@@ -35,7 +36,7 @@ export class AccountSnapshotEntity {
     nullable: true,
   })
   @JoinColumn({ name: 'account_info_id' })
-  accountInfo?: any;
+  accountInfo?: AccountInfoEntity;
 
   @Column({ type: 'timestamp' })
   timestamp!: Date;
