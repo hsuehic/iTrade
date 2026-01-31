@@ -82,7 +82,7 @@ export class OrderRepository {
         endDate: filters.endDate,
       });
     }
-    
+
     if (filters?.userId) {
       // Must join strategy or position to filter by userId
       if (!filters.includeStrategy) {
@@ -95,8 +95,6 @@ export class OrderRepository {
     }
 
     // Add cache for better performance
-    return await query
-      .orderBy('order.timestamp', 'DESC')
-      .getMany();
+    return await query.orderBy('order.timestamp', 'DESC').getMany();
   }
 }

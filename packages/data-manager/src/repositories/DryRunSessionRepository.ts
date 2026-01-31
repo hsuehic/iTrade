@@ -77,7 +77,11 @@ export class DryRunSessionRepository {
 
   async findById(
     id: number,
-    options?: { includeResults?: boolean; includeTrades?: boolean; includeStrategy?: boolean }
+    options?: {
+      includeResults?: boolean;
+      includeTrades?: boolean;
+      includeStrategy?: boolean;
+    },
   ): Promise<DryRunSessionEntity | null> {
     const relations: string[] = [];
     if (options?.includeStrategy) relations.push('strategy');
@@ -92,7 +96,7 @@ export class DryRunSessionRepository {
 
   async findAll(
     filters?: DryRunSessionFilters,
-    options?: { limit?: number; offset?: number; includeStrategy?: boolean }
+    options?: { limit?: number; offset?: number; includeStrategy?: boolean },
   ): Promise<DryRunSessionEntity[]> {
     const query = this.repository.createQueryBuilder('session');
 
@@ -104,7 +108,9 @@ export class DryRunSessionRepository {
       query.andWhere('session.userId = :userId', { userId: filters.userId });
     }
     if (filters?.strategyId) {
-      query.andWhere('session.strategyId = :strategyId', { strategyId: filters.strategyId });
+      query.andWhere('session.strategyId = :strategyId', {
+        strategyId: filters.strategyId,
+      });
     }
     if (filters?.status) {
       query.andWhere('session.status = :status', { status: filters.status });
@@ -130,7 +136,7 @@ export class DryRunSessionRepository {
 
   async findWithStats(
     filters?: DryRunSessionFilters,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number },
   ): Promise<DryRunSessionWithStats[]> {
     const sessions = await this.findAll(filters, {
       ...options,
@@ -151,7 +157,7 @@ export class DryRunSessionRepository {
         });
         const totalPnL = trades.reduce(
           (sum, trade) => sum.plus(trade.pnl),
-          new Decimal(0)
+          new Decimal(0),
         );
 
         // Get latest result
@@ -166,7 +172,7 @@ export class DryRunSessionRepository {
           totalPnL,
           latestResult: latestResult || undefined,
         };
-      })
+      }),
     );
 
     return sessionsWithStats;
@@ -176,11 +182,7 @@ export class DryRunSessionRepository {
     await this.repository.update({ id }, updates as any);
   }
 
-  async updateStatus(
-    id: number,
-    status: DryRunStatus,
-    endTime?: Date
-  ): Promise<void> {
+  async updateStatus(id: number, status: DryRunStatus, endTime?: Date): Promise<void> {
     const updates: any = { status };
     if (endTime || status === DryRunStatus.COMPLETED || status === DryRunStatus.FAILED) {
       updates.endTime = endTime || new Date();
@@ -209,9 +211,10 @@ export class DryRunSessionRepository {
 
   async getTrades(
     sessionId: number,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number },
   ): Promise<DryRunTradeEntity[]> {
-    const query = this.tradeRepository.createQueryBuilder('trade')
+    const query = this.tradeRepository
+      .createQueryBuilder('trade')
       .where('trade.sessionId = :sessionId', { sessionId })
       .orderBy('trade.entryTime', 'DESC');
 

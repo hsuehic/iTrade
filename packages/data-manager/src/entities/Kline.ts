@@ -10,7 +10,6 @@ import { Decimal } from 'decimal.js';
 
 import { decimalTransformer } from '../utils/transformers';
 
-
 @Entity('klines')
 @Index(['symbol', 'interval', 'openTime'], { unique: true })
 @Index(['symbol', 'interval'])

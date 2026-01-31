@@ -127,18 +127,20 @@ export const EntityMap: Record<string, any> = {
 };
 
 export function resolveEntities(entities: any[]) {
-  const resolved = entities.map((e) => {
-    if (typeof e === 'string') {
-      const cls = EntityMap[e];
-      if (!cls) {
-        console.warn(`[TypeOrm] Cannot resolve entity name "${e}"`);
-        return null;
+  const resolved = entities
+    .map((e) => {
+      if (typeof e === 'string') {
+        const cls = EntityMap[e];
+        if (!cls) {
+          console.warn(`[TypeOrm] Cannot resolve entity name "${e}"`);
+          return null;
+        }
+        return cls;
       }
-      return cls;
-    }
-    return e;
-  }).filter(e => !!e);
-  
+      return e;
+    })
+    .filter((e) => !!e);
+
   // Use a Set to ensure unique class constructors, then convert back to array
   return Array.from(new Set(resolved));
 }

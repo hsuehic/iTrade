@@ -1,6 +1,5 @@
-import { Column, Entity, Index } from 'typeorm';
+import { Column, Entity } from 'typeorm';
 
-@Index('verification_pkey', ['id'], { unique: true })
 @Entity('verification', { schema: 'public' })
 export class Verification {
   @Column('text', { primary: true, name: 'id' })

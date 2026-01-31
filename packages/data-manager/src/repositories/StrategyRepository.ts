@@ -106,9 +106,7 @@ export class StrategyRepository {
     }
 
     // Use cache for frequently accessed queries
-    return await query
-      .orderBy('strategy.createdAt', 'DESC')
-      .getMany();
+    return await query.orderBy('strategy.createdAt', 'DESC').getMany();
   }
 
   async update(id: number, updates: Partial<StrategyEntity>): Promise<void> {

@@ -69,9 +69,7 @@ export class PositionRepository {
     }
 
     // Add cache for better performance
-    return await query
-      .orderBy('position.timestamp', 'DESC')
-      .getMany();
+    return await query.orderBy('position.timestamp', 'DESC').getMany();
   }
 
   async findByExchange(exchange: string, userId?: string): Promise<PositionEntity[]> {

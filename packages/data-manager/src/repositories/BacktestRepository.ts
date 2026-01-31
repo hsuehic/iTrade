@@ -84,7 +84,7 @@ export class BacktestRepository {
 
   async findConfigById(
     id: number,
-    options?: { includeResults?: boolean }
+    options?: { includeResults?: boolean },
   ): Promise<BacktestConfigEntity | null> {
     const relations: string[] = [];
     if (options?.includeResults) relations.push('results');
@@ -97,7 +97,7 @@ export class BacktestRepository {
 
   async findAllConfigs(
     filters?: BacktestConfigFilters,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number },
   ): Promise<BacktestConfigEntity[]> {
     const query = this.configRepository.createQueryBuilder('config');
 
@@ -121,7 +121,7 @@ export class BacktestRepository {
 
   async findConfigsWithStats(
     filters?: BacktestConfigFilters,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number },
   ): Promise<BacktestConfigWithStats[]> {
     const configs = await this.findAllConfigs(filters, options);
 
@@ -151,7 +151,7 @@ export class BacktestRepository {
           bestResult: bestResult || undefined,
           latestResult: latestResult || undefined,
         };
-      })
+      }),
     );
 
     return configsWithStats;
@@ -209,7 +209,11 @@ export class BacktestRepository {
 
   async findResultById(
     id: number,
-    options?: { includeTrades?: boolean; includeEquity?: boolean; includeStrategy?: boolean }
+    options?: {
+      includeTrades?: boolean;
+      includeEquity?: boolean;
+      includeStrategy?: boolean;
+    },
   ): Promise<BacktestResultEntity | null> {
     const relations: string[] = ['config'];
     if (options?.includeStrategy) relations.push('strategy');
@@ -224,9 +228,10 @@ export class BacktestRepository {
 
   async findResults(
     filters?: BacktestResultFilters,
-    options?: { limit?: number; offset?: number; includeStrategy?: boolean }
+    options?: { limit?: number; offset?: number; includeStrategy?: boolean },
   ): Promise<BacktestResultEntity[]> {
-    const query = this.resultRepository.createQueryBuilder('result')
+    const query = this.resultRepository
+      .createQueryBuilder('result')
       .leftJoinAndSelect('result.config', 'config');
 
     if (options?.includeStrategy) {
@@ -237,13 +242,19 @@ export class BacktestRepository {
       query.andWhere('result.configId = :configId', { configId: filters.configId });
     }
     if (filters?.strategyId) {
-      query.andWhere('result.strategyId = :strategyId', { strategyId: filters.strategyId });
+      query.andWhere('result.strategyId = :strategyId', {
+        strategyId: filters.strategyId,
+      });
     }
     if (filters?.minReturn !== undefined) {
-      query.andWhere('result.totalReturn >= :minReturn', { minReturn: filters.minReturn });
+      query.andWhere('result.totalReturn >= :minReturn', {
+        minReturn: filters.minReturn,
+      });
     }
     if (filters?.maxDrawdown !== undefined) {
-      query.andWhere('result.maxDrawdown <= :maxDrawdown', { maxDrawdown: filters.maxDrawdown });
+      query.andWhere('result.maxDrawdown <= :maxDrawdown', {
+        maxDrawdown: filters.maxDrawdown,
+      });
     }
 
     query.orderBy('result.createdAt', 'DESC');
@@ -261,9 +272,10 @@ export class BacktestRepository {
   // Trade operations
   async getTrades(
     resultId: number,
-    options?: { limit?: number; offset?: number }
+    options?: { limit?: number; offset?: number },
   ): Promise<BacktestTradeEntity[]> {
-    const query = this.tradeRepository.createQueryBuilder('trade')
+    const query = this.tradeRepository
+      .createQueryBuilder('trade')
       .where('trade.resultId = :resultId', { resultId })
       .orderBy('trade.entryTime', 'DESC');
 

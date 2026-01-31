@@ -39,17 +39,81 @@ export class BalanceHistoryRepository {
     locked: Decimal,
     saving: Decimal,
     total: Decimal,
-    timestamp: Date = new Date()
+    timestamp: Date = new Date(),
   ): Promise<void> {
     const jobs = [
-      this.upsert(this.monthRepo, accountInfo, free, locked, saving, total, this.getStartOfMonth(timestamp)),
-      this.upsert(this.weekRepo, accountInfo, free, locked, saving, total, this.getStartOfWeek(timestamp)),
-      this.upsert(this.dayRepo, accountInfo, free, locked, saving, total, this.getStartOfDay(timestamp)),
-      this.upsert(this.hourRepo, accountInfo, free, locked, saving, total, this.getStartOfHour(timestamp)),
-      this.upsert(this.min30Repo, accountInfo, free, locked, saving, total, this.getStartOfMinuteInterval(timestamp, 30)),
-      this.upsert(this.min15Repo, accountInfo, free, locked, saving, total, this.getStartOfMinuteInterval(timestamp, 15)),
-      this.upsert(this.min5Repo, accountInfo, free, locked, saving, total, this.getStartOfMinuteInterval(timestamp, 5)),
-      this.upsert(this.minRepo, accountInfo, free, locked, saving, total, this.getStartOfMinuteInterval(timestamp, 1)),
+      this.upsert(
+        this.monthRepo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfMonth(timestamp),
+      ),
+      this.upsert(
+        this.weekRepo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfWeek(timestamp),
+      ),
+      this.upsert(
+        this.dayRepo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfDay(timestamp),
+      ),
+      this.upsert(
+        this.hourRepo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfHour(timestamp),
+      ),
+      this.upsert(
+        this.min30Repo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfMinuteInterval(timestamp, 30),
+      ),
+      this.upsert(
+        this.min15Repo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfMinuteInterval(timestamp, 15),
+      ),
+      this.upsert(
+        this.min5Repo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfMinuteInterval(timestamp, 5),
+      ),
+      this.upsert(
+        this.minRepo,
+        accountInfo,
+        free,
+        locked,
+        saving,
+        total,
+        this.getStartOfMinuteInterval(timestamp, 1),
+      ),
     ];
     await Promise.all(jobs);
   }
@@ -61,7 +125,7 @@ export class BalanceHistoryRepository {
     locked: Decimal,
     saving: Decimal,
     total: Decimal,
-    period: Date
+    period: Date,
   ) {
     try {
       await repo.upsert(
@@ -73,7 +137,7 @@ export class BalanceHistoryRepository {
           total,
           period,
         },
-        ['accountInfo', 'period'] // TypeORM should handle relation translation, but if not we might need 'accountInfoId'
+        ['accountInfo', 'period'], // TypeORM should handle relation translation, but if not we might need 'accountInfoId'
       );
     } catch (error) {
       console.error(`[BalanceHistoryRepository] Error in upsert:`, error);
@@ -88,10 +152,13 @@ export class BalanceHistoryRepository {
             total,
             period,
           } as any,
-          ['account_info_id', 'period']
+          ['account_info_id', 'period'],
         );
       } catch (innerError) {
-         console.error(`[BalanceHistoryRepository] Fallback upsert also failed:`, innerError);
+        console.error(
+          `[BalanceHistoryRepository] Fallback upsert also failed:`,
+          innerError,
+        );
       }
     }
   }
@@ -132,10 +199,10 @@ export class BalanceHistoryRepository {
     startTime: Date,
     endTime: Date,
     interval: 'minute' | '5min' | 'hour' | 'day' | 'week',
-    userId?: string
+    userId?: string,
   ): Promise<any[]> {
     let repo: Repository<any>;
-    
+
     // Choose appropriate table based on interval
     switch (interval) {
       case 'minute':
@@ -156,24 +223,24 @@ export class BalanceHistoryRepository {
         break;
     }
 
-    const query = repo.createQueryBuilder('balance')
+    const query = repo
+      .createQueryBuilder('balance')
       .leftJoin('balance.accountInfo', 'account')
       .where('LOWER(account.exchange::text) = LOWER(:exchange)', { exchange })
       .andWhere('balance.period >= :start', { start: startTime })
       .andWhere('balance.period <= :end', { end: endTime });
-    
+
     if (userId) {
-      query.leftJoin('account.user', 'user')
-           .andWhere('user.id = :userId', { userId });
+      query.leftJoin('account.user', 'user').andWhere('user.id = :userId', { userId });
     }
 
     const results = await query.orderBy('balance.period', 'ASC').getMany();
 
-    return results.map(r => ({
+    return results.map((r) => ({
       timestamp: r.period,
       balance: r.total, // Return total balance
       free: r.free,
-      locked: r.locked
+      locked: r.locked,
     }));
   }
 }

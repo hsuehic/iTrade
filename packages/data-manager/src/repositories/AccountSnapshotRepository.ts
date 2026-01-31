@@ -76,14 +76,19 @@ export class AccountSnapshotRepository {
   /**
    * get latest account snapshot
    */
-  async getLatest(exchange: string, userId?: string): Promise<AccountSnapshotData | null> {
-    const query = this.repository.createQueryBuilder('snapshot')
+  async getLatest(
+    exchange: string,
+    userId?: string,
+  ): Promise<AccountSnapshotData | null> {
+    const query = this.repository
+      .createQueryBuilder('snapshot')
       .leftJoinAndSelect('snapshot.accountInfo', 'accountInfo')
       .where('LOWER(snapshot.exchange::text) = LOWER(:exchange)', { exchange });
 
     if (userId) {
-      query.leftJoin('accountInfo.user', 'user')
-           .andWhere('user.id = :userId', { userId });
+      query
+        .leftJoin('accountInfo.user', 'user')
+        .andWhere('user.id = :userId', { userId });
     }
 
     const entity = await query.orderBy('snapshot.timestamp', 'DESC').getOne();
@@ -101,29 +106,31 @@ export class AccountSnapshotRepository {
       .leftJoin('snapshot.accountInfo', 'accountInfo');
 
     if (userId) {
-      query.leftJoin('accountInfo.user', 'user')
-           .where('user.id = :userId', { userId });
+      query.leftJoin('accountInfo.user', 'user').where('user.id = :userId', { userId });
     }
 
     const rawSnapshots = await query
       .orderBy('LOWER(snapshot.exchange)')
       .addOrderBy('snapshot.timestamp', 'DESC')
       .getRawMany();
-    
-    const ids = rawSnapshots.map(s => s.id);
+
+    const ids = rawSnapshots.map((s) => s.id);
     if (ids.length === 0) return [];
 
     const entities = await this.repository.find({
-      where: { id: In(ids) }
+      where: { id: In(ids) },
     });
-    return entities.map(e => this.entityToData(e));
+    return entities.map((e) => this.entityToData(e));
   }
 
   /**
    * query account snapshot history
    */
-  async query(options: AccountSnapshotQueryOptions & { userId?: string }): Promise<AccountSnapshotData[]> {
-    const queryBuilder = this.repository.createQueryBuilder('snapshot')
+  async query(
+    options: AccountSnapshotQueryOptions & { userId?: string },
+  ): Promise<AccountSnapshotData[]> {
+    const queryBuilder = this.repository
+      .createQueryBuilder('snapshot')
       .leftJoinAndSelect('snapshot.accountInfo', 'accountInfo');
 
     if (options.exchange) {
@@ -143,10 +150,11 @@ export class AccountSnapshotRepository {
         endTime: options.endTime,
       });
     }
-    
+
     if (options.userId) {
-      queryBuilder.leftJoin('accountInfo.user', 'user')
-                  .andWhere('user.id = :userId', { userId: options.userId });
+      queryBuilder
+        .leftJoin('accountInfo.user', 'user')
+        .andWhere('user.id = :userId', { userId: options.userId });
     }
 
     queryBuilder.orderBy('snapshot.timestamp', 'DESC');
@@ -166,7 +174,7 @@ export class AccountSnapshotRepository {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    userId?: string
+    userId?: string,
   ): Promise<AccountSnapshotData[]> {
     const query = this.repository
       .createQueryBuilder('snapshot')
@@ -178,8 +186,9 @@ export class AccountSnapshotRepository {
       });
 
     if (userId) {
-      query.leftJoin('accountInfo.user', 'user')
-           .andWhere('user.id = :userId', { userId });
+      query
+        .leftJoin('accountInfo.user', 'user')
+        .andWhere('user.id = :userId', { userId });
     }
 
     const entities = await query.orderBy('snapshot.timestamp', 'ASC').getMany();
@@ -290,7 +299,8 @@ export class AccountSnapshotRepository {
     }
 
     // Use QueryBuilder for better portability and correct column naming
-    const queryBuilder = this.repository.createQueryBuilder('snapshot')
+    const queryBuilder = this.repository
+      .createQueryBuilder('snapshot')
       .select('snapshot.timestamp', 'timestamp')
       .addSelect('snapshot.totalBalance', 'balance')
       .where('snapshot.exchange = :exchange', { exchange })
@@ -301,10 +311,10 @@ export class AccountSnapshotRepository {
       .orderBy(`date_trunc('${truncInterval}', snapshot.timestamp)`, 'ASC')
       .addOrderBy('snapshot.timestamp', 'DESC');
 
-    // TypeORM doesn't support DISTINCT ON natively in some versions via easy methods, 
+    // TypeORM doesn't support DISTINCT ON natively in some versions via easy methods,
     // but we can use raw query if we are careful about column names.
     // However, for recent data, a simple orderBy might be enough if we just want points.
-    
+
     const rawResults = await queryBuilder.getRawMany();
 
     // Since we want one per interval, we filter in JS to be safe
@@ -314,7 +324,7 @@ export class AccountSnapshotRepository {
     for (const row of rawResults) {
       const date = new Date(row.timestamp);
       let key: string;
-      
+
       if (truncInterval === 'day') {
         key = date.toISOString().split('T')[0];
       } else if (truncInterval === 'hour') {
