@@ -47,6 +47,9 @@ export class PositionTracker {
 
     // Listen for position updates using the correct event name
     this.eventBus.onPositionUpdate((data) => {
+      if (data.userId && data.userId !== this.userId) {
+        return;
+      }
       // Process each position in the update
       data.positions.forEach((position) => {
         this.handlePositionUpdate(data.exchange, position);
@@ -110,7 +113,7 @@ export class PositionTracker {
 
     const entities = updates.map((update) => ({
       ...update.position,
-      user: { id: userId }, // Set the user relation properly
+      userId,
       exchange: update.exchange,
       symbol: update.symbol,
       timestamp: update.timestamp,
@@ -119,7 +122,7 @@ export class PositionTracker {
     try {
       // Use the correct conflict target - TypeORM will map 'user' to 'userId' column
       await repo.upsert(entities, {
-        conflictPaths: ['user', 'exchange', 'symbol'],
+        conflictPaths: ['userId', 'exchange', 'symbol'],
         skipUpdateIfNoValuesChanged: true,
       });
 

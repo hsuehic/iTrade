@@ -142,24 +142,6 @@ export class BalanceTracker {
         this.dataManager.dataSource.getRepository(AccountInfoEntity);
       const balanceRepo = this.dataManager.dataSource.getRepository(BalanceEntity);
 
-      // Upsert AccountInfoEntity
-      await accountInfoRepo.upsert(
-        {
-          userId,
-          exchange,
-          accountId: exchange, // Use exchange as accountId
-          canTrade: accountInfo.canTrade,
-          canWithdraw: accountInfo.canWithdraw,
-          canDeposit: accountInfo.canDeposit,
-          updateTime: accountInfo.updateTime || timestamp,
-        },
-        {
-          conflictPaths: ['userId', 'exchange'],
-          skipUpdateIfNoValuesChanged: true,
-        },
-      );
-
-      // Get the account info to retrieve its ID
       const existingAccountInfo = await accountInfoRepo.findOne({
         where: {
           userId,
@@ -167,8 +149,15 @@ export class BalanceTracker {
         },
       });
 
-      if (!existingAccountInfo) {
-        throw new Error(`Failed to find AccountInfo after upsert for ${exchange}`);
+      if (
+        !existingAccountInfo ||
+        !existingAccountInfo.apiKey ||
+        !existingAccountInfo.secretKey
+      ) {
+        this.logger.warn(
+          `⚠️  Skipping balance update for ${exchange} (missing stored credentials for user ${userId})`,
+        );
+        return;
       }
 
       // Delete all existing balances for this account

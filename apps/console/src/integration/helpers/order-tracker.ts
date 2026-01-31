@@ -108,6 +108,21 @@ export class OrderTracker {
     return this.orderManager;
   }
 
+  private mergeWithExistingOrder(order: Order): Order {
+    const existingOrder = this.orderManager.getOrder(order.id);
+    if (!existingOrder) {
+      return order;
+    }
+
+    return {
+      ...existingOrder,
+      ...order,
+      price: order.price ?? existingOrder.price,
+      type: order.type ?? existingOrder.type,
+      timeInForce: order.timeInForce ?? existingOrder.timeInForce,
+    };
+  }
+
   private async resolveUserId(order: Order): Promise<string | null> {
     if (order.userId) {
       return order.userId;
@@ -200,15 +215,16 @@ export class OrderTracker {
       }
 
       const existingOrder = this.orderManager.getOrder(order.id);
+      const mergedOrder = this.mergeWithExistingOrder(order);
       const shouldNotify = !existingOrder || existingOrder.status !== 'FILLED';
       if (!existingOrder || existingOrder.status !== 'FILLED') {
         this.totalFilled++;
       }
 
       if (existingOrder) {
-        this.orderManager.updateOrder(order.id, order);
+        this.orderManager.updateOrder(order.id, mergedOrder);
       } else {
-        this.orderManager.addOrder(order);
+        this.orderManager.addOrder(mergedOrder);
       }
 
       // Cancel any pending partial fill update for this order
@@ -219,42 +235,42 @@ export class OrderTracker {
       }
 
       // 🆕 Directly read strategyId and exchange from order object
-      const strategyId = order.strategyId;
-      const exchange = order.exchange;
-      const userId = scopedUserId ?? order.userId;
+      const strategyId = mergedOrder.strategyId;
+      const exchange = mergedOrder.exchange;
+      const userId = scopedUserId ?? mergedOrder.userId;
       if (userId) {
-        order.userId = userId;
+        mergedOrder.userId = userId;
       }
 
       // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
       // This ensures the order is saved even if it's the first time we're seeing it
       await this.dataManager.saveOrder({
-        id: order.id,
-        clientOrderId: order.clientOrderId,
+        id: mergedOrder.id,
+        clientOrderId: mergedOrder.clientOrderId,
         userId,
-        symbol: order.symbol,
-        side: order.side,
-        type: order.type,
-        quantity: order.quantity,
-        price: order.price,
-        status: order.status,
-        timeInForce: order.timeInForce,
-        timestamp: order.timestamp,
-        updateTime: order.updateTime,
-        executedQuantity: order.executedQuantity,
-        cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
+        symbol: mergedOrder.symbol,
+        side: mergedOrder.side,
+        type: mergedOrder.type,
+        quantity: mergedOrder.quantity,
+        price: mergedOrder.price,
+        status: mergedOrder.status,
+        timeInForce: mergedOrder.timeInForce,
+        timestamp: mergedOrder.timestamp,
+        updateTime: mergedOrder.updateTime,
+        executedQuantity: mergedOrder.executedQuantity,
+        cummulativeQuoteQuantity: mergedOrder.cummulativeQuoteQuantity,
         exchange: exchange,
         strategyId: strategyId,
-        strategyType: order.strategyType,
-        strategyName: order.strategyName,
+        strategyType: mergedOrder.strategyType,
+        strategyName: mergedOrder.strategyName,
       });
 
       this.logger.info(
-        `💾 Order filled and updated: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
+        `💾 Order filled and updated: ${mergedOrder.id} (${mergedOrder.executedQuantity?.toString()}/${mergedOrder.quantity.toString()})`,
       );
 
       if (shouldNotify) {
-        await this.pushNotificationService?.notifyOrderFill(order, 'filled');
+        await this.pushNotificationService?.notifyOrderFill(mergedOrder, 'filled');
       }
     } catch (error) {
       this.logger.error('❌ Failed to update filled order', error as Error);
@@ -273,9 +289,10 @@ export class OrderTracker {
       }
 
       this.totalPartialFills++;
+      const mergedOrder = this.mergeWithExistingOrder(order);
 
       // Use debounce for partial fills (can be very frequent)
-      const key = order.id;
+      const key = mergedOrder.id;
 
       // Cancel existing timer if present
       const existing = this.pendingPartialFills.get(key);
@@ -289,13 +306,13 @@ export class OrderTracker {
       }, this.DEBOUNCE_MS);
 
       this.pendingPartialFills.set(key, {
-        order,
+        order: mergedOrder,
         timestamp: new Date(),
         timer,
       });
 
       this.logger.debug(
-        `⏳ Partial fill queued: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
+        `⏳ Partial fill queued: ${mergedOrder.id} (${mergedOrder.executedQuantity?.toString()}/${mergedOrder.quantity.toString()})`,
       );
     } catch (error) {
       this.logger.error('❌ Failed to queue partial fill update', error as Error);
@@ -371,15 +388,16 @@ export class OrderTracker {
       }
 
       const existingOrder = this.orderManager.getOrder(order.id);
+      const mergedOrder = this.mergeWithExistingOrder(order);
       if (!existingOrder || existingOrder.status !== 'CANCELED') {
         this.totalCancelled++;
       }
 
       // Update OrderManager's in-memory state
       if (existingOrder) {
-        this.orderManager.updateOrder(order.id, order);
+        this.orderManager.updateOrder(order.id, mergedOrder);
       } else {
-        this.orderManager.addOrder(order);
+        this.orderManager.addOrder(mergedOrder);
       }
 
       // Cancel any pending partial fill update for this order
@@ -390,12 +408,12 @@ export class OrderTracker {
       }
 
       // Save immediately (final state, no debounce)
-      await this.dataManager.updateOrder(order.id, {
-        status: order.status,
-        updateTime: order.updateTime,
+      await this.dataManager.updateOrder(mergedOrder.id, {
+        status: mergedOrder.status,
+        updateTime: mergedOrder.updateTime,
       });
 
-      this.logger.info(`💾 Order cancelled and updated: ${order.id}`);
+      this.logger.info(`💾 Order cancelled and updated: ${mergedOrder.id}`);
     } catch (error) {
       this.logger.error('❌ Failed to update cancelled order', error as Error);
     }
@@ -413,15 +431,16 @@ export class OrderTracker {
       }
 
       const existingOrder = this.orderManager.getOrder(order.id);
+      const mergedOrder = this.mergeWithExistingOrder(order);
       if (!existingOrder || existingOrder.status !== 'REJECTED') {
         this.totalRejected++;
       }
 
       // Update OrderManager's in-memory state
       if (existingOrder) {
-        this.orderManager.updateOrder(order.id, order);
+        this.orderManager.updateOrder(order.id, mergedOrder);
       } else {
-        this.orderManager.addOrder(order);
+        this.orderManager.addOrder(mergedOrder);
       }
 
       // Cancel any pending partial fill update for this order
@@ -432,12 +451,12 @@ export class OrderTracker {
       }
 
       // Save immediately (final state, no debounce)
-      await this.dataManager.updateOrder(order.id, {
-        status: order.status,
-        updateTime: order.updateTime,
+      await this.dataManager.updateOrder(mergedOrder.id, {
+        status: mergedOrder.status,
+        updateTime: mergedOrder.updateTime,
       });
 
-      this.logger.error(`💾 Order rejected and updated: ${order.id}`);
+      this.logger.error(`💾 Order rejected and updated: ${mergedOrder.id}`);
     } catch (error) {
       this.logger.error('❌ Failed to update rejected order', error as Error);
     }

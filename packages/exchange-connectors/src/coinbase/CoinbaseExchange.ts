@@ -367,6 +367,9 @@ export class CoinbaseExchange extends BaseExchange {
     if (!order.quantity || order.quantity.isZero()) {
       order.quantity = quantity;
     }
+    if (!order.price && type === OrderType.LIMIT && price) {
+      order.price = price;
+    }
     order.symbol = this.denormalizeSymbol(order.symbol);
     return order;
   }
@@ -1257,6 +1260,16 @@ export class CoinbaseExchange extends BaseExchange {
       );
     }
 
+    const orderConfig = orderData.order_configuration;
+    const limitConfig = orderConfig?.limit_limit_gtc;
+    const marketConfig = orderConfig?.market_market_ioc;
+    const orderType =
+      orderData.order_type ||
+      orderData.type ||
+      (limitConfig ? 'LIMIT' : marketConfig ? 'MARKET' : 'LIMIT');
+    const priceValue =
+      orderData.price || orderData.limit_price || limitConfig?.limit_price;
+
     const order: Order = {
       id: orderData.order_id || orderData.id || uuidv4(),
       clientOrderId: orderData.client_order_id,
@@ -1265,9 +1278,9 @@ export class CoinbaseExchange extends BaseExchange {
         (orderData.side?.toUpperCase() || 'BUY') === 'BUY'
           ? OrderSide.BUY
           : OrderSide.SELL,
-      type: this.transformOrderType(orderData.order_type || orderData.type || 'LIMIT'),
+      type: this.transformOrderType(orderType),
       quantity,
-      price: orderData.price ? this.formatDecimal(orderData.price) : undefined,
+      price: priceValue ? this.formatDecimal(priceValue) : undefined,
       status: this.transformOrderStatus(orderData.status || 'NEW'),
       timeInForce: this.transformTimeInForce(orderData.time_in_force),
       timestamp: orderData.created_at ? new Date(orderData.created_at) : new Date(),

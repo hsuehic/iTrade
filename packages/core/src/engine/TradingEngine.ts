@@ -1014,6 +1014,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Store balances for this exchange
       this._balances.set(exchangeName, balances);
       this._eventBus.emitBalanceUpdate({
+        userId: this._userId,
         exchange: exchangeName,
         balances,
         timestamp: new Date(),
@@ -1030,6 +1031,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Store positions for this exchange
       this._positions.set(exchangeName, positions);
       this._eventBus.emitPositionUpdate({
+        userId: this._userId,
         exchange: exchangeName,
         positions,
         timestamp: new Date(),
