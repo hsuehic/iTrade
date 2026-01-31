@@ -128,7 +128,13 @@ export async function GET(request: Request) {
           exchangeName,
           startTime,
           endTime,
-          period === '1h' ? 'minute' : period === '1d' ? '5min' : period === '7d' ? 'hour' : 'day',
+          period === '1h'
+            ? 'minute'
+            : period === '1d'
+              ? '5min'
+              : period === '7d'
+                ? 'hour'
+                : 'day',
           userId,
         ),
       };

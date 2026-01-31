@@ -227,7 +227,7 @@ export default function BacktestPage() {
       initialBalance: '10000',
       commission: '0.001',
       slippage: '0.0005',
-      exchange: 'coinbase',
+      exchange: 'coinbase' as ExchangeId,
       symbols: [],
       timeframe: '1h',
     });

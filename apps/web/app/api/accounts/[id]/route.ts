@@ -1,11 +1,10 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const session = await getSession(request);
@@ -14,18 +13,21 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    
+
     // Validate ID
     const accId = parseInt(id);
     if (isNaN(accId)) {
-        return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
     }
 
     const success = await accountService.removeAccount(accId, session.user.id);
     if (success) {
-        return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true });
     } else {
-        return NextResponse.json({ error: 'Account not found or not owned by user' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Account not found or not owned by user' },
+        { status: 404 },
+      );
     }
   } catch (error) {
     console.error('Failed to delete account:', error);

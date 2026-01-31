@@ -25,10 +25,10 @@ const logger = new ConsoleLogger(LogLevel.INFO);
  */
 function displayGlobalOrderStats(botManager: BotManager): void {
   const allStats = botManager.getAllOrderStats();
-  
+
   if (allStats.length === 0) {
-      logger.info('📊 No active bots running.');
-      return;
+    logger.info('📊 No active bots running.');
+    return;
   }
 
   logger.info('');
@@ -37,8 +37,8 @@ function displayGlobalOrderStats(botManager: BotManager): void {
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   for (const { userId, trackers } of allStats) {
-      logger.info(`\n👤 User: ${userId}`);
-      displayOrderStats(trackers, userId);
+    logger.info(`\n👤 User: ${userId}`);
+    displayOrderStats(trackers, userId);
   }
 }
 
@@ -61,7 +61,9 @@ function displayOrderStats(orderTracker: OrderTracker, userId: string = 'Unknown
 
     for (const [symbol, orders] of symbolMap) {
       const stats = orderManager.getOrderStats({ exchange, symbol });
-      logger.info(`      📈 ${symbol}: Total: ${stats.total} | Open: ${stats.open} | Filled: ${stats.filled}`);
+      logger.info(
+        `      📈 ${symbol}: Total: ${stats.total} | Open: ${stats.open} | Filled: ${stats.filled}`,
+      );
       totalOrders += orders.length;
     }
   }
@@ -128,7 +130,7 @@ async function main() {
 
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
-  
+
   // Keep process alive
 }
 

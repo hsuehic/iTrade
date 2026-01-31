@@ -86,9 +86,7 @@ export class AccountSnapshotRepository {
       .where('LOWER(snapshot.exchange::text) = LOWER(:exchange)', { exchange });
 
     if (userId) {
-      query
-        .leftJoin('accountInfo.user', 'user')
-        .andWhere('user.id = :userId', { userId });
+      query.andWhere('accountInfo.userId = :userId', { userId });
     }
 
     const entity = await query.orderBy('snapshot.timestamp', 'DESC').getOne();
@@ -106,7 +104,7 @@ export class AccountSnapshotRepository {
       .leftJoin('snapshot.accountInfo', 'accountInfo');
 
     if (userId) {
-      query.leftJoin('accountInfo.user', 'user').where('user.id = :userId', { userId });
+      query.where('accountInfo.userId = :userId', { userId });
     }
 
     const rawSnapshots = await query
@@ -152,9 +150,9 @@ export class AccountSnapshotRepository {
     }
 
     if (options.userId) {
-      queryBuilder
-        .leftJoin('accountInfo.user', 'user')
-        .andWhere('user.id = :userId', { userId: options.userId });
+      queryBuilder.andWhere('accountInfo.userId = :userId', {
+        userId: options.userId,
+      });
     }
 
     queryBuilder.orderBy('snapshot.timestamp', 'DESC');
@@ -186,9 +184,7 @@ export class AccountSnapshotRepository {
       });
 
     if (userId) {
-      query
-        .leftJoin('accountInfo.user', 'user')
-        .andWhere('user.id = :userId', { userId });
+      query.andWhere('accountInfo.userId = :userId', { userId });
     }
 
     const entities = await query.orderBy('snapshot.timestamp', 'ASC').getMany();

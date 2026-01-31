@@ -14,7 +14,10 @@ import { AccountForm } from './account-form';
 import { deleteAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit } from 'lucide-react';
-import { getExchangeDisplayName, SupportedExchange } from '@itrade/data-manager/constants';
+import {
+  getExchangeDisplayName,
+  SupportedExchange,
+} from '@itrade/data-manager/constants';
 
 interface Account {
   id: number;
@@ -52,9 +55,9 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
   };
 
   const refresh = () => {
-    // In a real app, re-fetch data or invalidate cache. 
+    // In a real app, re-fetch data or invalidate cache.
     // For simplicity, reload page or rely on router refresh.
-    window.location.reload(); 
+    window.location.reload();
   };
 
   return (
@@ -93,17 +96,30 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
                   </TableCell>
                   <TableCell>{account.accountId}</TableCell>
                   <TableCell>
-                    <span className={`px-2 py-1 rounded-full text-xs ${account.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs ${account.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}
+                    >
                       {account.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{account.apiKey}</TableCell>
-                  <TableCell>{new Date(account.updatedTime).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {new Date(account.updatedTime).toLocaleDateString()}
+                  </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(account)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleEdit(account)}
+                    >
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(account.id)} className="text-red-500 hover:text-red-700">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(account.id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>

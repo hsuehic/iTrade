@@ -32,7 +32,11 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 import { saveAccount } from '@/app/actions/accounts';
-import { SupportedExchange, SUPPORTED_EXCHANGES, getExchangeDisplayName } from '@itrade/data-manager/constants';
+import {
+  SupportedExchange,
+  SUPPORTED_EXCHANGES,
+  getExchangeDisplayName,
+} from '@itrade/data-manager/constants';
 
 interface AccountFormProps {
   open: boolean;
@@ -118,9 +122,7 @@ export function AccountForm({
                   <FormControl>
                     <Input placeholder="Main Account" {...field} />
                   </FormControl>
-                  <FormDescription>
-                    A nickname to identify this account.
-                  </FormDescription>
+                  <FormDescription>A nickname to identify this account.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -178,10 +180,7 @@ export function AccountForm({
                     </FormDescription>
                   </div>
                   <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
                 </FormItem>
               )}

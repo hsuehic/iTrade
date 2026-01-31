@@ -37,7 +37,7 @@ export class BotInstance {
   constructor(
     private readonly userId: string,
     private readonly dataManager: TypeOrmDataManager,
-    private readonly logger: ConsoleLogger
+    private readonly logger: ConsoleLogger,
   ) {
     this.riskManager = new RiskManager({
       maxDrawdown: new Decimal(20),
@@ -51,23 +51,25 @@ export class BotInstance {
     this.pushNotificationService = new PushNotificationService(dataManager, logger, {
       defaultUserId: userId,
     });
-    
-    this.orderTracker = new OrderTracker(dataManager, logger, this.pushNotificationService);
-    this.balanceTracker = new BalanceTracker(userId, dataManager, logger);
-    this.positionTracker = new PositionTracker(userId, dataManager, logger);
-    
-    this.strategyManager = new StrategyManager(
-      this.engine,
+
+    this.orderTracker = new OrderTracker(
       dataManager,
       logger,
-      userId
+      this.pushNotificationService,
     );
+    this.balanceTracker = new BalanceTracker(userId, dataManager, logger);
+    this.positionTracker = new PositionTracker(userId, dataManager, logger);
 
-    this.pollingService = new AccountPollingService({
-      pollingInterval: 60000, // 1 minute
-      enablePersistence: true,
-      retryAttempts: 3,
-    }, logger);
+    this.strategyManager = new StrategyManager(this.engine, dataManager, logger, userId);
+
+    this.pollingService = new AccountPollingService(
+      {
+        pollingInterval: 60000, // 1 minute
+        enablePersistence: true,
+        retryAttempts: 3,
+      },
+      logger,
+    );
     this.pollingService.setDataManager(dataManager);
 
     // Setup snapshot listener to update balance history
@@ -80,13 +82,19 @@ export class BotInstance {
         if (!snapshot.accountInfoId) return;
 
         const accountRepo = this.dataManager.dataSource.getRepository(AccountInfoEntity);
-        const accountInfo = await accountRepo.findOne({ where: { id: snapshot.accountInfoId } });
+        const accountInfo = await accountRepo.findOne({
+          where: { id: snapshot.accountInfoId },
+        });
 
         if (accountInfo) {
           const snapshotTotal = new Decimal(snapshot.totalBalance);
-          const calculatedTotal = new Decimal(snapshot.availableBalance).add(new Decimal(snapshot.lockedBalance));
-          
-          this.logger.info(`[BalanceSync] ${snapshot.exchange} - Snapshot Total: ${snapshotTotal}, Calc(Free+Locked): ${calculatedTotal}, Diff: ${snapshotTotal.minus(calculatedTotal)}`);
+          const calculatedTotal = new Decimal(snapshot.availableBalance).add(
+            new Decimal(snapshot.lockedBalance),
+          );
+
+          this.logger.info(
+            `[BalanceSync] ${snapshot.exchange} - Snapshot Total: ${snapshotTotal}, Calc(Free+Locked): ${calculatedTotal}, Diff: ${snapshotTotal.minus(calculatedTotal)}`,
+          );
 
           await this.dataManager.updateBalanceHistory(
             accountInfo,
@@ -94,12 +102,17 @@ export class BotInstance {
             snapshot.lockedBalance,
             snapshot.totalBalance,
             snapshot.timestamp,
-            snapshot.savingBalance
+            snapshot.savingBalance,
           );
-          this.logger.debug(`Synced balance history for ${snapshot.exchange} (User: ${this.userId})`);
+          this.logger.debug(
+            `Synced balance history for ${snapshot.exchange} (User: ${this.userId})`,
+          );
         }
       } catch (error) {
-        this.logger.error(`Failed to sync balance history for ${snapshot.exchange}`, error as Error);
+        this.logger.error(
+          `Failed to sync balance history for ${snapshot.exchange}`,
+          error as Error,
+        );
       }
     });
   }
@@ -113,7 +126,6 @@ export class BotInstance {
     await this.positionTracker.start();
     // pollingService will be started after exchanges are loaded
 
-
     // Load Exchanges
     await this.loadExchanges();
 
@@ -125,7 +137,7 @@ export class BotInstance {
 
   public async start(): Promise<void> {
     if (this.isRunning) return;
-    
+
     await this.engine.start();
     await this.pollingService.start();
     this.isRunning = true;
@@ -164,7 +176,7 @@ export class BotInstance {
   private async loadExchanges(): Promise<void> {
     const accountRepo = this.dataManager.dataSource.getRepository(AccountInfoEntity);
     const accounts = await accountRepo.find({
-      where: { user: { id: this.userId }, isActive: true },
+      where: { userId: this.userId, isActive: true },
     });
 
     if (accounts.length === 0) {
@@ -188,7 +200,9 @@ export class BotInstance {
 
         // Validate credentials exist
         if (!account.apiKey || !account.secretKey) {
-          this.logger.warn(`   ⚠️  ${exchangeName} account missing credentials, skipping`);
+          this.logger.warn(
+            `   ⚠️  ${exchangeName} account missing credentials, skipping`,
+          );
           skipCount++;
           continue;
         }
@@ -211,7 +225,12 @@ export class BotInstance {
               continue;
             }
             exchange = new OKXExchange(!USE_MAINNET_FOR_DATA);
-            connectOptions = { apiKey, secretKey, passphrase, sandbox: !USE_MAINNET_FOR_DATA };
+            connectOptions = {
+              apiKey,
+              secretKey,
+              passphrase,
+              sandbox: !USE_MAINNET_FOR_DATA,
+            };
             break;
           case 'coinbase':
             exchange = new CoinbaseExchange();
@@ -226,16 +245,21 @@ export class BotInstance {
         if (exchange) {
           await exchange.connect(connectOptions);
           await this.engine.addExchange(exchangeName, exchange);
-          
+
           // Add to polling service
-          this.pollingService.registerExchange(exchangeName, exchange, { accountInfoId: account.id });
-          
+          this.pollingService.registerExchange(exchangeName, exchange, {
+            accountInfoId: account.id,
+          });
+
           this.exchanges.set(exchangeName, exchange);
           this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
           successCount++;
         }
       } catch (error) {
-        this.logger.error(`   ❌ Failed to load ${account.exchange} for user ${this.userId}`, error as Error);
+        this.logger.error(
+          `   ❌ Failed to load ${account.exchange} for user ${this.userId}`,
+          error as Error,
+        );
         skipCount++;
       }
     }
@@ -244,15 +268,17 @@ export class BotInstance {
     if (successCount === 0) {
       throw new Error(
         `No valid exchanges loaded for user ${this.userId}. ` +
-        `Found ${accounts.length} accounts, ${skipCount} skipped/failed. ` +
-        `Please ensure accounts have valid API credentials.`
+          `Found ${accounts.length} accounts, ${skipCount} skipped/failed. ` +
+          `Please ensure accounts have valid API credentials.`,
       );
     }
 
-    this.logger.info(`   📊 Loaded ${successCount} exchange(s) for user ${this.userId} (${skipCount} skipped)`);
+    this.logger.info(
+      `   📊 Loaded ${successCount} exchange(s) for user ${this.userId} (${skipCount} skipped)`,
+    );
   }
 
   public getOrderTrackers() {
-      return this.orderTracker;
+    return this.orderTracker;
   }
 }

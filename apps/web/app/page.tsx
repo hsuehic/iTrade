@@ -25,7 +25,10 @@ export default async function Home() {
       <div className="fixed inset-0 top-16 -z-10" style={{ pointerEvents: 'none' }}>
         <ChartBackground />
         {/* Gradient overlay for better content readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/50 to-background/90" style={{ pointerEvents: 'none' }} />
+        <div
+          className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/50 to-background/90"
+          style={{ pointerEvents: 'none' }}
+        />
       </div>
 
       <LandingHeader isAuthenticated={isAuthenticated} />

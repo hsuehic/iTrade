@@ -1,7 +1,7 @@
 'use server';
 
 import { headers } from 'next/headers';
-import { auth } from '@/lib/auth';
+import { getAuthFromHeaders } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
 import { isValidExchange } from '@itrade/data-manager';
 
@@ -16,8 +16,10 @@ export interface AccountDto {
 }
 
 async function getUser() {
+  const requestHeaders = await headers();
+  const auth = getAuthFromHeaders(requestHeaders);
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: requestHeaders,
   });
   return session?.user;
 }
@@ -25,7 +27,7 @@ async function getUser() {
 export async function getAccounts() {
   const user = await getUser();
   if (!user) throw new Error('Unauthorized');
-  
+
   return accountService.getUserAccounts(user.id);
 }
 
@@ -38,8 +40,8 @@ export async function saveAccount(data: AccountDto) {
   }
 
   await accountService.upsertAccount({
-      ...data,
-      userId: user.id
+    ...data,
+    userId: user.id,
   });
 
   return { success: true };

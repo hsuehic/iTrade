@@ -1,25 +1,18 @@
 import { AccountInfo } from '@itrade/core';
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  OneToMany,
-  PrimaryGeneratedColumn,
-  ManyToOne,
-  JoinColumn,
-  Index,
-} from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 import type { BalanceEntity } from './Balance';
-import type { User } from './User';
 import { SupportedExchange } from '../constants/exchanges';
 
 @Entity('account_info')
-@Index(['user'])
-@Index(['user', 'exchange'], { unique: true })
+@Index(['userId'])
+@Index(['userId', 'exchange'], { unique: true })
 export class AccountInfoEntity implements AccountInfo {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({ type: 'text', name: 'userId' })
+  userId!: string;
 
   @Column({ type: 'boolean', default: true })
   canTrade!: boolean;
@@ -33,9 +26,6 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'timestamp' })
   updateTime!: Date;
 
-  @OneToMany('balances', 'accountInfo', {
-    cascade: true,
-  })
   balances!: BalanceEntity[];
 
   @CreateDateColumn()
@@ -62,8 +52,4 @@ export class AccountInfoEntity implements AccountInfo {
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
-
-  @ManyToOne('user', 'accountInfos', { nullable: false })
-  @JoinColumn({ name: 'userId' })
-  user!: User;
 }

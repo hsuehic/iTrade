@@ -4,7 +4,6 @@ import type { Account } from './Account';
 import type { Session } from './Session';
 import type { StrategyEntity } from './Strategy';
 import type { PositionEntity } from './Position';
-import type { AccountInfoEntity } from './AccountInfo';
 import type { PushDeviceEntity } from './PushDevice';
 import type { EmailPreferencesEntity } from './EmailPreferences';
 import type { DryRunSessionEntity } from './DryRunSession';
@@ -46,11 +45,6 @@ export class User {
     onDelete: 'CASCADE',
   })
   accounts?: Account[];
-
-  @OneToMany('account_info', 'user', {
-    onDelete: 'CASCADE',
-  })
-  accountInfos?: AccountInfoEntity[];
 
   @OneToMany('session', 'user', {
     onDelete: 'CASCADE',

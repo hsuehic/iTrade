@@ -145,7 +145,7 @@ export class BalanceTracker {
       // Upsert AccountInfoEntity
       await accountInfoRepo.upsert(
         {
-          user: { id: userId },
+          userId,
           exchange,
           accountId: exchange, // Use exchange as accountId
           canTrade: accountInfo.canTrade,
@@ -154,7 +154,7 @@ export class BalanceTracker {
           updateTime: accountInfo.updateTime || timestamp,
         },
         {
-          conflictPaths: ['user', 'exchange'],
+          conflictPaths: ['userId', 'exchange'],
           skipUpdateIfNoValuesChanged: true,
         },
       );
@@ -162,7 +162,7 @@ export class BalanceTracker {
       // Get the account info to retrieve its ID
       const existingAccountInfo = await accountInfoRepo.findOne({
         where: {
-          user: { id: userId },
+          userId,
           exchange,
         },
       });
@@ -173,7 +173,7 @@ export class BalanceTracker {
 
       // Delete all existing balances for this account
       await balanceRepo.delete({
-        accountInfo: { id: existingAccountInfo.id },
+        accountInfoId: existingAccountInfo.id,
       });
 
       // Upsert new balances
@@ -194,7 +194,7 @@ export class BalanceTracker {
         }
 
         const balanceEntities = uniqueBalances.map((balance) => ({
-          accountInfo: { id: existingAccountInfo.id },
+          accountInfoId: existingAccountInfo.id,
           asset: balance.asset,
           free: balance.free,
           locked: balance.locked,
@@ -203,7 +203,7 @@ export class BalanceTracker {
         }));
 
         await balanceRepo.upsert(balanceEntities, {
-          conflictPaths: ['accountInfo', 'asset'],
+          conflictPaths: ['accountInfoId', 'asset'],
           skipUpdateIfNoValuesChanged: true,
         });
 

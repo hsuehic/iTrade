@@ -96,7 +96,7 @@ export function TickerGrid() {
   // Data buffers for throttling
   const latestBinanceDataRef = useRef<Map<string, TickerData>>(new Map());
   const latestOkxDataRef = useRef<Map<string, TickerData>>(new Map());
-  
+
   // Track visible cards (kept for potential future optimization or debugging)
   const visibleCardsRef = useRef<Set<string>>(new Set());
 
@@ -105,7 +105,7 @@ export function TickerGrid() {
     // With global throttling, individual visibility tracking for updates is less critical for performance
     // but can still be kept if we want to pause purely rendering processing (though React handles hidden nodes well).
     // For this 'global flush' approach, we will simplify and just let the global interval handle updates.
-    // We can keep `visibleCardsRef` if we want to resume precise 'pause when offscreen' logic later, 
+    // We can keep `visibleCardsRef` if we want to resume precise 'pause when offscreen' logic later,
     // but for now, the 1s throttle solves the main "slow" issue.
     if (visible) {
       visibleCardsRef.current.add(tickerId);
@@ -166,10 +166,10 @@ export function TickerGrid() {
             }
             return t;
           });
-          
+
           if (hasChanges) {
             // Clear the buffer after applying updates
-            // Note: We clear individually or just keep them? 
+            // Note: We clear individually or just keep them?
             // Clearing ensures we don't re-process, but keeping is fine if mapped by key.
             // But we want to know if we need to re-render.
             // Optimization: Only create new array if hasChanges.
@@ -195,7 +195,7 @@ export function TickerGrid() {
             }
             return t;
           });
-          
+
           if (hasChanges) {
             return next;
           }

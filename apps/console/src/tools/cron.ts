@@ -190,7 +190,7 @@ async function initialize() {
       // Ensure AccountInfo exists
       await accountInfoRepo.upsert(
         {
-          user: { id: userId },
+          userId,
           exchange: snapshot.exchange,
           accountId: snapshot.exchange,
           canTrade: true,
@@ -199,13 +199,13 @@ async function initialize() {
           updateTime: snapshot.timestamp,
         },
         {
-          conflictPaths: ['user', 'exchange'],
+          conflictPaths: ['userId', 'exchange'],
           skipUpdateIfNoValuesChanged: true,
         },
       );
 
       const accountInfo = await accountInfoRepo.findOne({
-        where: { user: { id: userId }, exchange: snapshot.exchange },
+        where: { userId, exchange: snapshot.exchange },
       });
 
       if (accountInfo) {

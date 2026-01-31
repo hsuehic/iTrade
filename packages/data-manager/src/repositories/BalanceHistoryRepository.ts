@@ -231,7 +231,7 @@ export class BalanceHistoryRepository {
       .andWhere('balance.period <= :end', { end: endTime });
 
     if (userId) {
-      query.leftJoin('account.user', 'user').andWhere('user.id = :userId', { userId });
+      query.andWhere('account.userId = :userId', { userId });
     }
 
     const results = await query.orderBy('balance.period', 'ASC').getMany();

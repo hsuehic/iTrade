@@ -4,26 +4,21 @@ import {
   CreateDateColumn,
   Entity,
   Index,
-  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Balance } from '@itrade/core';
 
 import { decimalTransformer } from '../utils/transformers';
-import type { AccountInfoEntity } from './AccountInfo';
-
 @Entity('balances')
 @Index(['asset'])
-@Index(['accountInfo', 'asset'], { unique: true })
+@Index(['accountInfoId', 'asset'], { unique: true })
 export class BalanceEntity implements Balance {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('account_info', 'balances', {
-    onDelete: 'CASCADE',
-  })
-  accountInfo!: AccountInfoEntity;
+  @Column({ type: 'integer', name: 'accountInfoId' })
+  accountInfoId!: number;
 
   @Column({ type: 'character varying', length: 20 })
   asset!: string;

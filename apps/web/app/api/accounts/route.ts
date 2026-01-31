@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
@@ -27,19 +26,19 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    
+
     // Validate body
     if (!body.exchange || !body.apiKey || !body.secretKey) {
-        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     if (!isValidExchange(body.exchange)) {
-        return NextResponse.json({ error: 'Invalid exchange' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid exchange' }, { status: 400 });
     }
 
     const account = await accountService.upsertAccount({
-        ...body,
-        userId: session.user.id
+      ...body,
+      userId: session.user.id,
     });
 
     return NextResponse.json({ success: true, account });
