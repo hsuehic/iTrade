@@ -31,6 +31,7 @@ export class OrderTracker {
 
   // Debounce configuration (only for partial fills)
   private readonly DEBOUNCE_MS = 1000; // 1 second debounce for partial fills
+  private readonly strategyUserCache = new Map<number, string>();
 
   constructor(
     private dataManager: TypeOrmDataManager,
@@ -107,8 +108,48 @@ export class OrderTracker {
     return this.orderManager;
   }
 
+  private async resolveUserId(order: Order): Promise<string | null> {
+    if (order.userId) {
+      return order.userId;
+    }
+
+    if (order.strategyId) {
+      const cached = this.strategyUserCache.get(order.strategyId);
+      if (cached) return cached;
+
+      try {
+        const strategy = await this.dataManager.getStrategy(order.strategyId);
+        if (strategy?.userId) {
+          this.strategyUserCache.set(order.strategyId, strategy.userId);
+          return strategy.userId;
+        }
+      } catch (error) {
+        this.logger.error('❌ Failed to resolve strategy user', error as Error);
+      }
+    }
+
+    return null;
+  }
+
+  private async getScopedUserId(order: Order): Promise<string | null> {
+    const resolvedUserId = await this.resolveUserId(order);
+
+    if (this.userId) {
+      if (!resolvedUserId || resolvedUserId !== this.userId) {
+        return null;
+      }
+    }
+
+    return resolvedUserId ?? this.userId ?? null;
+  }
+
   private async handleOrderCreated(order: Order): Promise<void> {
     try {
+      const scopedUserId = await this.getScopedUserId(order);
+      if (this.userId && !scopedUserId) {
+        return;
+      }
+
       if (!this.orderManager.getOrder(order.id)) {
         this.totalOrders++;
       }
@@ -117,7 +158,10 @@ export class OrderTracker {
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
-      const userId = order.userId ?? this.userId;
+      const userId = scopedUserId ?? order.userId;
+      if (userId) {
+        order.userId = userId;
+      }
 
       // Save order to database
       await this.dataManager.saveOrder({
@@ -150,6 +194,11 @@ export class OrderTracker {
 
   private async handleOrderFilled(order: Order): Promise<void> {
     try {
+      const scopedUserId = await this.getScopedUserId(order);
+      if (this.userId && !scopedUserId) {
+        return;
+      }
+
       const existingOrder = this.orderManager.getOrder(order.id);
       const shouldNotify = !existingOrder || existingOrder.status !== 'FILLED';
       if (!existingOrder || existingOrder.status !== 'FILLED') {
@@ -172,7 +221,10 @@ export class OrderTracker {
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
-      const userId = order.userId ?? this.userId;
+      const userId = scopedUserId ?? order.userId;
+      if (userId) {
+        order.userId = userId;
+      }
 
       // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
       // This ensures the order is saved even if it's the first time we're seeing it
@@ -209,8 +261,17 @@ export class OrderTracker {
     }
   }
 
-  private handleOrderPartiallyFilled(order: Order): void {
+  private async handleOrderPartiallyFilled(order: Order): Promise<void> {
     try {
+      const scopedUserId = await this.getScopedUserId(order);
+      if (this.userId && !scopedUserId) {
+        return;
+      }
+
+      if (scopedUserId) {
+        order.userId = scopedUserId;
+      }
+
       this.totalPartialFills++;
 
       // Use debounce for partial fills (can be very frequent)
@@ -248,10 +309,19 @@ export class OrderTracker {
     try {
       const { order } = update;
 
+      const scopedUserId = await this.getScopedUserId(order);
+      if (this.userId && !scopedUserId) {
+        this.pendingPartialFills.delete(orderId);
+        return;
+      }
+
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
-      const userId = order.userId ?? this.userId;
+      const userId = scopedUserId ?? order.userId;
+      if (userId) {
+        order.userId = userId;
+      }
 
       // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
       await this.dataManager.saveOrder({
@@ -291,6 +361,15 @@ export class OrderTracker {
 
   private async handleOrderCancelled(order: Order): Promise<void> {
     try {
+      const scopedUserId = await this.getScopedUserId(order);
+      if (this.userId && !scopedUserId) {
+        return;
+      }
+
+      if (scopedUserId) {
+        order.userId = scopedUserId;
+      }
+
       const existingOrder = this.orderManager.getOrder(order.id);
       if (!existingOrder || existingOrder.status !== 'CANCELED') {
         this.totalCancelled++;
@@ -324,6 +403,15 @@ export class OrderTracker {
 
   private async handleOrderRejected(order: Order): Promise<void> {
     try {
+      const scopedUserId = await this.getScopedUserId(order);
+      if (this.userId && !scopedUserId) {
+        return;
+      }
+
+      if (scopedUserId) {
+        order.userId = scopedUserId;
+      }
+
       const existingOrder = this.orderManager.getOrder(order.id);
       if (!existingOrder || existingOrder.status !== 'REJECTED') {
         this.totalRejected++;

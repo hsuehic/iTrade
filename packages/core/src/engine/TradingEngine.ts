@@ -54,6 +54,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private readonly _strategiesWithLoadedInitialData = new Set<string>(); // Track which strategies have loaded initial data
   private _eventBus: EventBus;
   private subscriptionCoordinator: SubscriptionCoordinator;
+  private readonly _userId?: string;
 
   // Account state tracking (keyed by exchange name)
   private readonly _positions = new Map<string, Position[]>();
@@ -67,10 +68,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     private riskManager: IRiskManager,
     private portfolioManager: IPortfolioManager,
     private logger: ILogger,
+    userId?: string,
   ) {
     super();
     this._eventBus = EventBus.getInstance();
     this.subscriptionCoordinator = new SubscriptionCoordinator(logger);
+    this._userId = userId;
     this.setupEventListeners();
   }
 
@@ -608,6 +611,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       const order: Order = {
         id: uuidv4(),
         clientOrderId,
+        userId: this._userId,
         symbol,
         side,
         type,
@@ -658,6 +662,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       executedOrder.strategyId = strategyId;
       executedOrder.strategyType = strategyType; // Strategy type/class
       executedOrder.strategyName = userDefinedName; // User-defined name
+      if (!executedOrder.userId) {
+        executedOrder.userId = this._userId;
+      }
 
       this._eventBus.emitOrderCreated({
         order: executedOrder,
@@ -955,6 +962,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
       this._orders.set(exchangeName, orders);
       order.exchange = exchange.name;
+      if (!order.userId) {
+        order.userId = this._userId;
+      }
 
       // 🆕 Always emit OrderCreated first if this is the first time we've seen this order
       // This ensures OrderTracker can create the order record before any updates

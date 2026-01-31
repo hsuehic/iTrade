@@ -52,7 +52,12 @@ export class BotInstance {
     });
 
     this.portfolioManager = new PortfolioManager(new Decimal(10000));
-    this.engine = new TradingEngine(this.riskManager, this.portfolioManager, this.logger);
+    this.engine = new TradingEngine(
+      this.riskManager,
+      this.portfolioManager,
+      this.logger,
+      userId,
+    );
 
     this.pushNotificationService = new PushNotificationService(dataManager, logger, {
       defaultUserId: userId,
