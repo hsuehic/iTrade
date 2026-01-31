@@ -240,6 +240,8 @@ export class CoinbaseExchange extends BaseExchange {
     options?: {
       tradeMode?: TradeMode;
       leverage?: number;
+      positionSide?: 'LONG' | 'SHORT';
+      reduceOnly?: boolean;
     },
   ): Promise<Order> {
     const productId = this.normalizeSymbol(symbol);

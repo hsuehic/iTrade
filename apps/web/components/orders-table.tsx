@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import {
   IconSearch,
   IconSortAscending,
@@ -89,6 +90,7 @@ interface OrdersTableProps {
   selectedStrategy?: number;
   refreshInterval?: number;
   initialStatusFilter?: string;
+  refreshToken?: number;
 }
 
 const formatCurrency = (value: string | number | undefined) => {
@@ -186,6 +188,9 @@ const getSideColor = (side: string) => {
     : 'border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400';
 };
 
+const isCancelableStatus = (status: string) =>
+  ['NEW', 'PARTIALLY_FILLED'].includes(status.toUpperCase());
+
 const STATUS_OPTIONS = [
   'all',
   'NEW',
@@ -214,6 +219,7 @@ export function OrdersTable({
   selectedStrategy,
   refreshInterval = 30000,
   initialStatusFilter,
+  refreshToken,
 }: OrdersTableProps) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -233,6 +239,7 @@ export function OrdersTable({
   const [selectedType, setSelectedType] = React.useState('all');
   const [datePreset, setDatePreset] = React.useState(0); // Default to all time
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
+  const [cancelingOrderId, setCancelingOrderId] = React.useState<string | null>(null);
 
   const getStatusLabel = React.useCallback(
     (status: string) => {
@@ -290,6 +297,77 @@ export function OrdersTable({
       return t('datePresets.days', { count: days });
     },
     [t],
+  );
+
+  const fetchData = React.useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (selectedExchange !== 'all') {
+        params.set('exchange', selectedExchange);
+      }
+      if (selectedStrategy) {
+        params.set('strategyId', selectedStrategy.toString());
+      }
+      if (datePreset > 0) {
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - datePreset);
+        params.set('startDate', startDate.toISOString());
+      }
+
+      const response = await fetch(`/api/orders?${params.toString()}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        // Convert order data
+        const ordersData = (data.orders || []).map((order: Record<string, unknown>) => ({
+          ...order,
+          quantity: order.quantity?.toString() || '0',
+          price: order.price?.toString(),
+          executedQuantity: order.executedQuantity?.toString(),
+          cummulativeQuoteQuantity: order.cummulativeQuoteQuantity?.toString(),
+          averagePrice: order.averagePrice?.toString(),
+          realizedPnl: order.realizedPnl?.toString(),
+          commission: order.commission?.toString(),
+        }));
+        setOrders(ordersData);
+
+        // Extract unique exchanges
+        const uniqueExchanges = [
+          ...new Set(ordersData.map((o: OrderData) => o.exchange).filter(Boolean)),
+        ] as string[];
+        setExchanges(uniqueExchanges);
+        setLastRefresh(new Date());
+      }
+    } catch (error) {
+      console.error(t('errors.fetchOrders'), error);
+    } finally {
+      setLoading(false);
+    }
+  }, [datePreset, selectedExchange, selectedStrategy, t]);
+
+  const handleCancelOrder = React.useCallback(
+    async (order: OrderData) => {
+      setCancelingOrderId(order.id);
+      try {
+        const response = await fetch(`/api/orders/${order.id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || t('errors.cancelFailed'));
+        }
+
+        toast.success(t('messages.cancelled'));
+        await fetchData();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : t('errors.cancelFailed');
+        toast.error(message);
+      } finally {
+        setCancelingOrderId(null);
+      }
+    },
+    [fetchData, t],
   );
 
   const columns = React.useMemo<ColumnDef<OrderData>[]>(
@@ -570,62 +648,50 @@ export function OrdersTable({
           return pnlA - pnlB;
         },
       },
+      {
+        id: 'actions',
+        header: t('columns.actions'),
+        cell: ({ row }) => {
+          const order = row.original;
+          const canCancel = Boolean(order.exchange) && isCancelableStatus(order.status);
+
+          if (!canCancel) {
+            return <span className="text-muted-foreground">-</span>;
+          }
+
+          const isCanceling = cancelingOrderId === order.id;
+
+          return (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isCanceling}
+              onClick={() => handleCancelOrder(order)}
+              aria-label={t('actions.cancel')}
+            >
+              {isCanceling ? t('actions.canceling') : t('actions.cancel')}
+            </Button>
+          );
+        },
+      },
     ],
-    [getSideLabel, getStatusLabel, getTypeLabel, locale, t],
+    [
+      cancelingOrderId,
+      getSideLabel,
+      getStatusLabel,
+      getTypeLabel,
+      handleCancelOrder,
+      locale,
+      t,
+    ],
   );
-
-  const fetchData = React.useCallback(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (selectedExchange !== 'all') {
-        params.set('exchange', selectedExchange);
-      }
-      if (selectedStrategy) {
-        params.set('strategyId', selectedStrategy.toString());
-      }
-      if (datePreset > 0) {
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - datePreset);
-        params.set('startDate', startDate.toISOString());
-      }
-
-      const response = await fetch(`/api/orders?${params.toString()}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        // Convert order data
-        const ordersData = (data.orders || []).map((order: Record<string, unknown>) => ({
-          ...order,
-          quantity: order.quantity?.toString() || '0',
-          price: order.price?.toString(),
-          executedQuantity: order.executedQuantity?.toString(),
-          cummulativeQuoteQuantity: order.cummulativeQuoteQuantity?.toString(),
-          averagePrice: order.averagePrice?.toString(),
-          realizedPnl: order.realizedPnl?.toString(),
-          commission: order.commission?.toString(),
-        }));
-        setOrders(ordersData);
-
-        // Extract unique exchanges
-        const uniqueExchanges = [
-          ...new Set(ordersData.map((o: OrderData) => o.exchange).filter(Boolean)),
-        ] as string[];
-        setExchanges(uniqueExchanges);
-        setLastRefresh(new Date());
-      }
-    } catch (error) {
-      console.error(t('errors.fetchOrders'), error);
-    } finally {
-      setLoading(false);
-    }
-  }, [datePreset, selectedExchange, selectedStrategy, t]);
 
   React.useEffect(() => {
     fetchData();
 
     const interval = setInterval(fetchData, refreshInterval);
     return () => clearInterval(interval);
-  }, [fetchData, refreshInterval]);
+  }, [fetchData, refreshInterval, refreshToken]);
 
   const table = useReactTable({
     data: orders,

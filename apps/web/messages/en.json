@@ -711,8 +711,7 @@
         "low24h": "24h Low"
       }
     }
-  }
-  ,
+  },
   "dryRun": {
     "title": "Paper Trading (Dry Run)",
     "heroTitle": "Paper Trading",
@@ -976,8 +975,7 @@
         "loadLogs": "Failed to load logs ({status})"
       }
     }
-  }
-  ,
+  },
   "backtest": {
     "title": "Strategy Backtesting",
     "heading": "Backtesting",
@@ -1146,7 +1144,47 @@
       "title": "Positions"
     },
     "transaction": {
-      "title": "Transactions"
+      "title": "Transactions",
+      "manualOrder": {
+        "title": "Manual Order",
+        "helper": "Orders are sent using the API keys configured in Accounts.",
+        "fields": {
+          "exchange": "Exchange",
+          "exchangePlaceholder": "Select exchange",
+          "binanceOneWayHint": "Binance perpetual trading requires One-way mode (Position Mode: One-way).",
+          "symbol": "Symbol",
+          "symbolPlaceholder": "e.g., BTC/USDT",
+          "positionAction": "Position Action",
+          "positionActionPlaceholder": "Select action",
+          "openLong": "Open Long",
+          "openShort": "Open Short",
+          "closeLong": "Close Long",
+          "closeShort": "Close Short",
+          "positionActionHint": "Binance perps require position side for hedge mode.",
+          "side": "Side",
+          "sidePlaceholder": "Select side",
+          "buy": "Buy",
+          "sell": "Sell",
+          "type": "Type",
+          "typePlaceholder": "Select type",
+          "market": "Market",
+          "limit": "Limit",
+          "quantity": "Quantity",
+          "quantityPlaceholder": "e.g., 0.01",
+          "price": "Price",
+          "pricePlaceholder": "e.g., 42000"
+        },
+        "actions": {
+          "submit": "Place Order",
+          "submitting": "Placing..."
+        },
+        "messages": {
+          "placed": "Order placed successfully"
+        },
+        "errors": {
+          "submitFailed": "Failed to place order"
+        }
+      }
     }
   },
   "strategy": {
@@ -1286,7 +1324,8 @@
       "price": "Price",
       "status": "Status",
       "strategy": "Strategy",
-      "pnl": "PnL"
+      "pnl": "PnL",
+      "actions": "Actions"
     },
     "cells": {
       "updated": "Updated: {time}",
@@ -1353,8 +1392,16 @@
       "takeProfit": "TAKE PROFIT",
       "takeProfitLimit": "TAKE PROFIT LIMIT"
     },
+    "actions": {
+      "cancel": "Cancel",
+      "canceling": "Canceling..."
+    },
+    "messages": {
+      "cancelled": "Order cancelled"
+    },
     "errors": {
-      "fetchOrders": "Failed to fetch orders"
+      "fetchOrders": "Failed to fetch orders",
+      "cancelFailed": "Failed to cancel order"
     }
   },
   "positions": {

@@ -209,6 +209,8 @@ export class OKXExchange extends BaseExchange {
     options?: {
       tradeMode?: TradeMode;
       leverage?: number;
+      positionSide?: 'LONG' | 'SHORT';
+      reduceOnly?: boolean;
     },
   ): Promise<Order> {
     const instId = this.normalizeSymbol(symbol);
@@ -518,7 +520,11 @@ export class OKXExchange extends BaseExchange {
 
   public async getAccountInfo(): Promise<AccountInfo> {
     // 1. Get Trading Account Balance
-    const tradingBalanceSigned = this.signOKXRequest('GET', '/api/v5/account/balance', {});
+    const tradingBalanceSigned = this.signOKXRequest(
+      'GET',
+      '/api/v5/account/balance',
+      {},
+    );
     const tradingBalanceResponse = await this.httpClient.get(
       tradingBalanceSigned.endpoint,
       {
@@ -560,7 +566,6 @@ export class OKXExchange extends BaseExchange {
         },
       );
 
-
       if (fundingBalanceResponse.data.code === '0') {
         const fundingData = fundingBalanceResponse.data.data;
         fundingData.forEach((detail: any) => {
@@ -598,45 +603,48 @@ export class OKXExchange extends BaseExchange {
     // 3. Get Simple Earn Balance
     try {
       // Get all simple earn balances (flexible and fixed)
-      const earnBalanceSigned = this.signOKXRequest('GET', '/api/v5/finance/savings/balance', {
-        ccy: '', // Fetch all
-      });
-      const earnBalanceResponse = await this.httpClient.get(
-        earnBalanceSigned.endpoint,
+      const earnBalanceSigned = this.signOKXRequest(
+        'GET',
+        '/api/v5/finance/savings/balance',
         {
-          headers: earnBalanceSigned.headers,
+          ccy: '', // Fetch all
         },
       );
+      const earnBalanceResponse = await this.httpClient.get(earnBalanceSigned.endpoint, {
+        headers: earnBalanceSigned.headers,
+      });
 
       if (earnBalanceResponse.data.code === '0') {
-         const earnData = earnBalanceResponse.data.data;
-         console.log(`[OKX] Simple Earn Data Count: ${earnData.length}`); // DEBUG LOG
-         earnData.forEach((detail: any) => {
-           const asset = detail.ccy;
-           // For Simple Earn, "amt" is the principal amount
-           const amount = this.formatDecimal(detail.amt);
-           console.log(`[OKX] Found Saving for ${asset}: ${amount}`); // DEBUG LOG
-           
-           if (balancesMap.has(asset)) {
-             const existing = balancesMap.get(asset)!;
-             // Add to saving and total
-             existing.saving = (existing.saving || new Decimal(0)).add(amount);
-             existing.total = existing.total.add(amount);
-           } else {
-             balancesMap.set(asset, {
-               asset,
-               free: new Decimal(0),
-               locked: new Decimal(0),
-               saving: amount,
-               total: amount,
-             });
-           }
-         });
+        const earnData = earnBalanceResponse.data.data;
+        console.log(`[OKX] Simple Earn Data Count: ${earnData.length}`); // DEBUG LOG
+        earnData.forEach((detail: any) => {
+          const asset = detail.ccy;
+          // For Simple Earn, "amt" is the principal amount
+          const amount = this.formatDecimal(detail.amt);
+          console.log(`[OKX] Found Saving for ${asset}: ${amount}`); // DEBUG LOG
+
+          if (balancesMap.has(asset)) {
+            const existing = balancesMap.get(asset)!;
+            // Add to saving and total
+            existing.saving = (existing.saving || new Decimal(0)).add(amount);
+            existing.total = existing.total.add(amount);
+          } else {
+            balancesMap.set(asset, {
+              asset,
+              free: new Decimal(0),
+              locked: new Decimal(0),
+              saving: amount,
+              total: amount,
+            });
+          }
+        });
       } else {
-        console.warn(`[OKX] Simple Earn API non-zero code: ${earnBalanceResponse.data.code}, msg: ${earnBalanceResponse.data.msg}`);
+        console.warn(
+          `[OKX] Simple Earn API non-zero code: ${earnBalanceResponse.data.code}, msg: ${earnBalanceResponse.data.msg}`,
+        );
       }
     } catch (error: any) {
-       console.warn(`[OKX] Error fetching simple earn balance: ${error.message}`);
+      console.warn(`[OKX] Error fetching simple earn balance: ${error.message}`);
     }
 
     // 4. Get Total Asset Valuation (Total Equity in USD)
@@ -689,25 +697,27 @@ export class OKXExchange extends BaseExchange {
     }
 
     return response.data.data.map((pos: any) => {
-      // ✅ FIXED: Use markPx only, do NOT fallback to avgPx
-      // If markPx is missing, use lastPx as fallback (NOT avgPx)
-      const markPrice = this.formatDecimal((pos.markPx ?? pos.lastPx ?? '0').toString());
-
-      // Calculate market value: quantity * markPrice
       const quantity = this.formatDecimal((pos.pos ?? '0').toString());
+      const avgPrice = this.formatDecimal((pos.avgPx ?? '0').toString());
+      const markPrice = this.resolveOkxMarkPrice(pos, quantity);
+      const unrealizedPnl = this.resolveOkxUnrealizedPnl(
+        pos,
+        quantity,
+        avgPrice,
+        markPrice,
+      );
       const marketValue = quantity.abs().mul(markPrice);
 
       return {
-        symbol: pos.instId,
-        side: pos.posSide === 'long' ? 'long' : 'short',
-        quantity: quantity,
-        avgPrice: this.formatDecimal((pos.avgPx ?? '0').toString()),
-        markPrice: markPrice,
-        unrealizedPnl: this.formatDecimal((pos.upl ?? '0').toString()),
-        leverage: this.formatDecimal((pos.lever ?? '0').toString()),
+        symbol: this.denormalizeSymbol(pos.instId),
+        side: this.resolveOkxPositionSide(pos, quantity),
+        quantity,
+        avgPrice,
+        markPrice,
+        unrealizedPnl,
+        leverage: this.getOkxLeverage(pos),
         timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
-        // ✅ Add market value and notionalUsd
-        marketValue: marketValue,
+        marketValue,
         notionalUsd: pos.notionalUsd,
       };
     });
@@ -1483,17 +1493,15 @@ export class OKXExchange extends BaseExchange {
       for (const p of data.posData) {
         // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
         const unifiedSymbol = this.denormalizeSymbol(p.instId);
-
-        // ✅ FIXED: Use markPx only, do NOT fallback to avgPx
-        // markPx and avgPx should be different:
-        // - avgPx: Average entry price of the position (from your orders)
-        // - markPx: Current mark price used for PnL calculation (from market)
-        // - lastPx: Last traded price
-        // If markPx is missing, use lastPx as fallback (NOT avgPx)
-        const markPrice = this.formatDecimal(p.markPx || p.lastPx || '0');
-
-        // Calculate position value: quantity * markPrice (absolute value)
         const quantity = this.formatDecimal(p.pos || '0');
+        const avgPrice = this.formatDecimal(p.avgPx || '0');
+        const markPrice = this.resolveOkxMarkPrice(p, quantity);
+        const unrealizedPnl = this.resolveOkxUnrealizedPnl(
+          p,
+          quantity,
+          avgPrice,
+          markPrice,
+        );
         const positionValue = quantity.abs().mul(markPrice);
 
         console.log('[OKX] 📊 Position calculated:', {
@@ -1507,12 +1515,12 @@ export class OKXExchange extends BaseExchange {
 
         positions.push({
           symbol: unifiedSymbol,
-          side: (p.posSide || 'net').toLowerCase(),
+          side: this.resolveOkxPositionSide(p, quantity),
           quantity: quantity,
-          avgPrice: this.formatDecimal(p.avgPx || '0'),
-          markPrice: markPrice,
-          unrealizedPnl: this.formatDecimal(p.upl ?? '0'),
-          leverage: this.formatDecimal(p.lever ?? '0'),
+          avgPrice,
+          markPrice,
+          unrealizedPnl,
+          leverage: this.getOkxLeverage(p),
           timestamp: new Date(),
           // ✅ Add market value and notionalUsd
           marketValue: positionValue,
@@ -1522,6 +1530,72 @@ export class OKXExchange extends BaseExchange {
     }
 
     return { balances, positions };
+  }
+
+  private resolveOkxMarkPrice(position: any, quantity: Decimal): Decimal {
+    const markCandidates = [
+      position.markPx,
+      position.markPrice,
+      position.last,
+      position.lastPx,
+      position.lastPrice,
+      position.idxPx,
+      position.indexPx,
+    ];
+
+    for (const candidate of markCandidates) {
+      const price = this.formatDecimal(candidate ?? '0');
+      if (price.gt(0)) return price;
+    }
+
+    const notionalUsd = this.formatDecimal(
+      position.notionalUsd ?? position.notional ?? '0',
+    );
+    if (notionalUsd.gt(0) && quantity.abs().gt(0)) {
+      return notionalUsd.div(quantity.abs());
+    }
+
+    return new Decimal(0);
+  }
+
+  private resolveOkxUnrealizedPnl(
+    position: any,
+    quantity: Decimal,
+    avgPrice: Decimal,
+    markPrice: Decimal,
+  ): Decimal {
+    const upl = this.formatDecimal(position.upl ?? position.unrealizedPnl ?? '0');
+    if (!upl.isZero()) return upl;
+
+    if (quantity.abs().gt(0) && avgPrice.gt(0) && markPrice.gt(0)) {
+      return markPrice.sub(avgPrice).mul(quantity);
+    }
+
+    return upl;
+  }
+
+  private resolveOkxPositionSide(position: any, quantity: Decimal): 'long' | 'short' {
+    const posSide = (position.posSide || '').toLowerCase();
+    if (posSide === 'long' || posSide === 'short') return posSide;
+
+    if (quantity.lt(0)) return 'short';
+    return 'long';
+  }
+
+  private getOkxLeverage(position: any): Decimal {
+    const direct = this.formatDecimal(position.lever ?? position.leverage ?? '0');
+    if (direct.gt(0)) return direct;
+
+    const margin = this.formatDecimal(
+      position.margin ?? position.mgnMargin ?? position.imr ?? '0',
+    );
+    const notional = this.formatDecimal(position.notionalUsd ?? position.notional ?? '0');
+
+    if (margin.gt(0) && notional.gt(0)) {
+      return notional.div(margin);
+    }
+
+    return direct;
   }
 
   private transformOKXAccount(data: any): Balance[] {

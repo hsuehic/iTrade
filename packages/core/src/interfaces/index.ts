@@ -73,6 +73,8 @@ export interface IExchange extends EventEmitter {
     options?: {
       tradeMode?: TradeMode;
       leverage?: number;
+      positionSide?: 'LONG' | 'SHORT';
+      reduceOnly?: boolean;
     },
   ): Promise<Order>;
 

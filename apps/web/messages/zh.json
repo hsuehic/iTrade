@@ -1144,7 +1144,47 @@
       "title": "持仓"
     },
     "transaction": {
-      "title": "交易记录"
+      "title": "交易记录",
+      "manualOrder": {
+        "title": "手动下单",
+        "helper": "下单将使用账户配置中的 API Key。",
+        "fields": {
+          "exchange": "交易所",
+          "exchangePlaceholder": "选择交易所",
+          "binanceOneWayHint": "币安永续需要设置为单向持仓模式（One-way）。",
+          "symbol": "交易对",
+          "symbolPlaceholder": "例如 BTC/USDT",
+          "positionAction": "持仓动作",
+          "positionActionPlaceholder": "选择动作",
+          "openLong": "开多",
+          "openShort": "开空",
+          "closeLong": "平多",
+          "closeShort": "平空",
+          "positionActionHint": "币安永续对冲模式需要指定持仓方向。",
+          "side": "方向",
+          "sidePlaceholder": "选择方向",
+          "buy": "买入",
+          "sell": "卖出",
+          "type": "类型",
+          "typePlaceholder": "选择类型",
+          "market": "市价",
+          "limit": "限价",
+          "quantity": "数量",
+          "quantityPlaceholder": "例如 0.01",
+          "price": "价格",
+          "pricePlaceholder": "例如 42000"
+        },
+        "actions": {
+          "submit": "提交订单",
+          "submitting": "下单中..."
+        },
+        "messages": {
+          "placed": "订单已提交"
+        },
+        "errors": {
+          "submitFailed": "下单失败"
+        }
+      }
     }
   },
   "strategy": {
@@ -1284,7 +1324,8 @@
       "price": "价格",
       "status": "状态",
       "strategy": "策略",
-      "pnl": "盈亏"
+      "pnl": "盈亏",
+      "actions": "操作"
     },
     "cells": {
       "updated": "更新于：{time}",
@@ -1351,8 +1392,16 @@
       "takeProfit": "止盈",
       "takeProfitLimit": "止盈限价"
     },
+    "actions": {
+      "cancel": "撤单",
+      "canceling": "撤单中..."
+    },
+    "messages": {
+      "cancelled": "订单已撤销"
+    },
     "errors": {
-      "fetchOrders": "获取订单失败"
+      "fetchOrders": "获取订单失败",
+      "cancelFailed": "撤单失败"
     }
   },
   "positions": {

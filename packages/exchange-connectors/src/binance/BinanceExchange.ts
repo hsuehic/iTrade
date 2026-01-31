@@ -51,6 +51,10 @@ export class BinanceExchange extends BaseExchange {
   private userWs?: BinanceWebsocket;
   private _messageDebugCount = 0;
   private leverageCache = new Map<string, number>(); // symbol -> leverage mapping
+  private futuresPositionModeCache?: {
+    mode: 'oneway' | 'hedge';
+    fetchedAt: number;
+  };
 
   constructor(isTestnet = false) {
     const baseUrl = isTestnet
@@ -230,12 +234,18 @@ export class BinanceExchange extends BaseExchange {
     options?: {
       tradeMode?: TradeMode;
       leverage?: number;
+      positionSide?: 'LONG' | 'SHORT';
+      reduceOnly?: boolean;
     },
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
 
     // Determine if this is a futures order
-    const isFutures = normalizedSymbol.includes('USDT') && !symbol.includes('/');
+    const isPerpetual =
+      symbol.includes(':') || symbol.includes('_PERP') || symbol.includes('_SWAP');
+    const isFutures =
+      isPerpetual ||
+      Boolean(options?.positionSide || options?.reduceOnly || options?.leverage);
 
     // Set leverage for futures if provided and different from current
     if (isFutures && options?.leverage) {
@@ -254,14 +264,37 @@ export class BinanceExchange extends BaseExchange {
       timestamp: Date.now(),
     };
 
+    if (isFutures) {
+      const mode = await this.getFuturesPositionMode();
+      if (mode === 'hedge') {
+        params.positionSide =
+          options?.positionSide || (side === OrderSide.BUY ? 'LONG' : 'SHORT');
+      }
+      if (options?.reduceOnly) {
+        params.reduceOnly = true;
+      }
+    }
+
     if (price) params.price = price.toString();
-    if (timeInForce !== 'GTC') params.timeInForce = timeInForce;
+    if (type === OrderType.LIMIT) {
+      params.timeInForce = timeInForce;
+    } else if (timeInForce !== 'GTC') {
+      params.timeInForce = timeInForce;
+    }
     if (clientOrderId) params.newClientOrderId = clientOrderId;
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.post('/api/v3/order', signedParams);
+    const createOrderPath = isFutures ? '/fapi/v1/order' : '/api/v3/order';
+    const httpClient = isFutures ? this.futuresClient : this.httpClient;
+    console.log('[Binance] createOrder request', {
+      pathname: createOrderPath,
+      params: signedParams,
+    });
+    const response = await httpClient.post(createOrderPath, null, {
+      params: signedParams,
+    });
 
-    return this.transformBinanceOrder(response.data);
+    return this.transformBinanceOrder(response.data, isFutures ? 'futures' : 'spot');
   }
 
   /**
@@ -328,12 +361,32 @@ export class BinanceExchange extends BaseExchange {
     }
   }
 
+  private async getFuturesPositionMode(): Promise<'oneway' | 'hedge'> {
+    const cache = this.futuresPositionModeCache;
+    if (cache && Date.now() - cache.fetchedAt < 30_000) {
+      return cache.mode;
+    }
+
+    const params = { timestamp: Date.now() };
+    const signedParams = this.signRequest(params);
+    const response = await this.futuresClient.get('/fapi/v1/positionSide/dual', {
+      params: signedParams,
+    });
+    const mode = response.data?.dualSidePosition ? 'hedge' : 'oneway';
+    this.futuresPositionModeCache = { mode, fetchedAt: Date.now() };
+    return mode;
+  }
+
   public async cancelOrder(
     symbol: string,
     orderId: string,
     clientOrderId?: string,
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
+    const isPerpetual =
+      symbol.includes(':') || symbol.includes('_PERP') || symbol.includes('_SWAP');
+    const isFutures =
+      isPerpetual || (!symbol.includes('/') && normalizedSymbol.includes('USDT'));
     const params: any = {
       symbol: normalizedSymbol,
       timestamp: Date.now(),
@@ -346,11 +399,17 @@ export class BinanceExchange extends BaseExchange {
     }
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.delete('/api/v3/order', {
-      data: signedParams,
+    const cancelOrderPath = isFutures ? '/fapi/v1/order' : '/api/v3/order';
+    const httpClient = isFutures ? this.futuresClient : this.httpClient;
+    console.log('[Binance] cancelOrder request', {
+      pathname: cancelOrderPath,
+      params: signedParams,
+    });
+    const response = await httpClient.delete(cancelOrderPath, {
+      params: signedParams,
     });
 
-    return this.transformBinanceOrder(response.data);
+    return this.transformBinanceOrder(response.data, isFutures ? 'futures' : 'spot');
   }
 
   public async getOrder(
@@ -464,10 +523,7 @@ export class BinanceExchange extends BaseExchange {
         }
       }
     } else {
-      console.warn(
-        '[Binance] Failed to fetch futures account info:',
-        futuresRes.reason,
-      );
+      console.warn('[Binance] Failed to fetch futures account info:', futuresRes.reason);
     }
 
     return {
@@ -1148,10 +1204,9 @@ export class BinanceExchange extends BaseExchange {
     return { balances, positions };
   }
 
-  private transformBinanceOrder(order: any): Order {
+  private transformBinanceOrder(order: any, market: 'spot' | 'futures' = 'spot'): Order {
     const status = this.transformBinanceOrderStatus(order.status);
-    // REST API orders are spot, denormalize: BTCUSDT → BTC/USDT
-    const symbol = this.denormalizeSymbol(order.symbol, 'spot');
+    const symbol = this.denormalizeSymbol(order.symbol, market);
 
     return {
       id: order.orderId?.toString() || uuidv4(),

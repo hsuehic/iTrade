@@ -76,5 +76,58 @@ class OrderService {
             return null;
     }
   }
+
+  /// Place a manual order
+  Future<Order?> placeOrder({
+    required String exchange,
+    required String symbol,
+    required String side,
+    required String type,
+    required double quantity,
+    double? price,
+  }) async {
+    try {
+      final Response response = await _apiClient.postJson(
+        '/api/orders',
+        data: {
+          'exchange': exchange,
+          'symbol': symbol,
+          'side': side,
+          'type': type,
+          'quantity': quantity.toString(),
+          if (price != null) 'price': price.toString(),
+        },
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final orderData = response.data['order'];
+        if (orderData is Map<String, dynamic>) {
+          return Order.fromJson(orderData);
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Cancel an open order by ID
+  Future<Order?> cancelOrder(String id) async {
+    try {
+      final Response response = await _apiClient.delete(
+        '/api/orders/$id',
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final orderData = response.data['order'];
+        if (orderData is Map<String, dynamic>) {
+          return Order.fromJson(orderData);
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
 }
 
