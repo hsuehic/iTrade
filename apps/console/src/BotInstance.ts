@@ -1,9 +1,9 @@
 import {
   ConsoleLogger,
   TradingEngine,
-  LogLevel,
   IExchange,
   AccountPollingService,
+  type ExchangeCredentials,
 } from '@itrade/core';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
@@ -31,7 +31,13 @@ export class BotInstance {
   private positionTracker: PositionTracker;
   private pushNotificationService: PushNotificationService;
   private pollingService: AccountPollingService;
+  private readonly pollingConfig: {
+    pollingInterval: number;
+    enablePersistence: boolean;
+    retryAttempts: number;
+  };
   private exchanges = new Map<string, IExchange>();
+  private exchangeAccountIds = new Map<string, number>();
   private isRunning = false;
 
   constructor(
@@ -63,14 +69,16 @@ export class BotInstance {
 
     this.strategyManager = new StrategyManager(this.engine, dataManager, logger, userId);
 
-    this.pollingService = new AccountPollingService(
-      {
-        pollingInterval: 60000, // 1 minute
-        enablePersistence: true,
-        retryAttempts: 3,
-      },
-      logger,
-    );
+    this.pollingConfig = {
+      pollingInterval: BotInstance.parseInterval(
+        process.env.ACCOUNT_POLLING_INTERVAL,
+        60000,
+      ),
+      enablePersistence: true,
+      retryAttempts: 3,
+    };
+
+    this.pollingService = new AccountPollingService(this.pollingConfig, logger);
     this.pollingService.setDataManager(dataManager);
 
     // Setup snapshot listener to update balance history
@@ -78,7 +86,17 @@ export class BotInstance {
   }
 
   private setupPollingListeners() {
-    this.pollingService.on('snapshotSaved', async (snapshot: any) => {
+    type BalanceSnapshot = {
+      accountInfoId?: number;
+      totalBalance: string;
+      availableBalance: string;
+      lockedBalance: string;
+      exchange: string;
+      timestamp: Date;
+      savingBalance?: string;
+    };
+
+    this.pollingService.on('snapshotSaved', async (snapshot: BalanceSnapshot) => {
       try {
         if (!snapshot.accountInfoId) return;
 
@@ -99,11 +117,11 @@ export class BotInstance {
 
           await this.dataManager.updateBalanceHistory(
             accountInfo,
-            snapshot.availableBalance,
-            snapshot.lockedBalance,
-            snapshot.totalBalance,
+            new Decimal(snapshot.availableBalance),
+            new Decimal(snapshot.lockedBalance),
+            new Decimal(snapshot.totalBalance),
             snapshot.timestamp,
-            snapshot.savingBalance,
+            snapshot.savingBalance ? new Decimal(snapshot.savingBalance) : new Decimal(0),
           );
           this.logger.debug(
             `Synced balance history for ${snapshot.exchange} (User: ${this.userId})`,
@@ -165,13 +183,51 @@ export class BotInstance {
     await this.engine.stop();
 
     // Disconnect Exchanges
-    for (const [name, exchange] of this.exchanges) {
+    for (const exchange of this.exchanges.values()) {
       await exchange.disconnect();
     }
     this.exchanges.clear();
 
     this.isRunning = false;
     this.logger.info(`✅ Bot stopped for user ${this.userId}`);
+  }
+
+  public async syncExchanges(accounts: AccountInfoEntity[]): Promise<void> {
+    const desiredAccounts = new Map<string, AccountInfoEntity>();
+    for (const account of accounts) {
+      if (!account.exchange) continue;
+      const exchangeName = account.exchange.toLowerCase();
+      if (!desiredAccounts.has(exchangeName)) {
+        desiredAccounts.set(exchangeName, account);
+      }
+    }
+
+    let removedAny = false;
+
+    for (const [exchangeName, account] of desiredAccounts) {
+      const existingAccountId = this.exchangeAccountIds.get(exchangeName);
+      if (!this.exchanges.has(exchangeName)) {
+        await this.connectExchangeForAccount(account);
+        continue;
+      }
+
+      if (existingAccountId && existingAccountId !== account.id) {
+        await this.removeExchangeByName(exchangeName);
+        removedAny = true;
+        await this.connectExchangeForAccount(account);
+      }
+    }
+
+    for (const exchangeName of this.exchanges.keys()) {
+      if (!desiredAccounts.has(exchangeName)) {
+        await this.removeExchangeByName(exchangeName);
+        removedAny = true;
+      }
+    }
+
+    if (removedAny) {
+      await this.rebuildPollingService();
+    }
   }
 
   private async loadExchanges(): Promise<void> {
@@ -184,77 +240,16 @@ export class BotInstance {
       throw new Error(`No active accounts found for user ${this.userId}`);
     }
 
-    const encryptionKey = process.env.ENCRYPTION_KEY;
-    if (!encryptionKey) {
-      throw new Error('ENCRYPTION_KEY environment variable is required');
-    }
-
-    const USE_MAINNET_FOR_DATA = true; // Or from config
     let successCount = 0;
     let skipCount = 0;
 
     for (const account of accounts) {
       try {
-        const exchangeName = account.exchange.toLowerCase();
-        let exchange: IExchange | null = null;
-        let connectOptions: any = {};
-
-        // Validate credentials exist
-        if (!account.apiKey || !account.secretKey) {
-          this.logger.warn(
-            `   ⚠️  ${exchangeName} account missing credentials, skipping`,
-          );
-          skipCount++;
-          continue;
-        }
-
-        const apiKey = CryptoUtils.decrypt(account.apiKey, encryptionKey);
-        const secretKey = CryptoUtils.decrypt(account.secretKey, encryptionKey);
-        const passphrase = account.passphrase
-          ? CryptoUtils.decrypt(account.passphrase, encryptionKey)
-          : undefined;
-
-        switch (exchangeName) {
-          case 'binance':
-            exchange = new BinanceExchange(!USE_MAINNET_FOR_DATA);
-            connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
-            break;
-          case 'okx':
-            if (!passphrase) {
-              this.logger.warn(`   ⚠️  OKX account missing passphrase, skipping`);
-              skipCount++;
-              continue;
-            }
-            exchange = new OKXExchange(!USE_MAINNET_FOR_DATA);
-            connectOptions = {
-              apiKey,
-              secretKey,
-              passphrase,
-              sandbox: !USE_MAINNET_FOR_DATA,
-            };
-            break;
-          case 'coinbase':
-            exchange = new CoinbaseExchange();
-            connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
-            break;
-          default:
-            this.logger.warn(`   ⚠️  Unknown exchange type: ${exchangeName}, skipping`);
-            skipCount++;
-            continue;
-        }
-
-        if (exchange) {
-          await exchange.connect(connectOptions);
-          await this.engine.addExchange(exchangeName, exchange);
-
-          // Add to polling service
-          this.pollingService.registerExchange(exchangeName, exchange, {
-            accountInfoId: account.id,
-          });
-
-          this.exchanges.set(exchangeName, exchange);
-          this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
+        const connected = await this.connectExchangeForAccount(account);
+        if (connected) {
           successCount++;
+        } else {
+          skipCount++;
         }
       } catch (error) {
         this.logger.error(
@@ -281,5 +276,127 @@ export class BotInstance {
 
   public getOrderTrackers() {
     return this.orderTracker;
+  }
+
+  private async connectExchangeForAccount(account: AccountInfoEntity): Promise<boolean> {
+    const encryptionKey = process.env.ENCRYPTION_KEY;
+    if (!encryptionKey) {
+      throw new Error('ENCRYPTION_KEY environment variable is required');
+    }
+
+    const exchangeName = account.exchange.toLowerCase();
+    let exchange: IExchange | null = null;
+    let connectOptions: ExchangeCredentials;
+
+    if (!account.apiKey || !account.secretKey) {
+      this.logger.warn(`   ⚠️  ${exchangeName} account missing credentials, skipping`);
+      return false;
+    }
+
+    const apiKey = CryptoUtils.decrypt(account.apiKey, encryptionKey);
+    const secretKey = CryptoUtils.decrypt(account.secretKey, encryptionKey);
+    const passphrase = account.passphrase
+      ? CryptoUtils.decrypt(account.passphrase, encryptionKey)
+      : undefined;
+
+    const USE_MAINNET_FOR_DATA = true; // Or from config
+
+    switch (exchangeName) {
+      case 'binance':
+        exchange = new BinanceExchange(!USE_MAINNET_FOR_DATA);
+        connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
+        break;
+      case 'okx':
+        if (!passphrase) {
+          this.logger.warn(`   ⚠️  OKX account missing passphrase, skipping`);
+          return false;
+        }
+        exchange = new OKXExchange(!USE_MAINNET_FOR_DATA);
+        connectOptions = {
+          apiKey,
+          secretKey,
+          passphrase,
+          sandbox: !USE_MAINNET_FOR_DATA,
+        };
+        break;
+      case 'coinbase':
+        exchange = new CoinbaseExchange();
+        connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
+        break;
+      default:
+        this.logger.warn(`   ⚠️  Unknown exchange type: ${exchangeName}, skipping`);
+        return false;
+    }
+
+    await exchange.connect(connectOptions);
+    await this.engine.addExchange(exchangeName, exchange);
+
+    // Add to polling service
+    this.pollingService.registerExchange(exchangeName, exchange, {
+      accountInfoId: account.id,
+    });
+
+    this.exchanges.set(exchangeName, exchange);
+    this.exchangeAccountIds.set(exchangeName, account.id);
+    this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
+    return true;
+  }
+
+  private async removeExchangeByName(exchangeName: string): Promise<void> {
+    const exchange = this.exchanges.get(exchangeName);
+    if (!exchange) return;
+
+    try {
+      await exchange.disconnect();
+    } catch (error) {
+      this.logger.warn(
+        `   ⚠️  Failed to disconnect ${exchangeName} for user ${this.userId}`,
+        {
+          error: (error as Error).message,
+        },
+      );
+    }
+
+    try {
+      this.engine.removeExchange(exchangeName);
+    } catch (error) {
+      this.logger.warn(
+        `   ⚠️  Failed to remove ${exchangeName} from engine for user ${this.userId}`,
+        {
+          error: (error as Error).message,
+        },
+      );
+    }
+
+    this.exchanges.delete(exchangeName);
+    this.exchangeAccountIds.delete(exchangeName);
+  }
+
+  private async rebuildPollingService(): Promise<void> {
+    const wasRunning = this.isRunning;
+    await this.pollingService.stop();
+    this.pollingService.removeAllListeners();
+
+    this.pollingService = new AccountPollingService(this.pollingConfig, this.logger);
+    this.pollingService.setDataManager(this.dataManager);
+    this.setupPollingListeners();
+
+    for (const [exchangeName, exchange] of this.exchanges) {
+      this.pollingService.registerExchange(exchangeName, exchange, {
+        accountInfoId: this.exchangeAccountIds.get(exchangeName),
+      });
+    }
+
+    if (wasRunning) {
+      await this.pollingService.start();
+    }
+  }
+
+  private static parseInterval(value: string | undefined, fallbackMs: number): number {
+    const parsed = Number.parseInt(value ?? '', 10);
+    if (Number.isNaN(parsed) || parsed < 1000) {
+      return fallbackMs;
+    }
+    return parsed;
   }
 }

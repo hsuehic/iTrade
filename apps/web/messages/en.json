@@ -356,6 +356,13 @@
       "title": "Exchange Accounts",
       "add": "Add Account",
       "confirmDelete": "Are you sure you want to delete this account?",
+      "deleteDialog": {
+        "title": "Delete Exchange Account",
+        "description": "This action cannot be undone. The account will be removed from iTrade.",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "deleting": "Deleting..."
+      },
       "empty": "No accounts found. Add one to start trading.",
       "status": {
         "active": "Active",

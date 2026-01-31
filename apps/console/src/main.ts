@@ -15,7 +15,7 @@ dotenv.config();
  * - Automatically loads all active users from database
  * - Creates a separate BotInstance for each user
  * - Each bot manages its own exchanges, strategies, and trackers
- * - Refreshes user list every 5 minutes to detect new accounts
+ * - Refreshes user list on a configurable interval to detect new accounts
  */
 
 const logger = new ConsoleLogger(LogLevel.INFO);

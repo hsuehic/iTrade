@@ -5,11 +5,17 @@ import { BotInstance } from './BotInstance';
 export class BotManager {
   private bots = new Map<string, BotInstance>();
   private isRunning = false;
+  private readonly refreshIntervalMs: number;
 
   constructor(
     private readonly dataManager: TypeOrmDataManager,
     private readonly logger: ConsoleLogger,
-  ) {}
+  ) {
+    this.refreshIntervalMs = BotManager.parseInterval(
+      process.env.BOT_REFRESH_INTERVAL_MS,
+      60000,
+    );
+  }
 
   public async start(): Promise<void> {
     if (this.isRunning) return;
@@ -21,12 +27,12 @@ export class BotManager {
     await this.refreshBots();
 
     // Set up periodic refresh to catch new users/accounts
-    setInterval(() => this.refreshBots(), 60000 * 5); // Every 5 minutes
+    setInterval(() => this.refreshBots(), this.refreshIntervalMs);
   }
 
   public async stop(): Promise<void> {
     this.logger.info('🛑 Stopping all bots...');
-    for (const [userId, bot] of this.bots) {
+    for (const [, bot] of this.bots) {
       await bot.stop();
     }
     this.bots.clear();
@@ -39,6 +45,7 @@ export class BotManager {
       const accounts = await accountRepo.find({
         where: { isActive: true },
         select: {
+          id: true,
           userId: true,
           apiKey: true,
           secretKey: true,
@@ -75,6 +82,14 @@ export class BotManager {
         `📊 Found ${activeUserIds.size} users with valid exchange accounts (${validAccounts.length} total accounts)`,
       );
 
+      const accountsByUser = new Map<string, AccountInfoEntity[]>();
+      for (const account of validAccounts) {
+        if (!account.userId) continue;
+        const list = accountsByUser.get(account.userId) ?? [];
+        list.push(account);
+        accountsByUser.set(account.userId, list);
+      }
+
       // Start new bots
       for (const userId of activeUserIds) {
         if (!this.bots.has(userId)) {
@@ -94,21 +109,32 @@ export class BotManager {
             // Clean up if initialization failed
             try {
               await bot.stop();
-            } catch (stopError) {
+            } catch {
               // Ignore stop errors
             }
           }
         }
       }
 
-      // Stop removed bots
+      // Refresh existing bots and stop removed bots
       for (const [userId, bot] of this.bots) {
-        if (!activeUserIds.has(userId)) {
+        const userAccounts = accountsByUser.get(userId) ?? [];
+        if (!activeUserIds.has(userId) || userAccounts.length === 0) {
           this.logger.info(
             `🗑️ User ${userId} no longer has valid accounts. Stopping bot...`,
           );
           await bot.stop();
           this.bots.delete(userId);
+          continue;
+        }
+
+        try {
+          await bot.syncExchanges(userAccounts);
+        } catch (error) {
+          this.logger.error(
+            `❌ Failed to refresh exchanges for user ${userId}:`,
+            error as Error,
+          );
         }
       }
     } catch (error) {
@@ -123,5 +149,13 @@ export class BotManager {
       userId: bot['userId'],
       trackers: bot.getOrderTrackers(),
     }));
+  }
+
+  private static parseInterval(value: string | undefined, fallbackMs: number): number {
+    const parsed = Number.parseInt(value ?? '', 10);
+    if (Number.isNaN(parsed) || parsed < 1000) {
+      return fallbackMs;
+    }
+    return parsed;
   }
 }

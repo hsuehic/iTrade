@@ -4,6 +4,14 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -35,6 +43,9 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
   const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | undefined>(undefined);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleEdit = (account: Account) => {
     setEditingAccount(account);
@@ -46,14 +57,19 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
     setIsFormOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm(t('confirmDelete'))) return;
+  const handleDeleteConfirm = async () => {
+    if (!deletingAccount) return;
+    setIsDeleting(true);
     try {
-      await deleteAccount(id);
-      setAccounts(accounts.filter((a) => a.id !== id));
+      await deleteAccount(deletingAccount.id);
+      setAccounts(accounts.filter((a) => a.id !== deletingAccount.id));
       toast.success(t('messages.deleted'));
-    } catch (error) {
+    } catch {
       toast.error(t('errors.deleteFailed'));
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+      setDeletingAccount(null);
     }
   };
 
@@ -120,7 +136,10 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleDelete(account.id)}
+                      onClick={() => {
+                        setDeletingAccount(account);
+                        setIsDeleteDialogOpen(true);
+                      }}
                       className="text-red-500 hover:text-red-700"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -132,6 +151,42 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('deleteDialog.title')}</DialogTitle>
+            <DialogDescription>{t('deleteDialog.description')}</DialogDescription>
+          </DialogHeader>
+          {deletingAccount ? (
+            <div className="text-sm text-muted-foreground">
+              <div>
+                {getExchangeDisplayName(deletingAccount.exchange as SupportedExchange)} •{' '}
+                {deletingAccount.accountId}
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsDeleteDialogOpen(false);
+                setDeletingAccount(null);
+              }}
+              disabled={isDeleting}
+            >
+              {t('deleteDialog.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+            >
+              {isDeleting ? t('deleteDialog.deleting') : t('deleteDialog.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AccountForm
         open={isFormOpen}

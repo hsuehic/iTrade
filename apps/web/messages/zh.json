@@ -356,6 +356,13 @@
       "title": "交易所账户",
       "add": "添加账户",
       "confirmDelete": "确定要删除此账户吗？",
+      "deleteDialog": {
+        "title": "删除交易所账户",
+        "description": "此操作不可撤销，该账户将从 iTrade 中移除。",
+        "cancel": "取消",
+        "confirm": "删除",
+        "deleting": "删除中..."
+      },
       "empty": "暂无账户。添加一个开始交易。",
       "status": {
         "active": "启用",

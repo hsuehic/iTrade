@@ -41,9 +41,9 @@ export class StrategyManager {
   private stateMonitor: StrategyStateMonitor;
 
   // Configuration
-  private readonly SYNC_INTERVAL_MS = 600000; // Sync every 10 minutes (configurable)
-  private readonly REPORT_INTERVAL_MS = 600000; // Report every 10 minutes
-  private readonly STATE_BACKUP_INTERVAL_MS = 60000; // Backup state every 1 minute
+  private readonly SYNC_INTERVAL_MS: number;
+  private readonly REPORT_INTERVAL_MS: number;
+  private readonly STATE_BACKUP_INTERVAL_MS: number;
 
   constructor(
     private engine: TradingEngine,
@@ -56,6 +56,19 @@ export class StrategyManager {
     this.stateManager = new StrategyStateManager(stateAdapter, logger);
     this.stateMonitor = new StrategyStateMonitor(logger);
     this.setupMonitoringEvents();
+
+    this.SYNC_INTERVAL_MS = StrategyManager.parseInterval(
+      process.env.STRATEGY_SYNC_INTERVAL_MS,
+      60000,
+    );
+    this.REPORT_INTERVAL_MS = StrategyManager.parseInterval(
+      process.env.STRATEGY_REPORT_INTERVAL_MS,
+      600000,
+    );
+    this.STATE_BACKUP_INTERVAL_MS = StrategyManager.parseInterval(
+      process.env.STRATEGY_STATE_BACKUP_INTERVAL_MS,
+      60000,
+    );
   }
 
   async start(): Promise<void> {
@@ -743,5 +756,13 @@ export class StrategyManager {
    */
   public getMonitoringMetrics(): StateRecoveryMetrics {
     return this.stateMonitor.getMetrics();
+  }
+
+  private static parseInterval(value: string | undefined, fallbackMs: number): number {
+    const parsed = Number.parseInt(value ?? '', 10);
+    if (Number.isNaN(parsed) || parsed < 1000) {
+      return fallbackMs;
+    }
+    return parsed;
   }
 }
