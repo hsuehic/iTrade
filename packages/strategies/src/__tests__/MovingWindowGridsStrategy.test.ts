@@ -21,6 +21,7 @@ import {
 /**
  * Helper function to create a Kline object
  */
+let klineTimestampSequence = 0;
 function createKline(params: {
   open: number;
   high: number;
@@ -39,7 +40,7 @@ function createKline(params: {
     close,
     symbol = 'BTC/USDT:USDT',
     exchange = 'binance',
-    timestamp = Date.now(),
+    timestamp = Date.now() + klineTimestampSequence++,
     isClosed = true,
     volume = 1000,
   } = params;
@@ -124,6 +125,7 @@ function createLowVolatilityKline(
 /**
  * Create an Order object for testing
  */
+let orderUpdateSequence = 0;
 function createOrder(params: {
   clientOrderId: string;
   side: 'buy' | 'sell';
@@ -156,6 +158,8 @@ function createOrder(params: {
         ? executedQuantity
         : quantity;
 
+  const orderTimestamp = Date.now() + orderUpdateSequence++;
+
   return {
     id: `order-${Date.now()}`,
     clientOrderId,
@@ -169,8 +173,8 @@ function createOrder(params: {
     timeInForce: TimeInForce.GTC,
     executedQuantity: new Decimal(defaultExecutedQuantity),
     averagePrice: averagePrice ? new Decimal(averagePrice) : new Decimal(price),
-    timestamp: new Date(),
-    updateTime: new Date(),
+    timestamp: new Date(orderTimestamp),
+    updateTime: new Date(orderTimestamp),
   };
 }
 
@@ -339,11 +343,9 @@ describe('MovingWindowGridsStrategy', () => {
 
   describe('Position Size Management', () => {
     it('should not generate entry signal when size would exceed maxSize', async () => {
-      // Simulate strategy already at max position
-      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
-
       // Generate entries until maxSize is reached
       for (let i = 0; i < 10; i++) {
+        const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
         const result = (await strategy.analyze({
           exchangeName: 'binance',
           symbol: 'BTC/USDT:USDT',
@@ -367,10 +369,11 @@ describe('MovingWindowGridsStrategy', () => {
       }
 
       // Next attempt should return hold
+      const finalKline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
       const finalResult = await strategy.analyze({
         exchangeName: 'binance',
         symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        klines: [finalKline],
       });
 
       expect(finalResult.action).toBe('hold');
@@ -380,16 +383,15 @@ describe('MovingWindowGridsStrategy', () => {
     });
 
     it('should track position size correctly across multiple entries', async () => {
-      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
-
       let state = strategy.getStrategyState();
       expect(state.currentSize).toBe(0);
 
       // First entry
+      const firstKline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
       const result1 = (await strategy.analyze({
         exchangeName: 'binance',
         symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        klines: [firstKline],
       })) as StrategyOrderResult;
 
       expect(result1.action).toBe('buy');
@@ -410,10 +412,11 @@ describe('MovingWindowGridsStrategy', () => {
       expect(state.currentSize).toBe(1000); // baseSize
 
       // Second entry
+      const secondKline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
       const result2 = (await strategy.analyze({
         exchangeName: 'binance',
         symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        klines: [secondKline],
       })) as StrategyOrderResult;
 
       expect(result2.action).toBe('buy');
@@ -612,24 +615,30 @@ describe('MovingWindowGridsStrategy', () => {
         klines: [kline],
       })) as StrategyOrderResult;
 
-      // Create order with fully filled status
-      const entryOrder = createOrder({
+      // Create NEW order first
+      const entryOrderNew = createOrder({
         clientOrderId: entrySignal.clientOrderId!,
         side: 'buy',
         price: 50000,
         quantity: 1000,
-        status: OrderStatus.FILLED,
-        executedQuantity: 1000, // Fully filled
-        averagePrice: 50000,
+        status: OrderStatus.NEW,
+        executedQuantity: 0,
       });
 
-      await strategy.analyze({ exchangeName: 'binance', orders: [entryOrder] });
-      await strategy.onOrderFilled(entryOrder);
+      await strategy.analyze({ exchangeName: 'binance', orders: [entryOrderNew] });
+
+      // Then update to FILLED with executedQuantity
+      const entryOrderFilled = {
+        ...entryOrderNew,
+        status: OrderStatus.FILLED,
+        executedQuantity: new Decimal(1000),
+        averagePrice: new Decimal(50000),
+        updateTime: new Date(Date.now() + 1000),
+      };
 
       const takeProfitSignal = (await strategy.analyze({
         exchangeName: 'binance',
-        symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        orders: [entryOrderFilled],
       })) as StrategyOrderResult;
 
       // TP quantity should match executedQuantity
@@ -814,11 +823,10 @@ describe('MovingWindowGridsStrategy', () => {
     });
 
     it('should handle multiple concurrent entry and take profit orders', async () => {
-      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
-
       // Create 3 entry signals and NEW orders
       const entryClientOrderIds: string[] = [];
       for (let i = 0; i < 3; i++) {
+        const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
         const entrySignal = (await strategy.analyze({
           exchangeName: 'binance',
           symbol: 'BTC/USDT:USDT',
@@ -1819,13 +1827,12 @@ describe('MovingWindowGridsStrategy', () => {
 
   describe('Size Tracking Accuracy', () => {
     it('should maintain accurate size across complex order lifecycle', async () => {
-      const kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
-
       // Entry 1: Full cycle
+      const entry1Kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
       const entry1Signal = (await strategy.analyze({
         exchangeName: 'binance',
         symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        klines: [entry1Kline],
       })) as StrategyOrderResult;
 
       // Create entry1 as NEW first
@@ -1859,10 +1866,11 @@ describe('MovingWindowGridsStrategy', () => {
       await strategy.onOrderFilled(entry1OrderFilled);
 
       // Entry 2: Partial fill + cancel
+      const entry2Kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
       const entry2Signal = (await strategy.analyze({
         exchangeName: 'binance',
         symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        klines: [entry2Kline],
       })) as StrategyOrderResult;
 
       const entry2Order = createOrder({
@@ -1909,10 +1917,11 @@ describe('MovingWindowGridsStrategy', () => {
       expect(state.currentSize).toBe(1400);
 
       // Entry 3: Canceled with no fill
+      const entry3Kline = createHighVolatilityKline(50000, 'BTC/USDT:USDT', 'binance');
       const entry3Signal = (await strategy.analyze({
         exchangeName: 'binance',
         symbol: 'BTC/USDT:USDT',
-        klines: [kline],
+        klines: [entry3Kline],
       })) as StrategyOrderResult;
 
       const entry3Order = createOrder({

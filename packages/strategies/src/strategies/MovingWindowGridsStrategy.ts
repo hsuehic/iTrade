@@ -296,7 +296,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       price: takeProfitPrice,
       symbol: this._symbol,
       leverage: this.leverage,
-      quantity: new Decimal(this.baseSize),
+      quantity,
       reason: 'take_profit',
       metadata,
       tradeMode: this.tradeMode,

@@ -1,6 +1,7 @@
 import {
   BaseStrategy,
   StrategyResult,
+  StrategyOrderResult,
   StrategyAnalyzeResult,
   StrategyConfig,
   Order,
@@ -571,10 +572,24 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       return null;
     }
 
+    return this.generateTakeProfitSignalForEntry(
+      this.lastFilled.side,
+      this.lastFilled.price,
+      this.lastFilled.amount,
+      this.lastFilled.clientOrderId,
+    );
+  }
+
+  /**
+   * Generate take-profit signal based on a provided entry definition
+   */
+  private generateTakeProfitSignalForEntry(
+    entrySide: EntrySide,
+    entryPrice: Decimal,
+    amount: Decimal,
+    parentOrderId: string,
+  ): StrategyResult {
     const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
-    const entryPrice = this.lastFilled.price;
-    const entrySide = this.lastFilled.side;
-    const amount = this.lastFilled.amount;
 
     // Calculate TP price based on entry side
     let tpPrice: Decimal;
@@ -592,7 +607,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     const metadata: SignalMetaData = {
       signalType: SignalType.TakeProfit,
-      parentOrderId: this.lastFilled.clientOrderId,
+      parentOrderId,
       entryPrice: entryPrice.toString(),
       takeProfitPrice: tpPrice.toString(),
       profitRatio: this.takeProfitPercent,
@@ -619,6 +634,54 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       reason: 'ladder_take_profit',
       metadata,
     };
+  }
+
+  /**
+   * Generate take-profit signal based on a pending entry signal (limit order)
+   */
+  private generateTakeProfitSignalForEntrySignal(
+    entrySignal: StrategyResult,
+  ): StrategyResult | null {
+    if (
+      !this.isOrderSignal(entrySignal) ||
+      !entrySignal.price ||
+      !entrySignal.quantity ||
+      !entrySignal.clientOrderId
+    ) {
+      return null;
+    }
+
+    const entrySide: EntrySide = entrySignal.action === 'buy' ? 'LONG' : 'SHORT';
+    return this.generateTakeProfitSignalForEntry(
+      entrySide,
+      entrySignal.price,
+      entrySignal.quantity,
+      entrySignal.clientOrderId,
+    );
+  }
+
+  /**
+   * Generate take-profit signal based on an existing open entry order
+   */
+  private generateTakeProfitSignalForOpenEntry(order: Order): StrategyResult | null {
+    if (!order.clientOrderId || !order.price) {
+      return null;
+    }
+
+    const entrySide: EntrySide = order.side === OrderSide.BUY ? 'LONG' : 'SHORT';
+    return this.generateTakeProfitSignalForEntry(
+      entrySide,
+      order.price,
+      order.quantity,
+      order.clientOrderId,
+    );
+  }
+
+  /**
+   * Type guard for order signals
+   */
+  private isOrderSignal(signal: StrategyResult): signal is StrategyOrderResult {
+    return signal.action === 'buy' || signal.action === 'sell';
   }
 
   /**
@@ -873,8 +936,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       return this.handleEntryFilled(order);
     } else if (metadata.signalType === SignalType.TakeProfit) {
       // TP fill returns single signal or empty
-      const signal = this.handleTpFilled(order, metadata);
-      return signal ? [signal] : [];
+      return this.handleTpFilled(order, metadata);
     }
 
     return [];
@@ -945,8 +1007,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       `   Position: ${this.positionAmount}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}, Ref: ${this.referencePrice}`,
     );
 
-    // Cancel existing TP order if any
-    if (this.openTpOrder) {
+    const openTpMetadata = this.openTpOrder?.clientOrderId
+      ? this.orderMetadataMap.get(this.openTpOrder.clientOrderId)
+      : undefined;
+    const hasLinkedTp =
+      !!this.openTpOrder && openTpMetadata?.parentOrderId === order.clientOrderId;
+
+    // Cancel existing TP order if it's not linked to this entry
+    if (this.openTpOrder && !hasLinkedTp) {
       this._logger.info(
         `   ❌ Need to cancel existing TP: ${this.openTpOrder.clientOrderId}`,
       );
@@ -960,10 +1028,16 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.openTpOrder = null;
     }
 
-    // Generate new TP signal for this entry (mandatory)
-    const tpSignal = this.generateTakeProfitSignal();
-    if (tpSignal) {
-      signals.push(tpSignal);
+    if (hasLinkedTp) {
+      this._logger.info(
+        `   ✅ Existing TP already linked to entry: ${this.openTpOrder?.clientOrderId}`,
+      );
+    } else {
+      // Generate new TP signal for this entry (mandatory)
+      const tpSignal = this.generateTakeProfitSignal();
+      if (tpSignal) {
+        signals.push(tpSignal);
+      }
     }
 
     // Check if we can place the NEXT entry order (ladder continues)
@@ -1024,10 +1098,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * 4. Check if entry order already pending (from previous entry fill)
    * 5. Only generate new entry if no entry is pending
    */
-  private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult | null {
+  private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult[] {
+    const signals: StrategyResult[] = [];
+
     if (!this.lastFilled) {
       this._logger.warn(`⚠️ TP filled but no lastFilled entry recorded`);
-      return null;
+      return signals;
     }
 
     const filledAmount = order.executedQuantity || order.quantity;
@@ -1076,12 +1152,28 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this._logger.info(
         `   📝 Entry order already pending: ${this.openEntryOrder.clientOrderId} - no new entry needed`,
       );
-      return null;
+      if (!this.openTpOrder) {
+        const tpSignal = this.generateTakeProfitSignalForOpenEntry(this.openEntryOrder);
+        if (tpSignal) {
+          this._logger.info(`   📤 Generating TP for pending entry order`);
+          signals.push(tpSignal);
+        }
+      }
+      return signals;
     }
 
-    // No entry pending - generate new entry signal
-    this._logger.info(`   🔄 No entry pending, generating new entry signal`);
-    return this.checkEntryConditions();
+    // No entry pending - generate new entry + TP signals
+    this._logger.info(`   🔄 No entry pending, generating new entry + TP signals`);
+    const entrySignal = this.checkEntryConditions();
+    if (this.isOrderSignal(entrySignal)) {
+      signals.push(entrySignal);
+      const tpSignal = this.generateTakeProfitSignalForEntrySignal(entrySignal);
+      if (tpSignal) {
+        signals.push(tpSignal);
+      }
+    }
+
+    return signals;
   }
 
   /**

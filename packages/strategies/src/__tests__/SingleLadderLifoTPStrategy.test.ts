@@ -14,6 +14,8 @@ import {
   Position,
   Ticker,
   DataUpdate,
+  StrategyAnalyzeResult,
+  StrategyResult,
 } from '@itrade/core';
 
 /**
@@ -125,6 +127,22 @@ function createDataUpdate(
     positions: options.positions,
     orders: options.orders,
   };
+}
+
+function toSignalArray(result: StrategyAnalyzeResult): StrategyResult[] {
+  return Array.isArray(result) ? result : [result];
+}
+
+function findSignalByPrefix(
+  result: StrategyAnalyzeResult,
+  prefix: 'E' | 'T',
+): StrategyResult | undefined {
+  return toSignalArray(result).find((signal) => {
+    if (!('clientOrderId' in signal)) {
+      return false;
+    }
+    return signal.clientOrderId?.startsWith(prefix);
+  });
 }
 
 describe('SingleLadderLifoTPStrategy', () => {
@@ -439,11 +457,12 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
 
       // Should generate TP signal
-      expect(tpResult.action).toBe('sell'); // Sell to take profit on long
-      if (tpResult.action === 'sell') {
-        expect(tpResult.clientOrderId).toMatch(/^T/); // TP order prefix
+      const tpSignal = findSignalByPrefix(tpResult, 'T');
+      expect(tpSignal?.action).toBe('sell'); // Sell to take profit on long
+      if (tpSignal?.action === 'sell') {
+        expect(tpSignal.clientOrderId).toMatch(/^T/); // TP order prefix
         // TP price should be entry * (1 + 1%) = 98 * 1.01 = 98.98
-        expect(tpResult.price?.toNumber()).toBeCloseTo(98.98, 2);
+        expect(tpSignal.price?.toNumber()).toBeCloseTo(98.98, 2);
       }
     });
 
@@ -511,11 +530,12 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
 
       // Should generate TP signal
-      expect(tpResult.action).toBe('buy'); // Buy to take profit on short
-      if (tpResult.action === 'buy') {
-        expect(tpResult.clientOrderId).toMatch(/^T/); // TP order prefix
+      const tpSignal = findSignalByPrefix(tpResult, 'T');
+      expect(tpSignal?.action).toBe('buy'); // Buy to take profit on short
+      if (tpSignal?.action === 'buy') {
+        expect(tpSignal.clientOrderId).toMatch(/^T/); // TP order prefix
         // TP price should be entry * (1 - 1%) = 102 * 0.99 = 100.98
-        expect(tpResult.price?.toNumber()).toBeCloseTo(100.98, 2);
+        expect(tpSignal.price?.toNumber()).toBeCloseTo(100.98, 2);
       }
     });
   });
@@ -588,10 +608,13 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
 
       // First TP should target 98 * 1.01 = 98.98
-      expect(tp1Result.action).toBe('sell');
-      expect((tp1Result as Record<string, unknown>).price as Decimal).toBeDefined();
+      const tp1Signal = findSignalByPrefix(tp1Result, 'T');
+      expect(tp1Signal?.action).toBe('sell');
+      expect((tp1Signal as Record<string, unknown>)?.price as Decimal).toBeDefined();
       expect(
-        ((tp1Result as Record<string, unknown>).price as Decimal).toNumber(),
+        (
+          ((tp1Signal as Record<string, unknown>)?.price as Decimal) || new Decimal(0)
+        ).toNumber(),
       ).toBeCloseTo(98.98, 2);
 
       // State should show lastFilled
@@ -878,8 +901,8 @@ describe('SingleLadderLifoTPStrategy', () => {
         );
 
         // Simulate TP created and filled to allow next entry
-        const tpClientOrderId = (tpResult as Record<string, unknown>)
-          .clientOrderId as string;
+        const tpSignal = findSignalByPrefix(tpResult, 'T') as Record<string, unknown>;
+        const tpClientOrderId = tpSignal?.clientOrderId as string;
         const tpOrder = createOrder(
           tpClientOrderId,
           OrderSide.SELL,
@@ -1031,11 +1054,12 @@ describe('SingleLadderLifoTPStrategy', () => {
       let tpResult = await strategy.analyze(
         createDataUpdate({ orders: [filledOrder], ticker }),
       );
-      expect(tpResult.action).toBe('sell'); // TP signal
+      const tpSignal = findSignalByPrefix(tpResult, 'T');
+      expect(tpSignal?.action).toBe('sell'); // TP signal
 
       // Simulate TP created and filled
-      const tpClientOrderId = (tpResult as Record<string, unknown>)
-        .clientOrderId as string;
+      const tpClientOrderId = (tpSignal as Record<string, unknown>)
+        ?.clientOrderId as string;
       const tpOrder = createOrder(
         tpClientOrderId,
         OrderSide.SELL,
@@ -1062,7 +1086,8 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
 
       // Should generate new entry immediately (ORDER-STATUS-ONLY)
-      expect(newEntryResult.action).toBe('buy');
+      const nextEntrySignal = findSignalByPrefix(newEntryResult, 'E');
+      expect(nextEntrySignal?.action).toBe('buy');
 
       // Reference price should have updated to TP fill price
       const state = strategy.getStrategyState();
@@ -1123,8 +1148,9 @@ describe('SingleLadderLifoTPStrategy', () => {
       expect(strategy.getStrategyState().lastFilledDirection).toBe('LONG');
 
       // Simulate TP filled
-      const tpClientOrderId = (tpResult as Record<string, unknown>)
-        .clientOrderId as string;
+      const tpSignal = findSignalByPrefix(tpResult, 'T');
+      const tpClientOrderId = (tpSignal as Record<string, unknown>)
+        ?.clientOrderId as string;
       const tpOrder = createOrder(
         tpClientOrderId,
         OrderSide.SELL,
@@ -1150,7 +1176,8 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
 
       // Should continue with LONG (same direction as last filled - mean reversion)
-      expect(newEntryResult.action).toBe('buy');
+      const nextEntrySignal = findSignalByPrefix(newEntryResult, 'E');
+      expect(nextEntrySignal?.action).toBe('buy');
 
       // lastFilledDirection should still be LONG (preserved after TP)
       expect(strategy.getStrategyState().lastFilledDirection).toBe('LONG');
