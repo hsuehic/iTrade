@@ -6,13 +6,11 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
     "./constants": {
-      "source": "./src/constants/exchanges.ts",
       "types": "./dist/constants/exchanges.d.ts",
       "import": "./dist/constants/exchanges.js",
       "require": "./dist/constants/exchanges.js"

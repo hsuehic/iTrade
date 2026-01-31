@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 
 import { decimalTransformer } from '../utils/transformers';
-import { AccountInfoEntity } from './AccountInfo';
+import type { AccountInfoEntity } from './AccountInfo';
 
 export abstract class BaseBalanceHistoryEntity {
   @PrimaryGeneratedColumn()
