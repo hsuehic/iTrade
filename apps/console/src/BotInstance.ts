@@ -1,9 +1,10 @@
 import {
-  ConsoleLogger,
-  TradingEngine,
-  IExchange,
   AccountPollingService,
+  ConsoleLogger,
+  IExchange,
+  TradingEngine,
   type ExchangeCredentials,
+  type Order,
 } from '@itrade/core';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
@@ -36,6 +37,9 @@ export class BotInstance {
     enablePersistence: boolean;
     retryAttempts: number;
   };
+  private readonly openOrdersSyncInterval: number;
+  private openOrdersSyncTimer: NodeJS.Timeout | null = null;
+  private isOpenOrdersSyncRunning = false;
   private exchanges = new Map<string, IExchange>();
   private exchangeAccountIds = new Map<string, number>();
   private isRunning = false;
@@ -85,6 +89,11 @@ export class BotInstance {
 
     this.pollingService = new AccountPollingService(this.pollingConfig, logger);
     this.pollingService.setDataManager(dataManager);
+
+    this.openOrdersSyncInterval = BotInstance.parseInterval(
+      process.env.OPEN_ORDERS_SYNC_INTERVAL,
+      60000,
+    );
 
     // Setup snapshot listener to update balance history
     this.setupPollingListeners();
@@ -164,6 +173,8 @@ export class BotInstance {
 
     await this.engine.start();
     await this.pollingService.start();
+    await this.syncOpenOrders();
+    this.startOpenOrdersSync();
     this.isRunning = true;
     this.logger.info(`🚀 Bot started for user ${this.userId}`);
   }
@@ -172,6 +183,8 @@ export class BotInstance {
     if (!this.isRunning) return;
 
     this.logger.info(`🛑 Stopping bot for user ${this.userId}...`);
+
+    this.stopOpenOrdersSync();
 
     // Stop Strategy Manager
     await this.strategyManager.stop();
@@ -395,6 +408,115 @@ export class BotInstance {
     if (wasRunning) {
       await this.pollingService.start();
     }
+  }
+
+  private startOpenOrdersSync(): void {
+    if (this.openOrdersSyncTimer) {
+      return;
+    }
+
+    this.openOrdersSyncTimer = setInterval(() => {
+      void this.syncOpenOrders();
+    }, this.openOrdersSyncInterval);
+
+    this.logger.info(
+      `⏱️ Open orders sync enabled every ${Math.round(
+        this.openOrdersSyncInterval / 1000,
+      )}s (User: ${this.userId})`,
+    );
+  }
+
+  private stopOpenOrdersSync(): void {
+    if (!this.openOrdersSyncTimer) {
+      return;
+    }
+
+    clearInterval(this.openOrdersSyncTimer);
+    this.openOrdersSyncTimer = null;
+    this.logger.info(`⏹️ Open orders sync stopped (User: ${this.userId})`);
+  }
+
+  private async syncOpenOrders(): Promise<void> {
+    if (this.isOpenOrdersSyncRunning) {
+      return;
+    }
+
+    if (this.exchanges.size === 0) {
+      return;
+    }
+
+    this.isOpenOrdersSyncRunning = true;
+    const orderManager = this.orderTracker.getOrderManager();
+
+    try {
+      for (const [exchangeName, exchange] of this.exchanges) {
+        try {
+          const openOrders = await exchange.getOpenOrders();
+          if (openOrders.length === 0) {
+            continue;
+          }
+
+          const results = await Promise.allSettled(
+            openOrders.map((order) =>
+              this.persistOpenOrderSnapshot(orderManager, order, exchangeName),
+            ),
+          );
+
+          const failed = results.filter((result) => result.status === 'rejected').length;
+          if (failed > 0) {
+            this.logger.warn(
+              `⚠️ Open orders sync partially failed for ${exchangeName} (${failed}/${openOrders.length})`,
+            );
+          }
+        } catch (error) {
+          this.logger.warn(`⚠️ Failed to sync open orders for ${exchangeName}`, {
+            error: (error as Error).message,
+          });
+        }
+      }
+    } finally {
+      this.isOpenOrdersSyncRunning = false;
+    }
+  }
+
+  private async persistOpenOrderSnapshot(
+    orderManager: ReturnType<OrderTracker['getOrderManager']>,
+    order: Order,
+    exchangeName: string,
+  ): Promise<void> {
+    const exchange = order.exchange ?? exchangeName;
+    const normalizedOrder: Order = {
+      ...order,
+      exchange,
+      userId: order.userId ?? this.userId,
+    };
+
+    if (orderManager.getOrder(normalizedOrder.id)) {
+      orderManager.updateOrder(normalizedOrder.id, normalizedOrder);
+    } else {
+      orderManager.addOrder(normalizedOrder);
+    }
+
+    await this.dataManager.saveOrder({
+      id: normalizedOrder.id,
+      clientOrderId: normalizedOrder.clientOrderId,
+      userId: normalizedOrder.userId,
+      symbol: normalizedOrder.symbol,
+      side: normalizedOrder.side,
+      type: normalizedOrder.type,
+      quantity: normalizedOrder.quantity,
+      price: normalizedOrder.price,
+      status: normalizedOrder.status,
+      timeInForce: normalizedOrder.timeInForce,
+      timestamp: normalizedOrder.timestamp,
+      updateTime: normalizedOrder.updateTime ?? normalizedOrder.timestamp,
+      executedQuantity: normalizedOrder.executedQuantity,
+      cummulativeQuoteQuantity: normalizedOrder.cummulativeQuoteQuantity,
+      exchange,
+      strategyId: normalizedOrder.strategyId,
+      strategyType: normalizedOrder.strategyType,
+      strategyName: normalizedOrder.strategyName,
+    });
   }
 
   private static parseInterval(value: string | undefined, fallbackMs: number): number {
