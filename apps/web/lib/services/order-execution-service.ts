@@ -149,6 +149,7 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
   try {
     const { isPerpetual } = parseSymbol(input.symbol);
     const isBinance = account.exchange.toLowerCase() === 'binance';
+    const isCoinbase = account.exchange.toLowerCase() === 'coinbase';
     const positionAction = input.positionAction;
     const positionSideMap: Record<
       NonNullable<ManualOrderInput['positionAction']>,
@@ -174,6 +175,20 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
       const quantity = toDecimal(input.quantity);
       const price = input.price !== undefined ? toDecimal(input.price) : undefined;
       const side = positionAction ? sideOverrideMap[positionAction] : input.side;
+      const tradeMode =
+        isCoinbase && isPerpetual && !input.tradeMode
+          ? TradeMode.ISOLATED
+          : input.tradeMode;
+      const leverage = isCoinbase && isPerpetual && !input.leverage ? 5 : input.leverage;
+
+      if (tradeMode !== input.tradeMode || leverage !== input.leverage) {
+        console.info('[Orders] Applied Coinbase defaults for perpetual order', {
+          userId,
+          symbol: input.symbol,
+          tradeMode: tradeMode ?? null,
+          leverage: leverage ?? null,
+        });
+      }
 
       return connection.exchange.createOrder(
         input.symbol,
@@ -184,8 +199,8 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
         TimeInForce.GTC,
         undefined,
         {
-          tradeMode: input.tradeMode,
-          leverage: input.leverage,
+          tradeMode,
+          leverage,
           positionSide:
             isBinance && isPerpetual && positionAction
               ? positionSideMap[positionAction]

@@ -268,25 +268,34 @@ export class CoinbaseExchange extends BaseExchange {
       // map GTC/IOC/FOK to closest config; Coinbase uses specific keys; we keep limit_gtc for simplicity
     }
 
-    const body: any = {
-      client_order_id: clientOrderId || uuidv4(),
-      product_id: productId,
-      side: side === OrderSide.BUY ? 'BUY' : 'SELL',
-      order_configuration,
+    const buildBody = () => {
+      const body: any = {
+        client_order_id: clientOrderId || uuidv4(),
+        product_id: productId,
+        side: side === OrderSide.BUY ? 'BUY' : 'SELL',
+        order_configuration,
+      };
+
+      if (isPerpetual && options?.leverage) {
+        body.leverage = options.leverage.toString();
+      }
+
+      if (isPerpetual) {
+        body.margin_type = 'ISOLATED';
+      }
+
+      return body;
     };
 
     // Add leverage for perpetual futures (up to 10x)
     if (isPerpetual && options?.leverage) {
-      body.leverage = options.leverage.toString();
       console.log(
         `[Coinbase] Setting leverage ${options.leverage}x for perpetual ${productId}`,
       );
     }
 
-    // Add margin type if specified (for perpetual futures)
-    if (isPerpetual && options?.tradeMode && options.tradeMode !== 'cash') {
-      body.margin_type = options.tradeMode.toUpperCase(); // ISOLATED or CROSS
-    }
+    const body = buildBody();
+    const marginType = isPerpetual ? 'ISOLATED' : null;
 
     console.log('[Coinbase] Creating order:', {
       product_id: productId,
@@ -297,6 +306,7 @@ export class CoinbaseExchange extends BaseExchange {
       clientOrderId,
       isPerpetual,
       tradeMode: options?.tradeMode,
+      marginType,
       leverage: options?.leverage,
     });
 
@@ -305,15 +315,34 @@ export class CoinbaseExchange extends BaseExchange {
     console.log('[Coinbase] Order response:', {
       status: resp.status,
       data: resp.data,
-      hasOrder: !!(resp.data?.success_response?.order || resp.data?.order),
+      hasOrder: !!(
+        resp.data?.success_response?.order ||
+        resp.data?.success_response?.order_id ||
+        resp.data?.order
+      ),
       hasError: !!(resp.data?.error_response || resp.data?.error),
     });
 
     // Extract order from response
-    const orderData = resp.data?.success_response?.order || resp.data?.order || resp.data;
+    const successResponse = resp.data?.success_response;
+    const orderData =
+      successResponse?.order || successResponse || resp.data?.order || resp.data;
+    const orderConfiguration =
+      body.order_configuration?.limit_limit_gtc ||
+      body.order_configuration?.market_market_ioc;
+    const normalizedOrderData = {
+      ...orderData,
+      product_id: orderData?.product_id || body.product_id,
+      side: orderData?.side || body.side,
+      order_type:
+        orderData?.order_type || (type === OrderType.LIMIT ? 'LIMIT' : 'MARKET'),
+      base_size: orderData?.base_size || orderConfiguration?.base_size,
+      limit_price: orderData?.limit_price || orderConfiguration?.limit_price,
+      client_order_id: orderData?.client_order_id || body.client_order_id,
+    };
 
     // Check if order was actually created
-    if (!orderData || !orderData.order_id) {
+    if (!normalizedOrderData || !normalizedOrderData.order_id) {
       const errorMsg =
         resp.data?.error_response?.message ||
         resp.data?.error?.message ||
@@ -326,23 +355,19 @@ export class CoinbaseExchange extends BaseExchange {
         errorMsg,
       });
       throw new Error(
-        `Coinbase order creation failed: ${errorMsg}. Full response: ${JSON.stringify(resp.data)}`,
+        `Coinbase order creation failed: ${errorMsg}. Full response: ${JSON.stringify(
+          resp.data,
+        )}`,
       );
     }
 
     console.log('[Coinbase] Order created successfully:', orderData.order_id);
 
-    // Transform order and ensure quantity is set from request if missing in response
-    const order = this.transformOrder(orderData);
-
-    // Coinbase API might not return quantity in response, use from request
+    const order = this.transformOrder(normalizedOrderData);
     if (!order.quantity || order.quantity.isZero()) {
       order.quantity = quantity;
     }
-
-    // Denormalize symbol back to unified format (WLD-PERP-INTX → WLD/USDC:USDC)
     order.symbol = this.denormalizeSymbol(order.symbol);
-
     return order;
   }
 
@@ -1547,13 +1572,55 @@ export class CoinbaseExchange extends BaseExchange {
       }
     })();
 
-    // Detect auth method based on secret key format and host
-    const isExchangeHost = host.includes('api.exchange.coinbase.com');
-    const isPemKey = this.credentials.secretKey.includes('-----BEGIN');
-    const forceJwt = (process.env.COINBASE_FORCE_JWT || 'false').toLowerCase() === 'true';
+    const normalizePemKey = (secretKey: string) => {
+      const withNewlines = secretKey.includes('\\n')
+        ? secretKey.replace(/\\n/g, '\n')
+        : secretKey;
+      const trimmed = withNewlines.trim();
+      const beginMatch = trimmed.match(/-----BEGIN [^-]+-----/);
+      const endMatch = trimmed.match(/-----END [^-]+-----/);
 
-    // Use JWT if: PEM key detected, Exchange host, or explicitly forced
-    const useJwt = isPemKey || isExchangeHost || forceJwt;
+      if (!beginMatch || !endMatch) {
+        return trimmed;
+      }
+
+      const header = beginMatch[0];
+      const footer = endMatch[0];
+      const body = trimmed.replace(header, '').replace(footer, '').replace(/\s+/g, '');
+
+      if (!body) {
+        return trimmed;
+      }
+
+      const wrappedBody = body.match(/.{1,64}/g)?.join('\n') ?? body;
+      return `${header}\n${wrappedBody}\n${footer}`;
+    };
+
+    const normalizedSecretKey = normalizePemKey(this.credentials.secretKey);
+
+    const isExchangeHost = host.includes('api.exchange.coinbase.com');
+    const isPemKey = /-----BEGIN [^-]+-----/.test(normalizedSecretKey);
+    const forceJwt = (process.env.COINBASE_FORCE_JWT || 'false').toLowerCase() === 'true';
+    const wantsJwt = isPemKey || isExchangeHost || forceJwt;
+
+    const isEcPemKey = (() => {
+      if (!isPemKey) return false;
+      try {
+        const privateKey = crypto.createPrivateKey(normalizedSecretKey);
+        return privateKey.asymmetricKeyType === 'ec';
+      } catch {
+        return false;
+      }
+    })();
+
+    if (wantsJwt && !isEcPemKey) {
+      console.warn(
+        '[Coinbase] JWT auth requires an EC PEM private key; falling back to HMAC.',
+      );
+    }
+
+    // Use JWT only when we have a valid EC PEM private key
+    const useJwt = wantsJwt && isEcPemKey;
 
     if (useJwt) {
       // Coinbase Exchange uses JWT ES256
@@ -1562,7 +1629,7 @@ export class CoinbaseExchange extends BaseExchange {
         method,
         pathname,
         this.credentials.apiKey,
-        this.credentials.secretKey,
+        normalizedSecretKey,
       );
 
       config.headers = {

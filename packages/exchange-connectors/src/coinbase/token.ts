@@ -29,5 +29,30 @@ export function generateToken(
     header: header,
   };
 
-  return jwt.sign(payload, apiSecret as string, options);
+  const normalizePemKey = (secretKey: string) => {
+    const withNewlines = secretKey.includes('\\n')
+      ? secretKey.replace(/\\n/g, '\n')
+      : secretKey;
+    const trimmed = withNewlines.trim();
+    const beginMatch = trimmed.match(/-----BEGIN [^-]+-----/);
+    const endMatch = trimmed.match(/-----END [^-]+-----/);
+
+    if (!beginMatch || !endMatch) {
+      return trimmed;
+    }
+
+    const header = beginMatch[0];
+    const footer = endMatch[0];
+    const body = trimmed.replace(header, '').replace(footer, '').replace(/\s+/g, '');
+    if (!body) {
+      return trimmed;
+    }
+
+    const wrappedBody = body.match(/.{1,64}/g)?.join('\n') ?? body;
+    return `${header}\n${wrappedBody}\n${footer}`;
+  };
+
+  const normalizedSecret = normalizePemKey(apiSecret);
+
+  return jwt.sign(payload, normalizedSecret as string, options);
 }

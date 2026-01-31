@@ -235,6 +235,20 @@ export async function POST(request: NextRequest) {
     if (normalizedSymbol.includes(':')) {
       normalizedSymbol = toPerpetualSymbol(normalizedSymbol);
     }
+
+    console.info('[Orders] Manual order submission', {
+      userId: session.user.id,
+      exchange: parsed.data.exchange,
+      symbol: normalizedSymbol,
+      side: parsed.data.side,
+      type: parsed.data.type,
+      quantity: parsed.data.quantity,
+      price: parsed.data.price ?? null,
+      tradeMode: parsed.data.tradeMode ?? null,
+      leverage: parsed.data.leverage ?? null,
+      positionAction: parsed.data.positionAction ?? null,
+    });
+
     const order = await executeManualOrder(session.user.id, {
       exchange: parsed.data.exchange,
       symbol: normalizedSymbol,
