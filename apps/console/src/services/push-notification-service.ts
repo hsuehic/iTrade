@@ -79,6 +79,10 @@ export class PushNotificationService {
   }
 
   private async resolveUserId(order: Order): Promise<string | null> {
+    if (order.userId) {
+      return order.userId;
+    }
+
     if (order.strategyId) {
       const cached = this.strategyUserCache.get(order.strategyId);
       if (cached) return cached;

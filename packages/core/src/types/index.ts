@@ -172,6 +172,7 @@ export enum TimeInForce {
 export interface Order {
   id: string;
   clientOrderId?: string; // Optional: may not be present for orders not created by our system
+  userId?: string; // Owning user for authorization and scoping
   symbol: string;
   side: OrderSide;
   type: OrderType;

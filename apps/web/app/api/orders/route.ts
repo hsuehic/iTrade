@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const strategyId = searchParams.get('strategyId');
     const symbol = searchParams.get('symbol');
+    const exchange = searchParams.get('exchange');
     const status = searchParams.get('status');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     interface OrderFilters {
       strategyId?: number;
       symbol?: string;
+      exchange?: string;
       status?: string;
       startDate?: Date;
       endDate?: Date;
@@ -36,6 +38,7 @@ export async function GET(request: NextRequest) {
       filters.strategyId = id;
     }
     if (symbol) filters.symbol = symbol;
+    if (exchange) filters.exchange = exchange;
     if (status) filters.status = status;
     if (startDate) filters.startDate = new Date(startDate);
     if (endDate) filters.endDate = new Date(endDate);

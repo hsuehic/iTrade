@@ -22,6 +22,7 @@ import type { OrderFillEntity } from './OrderFill';
 @Index(['status'])
 @Index(['strategyId'])
 @Index(['exchange'])
+@Index(['userId'])
 export class OrderEntity implements Order {
   @PrimaryGeneratedColumn()
   internalId!: number;
@@ -31,6 +32,9 @@ export class OrderEntity implements Order {
 
   @Column({ type: 'text', nullable: true })
   clientOrderId?: string | undefined;
+
+  @Column({ type: 'text', nullable: true })
+  userId?: string;
 
   @Column({ type: 'character varying', length: 20 })
   symbol!: string;

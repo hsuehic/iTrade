@@ -1,4 +1,4 @@
-import { DataSource, Repository } from 'typeorm';
+import { Brackets, DataSource, Repository } from 'typeorm';
 
 import { OrderEntity } from '../entities/Order';
 
@@ -44,6 +44,7 @@ export class OrderRepository {
   async findAll(filters?: {
     strategyId?: number;
     symbol?: string;
+    exchange?: string;
     status?: string;
     startDate?: Date;
     endDate?: Date;
@@ -69,6 +70,9 @@ export class OrderRepository {
     if (filters?.symbol) {
       query.andWhere('order.symbol = :symbol', { symbol: filters.symbol });
     }
+    if (filters?.exchange) {
+      query.andWhere('order.exchange = :exchange', { exchange: filters.exchange });
+    }
     if (filters?.status) {
       query.andWhere('order.status = :status', { status: filters.status });
     }
@@ -84,14 +88,18 @@ export class OrderRepository {
     }
 
     if (filters?.userId) {
-      // Must join strategy or position to filter by userId
+      // Must join strategy or position to filter by legacy orders without userId
       if (!filters.includeStrategy) {
         query.leftJoin('order.strategy', 'strategy');
       }
       query.leftJoin('order.position', 'position');
-      query.andWhere('(strategy.userId = :userId OR position.userId = :userId)', {
-        userId: filters.userId,
-      });
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where('order.userId = :userId', { userId: filters.userId })
+            .orWhere('strategy.userId = :userId', { userId: filters.userId })
+            .orWhere('position.userId = :userId', { userId: filters.userId });
+        }),
+      );
     }
 
     // Add cache for better performance

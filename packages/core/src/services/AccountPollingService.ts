@@ -100,13 +100,16 @@ export class AccountPollingService extends EventEmitter {
     const key = name.toLowerCase();
     this.exchanges.set(key, exchange);
     this.exchangeMetadata.set(key, metadata);
-    
+
     // Ensure it's in the polling list
     if (!this.config.exchanges.includes(key)) {
       this.config.exchanges.push(key);
     }
-    
-    this.logger?.info('Exchange registered and added to polling list', { exchange: name, metadata });
+
+    this.logger?.info('Exchange registered and added to polling list', {
+      exchange: name,
+      metadata,
+    });
   }
 
   /**
@@ -194,11 +197,11 @@ export class AccountPollingService extends EventEmitter {
       ) {
         const metadata = this.exchangeMetadata.get(exchangeName.toLowerCase());
         await this.saveSnapshot(
-          exchangeName, 
-          result.balances, 
-          result.positions, 
+          exchangeName,
+          result.balances,
+          result.positions,
           result.totalEquity,
-          metadata?.accountInfoId
+          metadata?.accountInfoId,
         );
       }
     }
@@ -314,7 +317,8 @@ export class AccountPollingService extends EventEmitter {
 
     try {
       // 计算统计数据
-      const totalBalance = totalEquity ?? balances.reduce((sum, b) => sum.add(b.total), new Decimal(0));
+      const totalBalance =
+        totalEquity ?? balances.reduce((sum, b) => sum.add(b.total), new Decimal(0));
       const availableBalance = balances.reduce(
         (sum, b) => sum.add(b.free),
         new Decimal(0),
@@ -428,11 +432,11 @@ export class AccountPollingService extends EventEmitter {
       ) {
         const metadata = this.exchangeMetadata.get(exchangeName.toLowerCase());
         await this.saveSnapshot(
-          exchangeName, 
-          result.balances, 
-          result.positions, 
+          exchangeName,
+          result.balances,
+          result.positions,
           result.totalEquity,
-          metadata?.accountInfoId
+          metadata?.accountInfoId,
         );
       }
     }

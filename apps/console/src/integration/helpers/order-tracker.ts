@@ -38,6 +38,7 @@ export class OrderTracker {
     private pushNotificationService?: {
       notifyOrderFill(order: Order, kind: 'filled' | 'partial'): Promise<void>;
     },
+    private userId?: string,
   ) {
     this.eventBus = EventBus.getInstance();
     this.orderManager = new OrderManager();
@@ -116,11 +117,13 @@ export class OrderTracker {
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
+      const userId = order.userId ?? this.userId;
 
       // Save order to database
       await this.dataManager.saveOrder({
         id: order.id,
         clientOrderId: order.clientOrderId,
+        userId,
         symbol: order.symbol,
         side: order.side,
         type: order.type,
@@ -169,12 +172,14 @@ export class OrderTracker {
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
+      const userId = order.userId ?? this.userId;
 
       // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
       // This ensures the order is saved even if it's the first time we're seeing it
       await this.dataManager.saveOrder({
         id: order.id,
         clientOrderId: order.clientOrderId,
+        userId,
         symbol: order.symbol,
         side: order.side,
         type: order.type,
@@ -246,11 +251,13 @@ export class OrderTracker {
       // 🆕 Directly read strategyId and exchange from order object
       const strategyId = order.strategyId;
       const exchange = order.exchange;
+      const userId = order.userId ?? this.userId;
 
       // 🆕 Use saveOrder (upsert) instead of updateOrder to handle case where OrderCreated wasn't received
       await this.dataManager.saveOrder({
         id: order.id,
         clientOrderId: order.clientOrderId,
+        userId,
         symbol: order.symbol,
         side: order.side,
         type: order.type,

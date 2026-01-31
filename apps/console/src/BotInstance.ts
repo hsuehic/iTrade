@@ -56,6 +56,7 @@ export class BotInstance {
       dataManager,
       logger,
       this.pushNotificationService,
+      userId,
     );
     this.balanceTracker = new BalanceTracker(userId, dataManager, logger);
     this.positionTracker = new PositionTracker(userId, dataManager, logger);

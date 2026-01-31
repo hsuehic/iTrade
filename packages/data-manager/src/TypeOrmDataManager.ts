@@ -880,6 +880,7 @@ export class TypeOrmDataManager implements IDataManager {
   async getOrders(filters?: {
     strategyId?: number;
     symbol?: string;
+    exchange?: string;
     status?: string;
     startDate?: Date;
     endDate?: Date;
