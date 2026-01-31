@@ -1,7 +1,7 @@
 {
   "navigation": {
     "mobileApp": "移动应用",
-    "dashboard": "仪表盘",
+    "dashboard": "概览",
     "signIn": "登录",
     "signUp": "注册",
     "language": "语言",
@@ -37,8 +37,8 @@
       "subtitle": "实时市场数据与指数",
       "loadingTitle": "实时行情",
       "loadingSubtitle": "连接交易所中...",
-      "binance": "Binance",
-      "okx": "OKX"
+      "binance": "币安",
+      "okx": "欧易"
     },
     "mobile": {
       "badge": "随时交易",
@@ -203,7 +203,7 @@
   },
   "nav": {
     "main": {
-      "dashboard": "仪表盘",
+      "dashboard": "概览",
       "strategy": "策略",
       "dryRun": "模拟运行",
       "backtest": "回测",
