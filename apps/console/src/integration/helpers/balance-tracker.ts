@@ -45,6 +45,11 @@ export class BalanceTracker {
 
     // Listen for balance updates using the correct event name
     this.eventBus.onBalanceUpdate((data) => {
+      // 🛡️ Filter by userId if provided in the event
+      if (data.userId && data.userId !== this.userId) {
+        return;
+      }
+
       // Convert Balance[] to AccountInfo for backwards compatibility
       const accountInfo: AccountInfo = {
         balances: data.balances,
