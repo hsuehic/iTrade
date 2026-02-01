@@ -5,7 +5,6 @@ import type { Session } from './Session';
 import type { StrategyEntity } from './Strategy';
 import type { PositionEntity } from './Position';
 import type { PushDeviceEntity } from './PushDevice';
-import type { EmailPreferencesEntity } from './EmailPreferences';
 import type { DryRunSessionEntity } from './DryRunSession';
 import type { BacktestConfigEntity } from './BacktestConfig';
 
@@ -66,10 +65,6 @@ export class User {
   })
   pushDevices?: PushDeviceEntity[];
 
-  @OneToMany('email_preferences', 'user', {
-    onDelete: 'CASCADE',
-  })
-  emailPreferences?: EmailPreferencesEntity[];
 
   @OneToMany('dry_run_sessions', 'user', {
     onDelete: 'CASCADE',
