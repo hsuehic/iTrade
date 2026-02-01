@@ -50,11 +50,11 @@ export function NavMain() {
       url: '/market',
       icon: IconWorldDollar,
     },
-    // {
-    //   title: t('push'),
-    //   url: '/push',
-    //   icon: IconBell,
-    // },
+    {
+      title: t('push'),
+      url: '/push',
+      icon: IconBell,
+    },
   ];
 
   const pathname = usePathname();

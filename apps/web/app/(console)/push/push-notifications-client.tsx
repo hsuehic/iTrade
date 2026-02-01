@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { PushInbox } from './push-inbox';
 
 type PushDevice = {
   id: string;
@@ -308,12 +309,17 @@ export function PushNotificationsClient() {
   }
 
   return (
-    <Tabs defaultValue="send" className="w-full">
+    <Tabs defaultValue="inbox" className="w-full">
       <TabsList>
+        <TabsTrigger value="inbox">{t('tabs.inbox')}</TabsTrigger>
         <TabsTrigger value="send">{t('tabs.send')}</TabsTrigger>
         <TabsTrigger value="dashboard">{t('tabs.dashboard')}</TabsTrigger>
         <TabsTrigger value="export">{t('tabs.export')}</TabsTrigger>
       </TabsList>
+
+      <TabsContent value="inbox" className="mt-6">
+        <PushInbox />
+      </TabsContent>
 
       <TabsContent value="send" className="mt-6">
         <div className="grid gap-4 lg:grid-cols-2">

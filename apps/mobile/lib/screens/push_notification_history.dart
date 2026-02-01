@@ -1,9 +1,6 @@
-import 'dart:io';
-
-import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 
-import '../services/api_client.dart';
 import '../services/notification.dart';
 import '../services/preference.dart';
 import 'push_notification_detail.dart';
@@ -57,19 +54,16 @@ class _PushNotificationHistoryScreenState
   final List<PushNotificationHistoryItem> _items = [];
   final Set<String> _readIds = <String>{};
   bool _loading = false;
-  bool _loadingMore = false;
-  int _offset = 0;
-  int _total = 0;
-  bool _sortDesc = true;
+  String _sortKey = 'newest';
   String _categoryFilter = 'all';
   bool _showUnreadOnly = false;
-  static const int _limit = 30;
+  String _searchInput = '';
+  String _searchQuery = '';
+  Timer? _searchDebounce;
 
-  String get _platform => Platform.isIOS ? 'ios' : 'android';
-  String get _provider => 'fcm';
   int get _unreadCount =>
       _items.where((item) => !_readIds.contains(item.id)).length;
-  int get _totalCount => _total > 0 ? _total : _items.length;
+  int get _totalCount => _items.length;
   List<PushNotificationHistoryItem> get _visibleItems {
     Iterable<PushNotificationHistoryItem> filtered = _items;
     if (_categoryFilter != 'all') {
@@ -78,7 +72,42 @@ class _PushNotificationHistoryScreenState
     if (_showUnreadOnly) {
       filtered = filtered.where((item) => !_readIds.contains(item.id));
     }
-    return filtered.toList();
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      filtered = filtered.where((item) {
+        final title = item.title ?? '';
+        final body = item.body ?? '';
+        final data = item.data ?? <String, dynamic>{};
+        final haystack = [
+          title,
+          body,
+          data['symbol']?.toString() ?? '',
+          data['orderId']?.toString() ?? '',
+          data['strategyName']?.toString() ?? '',
+          data['exchange']?.toString() ?? '',
+          data['side']?.toString() ?? '',
+          data['status']?.toString() ?? '',
+        ].join(' ').toLowerCase();
+        return haystack.contains(q);
+      });
+    }
+    final list = filtered.toList();
+    list.sort((a, b) {
+      switch (_sortKey) {
+        case 'oldest':
+          return a.createdAt.compareTo(b.createdAt);
+        case 'symbol':
+          return (a.data?['symbol']?.toString() ?? '')
+              .compareTo(b.data?['symbol']?.toString() ?? '');
+        case 'strategy':
+          return (a.data?['strategyName']?.toString() ?? '')
+              .compareTo(b.data?['strategyName']?.toString() ?? '');
+        case 'newest':
+        default:
+          return b.createdAt.compareTo(a.createdAt);
+      }
+    });
+    return list;
   }
 
   @override
@@ -86,6 +115,12 @@ class _PushNotificationHistoryScreenState
     super.initState();
     _loadReadIds();
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadReadIds() async {
@@ -102,80 +137,23 @@ class _PushNotificationHistoryScreenState
   Future<void> _refresh() async {
     setState(() {
       _loading = true;
-      _offset = 0;
       _items.clear();
     });
     try {
-      await _fetchPage(offset: 0, append: false);
+      final stored = await Preference.getPushInboxMessages();
+      final List<PushNotificationHistoryItem> items = stored
+          .map((item) => PushNotificationHistoryItem.fromJson(item))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(items);
+      });
+      await _syncBadgeCount();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _loadMore() async {
-    if (_loadingMore) return;
-    if (_items.length >= _total) return;
-    setState(() => _loadingMore = true);
-    try {
-      await _fetchPage(offset: _offset, append: true);
-    } finally {
-      if (mounted) setState(() => _loadingMore = false);
-    }
-  }
-
-  Future<void> _fetchPage({required int offset, required bool append}) async {
-    if (!ApiClient.instance.isInitialized) return;
-
-    final Response<dynamic> res = await ApiClient.instance.getJson<dynamic>(
-      '/api/mobile/push/logs',
-      queryParameters: <String, dynamic>{
-        'platform': _platform,
-        'provider': _provider,
-        'limit': _limit,
-        'offset': offset,
-        'sort': _sortDesc ? 'desc' : 'asc',
-      },
-      options: Options(
-        followRedirects: false,
-        validateStatus: (int? s) => s != null && s < 500,
-      ),
-    );
-
-    if (res.statusCode != 200 || res.data is! Map) {
-      return;
-    }
-
-    final Map<String, dynamic> body = res.data as Map<String, dynamic>;
-    final dynamic logsRaw = body['logs'];
-    final int total = (body['total'] as num?)?.toInt() ?? 0;
-
-    final List<PushNotificationHistoryItem> page =
-        <PushNotificationHistoryItem>[];
-    if (logsRaw is List) {
-      for (final item in logsRaw) {
-        if (item is Map) {
-          page.add(
-            PushNotificationHistoryItem.fromJson(
-              Map<String, dynamic>.from(item),
-            ),
-          );
-        }
-      }
-    }
-
-    if (!mounted) return;
-    setState(() {
-      _total = total;
-      if (append) {
-        _items.addAll(page);
-      } else {
-        _items
-          ..clear()
-          ..addAll(page);
-      }
-      _offset = _items.length;
-    });
-    await _syncBadgeCount();
   }
 
   Future<void> _syncBadgeCount() async {
@@ -202,6 +180,15 @@ class _PushNotificationHistoryScreenState
         ..addAll(ids),
     );
     await _syncBadgeCount();
+  }
+
+  void _onSearchChanged(String value) {
+    setState(() => _searchInput = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = _searchInput.trim());
+    });
   }
 
   @override
@@ -233,89 +220,71 @@ class _PushNotificationHistoryScreenState
         onRefresh: _refresh,
         child: _loading && _items.isEmpty
             ? const Center(child: CircularProgressIndicator())
-            : NotificationListener<ScrollNotification>(
-                onNotification: (n) {
-                  if (n.metrics.pixels >= n.metrics.maxScrollExtent - 200) {
-                    _loadMore();
-                  }
-                  return false;
-                },
-                child: Builder(
-                  builder: (context) {
-                    final bool showEmptyState =
-                        !_loading && visibleItems.isEmpty;
-                    final int itemCount =
-                        1 + // summary header
-                        (showEmptyState ? 1 : visibleItems.length) +
-                        (_loadingMore ? 1 : 0);
+            : Builder(
+                builder: (context) {
+                  final bool showEmptyState = !_loading && visibleItems.isEmpty;
+                  final int itemCount =
+                      1 + (showEmptyState ? 1 : visibleItems.length);
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                      itemCount: itemCount,
-                      itemBuilder: (context, index) {
-                        if (index == 0) {
-                          return _buildSummaryHeader(theme);
-                        }
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    itemCount: itemCount,
+                    itemBuilder: (context, index) {
+                      if (index == 0) {
+                        return _buildSummaryHeader(theme);
+                      }
 
-                        final int contentIndex = index - 1;
+                      final int contentIndex = index - 1;
 
-                        if (showEmptyState && contentIndex == 0) {
-                          return const Padding(
-                            padding: EdgeInsets.only(top: 80),
-                            child: Column(
-                              children: [
-                                Icon(Icons.notifications_none, size: 48),
-                                SizedBox(height: 12),
-                                Center(child: Text('No notifications yet.')),
-                              ],
-                            ),
-                          );
-                        }
-
-                        final int listIndex = showEmptyState
-                            ? contentIndex - 1
-                            : contentIndex;
-
-                        if (_loadingMore && index == itemCount - 1) {
-                          return const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-
-                        final item = visibleItems[listIndex];
-                        final title = item.title?.trim().isNotEmpty == true
-                            ? item.title!
-                            : '(No title)';
-                        final subtitle = item.body?.trim().isNotEmpty == true
-                            ? item.body!
-                            : '';
-                        final isRead = _readIds.contains(item.id);
-                        final timestamp = _formatTimestamp(item.createdAt);
-                        final chipColor = _categoryColor(item.category, theme);
-                        return _buildNotificationCard(
-                          context: context,
-                          theme: theme,
-                          item: item,
-                          title: title,
-                          subtitle: subtitle,
-                          isRead: isRead,
-                          timestamp: timestamp,
-                          chipColor: chipColor,
-                          onMarkRead: () => _markNotificationRead(item.id),
-                          onOpenDetail: (args) async {
-                            await Navigator.pushNamed(
-                              context,
-                              '/push-history/detail',
-                              arguments: args,
-                            );
-                          },
-                          onRefreshRead: _loadReadIds,
+                      if (showEmptyState && contentIndex == 0) {
+                        return const Padding(
+                          padding: EdgeInsets.only(top: 80),
+                          child: Column(
+                            children: [
+                              Icon(Icons.notifications_none, size: 48),
+                              SizedBox(height: 12),
+                              Center(child: Text('No notifications yet.')),
+                            ],
+                          ),
                         );
-                      },
-                    );
-                  },
-                ),
+                      }
+
+                      final int listIndex = showEmptyState
+                          ? contentIndex - 1
+                          : contentIndex;
+
+                      final item = visibleItems[listIndex];
+                      final title = item.title?.trim().isNotEmpty == true
+                          ? item.title!
+                          : '(No title)';
+                      final subtitle = item.body?.trim().isNotEmpty == true
+                          ? item.body!
+                          : '';
+                      final isRead = _readIds.contains(item.id);
+                      final timestamp = _formatTimestamp(item.createdAt);
+                      final chipColor = _categoryColor(item.category, theme);
+                      return _buildNotificationCard(
+                        context: context,
+                        theme: theme,
+                        item: item,
+                        title: title,
+                        subtitle: subtitle,
+                        isRead: isRead,
+                        timestamp: timestamp,
+                        chipColor: chipColor,
+                        onMarkRead: () => _markNotificationRead(item.id),
+                        onOpenDetail: (args) async {
+                          await Navigator.pushNamed(
+                            context,
+                            '/push-history/detail',
+                            arguments: args,
+                          );
+                        },
+                        onRefreshRead: _loadReadIds,
+                      );
+                    },
+                  );
+                },
               ),
       ),
     );
@@ -323,29 +292,30 @@ class _PushNotificationHistoryScreenState
 
   Widget _buildSortChips(ThemeData theme) {
     final options = [
-      (label: 'Newest first', value: true, icon: Icons.south_outlined),
-      (label: 'Oldest first', value: false, icon: Icons.north_outlined),
+      (label: 'Newest first', value: 'newest'),
+      (label: 'Oldest first', value: 'oldest'),
+      (label: 'Symbol (A-Z)', value: 'symbol'),
+      (label: 'Strategy (A-Z)', value: 'strategy'),
     ];
 
-    final current = options.firstWhere((opt) => opt.value == _sortDesc);
+    final current = options.firstWhere((opt) => opt.value == _sortKey);
     return Column(
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: Icon(current.icon, color: theme.colorScheme.primary),
+          leading: Icon(Icons.sort, color: theme.colorScheme.primary),
           title: const Text('Sort'),
           subtitle: Text(current.label),
-          trailing: PopupMenuButton<bool>(
+          trailing: PopupMenuButton<String>(
             tooltip: 'Sort',
             onSelected: (value) {
-              if (_sortDesc == value) return;
-              setState(() => _sortDesc = value);
-              _refresh();
+              if (_sortKey == value) return;
+              setState(() => _sortKey = value);
             },
             itemBuilder: (context) {
               return options
                   .map(
-                    (opt) => PopupMenuItem<bool>(
+                    (opt) => PopupMenuItem<String>(
                       value: opt.value,
                       child: Text(opt.label),
                     ),
@@ -378,6 +348,7 @@ class _PushNotificationHistoryScreenState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildStatsList(theme, total: _totalCount, unread: _unreadCount),
+        _buildSearchField(theme),
         _buildFilterChips(
           theme,
           categoryFilter: _categoryFilter,
@@ -386,6 +357,32 @@ class _PushNotificationHistoryScreenState
           onUnreadChanged: (value) => setState(() => _showUnreadOnly = value),
         ),
         _buildSortChips(theme),
+      ],
+    );
+  }
+
+  Widget _buildSearchField(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Search',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          onChanged: _onSearchChanged,
+          decoration: InputDecoration(
+            hintText: 'Search by symbol, order ID, strategy',
+            prefixIcon: const Icon(Icons.search),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            isDense: true,
+          ),
+        ),
+        _buildSoftDivider(theme, indent: 16),
       ],
     );
   }

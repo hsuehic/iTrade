@@ -225,18 +225,24 @@ function parseCategoryEnv(
 
 function buildOrderNotification(order: Order, kind: OrderNotificationKind) {
   const status = kind === 'filled' ? 'Filled' : 'Partially Filled';
-  const executed = order.executedQuantity?.toString() ?? '0';
-  const quantity = order.quantity.toString();
-  const price = order.price?.toString();
+  const executed = formatDecimal(order.executedQuantity) ?? '0';
+  const quantity = formatDecimal(order.quantity) ?? '0';
+  const price = formatDecimal(order.price);
+  const averagePrice = formatDecimal(order.averagePrice);
+  const commission = formatDecimal(order.commission);
+  const strategyName = order.strategyName?.trim();
 
   const bodyParts = [
     `${order.symbol} ${order.side}`,
     `${executed}/${quantity}`,
-    price ? `@ ${price}` : undefined,
+    price ? `@ ${price}` : averagePrice ? `Avg ${averagePrice}` : undefined,
+    commission
+      ? `Fee ${commission}${order.commissionAsset ? ` ${order.commissionAsset}` : ''}`
+      : undefined,
   ].filter(Boolean);
 
   return {
-    title: `Order ${status}`,
+    title: strategyName ? `Order ${status} • ${strategyName}` : `Order ${status}`,
     body: bodyParts.join(' '),
   };
 }
@@ -251,15 +257,38 @@ function buildOrderData(
     symbol: order.symbol,
     side: order.side,
     status: order.status,
+    type: order.type,
+    timeInForce: order.timeInForce,
     quantity: order.quantity.toString(),
     category: 'trading',
   };
+
+  if (order.clientOrderId) data.clientOrderId = order.clientOrderId;
 
   const executed = formatDecimal(order.executedQuantity);
   if (executed) data.executedQuantity = executed;
 
   const price = formatDecimal(order.price);
   if (price) data.price = price;
+
+  const stopPrice = formatDecimal(order.stopPrice);
+  if (stopPrice) data.stopPrice = stopPrice;
+
+  const averagePrice = formatDecimal(order.averagePrice);
+  if (averagePrice) data.averagePrice = averagePrice;
+
+  const realizedPnl = formatDecimal(order.realizedPnl);
+  if (realizedPnl) data.realizedPnl = realizedPnl;
+
+  const unrealizedPnl = formatDecimal(order.unrealizedPnl);
+  if (unrealizedPnl) data.unrealizedPnl = unrealizedPnl;
+
+  const cumulativeQuote = formatDecimal(order.cummulativeQuoteQuantity);
+  if (cumulativeQuote) data.cummulativeQuoteQuantity = cumulativeQuote;
+
+  const commission = formatDecimal(order.commission);
+  if (commission) data.commission = commission;
+  if (order.commissionAsset) data.commissionAsset = order.commissionAsset;
 
   if (order.exchange) data.exchange = order.exchange;
   if (order.strategyId) data.strategyId = String(order.strategyId);

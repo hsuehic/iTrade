@@ -1,6 +1,8 @@
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:logger/logger.dart';
+import 'dart:convert';
 import 'dart:math';
+
+import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Preference {
   static const String keySavedEmail = 'saved_email';
@@ -17,6 +19,8 @@ class Preference {
   static const String keyApiBaseUrl = 'api_base_url';
   static const String keyPushReadIds = 'push_read_ids';
   static const String keyPushUnreadCount = 'push_unread_count';
+  static const String keyPushInboxMessages = 'push_inbox_messages';
+  static const int pushInboxMax = 100;
 
   static SharedPreferences? _prefs;
   static final Logger _logger = Logger();
@@ -203,6 +207,41 @@ class Preference {
   static Future<void> setPushUnreadCount(int count) async {
     final normalized = count < 0 ? 0 : count;
     await setValue<int>(keyPushUnreadCount, normalized);
+  }
+
+  static Future<List<Map<String, dynamic>>> getPushInboxMessages() async {
+    final raw = await getValue<String>(keyPushInboxMessages);
+    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <Map<String, dynamic>>[];
+      return decoded
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  static Future<void> setPushInboxMessages(
+    List<Map<String, dynamic>> messages,
+  ) async {
+    final trimmed = messages.take(pushInboxMax).toList();
+    await setValue<String>(keyPushInboxMessages, jsonEncode(trimmed));
+  }
+
+  static Future<void> addPushInboxMessage(Map<String, dynamic> message) async {
+    final id = message['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final existing = await getPushInboxMessages();
+    existing.removeWhere((item) => item['id']?.toString() == id);
+    existing.insert(0, message);
+    await setPushInboxMessages(existing);
+  }
+
+  static Future<void> clearPushInboxMessages() async {
+    await remove(keyPushInboxMessages);
   }
 
   static String pushLastReportedTokenKey(String platform, String provider) {

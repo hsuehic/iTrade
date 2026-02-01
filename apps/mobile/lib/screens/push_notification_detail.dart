@@ -65,6 +65,30 @@ class PushNotificationDetailArgs {
 class PushNotificationDetailScreen extends StatelessWidget {
   const PushNotificationDetailScreen({super.key});
 
+  static const List<String> _orderedKeys = <String>[
+    'event',
+    'orderId',
+    'symbol',
+    'exchange',
+    'side',
+    'status',
+    'type',
+    'timeInForce',
+    'quantity',
+    'executedQuantity',
+    'price',
+    'averagePrice',
+    'stopPrice',
+    'cummulativeQuoteQuantity',
+    'commission',
+    'commissionAsset',
+    'realizedPnl',
+    'unrealizedPnl',
+    'strategyId',
+    'strategyName',
+    'updateTime',
+  ];
+
   void _handleBackNavigation(BuildContext context, bool fromNotificationTap) {
     if (fromNotificationTap) {
       // Opened from notification tap: go to notification history, then user can go to home
@@ -192,6 +216,19 @@ class PushNotificationDetailScreen extends StatelessWidget {
   }
 
   Widget _buildDataCard(ThemeData theme, Map<String, dynamic> data) {
+    final entries = <MapEntry<String, dynamic>>[];
+    final usedKeys = <String>{};
+    for (final key in _orderedKeys) {
+      if (!data.containsKey(key)) continue;
+      entries.add(MapEntry<String, dynamic>(key, data[key]));
+      usedKeys.add(key);
+    }
+    final rest = data.entries
+        .where((entry) => !usedKeys.contains(entry.key))
+        .toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    entries.addAll(rest);
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -211,7 +248,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...data.entries.map(
+          ...entries.map(
             (entry) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
@@ -220,7 +257,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
                   Expanded(
                     flex: 3,
                     child: Text(
-                      entry.key,
+                      _labelForKey(entry.key),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -230,7 +267,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
                   Expanded(
                     flex: 5,
                     child: Text(
-                      entry.value?.toString() ?? '',
+                      _formatValue(entry.key, entry.value),
                       style: theme.textTheme.bodyMedium,
                     ),
                   ),
@@ -259,6 +296,87 @@ class PushNotificationDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _labelForKey(String key) {
+    switch (key) {
+      case 'event':
+        return 'Event';
+      case 'orderId':
+        return 'Order ID';
+      case 'symbol':
+        return 'Symbol';
+      case 'exchange':
+        return 'Exchange';
+      case 'side':
+        return 'Side';
+      case 'status':
+        return 'Status';
+      case 'type':
+        return 'Type';
+      case 'timeInForce':
+        return 'Time in force';
+      case 'quantity':
+        return 'Quantity';
+      case 'executedQuantity':
+        return 'Executed quantity';
+      case 'price':
+        return 'Price';
+      case 'averagePrice':
+        return 'Average price';
+      case 'stopPrice':
+        return 'Stop price';
+      case 'cummulativeQuoteQuantity':
+        return 'Cumulative quote qty';
+      case 'commission':
+        return 'Commission';
+      case 'commissionAsset':
+        return 'Commission asset';
+      case 'realizedPnl':
+        return 'Realized PnL';
+      case 'unrealizedPnl':
+        return 'Unrealized PnL';
+      case 'strategyId':
+        return 'Strategy ID';
+      case 'strategyName':
+        return 'Strategy';
+      case 'updateTime':
+        return 'Update time';
+      default:
+        return key;
+    }
+  }
+
+  String _formatValue(String key, dynamic value) {
+    if (value == null) return '';
+    final raw = value.toString();
+    if (key == 'event') {
+      switch (raw) {
+        case 'order_filled':
+          return 'Order filled';
+        case 'order_partially_filled':
+          return 'Order partially filled';
+        default:
+          return raw;
+      }
+    }
+    if (key == 'updateTime') {
+      final parsed = _parseTimestamp(raw);
+      if (parsed != null) {
+        return _formatTimestamp(parsed);
+      }
+    }
+    return raw;
+  }
+
+  DateTime? _parseTimestamp(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) return parsed;
+    final numeric = int.tryParse(raw);
+    if (numeric == null) return null;
+    final millis = numeric > 1000000000000 ? numeric : numeric * 1000;
+    return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 }
 

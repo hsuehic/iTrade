@@ -235,9 +235,7 @@
       "settings": "Settings"
     },
     "user": {
-      "account": "Account",
-      "billing": "Billing",
-      "notifications": "Notifications",
+      "pushInbox": "Push inbox",
       "logout": "Log out"
     }
   },
@@ -853,6 +851,7 @@
     "cardTitle": "Push Notifications",
     "client": {
       "tabs": {
+        "inbox": "Inbox",
         "send": "Send",
         "dashboard": "Dashboard",
         "export": "Export"
@@ -973,6 +972,55 @@
         "sendFailed": "Failed to send",
         "loadDevices": "Failed to load devices ({status})",
         "loadLogs": "Failed to load logs ({status})"
+      }
+    },
+    "inbox": {
+      "listTitle": "Push inbox",
+      "detailTitle": "Message details",
+      "searchLabel": "Search",
+      "searchPlaceholder": "Search by symbol, order ID, strategy...",
+      "sortLabel": "Sort",
+      "sort": {
+        "newest": "Newest first",
+        "oldest": "Oldest first",
+        "symbol": "Symbol (A–Z)",
+        "strategy": "Strategy (A–Z)"
+      },
+      "unreadCount": "Unread: {count}",
+      "unread": "Unread",
+      "markRead": "Mark as read",
+      "clear": "Clear",
+      "empty": "No push messages yet.",
+      "detailEmpty": "Select a message to view details.",
+      "receivedAt": "Received {time}",
+      "noBody": "No message body",
+      "event": {
+        "order_filled": "Order filled",
+        "order_partially_filled": "Order partially filled",
+        "unknown": "Notification"
+      },
+      "fields": {
+        "event": "Event",
+        "orderId": "Order ID",
+        "symbol": "Symbol",
+        "exchange": "Exchange",
+        "side": "Side",
+        "status": "Status",
+        "type": "Type",
+        "timeInForce": "Time in force",
+        "quantity": "Quantity",
+        "executedQuantity": "Executed quantity",
+        "price": "Price",
+        "averagePrice": "Average price",
+        "stopPrice": "Stop price",
+        "cummulativeQuoteQuantity": "Cumulative quote qty",
+        "commission": "Commission",
+        "commissionAsset": "Commission asset",
+        "realizedPnl": "Realized PnL",
+        "unrealizedPnl": "Unrealized PnL",
+        "strategyId": "Strategy ID",
+        "strategyName": "Strategy",
+        "updateTime": "Update time"
       }
     }
   },

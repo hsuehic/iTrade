@@ -252,6 +252,7 @@ class NotificationService {
     _listening = true;
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _storeInboxMessage(message);
       _showLocal(message);
     });
 
@@ -346,11 +347,35 @@ class NotificationService {
   }
 
   void _handleTap(RemoteMessage message) {
+    _storeInboxMessage(message);
     if (_onTap != null) {
       _onTap?.call(message);
     } else {
       _pendingTapMessage = message;
     }
+  }
+
+  Future<void> _storeInboxMessage(RemoteMessage message) async {
+    final data = Map<String, dynamic>.from(message.data);
+    final event = data['event']?.toString() ?? '';
+    final category =
+        data['category']?.toString() ?? (event.startsWith('order') ? 'trading' : 'general');
+    final title =
+        message.notification?.title ?? data['title']?.toString() ?? 'Notification';
+    final body = message.notification?.body ?? data['body']?.toString() ?? '';
+    final timestamp =
+        _parseTimestamp(data['updateTime']?.toString()) ?? DateTime.now();
+    final id = message.messageId ??
+        data['orderId']?.toString() ??
+        '${timestamp.millisecondsSinceEpoch}-${data['event'] ?? 'push'}';
+
+    await Preference.addPushInboxMessage(<String, dynamic>{
+      'id': id,
+      'createdAt': timestamp.toIso8601String(),
+      'category': category,
+      'notification': <String, dynamic>{'title': title, 'body': body},
+      'data': data,
+    });
   }
 
   Future<int> _resolveUnreadCount(int? incomingCount) async {
@@ -379,6 +404,16 @@ class NotificationService {
     } catch (_) {
       // Best-effort only.
     }
+  }
+
+  DateTime? _parseTimestamp(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) return parsed;
+    final numeric = int.tryParse(raw);
+    if (numeric == null) return null;
+    final millis = numeric > 1000000000000 ? numeric : numeric * 1000;
+    return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 }
 

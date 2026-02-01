@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  IconCreditCard,
-  IconDotsVertical,
-  IconLogout,
-  IconNotification,
-  IconUserCircle,
-} from '@tabler/icons-react';
+import { IconDotsVertical, IconLogout, IconBell } from '@tabler/icons-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
@@ -79,17 +73,13 @@ export function NavUser() {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <IconUserCircle />
-                {t('account')}
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconCreditCard />
-                {t('billing')}
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconNotification />
-                {t('notifications')}
+              <DropdownMenuItem
+                onClick={() => {
+                  router.push('/push');
+                }}
+              >
+                <IconBell />
+                {t('pushInbox')}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

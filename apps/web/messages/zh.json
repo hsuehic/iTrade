@@ -235,9 +235,7 @@
       "settings": "设置"
     },
     "user": {
-      "account": "账户",
-      "billing": "账单",
-      "notifications": "通知",
+      "pushInbox": "推送收件箱",
       "logout": "退出登录"
     }
   },
@@ -853,6 +851,7 @@
     "cardTitle": "推送通知",
     "client": {
       "tabs": {
+        "inbox": "收件箱",
         "send": "发送",
         "dashboard": "面板",
         "export": "导出"
@@ -973,6 +972,55 @@
         "sendFailed": "发送失败",
         "loadDevices": "加载设备失败（{status}）",
         "loadLogs": "加载日志失败（{status}）"
+      }
+    },
+    "inbox": {
+      "listTitle": "推送收件箱",
+      "detailTitle": "消息详情",
+      "searchLabel": "搜索",
+      "searchPlaceholder": "按交易对、订单 ID、策略搜索...",
+      "sortLabel": "排序",
+      "sort": {
+        "newest": "最新优先",
+        "oldest": "最早优先",
+        "symbol": "交易对（A–Z）",
+        "strategy": "策略（A–Z）"
+      },
+      "unreadCount": "未读：{count}",
+      "unread": "未读",
+      "markRead": "标记已读",
+      "clear": "清空",
+      "empty": "暂无推送消息。",
+      "detailEmpty": "请选择一条消息查看详情。",
+      "receivedAt": "接收于 {time}",
+      "noBody": "无消息内容",
+      "event": {
+        "order_filled": "订单已成交",
+        "order_partially_filled": "订单部分成交",
+        "unknown": "通知"
+      },
+      "fields": {
+        "event": "事件",
+        "orderId": "订单 ID",
+        "symbol": "交易对",
+        "exchange": "交易所",
+        "side": "方向",
+        "status": "状态",
+        "type": "类型",
+        "timeInForce": "订单时效",
+        "quantity": "数量",
+        "executedQuantity": "成交数量",
+        "price": "价格",
+        "averagePrice": "成交均价",
+        "stopPrice": "触发价",
+        "cummulativeQuoteQuantity": "累计成交额",
+        "commission": "手续费",
+        "commissionAsset": "手续费资产",
+        "realizedPnl": "已实现盈亏",
+        "unrealizedPnl": "未实现盈亏",
+        "strategyId": "策略 ID",
+        "strategyName": "策略名称",
+        "updateTime": "更新时间"
       }
     }
   },
