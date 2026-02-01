@@ -2,6 +2,7 @@ import {
   AccountPollingService,
   ConsoleLogger,
   IExchange,
+  OrderStatus,
   TradingEngine,
   type ExchangeCredentials,
   type Order,
@@ -43,6 +44,7 @@ export class BotInstance {
   private exchanges = new Map<string, IExchange>();
   private exchangeAccountIds = new Map<string, number>();
   private isRunning = false;
+  private exchangeSyncListeners = new Map<string, () => void>();
 
   constructor(
     private readonly userId: string,
@@ -361,6 +363,7 @@ export class BotInstance {
 
     this.exchanges.set(exchangeName, exchange);
     this.exchangeAccountIds.set(exchangeName, account.id);
+    this.registerExchangeSyncListeners(exchangeName, exchange);
     this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
     return true;
   }
@@ -368,6 +371,7 @@ export class BotInstance {
   private async removeExchangeByName(exchangeName: string): Promise<void> {
     const exchange = this.exchanges.get(exchangeName);
     if (!exchange) return;
+    this.unregisterExchangeSyncListeners(exchangeName, exchange);
 
     try {
       await exchange.disconnect();
@@ -455,29 +459,7 @@ export class BotInstance {
 
     try {
       for (const [exchangeName, exchange] of this.exchanges) {
-        try {
-          const openOrders = await exchange.getOpenOrders();
-          if (openOrders.length === 0) {
-            continue;
-          }
-
-          const results = await Promise.allSettled(
-            openOrders.map((order) =>
-              this.persistOpenOrderSnapshot(orderManager, order, exchangeName),
-            ),
-          );
-
-          const failed = results.filter((result) => result.status === 'rejected').length;
-          if (failed > 0) {
-            this.logger.warn(
-              `⚠️ Open orders sync partially failed for ${exchangeName} (${failed}/${openOrders.length})`,
-            );
-          }
-        } catch (error) {
-          this.logger.warn(`⚠️ Failed to sync open orders for ${exchangeName}`, {
-            error: (error as Error).message,
-          });
-        }
+        await this.syncExchangeOpenOrders(exchangeName, exchange, orderManager);
       }
     } finally {
       this.isOpenOrdersSyncRunning = false;
@@ -490,10 +472,15 @@ export class BotInstance {
     exchangeName: string,
   ): Promise<void> {
     const exchange = order.exchange ?? exchangeName;
+    const existingOrder = orderManager.getOrder(order.id);
     const normalizedOrder: Order = {
+      ...existingOrder,
       ...order,
       exchange,
-      userId: order.userId ?? this.userId,
+      userId: order.userId ?? existingOrder?.userId ?? this.userId,
+      strategyId: order.strategyId ?? existingOrder?.strategyId,
+      strategyType: order.strategyType ?? existingOrder?.strategyType,
+      strategyName: order.strategyName ?? existingOrder?.strategyName,
     };
 
     if (orderManager.getOrder(normalizedOrder.id)) {
@@ -522,6 +509,160 @@ export class BotInstance {
       strategyType: normalizedOrder.strategyType,
       strategyName: normalizedOrder.strategyName,
     });
+  }
+
+  private registerExchangeSyncListeners(exchangeName: string, exchange: IExchange): void {
+    if (this.exchangeSyncListeners.has(exchangeName)) {
+      return;
+    }
+
+    const handleReconnect = () => {
+      if (!this.isRunning) {
+        return;
+      }
+      this.logger.info(
+        `🔌 ${exchangeName} WebSocket reconnected - refreshing open order status (User: ${this.userId})`,
+      );
+      void this.syncOpenOrders();
+    };
+
+    exchange.on('ws_connected', handleReconnect);
+    this.exchangeSyncListeners.set(exchangeName, handleReconnect);
+  }
+
+  private unregisterExchangeSyncListeners(
+    exchangeName: string,
+    exchange: IExchange,
+  ): void {
+    const listener = this.exchangeSyncListeners.get(exchangeName);
+    if (!listener) {
+      return;
+    }
+    exchange.off('ws_connected', listener);
+    this.exchangeSyncListeners.delete(exchangeName);
+  }
+
+  private async syncExchangeOpenOrders(
+    exchangeName: string,
+    exchange: IExchange,
+    orderManager: ReturnType<OrderTracker['getOrderManager']>,
+  ): Promise<void> {
+    try {
+      const [openOrders, dbOpenOrders] = await Promise.all([
+        exchange.getOpenOrders(),
+        this.getDbOpenOrdersForExchange(exchangeName),
+      ]);
+
+      if (openOrders.length > 0) {
+        const results = await Promise.allSettled(
+          openOrders.map((order) =>
+            this.persistOpenOrderSnapshot(orderManager, order, exchangeName),
+          ),
+        );
+
+        const failed = results.filter((result) => result.status === 'rejected').length;
+        if (failed > 0) {
+          this.logger.warn(
+            `⚠️ Open orders sync partially failed for ${exchangeName} (${failed}/${openOrders.length})`,
+          );
+        }
+      }
+
+      const openOrderIds = new Set(openOrders.map((order) => order.id));
+      const staleOrders = dbOpenOrders.filter((order) => !openOrderIds.has(order.id));
+      if (staleOrders.length === 0) {
+        return;
+      }
+
+      for (const order of staleOrders) {
+        await this.refreshOrderStatus(exchangeName, exchange, orderManager, order);
+      }
+    } catch (error) {
+      this.logger.warn(`⚠️ Failed to sync open orders for ${exchangeName}`, {
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  private async getDbOpenOrdersForExchange(exchangeName: string): Promise<Order[]> {
+    const [newOrders, partiallyFilledOrders] = await Promise.all([
+      this.dataManager.getOrders({
+        exchange: exchangeName,
+        status: OrderStatus.NEW,
+        userId: this.userId,
+      }),
+      this.dataManager.getOrders({
+        exchange: exchangeName,
+        status: OrderStatus.PARTIALLY_FILLED,
+        userId: this.userId,
+      }),
+    ]);
+
+    return [...newOrders, ...partiallyFilledOrders];
+  }
+
+  private async refreshOrderStatus(
+    exchangeName: string,
+    exchange: IExchange,
+    orderManager: ReturnType<OrderTracker['getOrderManager']>,
+    order: Order,
+  ): Promise<void> {
+    try {
+      const latestOrder = await exchange.getOrder(
+        order.symbol,
+        order.id,
+        order.clientOrderId,
+      );
+      const normalizedOrder: Order = {
+        ...order,
+        ...latestOrder,
+        exchange: latestOrder.exchange ?? order.exchange ?? exchangeName,
+        userId: latestOrder.userId ?? order.userId ?? this.userId,
+        strategyId: latestOrder.strategyId ?? order.strategyId,
+        strategyType: latestOrder.strategyType ?? order.strategyType,
+        strategyName: latestOrder.strategyName ?? order.strategyName,
+      };
+
+      if (orderManager.getOrder(normalizedOrder.id)) {
+        orderManager.updateOrder(normalizedOrder.id, normalizedOrder);
+      } else {
+        orderManager.addOrder(normalizedOrder);
+      }
+
+      await this.dataManager.saveOrder({
+        id: normalizedOrder.id,
+        clientOrderId: normalizedOrder.clientOrderId,
+        userId: normalizedOrder.userId,
+        symbol: normalizedOrder.symbol,
+        side: normalizedOrder.side,
+        type: normalizedOrder.type,
+        quantity: normalizedOrder.quantity,
+        price: normalizedOrder.price,
+        status: normalizedOrder.status,
+        timeInForce: normalizedOrder.timeInForce,
+        timestamp: normalizedOrder.timestamp,
+        updateTime: normalizedOrder.updateTime ?? new Date(),
+        executedQuantity: normalizedOrder.executedQuantity,
+        cummulativeQuoteQuantity: normalizedOrder.cummulativeQuoteQuantity,
+        exchange: normalizedOrder.exchange ?? exchangeName,
+        strategyId: normalizedOrder.strategyId,
+        strategyType: normalizedOrder.strategyType,
+        strategyName: normalizedOrder.strategyName,
+      });
+
+      if (normalizedOrder.status !== order.status) {
+        this.logger.info(
+          `📌 Order ${order.id} status updated (${exchangeName}): ${order.status} → ${normalizedOrder.status}`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `⚠️ Failed to refresh order ${order.id} status for ${exchangeName}`,
+        {
+          error: (error as Error).message,
+        },
+      );
+    }
   }
 
   private static parseInterval(value: string | undefined, fallbackMs: number): number {
