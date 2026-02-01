@@ -1367,7 +1367,7 @@
     "title": "订单",
     "transactionHistory": "交易历史",
     "columns": {
-      "time": "时间",
+      "time": "创建时间",
       "symbol": "交易对",
       "exchange": "交易所",
       "side": "方向",

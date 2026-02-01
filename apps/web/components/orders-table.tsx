@@ -203,6 +203,7 @@ export function OrdersTable({
   const [orders, setOrders] = React.useState<OrderData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
+    { id: 'status', desc: false },
     { id: 'timestamp', desc: true },
   ]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -540,7 +541,20 @@ export function OrdersTable({
       },
       {
         accessorKey: 'status',
-        header: t('columns.status'),
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.status')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
         cell: ({ row }) => (
           <Badge
             variant="outline"
@@ -550,6 +564,19 @@ export function OrdersTable({
             {getStatusLabel(row.original.status)}
           </Badge>
         ),
+        sortingFn: (rowA, rowB) => {
+          const statusPriority: Record<string, number> = {
+            PARTIALLY_FILLED: 0,
+            NEW: 1,
+            FILLED: 2,
+            CANCELED: 3,
+            REJECTED: 4,
+            EXPIRED: 5,
+          };
+          const a = statusPriority[rowA.original.status.toUpperCase()] ?? 10;
+          const b = statusPriority[rowB.original.status.toUpperCase()] ?? 10;
+          return a - b;
+        },
         filterFn: (row, id, value) => {
           if (value === 'all') return true;
           return row.getValue(id) === value;

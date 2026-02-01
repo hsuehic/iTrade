@@ -1367,7 +1367,7 @@
     "title": "Orders",
     "transactionHistory": "Transaction History",
     "columns": {
-      "time": "Time",
+      "time": "Created Time",
       "symbol": "Symbol",
       "exchange": "Exchange",
       "side": "Side",
