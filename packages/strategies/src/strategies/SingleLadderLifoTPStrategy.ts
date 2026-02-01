@@ -12,6 +12,8 @@ import {
   TradeMode,
   SignalType,
   SignalMetaData,
+  StrategyRecoveryContext,
+  StrategyStateSnapshot,
   InitialDataResult,
   Ticker,
   OrderSide,
@@ -340,6 +342,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   // Last ticker for price reference (optional, for monitoring only)
   private lastTicker: Ticker | null = null;
+  private recoveryContext: StrategyRecoveryContext | null = null;
 
   constructor(config: StrategyConfig<SingleLadderLifoTPParameters>) {
     super(config);
@@ -429,6 +432,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    */
   public override processInitialData(initialData: InitialDataResult): void {
     this._logger.info(`📊 [SingleLadderLifoTP] Processing initial data...`);
+    if (this.recoveryContext?.recovered) {
+      this._logger.info(`   🔄 Applying recovered state for initial setup`);
+    }
 
     // Load current positions
     if (initialData.positions && initialData.positions.length > 0) {
@@ -461,6 +467,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       initialData.openOrders.forEach((order) => {
         if (order.symbol === this._context.symbol) {
           this.orders.set(order.clientOrderId || order.id, order);
+          this.ensureRecoveredMetadata(order);
 
           // Try to identify entry vs TP orders by clientOrderId pattern
           if (order.clientOrderId) {
@@ -874,7 +881,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     for (const order of orders) {
       if (!order.clientOrderId) continue;
 
-      const metadata = this.orderMetadataMap.get(order.clientOrderId);
+      let metadata = this.orderMetadataMap.get(order.clientOrderId);
+      if (!metadata) {
+        metadata = this.ensureRecoveredMetadata(order);
+      }
       const existingOrder = this.orders.get(order.clientOrderId);
 
       // Skip if order is not newer
@@ -916,6 +926,32 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     }
 
     return signals;
+  }
+
+  private ensureRecoveredMetadata(order: Order): SignalMetaData | undefined {
+    if (!order.clientOrderId) return undefined;
+    const existing = this.orderMetadataMap.get(order.clientOrderId);
+    if (existing) return existing;
+
+    if (!this.isStrategyOrderId(order.clientOrderId)) return undefined;
+
+    const signalType = order.clientOrderId.startsWith('T')
+      ? SignalType.TakeProfit
+      : SignalType.Entry;
+    const metadata: SignalMetaData = {
+      signalType,
+      timestamp: Date.now(),
+      clientOrderId: order.clientOrderId,
+    };
+    this.orderMetadataMap.set(order.clientOrderId, metadata);
+    return metadata;
+  }
+
+  private isStrategyOrderId(clientOrderId: string): boolean {
+    const strategyId = this.getStrategyId();
+    if (!strategyId) return false;
+    const match = /^(E|T)(\d+)D/.exec(clientOrderId);
+    return !!match && match[2] === String(strategyId);
   }
 
   /**
@@ -1269,6 +1305,83 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.initialEntrySignalGenerated = false;
     this.orderSequence = 0;
     this._logger.info(`🧹 [SingleLadderLifoTP] Strategy cleaned up`);
+  }
+
+  public override async saveState(): Promise<StrategyStateSnapshot> {
+    const state = await super.saveState();
+    state.internalState = {
+      referencePrice: this.referencePrice,
+      currentLevelRepeats: this.currentLevelRepeats,
+      lastFilled: this.lastFilled
+        ? {
+            side: this.lastFilled.side,
+            price: this.lastFilled.price.toString(),
+            amount: this.lastFilled.amount.toString(),
+            clientOrderId: this.lastFilled.clientOrderId,
+            timestamp: this.lastFilled.timestamp,
+          }
+        : null,
+      lastFilledDirection: this.lastFilledDirection,
+      positionAmount: this.positionAmount,
+      orderSequence: this.orderSequence,
+      initialEntrySignalGenerated: this.initialEntrySignalGenerated,
+    };
+    return state;
+  }
+
+  public override async loadState(
+    snapshot: StrategyStateSnapshot,
+  ): Promise<StrategyRecoveryContext> {
+    const context = await super.loadState(snapshot);
+    const internalState = snapshot.internalState as {
+      referencePrice?: number;
+      currentLevelRepeats?: number;
+      lastFilled?: {
+        side: EntrySide;
+        price: string;
+        amount: string;
+        clientOrderId: string;
+        timestamp: number;
+      } | null;
+      lastFilledDirection?: EntrySide | null;
+      positionAmount?: number;
+      orderSequence?: number;
+      initialEntrySignalGenerated?: boolean;
+    };
+
+    if (typeof internalState.referencePrice === 'number') {
+      this.referencePrice = internalState.referencePrice;
+    }
+    if (typeof internalState.currentLevelRepeats === 'number') {
+      this.currentLevelRepeats = internalState.currentLevelRepeats;
+    }
+    if (internalState.lastFilled) {
+      this.lastFilled = {
+        side: internalState.lastFilled.side,
+        price: new Decimal(internalState.lastFilled.price),
+        amount: new Decimal(internalState.lastFilled.amount),
+        clientOrderId: internalState.lastFilled.clientOrderId,
+        timestamp: internalState.lastFilled.timestamp,
+      };
+    }
+    if (typeof internalState.lastFilledDirection !== 'undefined') {
+      this.lastFilledDirection = internalState.lastFilledDirection;
+    }
+    if (typeof internalState.positionAmount === 'number') {
+      this.positionAmount = internalState.positionAmount;
+    }
+    if (typeof internalState.orderSequence === 'number') {
+      this.orderSequence = internalState.orderSequence;
+    }
+    if (typeof internalState.initialEntrySignalGenerated === 'boolean') {
+      this.initialEntrySignalGenerated = internalState.initialEntrySignalGenerated;
+    }
+
+    return context;
+  }
+
+  public async setRecoveryContext(context: StrategyRecoveryContext): Promise<void> {
+    this.recoveryContext = context;
   }
 
   /**

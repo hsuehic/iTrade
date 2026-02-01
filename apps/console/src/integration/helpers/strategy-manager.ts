@@ -6,6 +6,9 @@ import {
   StrategyStateManager,
   StrategyStateMonitor,
   TypeOrmStrategyStateAdapter,
+  type InitialDataConfig,
+  type StrategyRecoveryContext,
+  type StrategyRecoveryResult,
   type StateRecoveryMetrics,
   type StrategyHealthStatus,
 } from '@itrade/core';
@@ -282,9 +285,13 @@ export class StrategyManager {
       // 🔄 State Recovery: Attempt to recover strategy state from database
       const recoveryStartTime = new Date();
       this.stateMonitor.recordRecoveryAttempt(strategyId, recoveryStartTime);
+      let recoveryResult: StrategyRecoveryResult | null = null;
 
       try {
-        const recoveryResult = await this.stateManager.recoverStrategyState(strategyId);
+        recoveryResult = await this.stateManager.recoverStrategyState(
+          strategyId,
+          dbStrategy.exchange || undefined,
+        );
         const recoveryEndTime = new Date();
 
         if (recoveryResult.recovered) {
@@ -339,6 +346,11 @@ export class StrategyManager {
           strategyName: dbStrategy.name,
           error: (recoveryError as Error).message,
         });
+      }
+
+      // Apply recovered state/context to strategy before engine registration
+      if (recoveryResult) {
+        await this.applyRecoveryToStrategy(strategy, dbStrategy, recoveryResult);
       }
 
       // Generate unique name for engine
@@ -410,6 +422,7 @@ export class StrategyManager {
   private createStrategyInstance(dbStrategy: StrategyEntity): IStrategy {
     const subscription =
       dbStrategy.subscription || this.getDefaultSubscriptionConfig(dbStrategy.type);
+    const initialDataConfig = this.getMergedInitialDataConfig(dbStrategy);
 
     this.logger.debug(
       `🔧 [CREATE_STRATEGY] Creating instance with config:
@@ -417,7 +430,7 @@ export class StrategyManager {
        - Symbol: ${dbStrategy.symbol || 'N/A'}
        - Exchange: ${dbStrategy.exchange || 'N/A'}
        - Subscription: ${JSON.stringify(subscription)}
-       - InitialData: ${JSON.stringify(dbStrategy.initialDataConfig || 'N/A')}`,
+       - InitialData: ${JSON.stringify(initialDataConfig || 'N/A')}`,
     );
 
     return createStrategyInstance(
@@ -432,11 +445,113 @@ export class StrategyManager {
         subscription,
         // 🆕 Use initialData configuration from database
         // This is the historical data to fetch when strategy starts
-        initialDataConfig: dbStrategy.initialDataConfig,
+        initialDataConfig,
       },
       dbStrategy.id,
       dbStrategy.name,
     );
+  }
+
+  private getMergedInitialDataConfig(dbStrategy: StrategyEntity): InitialDataConfig {
+    const defaultConfig = this.getDefaultInitialDataConfig(dbStrategy.type);
+    const customConfig: InitialDataConfig = dbStrategy.initialDataConfig || {};
+    const fetchOrderBook =
+      customConfig.fetchOrderBook && 'enabled' in customConfig.fetchOrderBook
+        ? customConfig.fetchOrderBook
+        : defaultConfig.fetchOrderBook;
+
+    return {
+      ...defaultConfig,
+      ...customConfig,
+      fetchOrderBook,
+      klines: customConfig.klines ?? defaultConfig.klines,
+    };
+  }
+
+  private getDefaultInitialDataConfig(strategyType: string): InitialDataConfig {
+    switch (strategyType) {
+      case 'SingleLadderLifoTPStrategy':
+        return {
+          fetchPositions: true,
+          fetchOpenOrders: true,
+          fetchTicker: true,
+        };
+      case 'MovingWindowGridsStrategy':
+        return {
+          fetchPositions: true,
+          fetchOpenOrders: true,
+          fetchTicker: true,
+        };
+      default:
+        return {};
+    }
+  }
+
+  private async applyRecoveryToStrategy(
+    strategy: IStrategy,
+    dbStrategy: StrategyEntity,
+    recoveryResult: StrategyRecoveryResult,
+  ): Promise<void> {
+    if (recoveryResult.recoveredState && strategy.loadState) {
+      try {
+        await strategy.loadState({
+          strategyId: recoveryResult.recoveredState.strategyId,
+          strategyType: dbStrategy.type,
+          stateVersion: strategy.getStateVersion?.(),
+          timestamp: recoveryResult.recoveredState.lastUpdateTime,
+          internalState: recoveryResult.recoveredState.internalState,
+          indicatorData: recoveryResult.recoveredState.indicatorData,
+          lastSignal: recoveryResult.recoveredState.lastSignal,
+          signalTime: recoveryResult.recoveredState.signalTime,
+          currentPosition: recoveryResult.recoveredState.currentPosition,
+          averagePrice: recoveryResult.recoveredState.averagePrice,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `⚠️  Failed to apply saved state for ${dbStrategy.name} (ID: ${dbStrategy.id}): ${
+            (error as Error).message
+          }`,
+        );
+      }
+    }
+
+    if (strategy.setRecoveryContext) {
+      const context: StrategyRecoveryContext = {
+        recovered: recoveryResult.recovered,
+        strategyId: dbStrategy.id,
+        savedState: recoveryResult.recoveredState
+          ? {
+              strategyId: recoveryResult.recoveredState.strategyId,
+              strategyType: dbStrategy.type,
+              stateVersion: strategy.getStateVersion?.(),
+              timestamp: recoveryResult.recoveredState.lastUpdateTime,
+              internalState: recoveryResult.recoveredState.internalState,
+              indicatorData: recoveryResult.recoveredState.indicatorData,
+              lastSignal: recoveryResult.recoveredState.lastSignal,
+              signalTime: recoveryResult.recoveredState.signalTime,
+              currentPosition: recoveryResult.recoveredState.currentPosition,
+              averagePrice: recoveryResult.recoveredState.averagePrice,
+            }
+          : undefined,
+        openOrders: recoveryResult.openOrders.map((order) => ({
+          orderId: order.orderId,
+          status: order.status,
+          executedQuantity: order.executedQuantity,
+          remainingQuantity: order.remainingQuantity,
+        })),
+        totalPosition: recoveryResult.totalPosition,
+      };
+
+      try {
+        await strategy.setRecoveryContext(context);
+      } catch (error) {
+        this.logger.warn(
+          `⚠️  Failed to apply recovery context for ${dbStrategy.name} (ID: ${dbStrategy.id}): ${
+            (error as Error).message
+          }`,
+        );
+      }
+    }
   }
 
   /**
