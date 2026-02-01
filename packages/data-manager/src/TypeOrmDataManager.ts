@@ -847,7 +847,15 @@ export class TypeOrmDataManager implements IDataManager {
 
   async deleteStrategy(id: number): Promise<void> {
     this.ensureInitialized();
-    await this.strategyRepository.delete(id);
+    await this.dataSource.transaction(async (manager) => {
+      await manager
+        .createQueryBuilder()
+        .update(OrderEntity)
+        .set({ strategyId: () => 'NULL' })
+        .where('"strategyId" = :strategyId', { strategyId: id })
+        .execute();
+      await manager.getRepository(StrategyEntity).delete({ id });
+    });
   }
 
   async updateStrategyStatus(
