@@ -320,7 +320,9 @@ export class BinanceExchange extends BaseExchange {
       };
 
       const signedParams = this.signRequest(params);
-      await this.futuresClient.post('/fapi/v1/leverage', signedParams);
+      await this.futuresClient.post('/fapi/v1/leverage', null, {
+        params: signedParams,
+      });
     } catch (error: any) {
       // If error is "No need to change leverage" or similar, ignore it
       if (error.response?.data?.code === -4028 || error.response?.data?.code === -4046) {
@@ -340,14 +342,17 @@ export class BinanceExchange extends BaseExchange {
     marginType: 'isolated' | 'cross',
   ): Promise<void> {
     try {
+      const binanceMarginType = marginType === 'cross' ? 'CROSSED' : 'ISOLATED';
       const params = {
         symbol,
-        marginType: marginType.toUpperCase(),
+        marginType: binanceMarginType,
         timestamp: Date.now(),
       };
 
       const signedParams = this.signRequest(params);
-      await this.futuresClient.post('/fapi/v1/marginType', signedParams);
+      await this.futuresClient.post('/fapi/v1/marginType', null, {
+        params: signedParams,
+      });
 
       console.log(`[Binance] Set margin type for ${symbol}: ${marginType}`);
     } catch (error: any) {

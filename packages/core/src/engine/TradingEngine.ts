@@ -61,6 +61,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private readonly _positions = new Map<string, Position[]>();
   private readonly _orders = new Map<string, Order[]>();
   private readonly _balances = new Map<string, Balance[]>();
+  private readonly _pendingAccountUpdates: Array<{
+    positions?: Position[];
+    orders?: Order[];
+    balances?: Balance[];
+    exchangeName?: string;
+  }> = [];
 
   // 🆕 Track which orders have been emitted as "created" to avoid duplicate OrderCreated events
   private readonly _emittedOrderCreated = new Set<string>();
@@ -141,6 +147,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this._isRunning = true;
       this._eventBus.emitEngineStarted();
       this.logger.info('Trading engine started successfully');
+      await this.flushPendingAccountUpdates();
     } catch (error) {
       this._isRunning = false;
       this.logger.error('Failed to start trading engine', error as Error);
@@ -1164,6 +1171,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     exchangeName?: string;
   }): Promise<void> {
     try {
+      if (!this._isRunning) {
+        this.enqueueAccountUpdate(accountData);
+        return;
+      }
       // DEBUG: Log what we're sending to strategies
       if (accountData.orders && accountData.orders.length > 0) {
         this.logger.debug(
@@ -1210,6 +1221,28 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
     } catch (error) {
       this.logger.error('Error processing account data update', error as Error);
+    }
+  }
+
+  private enqueueAccountUpdate(accountData: {
+    positions?: Position[];
+    orders?: Order[];
+    balances?: Balance[];
+    exchangeName?: string;
+  }): void {
+    this._pendingAccountUpdates.push(accountData);
+    this.logger.warn('Trading engine is not running; queued account update');
+  }
+
+  private async flushPendingAccountUpdates(): Promise<void> {
+    if (!this._pendingAccountUpdates.length) {
+      return;
+    }
+
+    const pending = this._pendingAccountUpdates.splice(0);
+    this.logger.info(`Processing ${pending.length} queued account update(s)`);
+    for (const update of pending) {
+      await this.onAccountUpdate(update);
     }
   }
 
