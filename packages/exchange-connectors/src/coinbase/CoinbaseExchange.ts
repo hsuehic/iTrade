@@ -1270,14 +1270,13 @@ export class CoinbaseExchange extends BaseExchange {
     const priceValue =
       orderData.price || orderData.limit_price || limitConfig?.limit_price;
 
+    const orderSide = this.resolveCoinbaseOrderSide(orderData);
+
     const order: Order = {
       id: orderData.order_id || orderData.id || uuidv4(),
       clientOrderId: orderData.client_order_id,
       symbol,
-      side:
-        (orderData.side?.toUpperCase() || 'BUY') === 'BUY'
-          ? OrderSide.BUY
-          : OrderSide.SELL,
+      side: orderSide,
       type: this.transformOrderType(orderType),
       quantity,
       price: priceValue ? this.formatDecimal(priceValue) : undefined,
@@ -1295,6 +1294,24 @@ export class CoinbaseExchange extends BaseExchange {
     };
 
     return order;
+  }
+
+  private resolveCoinbaseOrderSide(orderData: any): OrderSide {
+    const rawSide =
+      orderData.side ||
+      orderData.order_side ||
+      orderData.orderSide ||
+      orderData.trade_side ||
+      orderData.direction ||
+      orderData.position_side;
+
+    const normalized = (rawSide || 'BUY').toString().toUpperCase();
+
+    if (normalized === 'SELL' || normalized === 'S') {
+      return OrderSide.SELL;
+    }
+
+    return OrderSide.BUY;
   }
 
   /**
