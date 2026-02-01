@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { getDataManager } from '@/lib/data-manager';
+import type { AccountListItem } from '@/lib/types/account';
 import { AccountInfoEntity } from '@itrade/data-manager';
 import { CryptoUtils } from '@itrade/utils/CryptoUtils';
 
@@ -14,7 +15,7 @@ export interface AccountDto {
   isActive: boolean;
 }
 
-export async function getUserAccounts(userId: string) {
+export async function getUserAccounts(userId: string): Promise<AccountListItem[]> {
   const dm = await getDataManager();
   const repo = dm.getAccountInfoRepository();
 

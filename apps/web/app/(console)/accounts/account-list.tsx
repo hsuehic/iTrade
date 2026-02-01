@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AccountForm } from './account-form';
+import { AccountForm, type AccountFormInitialData } from './account-form';
 import { deleteAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit } from 'lucide-react';
@@ -27,27 +27,21 @@ import {
   getExchangeDisplayName,
   SupportedExchange,
 } from '@itrade/data-manager/constants';
+import type { AccountListItem } from '@/lib/types/account';
 
-interface Account {
-  id: number;
-  exchange: string;
-  accountId: string;
-  isActive: boolean;
-  updatedTime: Date;
-  apiKey: string;
-}
-
-export function AccountList({ initialAccounts }: { initialAccounts: Account[] }) {
+export function AccountList({ initialAccounts }: { initialAccounts: AccountListItem[] }) {
   const t = useTranslations('accounts.list');
   const locale = useLocale();
-  const [accounts, setAccounts] = useState<Account[]>(initialAccounts);
+  const [accounts, setAccounts] = useState<AccountListItem[]>(initialAccounts);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<Account | undefined>(undefined);
+  const [editingAccount, setEditingAccount] = useState<AccountListItem | undefined>(
+    undefined,
+  );
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [deletingAccount, setDeletingAccount] = useState<Account | null>(null);
+  const [deletingAccount, setDeletingAccount] = useState<AccountListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleEdit = (account: Account) => {
+  const handleEdit = (account: AccountListItem) => {
     setEditingAccount(account);
     setIsFormOpen(true);
   };
@@ -192,7 +186,17 @@ export function AccountList({ initialAccounts }: { initialAccounts: Account[] })
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         onSuccess={refresh}
-        initialData={editingAccount}
+        initialData={
+          editingAccount
+            ? ({
+                id: editingAccount.id,
+                exchange: editingAccount.exchange,
+                accountId: editingAccount.accountId,
+                apiKey: editingAccount.apiKey,
+                isActive: editingAccount.isActive,
+              } satisfies AccountFormInitialData)
+            : undefined
+        }
       />
     </div>
   );

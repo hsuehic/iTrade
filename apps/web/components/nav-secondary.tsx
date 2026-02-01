@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { IconLanguage, IconSettings, IconWallet } from '@tabler/icons-react';
+import { IconWorld, IconSettings, IconWallet } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
@@ -92,7 +92,7 @@ export function NavSecondary({
           })}
           <SidebarMenuItem>
             <SidebarMenuButton tooltip={navigationT('language')}>
-              <IconLanguage />
+              <IconWorld />
               <span>{navigationT('language')}</span>
             </SidebarMenuButton>
             <DropdownMenu>
@@ -101,7 +101,7 @@ export function NavSecondary({
                   showOnHover
                   className="data-[state=open]:bg-accent rounded-sm"
                 >
-                  <IconLanguage className="size-4" />
+                  <IconWorld className="size-4" />
                   <span className="sr-only">{navigationT('language')}</span>
                 </SidebarMenuAction>
               </DropdownMenuTrigger>
@@ -115,7 +115,7 @@ export function NavSecondary({
                     key={value}
                     onClick={() => handleLocaleChange(value as AppLocale)}
                   >
-                    <IconLanguage className="size-4" />
+                    <IconWorld className="size-4" />
                     <span>
                       {value === 'en' ? navigationT('english') : navigationT('chinese')}
                     </span>

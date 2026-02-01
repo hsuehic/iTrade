@@ -43,7 +43,7 @@ export default async function AccountsPage() {
             <CardDescription>{t('manageDescription')}</CardDescription>
           </CardHeader>
           <CardContent>
-            <AccountList initialAccounts={accounts as any} />
+            <AccountList initialAccounts={accounts} />
           </CardContent>
         </Card>
       </div>

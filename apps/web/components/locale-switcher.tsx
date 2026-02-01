@@ -1,16 +1,17 @@
 'use client';
 
+import { IconWorld } from '@tabler/icons-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 
-import { locales, type AppLocale } from '@/i18n/routing';
+import { Button } from '@/components/ui/button';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { locales, type AppLocale } from '@/i18n/routing';
 
 export function LocaleSwitcher() {
   const t = useTranslations('navigation');
@@ -38,18 +39,30 @@ export function LocaleSwitcher() {
     }
   };
 
+  const currentLabel = locale === 'en' ? t('english') : t('chinese');
+
   return (
-    <Select value={locale} onValueChange={handleChange}>
-      <SelectTrigger aria-label={t('language')} className="h-9 w-[110px]">
-        <SelectValue placeholder={t('language')} />
-      </SelectTrigger>
-      <SelectContent>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 min-w-[110px] justify-between gap-2"
+          aria-label={t('language')}
+        >
+          <span className="flex items-center gap-2">
+            <IconWorld className="size-4" />
+            <span>{currentLabel}</span>
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
         {locales.map((value) => (
-          <SelectItem key={value} value={value}>
-            {value === 'en' ? t('english') : t('chinese')}
-          </SelectItem>
+          <DropdownMenuItem key={value} onClick={() => handleChange(value)}>
+            <span>{value === 'en' ? t('english') : t('chinese')}</span>
+          </DropdownMenuItem>
         ))}
-      </SelectContent>
-    </Select>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

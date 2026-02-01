@@ -2,6 +2,7 @@
 
 import { headers } from 'next/headers';
 import { getAuthFromHeaders } from '@/lib/auth';
+import type { AccountListItem } from '@/lib/types/account';
 import * as accountService from '@/lib/services/account-service';
 import { isValidExchange } from '@itrade/data-manager';
 
@@ -24,7 +25,7 @@ async function getUser() {
   return session?.user;
 }
 
-export async function getAccounts() {
+export async function getAccounts(): Promise<AccountListItem[]> {
   const user = await getUser();
   if (!user) throw new Error('Unauthorized');
 

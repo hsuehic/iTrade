@@ -43,8 +43,19 @@ interface AccountFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  initialData?: any;
+  initialData?: AccountFormInitialData;
 }
+
+export interface AccountFormValues {
+  exchange: string;
+  accountId: string;
+  apiKey: string;
+  secretKey: string;
+  passphrase?: string;
+  isActive: boolean;
+}
+
+export type AccountFormInitialData = Partial<AccountFormValues> & { id?: number };
 
 export function AccountForm({
   open,
@@ -54,18 +65,19 @@ export function AccountForm({
 }: AccountFormProps) {
   const t = useTranslations('accounts.form');
   const [loading, setLoading] = useState(false);
-  const form = useForm({
-    defaultValues: initialData || {
-      exchange: '',
-      accountId: '',
-      apiKey: '',
-      secretKey: '',
-      passphrase: '',
-      isActive: true,
-    },
+  const defaultValues: AccountFormValues = {
+    exchange: '',
+    accountId: '',
+    apiKey: '',
+    secretKey: '',
+    passphrase: '',
+    isActive: true,
+  };
+  const form = useForm<AccountFormValues>({
+    defaultValues: initialData ? { ...defaultValues, ...initialData } : defaultValues,
   });
 
-  async function onSubmit(data: any) {
+  async function onSubmit(data: AccountFormValues) {
     try {
       setLoading(true);
       await saveAccount({ ...data, id: initialData?.id });
