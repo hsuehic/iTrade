@@ -307,5 +307,6 @@ class AuthService {
     } catch (e, st) {}
     _currentAccount = null;
     _idToken = null;
+    user = null;
   }
 }

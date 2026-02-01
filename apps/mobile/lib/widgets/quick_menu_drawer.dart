@@ -54,7 +54,20 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    final user = _authService.user!;
+    final user = _authService.user;
+    if (user == null) {
+      if (!_signingOut) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil(
+              '/login',
+              (route) => false,
+            );
+          }
+        });
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
     final image = user.image;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
