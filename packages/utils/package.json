@@ -35,7 +35,6 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "crypto": "^1.0.1",
     "decimal.js": "^10.4.3",
     "moment": "^2.30.1",
     "moment-timezone": "^0.6.0"

@@ -23,7 +23,6 @@
   },
   "dependencies": {
     "@itrade/core": "workspace:*",
-    "@types/winston": "^2.4.4",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^4.7.1"
   },
