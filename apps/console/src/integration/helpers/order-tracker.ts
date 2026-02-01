@@ -150,7 +150,7 @@ export class OrderTracker {
     const resolvedUserId = await this.resolveUserId(order);
 
     if (this.userId) {
-      if (!resolvedUserId || resolvedUserId !== this.userId) {
+      if (resolvedUserId && resolvedUserId !== this.userId) {
         return null;
       }
     }
