@@ -46,6 +46,6 @@ export class OrderFillEntity implements OrderFill {
   @Column({ type: 'character varying', length: 10 })
   commissionAsset!: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 }

@@ -605,7 +605,7 @@ export class CoinbaseExchange extends BaseExchange {
             };
 
             const size = this.formatDecimal(getDecimalValue(pos.net_size));
-            if (size.isZero()) continue; // Skip zero positions
+            // if (size.isZero()) continue; // Skip zero positions - Commented out to allow zero positions for deletion logic
 
             // Denormalize symbol from Coinbase format to unified format
             // OP-PERP-INTX -> OP/USDC:USDC

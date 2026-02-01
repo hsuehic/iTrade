@@ -1,3 +1,4 @@
+import { Decimal } from 'decimal.js';
 import { EventBus, IExchange, ILogger, Position } from '@itrade/core';
 import { PositionEntity, TypeOrmDataManager } from '@itrade/data-manager';
 
@@ -34,6 +35,7 @@ export class PositionTracker {
   private readonly DEBOUNCE_MS = 2000; // 2 seconds debounce
   private readonly OKX_REST_ENRICH_INTERVAL_MS = 5000; // 5 seconds throttle
   private readonly PERSIST_THROTTLE_MS = 5000; // 5 seconds throttle
+  private readonly DUST_THRESHOLD = new Decimal('1e-10'); // Anything smaller than this is treated as zero
   private timer?: NodeJS.Timeout;
 
   constructor(
@@ -130,8 +132,13 @@ export class PositionTracker {
     const toDelete: DebouncedPositionUpdate[] = [];
 
     for (const update of enrichedUpdates) {
-      if (update.position.quantity.isZero()) {
+      const absQuantity = update.position.quantity.abs();
+      // Treatment of zero or dust positions
+      if (absQuantity.lt(this.DUST_THRESHOLD)) {
         toDelete.push(update);
+        this.logger.debug(
+          `🧹 Position ${update.exchange}:${update.symbol}:${update.position.side} is dust/closed (qty: ${update.position.quantity}), marking for deletion`,
+        );
       } else {
         toUpsert.push({
           ...update.position,

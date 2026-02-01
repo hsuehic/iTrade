@@ -86,7 +86,7 @@ export class OrderEntity implements Order {
   @Column({ type: 'enum', enum: TimeInForce })
   timeInForce!: TimeInForce;
 
-  @Column({ type: 'timestamptz' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 
   @Column({ type: 'timestamptz', nullable: true })

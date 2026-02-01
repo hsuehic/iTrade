@@ -77,10 +77,10 @@ export class DryRunOrderEntity implements Order {
   @Column({ type: 'enum', enum: TimeInForce })
   timeInForce!: TimeInForce;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   updateTime?: Date | undefined;
 
   @Column({
@@ -105,10 +105,10 @@ export class DryRunOrderEntity implements Order {
     cascade: true,
   })
   fills?: DryRunOrderFillEntity[] | undefined;
-
-  @CreateDateColumn()
+ 
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
-
-  @UpdateDateColumn()
+ 
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

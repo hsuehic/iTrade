@@ -108,7 +108,7 @@ export class StrategyEntity {
   @Column({ type: 'text', nullable: true })
   errorMessage?: string;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   lastExecutionTime?: Date;
 
   @OneToMany('orders', 'strategy', {
@@ -135,9 +135,9 @@ export class StrategyEntity {
   @Column({ type: 'text' })
   userId!: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

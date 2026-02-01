@@ -80,7 +80,7 @@ export class PositionEntity implements Position {
   })
   leverage!: Decimal;
 
-  @Column({ type: 'timestamptz' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 
   @OneToMany('orders', 'position')

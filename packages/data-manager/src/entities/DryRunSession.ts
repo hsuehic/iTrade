@@ -43,10 +43,10 @@ export class DryRunSessionEntity {
   @Column({ type: 'jsonb', nullable: true })
   parametersSnapshot?: Record<string, unknown>;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   startTime!: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   endTime?: Date;
 
   @Column({ type: 'enum', enum: DryRunStatus, default: DryRunStatus.RUNNING })
@@ -96,10 +96,10 @@ export class DryRunSessionEntity {
   @OneToMany('dry_run_results', 'session')
   results?: DryRunResultEntity[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
   @ManyToOne('user', 'dryRunSessions', { nullable: false, onDelete: 'CASCADE' })

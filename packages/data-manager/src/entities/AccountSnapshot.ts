@@ -38,7 +38,7 @@ export class AccountSnapshotEntity {
   @JoinColumn({ name: 'account_info_id' })
   accountInfo?: AccountInfoEntity;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 
   @Column({

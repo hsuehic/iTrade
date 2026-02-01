@@ -25,10 +25,10 @@ export class KlineEntity {
   @Column({ type: 'character varying', length: 10 })
   interval!: string;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   openTime!: Date;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   closeTime!: Date;
 
   @Column({
@@ -100,9 +100,9 @@ export class KlineEntity {
   })
   takerBuyQuoteVolume?: Decimal;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

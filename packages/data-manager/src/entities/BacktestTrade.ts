@@ -46,10 +46,10 @@ export class BacktestTradeEntity implements BacktestTrade {
   })
   quantity!: Decimal;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   entryTime!: Date;
-
-  @Column({ type: 'timestamp' })
+ 
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   exitTime!: Date;
 
   @Column({

@@ -23,7 +23,7 @@ export class EquityPointEntity {
   @JoinColumn({ name: 'resultId' })
   result!: BacktestResultEntity;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 
   @Column({

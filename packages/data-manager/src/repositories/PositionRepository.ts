@@ -28,8 +28,10 @@ export class PositionRepository {
     // Fetch and return the upserted position
     return (await this.repository.findOne({
       where: {
+        userId: position.userId!,
         symbol: position.symbol!,
         exchange: position.exchange!,
+        side: position.side!,
       },
     }))!;
   }

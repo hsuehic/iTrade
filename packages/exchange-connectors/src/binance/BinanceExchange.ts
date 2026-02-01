@@ -626,7 +626,7 @@ export class BinanceExchange extends BaseExchange {
       });
 
       return response.data
-        .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
+        // .filter((pos: any) => parseFloat(pos.positionAmt) !== 0) // Commented out to allow zero positions for deletion logic
         .map((pos: any) => {
           const quantity = new Decimal(pos.positionAmt);
           const unifiedSymbol = this.denormalizeSymbol(pos.symbol, 'futures');
@@ -1267,7 +1267,7 @@ export class BinanceExchange extends BaseExchange {
           // Denormalize symbol: BTCUSDT → BTC/USDT:USDT (futures perpetual)
           const unifiedSymbol = this.denormalizeSymbol(p.s, 'futures');
           const quantity = this.formatDecimal(p.pa || '0');
-          if (quantity.isZero()) continue;
+          // if (quantity.isZero()) continue; // Commented out to allow zero positions for deletion logic
 
           positions.push({
             symbol: unifiedSymbol,

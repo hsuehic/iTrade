@@ -21,10 +21,10 @@ export class BacktestConfigEntity implements BacktestConfig {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   startDate!: Date;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   endDate!: Date;
 
   @Column({
