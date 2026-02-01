@@ -113,6 +113,21 @@ export class BinanceExchange extends BaseExchange {
   }
 
   /**
+   * Check if a symbol represents a futures/perpetual market
+   */
+  private _isFuturesSymbol(symbol: string): boolean {
+    const upper = symbol.toUpperCase();
+    return (
+      upper.includes(':') ||
+      upper.includes('_PERP') ||
+      upper.includes('_SWAP') ||
+      // Common heuristic: USDT pairs without a slash are often futures in this system's context
+      // but we should be careful. CreateOrder uses this too.
+      (!symbol.includes('/') && upper.includes('USDT'))
+    );
+  }
+
+  /**
    * Check if market type is futures/perpetual (reserved for future use)
    */
   private _isFuturesMarket(marketType?: BinanceMarketType): boolean {
@@ -241,10 +256,8 @@ export class BinanceExchange extends BaseExchange {
     const normalizedSymbol = this.normalizeSymbol(symbol);
 
     // Determine if this is a futures order
-    const isPerpetual =
-      symbol.includes(':') || symbol.includes('_PERP') || symbol.includes('_SWAP');
     const isFutures =
-      isPerpetual ||
+      this._isFuturesSymbol(symbol) ||
       Boolean(options?.positionSide || options?.reduceOnly || options?.leverage);
 
     // Set leverage for futures if provided and different from current
@@ -388,10 +401,7 @@ export class BinanceExchange extends BaseExchange {
     clientOrderId?: string,
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
-    const isPerpetual =
-      symbol.includes(':') || symbol.includes('_PERP') || symbol.includes('_SWAP');
-    const isFutures =
-      isPerpetual || (!symbol.includes('/') && normalizedSymbol.includes('USDT'));
+    const isFutures = this._isFuturesSymbol(symbol);
     const params: any = {
       symbol: normalizedSymbol,
       timestamp: Date.now(),
@@ -422,6 +432,7 @@ export class BinanceExchange extends BaseExchange {
     orderId: string,
     clientOrderId?: string,
   ): Promise<Order> {
+    const isFutures = this._isFuturesSymbol(symbol);
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
       symbol: normalizedSymbol,
@@ -435,35 +446,97 @@ export class BinanceExchange extends BaseExchange {
     }
 
     const signedParams = this.signRequest(params);
-    const response = await this.httpClient.get('/api/v3/order', {
+    const path = isFutures ? '/fapi/v1/order' : '/api/v3/order';
+    const httpClient = isFutures ? this.futuresClient : this.httpClient;
+
+    const response = await httpClient.get(path, {
       params: signedParams,
     });
 
-    return this.transformBinanceOrder(response.data);
+    return this.transformBinanceOrder(response.data, isFutures ? 'futures' : 'spot');
   }
 
   public async getOpenOrders(symbol?: string): Promise<Order[]> {
-    const params: any = { timestamp: Date.now() };
-    if (symbol) params.symbol = this.normalizeSymbol(symbol);
+    const timestamp = Date.now();
 
-    const signedParams = this.signRequest(params);
-    const response = await this.httpClient.get('/api/v3/openOrders', {
-      params: signedParams,
-    });
+    if (symbol) {
+      const isFutures = this._isFuturesSymbol(symbol);
+      const params: any = { symbol: this.normalizeSymbol(symbol), timestamp };
+      const signedParams = this.signRequest(params);
+      const path = isFutures ? '/fapi/v1/openOrders' : '/api/v3/openOrders';
+      const httpClient = isFutures ? this.futuresClient : this.httpClient;
 
-    return response.data.map((order: any) => this.transformBinanceOrder(order));
+      const response = await httpClient.get(path, {
+        params: signedParams,
+      });
+
+      return response.data.map((order: any) =>
+        this.transformBinanceOrder(order, isFutures ? 'futures' : 'spot'),
+      );
+    }
+
+    // If no symbol, fetch both spot and futures open orders as they use different endpoints
+    const spotParams = this.signRequest({ timestamp });
+    const futuresParams = this.signRequest({ timestamp });
+
+    const [spotRes, futuresRes] = await Promise.allSettled([
+      this.httpClient.get('/api/v3/openOrders', { params: spotParams }),
+      this.futuresClient.get('/fapi/v1/openOrders', { params: futuresParams }),
+    ]);
+
+    const allOrders: Order[] = [];
+
+    if (spotRes.status === 'fulfilled') {
+      allOrders.push(
+        ...spotRes.value.data.map((order: any) =>
+          this.transformBinanceOrder(order, 'spot'),
+        ),
+      );
+    }
+
+    if (futuresRes.status === 'fulfilled') {
+      allOrders.push(
+        ...futuresRes.value.data.map((order: any) =>
+          this.transformBinanceOrder(order, 'futures'),
+        ),
+      );
+    }
+
+    return allOrders;
   }
 
   public async getOrderHistory(symbol?: string, limit = 500): Promise<Order[]> {
-    const params: any = { timestamp: Date.now(), limit };
-    if (symbol) params.symbol = this.normalizeSymbol(symbol);
+    const timestamp = Date.now();
 
+    if (symbol) {
+      const isFutures = this._isFuturesSymbol(symbol);
+      const params: any = {
+        symbol: this.normalizeSymbol(symbol),
+        timestamp,
+        limit,
+      };
+      const signedParams = this.signRequest(params);
+      const path = isFutures ? '/fapi/v1/allOrders' : '/api/v3/allOrders';
+      const httpClient = isFutures ? this.futuresClient : this.httpClient;
+
+      const response = await httpClient.get(path, {
+        params: signedParams,
+      });
+
+      return response.data.map((order: any) =>
+        this.transformBinanceOrder(order, isFutures ? 'futures' : 'spot'),
+      );
+    }
+
+    // If no symbol, we can't easily fetch all history across all symbols for both platforms 
+    // in one go safely without hitting rate limits, but we'll default to spot context
+    const params: any = { timestamp, limit };
     const signedParams = this.signRequest(params);
     const response = await this.httpClient.get('/api/v3/allOrders', {
       params: signedParams,
     });
 
-    return response.data.map((order: any) => this.transformBinanceOrder(order));
+    return response.data.map((order: any) => this.transformBinanceOrder(order, 'spot'));
   }
 
   public async getAccountInfo(): Promise<AccountInfo> {
