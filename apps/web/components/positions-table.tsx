@@ -48,7 +48,7 @@ import {
 } from '@/components/ui/table';
 import { ExchangeLogo } from '@/components/exchange-logo';
 import { SymbolIcon } from '@/components/symbol-icon';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { getDisplaySymbol, extractBaseCurrency } from '@/lib/exchanges';
 
 interface PositionData {
@@ -106,15 +106,6 @@ const formatPercentage = (value: string | number) => {
   return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
 };
 
-const formatDate = (dateStr: string, locale: string) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString(locale, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
 
 export function PositionsTable({
   selectedExchange = 'all',

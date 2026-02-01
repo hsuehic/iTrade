@@ -35,7 +35,7 @@ export class TradeEntity implements Trade {
   @Column({ type: 'text' })
   side!: 'buy' | 'sell';
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   timestamp!: Date;
 
   @Column({ type: 'text', nullable: true })

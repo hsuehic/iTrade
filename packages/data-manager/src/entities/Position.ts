@@ -80,16 +80,16 @@ export class PositionEntity implements Position {
   })
   leverage!: Decimal;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   timestamp!: Date;
 
   @OneToMany('orders', 'position')
   orders?: OrderEntity[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
   @ManyToOne('user', 'positions', { nullable: false })

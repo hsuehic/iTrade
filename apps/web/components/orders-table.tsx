@@ -59,7 +59,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
+import { cn, formatDate, formatFullDate } from '@/lib/utils';
 import { getDisplaySymbol, extractBaseCurrency } from '@/lib/exchanges';
 
 interface OrderData {
@@ -123,29 +123,6 @@ const formatNumber = (value: string | number | undefined, decimals: number = 4) 
   return num.toFixed(decimals);
 };
 
-const formatDate = (dateStr: string | undefined, locale: string) => {
-  if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString(locale, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const formatFullDate = (dateStr: string | undefined, locale: string) => {
-  if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  return date.toLocaleString(locale, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-};
 
 const getStatusIcon = (status: string) => {
   switch (status.toUpperCase()) {

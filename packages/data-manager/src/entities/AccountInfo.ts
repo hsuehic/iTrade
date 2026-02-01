@@ -74,12 +74,12 @@ export class AccountInfoEntity implements AccountInfo {
   @Column({ type: 'boolean', default: true })
   canDeposit!: boolean;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   updateTime!: Date;
 
   balances!: BalanceEntity[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
   @Column({

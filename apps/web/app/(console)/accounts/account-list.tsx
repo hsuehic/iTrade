@@ -27,6 +27,7 @@ import {
   getExchangeDisplayName,
   SupportedExchange,
 } from '@itrade/data-manager/constants';
+import { formatDate } from '@/lib/utils';
 import type { AccountListItem } from '@/lib/types/account';
 
 export function AccountList({ initialAccounts }: { initialAccounts: AccountListItem[] }) {
@@ -117,7 +118,7 @@ export function AccountList({ initialAccounts }: { initialAccounts: AccountListI
                   </TableCell>
                   <TableCell className="font-mono text-xs">{account.apiKey}</TableCell>
                   <TableCell>
-                    {new Date(account.updatedTime).toLocaleDateString(locale)}
+                    {formatDate(account.updatedTime, locale)}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button

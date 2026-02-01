@@ -86,10 +86,10 @@ export class OrderEntity implements Order {
   @Column({ type: 'enum', enum: TimeInForce })
   timeInForce!: TimeInForce;
 
-  @Column({ type: 'timestamp' })
+  @Column({ type: 'timestamptz' })
   timestamp!: Date;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   updateTime?: Date | undefined;
 
   @Column({
@@ -177,9 +177,9 @@ export class OrderEntity implements Order {
   @JoinColumn({ name: 'positionId' })
   position?: PositionEntity;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }
