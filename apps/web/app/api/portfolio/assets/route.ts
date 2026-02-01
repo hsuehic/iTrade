@@ -173,7 +173,14 @@ export async function GET(request: Request) {
 
         const free = parseFloat(balance.free.toString());
         const locked = parseFloat(balance.locked.toString());
-        const total = parseFloat(balance.total.toString());
+        const totalFromSnapshot = parseFloat(balance.total.toString());
+        const computedTotal = free + locked;
+        const total =
+          Number.isFinite(totalFromSnapshot) &&
+          Math.abs(totalFromSnapshot - computedTotal) <=
+            Math.max(1e-8, Math.abs(computedTotal) * 0.005)
+            ? totalFromSnapshot
+            : computedTotal;
 
         const assetData: AssetData = {
           asset: balance.asset,
@@ -271,11 +278,11 @@ export async function GET(request: Request) {
 
       assetData.estimatedValue = estimatedValue;
 
-      if (estimatedValue !== undefined && estimatedValue < minValue) {
+      const valueForTotals = estimatedValue ?? 0;
+      if (valueForTotals < minValue) {
         continue;
       }
 
-      const valueForTotals = estimatedValue ?? assetData.total;
       totalValue += valueForTotals;
 
       filteredAssets.push(assetData);
@@ -289,7 +296,7 @@ export async function GET(request: Request) {
     // Calculate percentages
     if (totalValue > 0) {
       for (const asset of filteredAssets) {
-        const valueForTotals = asset.estimatedValue ?? asset.total;
+        const valueForTotals = asset.estimatedValue ?? 0;
         asset.percentage = (valueForTotals / totalValue) * 100;
       }
     }
@@ -308,16 +315,14 @@ export async function GET(request: Request) {
           }
         }
 
+        const valueForTotals = estimatedValue ?? 0;
         return {
           ...item,
           estimatedValue,
-          percentage:
-            totalValue > 0 ? ((estimatedValue ?? item.total) / totalValue) * 100 : 0,
+          percentage: totalValue > 0 ? (valueForTotals / totalValue) * 100 : 0,
         };
       })
-      .filter(
-        (item) => item.estimatedValue === undefined || item.estimatedValue >= minValue,
-      )
+      .filter((item) => (item.estimatedValue ?? 0) >= minValue)
       .sort((a, b) => (b.estimatedValue ?? b.total) - (a.estimatedValue ?? a.total));
 
     // Sort all assets by total value descending

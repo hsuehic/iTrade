@@ -6,7 +6,6 @@ import {
   IconClockDollar,
   IconDeviceAnalytics,
   IconWorldDollar,
-  IconBell,
 } from '@tabler/icons-react';
 import { useTranslations } from 'next-intl';
 
@@ -49,11 +48,6 @@ export function NavMain() {
       title: t('market'),
       url: '/market',
       icon: IconWorldDollar,
-    },
-    {
-      title: t('push'),
-      url: '/push',
-      icon: IconBell,
     },
   ];
 

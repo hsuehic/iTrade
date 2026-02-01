@@ -49,6 +49,7 @@ interface AssetData {
   locked: number;
   total: number;
   percentage: number;
+  estimatedValue?: number;
 }
 
 interface AssetsTableProps {
@@ -80,6 +81,10 @@ const formatNumber = (value: number) => {
     return value.toFixed(6);
   }
   return value.toFixed(8);
+};
+
+const getAssetValue = (asset: AssetData) => {
+  return asset.estimatedValue ?? asset.total;
 };
 
 const columns: ColumnDef<AssetData>[] = [
@@ -164,7 +169,8 @@ const columns: ColumnDef<AssetData>[] = [
     ),
   },
   {
-    accessorKey: 'total',
+    id: 'totalValue',
+    accessorFn: (row) => getAssetValue(row),
     header: ({ column }) => (
       <Button
         variant="ghost"
@@ -181,7 +187,7 @@ const columns: ColumnDef<AssetData>[] = [
     ),
     cell: ({ row }) => (
       <div className="text-right font-medium tabular-nums">
-        {formatCurrency(row.original.total)}
+        {formatCurrency(getAssetValue(row.original))}
       </div>
     ),
   },
@@ -224,7 +230,7 @@ export function AssetsTable({
   const [assets, setAssets] = React.useState<AssetData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
-    { id: 'total', desc: true },
+    { id: 'totalValue', desc: true },
   ]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = React.useState('');

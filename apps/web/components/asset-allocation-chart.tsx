@@ -17,6 +17,7 @@ interface AssetData {
   asset: string;
   total: number;
   percentage: number;
+  estimatedValue?: number;
 }
 
 interface AssetAllocationChartProps {
@@ -58,15 +59,21 @@ export function AssetAllocationChart({
 
         if (response.ok) {
           const data = await response.json();
+          const rawAggregatedAssets = data.aggregatedAssets || [];
+          const chartAssets = rawAggregatedAssets.map((asset: AssetData) => ({
+            ...asset,
+            total: asset.estimatedValue ?? asset.total,
+          }));
+
           // Get aggregated assets and take top 10 for chart clarity
-          const topAssets = data.aggregatedAssets?.slice(0, 10) || [];
+          const topAssets = chartAssets.slice(0, 10);
 
           // Group remaining assets as "Others" if there are more than 10
-          if (data.aggregatedAssets?.length > 10) {
-            const othersTotal = data.aggregatedAssets
+          if (chartAssets.length > 10) {
+            const othersTotal = chartAssets
               .slice(10)
               .reduce((sum: number, a: AssetData) => sum + a.total, 0);
-            const othersPercentage = data.aggregatedAssets
+            const othersPercentage = chartAssets
               .slice(10)
               .reduce((sum: number, a: AssetData) => sum + a.percentage, 0);
 
