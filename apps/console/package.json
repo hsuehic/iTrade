@@ -14,6 +14,7 @@
     "verify-all": "./verify-all-tests.sh",
     "generate-pm2": "ts-node src/tools/generate-pm2.ts",
     "test:db:order-association": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/unit/database/order-strategy-association.test.ts",
+    "test:db:strategy-delete": "NODE_ENV=development TS_NODE_PROJECT=tsconfig.build.json TS_NODE_FILES=true NODE_OPTIONS=\"--conditions=source\" node -r ts-node/register -r tsconfig-paths/register -r reflect-metadata src/unit/database/strategy-delete-with-orders.test.ts",
     "test:binance": "tsx src/unit/exchanges/binance/binance-ws.test.ts",
     "test:binance-rest": "tsx src/unit/exchanges/binance/binance-rest.test.ts",
     "test:okx": "tsx src/unit/exchanges/okx/okx-ws.test.ts",

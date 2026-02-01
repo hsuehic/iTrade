@@ -114,7 +114,7 @@ export class OrderEntity implements Order {
   exchange?: string;
 
   // TypeORM relation - loads the full Strategy object when needed
-  @ManyToOne('strategies', 'orders', { nullable: true })
+  @ManyToOne('strategies', 'orders', { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
