@@ -23,7 +23,7 @@ import type { User } from './User';
 @Index(['user', 'symbol'])
 @Index(['exchange'])
 @Index(['exchange', 'symbol'])
-@Index(['userId', 'exchange', 'symbol'], { unique: true })
+@Index(['userId', 'exchange', 'symbol', 'side'], { unique: true })
 export class PositionEntity implements Position {
   @PrimaryGeneratedColumn()
   id!: number;

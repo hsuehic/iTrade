@@ -25,9 +25,9 @@ export class PositionTracker {
   private totalUpdates = 0;
   private totalSaved = 0;
   private startTime: Date;
-  private okxRestPositionsCache = new Map<string, Position>();
+  private okxRestPositionsCache = new Map<string, Position>(); // key: symbol:side
   private okxRestLastSync = 0;
-  private okxRestInFlight?: Promise<Map<string, Position>>;
+  private okxRestInFlight?: Promise<Map<string, Position>>; // key: symbol:side
   private lastPersistAt = 0;
 
   // Debounce configuration
@@ -77,8 +77,8 @@ export class PositionTracker {
     try {
       this.totalUpdates++;
 
-      // Create unique key for debouncing (by exchange + symbol)
-      const key = `${exchange}:${position.symbol}`;
+      // Create unique key for debouncing (by exchange + symbol + side)
+      const key = `${exchange}:${position.symbol}:${position.side}`;
 
       this.pendingUpdates.set(key, {
         position,
@@ -151,6 +151,7 @@ export class PositionTracker {
             update.symbol,
             update.exchange,
             userId,
+            update.position.side,
           );
         }
         this.logger.debug(`🗑️ Deleted ${toDelete.length} closed position(s) from database`);
@@ -160,7 +161,7 @@ export class PositionTracker {
       if (toUpsert.length > 0) {
         // Use the correct conflict target - TypeORM will map 'user' to 'userId' column
         await repo.upsert(toUpsert, {
-          conflictPaths: ['userId', 'exchange', 'symbol'],
+          conflictPaths: ['userId', 'exchange', 'symbol', 'side'],
           skipUpdateIfNoValuesChanged: true,
         });
         this.logger.debug(`💾 Saved ${toUpsert.length} position(s) to database`);
@@ -203,7 +204,8 @@ export class PositionTracker {
 
       return updates.map((update) => {
         if (update.exchange !== 'okx') return update;
-        const restPosition = restPositions.get(update.symbol);
+        const side = update.position.side;
+        const restPosition = restPositions.get(`${update.symbol}:${side}`);
         if (!restPosition) return update;
 
         return {
@@ -256,7 +258,7 @@ export class PositionTracker {
       .then((positions) => {
         const map = new Map<string, Position>();
         positions.forEach((position) => {
-          map.set(position.symbol, position);
+          map.set(`${position.symbol}:${position.side}`, position);
         });
         this.okxRestPositionsCache = map;
         this.okxRestLastSync = Date.now();

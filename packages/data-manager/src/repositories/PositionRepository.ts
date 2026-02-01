@@ -21,7 +21,7 @@ export class PositionRepository {
     // Use upsert to handle duplicate positions elegantly
     // If position with same user+exchange+symbol exists, update it; otherwise insert new one
     await this.repository.upsert(position as any, {
-      conflictPaths: ['user', 'exchange', 'symbol'],
+      conflictPaths: ['userId', 'exchange', 'symbol', 'side'],
       skipUpdateIfNoValuesChanged: true,
     });
 
@@ -84,7 +84,12 @@ export class PositionRepository {
     await this.repository.delete({ id });
   }
 
-  async deleteBySymbol(symbol: string, exchange: string, userId?: string): Promise<void> {
+  async deleteBySymbol(
+    symbol: string,
+    exchange: string,
+    userId?: string,
+    side?: 'long' | 'short',
+  ): Promise<void> {
     const query = this.repository
       .createQueryBuilder()
       .delete()
@@ -94,6 +99,10 @@ export class PositionRepository {
 
     if (userId) {
       query.andWhere('userId = :userId', { userId });
+    }
+
+    if (side) {
+      query.andWhere('side = :side', { side });
     }
 
     await query.execute();

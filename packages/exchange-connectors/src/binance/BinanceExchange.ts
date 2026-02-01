@@ -629,8 +629,9 @@ export class BinanceExchange extends BaseExchange {
         .filter((pos: any) => parseFloat(pos.positionAmt) !== 0)
         .map((pos: any) => {
           const quantity = new Decimal(pos.positionAmt);
+          const unifiedSymbol = this.denormalizeSymbol(pos.symbol, 'futures');
           return {
-            symbol: pos.symbol,
+            symbol: unifiedSymbol,
             side: quantity.isPositive() ? 'long' : 'short',
             quantity: quantity.abs(),
             avgPrice: this.formatDecimal(pos.entryPrice),
@@ -1265,10 +1266,13 @@ export class BinanceExchange extends BaseExchange {
         for (const p of a.P) {
           // Denormalize symbol: BTCUSDT → BTC/USDT:USDT (futures perpetual)
           const unifiedSymbol = this.denormalizeSymbol(p.s, 'futures');
+          const quantity = this.formatDecimal(p.pa || '0');
+          if (quantity.isZero()) continue;
+
           positions.push({
             symbol: unifiedSymbol,
-            side: (p.ps || 'LONG').toLowerCase() === 'long' ? 'long' : 'short',
-            quantity: this.formatDecimal(p.pa || '0'),
+            side: quantity.isPositive() ? 'long' : 'short',
+            quantity: quantity.abs(),
             avgPrice: this.formatDecimal(p.ep || '0'),
             markPrice: this.formatDecimal('0'),
             unrealizedPnl: this.formatDecimal(p.up || '0'),
