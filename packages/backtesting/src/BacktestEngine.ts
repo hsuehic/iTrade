@@ -101,7 +101,7 @@ export class BacktestEngine implements IBacktestEngine {
   ): Promise<void> {
     if (!isActionableResult(signal)) return;
     if (isCancelOrderResult(signal)) return; // Backtest engine currently loops simplified logic, skipping cancels
-    
+
     // Now signal is guaranteed to be StrategyOrderResult
     if (!signal.quantity) return;
 

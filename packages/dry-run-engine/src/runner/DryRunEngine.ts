@@ -143,7 +143,7 @@ export class DryRunEngine {
             trades.push(trade);
           }
         }
-        
+
         // Record equity after processing all potential signals for this kline
         equity.push({ timestamp: k.closeTime, value: balance });
       }

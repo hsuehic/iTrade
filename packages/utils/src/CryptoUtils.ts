@@ -348,14 +348,14 @@ export class CryptoUtils {
     const iv = randomBytes(16);
     // Ensure the key is 32 bytes (256 bits)
     const key = createHash('sha256').update(secretKey).digest();
-    
+
     // Use createCipheriv (not createCipher which is deprecated)
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+
     const cipher = require('crypto').createCipheriv('aes-256-cbc', key, iv);
-    
+
     let encrypted = cipher.update(text);
     encrypted = Buffer.concat([encrypted, cipher.final()]);
-    
+
     // Return IV + Encrypted Data as hex
     return iv.toString('hex') + ':' + encrypted.toString('hex');
   }
@@ -365,17 +365,16 @@ export class CryptoUtils {
     if (textParts.length !== 2) {
       throw new Error('Invalid encrypted text format');
     }
-    
+
     const iv = Buffer.from(textParts[0], 'hex');
     const encryptedText = Buffer.from(textParts[1], 'hex');
     const key = createHash('sha256').update(secretKey).digest();
-    
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+
     const decipher = require('crypto').createDecipheriv('aes-256-cbc', key, iv);
-    
+
     let decrypted = decipher.update(encryptedText);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
-    
+
     return decrypted.toString();
   }
 }
