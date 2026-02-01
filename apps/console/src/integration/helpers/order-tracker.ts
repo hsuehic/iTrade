@@ -37,7 +37,7 @@ export class OrderTracker {
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
     private pushNotificationService?: {
-      notifyOrderFill(order: Order, kind: 'filled' | 'partial'): Promise<void>;
+      notifyOrderUpdate(order: Order, kind: 'created' | 'filled' | 'partial'): Promise<void>;
     },
     private userId?: string,
   ) {
@@ -202,6 +202,8 @@ export class OrderTracker {
       this.logger.info(
         `💾 Order saved: ${order.id} | Strategy: ${order.strategyName || 'none'} (ID: ${strategyId || 'N/A'}) | Exchange: ${exchange || 'unknown'}`,
       );
+
+      await this.pushNotificationService?.notifyOrderUpdate(order, 'created');
     } catch (error) {
       this.logger.error('❌ Failed to save order to database', error as Error);
     }
@@ -270,7 +272,7 @@ export class OrderTracker {
       );
 
       if (shouldNotify) {
-        await this.pushNotificationService?.notifyOrderFill(mergedOrder, 'filled');
+        await this.pushNotificationService?.notifyOrderUpdate(mergedOrder, 'filled');
       }
     } catch (error) {
       this.logger.error('❌ Failed to update filled order', error as Error);
@@ -369,7 +371,7 @@ export class OrderTracker {
         `💾 Partial fill saved: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
       );
 
-      await this.pushNotificationService?.notifyOrderFill(order, 'partial');
+      await this.pushNotificationService?.notifyOrderUpdate(order, 'partial');
     } catch (error) {
       this.logger.error(`❌ Failed to save partial fill for ${orderId}`, error as Error);
       this.pendingPartialFills.delete(orderId);

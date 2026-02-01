@@ -12,7 +12,7 @@ import { TypeOrmDataManager } from '@itrade/data-manager';
 import * as dotenv from 'dotenv';
 import type { PushNotificationService } from '../services/push-notification-service';
 
-type PushTestKind = 'filled' | 'partial';
+type PushTestKind = 'created' | 'filled' | 'partial';
 
 const logger = new ConsoleLogger(LogLevel.INFO);
 dotenv.config();
@@ -73,7 +73,7 @@ async function main() {
   );
 
   const orderId = `test-push-${Date.now()}`;
-  await service.notifyOrderFill(
+  await service.notifyOrderUpdate(
     {
       id: orderId,
       symbol,
@@ -81,7 +81,12 @@ async function main() {
       type: OrderType.LIMIT,
       quantity,
       price,
-      status: kind === 'partial' ? OrderStatus.PARTIALLY_FILLED : OrderStatus.FILLED,
+      status:
+        kind === 'created'
+          ? OrderStatus.NEW
+          : kind === 'partial'
+          ? OrderStatus.PARTIALLY_FILLED
+          : OrderStatus.FILLED,
       timeInForce: TimeInForce.GTC,
       timestamp: new Date(),
       updateTime: new Date(),

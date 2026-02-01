@@ -2,6 +2,7 @@ import {
   AccountPollingService,
   ConsoleLogger,
   IExchange,
+  EventBus,
   OrderStatus,
   TradingEngine,
   type ExchangeCredentials,
@@ -487,6 +488,10 @@ export class BotInstance {
       orderManager.updateOrder(normalizedOrder.id, normalizedOrder);
     } else {
       orderManager.addOrder(normalizedOrder);
+      EventBus.getInstance().emitOrderCreated({
+        order: normalizedOrder,
+        timestamp: new Date(),
+      });
     }
 
     await this.dataManager.saveOrder({
@@ -654,6 +659,28 @@ export class BotInstance {
         this.logger.info(
           `📌 Order ${order.id} status updated (${exchangeName}): ${order.status} → ${normalizedOrder.status}`,
         );
+
+        // Emit status-specific events for the tracker and notifications
+        const eventBus = EventBus.getInstance();
+        const eventData = { order: normalizedOrder, timestamp: new Date() };
+
+        switch (normalizedOrder.status) {
+          case OrderStatus.FILLED:
+            eventBus.emitOrderFilled(eventData);
+            break;
+          case OrderStatus.PARTIALLY_FILLED:
+            eventBus.emitOrderPartiallyFilled(eventData);
+            break;
+          case OrderStatus.CANCELED:
+            eventBus.emitOrderCancelled(eventData);
+            break;
+          case OrderStatus.REJECTED:
+            eventBus.emitOrderRejected(eventData);
+            break;
+          case OrderStatus.EXPIRED:
+            // Optional: emit if needed
+            break;
+        }
       }
     } catch (error) {
       this.logger.warn(

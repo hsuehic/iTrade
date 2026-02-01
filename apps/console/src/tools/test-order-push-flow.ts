@@ -20,14 +20,14 @@ dotenv.config();
 const logger = new ConsoleLogger(LogLevel.INFO);
 
 type MockPushNotificationService = {
-  notifyOrderFill(order: Order, kind: 'filled' | 'partial'): Promise<void>;
+  notifyOrderUpdate(order: Order, kind: 'created' | 'filled' | 'partial'): Promise<void>;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function buildMockPushService(): MockPushNotificationService {
   return {
-    async notifyOrderFill(order: Order, kind: 'filled' | 'partial'): Promise<void> {
+    async notifyOrderUpdate(order: Order, kind: 'created' | 'filled' | 'partial'): Promise<void> {
       logger.info(
         `✅ Mock push invoked (${kind}) for order ${order.id} (${order.symbol})`,
       );

@@ -14,7 +14,7 @@ import {
   sendToMultipleDevices,
 } from '@itrade/push-notification';
 
-type OrderNotificationKind = 'filled' | 'partial';
+type OrderNotificationKind = 'created' | 'filled' | 'partial';
 
 type PushNotificationOptions = {
   defaultUserId?: string;
@@ -51,7 +51,7 @@ export class PushNotificationService {
     this.defaultUserId = options?.defaultUserId;
   }
 
-  async notifyOrderFill(order: Order, kind: OrderNotificationKind): Promise<void> {
+  async notifyOrderUpdate(order: Order, kind: OrderNotificationKind): Promise<void> {
     if (!isPushEnabled()) {
       this.logger.info('📨 Push notifications disabled (Firebase not initialized).');
       return;
@@ -224,7 +224,10 @@ function parseCategoryEnv(
 }
 
 function buildOrderNotification(order: Order, kind: OrderNotificationKind) {
-  const status = kind === 'filled' ? 'Filled' : 'Partially Filled';
+  let status = 'Update';
+  if (kind === 'created') status = 'Placed';
+  else if (kind === 'filled') status = 'Filled';
+  else if (kind === 'partial') status = 'Partially Filled';
   const executed = formatDecimal(order.executedQuantity) ?? '0';
   const quantity = formatDecimal(order.quantity) ?? '0';
   const price = formatDecimal(order.price);
@@ -252,7 +255,12 @@ function buildOrderData(
   kind: OrderNotificationKind,
 ): Record<string, string> {
   const data: Record<string, string> = {
-    event: kind === 'filled' ? 'order_filled' : 'order_partially_filled',
+    event:
+      kind === 'created'
+        ? 'order_created'
+        : kind === 'filled'
+        ? 'order_filled'
+        : 'order_partially_filled',
     orderId: order.id,
     symbol: order.symbol,
     side: order.side,
