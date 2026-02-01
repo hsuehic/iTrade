@@ -125,28 +125,52 @@ export class PositionTracker {
     }
 
     const enrichedUpdates = await this.enrichOkxPositionsIfNeeded(updates);
-    const entities = enrichedUpdates.map((update) => ({
-      ...update.position,
-      userId,
-      exchange: update.exchange,
-      symbol: update.symbol,
-      timestamp: update.timestamp,
-    }));
+
+    const toUpsert: any[] = [];
+    const toDelete: DebouncedPositionUpdate[] = [];
+
+    for (const update of enrichedUpdates) {
+      if (update.position.quantity.isZero()) {
+        toDelete.push(update);
+      } else {
+        toUpsert.push({
+          ...update.position,
+          userId,
+          exchange: update.exchange,
+          symbol: update.symbol,
+          timestamp: update.timestamp,
+        });
+      }
+    }
 
     try {
-      // Use the correct conflict target - TypeORM will map 'user' to 'userId' column
-      await repo.upsert(entities, {
-        conflictPaths: ['userId', 'exchange', 'symbol'],
-        skipUpdateIfNoValuesChanged: true,
-      });
+      // 1. Handle Deletions
+      if (toDelete.length > 0) {
+        for (const update of toDelete) {
+          await this.dataManager.getPositionRepository().deleteBySymbol(
+            update.symbol,
+            update.exchange,
+            userId,
+          );
+        }
+        this.logger.debug(`🗑️ Deleted ${toDelete.length} closed position(s) from database`);
+      }
 
-      this.totalSaved += entities.length;
+      // 2. Handle Upserts
+      if (toUpsert.length > 0) {
+        // Use the correct conflict target - TypeORM will map 'user' to 'userId' column
+        await repo.upsert(toUpsert, {
+          conflictPaths: ['userId', 'exchange', 'symbol'],
+          skipUpdateIfNoValuesChanged: true,
+        });
+        this.logger.debug(`💾 Saved ${toUpsert.length} position(s) to database`);
+      }
+
+      this.totalSaved += enrichedUpdates.length;
       this.pendingUpdates.clear();
       this.lastPersistAt = Date.now();
-
-      this.logger.debug(`💾 Saved ${entities.length} position(s) to database`);
     } catch (error) {
-      this.logger.error('❌ Failed to upsert positions', error as Error);
+      this.logger.error('❌ Failed to process position updates', error as Error);
     }
   }
 

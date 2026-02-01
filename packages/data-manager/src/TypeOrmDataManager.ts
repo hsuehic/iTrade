@@ -1016,18 +1016,27 @@ export class TypeOrmDataManager implements IDataManager {
 
       if (accountInfo) {
         for (const pos of data.positions) {
-          await this.positionRepository.save({
-            userId: accountInfo.userId,
-            exchange: data.exchange,
-            symbol: pos.symbol,
-            side: pos.side,
-            quantity: new Decimal(pos.quantity),
-            avgPrice: new Decimal(pos.avgPrice),
-            markPrice: new Decimal(pos.markPrice),
-            unrealizedPnl: new Decimal(pos.unrealizedPnl),
-            leverage: new Decimal(pos.leverage),
-            timestamp: new Date(pos.timestamp),
-          });
+          const quantity = new Decimal(pos.quantity);
+          if (quantity.isZero()) {
+            await this.positionRepository.deleteBySymbol(
+              pos.symbol,
+              data.exchange,
+              accountInfo.userId,
+            );
+          } else {
+            await this.positionRepository.save({
+              userId: accountInfo.userId,
+              exchange: data.exchange,
+              symbol: pos.symbol,
+              side: pos.side,
+              quantity: quantity,
+              avgPrice: new Decimal(pos.avgPrice),
+              markPrice: new Decimal(pos.markPrice),
+              unrealizedPnl: new Decimal(pos.unrealizedPnl),
+              leverage: new Decimal(pos.leverage),
+              timestamp: new Date(pos.timestamp),
+            });
+          }
         }
       }
     }

@@ -17,46 +17,46 @@ export async function GET(request: NextRequest) {
     const side = searchParams.get('side') as 'long' | 'short' | null;
     const minQuantity = searchParams.get('minQuantity');
 
-    interface PositionFilters {
-      userId: string;
-      exchange?: string;
-      symbol?: string;
-      side?: 'long' | 'short';
-      minQuantity?: number;
-    }
-
-    const filters: PositionFilters = {
-      userId: session.user.id,
-    };
-
+    const dataManager = await getDataManager();
+    const positionRepository = dataManager.getPositionRepository();
+    
+    // Fetch all user positions once for both data and metadata (exchanges/symbols)
+    const allUserPositions = await positionRepository.findAll({ userId: session.user.id });
+    
+    // Core filter: always exclude zero quantity positions
+    const activeUserPositions = allUserPositions.filter((pos) => !pos.quantity.isZero());
+    
+    // Apply optional filters
+    let filteredPositions = activeUserPositions;
+    
     if (exchange && exchange !== 'all') {
-      filters.exchange = exchange;
+      filteredPositions = filteredPositions.filter((pos) => pos.exchange === exchange);
     }
     if (symbol) {
-      filters.symbol = symbol;
+      filteredPositions = filteredPositions.filter((pos) => pos.symbol === symbol);
     }
     if (side) {
-      filters.side = side;
+      filteredPositions = filteredPositions.filter((pos) => pos.side === side);
     }
     if (minQuantity) {
       const qty = parseFloat(minQuantity);
       if (!isNaN(qty)) {
-        filters.minQuantity = qty;
+        filteredPositions = filteredPositions.filter((pos) => pos.quantity.abs().gte(qty));
       }
     }
 
-    const dataManager = await getDataManager();
-    const positionRepository = dataManager.getPositionRepository();
-    const positions = await positionRepository.findAll(filters);
-
-    // Get available exchanges and symbols for filtering
-    const [exchanges, symbols] = await Promise.all([
-      positionRepository.getExchanges(session.user.id),
-      positionRepository.getSymbols(session.user.id, exchange || undefined),
-    ]);
+    // Get available exchanges and symbols for filtering (only from active positions)
+    const exchanges = Array.from(new Set(activeUserPositions.map((p) => p.exchange))).sort();
+    const symbols = Array.from(
+      new Set(
+        activeUserPositions
+          .filter((p) => !exchange || exchange === 'all' || p.exchange === exchange)
+          .map((p) => p.symbol),
+      ),
+    ).sort();
 
     // Convert Decimal to string for JSON serialization
-    const serializedPositions = positions.map((pos) => ({
+    const serializedPositions = filteredPositions.map((pos) => ({
       id: pos.id,
       symbol: pos.symbol,
       exchange: pos.exchange,
@@ -73,18 +73,18 @@ export async function GET(request: NextRequest) {
       marketValue: pos.quantity.mul(pos.markPrice).toString(),
       // Calculate PnL percentage
       pnlPercentage:
-        pos.avgPrice.gt(0) && pos.quantity.gt(0)
-          ? pos.unrealizedPnl.div(pos.avgPrice.mul(pos.quantity)).mul(100).toFixed(2)
+        pos.avgPrice.gt(0) && pos.quantity.abs().gt(0)
+          ? pos.unrealizedPnl.div(pos.avgPrice.mul(pos.quantity.abs())).mul(100).toFixed(2)
           : '0.00',
     }));
 
     return NextResponse.json({
       positions: serializedPositions,
       summary: {
-        totalPositions: positions.length,
+        totalPositions: filteredPositions.length,
         exchanges,
         symbols,
-        totalUnrealizedPnl: positions
+        totalUnrealizedPnl: filteredPositions
           .reduce((sum, pos) => sum + parseFloat(pos.unrealizedPnl.toString()), 0)
           .toFixed(2),
       },
