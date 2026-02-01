@@ -1,12 +1,9 @@
+import 'dotenv/config';
 import 'reflect-metadata';
 import { ConsoleLogger, LogLevel } from '@itrade/core';
 import { TypeOrmDataManager } from '@itrade/data-manager';
-import * as dotenv from 'dotenv';
 import { OrderTracker } from './integration/helpers/order-tracker';
 import { BotManager } from './BotManager';
-
-// Load environment variables from .env file
-dotenv.config();
 
 /**
  * iTrade Console Application - Main Entry Point

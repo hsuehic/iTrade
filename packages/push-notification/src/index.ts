@@ -18,8 +18,9 @@ function loadServiceAccountFromPath(filePath: string): admin.ServiceAccount | nu
   return JSON.parse(raw) as admin.ServiceAccount;
 }
 
-// Initialize Firebase Admin only if service account is available
-if (!admin.apps.length) {
+function ensureFirebaseInitialized(): void {
+  if (admin.apps.length > 0) return;
+
   // Prefer env JSON; otherwise read from a repo-relative file path.
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     try {
@@ -27,10 +28,14 @@ if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
       });
+      return;
     } catch (error) {
       console.warn('Failed to initialize Firebase Admin:', error);
+      return;
     }
-  } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
+  }
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
     try {
       const serviceAccount = loadServiceAccountFromPath(
         process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
@@ -39,30 +44,36 @@ if (!admin.apps.length) {
         console.warn(
           `Firebase Admin not initialized: FIREBASE_SERVICE_ACCOUNT_PATH not found: ${process.env.FIREBASE_SERVICE_ACCOUNT_PATH}`,
         );
-      } else {
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
+        return;
       }
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+      return;
     } catch (error) {
       console.warn('Failed to initialize Firebase Admin from file:', error);
+      return;
     }
-  } else {
-    console.warn(
-      'Firebase Admin not initialized: FIREBASE_SERVICE_ACCOUNT / FIREBASE_SERVICE_ACCOUNT_PATH not set',
-    );
   }
+
+  console.warn(
+    'Firebase Admin not initialized: FIREBASE_SERVICE_ACCOUNT / FIREBASE_SERVICE_ACCOUNT_PATH not set',
+  );
 }
 
-const msg = admin.apps.length > 0 ? admin.messaging() : null;
+function getMessaging(): admin.messaging.Messaging | null {
+  ensureFirebaseInitialized();
+  return admin.apps.length > 0 ? admin.messaging() : null;
+}
 
 export type Message = admin.messaging.Message;
 export type { BatchResponse };
 
-export const isPushEnabled = () => Boolean(msg);
+export const isPushEnabled = () => Boolean(getMessaging());
 
 // 通用发送函数
 export const sendMessage = async (payload: Message) => {
+  const msg = getMessaging();
   if (!msg) {
     throw new Error('Firebase messaging not initialized');
   }
@@ -181,6 +192,7 @@ export const sendToMultipleDevices = async (
     };
   },
 ): Promise<BatchResponse> => {
+  const msg = getMessaging();
   if (!msg) {
     throw new Error('Firebase messaging not initialized');
   }
