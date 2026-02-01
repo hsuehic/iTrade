@@ -144,13 +144,40 @@ async function initialize() {
     logger,
   );
 
-  // Register all exchanges
-  for (const [name, exchange] of exchanges) {
-    accountPollingService.registerExchange(name, exchange);
-  }
-
   // Set data manager
   accountPollingService.setDataManager(dataManager);
+
+  // Register all exchanges with their AccountInfo ID
+  const userId = process.env.USER_ID;
+  const accountInfoRepo = dataManager.getAccountInfoRepository();
+
+  for (const [name, exchange] of exchanges) {
+    let accountInfoId: number | undefined;
+
+    if (userId) {
+      // Ensure AccountInfo exists for this user/exchange
+      await accountInfoRepo.upsert(
+        {
+          userId,
+          exchange: name,
+          accountId: name, // Using exchange name as accountId for simple cron setup
+          canTrade: true,
+          canWithdraw: true,
+          canDeposit: true,
+          updateTime: new Date(),
+          isActive: true,
+        },
+        ['userId', 'exchange']
+      );
+
+      const accountInfo = await accountInfoRepo.findOne({
+        where: { userId, exchange: name },
+      });
+      accountInfoId = accountInfo?.id;
+    }
+
+    accountPollingService.registerExchange(name, exchange, { accountInfoId });
+  }
 
   // Setup event listeners
   accountPollingService.on('started', () => {
@@ -183,27 +210,7 @@ async function initialize() {
     }
 
     try {
-      const accountInfoRepo = dataManager.dataSource.getRepository(
-        (await import('@itrade/data-manager')).AccountInfoEntity,
-      );
-
-      // Ensure AccountInfo exists
-      await accountInfoRepo.upsert(
-        {
-          userId,
-          exchange: snapshot.exchange,
-          accountId: snapshot.exchange,
-          canTrade: true,
-          canWithdraw: true,
-          canDeposit: true,
-          updateTime: snapshot.timestamp,
-        },
-        {
-          conflictPaths: ['userId', 'exchange'],
-          skipUpdateIfNoValuesChanged: true,
-        },
-      );
-
+      const accountInfoRepo = dataManager.getAccountInfoRepository();
       const accountInfo = await accountInfoRepo.findOne({
         where: { userId, exchange: snapshot.exchange },
       });

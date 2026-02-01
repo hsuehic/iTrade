@@ -25,3 +25,6 @@ export type {
   DryRunSessionWithStats,
 } from './DryRunSessionRepository';
 export { BalanceHistoryRepository } from './BalanceHistoryRepository';
+export { BalanceRepository } from './BalanceRepository';
+export { AccountSnapshotRepository } from './AccountSnapshotRepository';
+export type { AccountSnapshotData } from './AccountSnapshotRepository';

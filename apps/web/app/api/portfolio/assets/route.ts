@@ -117,19 +117,13 @@ export async function GET(request: Request) {
     const minValue = parseFloat(searchParams.get('minValue') || '0');
 
     const dm = await getDataManager();
-    const snapshotRepo = dm.getAccountSnapshotRepository();
-
-    // Get latest snapshots for all exchanges
-    const latestSnapshots = await snapshotRepo.getLatestForAllExchanges(session.user.id);
-
-    if (latestSnapshots.length === 0) {
+    
+    // Optimized: Get latest state from AccountInfo and Balance entities
+    const accounts = await dm.getUserAccountsWithBalances(session.user.id);
+    
+    if (accounts.length === 0) {
       return NextResponse.json({
-        summary: {
-          totalAssets: 0,
-          uniqueAssets: 0,
-          totalValue: 0,
-          exchanges: [],
-        },
+        summary: { totalAssets: 0, uniqueAssets: 0, totalValue: 0, exchanges: [] },
         assets: [],
         assetsByExchange: {},
         aggregatedAssets: [],
@@ -137,64 +131,43 @@ export async function GET(request: Request) {
       });
     }
 
-    // Process assets from all exchanges
+    // Process assets from all accounts
     const allAssets: AssetData[] = [];
     const assetsByExchange: Record<string, AssetData[]> = {};
-    const aggregatedAssetsMap = new Map<
-      string,
-      {
-        asset: string;
-        free: number;
-        locked: number;
-        total: number;
-        estimatedValue?: number;
-      }
-    >();
-
+    const aggregatedAssetsMap = new Map<string, any>();
     const exchanges: string[] = [];
     const assetsByExchangeMap = new Map<string, Set<string>>();
 
-    for (const snapshot of latestSnapshots) {
-      // Skip if filtering by exchange and doesn't match
-      if (exchangeFilter !== 'all' && snapshot.exchange !== exchangeFilter) {
-        continue;
+    for (const account of accounts) {
+      const balances = await dm.getAccountBalances(account.id);
+      const exchange = account.exchange;
+      
+      if (!exchanges.includes(exchange)) {
+        exchanges.push(exchange);
       }
 
-      if (!exchanges.includes(snapshot.exchange)) {
-        exchanges.push(snapshot.exchange);
-      }
+      assetsByExchange[exchange] = [];
+      const assetSet = assetsByExchangeMap.get(exchange) || new Set<string>();
 
-      assetsByExchange[snapshot.exchange] = [];
-
-      const assetSet = assetsByExchangeMap.get(snapshot.exchange) || new Set<string>();
-
-      for (const balance of snapshot.balances) {
+      for (const balance of balances) {
         assetSet.add(balance.asset.toUpperCase());
 
         const free = parseFloat(balance.free.toString());
         const locked = parseFloat(balance.locked.toString());
-        const totalFromSnapshot = parseFloat(balance.total.toString());
-        const computedTotal = free + locked;
-        const total =
-          Number.isFinite(totalFromSnapshot) &&
-          Math.abs(totalFromSnapshot - computedTotal) <=
-            Math.max(1e-8, Math.abs(computedTotal) * 0.005)
-            ? totalFromSnapshot
-            : computedTotal;
+        const total = parseFloat(balance.total.toString());
 
         const assetData: AssetData = {
           asset: balance.asset,
-          exchange: snapshot.exchange,
+          exchange: exchange,
           free,
           locked,
           total,
-          percentage: 0, // Will calculate after total is known
+          percentage: 0,
         };
 
         allAssets.push(assetData);
-        assetsByExchange[snapshot.exchange].push(assetData);
+        assetsByExchange[exchange].push(assetData);
 
-        // Aggregate by asset
         const existing = aggregatedAssetsMap.get(balance.asset);
         if (existing) {
           existing.free += free;
@@ -209,8 +182,7 @@ export async function GET(request: Request) {
           });
         }
       }
-
-      assetsByExchangeMap.set(snapshot.exchange, assetSet);
+      assetsByExchangeMap.set(exchange, assetSet);
     }
 
     const priceByExchangeAsset = new Map<string, number>();

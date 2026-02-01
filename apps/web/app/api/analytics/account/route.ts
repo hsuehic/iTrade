@@ -61,16 +61,13 @@ export async function GET(request: Request) {
         startTime.setDate(startTime.getDate() - 30);
     }
 
-    // Get latest snapshots for all exchanges or specific exchange
-    const snapshotRepo = dm.getAccountSnapshotRepository();
-
-    let latestSnapshots;
-    if (exchange === 'all') {
-      latestSnapshots = await snapshotRepo.getLatestForAllExchanges(userId);
-    } else {
-      const snapshot = await snapshotRepo.getLatest(exchange, userId);
-      latestSnapshots = snapshot ? [snapshot] : [];
+    // Optimized: Get latest state from AccountInfo aggregate fields
+    let accounts = await dm.getUserAccountsWithBalances(userId);
+    if (exchange !== 'all') {
+      accounts = accounts.filter(a => a.exchange.toLowerCase() === exchange.toLowerCase());
     }
+
+    const latestSnapshots = accounts;
 
     // If no data found for specific exchange, return empty response
     if (exchange !== 'all' && latestSnapshots.length === 0) {
@@ -96,23 +93,23 @@ export async function GET(request: Request) {
     let totalUnrealizedPnl = 0;
     let totalPositions = 0;
 
-    const exchangeData = latestSnapshots.map((snapshot) => {
-      const balance = parseFloat(snapshot.totalBalance.toString());
-      const positionValue = parseFloat(snapshot.totalPositionValue.toString());
-      const unrealizedPnl = parseFloat(snapshot.unrealizedPnl.toString());
+    const exchangeData = latestSnapshots.map((account) => {
+      const balance = parseFloat(account.totalBalance.toString());
+      const positionValue = parseFloat(account.totalPositionValue.toString());
+      const unrealizedPnl = parseFloat(account.unrealizedPnl.toString());
 
       totalBalance += balance;
       totalPositionValue += positionValue;
       totalUnrealizedPnl += unrealizedPnl;
-      totalPositions += snapshot.positionCount;
+      totalPositions += account.positionCount;
 
       return {
-        exchange: snapshot.exchange,
+        exchange: account.exchange,
         balance,
         positionValue,
         unrealizedPnl,
-        positionCount: snapshot.positionCount,
-        timestamp: snapshot.timestamp,
+        positionCount: account.positionCount,
+        timestamp: account.updateTime,
       };
     });
 

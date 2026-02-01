@@ -56,6 +56,7 @@ import {
   AccountSnapshotRepository,
   AccountSnapshotData,
 } from './repositories/AccountSnapshotRepository';
+import { BalanceRepository } from './repositories/BalanceRepository';
 
 export interface TypeOrmDataManagerConfig {
   type: 'postgres' | 'mysql';
@@ -161,6 +162,7 @@ export class TypeOrmDataManager implements IDataManager {
   private pushDeviceRepository!: PushDeviceRepository;
   private pushNotificationRepository!: PushNotificationRepository;
   private balanceHistoryRepository!: BalanceHistoryRepository;
+  private balanceRepository!: BalanceRepository;
   private accountInfoRepository!: Repository<AccountInfoEntity>;
 
   // Dry run repositories (initialized on demand via dataSource)
@@ -209,6 +211,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.pushDeviceRepository = new PushDeviceRepository(this.dataSource);
     this.pushNotificationRepository = new PushNotificationRepository(this.dataSource);
     this.balanceHistoryRepository = new BalanceHistoryRepository(this.dataSource);
+    this.balanceRepository = new BalanceRepository(this.dataSource);
     this.accountInfoRepository = this.dataSource.getRepository(AccountInfoEntity);
 
     this.isInitialized = true;
@@ -970,7 +973,64 @@ export class TypeOrmDataManager implements IDataManager {
 
   async saveAccountSnapshot(data: AccountSnapshotData): Promise<void> {
     this.ensureInitialized();
+    
+    // 1. Save historical snapshot (archive)
     await this.accountSnapshotRepository.save(data);
+
+    // 2. Update current state (Scenario 2: Current Balances/Positions)
+    if (data.accountInfoId) {
+      await this.updateCurrentAccountState(data);
+    }
+  }
+
+  /**
+   * Updates the 'current' view of an account (AccountInfo, Balances, Positions)
+   * This implements the Scenario 2 optimization for faster dashboard queries.
+   */
+  async updateCurrentAccountState(data: AccountSnapshotData): Promise<void> {
+    this.ensureInitialized();
+    const accountInfoId = data.accountInfoId;
+    if (!accountInfoId) return;
+
+    // Update AccountInfo aggregate stats
+    await this.accountInfoRepository.update(accountInfoId, {
+      totalBalance: data.totalBalance,
+      availableBalance: data.availableBalance,
+      lockedBalance: data.lockedBalance,
+      totalPositionValue: data.totalPositionValue,
+      unrealizedPnl: data.unrealizedPnl,
+      positionCount: data.positionCount,
+      updateTime: data.timestamp,
+    });
+
+    // Update current per-asset balances
+    await this.balanceRepository.updateBalances(accountInfoId, data.balances);
+
+    // Update current positions
+    if (data.positions.length > 0) {
+      // Get userId from AccountInfo
+      const accountInfo = await this.accountInfoRepository.findOne({
+        where: { id: accountInfoId },
+        select: ['userId']
+      });
+
+      if (accountInfo) {
+        for (const pos of data.positions) {
+          await this.positionRepository.save({
+            userId: accountInfo.userId,
+            exchange: data.exchange,
+            symbol: pos.symbol,
+            side: pos.side,
+            quantity: new Decimal(pos.quantity),
+            avgPrice: new Decimal(pos.avgPrice),
+            markPrice: new Decimal(pos.markPrice),
+            unrealizedPnl: new Decimal(pos.unrealizedPnl),
+            leverage: new Decimal(pos.leverage),
+            timestamp: new Date(pos.timestamp),
+          });
+        }
+      }
+    }
   }
 
   async getLatestAccountSnapshot(exchange: string): Promise<AccountSnapshotData | null> {
@@ -1053,5 +1113,18 @@ export class TypeOrmDataManager implements IDataManager {
   getPushNotificationRepository(): PushNotificationRepository {
     this.ensureInitialized();
     return this.pushNotificationRepository;
+  }
+
+  async getUserAccountsWithBalances(userId: string): Promise<AccountInfoEntity[]> {
+    this.ensureInitialized();
+    return await this.accountInfoRepository.find({
+      where: { userId, isActive: true },
+      order: { exchange: 'ASC' }
+    });
+  }
+
+  async getAccountBalances(accountInfoId: number): Promise<BalanceEntity[]> {
+    this.ensureInitialized();
+    return await this.balanceRepository.getBalances(accountInfoId);
   }
 }

@@ -1,8 +1,11 @@
+import { Decimal } from 'decimal.js';
 import { AccountInfo } from '@itrade/core';
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 import type { BalanceEntity } from './Balance';
 import { SupportedExchange } from '../constants/exchanges';
+
+import { decimalTransformer } from '../utils/transformers';
 
 @Entity('account_info')
 @Index(['userId'])
@@ -10,6 +13,54 @@ import { SupportedExchange } from '../constants/exchanges';
 export class AccountInfoEntity implements AccountInfo {
   @PrimaryGeneratedColumn()
   id!: number;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    default: 0,
+    transformer: decimalTransformer,
+  })
+  totalBalance!: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    default: 0,
+    transformer: decimalTransformer,
+  })
+  availableBalance!: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    default: 0,
+    transformer: decimalTransformer,
+  })
+  lockedBalance!: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    default: 0,
+    transformer: decimalTransformer,
+  })
+  totalPositionValue!: Decimal;
+
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    default: 0,
+    transformer: decimalTransformer,
+  })
+  unrealizedPnl!: Decimal;
+
+  @Column({ type: 'integer', default: 0 })
+  positionCount!: number;
 
   @Column({ type: 'text', name: 'userId' })
   userId!: string;
