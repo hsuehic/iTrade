@@ -39,12 +39,14 @@ export class PrecisionUtils {
     tickSize: Decimal,
     precision?: number,
   ): Decimal {
+    if (!tickSize.isZero()) {
+      // Prefer tick size to guarantee valid multiples
+      return this.roundToStepSize(price, tickSize);
+    }
     if (precision !== undefined) {
-      // Use precision if provided
       return this.roundToPrecision(price, precision);
     }
-    // Use tick size for rounding
-    return this.roundToStepSize(price, tickSize);
+    return price;
   }
 
   /**
@@ -59,12 +61,14 @@ export class PrecisionUtils {
     stepSize: Decimal,
     precision?: number,
   ): Decimal {
+    if (!stepSize.isZero()) {
+      // Prefer step size to guarantee valid multiples
+      return this.roundToStepSize(quantity, stepSize);
+    }
     if (precision !== undefined) {
-      // Use precision if provided
       return this.roundToPrecision(quantity, precision);
     }
-    // Use step size for rounding
-    return this.roundToStepSize(quantity, stepSize);
+    return quantity;
   }
 
   /**

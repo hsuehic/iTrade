@@ -31,6 +31,7 @@ import {
   Trade,
   Kline,
   DataType,
+  SymbolInfo,
   DEFAULT_TICKER_CONFIG,
   DEFAULT_ORDERBOOK_CONFIG,
   DEFAULT_TRADES_CONFIG,
@@ -63,6 +64,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
   // 🆕 Track which orders have been emitted as "created" to avoid duplicate OrderCreated events
   private readonly _emittedOrderCreated = new Set<string>();
+  private readonly _symbolInfoCache = new Map<
+    string,
+    { info: SymbolInfo; fetchedAt: number }
+  >();
+  private readonly _symbolInfoTtlMs = 30 * 60 * 1000;
 
   constructor(
     private riskManager: IRiskManager,
@@ -115,6 +121,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // 🔄 Load initial data for all strategies that need it (before subscribing to real-time data)
       // This handles strategies added before engine.start() is called
       for (const [name, strategy] of this._strategies) {
+        await this.prefetchSymbolInfoForStrategy(name, strategy);
         await this.loadInitialDataForStrategy(name, strategy);
       }
 
@@ -179,6 +186,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     this._strategies.set(name, strategy);
     this.logger.info(`Added strategy: ${name}`);
+
+    await this.prefetchSymbolInfoForStrategy(name, strategy);
 
     // If engine is already running, load initial data and subscribe
     // (for strategies added dynamically after engine.start())
@@ -542,8 +551,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
-      // Fetch symbol info to get precision requirements
-      const symbolInfo = await exchange.getSymbolInfo(symbol);
+      // Fetch symbol info (cached) to get precision requirements
+      const symbolInfo = await this.getSymbolInfoWithCache(exchange, symbol);
 
       // Apply precision to quantity
       let adjustedQuantity = PrecisionUtils.roundQuantity(
@@ -864,6 +873,74 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           signal,
         },
       );
+    }
+  }
+
+  private getSymbolInfoCacheKey(exchangeName: string, symbol: string): string {
+    return `${exchangeName}:${symbol}`;
+  }
+
+  private async getSymbolInfoWithCache(
+    exchange: IExchange,
+    symbol: string,
+    options: { forceRefresh?: boolean } = {},
+  ): Promise<SymbolInfo> {
+    const cacheKey = this.getSymbolInfoCacheKey(exchange.name, symbol);
+    const cached = this._symbolInfoCache.get(cacheKey);
+    const now = Date.now();
+
+    if (
+      cached &&
+      !options.forceRefresh &&
+      now - cached.fetchedAt < this._symbolInfoTtlMs
+    ) {
+      return cached.info;
+    }
+
+    try {
+      const info = await exchange.getSymbolInfo(symbol);
+      this._symbolInfoCache.set(cacheKey, { info, fetchedAt: now });
+      return info;
+    } catch (error) {
+      if (cached) {
+        this.logger.warn(
+          `Failed to refresh symbol info for ${symbol} on ${exchange.name}, using cached value`,
+        );
+        return cached.info;
+      }
+      throw error;
+    }
+  }
+
+  private async prefetchSymbolInfoForStrategy(
+    strategyName: string,
+    strategy: IStrategy,
+  ): Promise<void> {
+    const symbol = strategy.context?.symbol;
+    if (!symbol) {
+      this.logger.warn(
+        `⚠️  [SYMBOL_INFO] Strategy ${strategyName} has no symbol, skip prefetch`,
+      );
+      return;
+    }
+
+    const exchangeConfig = strategy?.config?.exchange ?? strategy.context?.exchange;
+    const exchanges = this.getTargetExchanges(exchangeConfig);
+    if (exchanges.length === 0) {
+      this.logger.warn(
+        `⚠️  [SYMBOL_INFO] No exchanges available for strategy ${strategyName}`,
+      );
+      return;
+    }
+
+    for (const exchange of exchanges) {
+      try {
+        await this.getSymbolInfoWithCache(exchange, symbol, { forceRefresh: true });
+      } catch (error) {
+        this.logger.warn(
+          `⚠️  [SYMBOL_INFO] Failed to prefetch ${symbol} from ${exchange.name} for ${strategyName}`,
+        );
+      }
     }
   }
 
