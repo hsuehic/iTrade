@@ -26,6 +26,7 @@ import {
   SUPPORTED_EXCHANGES,
   getDefaultTradingPair,
   getSymbolFormatHint,
+  parseSymbol,
 } from '@/lib/exchanges';
 
 // Configurable refresh interval (milliseconds)
@@ -142,6 +143,10 @@ export default function TransactionPage() {
   const [manualTouched, setManualTouched] = useState<Record<string, boolean>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [assetBalances, setAssetBalances] = useState<Record<string, number>>({});
+  const [balancesStatus, setBalancesStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
   const isFormValid = Object.keys(validateManualOrder(manualOrder)).length === 0;
 
   // Derive the effective exchange from URL or local state
@@ -217,6 +222,44 @@ export default function TransactionPage() {
     });
   }, [availableExchanges, selectedExchange]);
 
+  useEffect(() => {
+    if (!manualOrder.exchange || manualOrder.exchange === 'all') {
+      setAssetBalances({});
+      setBalancesStatus('idle');
+      return;
+    }
+
+    const controller = new AbortController();
+    const fetchBalances = async () => {
+      try {
+        setBalancesStatus('loading');
+        const response = await fetch(
+          `/api/portfolio/assets?exchange=${encodeURIComponent(manualOrder.exchange)}`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) {
+          throw new Error('Failed to load balances');
+        }
+        const data = await response.json();
+        const assets = Array.isArray(data.assets) ? data.assets : [];
+        const nextBalances: Record<string, number> = {};
+        assets.forEach((asset: { asset?: string; free?: number }) => {
+          if (!asset.asset) return;
+          nextBalances[asset.asset.toUpperCase()] = Number(asset.free || 0);
+        });
+        setAssetBalances(nextBalances);
+        setBalancesStatus('ready');
+      } catch (error) {
+        if ((error as { name?: string }).name === 'AbortError') return;
+        setBalancesStatus('error');
+      }
+    };
+
+    fetchBalances();
+
+    return () => controller.abort();
+  }, [manualOrder.exchange, refreshToken]);
+
   const debouncedManualOrder = useDebouncedValue(manualOrder, 500);
 
   useEffect(() => {
@@ -279,6 +322,16 @@ export default function TransactionPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const baseAsset = parseSymbol(manualOrder.symbol).base.toUpperCase();
+  const isSpotSymbol = Boolean(baseAsset) && !manualOrder.symbol.includes(':');
+  const availableBaseBalance = baseAsset ? (assetBalances[baseAsset] ?? 0) : 0;
+  const canShowSellAll = manualOrder.side === 'SELL' && isSpotSymbol;
+
+  const formatBalance = (value: number) => {
+    if (!Number.isFinite(value)) return '0';
+    return value.toFixed(8).replace(/\.?0+$/, '');
   };
 
   // Use a key to reset OrdersTable when URL filters change
@@ -446,6 +499,40 @@ export default function TransactionPage() {
                         }
                         onBlur={() => handleManualBlur('quantity')}
                       />
+                      {canShowSellAll && (
+                        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {balancesStatus === 'loading'
+                              ? t('manualOrder.fields.loadingBalance')
+                              : balancesStatus === 'error'
+                                ? t('manualOrder.fields.balanceUnavailable')
+                                : t('manualOrder.fields.availableBalance', {
+                                    amount: formatBalance(availableBaseBalance),
+                                    asset: baseAsset,
+                                  })}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (availableBaseBalance <= 0) return;
+                              setManualOrder((prev) => ({
+                                ...prev,
+                                quantity: formatBalance(availableBaseBalance),
+                              }));
+                              setManualTouched((prev) => ({ ...prev, quantity: true }));
+                            }}
+                            disabled={
+                              isSubmitting ||
+                              balancesStatus !== 'ready' ||
+                              availableBaseBalance <= 0
+                            }
+                          >
+                            {t('manualOrder.fields.sellAll')}
+                          </Button>
+                        </div>
+                      )}
                       {(submitAttempted || manualTouched.quantity) &&
                         manualErrors.quantity && (
                           <p className="text-sm text-rose-500">{manualErrors.quantity}</p>

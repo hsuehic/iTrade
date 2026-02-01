@@ -1219,6 +1219,10 @@
           "limit": "Limit",
           "quantity": "Quantity",
           "quantityPlaceholder": "e.g., 0.01",
+          "sellAll": "Sell 100%",
+          "availableBalance": "Available: {amount} {asset}",
+          "loadingBalance": "Loading balance...",
+          "balanceUnavailable": "Balance unavailable",
           "price": "Price",
           "pricePlaceholder": "e.g., 42000"
         },

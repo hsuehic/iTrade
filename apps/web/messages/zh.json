@@ -1219,6 +1219,10 @@
           "limit": "限价",
           "quantity": "数量",
           "quantityPlaceholder": "例如 0.01",
+          "sellAll": "卖出 100%",
+          "availableBalance": "可用：{amount} {asset}",
+          "loadingBalance": "加载余额中...",
+          "balanceUnavailable": "余额不可用",
           "price": "价格",
           "pricePlaceholder": "例如 42000"
         },

@@ -134,11 +134,11 @@ function toDecimal(value: string | number | Decimal): Decimal {
   return value instanceof Decimal ? value : new Decimal(value);
 }
 
-function getBalanceAmount(balances: { asset: string; total: Decimal }[], asset: string) {
+function getBalanceAmount(balances: { asset: string; free: Decimal }[], asset: string) {
   const balance = balances.find(
     (item) => item.asset.toUpperCase() === asset.toUpperCase(),
   );
-  return balance?.total ?? new Decimal(0);
+  return balance?.free ?? new Decimal(0);
 }
 
 export async function executeManualOrder(userId: string, input: ManualOrderInput) {
@@ -236,6 +236,53 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
               `Insufficient ${quote} balance. Available: ${quoteBalance.toString()}`,
             );
           }
+        }
+      }
+    }
+
+    if (account.exchange.toLowerCase() === 'okx') {
+      const { base, quote } = parseSymbol(input.symbol);
+      if (base && quote && !isPerpetual) {
+        const okxExchange = connection.exchange;
+        const quantity = toDecimal(input.quantity);
+        const price = input.price !== undefined ? toDecimal(input.price) : undefined;
+        const side = positionAction ? sideOverrideMap[positionAction] : input.side;
+
+        const ensureTradingBalance = async (asset: string, required: Decimal) => {
+          const tradingBalances = await (okxExchange instanceof OKXExchange
+            ? okxExchange.getTradingBalances()
+            : okxExchange.getBalances());
+          const tradingBalance = getBalanceAmount(tradingBalances, asset);
+          if (tradingBalance.greaterThanOrEqualTo(required)) {
+            return;
+          }
+
+          if (okxExchange instanceof OKXExchange) {
+            const fundingBalances = await okxExchange.getFundingBalances();
+            const fundingBalance = getBalanceAmount(fundingBalances, asset);
+            if (fundingBalance.greaterThanOrEqualTo(required)) {
+              await okxExchange.transferFundingToTrading(asset, required);
+              const refreshedTradingBalances = await okxExchange.getTradingBalances();
+              const refreshedTradingBalance = getBalanceAmount(
+                refreshedTradingBalances,
+                asset,
+              );
+              if (refreshedTradingBalance.greaterThanOrEqualTo(required)) {
+                return;
+              }
+            }
+          }
+
+          throw new Error(
+            `Insufficient ${asset} trading balance on OKX. Transfer funds from Funding/Saving to Trading.`,
+          );
+        };
+
+        if (side === OrderSide.SELL) {
+          await ensureTradingBalance(base, quantity);
+        } else if (price) {
+          const requiredQuote = quantity.mul(price);
+          await ensureTradingBalance(quote, requiredQuote);
         }
       }
     }

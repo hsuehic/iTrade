@@ -54,6 +54,8 @@ export class OKXExchange extends BaseExchange {
   private okxPrivateAuthenticated = false;
   private symbolMap = new Map<string, string>(); // OKX instId -> original symbol mapping
   private leverageCache = new Map<string, number>();
+  private static readonly OKX_FUNDING_ACCOUNT = '6';
+  private static readonly OKX_TRADING_ACCOUNT = '18';
 
   constructor(isDemo = false) {
     const baseUrl = isDemo ? OKXExchange.TESTNET_BASE_URL : OKXExchange.MAINNET_BASE_URL;
@@ -518,8 +520,11 @@ export class OKXExchange extends BaseExchange {
     }
   }
 
-  public async getAccountInfo(): Promise<AccountInfo> {
-    // 1. Get Trading Account Balance
+  private async fetchTradingAccountBalances(): Promise<{
+    balancesMap: Map<string, Balance>;
+    updateTime: Date;
+    tradingData: any;
+  }> {
     const tradingBalanceSigned = this.signOKXRequest(
       'GET',
       '/api/v5/account/balance',
@@ -537,11 +542,9 @@ export class OKXExchange extends BaseExchange {
     }
 
     const tradingData = tradingBalanceResponse.data.data[0];
-
     const updateTime = new Date(parseInt(tradingData.uTime));
     const balancesMap = new Map<string, Balance>();
 
-    // Process Trading Balances
     if (tradingData.details) {
       tradingData.details.forEach((detail: any) => {
         const free = this.formatDecimal(detail.availBal ?? detail.cashBal ?? '0');
@@ -552,54 +555,64 @@ export class OKXExchange extends BaseExchange {
           asset: detail.ccy,
           free,
           locked,
-          saving: new Decimal(0), // Initialize saving
+          saving: new Decimal(0),
           total: this.formatDecimal(totalValue),
         });
       });
     }
 
+    return { balancesMap, updateTime, tradingData };
+  }
+
+  private async fetchFundingBalances(): Promise<Balance[]> {
+    const fundingBalanceSigned = this.signOKXRequest('GET', '/api/v5/asset/balances', {
+      ccy: '',
+    });
+    const fundingBalanceResponse = await this.httpClient.get(
+      fundingBalanceSigned.endpoint,
+      {
+        headers: fundingBalanceSigned.headers,
+      },
+    );
+
+    if (fundingBalanceResponse.data.code !== '0') {
+      throw new Error(`OKX API error: ${fundingBalanceResponse.data.msg}`);
+    }
+
+    return fundingBalanceResponse.data.data.map((detail: any) => ({
+      asset: detail.ccy,
+      free: this.formatDecimal(detail.availBal ?? '0'),
+      locked: this.formatDecimal(detail.frozenBal ?? '0'),
+      saving: new Decimal(0),
+      total: this.formatDecimal(detail.bal ?? '0'),
+    }));
+  }
+
+  public async getAccountInfo(): Promise<AccountInfo> {
+    // 1. Get Trading Account Balance
+    const { balancesMap, updateTime, tradingData } =
+      await this.fetchTradingAccountBalances();
+
     // 2. Get Funding Account Balance
     try {
-      const fundingBalanceSigned = this.signOKXRequest('GET', '/api/v5/asset/balances', {
-        ccy: '', // Fetch all currencies
+      const fundingBalances = await this.fetchFundingBalances();
+      fundingBalances.forEach((detail) => {
+        const asset = detail.asset;
+        if (balancesMap.has(asset)) {
+          const existing = balancesMap.get(asset)!;
+          existing.free = existing.free.add(detail.free);
+          existing.locked = existing.locked.add(detail.locked);
+          existing.total = existing.total.add(detail.total);
+        } else {
+          balancesMap.set(asset, {
+            asset,
+            free: detail.free,
+            locked: detail.locked,
+            saving: new Decimal(0),
+            total: detail.total,
+          });
+        }
       });
-      const fundingBalanceResponse = await this.httpClient.get(
-        fundingBalanceSigned.endpoint,
-        {
-          headers: fundingBalanceSigned.headers,
-        },
-      );
-
-      if (fundingBalanceResponse.data.code === '0') {
-        const fundingData = fundingBalanceResponse.data.data;
-        fundingData.forEach((detail: any) => {
-          const asset = detail.ccy;
-          const free = this.formatDecimal(detail.availBal);
-          const locked = this.formatDecimal(detail.frozenBal);
-          const total = this.formatDecimal(detail.bal);
-
-          if (balancesMap.has(asset)) {
-            // Merge with existing trading balance
-            const existing = balancesMap.get(asset)!;
-            existing.free = existing.free.add(free);
-            existing.locked = existing.locked.add(locked);
-            existing.total = existing.total.add(total);
-          } else {
-            // Add new funding balance
-            balancesMap.set(asset, {
-              asset,
-              free,
-              locked,
-              saving: new Decimal(0), // Initialize saving
-              total,
-            });
-          }
-        });
-      } else {
-        console.warn(
-          `[OKX] Failed to fetch funding balance: ${fundingBalanceResponse.data.msg}`,
-        );
-      }
     } catch (error: any) {
       console.warn(`[OKX] Error fetching funding balance: ${error.message}`);
     }
@@ -688,6 +701,32 @@ export class OKXExchange extends BaseExchange {
   public async getBalances(): Promise<Balance[]> {
     const accountInfo = await this.getAccountInfo();
     return accountInfo.balances;
+  }
+
+  public async getTradingBalances(): Promise<Balance[]> {
+    const { balancesMap } = await this.fetchTradingAccountBalances();
+    return Array.from(balancesMap.values());
+  }
+
+  public async getFundingBalances(): Promise<Balance[]> {
+    return this.fetchFundingBalances();
+  }
+
+  public async transferFundingToTrading(asset: string, amount: Decimal): Promise<void> {
+    const payload = {
+      ccy: asset.toUpperCase(),
+      amt: amount.toString(),
+      from: OKXExchange.OKX_FUNDING_ACCOUNT,
+      to: OKXExchange.OKX_TRADING_ACCOUNT,
+    };
+    const signedData = this.signOKXRequest('POST', '/api/v5/asset/transfer', payload);
+    const response = await this.httpClient.post(signedData.endpoint, signedData.body, {
+      headers: signedData.headers,
+    });
+
+    if (response.data.code !== '0') {
+      throw new Error(`OKX API error: ${response.data.msg}`);
+    }
   }
 
   public async getPositions(): Promise<Position[]> {
