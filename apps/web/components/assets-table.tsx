@@ -43,6 +43,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ExchangeLogo } from '@/components/exchange-logo';
+import { SymbolIcon } from '@/components/symbol-icon';
 
 declare module '@tanstack/react-table' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -127,9 +128,7 @@ const columns: ColumnDef<AssetData>[] = [
     header: ({ column }) => renderSortableHeader('Asset', column),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-sm font-bold text-primary">
-          {row.original.asset.slice(0, 2)}
-        </div>
+        <SymbolIcon symbol={row.original.asset} size="md" />
         <span className="font-medium">{row.original.asset}</span>
       </div>
     ),

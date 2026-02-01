@@ -30,8 +30,9 @@ function extractBaseAsset(symbol: string): string {
   }
 
   // Handle concatenated symbols: BTCUSDT, ETHUSDT, TIAUSDT
-  // Remove common quote currencies from the end
-  return symbol.replace(/USDT|USDC|USD|EUR|BUSD|TUSD|BTC|ETH$/i, '');
+  // Remove common quote currencies from the end, but only if they are not the only thing
+  const base = symbol.replace(/(?:USDT|USDC|USD|EUR|BUSD|TUSD|BTC|ETH)$/i, '');
+  return base || symbol;
 }
 
 export const SymbolIcon = memo(({ symbol, size = 'md', className }: SymbolIconProps) => {
