@@ -305,8 +305,8 @@ interface FilledEntry {
  * - Short entry price: referencePrice * (1 + risePercent)
  *
  * Reference Price Updates:
- * - Updated when maxRepeatsPerLevel is reached on entry fill
- * - Updated on TP fill to allow bi-directional ladder walking
+ * - Not updated on entry fill (entry/TP use the original reference)
+ * - Updated on TP fill based on ladder step
  */
 export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPParameters> {
   // Strategy parameters
@@ -571,7 +571,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   }
 
   /**
-   * Generate take-profit signal based on lastFilled entry
+   * Generate take-profit signal based on lastFilled entry price
    */
   private generateTakeProfitSignal(): StrategyResult | null {
     if (!this.lastFilled) {
@@ -598,7 +598,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   ): StrategyResult {
     const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
 
-    // Calculate TP price based on entry side
+    // Calculate TP price based on entry price
     let tpPrice: Decimal;
     let action: 'buy' | 'sell';
 
@@ -983,12 +983,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    *
    * After entry fills:
    * 1. Update position
-   * 2. Record lastFilled (LIFO)
-   * 3. Generate TP signal for this entry
-   * 4. Generate NEXT entry signal if position still allows (ladder continues)
-   * 5. Return array of signals [TP, next entry] for simultaneous execution
+   * 2. Track repeats at current reference level
+   * 3. Record lastFilled (LIFO)
+   * 4. Cancel existing TP if any
+   * 5. Generate TP signal based on reference price for this entry
    *
-   * @returns Array of signals: [TP signal, next entry signal (if allowed)]
+   * @returns Array of signals: [TP signal]
    */
   private handleEntryFilled(order: Order): StrategyResult[] {
     const signals: StrategyResult[] = [];
@@ -1005,21 +1005,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.positionAmount -= filledAmount.toNumber();
     }
 
-    // Increment repeat counter for current level
+    // Increment repeat counter for current reference level
     this.currentLevelRepeats++;
-
-    // Check if we've reached max repeats at this level
-    const shouldUpdateReference =
-      this.maxRepeatsPerLevel > 0 && this.currentLevelRepeats >= this.maxRepeatsPerLevel;
-
-    if (shouldUpdateReference) {
-      const oldReference = this.referencePrice;
-      this.referencePrice = filledPrice.toNumber();
-      this.currentLevelRepeats = 0; // Reset counter for new level
-      this._logger.info(
-        `   🔄 Reference price updated: ${oldReference} -> ${this.referencePrice} (max repeats reached)`,
-      );
-    }
 
     // Record last filled entry (LIFO)
     this.lastFilled = {
@@ -1043,85 +1030,24 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       `   Position: ${this.positionAmount}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}, Ref: ${this.referencePrice}`,
     );
 
-    const openTpMetadata = this.openTpOrder?.clientOrderId
-      ? this.orderMetadataMap.get(this.openTpOrder.clientOrderId)
-      : undefined;
-    const hasLinkedTp =
-      !!this.openTpOrder && openTpMetadata?.parentOrderId === order.clientOrderId;
-
-    // Cancel existing TP order if it's not linked to this entry
-    if (this.openTpOrder && !hasLinkedTp) {
-      this._logger.info(
-        `   ❌ Need to cancel existing TP: ${this.openTpOrder.clientOrderId}`,
-      );
-      // Add cancel signal for the existing TP order
+    if (this.openTpOrder) {
+      this._logger.info(`   ❌ Cancel existing TP: ${this.openTpOrder.clientOrderId}`);
       signals.push({
         action: 'cancel',
         clientOrderId: this.openTpOrder.clientOrderId,
         symbol: this._symbol,
-        reason: 'new_entry_filled_replacing_tp',
+        reason: 'new_entry_filled_replace_tp',
       });
       this.openTpOrder = null;
     }
 
-    if (hasLinkedTp) {
-      this._logger.info(
-        `   ✅ Existing TP already linked to entry: ${this.openTpOrder?.clientOrderId}`,
-      );
-    } else {
-      // Generate new TP signal for this entry (mandatory)
-      const tpSignal = this.generateTakeProfitSignal();
-      if (tpSignal) {
-        signals.push(tpSignal);
-      }
-    }
-
-    // Check if we can place the NEXT entry order (ladder continues)
-    // This allows both TP and next entry to be pending simultaneously
-    const nextEntrySignal = this.generateNextEntrySignalIfAllowed(side);
-    if (nextEntrySignal) {
-      this._logger.info(
-        `   📤 Adding next ${side} entry signal (position allows continuation)`,
-      );
-      signals.push(nextEntrySignal);
+    // Generate new TP signal for this entry (reference-based)
+    const tpSignal = this.generateTakeProfitSignal();
+    if (tpSignal) {
+      signals.push(tpSignal);
     }
 
     return signals;
-  }
-
-  /**
-   * Generate next entry signal if position allows
-   *
-   * After an entry fills, check if we can continue the ladder in the same direction.
-   * This creates the "stacked" behavior where both TP and next entry are pending.
-   *
-   * @param currentSide - The side of the entry that just filled
-   * @returns Entry signal if position allows, null otherwise
-   */
-  private generateNextEntrySignalIfAllowed(
-    currentSide: EntrySide,
-  ): StrategyResult | null {
-    // Check if we can add another entry in the same direction
-    if (currentSide === 'LONG' && this.canAddLong()) {
-      // Calculate next long entry price (one level below reference)
-      const longEntryPrice = this.referencePrice * (1 - this.dropPercent);
-      this._logger.info(
-        `📊 Next Entry Check: Position=${this.positionAmount}, CanAddLong=true, Price=${longEntryPrice.toFixed(4)}`,
-      );
-      return this.generateLongEntrySignal(new Decimal(longEntryPrice));
-    } else if (currentSide === 'SHORT' && this.canAddShort()) {
-      // Calculate next short entry price (one level above reference)
-      const shortEntryPrice = this.referencePrice * (1 + this.risePercent);
-      this._logger.info(
-        `📊 Next Entry Check: Position=${this.positionAmount}, CanAddShort=true, Price=${shortEntryPrice.toFixed(4)}`,
-      );
-      return this.generateShortEntrySignal(new Decimal(shortEntryPrice));
-    }
-
-    this._logger.info(
-      `📊 Next Entry Check: Position=${this.positionAmount}, CanAddLong=${this.canAddLong()}, CanAddShort=${this.canAddShort()} - No next entry (position limit reached)`,
-    );
-    return null;
   }
 
   /**
@@ -1131,7 +1057,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * 1. Update position
    * 2. Update reference price (allows bi-directional ladder walking)
    * 3. Clear lastFilled but KEEP lastFilledDirection
-   * 4. Check if entry order already pending (from previous entry fill)
+   * 4. If entry order already pending, cancel it (to enforce one open entry)
    * 5. Only generate new entry if no entry is pending
    */
   private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult[] {
@@ -1157,9 +1083,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.positionAmount = Math.min(newPosition, this.maxPositionAmount);
     }
 
-    // Update reference price to TP fill price (allows bi-directional ladder walking)
+    // Update reference price by ladder step (allows bi-directional ladder walking)
     const oldReference = this.referencePrice;
-    this.referencePrice = filledPrice.toNumber();
+    if (entrySide === 'LONG') {
+      this.referencePrice = oldReference * (1 + this.dropPercent);
+    } else {
+      this.referencePrice = oldReference * (1 - this.risePercent);
+    }
     this.currentLevelRepeats = 0; // Reset counter for new level
 
     this._logger.info(
@@ -1182,31 +1112,26 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.orderMetadataMap.delete(metadata.parentOrderId);
     }
 
-    // Check if there's already an entry order pending (from previous entry fill)
-    // With the array return approach, entry orders may already be placed when entry fills
+    // If an entry order is pending, cancel it and wait for cancel confirmation
     if (this.openEntryOrder) {
       this._logger.info(
-        `   📝 Entry order already pending: ${this.openEntryOrder.clientOrderId} - no new entry needed`,
+        `   ❌ Cancel existing entry: ${this.openEntryOrder.clientOrderId}`,
       );
-      if (!this.openTpOrder) {
-        const tpSignal = this.generateTakeProfitSignalForOpenEntry(this.openEntryOrder);
-        if (tpSignal) {
-          this._logger.info(`   📤 Generating TP for pending entry order`);
-          signals.push(tpSignal);
-        }
-      }
+      signals.push({
+        action: 'cancel',
+        clientOrderId: this.openEntryOrder.clientOrderId,
+        symbol: this._symbol,
+        reason: 'tp_filled_replace_entry',
+      });
+      this.openEntryOrder = null;
       return signals;
     }
 
-    // No entry pending - generate new entry + TP signals
-    this._logger.info(`   🔄 No entry pending, generating new entry + TP signals`);
+    // Generate new entry signal only (TP will be created after entry fills)
+    this._logger.info(`   🔄 Generating new entry after TP`);
     const entrySignal = this.checkEntryConditions();
     if (this.isOrderSignal(entrySignal)) {
       signals.push(entrySignal);
-      const tpSignal = this.generateTakeProfitSignalForEntrySignal(entrySignal);
-      if (tpSignal) {
-        signals.push(tpSignal);
-      }
     }
 
     return signals;

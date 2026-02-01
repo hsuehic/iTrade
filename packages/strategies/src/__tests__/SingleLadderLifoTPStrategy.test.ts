@@ -607,7 +607,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         }),
       );
 
-      // First TP should target 98 * 1.01 = 98.98
+      // First TP should target entry * 1.01 = 98 * 1.01 = 98.98
       const tp1Signal = findSignalByPrefix(tp1Result, 'T');
       expect(tp1Signal?.action).toBe('sell');
       expect((tp1Signal as Record<string, unknown>)?.price as Decimal).toBeDefined();
@@ -840,7 +840,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
       await strategy.analyze(createDataUpdate({ orders: [filledOrder], ticker }));
 
-      // Check state - should have 1 repeat
+      // Check state - repeats increment on entry fill
       const state = strategy.getStrategyState();
       expect(state.currentLevelRepeats).toBe(1);
       expect(state.maxRepeatsPerLevel).toBe(3);
@@ -925,9 +925,9 @@ describe('SingleLadderLifoTPStrategy', () => {
         await strategy.analyze(createDataUpdate({ orders: [tpFilled], ticker }));
       }
 
-      // After 2 entries, reference price should have been updated
+      // After 2 entries, reference price should have stepped on TP fills
       const state = strategy.getStrategyState();
-      // Reference should have been updated to the last TP fill price (99)
+      // Reference should have stepped by dropPercent on TP fills
       // and currentLevelRepeats should be reset to 0
       expect(state.currentLevelRepeats).toBe(0);
     });
@@ -1089,9 +1089,9 @@ describe('SingleLadderLifoTPStrategy', () => {
       const nextEntrySignal = findSignalByPrefix(newEntryResult, 'E');
       expect(nextEntrySignal?.action).toBe('buy');
 
-      // Reference price should have updated to TP fill price
+      // Reference price should have stepped by dropPercent after TP fill
       const state = strategy.getStrategyState();
-      expect(state.referencePrice).toBe(98.98);
+      expect(state.referencePrice).toBe(102);
     });
   });
 
