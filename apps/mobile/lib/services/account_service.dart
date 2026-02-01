@@ -51,9 +51,14 @@ class AccountService {
   /// Fetch all exchange accounts for the current user
   Future<List<ExchangeAccount>> getAccounts() async {
     try {
+<<<<<<< HEAD
       final response =
           await _apiClient.getJson<List<dynamic>>('/api/accounts');
 
+=======
+      final response = await _apiClient.getJson('/api/accounts');
+      
+>>>>>>> 6127dc7 (fix: ios pod and initialization)
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data as List<dynamic>;
         return data
@@ -93,9 +98,14 @@ class AccountService {
         'isActive': isActive,
       };
 
+<<<<<<< HEAD
       final response =
           await _apiClient.postJson<dynamic>('/api/accounts', data: data);
 
+=======
+      final response = await _apiClient.postJson('/api/accounts', data: data);
+      
+>>>>>>> 6127dc7 (fix: ios pod and initialization)
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error saving account: $e');
