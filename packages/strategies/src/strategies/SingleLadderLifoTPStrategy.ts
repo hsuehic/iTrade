@@ -275,6 +275,7 @@ interface FilledEntry {
   amount: Decimal;
   clientOrderId: string;
   timestamp: number;
+  referencePriceBefore: number; // To restore reference price on TP
 }
 
 /**
@@ -324,7 +325,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   // Strategy state
   private positionAmount: number = 0;
-  private lastFilled: FilledEntry | null = null;
+  private filledEntries: FilledEntry[] = [];
   private lastFilledDirection: EntrySide | null = null; // Track direction even after TP
   private referencePrice: number;
   private currentLevelRepeats: number = 0; // Track entries at current reference price
@@ -578,16 +579,17 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * Generate take-profit signal based on lastFilled entry price
    */
   private generateTakeProfitSignal(): StrategyResult | null {
-    if (!this.lastFilled) {
-      this._logger.warn(`⚠️ [TP] Cannot generate TP: No lastFilled entry`);
+    const lastFilled = this.filledEntries[this.filledEntries.length - 1];
+    if (!lastFilled) {
+      this._logger.warn(`⚠️ [TP] Cannot generate TP: No filled entries in stack`);
       return null;
     }
 
     return this.generateTakeProfitSignalForEntry(
-      this.lastFilled.side,
-      this.lastFilled.price,
-      this.lastFilled.amount,
-      this.lastFilled.clientOrderId,
+      lastFilled.side,
+      lastFilled.price,
+      lastFilled.amount,
+      lastFilled.clientOrderId,
     );
   }
 
@@ -1015,14 +1017,15 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.referencePrice = filledPrice.toNumber();
     this.currentLevelRepeats = 1;
 
-    // Record last filled entry (LIFO)
-    this.lastFilled = {
+    // Record filled entry (LIFO stack)
+    this.filledEntries.push({
       side,
       price: filledPrice,
       amount: filledAmount,
       clientOrderId: order.clientOrderId!,
       timestamp: Date.now(),
-    };
+      referencePriceBefore: oldReference,
+    });
 
     // Track direction for future entries (persists after TP)
     this.lastFilledDirection = side;
@@ -1082,14 +1085,17 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
-    if (!this.lastFilled) {
-      this._logger.warn(`⚠️ TP filled but no lastFilled entry recorded`);
+    if (this.filledEntries.length === 0) {
+      this._logger.warn(`⚠️ TP filled but no filled entries recorded in stack`);
       return signals;
     }
 
     const filledAmount = order.executedQuantity || order.quantity;
     const filledPrice = order.averagePrice || order.price!;
-    const entrySide = this.lastFilled.side;
+    
+    // Get the entry that this TP belongs to
+    const entry = this.filledEntries.pop()!;
+    const entrySide = entry.side;
 
     // Update position amount (respecting min/max limits)
     if (entrySide === 'LONG') {
@@ -1097,32 +1103,26 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       const newPosition = this.positionAmount - filledAmount.toNumber();
       this.positionAmount = Math.max(newPosition, this.minPositionAmount);
     } else {
-      // TP for short = buy, increase position (towards 0 or max)
+      // TP for short = buy, increase position
       const newPosition = this.positionAmount + filledAmount.toNumber();
       this.positionAmount = Math.min(newPosition, this.maxPositionAmount);
     }
 
-    // Update reference price by ladder step (allows bi-directional ladder walking)
+    // Restore reference price from the entry record (precise stepping)
     const oldReference = this.referencePrice;
-    if (entrySide === 'LONG') {
-      this.referencePrice = oldReference * (1 + this.dropPercent);
-    } else {
-      this.referencePrice = oldReference * (1 - this.risePercent);
-    }
-    this.currentLevelRepeats = 0; // Reset counter for new level
+    this.referencePrice = entry.referencePriceBefore;
+    this.currentLevelRepeats = 0; // Reset counter for new (restored) level
 
     this._logger.info(
       `✅ TP FILLED: ${order.side} ${filledAmount.toString()} @ ${filledPrice.toString()}`,
     );
-    this._logger.info(`   Entry was: ${entrySide} @ ${this.lastFilled.price.toString()}`);
+    this._logger.info(`   Entry was: ${entrySide} @ ${entry.price.toString()}`);
     this._logger.info(`   New Position: ${this.positionAmount}`);
     this._logger.info(
-      `   🔄 Reference price updated: ${oldReference} -> ${this.referencePrice}`,
+      `   🔄 Reference price restored: ${oldReference} -> ${this.referencePrice}`,
     );
 
-    // Clear lastFilled but KEEP lastFilledDirection for next entry direction
-    // lastFilledDirection is preserved to maintain mean-reversion behavior
-    this.lastFilled = null;
+    // Clear trackers
     this.openTpOrder = null;
     if (this.pendingTpClientOrderId === order.clientOrderId) {
       this.pendingTpClientOrderId = null;
@@ -1134,7 +1134,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.orderMetadataMap.delete(metadata.parentOrderId);
     }
 
-    // If an entry order is pending, cancel it and wait for cancel confirmation
+    // If an entry order is pending, cancel it
     if (this.openEntryOrder) {
       this._logger.info(
         `   ❌ Cancel existing entry: ${this.openEntryOrder.clientOrderId}`,
@@ -1146,14 +1146,23 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         reason: 'tp_filled_replace_entry',
       });
       this.openEntryOrder = null;
-      return signals;
+      // Do NOT return here, continue to generate new signals
     }
 
-    // Generate new entry signal only (TP will be created after entry fills)
+    // Generate new entry signal (at restored reference price)
     this._logger.info(`   🔄 Generating new entry after TP`);
     const entrySignal = this.checkEntryConditions();
     if (this.isOrderSignal(entrySignal)) {
       signals.push(entrySignal);
+    }
+
+    // Generate new TP signal if there are more entries in the stack
+    if (this.filledEntries.length > 0) {
+      this._logger.info(`   🔄 Generating new TP for remaining position`);
+      const tpSignal = this.generateTakeProfitSignal();
+      if (tpSignal) {
+        signals.push(tpSignal);
+      }
     }
 
     return signals;
@@ -1200,8 +1209,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }
       this._logger.info(`   TP order cleared`);
 
-      // If we still have lastFilled, generate new TP
-      if (this.lastFilled) {
+      // If we still have filled entries, generate new TP
+      if (this.filledEntries.length > 0) {
         this._logger.info(`   Re-generating TP for last filled entry...`);
         // Cleanup metadata first
         this.orderMetadataMap.delete(order.clientOrderId!);
@@ -1258,7 +1267,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.openTpOrder = null;
     this.pendingEntryClientOrderId = null;
     this.pendingTpClientOrderId = null;
-    this.lastFilled = null;
+    this.filledEntries = [];
     this.lastFilledDirection = null;
     this.positionAmount = 0;
     this.currentLevelRepeats = 0;
@@ -1273,15 +1282,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     state.internalState = {
       referencePrice: this.referencePrice,
       currentLevelRepeats: this.currentLevelRepeats,
-      lastFilled: this.lastFilled
-        ? {
-            side: this.lastFilled.side,
-            price: this.lastFilled.price.toString(),
-            amount: this.lastFilled.amount.toString(),
-            clientOrderId: this.lastFilled.clientOrderId,
-            timestamp: this.lastFilled.timestamp,
-          }
-        : null,
+      filledEntries: this.filledEntries.map((entry) => ({
+        side: entry.side,
+        price: entry.price.toString(),
+        amount: entry.amount.toString(),
+        clientOrderId: entry.clientOrderId,
+        timestamp: entry.timestamp,
+        referencePriceBefore: entry.referencePriceBefore,
+      })),
       lastFilledDirection: this.lastFilledDirection,
       positionAmount: this.positionAmount,
       orderSequence: this.orderSequence,
@@ -1294,21 +1302,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     snapshot: StrategyStateSnapshot,
   ): Promise<StrategyRecoveryContext> {
     const context = await super.loadState(snapshot);
-    const internalState = snapshot.internalState as {
-      referencePrice?: number;
-      currentLevelRepeats?: number;
-      lastFilled?: {
-        side: EntrySide;
-        price: string;
-        amount: string;
-        clientOrderId: string;
-        timestamp: number;
-      } | null;
-      lastFilledDirection?: EntrySide | null;
-      positionAmount?: number;
-      orderSequence?: number;
-      initialEntrySignalGenerated?: boolean;
-    };
+    const internalState = snapshot.internalState as any;
 
     if (typeof internalState.referencePrice === 'number') {
       this.referencePrice = internalState.referencePrice;
@@ -1316,15 +1310,30 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (typeof internalState.currentLevelRepeats === 'number') {
       this.currentLevelRepeats = internalState.currentLevelRepeats;
     }
-    if (internalState.lastFilled) {
-      this.lastFilled = {
-        side: internalState.lastFilled.side,
-        price: new Decimal(internalState.lastFilled.price),
-        amount: new Decimal(internalState.lastFilled.amount),
-        clientOrderId: internalState.lastFilled.clientOrderId,
-        timestamp: internalState.lastFilled.timestamp,
-      };
+
+    if (Array.isArray(internalState.filledEntries)) {
+      this.filledEntries = internalState.filledEntries.map((e: any) => ({
+        side: e.side,
+        price: new Decimal(e.price),
+        amount: new Decimal(e.amount),
+        clientOrderId: e.clientOrderId,
+        timestamp: e.timestamp,
+        referencePriceBefore: e.referencePriceBefore || this.referencePrice,
+      }));
+    } else if (internalState.lastFilled) {
+      // Migration from old state format
+      this.filledEntries = [
+        {
+          side: internalState.lastFilled.side,
+          price: new Decimal(internalState.lastFilled.price),
+          amount: new Decimal(internalState.lastFilled.amount),
+          clientOrderId: internalState.lastFilled.clientOrderId,
+          timestamp: internalState.lastFilled.timestamp,
+          referencePriceBefore: this.referencePrice,
+        },
+      ];
     }
+
     if (typeof internalState.lastFilledDirection !== 'undefined') {
       this.lastFilledDirection = internalState.lastFilledDirection;
     }
@@ -1356,11 +1365,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       referencePrice: this.referencePrice,
       currentLevelRepeats: this.currentLevelRepeats,
       maxRepeatsPerLevel: this.maxRepeatsPerLevel,
-      lastFilled: this.lastFilled
+      filledEntriesCount: this.filledEntries.length,
+      lastFilled: this.filledEntries.length > 0
         ? {
-            side: this.lastFilled.side,
-            price: this.lastFilled.price.toString(),
-            amount: this.lastFilled.amount.toString(),
+            side: this.filledEntries[this.filledEntries.length - 1].side,
+            price: this.filledEntries[this.filledEntries.length - 1].price.toString(),
+            amount: this.filledEntries[this.filledEntries.length - 1].amount.toString(),
           }
         : null,
       lastFilledDirection: this.lastFilledDirection,
