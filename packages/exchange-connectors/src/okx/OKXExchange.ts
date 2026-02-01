@@ -750,6 +750,7 @@ export class OKXExchange extends BaseExchange {
         markPrice,
       );
       const marketValue = quantity.abs().mul(markPrice);
+      const leverage = this.getOkxLeverage(pos, quantity, avgPrice, markPrice);
 
       return {
         symbol: this.denormalizeSymbol(pos.instId),
@@ -758,7 +759,7 @@ export class OKXExchange extends BaseExchange {
         avgPrice,
         markPrice,
         unrealizedPnl,
-        leverage: this.getOkxLeverage(pos),
+        leverage,
         timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
         marketValue,
         notionalUsd: pos.notionalUsd,
@@ -1546,6 +1547,7 @@ export class OKXExchange extends BaseExchange {
           markPrice,
         );
         const positionValue = quantity.abs().mul(markPrice);
+        const leverage = this.getOkxLeverage(p, quantity, avgPrice, markPrice);
 
         console.log('[OKX] 📊 Position calculated:', {
           symbol: unifiedSymbol,
@@ -1563,7 +1565,7 @@ export class OKXExchange extends BaseExchange {
           avgPrice,
           markPrice,
           unrealizedPnl,
-          leverage: this.getOkxLeverage(p),
+          leverage,
           timestamp: new Date(),
           // ✅ Add market value and notionalUsd
           marketValue: positionValue,
@@ -1625,14 +1627,28 @@ export class OKXExchange extends BaseExchange {
     return 'long';
   }
 
-  private getOkxLeverage(position: any): Decimal {
-    const direct = this.formatDecimal(position.lever ?? position.leverage ?? '0');
+  private getOkxLeverage(
+    position: any,
+    quantity: Decimal,
+    avgPrice: Decimal,
+    markPrice: Decimal,
+  ): Decimal {
+    const direct = this.formatDecimal(
+      position.lever ?? position.leverage ?? position.leveraged ?? '0',
+    );
     if (direct.gt(0)) return direct;
 
     const margin = this.formatDecimal(
       position.margin ?? position.mgnMargin ?? position.imr ?? '0',
     );
-    const notional = this.formatDecimal(position.notionalUsd ?? position.notional ?? '0');
+
+    let notional = this.formatDecimal(position.notionalUsd ?? position.notional ?? '0');
+    if (notional.isZero() && quantity.abs().gt(0)) {
+      const fallbackPrice = markPrice.gt(0) ? markPrice : avgPrice;
+      if (fallbackPrice.gt(0)) {
+        notional = quantity.abs().mul(fallbackPrice);
+      }
+    }
 
     if (margin.gt(0) && notional.gt(0)) {
       return notional.div(margin);

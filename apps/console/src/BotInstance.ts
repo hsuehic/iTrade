@@ -74,7 +74,12 @@ export class BotInstance {
       userId,
     );
     this.balanceTracker = new BalanceTracker(userId, dataManager, logger);
-    this.positionTracker = new PositionTracker(userId, dataManager, logger);
+    this.positionTracker = new PositionTracker(
+      userId,
+      dataManager,
+      logger,
+      (exchangeName) => this.exchanges.get(exchangeName),
+    );
 
     this.strategyManager = new StrategyManager(this.engine, dataManager, logger, userId);
 

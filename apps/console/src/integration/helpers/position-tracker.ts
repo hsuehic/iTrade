@@ -1,4 +1,4 @@
-import { ILogger, EventBus, Position } from '@itrade/core';
+import { EventBus, IExchange, ILogger, Position } from '@itrade/core';
 import { PositionEntity, TypeOrmDataManager } from '@itrade/data-manager';
 
 interface DebouncedPositionUpdate {
@@ -25,15 +25,23 @@ export class PositionTracker {
   private totalUpdates = 0;
   private totalSaved = 0;
   private startTime: Date;
+  private okxRestPositionsCache = new Map<string, Position>();
+  private okxRestLastSync = 0;
+  private okxRestInFlight?: Promise<Map<string, Position>>;
+  private lastPersistAt = 0;
 
   // Debounce configuration
   private readonly DEBOUNCE_MS = 2000; // 2 seconds debounce
+  private readonly OKX_REST_ENRICH_INTERVAL_MS = 5000; // 5 seconds throttle
+  private readonly PERSIST_THROTTLE_MS = 5000; // 5 seconds throttle
   private timer?: NodeJS.Timeout;
 
   constructor(
     private userId: string,
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
+    private getExchangeByName: (exchange: string) => IExchange | undefined = () =>
+      undefined,
   ) {
     this.eventBus = EventBus.getInstance();
     this.startTime = new Date();
@@ -86,6 +94,11 @@ export class PositionTracker {
   private async flushAllPendingUpdates(): Promise<void> {
     if (this.pendingUpdates.size === 0) return;
 
+    const now = Date.now();
+    if (now - this.lastPersistAt < this.PERSIST_THROTTLE_MS) {
+      return;
+    }
+
     await this.upsertPositionEntity(Array.from(this.pendingUpdates.values()));
   }
 
@@ -111,7 +124,8 @@ export class PositionTracker {
       return;
     }
 
-    const entities = updates.map((update) => ({
+    const enrichedUpdates = await this.enrichOkxPositionsIfNeeded(updates);
+    const entities = enrichedUpdates.map((update) => ({
       ...update.position,
       userId,
       exchange: update.exchange,
@@ -128,10 +142,106 @@ export class PositionTracker {
 
       this.totalSaved += entities.length;
       this.pendingUpdates.clear();
+      this.lastPersistAt = Date.now();
 
       this.logger.debug(`💾 Saved ${entities.length} position(s) to database`);
     } catch (error) {
       this.logger.error('❌ Failed to upsert positions', error as Error);
     }
+  }
+
+  private async enrichOkxPositionsIfNeeded(
+    updates: DebouncedPositionUpdate[],
+  ): Promise<DebouncedPositionUpdate[]> {
+    const okxUpdates = updates.filter((update) => update.exchange === 'okx');
+    if (okxUpdates.length === 0) {
+      return updates;
+    }
+
+    const needsEnrichment = okxUpdates.some((update) =>
+      this.isOkxPnlMissing(update.position),
+    );
+    if (!needsEnrichment) {
+      return updates;
+    }
+
+    const okxExchange = this.getExchangeByName('okx');
+    if (!okxExchange) {
+      this.logger.warn('⚠️ OKX exchange not available for PnL enrichment');
+      return updates;
+    }
+
+    try {
+      const restPositions = await this.getOkxRestPositions(okxExchange);
+      if (restPositions.size === 0) {
+        return updates;
+      }
+
+      return updates.map((update) => {
+        if (update.exchange !== 'okx') return update;
+        const restPosition = restPositions.get(update.symbol);
+        if (!restPosition) return update;
+
+        return {
+          ...update,
+          position: {
+            ...update.position,
+            avgPrice: restPosition.avgPrice,
+            markPrice: restPosition.markPrice,
+            unrealizedPnl: restPosition.unrealizedPnl,
+            leverage: restPosition.leverage,
+            marketValue: restPosition.marketValue,
+            notionalUsd: restPosition.notionalUsd,
+          },
+        };
+      });
+    } catch (error) {
+      this.logger.warn('⚠️ Failed to enrich OKX positions with REST data', {
+        error: (error as Error).message,
+      });
+      return updates;
+    }
+  }
+
+  private isOkxPnlMissing(position: Position): boolean {
+    const hasQuantity = position.quantity.abs().gt(0);
+    if (!hasQuantity) return false;
+
+    const isMarkMissing = position.markPrice.isZero();
+    const isAvgMissing = position.avgPrice.isZero();
+    const isPnlZero = position.unrealizedPnl.isZero();
+
+    return isPnlZero && (isMarkMissing || isAvgMissing);
+  }
+
+  private async getOkxRestPositions(exchange: IExchange): Promise<Map<string, Position>> {
+    const now = Date.now();
+    if (
+      this.okxRestPositionsCache.size > 0 &&
+      now - this.okxRestLastSync < this.OKX_REST_ENRICH_INTERVAL_MS
+    ) {
+      return this.okxRestPositionsCache;
+    }
+
+    if (this.okxRestInFlight) {
+      return this.okxRestInFlight;
+    }
+
+    this.okxRestInFlight = exchange
+      .getPositions()
+      .then((positions) => {
+        const map = new Map<string, Position>();
+        positions.forEach((position) => {
+          map.set(position.symbol, position);
+        });
+        this.okxRestPositionsCache = map;
+        this.okxRestLastSync = Date.now();
+        return map;
+      })
+      .finally(() => {
+        this.okxRestInFlight = undefined;
+      });
+
+    return this.okxRestInFlight;
   }
 }
