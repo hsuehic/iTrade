@@ -10,6 +10,7 @@ import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
+import 'package:ihsueh_itrade/services/api_client.dart';
 import 'package:ihsueh_itrade/utils/responsive_layout.dart';
 import 'design/themes/theme.dart';
 
@@ -31,6 +32,10 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 RemoteMessage? pendingNotificationTap;
 
 void handleNotificationTap(RemoteMessage message) {
+  unawaited(_handleNotificationTap(message));
+}
+
+Future<void> _handleNotificationTap(RemoteMessage message) async {
   final navigator = appNavigatorKey.currentState;
   if (navigator == null) {
     pendingNotificationTap = message;
@@ -38,8 +43,15 @@ void handleNotificationTap(RemoteMessage message) {
   }
   pendingNotificationTap = null;
 
+  await AppBootstrap.instance.ensureApiClientReady(
+    timeout: const Duration(seconds: 8),
+  );
+
   // Check if user is authenticated
-  final user = AuthService.instance.user;
+  User? user = AuthService.instance.user;
+  if (user == null && ApiClient.instance.isInitialized) {
+    user = await AuthService.instance.getUser();
+  }
   if (user == null) {
     // Not authenticated: store pending notification and let auth flow handle it
     pendingNotificationTap = message;

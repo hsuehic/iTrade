@@ -17,6 +17,7 @@ class AppBootstrap {
   static final AppBootstrap instance = AppBootstrap._internal();
 
   Future<void>? _bootstrapFuture;
+  Future<void>? _apiClientInitFuture;
   final Completer<void> _apiClientReady = Completer<void>();
   void Function(RemoteMessage message)? _notificationTapHandler;
 
@@ -34,6 +35,10 @@ class AppBootstrap {
     start();
     try {
       await _apiClientReady.future.timeout(timeout);
+    } catch (_) {}
+    if (ApiClient.instance.isInitialized) return;
+    try {
+      await _initApiClient().timeout(timeout);
     } catch (_) {}
   }
 
@@ -85,7 +90,12 @@ class AppBootstrap {
     }
   }
 
-  Future<void> _initApiClient() async {
+  Future<void> _initApiClient() {
+    _apiClientInitFuture ??= _initApiClientInternal();
+    return _apiClientInitFuture!;
+  }
+
+  Future<void> _initApiClientInternal() async {
     try {
       final String? savedBaseUrl = await Preference.getApiBaseUrl();
       final String resolvedBaseUrl = NetworkParameter.resolveBaseUrl(
@@ -110,6 +120,9 @@ class AppBootstrap {
     } finally {
       if (!_apiClientReady.isCompleted) {
         _apiClientReady.complete();
+      }
+      if (!ApiClient.instance.isInitialized) {
+        _apiClientInitFuture = null;
       }
     }
   }

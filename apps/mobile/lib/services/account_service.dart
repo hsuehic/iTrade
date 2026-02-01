@@ -51,11 +51,17 @@ class AccountService {
   /// Fetch all exchange accounts for the current user
   Future<List<ExchangeAccount>> getAccounts() async {
     try {
-      final response = await _apiClient.get('/api/accounts');
-      
+      final response =
+          await _apiClient.getJson<List<dynamic>>('/api/accounts');
+
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data as List<dynamic>;
-        return data.map((json) => ExchangeAccount.fromJson(json as Map<String, dynamic>)).toList();
+        return data
+            .map(
+              (json) =>
+                  ExchangeAccount.fromJson(json as Map<String, dynamic>),
+            )
+            .toList();
       } else {
         throw Exception('Failed to load accounts: ${response.statusCode}');
       }
@@ -82,12 +88,14 @@ class AccountService {
         'accountId': accountId,
         'apiKey': apiKey,
         'secretKey': secretKey,
-        if (passphrase != null && passphrase.isNotEmpty) 'passphrase': passphrase,
+        if (passphrase != null && passphrase.isNotEmpty)
+          'passphrase': passphrase,
         'isActive': isActive,
       };
 
-      final response = await _apiClient.post('/api/accounts', data: data);
-      
+      final response =
+          await _apiClient.postJson<dynamic>('/api/accounts', data: data);
+
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Error saving account: $e');
