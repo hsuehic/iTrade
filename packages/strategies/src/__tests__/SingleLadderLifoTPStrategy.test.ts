@@ -145,6 +145,10 @@ function findSignalByPrefix(
   });
 }
 
+function findCancelSignal(result: StrategyAnalyzeResult): StrategyResult | undefined {
+  return toSignalArray(result).find((signal) => signal.action === 'cancel');
+}
+
 describe('SingleLadderLifoTPStrategy', () => {
   describe('Initialization', () => {
     it('should initialize with default parameters', () => {
@@ -1057,6 +1061,23 @@ describe('SingleLadderLifoTPStrategy', () => {
       const tpSignal = findSignalByPrefix(tpResult, 'T');
       expect(tpSignal?.action).toBe('sell'); // TP signal
 
+      // Entry fill should also generate next entry immediately
+      const nextEntryAfterFill = findSignalByPrefix(tpResult, 'E');
+      expect(nextEntryAfterFill?.action).toBe('buy');
+
+      const nextEntryClientOrderId = (nextEntryAfterFill as Record<string, unknown>)
+        ?.clientOrderId as string;
+      const nextEntryOrder = createOrder(
+        nextEntryClientOrderId,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        96.04,
+        100,
+        new Date(orderTime2.getTime() + 50),
+      );
+      await strategy.onOrderCreated(nextEntryOrder);
+      await strategy.analyze(createDataUpdate({ orders: [nextEntryOrder], ticker }));
+
       // Simulate TP created and filled
       const tpClientOrderId = (tpSignal as Record<string, unknown>)
         ?.clientOrderId as string;
@@ -1080,18 +1101,32 @@ describe('SingleLadderLifoTPStrategy', () => {
         new Date(orderTime2.getTime() + 200),
       );
 
-      // TP fill should immediately trigger new entry
+      // TP fill should cancel existing entry (new entry comes after cancel)
       const newEntryResult = await strategy.analyze(
         createDataUpdate({ orders: [tpFilled], ticker }),
       );
 
-      // Should generate new entry immediately (ORDER-STATUS-ONLY)
-      const nextEntrySignal = findSignalByPrefix(newEntryResult, 'E');
+      const cancelSignal = findCancelSignal(newEntryResult);
+      expect(cancelSignal?.action).toBe('cancel');
+
+      const canceledEntry = createOrder(
+        nextEntryClientOrderId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        96.04,
+        100,
+        new Date(orderTime2.getTime() + 250),
+      );
+      const postCancelResult = await strategy.analyze(
+        createDataUpdate({ orders: [canceledEntry], ticker }),
+      );
+
+      const nextEntrySignal = findSignalByPrefix(postCancelResult, 'E');
       expect(nextEntrySignal?.action).toBe('buy');
 
       // Reference price should have stepped by dropPercent after TP fill
       const state = strategy.getStrategyState();
-      expect(state.referencePrice).toBe(102);
+      expect(state.referencePrice).toBeCloseTo(99.96, 8);
     });
   });
 
@@ -1147,6 +1182,22 @@ describe('SingleLadderLifoTPStrategy', () => {
       // lastFilledDirection should be LONG
       expect(strategy.getStrategyState().lastFilledDirection).toBe('LONG');
 
+      // Simulate next entry created from entry fill
+      const nextEntryAfterFill = findSignalByPrefix(tpResult, 'E');
+      expect(nextEntryAfterFill?.action).toBe('buy');
+      const nextEntryClientOrderId = (nextEntryAfterFill as Record<string, unknown>)
+        ?.clientOrderId as string;
+      const nextEntryOrder = createOrder(
+        nextEntryClientOrderId,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        96.04,
+        100,
+        new Date(orderTime2.getTime() + 50),
+      );
+      await strategy.onOrderCreated(nextEntryOrder);
+      await strategy.analyze(createDataUpdate({ orders: [nextEntryOrder], ticker }));
+
       // Simulate TP filled
       const tpSignal = findSignalByPrefix(tpResult, 'T');
       const tpClientOrderId = (tpSignal as Record<string, unknown>)
@@ -1175,8 +1226,23 @@ describe('SingleLadderLifoTPStrategy', () => {
         createDataUpdate({ orders: [tpFilled], ticker }),
       );
 
+      const cancelSignal = findCancelSignal(newEntryResult);
+      expect(cancelSignal?.action).toBe('cancel');
+
+      const canceledEntry = createOrder(
+        nextEntryClientOrderId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        96.04,
+        100,
+        new Date(orderTime2.getTime() + 250),
+      );
+      const postCancelResult = await strategy.analyze(
+        createDataUpdate({ orders: [canceledEntry], ticker }),
+      );
+
       // Should continue with LONG (same direction as last filled - mean reversion)
-      const nextEntrySignal = findSignalByPrefix(newEntryResult, 'E');
+      const nextEntrySignal = findSignalByPrefix(postCancelResult, 'E');
       expect(nextEntrySignal?.action).toBe('buy');
 
       // lastFilledDirection should still be LONG (preserved after TP)

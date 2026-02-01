@@ -305,7 +305,7 @@ interface FilledEntry {
  * - Short entry price: referencePrice * (1 + risePercent)
  *
  * Reference Price Updates:
- * - Not updated on entry fill (entry/TP use the original reference)
+ * - Updated on entry fill to the filled entry price (next ladder step)
  * - Updated on TP fill based on ladder step
  */
 export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPParameters> {
@@ -333,6 +333,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   // Order tracking
   private openEntryOrder: Order | null = null;
   private openTpOrder: Order | null = null;
+  private pendingEntryClientOrderId: string | null = null;
+  private pendingTpClientOrderId: string | null = null;
   private initialEntrySignalGenerated: boolean = false; // Track if initial entry was generated
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
@@ -520,6 +522,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
+    this.pendingEntryClientOrderId = clientOrderId;
 
     this._logger.info(`🟢 [LONG Entry Signal] clientOrderId: ${clientOrderId}`);
     this._logger.info(
@@ -551,6 +554,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
+    this.pendingEntryClientOrderId = clientOrderId;
 
     this._logger.info(`🔴 [SHORT Entry Signal] clientOrderId: ${clientOrderId}`);
     this._logger.info(
@@ -623,6 +627,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
+    this.pendingTpClientOrderId = clientOrderId;
 
     this._logger.info(`🎯 [TP Signal] clientOrderId: ${clientOrderId}`);
     this._logger.info(
@@ -798,10 +803,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    */
   private checkEntryConditions(): StrategyResult {
     // Skip if we already have an open entry order
-    if (this.openEntryOrder) {
+    if (this.openEntryOrder || this.pendingEntryClientOrderId) {
       return {
         action: 'hold',
-        reason: `Entry order pending: ${this.openEntryOrder.clientOrderId}`,
+        reason: `Entry order pending: ${this.openEntryOrder?.clientOrderId || this.pendingEntryClientOrderId}`,
       };
     }
 
@@ -1005,8 +1010,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.positionAmount -= filledAmount.toNumber();
     }
 
-    // Increment repeat counter for current reference level
-    this.currentLevelRepeats++;
+    // Update reference price to the filled entry price (new ladder step)
+    const oldReference = this.referencePrice;
+    this.referencePrice = filledPrice.toNumber();
+    this.currentLevelRepeats = 1;
 
     // Record last filled entry (LIFO)
     this.lastFilled = {
@@ -1022,12 +1029,18 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     // Clear open entry order
     this.openEntryOrder = null;
+    if (this.pendingEntryClientOrderId === order.clientOrderId) {
+      this.pendingEntryClientOrderId = null;
+    }
 
     this._logger.info(
       `✅ Entry FILLED: ${side} ${filledAmount.toString()} @ ${filledPrice.toString()}`,
     );
     this._logger.info(
       `   Position: ${this.positionAmount}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}, Ref: ${this.referencePrice}`,
+    );
+    this._logger.info(
+      `   🔄 Reference price updated: ${oldReference} -> ${this.referencePrice}`,
     );
 
     if (this.openTpOrder) {
@@ -1045,6 +1058,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const tpSignal = this.generateTakeProfitSignal();
     if (tpSignal) {
       signals.push(tpSignal);
+    }
+
+    // Generate next entry signal after entry fill
+    const nextEntrySignal = this.checkEntryConditions();
+    if (this.isOrderSignal(nextEntrySignal)) {
+      signals.push(nextEntrySignal);
     }
 
     return signals;
@@ -1105,6 +1124,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     // lastFilledDirection is preserved to maintain mean-reversion behavior
     this.lastFilled = null;
     this.openTpOrder = null;
+    if (this.pendingTpClientOrderId === order.clientOrderId) {
+      this.pendingTpClientOrderId = null;
+    }
 
     // Cleanup metadata
     this.orderMetadataMap.delete(order.clientOrderId!);
@@ -1160,6 +1182,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (metadata.signalType === SignalType.Entry) {
       // Entry order canceled - clear open entry
       this.openEntryOrder = null;
+      if (this.pendingEntryClientOrderId === order.clientOrderId) {
+        this.pendingEntryClientOrderId = null;
+      }
       this._logger.info(`   Entry order cleared, attempting new entry...`);
 
       // Cleanup metadata
@@ -1170,6 +1195,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (metadata.signalType === SignalType.TakeProfit) {
       // TP order canceled - clear open TP
       this.openTpOrder = null;
+      if (this.pendingTpClientOrderId === order.clientOrderId) {
+        this.pendingTpClientOrderId = null;
+      }
       this._logger.info(`   TP order cleared`);
 
       // If we still have lastFilled, generate new TP
@@ -1195,9 +1223,15 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (metadata) {
       if (metadata.signalType === SignalType.Entry) {
         this.openEntryOrder = order;
+        if (this.pendingEntryClientOrderId === order.clientOrderId) {
+          this.pendingEntryClientOrderId = null;
+        }
         this._logger.info(`📝 Entry order created: ${order.clientOrderId}`);
       } else if (metadata.signalType === SignalType.TakeProfit) {
         this.openTpOrder = order;
+        if (this.pendingTpClientOrderId === order.clientOrderId) {
+          this.pendingTpClientOrderId = null;
+        }
         this._logger.info(`📝 TP order created: ${order.clientOrderId}`);
       }
     }
@@ -1222,6 +1256,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.orderMetadataMap.clear();
     this.openEntryOrder = null;
     this.openTpOrder = null;
+    this.pendingEntryClientOrderId = null;
+    this.pendingTpClientOrderId = null;
     this.lastFilled = null;
     this.lastFilledDirection = null;
     this.positionAmount = 0;
