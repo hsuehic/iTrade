@@ -9,6 +9,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import {
+  Column,
   ColumnDef,
   ColumnFiltersState,
   flexRender,
@@ -16,6 +17,7 @@ import {
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
+  RowData,
   SortingState,
   useReactTable,
 } from '@tanstack/react-table';
@@ -41,6 +43,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ExchangeLogo } from '@/components/exchange-logo';
+
+declare module '@tanstack/react-table' {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData extends RowData, TValue> {
+    align?: 'left' | 'right';
+  }
+}
 
 interface AssetData {
   asset: string;
@@ -87,23 +96,35 @@ const getAssetValue = (asset: AssetData) => {
   return asset.estimatedValue ?? asset.total;
 };
 
+const renderSortableHeader = (
+  label: string,
+  column: Column<AssetData, unknown>,
+  align: 'left' | 'right' = 'left',
+) => (
+  <div className={align === 'right' ? 'flex w-full justify-end' : 'flex w-full'}>
+    <Button
+      variant="ghost"
+      onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+      className={
+        align === 'right'
+          ? 'h-8 px-2 data-[state=open]:bg-accent'
+          : '-ml-4 h-8 data-[state=open]:bg-accent'
+      }
+    >
+      {label}
+      {column.getIsSorted() === 'asc' ? (
+        <IconSortAscending className="ml-2 h-4 w-4" />
+      ) : column.getIsSorted() === 'desc' ? (
+        <IconSortDescending className="ml-2 h-4 w-4" />
+      ) : null}
+    </Button>
+  </div>
+);
+
 const columns: ColumnDef<AssetData>[] = [
   {
     accessorKey: 'asset',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Asset
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
+    header: ({ column }) => renderSortableHeader('Asset', column),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-sm font-bold text-primary">
@@ -128,40 +149,16 @@ const columns: ColumnDef<AssetData>[] = [
   },
   {
     accessorKey: 'free',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Available
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
+    meta: { align: 'right' },
+    header: ({ column }) => renderSortableHeader('Available', column, 'right'),
     cell: ({ row }) => (
       <div className="text-right tabular-nums">{formatNumber(row.original.free)}</div>
     ),
   },
   {
     accessorKey: 'locked',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Locked
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
+    meta: { align: 'right' },
+    header: ({ column }) => renderSortableHeader('Locked', column, 'right'),
     cell: ({ row }) => (
       <div className="text-right tabular-nums text-muted-foreground">
         {row.original.locked > 0 ? formatNumber(row.original.locked) : '-'}
@@ -171,20 +168,8 @@ const columns: ColumnDef<AssetData>[] = [
   {
     id: 'totalValue',
     accessorFn: (row) => getAssetValue(row),
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Total Value
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
+    meta: { align: 'right' },
+    header: ({ column }) => renderSortableHeader('Total Value', column, 'right'),
     cell: ({ row }) => (
       <div className="text-right font-medium tabular-nums">
         {formatCurrency(getAssetValue(row.original))}
@@ -193,20 +178,7 @@ const columns: ColumnDef<AssetData>[] = [
   },
   {
     accessorKey: 'percentage',
-    header: ({ column }) => (
-      <Button
-        variant="ghost"
-        onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
-        className="-ml-4 h-8 data-[state=open]:bg-accent"
-      >
-        Allocation
-        {column.getIsSorted() === 'asc' ? (
-          <IconSortAscending className="ml-2 h-4 w-4" />
-        ) : column.getIsSorted() === 'desc' ? (
-          <IconSortDescending className="ml-2 h-4 w-4" />
-        ) : null}
-      </Button>
-    ),
+    header: ({ column }) => renderSortableHeader('Allocation', column),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
         <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
@@ -370,7 +342,14 @@ export function AssetsTable({
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      className={
+                        header.column.columnDef.meta?.align === 'right'
+                          ? 'text-right'
+                          : 'text-left'
+                      }
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}
@@ -384,7 +363,14 @@ export function AssetsTable({
                 table.getRowModel().rows.map((row) => (
                   <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
                     {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
+                      <TableCell
+                        key={cell.id}
+                        className={
+                          cell.column.columnDef.meta?.align === 'right'
+                            ? 'text-right'
+                            : 'text-left'
+                        }
+                      >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </TableCell>
                     ))}
