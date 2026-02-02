@@ -421,6 +421,40 @@ Is it API reference?
 
 ---
 
+### 🧹 Cleanup of Temporary Files
+
+**AI agents MUST remove any temporary files, logs, or intermediate outputs created during a task before reporting completion.**
+
+#### Core Principle
+
+> **"Leave the workspace as clean as you found it (or cleaner)."**
+>
+> Delete any files created for debugging, testing verification, or command redirection that are not intended to be permanent parts of the project.
+
+#### What to Clean Up
+
+**❌ DELETE these before finishing:**
+- Command output logs (e.g., `test_results.txt`, `output.log`, `test_output.txt`)
+- Temporary JSON or XML files created for data inspection
+- Backup files created during manual edits (e.g., `file.ts.bak`)
+- Trace files, debug dumps, or performance profiles
+- Any redirected outputs: `command > file.txt 2>&1`
+
+**✅ KEEP these:**
+- Source code modifications specifically requested
+- New project files part of the feature implementation
+- Documentation files explicitly requested by the user
+- Configuration files intended for permanent use
+
+#### Best Practice
+
+**After completing verification:**
+1. ✅ **Identify all files created** that aren't part of the final PR/commit
+2. ✅ **Run `rm <files>`** to remove them
+3. ✅ **Verify directory state** with `ls` if unsure
+
+---
+
 ## 📌 Summary
 
 **Golden Rule**: Documentation should be close to what it documents.
