@@ -50,6 +50,7 @@ import { SubscriptionCoordinator } from './SubscriptionCoordinator';
 
 export class TradingEngine extends EventEmitter implements ITradingEngine {
   private _isRunning = false;
+  private _isInitializing = false; // Track if engine is in initialization phase
   private readonly _strategies = new Map<string, IStrategy>();
   private readonly _exchanges = new Map<string, IExchange>();
   private readonly _strategiesWithLoadedInitialData = new Set<string>(); // Track which strategies have loaded initial data
@@ -107,22 +108,32 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       return;
     }
 
+    this._isInitializing = true;
     try {
       this.logger.info('Starting trading engine...');
 
       // Strategies are already initialized in their constructors
 
-      // Connect to all exchanges
+      // Connect to all exchanges and ensure they're ready
       for (const [name, exchange] of this._exchanges) {
         if (!exchange.isConnected) {
-          exchange.connect({
-            apiKey: '',
-            secretKey: '',
-            sandbox: false,
-          });
-          this.logger.warn(`Exchange ${name} is not connected`);
+          this.logger.warn(`Exchange ${name} is not connected, attempting to connect...`);
+          try {
+            await exchange.connect({
+              apiKey: '',
+              secretKey: '',
+              sandbox: false,
+            });
+          } catch (error) {
+            this.logger.error(`Failed to connect exchange ${name}`, error as Error);
+            // Continue with other exchanges
+          }
         }
       }
+
+      // ✅ Mark engine as running BEFORE loading initial data
+      // This allows strategies to execute orders during initialization
+      this._isRunning = true;
 
       // 🔄 Load initial data for all strategies that need it (before subscribing to real-time data)
       // This handles strategies added before engine.start() is called
@@ -144,12 +155,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         }
       }
 
-      this._isRunning = true;
       this._eventBus.emitEngineStarted();
       this.logger.info('Trading engine started successfully');
       await this.flushPendingAccountUpdates();
+      this._isInitializing = false;
     } catch (error) {
       this._isRunning = false;
+      this._isInitializing = false;
       this.logger.error('Failed to start trading engine', error as Error);
       this._eventBus.emitEngineError(error as Error);
       throw error;
@@ -527,7 +539,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       clientOrderId: providedClientOrderId, // 🆕 Accept clientOrderId from params
     } = params;
     if (!this._isRunning) {
-      throw new Error('Trading engine is not running');
+      const stateMsg = this._isInitializing 
+        ? 'Engine is still initializing'
+        : 'Engine is not running';
+      throw new Error(
+        `Trading engine is not ready to execute orders: ${stateMsg}. ` +
+        `Make sure engine.start() has been called and completed successfully.`
+      );
     }
 
     const strategy = this._strategies.get(strategyName);
