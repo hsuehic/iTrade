@@ -56,17 +56,23 @@ export class OrderTracker {
   async start(): Promise<void> {
     this.logger.info('Starting Order Tracker...');
 
-    // 🆕 Load existing open orders from database to prevent duplicate notifications on restart
-    // This allows the tracker to reconcile its state before receiving events
+    // 🆕 Load existing OPEN orders from database to prevent duplicate notifications on restart
+    // Only open orders need to be tracked - closed orders are cleaned up automatically
     try {
-      this.logger.info(`🔍 Loading existing orders from database for user: ${this.userId || 'ALL'}...`);
+      this.logger.info(`🔍 Loading existing open orders for user: ${this.userId || 'ALL'}...`);
       const existingOrders = await this.dataManager.getOrders({
         userId: this.userId,
+        status: 'OPEN', // 🎯 Only load open orders to minimize memory usage
       });
       for (const order of existingOrders) {
         this.orderManager.addOrder(order);
+        // 🔥 Mark as already notified to prevent duplicate notifications
+        // when status updates arrive via WebSocket after app restart
+        this.notifiedOrderIds.add(order.id);
       }
-      this.logger.info(`✅ Loaded ${existingOrders.length} existing orders from database`);
+      this.logger.info(
+        `✅ Loaded ${existingOrders.length} open orders from database (marked as already notified)`,
+      );
     } catch (error) {
       this.logger.error('❌ Failed to load existing orders from database', error as Error);
     }
@@ -307,6 +313,16 @@ export class OrderTracker {
         `💾 Order filled and updated: ${mergedOrder.id} (${mergedOrder.executedQuantity?.toString()}/${mergedOrder.quantity.toString()})`,
       );
 
+      // 🧹 Clean up: remove from notified set (order is now closed)
+      // This prevents memory leaks during long-running sessions
+      this.notifiedOrderIds.delete(mergedOrder.id);
+      
+      // 🧹 Clean up: remove from OrderManager (order is now closed)
+      // This prevents unbounded growth in OrderManager's internal maps
+      setTimeout(() => {
+        this.orderManager.removeOrder(mergedOrder.id);
+      }, 5000); // Wait 5s to allow queries to complete
+
       if (shouldNotify) {
         await this.pushNotificationService?.notifyOrderUpdate(mergedOrder, 'filled');
       }
@@ -451,6 +467,14 @@ export class OrderTracker {
         updateTime: mergedOrder.updateTime,
       });
 
+      // 🧹 Clean up: remove from notified set (order is now closed)
+      this.notifiedOrderIds.delete(mergedOrder.id);
+      
+      // 🧹 Clean up: remove from OrderManager (order is now closed)
+      setTimeout(() => {
+        this.orderManager.removeOrder(mergedOrder.id);
+      }, 5000); // Wait 5s to allow queries to complete
+
       this.logger.info(`💾 Order cancelled and updated: ${mergedOrder.id}`);
     } catch (error) {
       this.logger.error('❌ Failed to update cancelled order', error as Error);
@@ -493,6 +517,14 @@ export class OrderTracker {
         status: mergedOrder.status,
         updateTime: mergedOrder.updateTime,
       });
+
+      // 🧹 Clean up: remove from notified set (order is now closed)
+      this.notifiedOrderIds.delete(mergedOrder.id);
+      
+      // 🧹 Clean up: remove from OrderManager (order is now closed)
+      setTimeout(() => {
+        this.orderManager.removeOrder(mergedOrder.id);
+      }, 5000); // Wait 5s to allow queries to complete
 
       this.logger.error(`💾 Order rejected and updated: ${mergedOrder.id}`);
     } catch (error) {
