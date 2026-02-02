@@ -32,6 +32,10 @@ export class OrderTracker {
   // Debounce configuration (only for partial fills)
   private readonly DEBOUNCE_MS = 1000; // 1 second debounce for partial fills
   private readonly strategyUserCache = new Map<number, string>();
+  
+  // 🆕 Track which orders have been notified (separate from OrderManager)
+  // This prevents re-notifying orders loaded from DB on startup
+  private readonly notifiedOrderIds = new Set<string>();
 
   constructor(
     private dataManager: TypeOrmDataManager,
@@ -222,11 +226,18 @@ export class OrderTracker {
         `💾 Order saved: ${order.id} | Strategy: ${order.strategyName || 'none'} (ID: ${strategyId || 'N/A'}) | Exchange: ${exchange || 'unknown'}`,
       );
 
-      if (isNew) {
+      // 🔥 FIX: Check if we've notified this order, not just if it's new in OrderManager
+      // This allows notifications for manually placed orders loaded from DB on startup
+      const hasBeenNotified = this.notifiedOrderIds.has(order.id);
+      if (!hasBeenNotified) {
+        this.notifiedOrderIds.add(order.id);
         await this.pushNotificationService?.notifyOrderUpdate(order, 'created');
+        this.logger.info(
+          `📨 Sent "Order Placed" notification for ${order.symbol} ${order.side} (${order.id})`,
+        );
       } else {
         this.logger.debug(
-          `ℹ️  Suppressing notifyOrderUpdate(created) for already tracked order: ${order.id}`,
+          `ℹ️  Suppressing duplicate notification for already notified order: ${order.id}`,
         );
       }
     } catch (error) {

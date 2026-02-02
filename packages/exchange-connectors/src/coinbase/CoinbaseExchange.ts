@@ -39,6 +39,12 @@ export class CoinbaseExchange extends BaseExchange {
   private subscribedGranularities = new Map<string, string>(); // productId -> granularity (in seconds)
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private balancePollingInterval: NodeJS.Timeout | null = null; // Periodic balance polling
+  
+  // 🆕 Initial snapshot tracking for user channel
+  private isReceivingInitialSnapshot = true; // true until we receive first batch < 50 orders
+  private initialSnapshotOrderCount = 0; // track total orders in initial snapshot
+  private static readonly COINBASE_ORDER_BATCH_SIZE = 50; // Coinbase sends orders in batches of 50
+  
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
   private static readonly MAINNET_WS_URL = 'wss://advanced-trade-ws.coinbase.com';
@@ -71,6 +77,8 @@ export class CoinbaseExchange extends BaseExchange {
   private setupWebSocketManagerListeners(): void {
     this.wsManager.on('connected', () => {
       console.log('[Coinbase] WebSocket Manager connected');
+      // 🆕 Reset initial snapshot state on new connection
+      this.resetInitialSnapshotState();
     });
 
     this.wsManager.on('disconnected', (code: number) => {
@@ -84,6 +92,15 @@ export class CoinbaseExchange extends BaseExchange {
     this.wsManager.on('data', (message: any) => {
       this.handleWebSocketMessage(message);
     });
+  }
+
+  /**
+   * Reset initial snapshot state (called on new WebSocket connection)
+   */
+  private resetInitialSnapshotState(): void {
+    this.isReceivingInitialSnapshot = true;
+    this.initialSnapshotOrderCount = 0;
+    console.log('[Coinbase] 🔄 Initial snapshot state reset - will suppress events for existing orders');
   }
 
   /**
@@ -887,63 +904,99 @@ export class CoinbaseExchange extends BaseExchange {
               e.type,
             );
 
-            // Handle orders
-            if (e.orders && e.orders.length > 0) {
-              console.log(`[Coinbase] Processing ${e.orders.length} order updates`);
-              for (const orderData of e.orders) {
-                // Check if critical fields are missing (size or price for limit orders)
-                const hasSizeInfo =
-                  orderData.base_size ||
-                  orderData.size ||
-                  orderData.order_size ||
-                  orderData.quantity ||
-                  orderData.leaves_quantity;
+            // 🆕 Handle case where orders array exists but is empty (no open orders)
+            if (e.orders !== undefined) {
+              const batchSize = e.orders.length;
+              
+              // 🆕 Detect and handle initial snapshot phase
+              if (this.isReceivingInitialSnapshot) {
+                this.initialSnapshotOrderCount += batchSize;
+                
+                // Snapshot ends when we receive a batch with fewer than 50 orders
+                const snapshotComplete = batchSize < CoinbaseExchange.COINBASE_ORDER_BATCH_SIZE;
+                
+                if (snapshotComplete) {
+                  this.isReceivingInitialSnapshot = false;
+                  console.log(
+                    `[Coinbase] ✅ Initial snapshot complete - received ${this.initialSnapshotOrderCount} existing orders (events suppressed)`,
+                  );
+                } else {
+                  console.log(
+                    `[Coinbase] 📸 Initial snapshot batch: ${batchSize} orders (total so far: ${this.initialSnapshotOrderCount}, events suppressed)`,
+                  );
+                }
+                
+                // 🔇 Skip event emission for snapshot orders
+                // But continue to next event (don't skip processing balances/positions in this same message)
+                // If batchSize is 0, there's nothing to skip anyway
+                if (batchSize > 0) {
+                  console.log(
+                    `[Coinbase] 🔇 Suppressing events for ${batchSize} snapshot orders`,
+                  );
+                }
+                
+                // Continue to next event (skip order processing for this batch)
+                continue;
+              }
+              
+              // 🆕 Normal operation: process and emit events for real-time order updates
+              if (batchSize > 0) {
+                console.log(`[Coinbase] Processing ${batchSize} order updates`);
+                for (const orderData of e.orders) {
+                  // Check if critical fields are missing (size or price for limit orders)
+                  const hasSizeInfo =
+                    orderData.base_size ||
+                    orderData.size ||
+                    orderData.order_size ||
+                    orderData.quantity ||
+                    orderData.leaves_quantity;
 
-                const orderType = orderData.order_type || orderData.type || 'LIMIT';
-                const needsPrice = orderType.toUpperCase().includes('LIMIT');
-                const hasPriceInfo = orderData.price || orderData.limit_price;
+                  const orderType = orderData.order_type || orderData.type || 'LIMIT';
+                  const needsPrice = orderType.toUpperCase().includes('LIMIT');
+                  const hasPriceInfo = orderData.price || orderData.limit_price;
 
-                const isMissingCriticalData =
-                  !hasSizeInfo || (needsPrice && !hasPriceInfo);
+                  const isMissingCriticalData =
+                    !hasSizeInfo || (needsPrice && !hasPriceInfo);
 
-                if (isMissingCriticalData) {
-                  // WebSocket update is missing critical data - fetch via REST API
-                  const orderId = orderData.order_id || orderData.id;
-                  if (orderId) {
-                    console.log(
-                      `[Coinbase] ⚠️ Order ${orderId} missing data (size: ${!!hasSizeInfo}, price: ${!!hasPriceInfo}), fetching via REST API...`,
-                    );
+                  if (isMissingCriticalData) {
+                    // WebSocket update is missing critical data - fetch via REST API
+                    const orderId = orderData.order_id || orderData.id;
+                    if (orderId) {
+                      console.log(
+                        `[Coinbase] ⚠️ Order ${orderId} missing data (size: ${!!hasSizeInfo}, price: ${!!hasPriceInfo}), fetching via REST API...`,
+                      );
 
-                    // Fetch complete order details asynchronously
-                    this.fetchAndEmitCompleteOrder(orderId, orderData.product_id).catch(
-                      (err) => {
-                        console.error(
-                          `[Coinbase] Failed to fetch order ${orderId}:`,
-                          err?.message || err,
-                        );
-                        // Fallback: emit the partial order we have
-                        const partialOrder = this.transformCoinbaseUserOrder(orderData);
-                        console.log(
-                          `[Coinbase] 📦 Order Update (partial): ${partialOrder.symbol} - ${partialOrder.status}`,
-                        );
-                        this.emit('orderUpdate', partialOrder.symbol, partialOrder);
-                      },
-                    );
+                      // Fetch complete order details asynchronously
+                      this.fetchAndEmitCompleteOrder(orderId, orderData.product_id).catch(
+                        (err) => {
+                          console.error(
+                            `[Coinbase] Failed to fetch order ${orderId}:`,
+                            err?.message || err,
+                          );
+                          // Fallback: emit the partial order we have
+                          const partialOrder = this.transformCoinbaseUserOrder(orderData);
+                          console.log(
+                            `[Coinbase] 📦 Order Update (partial): ${partialOrder.symbol} - ${partialOrder.status}`,
+                          );
+                          this.emit('orderUpdate', partialOrder.symbol, partialOrder);
+                        },
+                      );
+                    } else {
+                      // No order ID - emit partial order as fallback
+                      const order = this.transformCoinbaseUserOrder(orderData);
+                      console.log(
+                        `[Coinbase] 📦 Order Update (no ID): ${order.symbol} - ${order.status}`,
+                      );
+                      this.emit('orderUpdate', order.symbol, order);
+                    }
                   } else {
-                    // No order ID - emit partial order as fallback
+                    // WebSocket has complete data - emit directly
                     const order = this.transformCoinbaseUserOrder(orderData);
                     console.log(
-                      `[Coinbase] 📦 Order Update (no ID): ${order.symbol} - ${order.status}`,
+                      `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
                     );
                     this.emit('orderUpdate', order.symbol, order);
                   }
-                } else {
-                  // WebSocket has complete data - emit directly
-                  const order = this.transformCoinbaseUserOrder(orderData);
-                  console.log(
-                    `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
-                  );
-                  this.emit('orderUpdate', order.symbol, order);
                 }
               }
             }
