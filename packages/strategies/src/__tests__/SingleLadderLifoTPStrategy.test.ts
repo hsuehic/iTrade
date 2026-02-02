@@ -16,6 +16,8 @@ import {
   DataUpdate,
   StrategyAnalyzeResult,
   StrategyResult,
+  StrategyOrderResult,
+  SignalType,
 } from '@itrade/core';
 
 /**
@@ -29,12 +31,10 @@ function createStrategyConfig(
     parameters: {
       basePrice: 100,
       stepPercent: 2, // 2%
-      takeProfitPercent: 1, // 1%
+      takeProfitPercent: 1.5, // 1.5% (must be >= step/2)
       orderAmount: 100,
       minSize: -500, // Allow shorts
       maxSize: 500,
-      maxRepeatsPerLevel: 3, // Default to 3 repeats per level
-      preferredDirection: 'auto',
       leverage: 10,
       ...params,
     },
@@ -45,23 +45,6 @@ function createStrategyConfig(
   };
 }
 
-/**
- * Helper function to create a ticker
- */
-function createTicker(price: number): Ticker {
-  return {
-    symbol: 'BTC/USDT',
-    exchange: 'okx',
-    price: new Decimal(price),
-    bid: new Decimal(price - 0.01),
-    ask: new Decimal(price + 0.01),
-    volume: new Decimal(1000000),
-    quoteVolume: new Decimal(100000000),
-    timestamp: new Date(),
-    high: new Decimal(price + 1),
-    low: new Decimal(price - 1),
-  };
-}
 
 /**
  * Helper function to create a position
@@ -132,21 +115,16 @@ function toSignalArray(result: StrategyAnalyzeResult): StrategyResult[] {
   return Array.isArray(result) ? result : [result];
 }
 
-function findSignalByPrefix(
+function findOrderSignalsByType(
   result: StrategyAnalyzeResult,
-  prefix: 'E' | 'T',
-): StrategyResult | undefined {
-  return toSignalArray(result).find((signal) => {
-    if (!('clientOrderId' in signal)) {
-      return false;
-    }
-    return signal.clientOrderId?.startsWith(prefix);
-  });
+  type: SignalType,
+): StrategyOrderResult[] {
+  return toSignalArray(result).filter(
+    (s): s is StrategyOrderResult =>
+      (s.action === 'buy' || s.action === 'sell') && s.metadata?.signalType === type,
+  );
 }
 
-function findCancelSignal(result: StrategyAnalyzeResult): StrategyResult | undefined {
-  return toSignalArray(result).find((signal) => signal.action === 'cancel');
-}
 
 describe('SingleLadderLifoTPStrategy', () => {
   describe('Initialization', () => {
@@ -158,7 +136,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       expect(strategy.getStrategyId()).toBe(1);
     });
 
-    it('should validate position limits', async () => {
+    it('should validate size limits', async () => {
       expect(() => {
         new SingleLadderLifoTPStrategy(
           createStrategyConfig({
@@ -166,7 +144,18 @@ describe('SingleLadderLifoTPStrategy', () => {
             maxSize: 100,
           }),
         );
-      }).toThrow(/Invalid position limits/);
+      }).toThrow(/Invalid size limits/);
+    });
+
+    it('should validate takeProfitPercent >= stepPercent / 2', async () => {
+      expect(() => {
+        new SingleLadderLifoTPStrategy(
+          createStrategyConfig({
+            stepPercent: 2,
+            takeProfitPercent: 0.5, // 0.5 < 2/2
+          }),
+        );
+      }).toThrow(/Invalid Take Profit/);
     });
 
     it('should detect position mode correctly', async () => {
@@ -220,178 +209,99 @@ describe('SingleLadderLifoTPStrategy', () => {
         createStrategyConfig({
           basePrice: 100,
           stepPercent: 2, // 2%
-          stepPercent: 2, // 2%
+          takeProfitPercent: 1.5,
           orderAmount: 100,
           minSize: -500,
           maxSize: 500,
-          preferredDirection: 'long', // Default to long for bi-directional
         }),
       );
-      // Process initial data to enable entry generation
-      await strategy.processInitialData({
+    });
+
+    it('should generate two entry signals immediately after processInitialData (Case 1)', async () => {
+      const result = await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
-      });
-    });
-
-    it('should generate entry signal immediately after initialization (not based on ticker)', async () => {
-      // Entry should be generated without waiting for price to reach level
-      // Just send any ticker to trigger analyze()
-      const ticker = createTicker(100); // Current price doesn't matter
-      const result = await strategy.analyze(createDataUpdate({ ticker }));
-
-      // Should generate a LONG entry (preferredDirection: 'long')
-      expect(result.action).toBe('buy');
-      if (result.action === 'buy') {
-        expect(result.quantity?.toNumber()).toBe(100);
-        expect(result.clientOrderId).toMatch(/^E/); // Entry order prefix
-        // Entry price should be at referencePrice * (1 - stepPercent) = 100 * 0.98 = 98
-        expect(result.price?.toNumber()).toBe(98);
-      }
-    });
-
-    it('should generate SHORT entry when preferredDirection is short', async () => {
-      const shortStrategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          orderAmount: 100,
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'short',
-        }),
-      );
-      shortStrategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
+        timestamp: new Date(),
       });
 
-      const ticker = createTicker(100);
-      const result = await shortStrategy.analyze(createDataUpdate({ ticker }));
+      // Case 1: 2 entries (Buy Entry and Sell Entry)
+      const entries = findOrderSignalsByType(result, SignalType.Entry);
+      expect(entries).toHaveLength(2);
 
-      expect(result.action).toBe('sell');
-      if (result.action === 'sell') {
-        expect(result.quantity?.toNumber()).toBe(100);
-        // Entry price should be at referencePrice * (1 + stepPercent) = 100 * 1.02 = 102
-        expect(result.price?.toNumber()).toBe(102);
-      }
+      const buyEntry = entries.find((e) => e.action === 'buy');
+      const sellEntry = entries.find((e) => e.action === 'sell');
+
+      expect(buyEntry?.price?.toNumber()).toBe(98); // 100 * (1 - 0.02)
+      expect(sellEntry?.price?.toNumber()).toBe(102); // 100 * (1 + 0.02)
     });
 
-    it('should only allow LONG when position is long-only mode', async () => {
+    it('should respect size limits for entries', async () => {
       const longOnlyStrategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          orderAmount: 100,
-          minSize: 0, // Can't go negative
+          minSize: 0,
           maxSize: 500,
-          preferredDirection: 'auto', // Should auto-detect long-only
         }),
       );
-      longOnlyStrategy.processInitialData({
+
+      const result = await longOnlyStrategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
+        timestamp: new Date(),
       });
 
-      const ticker = createTicker(100);
-      const result = await longOnlyStrategy.analyze(createDataUpdate({ ticker }));
-
-      // Should generate LONG entry (only option)
-      expect(result.action).toBe('buy');
-      expect(longOnlyStrategy.getStrategyState().canAddShort).toBe(false);
-    });
-
-    it('should respect position limits for LONG entry', async () => {
-      // Set position near max
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        positions: [createPosition(450, 'long')], // 450 of 500 max
-      });
-
-      // Try to generate entry (would add 100, exceeding 500)
-      const ticker = createTicker(100);
-      const result = await strategy.analyze(createDataUpdate({ ticker }));
-
-      // Should only allow SHORT (not long)
-      expect(result.action).toBe('sell');
-    });
-
-    it('should respect position limits for SHORT entry', async () => {
-      // Set position near min
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        positions: [createPosition(450, 'short')], // -450 of -500 min
-      });
-
-      // Try to generate entry (would add 100, exceeding -500)
-      const ticker = createTicker(100);
-      const result = await strategy.analyze(createDataUpdate({ ticker }));
-
-      // Should only allow LONG (not short)
-      expect(result.action).toBe('buy');
+      const entries = findOrderSignalsByType(result, SignalType.Entry);
+      // Should ONLY have Buy entry because minSize is 0 (can't add short)
+      expect(entries).toHaveLength(1);
+      expect(entries[0].action).toBe('buy');
     });
   });
 
-  describe('Position Mode - Base Position', () => {
-    it('should not allow selling below base position (minSize > 0)', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          orderAmount: 100,
-          minSize: 200, // Base position of 200
-          maxSize: 500,
-        }),
-      );
+  describe('Requirement 1: Traded Size Tracking', () => {
+    it('should NOT sync tradedSize with exchange positions', async () => {
+      const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
 
-      // Start with base position
       await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
-        positions: [createPosition(200, 'long')],
+        positions: [createPosition(200, 'long')], // Exchange has 200
+        timestamp: new Date(),
       });
 
-      // Generate entry
-      const ticker = createTicker(100);
-      const result = await strategy.analyze(createDataUpdate({ ticker }));
-
-      // Should only allow LONG (canAddShort should be false)
-      expect(result.action).toBe('buy');
-      expect(strategy.getStrategyState().canAddShort).toBe(false);
+      const state = strategy.getStrategyState();
+      // Requirement 1: tradedSize should remain 0 as it's only for strategy orders
+      expect(state.tradedSize).toBe(0);
     });
 
-    it('should allow adding to position above base', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          orderAmount: 100,
-          minSize: 200, // Base position
-          maxSize: 500,
-        }),
-      );
-
-      // Start with base position
-      await strategy.processInitialData({
+    it('should update tradedSize when strategy orders fill', async () => {
+      const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig({ basePrice: 100 }));
+      const initResult = await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
-        positions: [createPosition(200, 'long')],
+        timestamp: new Date(),
       });
 
-      const ticker = createTicker(100);
-      const result = await strategy.analyze(createDataUpdate({ ticker }));
+      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(s => s.action === 'buy')!;
+      
+      // 1. Create order as NEW
+      const orderNew = createOrder(buyEntrySignal.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 100);
+      await strategy.onOrderCreated(orderNew);
+      
+      // 2. Simulate FILL update with a later timestamp
+      const orderFilled = createOrder(
+        buyEntrySignal.clientOrderId!, 
+        OrderSide.BUY, 
+        OrderStatus.FILLED, 
+        98, 
+        100,
+        new Date(orderNew.timestamp.getTime() + 1000)
+      );
+      await strategy.analyze(createDataUpdate({ orders: [orderFilled] }));
 
-      expect(result.action).toBe('buy');
+      expect(strategy.getStrategyState().tradedSize).toBe(100);
     });
   });
 
-  describe('Take Profit Generation', () => {
+  describe('Requirement 5: Maximum 2 Orders (Cases 1-4)', () => {
     let strategy: SingleLadderLifoTPStrategy;
 
     beforeEach(async () => {
@@ -399,853 +309,118 @@ describe('SingleLadderLifoTPStrategy', () => {
         createStrategyConfig({
           basePrice: 100,
           stepPercent: 2,
-          stepPercent: 2,
-          takeProfitPercent: 1, // 1%
+          takeProfitPercent: 1.5,
           orderAmount: 100,
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'long',
+          minSize: 0, // Long only for simpler testing
+          maxSize: 100, // Small range to trigger Case 4
         }),
       );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
     });
 
-    it('should generate TP signal when LONG entry is filled', async () => {
-      // First, generate entry
-      const ticker = createTicker(100);
-      const entryResult = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(entryResult.action).toBe('buy');
-
-      // Simulate order created
-      const entryClientOrderId = (entryResult as Record<string, unknown>)
-        .clientOrderId as string;
-      const orderTime1 = new Date();
-      const entryOrder = createOrder(
-        entryClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-        orderTime1,
-      );
-      await strategy.onOrderCreated(entryOrder);
-
-      // First, send the NEW order through analyze to track it
-      await strategy.analyze(
-        createDataUpdate({
-          orders: [entryOrder],
-          ticker,
-        }),
-      );
-
-      // Simulate order filled with a NEWER updateTime
-      const orderTime2 = new Date(orderTime1.getTime() + 1000);
-      const filledOrder = createOrder(
-        entryClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.FILLED,
-        98,
-        100,
-        orderTime2,
-      );
-
-      const tpResult = await strategy.analyze(
-        createDataUpdate({
-          orders: [filledOrder],
-          ticker,
-        }),
-      );
-
-      // Should generate TP signal
-      const tpSignal = findSignalByPrefix(tpResult, 'T');
-      expect(tpSignal?.action).toBe('sell'); // Sell to take profit on long
-      if (tpSignal?.action === 'sell') {
-        expect(tpSignal.clientOrderId).toMatch(/^T/); // TP order prefix
-        // TP price should be entry * (1 + 1%) = 98 * 1.01 = 98.98
-        expect(tpSignal.price?.toNumber()).toBeCloseTo(98.98, 2);
-      }
-    });
-
-    it('should generate TP signal when SHORT entry is filled', async () => {
-      // Use short-preferred strategy
-      const shortStrategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          takeProfitPercent: 1,
-          orderAmount: 100,
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'short',
-        }),
-      );
-      shortStrategy.processInitialData({
+    it('Case 1: 0 position -> 2 entry signals (if limits allow, here 1 as it is long only)', async () => {
+      const result = await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
+        timestamp: new Date(),
       });
+      const entries = findOrderSignalsByType(result, SignalType.Entry);
+      expect(entries).toHaveLength(1); // Long entry only due to minSize=0
+      expect(entries[0].action).toBe('buy');
+    });
 
-      const ticker = createTicker(100);
-      const entryResult = await shortStrategy.analyze(createDataUpdate({ ticker }));
-      expect(entryResult.action).toBe('sell');
-
-      // Simulate order created
-      const entryClientOrderId = (entryResult as Record<string, unknown>)
-        .clientOrderId as string;
-      const orderTime1 = new Date();
-      const entryOrder = createOrder(
-        entryClientOrderId,
-        OrderSide.SELL,
-        OrderStatus.NEW,
-        102,
+    it('Case 2: 1 entry fills -> 1 TP + 1 Entry', async () => {
+      const initResult = await strategy.processInitialData({
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        timestamp: new Date(),
+      });
+      const buySign = findOrderSignalsByType(initResult, SignalType.Entry).find(s => s.action === 'buy')!;
+      
+      // NEW
+      const orderNew = createOrder(buySign.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 100);
+      await strategy.onOrderCreated(orderNew);
+      
+      // FILLED
+      const orderFilled = createOrder(
+        buySign.clientOrderId!, 
+        OrderSide.BUY, 
+        OrderStatus.FILLED, 
+        98, 
         100,
-        orderTime1,
+        new Date(orderNew.timestamp.getTime() + 1000)
       );
-      await shortStrategy.onOrderCreated(entryOrder);
+      
+      // analyze should return TP for the 100 filled, and no new entry because maxSize is 100
+      const followUp = await strategy.analyze(createDataUpdate({ orders: [orderFilled] }));
+      
+      const tp = findOrderSignalsByType(followUp, SignalType.TakeProfit);
+      expect(tp).toHaveLength(1);
+      expect(tp[0].action).toBe('sell');
+      expect(tp[0].price?.toNumber()).toBeCloseTo(98 * 1.015, 2);
 
-      // First, send the NEW order through analyze to track it
-      await shortStrategy.analyze(
-        createDataUpdate({
-          orders: [entryOrder],
-          ticker,
-        }),
-      );
-
-      // Simulate order filled with a NEWER updateTime
-      const orderTime2 = new Date(orderTime1.getTime() + 1000);
-      const filledOrder = createOrder(
-        entryClientOrderId,
-        OrderSide.SELL,
-        OrderStatus.FILLED,
-        102,
-        100,
-        orderTime2,
-      );
-
-      const tpResult = await shortStrategy.analyze(
-        createDataUpdate({
-          orders: [filledOrder],
-          ticker,
-        }),
-      );
-
-      // Should generate TP signal
-      const tpSignal = findSignalByPrefix(tpResult, 'T');
-      expect(tpSignal?.action).toBe('buy'); // Buy to take profit on short
-      if (tpSignal?.action === 'buy') {
-        expect(tpSignal.clientOrderId).toMatch(/^T/); // TP order prefix
-        // TP price should be entry * (1 - 1%) = 102 * 0.99 = 100.98
-        expect(tpSignal.price?.toNumber()).toBeCloseTo(100.98, 2);
-      }
+      // Entries should be 0 because tradedSize is now 100 and maxSize is 100
+      const entries = findOrderSignalsByType(followUp, SignalType.Entry);
+      expect(entries).toHaveLength(0);
     });
   });
 
   describe('LIFO Take Profit Behavior', () => {
-    let strategy: SingleLadderLifoTPStrategy;
-
-    beforeEach(async () => {
-      strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          takeProfitPercent: 1,
-          orderAmount: 100,
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'long',
-        }),
-      );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
-    });
-
     it('should target the LAST filled entry for TP', async () => {
-      // Generate entry
-      const ticker = createTicker(100);
-      const entry1Result = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(entry1Result.action).toBe('buy');
-
-      const entry1ClientOrderId = (entry1Result as Record<string, unknown>)
-        .clientOrderId as string;
-      const orderTime1 = new Date();
-      const entry1Order = createOrder(
-        entry1ClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-        orderTime1,
+      const strategy = new SingleLadderLifoTPStrategy(
+        createStrategyConfig({ basePrice: 100, maxSize: 1000, minSize: 0 }),
       );
-      await strategy.onOrderCreated(entry1Order);
-
-      // Track the NEW order first
-      await strategy.analyze(
-        createDataUpdate({
-          orders: [entry1Order],
-          ticker,
-        }),
-      );
-
-      // Fill first entry with NEWER updateTime
-      const orderTime2 = new Date(orderTime1.getTime() + 1000);
-      const filled1Order = createOrder(
-        entry1ClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.FILLED,
-        98,
-        100,
-        orderTime2,
-      );
-
-      const tp1Result = await strategy.analyze(
-        createDataUpdate({
-          orders: [filled1Order],
-          ticker,
-        }),
-      );
-
-      // First TP should target entry * 1.01 = 98 * 1.01 = 98.98
-      const tp1Signal = findSignalByPrefix(tp1Result, 'T');
-      expect(tp1Signal?.action).toBe('sell');
-      expect((tp1Signal as Record<string, unknown>)?.price as Decimal).toBeDefined();
-      expect(
-        (
-          ((tp1Signal as Record<string, unknown>)?.price as Decimal) || new Decimal(0)
-        ).toNumber(),
-      ).toBeCloseTo(98.98, 2);
-
-      // State should show lastFilled
-      const state = strategy.getStrategyState();
-      expect(state.lastFilled).not.toBeNull();
-      expect(state.lastFilled?.side).toBe('LONG');
-      expect(state.lastFilled?.price).toBe('98');
-    });
-  });
-
-  describe('Order State Management', () => {
-    let strategy: SingleLadderLifoTPStrategy;
-
-    beforeEach(async () => {
-      strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          takeProfitPercent: 1,
-          orderAmount: 100,
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'long',
-        }),
-      );
-      await strategy.processInitialData({
+      const initResult = await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
+        timestamp: new Date(),
       });
-    });
 
-    it('should not generate new entry while entry order is pending', async () => {
-      // Generate entry
-      const ticker = createTicker(100);
-      const result1 = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(result1.action).toBe('buy');
+      // 1. Get Buy Entry signal from init
+      const buySign1 = findOrderSignalsByType(initResult, SignalType.Entry).find(s => s.action === 'buy')!;
+      
+      // NEW
+      const order1New = createOrder(buySign1.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 100);
+      await strategy.onOrderCreated(order1New);
+      // FILLED
+      const order1Filled = createOrder(buySign1.clientOrderId!, OrderSide.BUY, OrderStatus.FILLED, 98, 100, new Date(order1New.timestamp.getTime() + 1000));
+      const fill1Result = await strategy.analyze(createDataUpdate({ orders: [order1Filled] }));
 
-      // Simulate order created (pending)
-      const clientOrderId = (result1 as Record<string, unknown>).clientOrderId as string;
-      const pendingOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-      );
-      await strategy.onOrderCreated(pendingOrder);
+      // 2. Get next Buy Entry signal and TP signal from fill1Result
+      const fill1Signals = toSignalArray(fill1Result);
+      const buySign2 = findOrderSignalsByType(fill1Signals, SignalType.Entry).find(s => s.action === 'buy')!;
+      const tpSign1 = findOrderSignalsByType(fill1Signals, SignalType.TakeProfit)[0];
+      
+      // We must acknowledge the TP signal so it's not "pending" anymore
+      if (tpSign1) {
+        await strategy.onOrderCreated(createOrder(tpSign1.clientOrderId!, OrderSide.SELL, OrderStatus.NEW, tpSign1.price!.toNumber(), 100));
+      }
 
-      // Try to trigger another entry
-      const result2 = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(result2.action).toBe('hold');
-      // The open entry order should prevent new entry signals
-      expect(strategy.getStrategyState().openEntryOrder).not.toBeNull();
-    });
+      // NEW for Entry 2
+      const order2New = createOrder(buySign2.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 96.04, 100);
+      await strategy.onOrderCreated(order2New);
+      // FILLED for Entry 2
+      const order2Filled = createOrder(buySign2.clientOrderId!, OrderSide.BUY, OrderStatus.FILLED, 96.04, 100, new Date(order2New.timestamp.getTime() + 1000));
+      const result = await strategy.analyze(createDataUpdate({ orders: [order2Filled] }));
 
-    it('should generate new entry immediately after entry order is canceled', async () => {
-      // Generate entry
-      const ticker = createTicker(100);
-      const result1 = await strategy.analyze(createDataUpdate({ ticker }));
-      const clientOrderId = (result1 as Record<string, unknown>).clientOrderId as string;
-
-      // Create pending order
-      const orderTime1 = new Date();
-      const pendingOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-        orderTime1,
-      );
-      await strategy.onOrderCreated(pendingOrder);
-
-      // Track the NEW order
-      await strategy.analyze(createDataUpdate({ orders: [pendingOrder], ticker }));
-
-      // Cancel with newer updateTime
-      const orderTime2 = new Date(orderTime1.getTime() + 1000);
-      const canceledOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.CANCELED,
-        98,
-        100,
-        orderTime2,
-      );
-
-      // Cancel should trigger new entry
-      const result2 = await strategy.analyze(
-        createDataUpdate({ orders: [canceledOrder], ticker }),
-      );
-
-      // Should immediately generate new entry (ORDER-STATUS-ONLY approach)
-      expect(result2.action).toBe('buy');
-      expect(strategy.getStrategyState().openEntryOrder).toBeNull();
+      // TP should target 96.04 (the last filled)
+      const tpSignals = findOrderSignalsByType(result, SignalType.TakeProfit);
+      expect(tpSignals).toHaveLength(1);
+      const tp = tpSignals[0];
+      expect(tp.action).toBe('sell');
+      expect(tp.price?.toNumber()).toBeCloseTo(96.04 * 1.015, 2);
     });
   });
 
   describe('getStrategyState', () => {
     it('should return complete strategy state', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          minSize: -500,
-          maxSize: 500,
-        }),
-      );
-
+      const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
       const state = strategy.getStrategyState();
 
-      expect(state).toHaveProperty('strategyId');
-      expect(state).toHaveProperty('strategyType');
-      expect(state).toHaveProperty('size');
+      expect(state).toHaveProperty('tradedSize');
       expect(state).toHaveProperty('referencePrice');
-      expect(state).toHaveProperty('lastFilled');
-      expect(state).toHaveProperty('lastFilledDirection');
-      expect(state).toHaveProperty('preferredDirection');
-      expect(state).toHaveProperty('openEntryOrder');
-      expect(state).toHaveProperty('openTpOrder');
       expect(state).toHaveProperty('sizeLimits');
-      expect(state).toHaveProperty('canAddLong');
-      expect(state).toHaveProperty('canAddShort');
-      expect(state).toHaveProperty('mode');
-      expect(state).toHaveProperty('longEntryPrice');
-      expect(state).toHaveProperty('shortEntryPrice');
-
-      expect(state.sizeLimits.min).toBe(-500);
-      expect(state.sizeLimits.max).toBe(500);
-    });
-  });
-
-  describe('processInitialData', () => {
-    it('should load positions correctly', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
-
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        positions: [createPosition(200, 'long')],
-      });
-
-      const state = strategy.getStrategyState();
-      expect(state.size).toBe(200);
-      expect(state.lastFilledDirection).toBe('LONG'); // Inferred from position
-    });
-
-    it('should load short positions correctly', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
-
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        positions: [createPosition(200, 'short')],
-      });
-
-      const state = strategy.getStrategyState();
-      expect(state.size).toBe(-200);
-      expect(state.lastFilledDirection).toBe('SHORT'); // Inferred from position
-    });
-
-    it('should NOT update reference price from ticker (ORDER-STATUS-ONLY)', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-        }),
-      );
-
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        ticker: createTicker(105), // Ticker price is 105
-      });
-
-      const state = strategy.getStrategyState();
-      // Reference price should remain at basePrice (100), not ticker price
-      expect(state.referencePrice).toBe(100);
-    });
-  });
-
-  describe('Max Repeats Per Level', () => {
-    it('should track repeat count correctly', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          maxRepeatsPerLevel: 3,
-          preferredDirection: 'long',
-        }),
-      );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
-
-      // Generate entry
-      const ticker = createTicker(100);
-      const result = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(result.action).toBe('buy');
-
-      const clientOrderId = (result as Record<string, unknown>).clientOrderId as string;
-
-      // Simulate order flow
-      const orderTime1 = new Date();
-      const entryOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-        orderTime1,
-      );
-      await strategy.onOrderCreated(entryOrder);
-      await strategy.analyze(createDataUpdate({ orders: [entryOrder], ticker }));
-
-      // Fill the order
-      const orderTime2 = new Date(orderTime1.getTime() + 1000);
-      const filledOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.FILLED,
-        98,
-        100,
-        orderTime2,
-      );
-      await strategy.analyze(createDataUpdate({ orders: [filledOrder], ticker }));
-
-      // Check state - repeats increment on entry fill
-      const state = strategy.getStrategyState();
-      expect(state.currentLevelRepeats).toBe(1);
-      expect(state.maxRepeatsPerLevel).toBe(3);
-    });
-
-    it('should update reference price after max repeats reached', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          maxRepeatsPerLevel: 2, // Only 2 repeats allowed
-          preferredDirection: 'long',
-        }),
-      );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
-
-      const initialRef = strategy.getStrategyState().referencePrice;
-      expect(initialRef).toBe(100);
-
-      // Simulate 2 filled entries to trigger reference price update
-      for (let i = 0; i < 2; i++) {
-        // Generate entry
-        const ticker = createTicker(100);
-        const result = await strategy.analyze(createDataUpdate({ ticker }));
-        if (result.action !== 'buy') continue;
-
-        const clientOrderId = (result as Record<string, unknown>).clientOrderId as string;
-
-        // Simulate order flow
-        const orderTime1 = new Date();
-        const entryOrder = createOrder(
-          clientOrderId,
-          OrderSide.BUY,
-          OrderStatus.NEW,
-          98 - i,
-          100,
-          orderTime1,
-        );
-        await strategy.onOrderCreated(entryOrder);
-        await strategy.analyze(createDataUpdate({ orders: [entryOrder], ticker }));
-
-        // Fill the order
-        const orderTime2 = new Date(orderTime1.getTime() + 1000);
-        const filledOrder = createOrder(
-          clientOrderId,
-          OrderSide.BUY,
-          OrderStatus.FILLED,
-          98 - i,
-          100,
-          orderTime2,
-        );
-
-        // Also simulate TP order being created
-        const tpResult = await strategy.analyze(
-          createDataUpdate({ orders: [filledOrder], ticker }),
-        );
-
-        // Simulate TP created and filled to allow next entry
-        const tpSignal = findSignalByPrefix(tpResult, 'T') as Record<string, unknown>;
-        const tpClientOrderId = tpSignal?.clientOrderId as string;
-        const tpOrder = createOrder(
-          tpClientOrderId,
-          OrderSide.SELL,
-          OrderStatus.NEW,
-          99,
-          100,
-          new Date(orderTime2.getTime() + 100),
-        );
-        await strategy.onOrderCreated(tpOrder);
-        await strategy.analyze(createDataUpdate({ orders: [tpOrder], ticker }));
-
-        const tpFilled = createOrder(
-          tpClientOrderId,
-          OrderSide.SELL,
-          OrderStatus.FILLED,
-          99,
-          100,
-          new Date(orderTime2.getTime() + 200),
-        );
-        await strategy.analyze(createDataUpdate({ orders: [tpFilled], ticker }));
-      }
-
-      // After 2 entries, reference price should have stepped on TP fills
-      const state = strategy.getStrategyState();
-      // Reference should have stepped by stepPercent on TP fills
-      // and currentLevelRepeats should be reset to 0
-      expect(state.currentLevelRepeats).toBe(0);
-    });
-
-    it('should allow unlimited repeats when maxRepeatsPerLevel is 0', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          maxRepeatsPerLevel: 0, // Unlimited
-          preferredDirection: 'long',
-        }),
-      );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
-
-      // Trigger multiple entries
-      for (let i = 0; i < 3; i++) {
-        const ticker = createTicker(100);
-        const result = await strategy.analyze(createDataUpdate({ ticker }));
-        if (result.action !== 'buy') continue;
-
-        const clientOrderId = (result as Record<string, unknown>).clientOrderId as string;
-        const orderTime1 = new Date();
-        const entryOrder = createOrder(
-          clientOrderId,
-          OrderSide.BUY,
-          OrderStatus.NEW,
-          98,
-          100,
-          orderTime1,
-        );
-        await strategy.onOrderCreated(entryOrder);
-        await strategy.analyze(createDataUpdate({ orders: [entryOrder], ticker }));
-
-        const orderTime2 = new Date(orderTime1.getTime() + 1000);
-        const filledOrder = createOrder(
-          clientOrderId,
-          OrderSide.BUY,
-          OrderStatus.FILLED,
-          98,
-          100,
-          orderTime2,
-        );
-        const tpResult = await strategy.analyze(
-          createDataUpdate({ orders: [filledOrder], ticker }),
-        );
-
-        // Simulate TP to allow next entry
-        const tpClientOrderId = (tpResult as Record<string, unknown>)
-          .clientOrderId as string;
-        const tpOrder = createOrder(
-          tpClientOrderId,
-          OrderSide.SELL,
-          OrderStatus.NEW,
-          99,
-          100,
-          new Date(orderTime2.getTime() + 100),
-        );
-        await strategy.onOrderCreated(tpOrder);
-        await strategy.analyze(createDataUpdate({ orders: [tpOrder], ticker }));
-
-        const tpFilled = createOrder(
-          tpClientOrderId,
-          OrderSide.SELL,
-          OrderStatus.FILLED,
-          99,
-          100,
-          new Date(orderTime2.getTime() + 200),
-        );
-        await strategy.analyze(createDataUpdate({ orders: [tpFilled], ticker }));
-      }
-
-      // currentLevelRepeats should accumulate (not reset since unlimited)
-      const state = strategy.getStrategyState();
-      expect(state.currentLevelRepeats).toBeGreaterThanOrEqual(0);
-    });
-
-    it('should generate new entry immediately after TP fills (ORDER-STATUS-ONLY)', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          maxRepeatsPerLevel: 10, // High limit
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'long',
-        }),
-      );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
-
-      // First entry
-      let ticker = createTicker(100);
-      let result = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(result.action).toBe('buy');
-
-      let clientOrderId = (result as Record<string, unknown>).clientOrderId as string;
-      let orderTime1 = new Date();
-      let entryOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-        orderTime1,
-      );
-      await strategy.onOrderCreated(entryOrder);
-      await strategy.analyze(createDataUpdate({ orders: [entryOrder], ticker }));
-
-      let orderTime2 = new Date(orderTime1.getTime() + 1000);
-      let filledOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.FILLED,
-        98,
-        100,
-        orderTime2,
-      );
-      let tpResult = await strategy.analyze(
-        createDataUpdate({ orders: [filledOrder], ticker }),
-      );
-      const tpSignal = findSignalByPrefix(tpResult, 'T');
-      expect(tpSignal?.action).toBe('sell'); // TP signal
-
-      // Entry fill should also generate next entry immediately
-      const nextEntryAfterFill = findSignalByPrefix(tpResult, 'E');
-      expect(nextEntryAfterFill?.action).toBe('buy');
-
-      const nextEntryClientOrderId = (nextEntryAfterFill as Record<string, unknown>)
-        ?.clientOrderId as string;
-      const nextEntryOrder = createOrder(
-        nextEntryClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        96.04,
-        100,
-        new Date(orderTime2.getTime() + 50),
-      );
-      await strategy.onOrderCreated(nextEntryOrder);
-      await strategy.analyze(createDataUpdate({ orders: [nextEntryOrder], ticker }));
-
-      // Simulate TP created and filled
-      const tpClientOrderId = (tpSignal as Record<string, unknown>)
-        ?.clientOrderId as string;
-      const tpOrder = createOrder(
-        tpClientOrderId,
-        OrderSide.SELL,
-        OrderStatus.NEW,
-        98.98,
-        100,
-        new Date(orderTime2.getTime() + 100),
-      );
-      await strategy.onOrderCreated(tpOrder);
-      await strategy.analyze(createDataUpdate({ orders: [tpOrder], ticker }));
-
-      const tpFilled = createOrder(
-        tpClientOrderId,
-        OrderSide.SELL,
-        OrderStatus.FILLED,
-        98.98,
-        100,
-        new Date(orderTime2.getTime() + 200),
-      );
-
-      // TP fill should cancel existing entry (new entry comes after cancel)
-      const newEntryResult = await strategy.analyze(
-        createDataUpdate({ orders: [tpFilled], ticker }),
-      );
-
-      const cancelSignal = findCancelSignal(newEntryResult);
-      expect(cancelSignal?.action).toBe('cancel');
-
-      const canceledEntry = createOrder(
-        nextEntryClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.CANCELED,
-        96.04,
-        100,
-        new Date(orderTime2.getTime() + 250),
-      );
-      const postCancelResult = await strategy.analyze(
-        createDataUpdate({ orders: [canceledEntry], ticker }),
-      );
-
-      const nextEntrySignal = findSignalByPrefix(postCancelResult, 'E');
-      expect(nextEntrySignal?.action).toBe('buy');
-
-      // Reference price should have stepped by stepPercent after TP fill
-      const state = strategy.getStrategyState();
-      expect(state.referencePrice).toBeCloseTo(99.96, 8);
-    });
-  });
-
-  describe('Direction Determination', () => {
-    it('should continue same direction after TP (mean reversion)', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(
-        createStrategyConfig({
-          basePrice: 100,
-          stepPercent: 2,
-          stepPercent: 2,
-          minSize: -500,
-          maxSize: 500,
-          preferredDirection: 'long', // Start with long
-        }),
-      );
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-      });
-
-      // First LONG entry
-      const ticker = createTicker(100);
-      let result = await strategy.analyze(createDataUpdate({ ticker }));
-      expect(result.action).toBe('buy');
-
-      // Simulate LONG entry filled
-      const clientOrderId = (result as Record<string, unknown>).clientOrderId as string;
-      const orderTime1 = new Date();
-      const entryOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        98,
-        100,
-        orderTime1,
-      );
-      await strategy.onOrderCreated(entryOrder);
-      await strategy.analyze(createDataUpdate({ orders: [entryOrder], ticker }));
-
-      const orderTime2 = new Date(orderTime1.getTime() + 1000);
-      const filledOrder = createOrder(
-        clientOrderId,
-        OrderSide.BUY,
-        OrderStatus.FILLED,
-        98,
-        100,
-        orderTime2,
-      );
-      const tpResult = await strategy.analyze(
-        createDataUpdate({ orders: [filledOrder], ticker }),
-      );
-
-      // lastFilledDirection should be LONG
-      expect(strategy.getStrategyState().lastFilledDirection).toBe('LONG');
-
-      // Simulate next entry created from entry fill
-      const nextEntryAfterFill = findSignalByPrefix(tpResult, 'E');
-      expect(nextEntryAfterFill?.action).toBe('buy');
-      const nextEntryClientOrderId = (nextEntryAfterFill as Record<string, unknown>)
-        ?.clientOrderId as string;
-      const nextEntryOrder = createOrder(
-        nextEntryClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.NEW,
-        96.04,
-        100,
-        new Date(orderTime2.getTime() + 50),
-      );
-      await strategy.onOrderCreated(nextEntryOrder);
-      await strategy.analyze(createDataUpdate({ orders: [nextEntryOrder], ticker }));
-
-      // Simulate TP filled
-      const tpSignal = findSignalByPrefix(tpResult, 'T');
-      const tpClientOrderId = (tpSignal as Record<string, unknown>)
-        ?.clientOrderId as string;
-      const tpOrder = createOrder(
-        tpClientOrderId,
-        OrderSide.SELL,
-        OrderStatus.NEW,
-        98.98,
-        100,
-        new Date(orderTime2.getTime() + 100),
-      );
-      await strategy.onOrderCreated(tpOrder);
-      await strategy.analyze(createDataUpdate({ orders: [tpOrder], ticker }));
-
-      const tpFilled = createOrder(
-        tpClientOrderId,
-        OrderSide.SELL,
-        OrderStatus.FILLED,
-        98.98,
-        100,
-        new Date(orderTime2.getTime() + 200),
-      );
-
-      const newEntryResult = await strategy.analyze(
-        createDataUpdate({ orders: [tpFilled], ticker }),
-      );
-
-      const cancelSignal = findCancelSignal(newEntryResult);
-      expect(cancelSignal?.action).toBe('cancel');
-
-      const canceledEntry = createOrder(
-        nextEntryClientOrderId,
-        OrderSide.BUY,
-        OrderStatus.CANCELED,
-        96.04,
-        100,
-        new Date(orderTime2.getTime() + 250),
-      );
-      const postCancelResult = await strategy.analyze(
-        createDataUpdate({ orders: [canceledEntry], ticker }),
-      );
-
-      // Should continue with LONG (same direction as last filled - mean reversion)
-      const nextEntrySignal = findSignalByPrefix(postCancelResult, 'E');
-      expect(nextEntrySignal?.action).toBe('buy');
-
-      // lastFilledDirection should still be LONG (preserved after TP)
-      expect(strategy.getStrategyState().lastFilledDirection).toBe('LONG');
+      expect(state).toHaveProperty('buyPrice');
+      expect(state).toHaveProperty('sellPrice');
     });
   });
 });

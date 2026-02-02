@@ -285,8 +285,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   // Order tracking
   private openEntryOrder: Order | null = null;
   private openTpOrder: Order | null = null;
-  private pendingEntryClientOrderId: string | null = null;
-  private pendingTpClientOrderId: string | null = null;
+  private pendingClientOrderIds: Set<string> = new Set();
   private initialEntrySignalGenerated: boolean = false; // Track if initial entry was generated
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
@@ -449,7 +448,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
-    this.pendingEntryClientOrderId = clientOrderId;
+    this.pendingClientOrderIds.add(clientOrderId);
 
     this._logger.info(`🟢 [LONG Entry Signal] clientOrderId: ${clientOrderId.substring(0, 8)} @ ${price.toString()}`);
 
@@ -478,7 +477,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
-    this.pendingEntryClientOrderId = clientOrderId;
+    this.pendingClientOrderIds.add(clientOrderId);
 
     this._logger.info(`🔴 [SHORT Entry Signal] clientOrderId: ${clientOrderId.substring(0, 8)} @ ${price.toString()}`);
 
@@ -533,7 +532,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
-    this.pendingTpClientOrderId = clientOrderId;
+    this.pendingClientOrderIds.add(clientOrderId);
 
     this._logger.info(`🎯 [TP Signal] ${action.toUpperCase()} side=${entrySide} @ ${tpPrice.toString()}`);
 
@@ -588,16 +587,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private updateLadderOrders(): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
-    // Skip if pending orders are still being processed by the engine
-    if (this.pendingEntryClientOrderId || this.pendingTpClientOrderId) {
-      return signals;
-    }
-
     const hasPosition = this.filledEntries.length > 0;
     const canLong = this.canAddLong();
     const canShort = this.canAddShort();
+    const entryPending = this.isEntryPending();
+    const tpPending = this.isTpPending();
 
-    this._logger.info(`📊 Update Ladder: Size=${this.tradedSize}, Ref=${this.referencePrice.toFixed(4)}, HasPos=${hasPosition}`);
+    this._logger.info(`📊 Update Ladder: Size=${this.tradedSize}, Ref=${this.referencePrice.toFixed(4)}, HasPos=${hasPosition}, CanL=${canLong}, CanS=${canShort}, EPending=${entryPending}, TPPending=${tpPending}`);
 
     // If we are calling this, we want to REFRESH the orders.
     // So we first cancel any existing orders to ensure we stay within the 2-order limit.
@@ -625,30 +621,49 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     // 1. Lower Order (Buy Entry if not short, or Buy TP if short)
     if (this.tradedSize < 0) {
       // Case 2/4: TP for Short
-      const tpSignal = this.generateTakeProfitSignal();
-      if (tpSignal) signals.push(tpSignal);
+      if (!tpPending) {
+        const tpSignal = this.generateTakeProfitSignal();
+        if (tpSignal) signals.push(tpSignal);
+      }
     } else if (canLong) {
       // Case 1/3: Long Entry
-      const buyPrice = new Decimal(this.referencePrice).mul(1 - this.stepPercent);
-      signals.push(this.generateLongEntrySignal(buyPrice));
+      if (!entryPending) {
+        const buyPrice = new Decimal(this.referencePrice).mul(1 - this.stepPercent);
+        signals.push(this.generateLongEntrySignal(buyPrice));
+      }
     }
 
     // 2. Upper Order (Sell Entry if not long, or Sell TP if long)
     if (this.tradedSize > 0) {
       // Case 2/4: TP for Long
-      const tpSignal = this.generateTakeProfitSignal();
-      if (tpSignal) {
-        // Only if we didn't already add a TP (which shouldn't happen as tradedSize won't be both < 0 and > 0)
-        signals.push(tpSignal);
+      if (!tpPending) {
+        const tpSignal = this.generateTakeProfitSignal();
+        if (tpSignal) {
+          signals.push(tpSignal);
+        }
       }
     } else if (canShort) {
       // Case 1/3: Short Entry
-      const sellPrice = new Decimal(this.referencePrice).mul(1 + this.stepPercent);
-      signals.push(this.generateShortEntrySignal(sellPrice));
+      if (!entryPending) {
+        const sellPrice = new Decimal(this.referencePrice).mul(1 + this.stepPercent);
+        signals.push(this.generateShortEntrySignal(sellPrice));
+      }
     }
 
-    // Filter out duplicates (though there shouldn't be any)
     return signals;
+  }
+  private isEntryPending(): boolean {
+    for (const id of this.pendingClientOrderIds) {
+      if (id.startsWith('E')) return true;
+    }
+    return false;
+  }
+
+  private isTpPending(): boolean {
+    for (const id of this.pendingClientOrderIds) {
+      if (id.startsWith('T')) return true;
+    }
+    return false;
   }
 
 
@@ -670,6 +685,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         order.updateTime &&
         existingOrder.updateTime.getTime() >= order.updateTime.getTime()
       ) {
+        this._logger.info(`⏩ Order ${order.clientOrderId} is not newer, skipping`);
         continue;
       }
 
@@ -737,6 +753,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     order: Order,
     metadata: SignalMetaData | undefined,
   ): StrategyResult[] {
+    // Clear pending status if this order was pending
+    if (order.clientOrderId) {
+      this.pendingClientOrderIds.delete(order.clientOrderId);
+    }
+
     if (!metadata) {
       this._logger.warn(`⚠️ Order filled without metadata: ${order.clientOrderId}`);
       return [];
@@ -789,9 +810,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     });
 
     this.openEntryOrder = null;
-    if (this.pendingEntryClientOrderId === order.clientOrderId) {
-      this.pendingEntryClientOrderId = null;
-    }
+    // Clearing pending handled in handleOrderFilled
 
     this._logger.info(`✅ Entry FILLED: ${side} ${filledAmount.toString()} @ ${filledPrice.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
     this._logger.info(`   🔄 Ref: ${oldReference.toFixed(4)} -> ${this.referencePrice.toFixed(4)}`);
@@ -820,9 +839,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(`   🔄 Ref: ${oldReference.toFixed(4)} -> ${this.referencePrice.toFixed(4)}`);
 
     this.openTpOrder = null;
-    if (this.pendingTpClientOrderId === order.clientOrderId) {
-      this.pendingTpClientOrderId = null;
-    }
+    // Clearing pending handled in handleOrderFilled
 
     // Cleanup metadata
     this.orderMetadataMap.delete(order.clientOrderId!);
@@ -853,8 +870,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (metadata.signalType === SignalType.Entry) {
       // Entry order canceled - clear open entry
       this.openEntryOrder = null;
-      if (this.pendingEntryClientOrderId === order.clientOrderId) {
-        this.pendingEntryClientOrderId = null;
+      if (order.clientOrderId) {
+        this.pendingClientOrderIds.delete(order.clientOrderId);
       }
       this._logger.info(`   Entry order cleared, attempting new entry...`);
 
@@ -866,8 +883,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (metadata.signalType === SignalType.TakeProfit) {
       // TP order canceled - clear open TP
       this.openTpOrder = null;
-      if (this.pendingTpClientOrderId === order.clientOrderId) {
-        this.pendingTpClientOrderId = null;
+      if (order.clientOrderId) {
+        this.pendingClientOrderIds.delete(order.clientOrderId);
       }
       this._logger.info(`   TP order cleared`);
 
@@ -894,14 +911,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (metadata) {
       if (metadata.signalType === SignalType.Entry) {
         this.openEntryOrder = order;
-        if (this.pendingEntryClientOrderId === order.clientOrderId) {
-          this.pendingEntryClientOrderId = null;
+        if (order.clientOrderId) {
+          this.pendingClientOrderIds.delete(order.clientOrderId);
         }
         this._logger.info(`📝 Entry order created: ${order.clientOrderId}`);
       } else if (metadata.signalType === SignalType.TakeProfit) {
         this.openTpOrder = order;
-        if (this.pendingTpClientOrderId === order.clientOrderId) {
-          this.pendingTpClientOrderId = null;
+        if (order.clientOrderId) {
+          this.pendingClientOrderIds.delete(order.clientOrderId);
         }
         this._logger.info(`📝 TP order created: ${order.clientOrderId}`);
       }
@@ -927,8 +944,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.orderMetadataMap.clear();
     this.openEntryOrder = null;
     this.openTpOrder = null;
-    this.pendingEntryClientOrderId = null;
-    this.pendingTpClientOrderId = null;
+    this.pendingClientOrderIds.clear();
     this.filledEntries = [];
     this.tradedSize = 0;
     this.initialDataProcessed = false;
