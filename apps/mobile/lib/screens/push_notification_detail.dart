@@ -46,7 +46,7 @@ class PushNotificationDetailArgs {
         (event.startsWith('order') ? 'trading' : 'general');
     final title = message.notification?.title ??
         data['title']?.toString() ??
-        'Notification';
+        'Push Message';
     final body =
         message.notification?.body ?? data['body']?.toString() ?? '';
     final timestamp = _parseTimestamp(data['updateTime']?.toString()) ??
@@ -111,7 +111,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
     if (args == null) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Notification'),
+          title: const Text('Push Message'),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pushNamedAndRemoveUntil(
@@ -127,7 +127,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notification Detail'),
+        title: const Text('Push Message Detail'),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),

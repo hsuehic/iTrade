@@ -19,8 +19,9 @@ class Preference {
   static const String keyApiBaseUrl = 'api_base_url';
   static const String keyPushReadIds = 'push_read_ids';
   static const String keyPushUnreadCount = 'push_unread_count';
+  static const String keyPushHistoryMessages = 'push_history_messages';
   static const String keyPushInboxMessages = 'push_inbox_messages';
-  static const int pushInboxMax = 100;
+  static const int pushHistoryMax = 100;
 
   static SharedPreferences? _prefs;
   static final Logger _logger = Logger();
@@ -209,39 +210,48 @@ class Preference {
     await setValue<int>(keyPushUnreadCount, normalized);
   }
 
-  static Future<List<Map<String, dynamic>>> getPushInboxMessages() async {
-    final raw = await getValue<String>(keyPushInboxMessages);
-    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+  static Future<List<Map<String, dynamic>>> getPushHistoryMessages() async {
+    final raw = await getValue<String>(keyPushHistoryMessages);
+    final legacyRaw = raw == null || raw.isEmpty
+        ? await getValue<String>(keyPushInboxMessages)
+        : null;
+    final source = raw == null || raw.isEmpty ? legacyRaw : raw;
+    if (source == null || source.isEmpty) return <Map<String, dynamic>>[];
     try {
-      final decoded = jsonDecode(raw);
+      final decoded = jsonDecode(source);
       if (decoded is! List) return <Map<String, dynamic>>[];
-      return decoded
+      final messages = decoded
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
+      if (legacyRaw != null && legacyRaw.isNotEmpty) {
+        await setPushHistoryMessages(messages);
+        await remove(keyPushInboxMessages);
+      }
+      return messages;
     } catch (_) {
       return <Map<String, dynamic>>[];
     }
   }
 
-  static Future<void> setPushInboxMessages(
+  static Future<void> setPushHistoryMessages(
     List<Map<String, dynamic>> messages,
   ) async {
-    final trimmed = messages.take(pushInboxMax).toList();
-    await setValue<String>(keyPushInboxMessages, jsonEncode(trimmed));
+    final trimmed = messages.take(pushHistoryMax).toList();
+    await setValue<String>(keyPushHistoryMessages, jsonEncode(trimmed));
   }
 
-  static Future<void> addPushInboxMessage(Map<String, dynamic> message) async {
+  static Future<void> addPushHistoryMessage(Map<String, dynamic> message) async {
     final id = message['id']?.toString();
     if (id == null || id.isEmpty) return;
-    final existing = await getPushInboxMessages();
+    final existing = await getPushHistoryMessages();
     existing.removeWhere((item) => item['id']?.toString() == id);
     existing.insert(0, message);
-    await setPushInboxMessages(existing);
+    await setPushHistoryMessages(existing);
   }
 
-  static Future<void> clearPushInboxMessages() async {
-    await remove(keyPushInboxMessages);
+  static Future<void> clearPushHistoryMessages() async {
+    await remove(keyPushHistoryMessages);
   }
 
   static String pushLastReportedTokenKey(String platform, String provider) {

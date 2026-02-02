@@ -140,7 +140,7 @@ class _PushNotificationHistoryScreenState
       _items.clear();
     });
     try {
-      final stored = await Preference.getPushInboxMessages();
+      final stored = await Preference.getPushHistoryMessages();
       final List<PushNotificationHistoryItem> items = stored
           .map((item) => PushNotificationHistoryItem.fromJson(item))
           .toList();
@@ -201,7 +201,7 @@ class _PushNotificationHistoryScreenState
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Notification History'),
+            const Text('Push History'),
             const SizedBox(width: 8),
             if (_unreadCount > 0) _buildCountBadge(_unreadCount, theme),
           ],
@@ -243,7 +243,7 @@ class _PushNotificationHistoryScreenState
                             children: [
                               Icon(Icons.notifications_none, size: 48),
                               SizedBox(height: 12),
-                              Center(child: Text('No notifications yet.')),
+                              Center(child: Text('No push messages yet.')),
                             ],
                           ),
                         );
@@ -398,10 +398,10 @@ Widget _buildStatsList(
       ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(
-          Icons.all_inbox_outlined,
+          Icons.history,
           color: theme.colorScheme.primary,
         ),
-        title: const Text('Total notifications'),
+        title: const Text('Total push messages'),
         trailing: Text(
           total.toString(),
           style: theme.textTheme.titleLarge?.copyWith(
@@ -416,7 +416,7 @@ Widget _buildStatsList(
           Icons.mark_email_unread_outlined,
           color: theme.colorScheme.primary,
         ),
-        title: const Text('Unread notifications'),
+        title: const Text('Unread push messages'),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

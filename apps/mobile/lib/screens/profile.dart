@@ -395,8 +395,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.history,
-              title: 'Notification History',
-              subtitle: 'View recent push notifications',
+              title: 'Push History',
+              subtitle: 'View recent push messages',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
