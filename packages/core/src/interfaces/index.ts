@@ -212,7 +212,7 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
    *
    * @param initialData - The loaded initial data containing klines, positions, orders, etc.
    */
-  processInitialData(initialData: InitialDataResult): void;
+  processInitialData(initialData: InitialDataResult): Promise<StrategyAnalyzeResult>;
 
   cleanup?(): Promise<void>;
 }

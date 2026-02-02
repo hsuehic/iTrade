@@ -7,6 +7,9 @@ import {
   DataUpdate,
   StrategyParameters,
   SignalType,
+  InitialDataResult,
+  StrategyAnalyzeResult,
+  KlineInterval,
 } from '@itrade/core';
 import { StrategyRegistryConfig } from '../type';
 
@@ -124,6 +127,26 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
   constructor(config: MovingAverageConfig) {
     super(config);
+  }
+
+  public override async processInitialData(
+    initialData: InitialDataResult,
+  ): Promise<StrategyAnalyzeResult> {
+    if (initialData.klines) {
+      // Find the interval we are interested in (using the first one available)
+      const intervals = Object.keys(initialData.klines);
+      if (intervals.length > 0) {
+        const klines = initialData.klines[intervals[0] as KlineInterval];
+        if (klines && klines.length > 0) {
+          // Clear history and populate with initial data
+          this.priceHistory = klines.map((k) => k.close);
+          this._logger.info(
+            `📈 [MovingAverageStrategy] Populated price history with ${this.priceHistory.length} klines`,
+          );
+        }
+      }
+    }
+    return { action: 'hold' };
   }
 
   public async analyze({ ticker, klines }: DataUpdate): Promise<StrategyResult> {

@@ -9,6 +9,7 @@ import {
   Order,
   Position,
   InitialDataResult,
+  StrategyAnalyzeResult,
   StrategyParameters,
   DataUpdate,
   TradeMode,
@@ -321,7 +322,9 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    * Process initial data loaded by TradingEngine
    * Overrides BaseStrategy.processInitialData to populate strategy buffers with historical data
    */
-  public override processInitialData(initialData: InitialDataResult): void {
+  public override async processInitialData(
+    initialData: InitialDataResult,
+  ): Promise<StrategyAnalyzeResult> {
     this._logger.info(
       `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
     );
@@ -375,6 +378,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     }
 
     this._logger.info(`✅ [${this.strategyType}] Initial data processed successfully`);
+    return { action: 'hold' };
   }
 
   /**

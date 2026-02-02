@@ -28,12 +28,11 @@ function createStrategyConfig(
     type: 'SingleLadderLifoTPStrategy',
     parameters: {
       basePrice: 100,
-      dropPercent: 2, // 2%
-      risePercent: 2, // 2%
+      stepPercent: 2, // 2%
       takeProfitPercent: 1, // 1%
       orderAmount: 100,
-      minPositionAmount: -500, // Allow shorts
-      maxPositionAmount: 500,
+      minSize: -500, // Allow shorts
+      maxSize: 500,
       maxRepeatsPerLevel: 3, // Default to 3 repeats per level
       preferredDirection: 'auto',
       leverage: 10,
@@ -151,7 +150,7 @@ function findCancelSignal(result: StrategyAnalyzeResult): StrategyResult | undef
 
 describe('SingleLadderLifoTPStrategy', () => {
   describe('Initialization', () => {
-    it('should initialize with default parameters', () => {
+    it('should initialize with default parameters', async () => {
       const config = createStrategyConfig();
       const strategy = new SingleLadderLifoTPStrategy(config);
 
@@ -159,23 +158,23 @@ describe('SingleLadderLifoTPStrategy', () => {
       expect(strategy.getStrategyId()).toBe(1);
     });
 
-    it('should validate position limits', () => {
+    it('should validate position limits', async () => {
       expect(() => {
         new SingleLadderLifoTPStrategy(
           createStrategyConfig({
-            minPositionAmount: 500,
-            maxPositionAmount: 100,
+            minSize: 500,
+            maxSize: 100,
           }),
         );
       }).toThrow(/Invalid position limits/);
     });
 
-    it('should detect position mode correctly', () => {
+    it('should detect position mode correctly', async () => {
       // BI_DIRECTIONAL mode
       const biDirectional = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
         }),
       );
       const state1 = biDirectional.getStrategyState();
@@ -184,8 +183,8 @@ describe('SingleLadderLifoTPStrategy', () => {
       // LONG_ONLY_WITH_BASE mode
       const longWithBase = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
-          minPositionAmount: 100, // Base position
-          maxPositionAmount: 500,
+          minSize: 100, // Base position
+          maxSize: 500,
         }),
       );
       const state2 = longWithBase.getStrategyState();
@@ -194,8 +193,8 @@ describe('SingleLadderLifoTPStrategy', () => {
       // SHORT_ONLY_WITH_BASE mode
       const shortWithBase = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
-          minPositionAmount: -500,
-          maxPositionAmount: -100, // Base position
+          minSize: -500,
+          maxSize: -100, // Base position
         }),
       );
       const state3 = shortWithBase.getStrategyState();
@@ -204,8 +203,8 @@ describe('SingleLadderLifoTPStrategy', () => {
       // LONG_ONLY mode
       const longOnly = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
-          minPositionAmount: 0,
-          maxPositionAmount: 500,
+          minSize: 0,
+          maxSize: 500,
         }),
       );
       const state4 = longOnly.getStrategyState();
@@ -216,20 +215,20 @@ describe('SingleLadderLifoTPStrategy', () => {
   describe('Order-Status-Only Entry Signal Generation', () => {
     let strategy: SingleLadderLifoTPStrategy;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2, // 2%
-          risePercent: 2, // 2%
+          stepPercent: 2, // 2%
+          stepPercent: 2, // 2%
           orderAmount: 100,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'long', // Default to long for bi-directional
         }),
       );
       // Process initial data to enable entry generation
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -246,7 +245,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       if (result.action === 'buy') {
         expect(result.quantity?.toNumber()).toBe(100);
         expect(result.clientOrderId).toMatch(/^E/); // Entry order prefix
-        // Entry price should be at referencePrice * (1 - dropPercent) = 100 * 0.98 = 98
+        // Entry price should be at referencePrice * (1 - stepPercent) = 100 * 0.98 = 98
         expect(result.price?.toNumber()).toBe(98);
       }
     });
@@ -255,11 +254,11 @@ describe('SingleLadderLifoTPStrategy', () => {
       const shortStrategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           orderAmount: 100,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'short',
         }),
       );
@@ -274,7 +273,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       expect(result.action).toBe('sell');
       if (result.action === 'sell') {
         expect(result.quantity?.toNumber()).toBe(100);
-        // Entry price should be at referencePrice * (1 + risePercent) = 100 * 1.02 = 102
+        // Entry price should be at referencePrice * (1 + stepPercent) = 100 * 1.02 = 102
         expect(result.price?.toNumber()).toBe(102);
       }
     });
@@ -283,11 +282,11 @@ describe('SingleLadderLifoTPStrategy', () => {
       const longOnlyStrategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           orderAmount: 100,
-          minPositionAmount: 0, // Can't go negative
-          maxPositionAmount: 500,
+          minSize: 0, // Can't go negative
+          maxSize: 500,
           preferredDirection: 'auto', // Should auto-detect long-only
         }),
       );
@@ -306,7 +305,7 @@ describe('SingleLadderLifoTPStrategy', () => {
 
     it('should respect position limits for LONG entry', async () => {
       // Set position near max
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         positions: [createPosition(450, 'long')], // 450 of 500 max
@@ -322,7 +321,7 @@ describe('SingleLadderLifoTPStrategy', () => {
 
     it('should respect position limits for SHORT entry', async () => {
       // Set position near min
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         positions: [createPosition(450, 'short')], // -450 of -500 min
@@ -338,20 +337,20 @@ describe('SingleLadderLifoTPStrategy', () => {
   });
 
   describe('Position Mode - Base Position', () => {
-    it('should not allow selling below base position (minPositionAmount > 0)', async () => {
+    it('should not allow selling below base position (minSize > 0)', async () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           orderAmount: 100,
-          minPositionAmount: 200, // Base position of 200
-          maxPositionAmount: 500,
+          minSize: 200, // Base position of 200
+          maxSize: 500,
         }),
       );
 
       // Start with base position
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         positions: [createPosition(200, 'long')],
@@ -370,16 +369,16 @@ describe('SingleLadderLifoTPStrategy', () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           orderAmount: 100,
-          minPositionAmount: 200, // Base position
-          maxPositionAmount: 500,
+          minSize: 200, // Base position
+          maxSize: 500,
         }),
       );
 
       // Start with base position
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         positions: [createPosition(200, 'long')],
@@ -395,20 +394,20 @@ describe('SingleLadderLifoTPStrategy', () => {
   describe('Take Profit Generation', () => {
     let strategy: SingleLadderLifoTPStrategy;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           takeProfitPercent: 1, // 1%
           orderAmount: 100,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -475,12 +474,12 @@ describe('SingleLadderLifoTPStrategy', () => {
       const shortStrategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           takeProfitPercent: 1,
           orderAmount: 100,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'short',
         }),
       );
@@ -547,20 +546,20 @@ describe('SingleLadderLifoTPStrategy', () => {
   describe('LIFO Take Profit Behavior', () => {
     let strategy: SingleLadderLifoTPStrategy;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           takeProfitPercent: 1,
           orderAmount: 100,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -632,20 +631,20 @@ describe('SingleLadderLifoTPStrategy', () => {
   describe('Order State Management', () => {
     let strategy: SingleLadderLifoTPStrategy;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           takeProfitPercent: 1,
           orderAmount: 100,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -719,11 +718,11 @@ describe('SingleLadderLifoTPStrategy', () => {
   });
 
   describe('getStrategyState', () => {
-    it('should return complete strategy state', () => {
+    it('should return complete strategy state', async () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
         }),
       );
 
@@ -731,62 +730,62 @@ describe('SingleLadderLifoTPStrategy', () => {
 
       expect(state).toHaveProperty('strategyId');
       expect(state).toHaveProperty('strategyType');
-      expect(state).toHaveProperty('positionAmount');
+      expect(state).toHaveProperty('size');
       expect(state).toHaveProperty('referencePrice');
       expect(state).toHaveProperty('lastFilled');
       expect(state).toHaveProperty('lastFilledDirection');
       expect(state).toHaveProperty('preferredDirection');
       expect(state).toHaveProperty('openEntryOrder');
       expect(state).toHaveProperty('openTpOrder');
-      expect(state).toHaveProperty('positionLimits');
+      expect(state).toHaveProperty('sizeLimits');
       expect(state).toHaveProperty('canAddLong');
       expect(state).toHaveProperty('canAddShort');
       expect(state).toHaveProperty('mode');
       expect(state).toHaveProperty('longEntryPrice');
       expect(state).toHaveProperty('shortEntryPrice');
 
-      expect(state.positionLimits.min).toBe(-500);
-      expect(state.positionLimits.max).toBe(500);
+      expect(state.sizeLimits.min).toBe(-500);
+      expect(state.sizeLimits.max).toBe(500);
     });
   });
 
   describe('processInitialData', () => {
-    it('should load positions correctly', () => {
+    it('should load positions correctly', async () => {
       const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
 
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         positions: [createPosition(200, 'long')],
       });
 
       const state = strategy.getStrategyState();
-      expect(state.positionAmount).toBe(200);
+      expect(state.size).toBe(200);
       expect(state.lastFilledDirection).toBe('LONG'); // Inferred from position
     });
 
-    it('should load short positions correctly', () => {
+    it('should load short positions correctly', async () => {
       const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
 
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         positions: [createPosition(200, 'short')],
       });
 
       const state = strategy.getStrategyState();
-      expect(state.positionAmount).toBe(-200);
+      expect(state.size).toBe(-200);
       expect(state.lastFilledDirection).toBe('SHORT'); // Inferred from position
     });
 
-    it('should NOT update reference price from ticker (ORDER-STATUS-ONLY)', () => {
+    it('should NOT update reference price from ticker (ORDER-STATUS-ONLY)', async () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
         }),
       );
 
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         ticker: createTicker(105), // Ticker price is 105
@@ -807,7 +806,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -858,7 +857,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -931,7 +930,7 @@ describe('SingleLadderLifoTPStrategy', () => {
 
       // After 2 entries, reference price should have stepped on TP fills
       const state = strategy.getStrategyState();
-      // Reference should have stepped by dropPercent on TP fills
+      // Reference should have stepped by stepPercent on TP fills
       // and currentLevelRepeats should be reset to 0
       expect(state.currentLevelRepeats).toBe(0);
     });
@@ -944,7 +943,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -1015,15 +1014,15 @@ describe('SingleLadderLifoTPStrategy', () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
+          stepPercent: 2,
+          stepPercent: 2,
           maxRepeatsPerLevel: 10, // High limit
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'long',
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });
@@ -1124,7 +1123,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       const nextEntrySignal = findSignalByPrefix(postCancelResult, 'E');
       expect(nextEntrySignal?.action).toBe('buy');
 
-      // Reference price should have stepped by dropPercent after TP fill
+      // Reference price should have stepped by stepPercent after TP fill
       const state = strategy.getStrategyState();
       expect(state.referencePrice).toBeCloseTo(99.96, 8);
     });
@@ -1135,14 +1134,14 @@ describe('SingleLadderLifoTPStrategy', () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({
           basePrice: 100,
-          dropPercent: 2,
-          risePercent: 2,
-          minPositionAmount: -500,
-          maxPositionAmount: 500,
+          stepPercent: 2,
+          stepPercent: 2,
+          minSize: -500,
+          maxSize: 500,
           preferredDirection: 'long', // Start with long
         }),
       );
-      strategy.processInitialData({
+      await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
       });

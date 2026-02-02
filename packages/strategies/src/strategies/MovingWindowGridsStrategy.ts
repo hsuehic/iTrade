@@ -12,6 +12,7 @@ import {
   SignalMetaData,
   StrategyRecoveryContext,
   StrategyStateSnapshot,
+  StrategyAnalyzeResult,
   InitialDataResult,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
@@ -182,7 +183,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
    * ⚠️ IMPORTANT: This method should NOT generate signals for historical klines
    * It only loads positions and orders to understand current state
    */
-  public override processInitialData(initialData: InitialDataResult): void {
+  public override async processInitialData(
+    initialData: InitialDataResult,
+  ): Promise<StrategyAnalyzeResult> {
     if (this.recoveryContext?.recovered) {
       this._logger.info(`🔄 Applying recovered state for initial setup`);
     }
@@ -239,6 +242,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this._logger.info(
       `✅ Initial data loaded. Strategy ready for real-time analysis. Current size: ${this.size}/${this.maxSize}`,
     );
+    return { action: 'hold' };
   }
 
   /**

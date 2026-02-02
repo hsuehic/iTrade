@@ -386,7 +386,7 @@ class MockStrategy implements IStrategy {
     return { action: 'hold' };
   }
 
-  processInitialData = vi.fn();
+  processInitialData = vi.fn().mockResolvedValue({ action: 'hold' });
   onOrderCreated = vi.fn();
   onOrderFilled = vi.fn();
   getState = vi.fn().mockResolvedValue({});

@@ -307,7 +307,9 @@ export abstract class BaseStrategy<
    *
    * @param initialData - The loaded initial data containing klines, positions, orders, etc.
    */
-  public processInitialData(initialData: InitialDataResult): void {
+  public async processInitialData(
+    initialData: InitialDataResult,
+  ): Promise<StrategyAnalyzeResult> {
     // Default implementation: log and do nothing
     this._logger.debug(
       `[${this.strategyType}] processInitialData called, method not overridden in derived class:`,
@@ -315,6 +317,7 @@ export abstract class BaseStrategy<
     this._logger.debug(JSON.stringify(initialData, null, 2));
     // Derived classes should override this to process initial data
     // Example: Load klines into buffers, set initial positions, etc.
+    return { action: 'hold' };
   }
 
   /**

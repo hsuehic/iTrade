@@ -1294,7 +1294,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Store the loaded data in strategy's context for reference
       context.loadedInitialData = loadedData;
 
-      strategy.processInitialData(loadedData);
+      const initialSignals = await strategy.processInitialData(loadedData);
+      if (initialSignals) {
+        await this.processStrategyResults(name, context.symbol, initialSignals, 'initial_data');
+      }
 
       // Mark as loaded to prevent duplicate loading
       this._strategiesWithLoadedInitialData.add(name);

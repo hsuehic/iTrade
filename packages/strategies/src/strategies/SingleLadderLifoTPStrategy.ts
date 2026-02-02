@@ -46,22 +46,16 @@ type _EntryDirection = 'long' | 'short';
 export interface SingleLadderLifoTPParameters extends StrategyParameters {
   /** Base price for ladder calculation */
   basePrice: number;
-  /** Drop percent for long entry (e.g., 0.02 = 2%) */
-  dropPercent: number;
-  /** Rise percent for short entry (e.g., 0.02 = 2%) */
-  risePercent: number;
+  /** Step percent for ladder (e.g., 0.02 = 2%) */
+  stepPercent: number;
   /** Take profit percent (e.g., 0.01 = 1%) */
   takeProfitPercent: number;
-  /** Order amount per entry */
+  /** Order amount per entry (base size) */
   orderAmount: number;
-  /** Minimum position amount (can be > 0 for base position) */
-  minPositionAmount: number;
-  /** Maximum position amount */
-  maxPositionAmount: number;
-  /** Maximum repeat entries at the same reference price level (0 = unlimited) */
-  maxRepeatsPerLevel: number;
-  /** Preferred direction for bi-directional mode ('long', 'short', or 'auto') */
-  preferredDirection?: 'long' | 'short' | 'auto';
+  /** Minimum internal net size */
+  minSize: number;
+  /** Maximum internal net size */
+  maxSize: number;
   /** Leverage for futures trading */
   leverage?: number;
 }
@@ -77,14 +71,11 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
     category: 'volatility',
     defaultParameters: {
       basePrice: 100,
-      dropPercent: 0.02,
-      risePercent: 0.02,
-      takeProfitPercent: 0.01,
+      stepPercent: 2,
+      takeProfitPercent: 1,
       orderAmount: 100,
-      minPositionAmount: 0,
-      maxPositionAmount: 1000,
-      maxRepeatsPerLevel: 3,
-      preferredDirection: 'auto',
+      minSize: 0,
+      maxSize: 1000,
       leverage: 10,
     },
     parameterDefinitions: [
@@ -100,10 +91,10 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         order: 1,
       },
       {
-        name: 'dropPercent',
+        name: 'stepPercent',
         type: 'number',
         description:
-          'Drop percent for long entry (e.g., 2 = entry at referencePrice * 0.98)',
+          'Step percent for ladder entries (e.g., 2 = 2% from referencePrice)',
         defaultValue: 2,
         required: true,
         min: 0.1,
@@ -113,85 +104,50 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         unit: '%',
       },
       {
-        name: 'risePercent',
-        type: 'number',
-        description:
-          'Rise percent for short entry (e.g., 2 = entry at referencePrice * 1.02)',
-        defaultValue: 2,
-        required: true,
-        min: 0.1,
-        max: 50,
-        group: 'Ladder',
-        order: 3,
-        unit: '%',
-      },
-      {
         name: 'takeProfitPercent',
         type: 'number',
-        description: 'Take profit percent from entry price (e.g., 1 = 1% profit)',
+        description: 'Take profit percent from entry price (e.g., 1 = 1% profit). Must be >= stepPercent / 2.',
         defaultValue: 1,
         required: true,
-        min: 0.1,
+        min: 0.01,
         max: 50,
         group: 'Take Profit',
-        order: 4,
+        order: 3,
         unit: '%',
       },
       {
         name: 'orderAmount',
         type: 'number',
-        description: 'Amount per order entry',
+        description: 'Internal net size per order entry (baseSize)',
         defaultValue: 100,
         required: true,
         min: 0.001,
         max: 500000,
         group: 'Risk Management',
-        order: 5,
+        order: 4,
       },
       {
-        name: 'minPositionAmount',
+        name: 'minSize',
         type: 'number',
         description:
-          'Minimum position amount (> 0 for long base position, < 0 allows short)',
+          'Minimum internal net size (> 0 for long base position, < 0 allows short)',
         defaultValue: 0,
         required: true,
         min: -500000,
         max: 500000,
         group: 'Risk Management',
-        order: 6,
+        order: 5,
       },
       {
-        name: 'maxPositionAmount',
+        name: 'maxSize',
         type: 'number',
-        description: 'Maximum position amount',
+        description: 'Maximum internal net size',
         defaultValue: 1000,
         required: true,
         min: -500000,
         max: 500000,
         group: 'Risk Management',
-        order: 7,
-      },
-      {
-        name: 'maxRepeatsPerLevel',
-        type: 'number',
-        description:
-          'Maximum repeat entries at the same reference price level (0 = unlimited). After reaching this limit, reference price updates to fill price.',
-        defaultValue: 3,
-        required: true,
-        min: 0,
-        max: 100,
-        group: 'Ladder',
-        order: 8,
-      },
-      {
-        name: 'preferredDirection',
-        type: 'string',
-        description:
-          'Preferred entry direction for bi-directional mode. Values: "auto", "long", "short". Auto: determined by position limits and last fill.',
-        defaultValue: 'auto',
-        required: false,
-        group: 'Ladder',
-        order: 9,
+        order: 6,
       },
       {
         name: 'leverage',
@@ -202,7 +158,7 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         min: 1,
         max: 125,
         group: 'Risk Management',
-        order: 10,
+        order: 7,
       },
     ],
 
@@ -310,25 +266,20 @@ interface FilledEntry {
  * - Updated on TP fill based on ladder step
  */
 export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPParameters> {
-  // Strategy parameters
+// Strategy parameters
   private basePrice: number;
-  private dropPercent: number;
-  private risePercent: number;
+  private stepPercent: number;
   private takeProfitPercent: number;
   private orderAmount: number;
-  private minPositionAmount: number;
-  private maxPositionAmount: number;
-  private maxRepeatsPerLevel: number;
-  private preferredDirection: 'long' | 'short' | 'auto';
+  private minSize: number;
+  private maxSize: number;
   private leverage: number;
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
   // Strategy state
-  private positionAmount: number = 0;
+  private tradedSize: number = 0; // Internal net size tracked from strategy orders
   private filledEntries: FilledEntry[] = [];
-  private lastFilledDirection: EntrySide | null = null; // Track direction even after TP
   private referencePrice: number;
-  private currentLevelRepeats: number = 0; // Track entries at current reference price
   private initialDataProcessed: boolean = false; // Flag to trigger initial entry
 
   // Order tracking
@@ -339,9 +290,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private initialEntrySignalGenerated: boolean = false; // Track if initial entry was generated
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
-
-  // Position from exchange
-  private position: Position | null = null;
 
   // Last ticker for price reference (optional, for monitoring only)
   private lastTicker: Ticker | null = null;
@@ -355,42 +303,40 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     // Initialize parameters
     this.basePrice = parameters.basePrice;
     // Convert percent to decimal (e.g., 2 -> 0.02)
-    this.dropPercent = parameters.dropPercent / 100;
-    this.risePercent = parameters.risePercent / 100;
+    this.stepPercent = parameters.stepPercent / 100;
     this.takeProfitPercent = parameters.takeProfitPercent / 100;
     this.orderAmount = parameters.orderAmount;
-    this.minPositionAmount = parameters.minPositionAmount;
-    this.maxPositionAmount = parameters.maxPositionAmount;
-    this.maxRepeatsPerLevel = parameters.maxRepeatsPerLevel ?? 0;
-    this.preferredDirection = parameters.preferredDirection ?? 'auto';
+    this.minSize = parameters.minSize;
+    this.maxSize = parameters.maxSize;
     this.leverage = parameters.leverage ?? 10;
+
+    // Requirement 4: add check that take profit percent should be minimum step percentage/2.
+    if (this.takeProfitPercent < this.stepPercent / 2) {
+      throw new Error(
+        `Invalid Take Profit: takeProfitPercent (${this.takeProfitPercent * 100}%) must be >= stepPercent/2 (${(this.stepPercent / 2) * 100}%)`,
+      );
+    }
 
     // Initialize reference price from base price
     this.referencePrice = this.basePrice;
-    this.currentLevelRepeats = 0;
 
-    // Validate position limits
-    if (this.minPositionAmount > this.maxPositionAmount) {
+    // Validate size limits
+    if (this.minSize > this.maxSize) {
       throw new Error(
-        `Invalid position limits: minPositionAmount (${this.minPositionAmount}) > maxPositionAmount (${this.maxPositionAmount})`,
+        `Invalid size limits: minSize (${this.minSize}) > maxSize (${this.maxSize})`,
       );
     }
 
     this._logger.info(
-      `🪜 [SingleLadderLifoTP] Strategy initialized (ORDER-STATUS-ONLY):`,
+      `🪜 [SingleLadderLifoTP] Strategy refactored (ORDER-STATUS-ONLY):`,
     );
     this._logger.info(`   Base Price: ${this.basePrice}`);
-    this._logger.info(`   Drop %: ${this.dropPercent * 100}%`);
-    this._logger.info(`   Rise %: ${this.risePercent * 100}%`);
+    this._logger.info(`   Step %: ${this.stepPercent * 100}%`);
     this._logger.info(`   Take Profit %: ${this.takeProfitPercent * 100}%`);
-    this._logger.info(`   Order Amount: ${this.orderAmount}`);
+    this._logger.info(`   Base Size (orderAmount): ${this.orderAmount}`);
     this._logger.info(
-      `   Position Limits: [${this.minPositionAmount}, ${this.maxPositionAmount}]`,
+      `   Size Limits: [${this.minSize}, ${this.maxSize}]`,
     );
-    this._logger.info(
-      `   Max Repeats Per Level: ${this.maxRepeatsPerLevel === 0 ? 'unlimited' : this.maxRepeatsPerLevel}`,
-    );
-    this._logger.info(`   Preferred Direction: ${this.preferredDirection}`);
     this._logger.info(`   Mode: ${this.getPositionMode()}`);
   }
 
@@ -398,19 +344,19 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * Determine position mode based on limits
    */
   private getPositionMode(): string {
-    if (this.minPositionAmount > 0 && this.maxPositionAmount > 0) {
+    if (this.minSize > 0 && this.maxSize > 0) {
       return 'LONG_ONLY_WITH_BASE';
     }
-    if (this.minPositionAmount < 0 && this.maxPositionAmount < 0) {
+    if (this.minSize < 0 && this.maxSize < 0) {
       return 'SHORT_ONLY_WITH_BASE';
     }
-    if (this.minPositionAmount < 0 && this.maxPositionAmount > 0) {
+    if (this.minSize < 0 && this.maxSize > 0) {
       return 'BI_DIRECTIONAL';
     }
-    if (this.minPositionAmount === this.maxPositionAmount) {
+    if (this.minSize === this.maxSize) {
       return 'FIXED_POSITION';
     }
-    if (this.minPositionAmount >= 0 && this.maxPositionAmount > 0) {
+    if (this.minSize >= 0 && this.maxSize > 0) {
       return 'LONG_ONLY';
     }
     return 'UNKNOWN';
@@ -420,49 +366,33 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * Check if we can add long position
    */
   private canAddLong(): boolean {
-    return this.positionAmount + this.orderAmount <= this.maxPositionAmount;
+    return this.tradedSize + this.orderAmount <= this.maxSize;
   }
 
   /**
    * Check if we can add short position
    */
   private canAddShort(): boolean {
-    return this.positionAmount - this.orderAmount >= this.minPositionAmount;
+    return this.tradedSize - this.orderAmount >= this.minSize;
   }
 
   /**
    * Process initial data loaded by TradingEngine
    */
-  public override processInitialData(initialData: InitialDataResult): void {
+  public override async processInitialData(
+    initialData: InitialDataResult,
+  ): Promise<StrategyAnalyzeResult> {
     this._logger.info(`📊 [SingleLadderLifoTP] Processing initial data...`);
     if (this.recoveryContext?.recovered) {
       this._logger.info(`   🔄 Applying recovered state for initial setup`);
     }
 
-    // Load current positions
-    if (initialData.positions && initialData.positions.length > 0) {
-      const position = initialData.positions.find(
-        (p) => p.symbol === this._context.symbol,
-      );
-      if (position) {
-        this.position = position;
-        // Determine position amount based on side
-        this.positionAmount =
-          position.side === 'long'
-            ? position.quantity.toNumber()
-            : -position.quantity.abs().toNumber();
-        this._logger.info(
-          `  💼 Loaded position: ${this.positionAmount} @ ${position.avgPrice?.toString() || 'N/A'}`,
-        );
-
-        // Infer last direction from position
-        if (this.positionAmount > 0) {
-          this.lastFilledDirection = 'LONG';
-        } else if (this.positionAmount < 0) {
-          this.lastFilledDirection = 'SHORT';
-        }
-      }
-    }
+    // Requirement 1: remove position size check. Just use net size of strategy orders.
+    // We do NOT sync this.tradedSize with exchange positions here.
+    // However, for recovery, we might need to know if we are in sync.
+    this._logger.info(
+      `   (Self-tracking tradedSize, ignoring exchange positions per requirement)`,
+    );
 
     // Load open orders and reconstruct state
     if (initialData.openOrders && initialData.openOrders.length > 0) {
@@ -478,9 +408,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
               // Entry order
               if (!this.openEntryOrder) {
                 this.openEntryOrder = order;
-                this._logger.info(
-                  `    ✅ Identified entry order: ${order.clientOrderId}`,
-                );
+                this._logger.info(`    ✅ Identified entry order: ${order.clientOrderId}`);
               }
             } else if (order.clientOrderId.startsWith('T')) {
               // Take profit order
@@ -494,27 +422,25 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       });
     }
 
-    // Load ticker for monitoring (optional)
-    if (initialData.ticker) {
-      this.lastTicker = initialData.ticker;
-      this._logger.info(`  📈 Current price: ${initialData.ticker.price.toString()}`);
-    }
-
-    // Mark initial data as processed - this will trigger initial entry on next analyze()
     this.initialDataProcessed = true;
 
-    this._logger.info(
-      `✅ [SingleLadderLifoTP] Initial data processed. Position: ${this.positionAmount}, Entry Order: ${!!this.openEntryOrder}, TP Order: ${!!this.openTpOrder}`,
-    );
-    this._logger.info(
-      `   Reference Price: ${this.referencePrice}, Direction: ${this.lastFilledDirection || 'none'}`,
-    );
+    // Generate INITIAL entry signals IMMEDIATELY after initialization if no open orders
+    if (!this.initialEntrySignalGenerated && !this.openEntryOrder && !this.openTpOrder) {
+      this.initialEntrySignalGenerated = true;
+      const signals = this.updateLadderOrders();
+      this._logger.info(
+        `🚀 [SingleLadderLifoTP] Generated ${signals.length} initial signals`,
+      );
+      return signals;
+    }
+
+    return { action: 'hold' };
   }
 
   /**
-   * Generate entry signal (LONG)
+   * Generate entry signal (LONG) at specific price
    */
-  private generateLongEntrySignal(price: Decimal): StrategyResult {
+  private generateLongEntrySignal(price: Decimal): StrategyOrderResult {
     const clientOrderId = this.generateClientOrderId(SignalType.Entry);
     const metadata: SignalMetaData = {
       signalType: SignalType.Entry,
@@ -525,10 +451,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.orderMetadataMap.set(clientOrderId, metadata);
     this.pendingEntryClientOrderId = clientOrderId;
 
-    this._logger.info(`🟢 [LONG Entry Signal] clientOrderId: ${clientOrderId}`);
-    this._logger.info(
-      `   Price: ${price.toString()}, Amount: ${this.orderAmount}, Ref: ${this.referencePrice}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}`,
-    );
+    this._logger.info(`🟢 [LONG Entry Signal] clientOrderId: ${clientOrderId.substring(0, 8)} @ ${price.toString()}`);
 
     return {
       action: 'buy',
@@ -544,9 +467,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   }
 
   /**
-   * Generate entry signal (SHORT)
+   * Generate entry signal (SHORT) at specific price
    */
-  private generateShortEntrySignal(price: Decimal): StrategyResult {
+  private generateShortEntrySignal(price: Decimal): StrategyOrderResult {
     const clientOrderId = this.generateClientOrderId(SignalType.Entry);
     const metadata: SignalMetaData = {
       signalType: SignalType.Entry,
@@ -557,10 +480,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.orderMetadataMap.set(clientOrderId, metadata);
     this.pendingEntryClientOrderId = clientOrderId;
 
-    this._logger.info(`🔴 [SHORT Entry Signal] clientOrderId: ${clientOrderId}`);
-    this._logger.info(
-      `   Price: ${price.toString()}, Amount: ${this.orderAmount}, Ref: ${this.referencePrice}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}`,
-    );
+    this._logger.info(`🔴 [SHORT Entry Signal] clientOrderId: ${clientOrderId.substring(0, 8)} @ ${price.toString()}`);
 
     return {
       action: 'sell',
@@ -576,44 +496,28 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   }
 
   /**
-   * Generate take-profit signal based on lastFilled entry price
+   * Generate take-profit signal for the top entry in LIFO stack
    */
-  private generateTakeProfitSignal(): StrategyResult | null {
+  private generateTakeProfitSignal(): StrategyOrderResult | null {
     const lastFilled = this.filledEntries[this.filledEntries.length - 1];
-    if (!lastFilled) {
-      this._logger.warn(`⚠️ [TP] Cannot generate TP: No filled entries in stack`);
-      return null;
-    }
+    if (!lastFilled) return null;
 
-    return this.generateTakeProfitSignalForEntry(
-      lastFilled.side,
-      lastFilled.price,
-      lastFilled.amount,
-      lastFilled.clientOrderId,
-    );
-  }
+    const entrySide = lastFilled.side;
+    const entryPrice = lastFilled.price;
+    const amount = lastFilled.amount;
+    const parentOrderId = lastFilled.clientOrderId;
 
-  /**
-   * Generate take-profit signal based on a provided entry definition
-   */
-  private generateTakeProfitSignalForEntry(
-    entrySide: EntrySide,
-    entryPrice: Decimal,
-    amount: Decimal,
-    parentOrderId: string,
-  ): StrategyResult {
     const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
 
-    // Calculate TP price based on entry price
     let tpPrice: Decimal;
     let action: 'buy' | 'sell';
 
     if (entrySide === 'LONG') {
-      // Long entry -> Sell to take profit (price goes UP)
+      // Long entry -> Sell to take profit
       tpPrice = entryPrice.mul(1 + this.takeProfitPercent);
       action = 'sell';
     } else {
-      // Short entry -> Buy to take profit (price goes DOWN)
+      // Short entry -> Buy to take profit
       tpPrice = entryPrice.mul(1 - this.takeProfitPercent);
       action = 'buy';
     }
@@ -631,11 +535,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.orderMetadataMap.set(clientOrderId, metadata);
     this.pendingTpClientOrderId = clientOrderId;
 
-    this._logger.info(`🎯 [TP Signal] clientOrderId: ${clientOrderId}`);
-    this._logger.info(
-      `   Entry Side: ${entrySide}, Entry Price: ${entryPrice.toString()}, TP Price: ${tpPrice.toString()}`,
-    );
-    this._logger.info(`   Amount: ${amount.toString()}, Action: ${action}`);
+    this._logger.info(`🎯 [TP Signal] ${action.toUpperCase()} side=${entrySide} @ ${tpPrice.toString()}`);
 
     return {
       action,
@@ -648,47 +548,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       reason: 'ladder_take_profit',
       metadata,
     };
-  }
-
-  /**
-   * Generate take-profit signal based on a pending entry signal (limit order)
-   */
-  private generateTakeProfitSignalForEntrySignal(
-    entrySignal: StrategyResult,
-  ): StrategyResult | null {
-    if (
-      !this.isOrderSignal(entrySignal) ||
-      !entrySignal.price ||
-      !entrySignal.quantity ||
-      !entrySignal.clientOrderId
-    ) {
-      return null;
-    }
-
-    const entrySide: EntrySide = entrySignal.action === 'buy' ? 'LONG' : 'SHORT';
-    return this.generateTakeProfitSignalForEntry(
-      entrySide,
-      entrySignal.price,
-      entrySignal.quantity,
-      entrySignal.clientOrderId,
-    );
-  }
-
-  /**
-   * Generate take-profit signal based on an existing open entry order
-   */
-  private generateTakeProfitSignalForOpenEntry(order: Order): StrategyResult | null {
-    if (!order.clientOrderId || !order.price) {
-      return null;
-    }
-
-    const entrySide: EntrySide = order.side === OrderSide.BUY ? 'LONG' : 'SHORT';
-    return this.generateTakeProfitSignalForEntry(
-      entrySide,
-      order.price,
-      order.quantity,
-      order.clientOrderId,
-    );
   }
 
   /**
@@ -709,15 +568,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * @returns Single result or array of results (e.g., TP + next entry after fill)
    */
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
-    const { ticker, orders, positions, symbol } = dataUpdate;
+    const { orders, symbol } = dataUpdate;
 
-    // Handle position updates
-    if (positions && positions.length > 0) {
-      this.handlePositionUpdate(positions);
-    }
-
-    // Handle order updates - this can trigger new entry/TP signals
-    // Returns array when entry fills (TP + next entry) or single result otherwise
+    // Handle order updates
     if (orders && orders.length > 0) {
       const signals = this.handleOrderUpdates(orders);
       if (signals.length > 0) {
@@ -725,163 +578,80 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }
     }
 
-    // Update ticker for monitoring (optional)
-    if (ticker && symbol === this._symbol) {
-      this.lastTicker = ticker;
-    }
-
-    // Generate INITIAL entry signal ONCE after initialization
-    // Subsequent entry signals are ONLY generated in response to order status changes:
-    // - handleEntryFilled() → generates TP + next entry (if position allows)
-    // - handleTpFilled() → generates new entry after TP
-    // - handleOrderCancellation() → generates new entry after cancel
-    if (
-      this.initialDataProcessed &&
-      !this.initialEntrySignalGenerated &&
-      !this.openEntryOrder &&
-      !this.openTpOrder
-    ) {
-      const signal = this.checkEntryConditions();
-      if (signal && signal.action !== 'hold') {
-        this.initialEntrySignalGenerated = true;
-        this._logger.info(`📊 Initial entry signal generated`);
-        return signal;
-      }
-    }
-
     return { action: 'hold' };
   }
 
   /**
-   * Determine entry direction based on position limits and preferences
-   *
-   * Priority:
-   * 1. If only one direction is allowed by position limits → use that
-   * 2. If lastFilledDirection is set (from previous entry) → continue same direction (mean reversion)
-   * 3. Use preferredDirection parameter
-   * 4. Default to 'long'
+   * Core logic to maintain maximum 2 orders (Cases 1-4)
+   * This is called on start and after fill/cancel events.
    */
-  private determineEntryDirection(): EntrySide | null {
+  private updateLadderOrders(): StrategyResult[] {
+    const signals: StrategyResult[] = [];
+
+    // Skip if pending orders are still being processed by the engine
+    if (this.pendingEntryClientOrderId || this.pendingTpClientOrderId) {
+      return signals;
+    }
+
+    const hasPosition = this.filledEntries.length > 0;
     const canLong = this.canAddLong();
     const canShort = this.canAddShort();
 
-    // Can't add in either direction
-    if (!canLong && !canShort) {
-      this._logger.debug(`Cannot add position: canLong=${canLong}, canShort=${canShort}`);
-      return null;
+    this._logger.info(`📊 Update Ladder: Size=${this.tradedSize}, Ref=${this.referencePrice.toFixed(4)}, HasPos=${hasPosition}`);
+
+    // If we are calling this, we want to REFRESH the orders.
+    // So we first cancel any existing orders to ensure we stay within the 2-order limit.
+    if (this.openEntryOrder) {
+      signals.push({
+        action: 'cancel',
+        clientOrderId: this.openEntryOrder.clientOrderId,
+        symbol: this._symbol,
+        reason: 'refresh_ladder_entry',
+      });
+      this.openEntryOrder = null;
+    }
+    if (this.openTpOrder) {
+      signals.push({
+        action: 'cancel',
+        clientOrderId: this.openTpOrder.clientOrderId,
+        symbol: this._symbol,
+        reason: 'refresh_ladder_tp',
+      });
+      this.openTpOrder = null;
     }
 
-    // Only one direction possible
-    if (canLong && !canShort) {
-      return 'LONG';
-    }
-    if (canShort && !canLong) {
-      return 'SHORT';
-    }
+    // Now generate exactly up to 2 new orders based on current state
 
-    // Both directions possible - use preferences
-    // Continue same direction as last filled (mean reversion behavior)
-    if (this.lastFilledDirection) {
-      return this.lastFilledDirection;
-    }
-
-    // Use configured preference
-    if (this.preferredDirection === 'long') {
-      return 'LONG';
-    }
-    if (this.preferredDirection === 'short') {
-      return 'SHORT';
+    // 1. Lower Order (Buy Entry if not short, or Buy TP if short)
+    if (this.tradedSize < 0) {
+      // Case 2/4: TP for Short
+      const tpSignal = this.generateTakeProfitSignal();
+      if (tpSignal) signals.push(tpSignal);
+    } else if (canLong) {
+      // Case 1/3: Long Entry
+      const buyPrice = new Decimal(this.referencePrice).mul(1 - this.stepPercent);
+      signals.push(this.generateLongEntrySignal(buyPrice));
     }
 
-    // Default to long (for 'auto' with no history)
-    return 'LONG';
-  }
-
-  /**
-   * Check entry conditions (ORDER-STATUS-ONLY approach)
-   *
-   * Places entry order immediately at calculated price level.
-   * NO ticker price monitoring - just place the limit order and wait.
-   */
-  private checkEntryConditions(): StrategyResult {
-    // Skip if we already have an open entry order
-    if (this.openEntryOrder || this.pendingEntryClientOrderId) {
-      return {
-        action: 'hold',
-        reason: `Entry order pending: ${this.openEntryOrder?.clientOrderId || this.pendingEntryClientOrderId}`,
-      };
-    }
-
-    // Skip if max repeats reached at current level
-    if (
-      this.maxRepeatsPerLevel > 0 &&
-      this.currentLevelRepeats >= this.maxRepeatsPerLevel
-    ) {
-      return {
-        action: 'hold',
-        reason: `Max repeats (${this.maxRepeatsPerLevel}) reached at current level`,
-      };
-    }
-
-    // Determine entry direction
-    const direction = this.determineEntryDirection();
-    if (!direction) {
-      return {
-        action: 'hold',
-        reason: 'Cannot determine entry direction (position limits reached)',
-      };
-    }
-
-    // Calculate entry prices
-    const longEntryPrice = this.referencePrice * (1 - this.dropPercent);
-    const shortEntryPrice = this.referencePrice * (1 + this.risePercent);
-
-    this._logger.info(
-      `📊 Entry Check: Ref=${this.referencePrice}, ` +
-        `Long@${longEntryPrice.toFixed(4)}, Short@${shortEntryPrice.toFixed(4)}, ` +
-        `Position=${this.positionAmount}, Direction=${direction}`,
-    );
-
-    // Generate entry signal based on direction
-    if (direction === 'LONG') {
-      this._logger.info(
-        `🟢 Placing LONG entry order @ ${longEntryPrice.toFixed(4)} (limit order)`,
-      );
-      return this.generateLongEntrySignal(new Decimal(longEntryPrice));
-    } else {
-      this._logger.info(
-        `🔴 Placing SHORT entry order @ ${shortEntryPrice.toFixed(4)} (limit order)`,
-      );
-      return this.generateShortEntrySignal(new Decimal(shortEntryPrice));
-    }
-  }
-
-  /**
-   * Handle position updates
-   */
-  private handlePositionUpdate(positions: Position[]): void {
-    const position = positions.find((p) => p.symbol === this._symbol);
-    if (position) {
-      this.position = position;
-      // Update position amount based on side
-      const newPositionAmount =
-        position.side === 'long'
-          ? position.quantity.toNumber()
-          : -position.quantity.abs().toNumber();
-
-      if (newPositionAmount !== this.positionAmount) {
-        this._logger.info(
-          `💼 Position updated: ${this.positionAmount} -> ${newPositionAmount}`,
-        );
-        this.positionAmount = newPositionAmount;
+    // 2. Upper Order (Sell Entry if not long, or Sell TP if long)
+    if (this.tradedSize > 0) {
+      // Case 2/4: TP for Long
+      const tpSignal = this.generateTakeProfitSignal();
+      if (tpSignal) {
+        // Only if we didn't already add a TP (which shouldn't happen as tradedSize won't be both < 0 and > 0)
+        signals.push(tpSignal);
       }
+    } else if (canShort) {
+      // Case 1/3: Short Entry
+      const sellPrice = new Decimal(this.referencePrice).mul(1 + this.stepPercent);
+      signals.push(this.generateShortEntrySignal(sellPrice));
     }
+
+    // Filter out duplicates (though there shouldn't be any)
+    return signals;
   }
 
-  /**
-   * Handle order updates
-   * @returns Array of signals (can be multiple when entry fills: TP + next entry)
-   */
+
   private handleOrderUpdates(orders: Order[]): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
@@ -924,10 +694,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           order.status === OrderStatus.REJECTED ||
           order.status === OrderStatus.EXPIRED
         ) {
-          const cancelSignal = this.handleOrderCancellation(order, metadata);
-          if (cancelSignal) {
-            signals.push(cancelSignal);
-          }
+          const cancelSignals = this.handleOrderCancellation(order, metadata);
+          signals.push(...cancelSignals);
         }
       }
     }
@@ -998,24 +766,17 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * @returns Array of signals: [TP signal]
    */
   private handleEntryFilled(order: Order): StrategyResult[] {
-    const signals: StrategyResult[] = [];
     const filledAmount = order.executedQuantity || order.quantity;
     const filledPrice = order.averagePrice || order.price!;
-
-    // Determine entry side
     const side: EntrySide = order.side === OrderSide.BUY ? 'LONG' : 'SHORT';
 
-    // Update position amount
-    if (side === 'LONG') {
-      this.positionAmount += filledAmount.toNumber();
-    } else {
-      this.positionAmount -= filledAmount.toNumber();
-    }
+    // Update tradedSize
+    const amount = filledAmount.toNumber();
+    this.tradedSize += (side === 'LONG' ? amount : -amount);
 
-    // Update reference price to the filled entry price (new ladder step)
+    // Update reference price to the filled entry price (simpler than complex step calculation)
     const oldReference = this.referencePrice;
     this.referencePrice = filledPrice.toNumber();
-    this.currentLevelRepeats = 1;
 
     // Record filled entry (LIFO stack)
     this.filledEntries.push({
@@ -1027,102 +788,37 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       referencePriceBefore: oldReference,
     });
 
-    // Track direction for future entries (persists after TP)
-    this.lastFilledDirection = side;
-
-    // Clear open entry order
     this.openEntryOrder = null;
     if (this.pendingEntryClientOrderId === order.clientOrderId) {
       this.pendingEntryClientOrderId = null;
     }
 
-    this._logger.info(
-      `✅ Entry FILLED: ${side} ${filledAmount.toString()} @ ${filledPrice.toString()}`,
-    );
-    this._logger.info(
-      `   Position: ${this.positionAmount}, Repeats: ${this.currentLevelRepeats}/${this.maxRepeatsPerLevel || '∞'}, Ref: ${this.referencePrice}`,
-    );
-    this._logger.info(
-      `   🔄 Reference price updated: ${oldReference} -> ${this.referencePrice}`,
-    );
+    this._logger.info(`✅ Entry FILLED: ${side} ${filledAmount.toString()} @ ${filledPrice.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
+    this._logger.info(`   🔄 Ref: ${oldReference.toFixed(4)} -> ${this.referencePrice.toFixed(4)}`);
 
-    if (this.openTpOrder) {
-      this._logger.info(`   ❌ Cancel existing TP: ${this.openTpOrder.clientOrderId}`);
-      signals.push({
-        action: 'cancel',
-        clientOrderId: this.openTpOrder.clientOrderId,
-        symbol: this._symbol,
-        reason: 'new_entry_filled_replace_tp',
-      });
-      this.openTpOrder = null;
-    }
-
-    // Generate new TP signal for this entry (reference-based)
-    const tpSignal = this.generateTakeProfitSignal();
-    if (tpSignal) {
-      signals.push(tpSignal);
-    }
-
-    // Generate next entry signal after entry fill
-    const nextEntrySignal = this.checkEntryConditions();
-    if (this.isOrderSignal(nextEntrySignal)) {
-      signals.push(nextEntrySignal);
-    }
-
-    return signals;
+    // Maintain 2 orders
+    return this.updateLadderOrders();
   }
 
-  /**
-   * Handle take-profit order filled
-   *
-   * After TP fills:
-   * 1. Update position
-   * 2. Update reference price (allows bi-directional ladder walking)
-   * 3. Clear lastFilled but KEEP lastFilledDirection
-   * 4. If entry order already pending, cancel it (to enforce one open entry)
-   * 5. Only generate new entry if no entry is pending
-   */
   private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult[] {
-    const signals: StrategyResult[] = [];
-
-    if (this.filledEntries.length === 0) {
-      this._logger.warn(`⚠️ TP filled but no filled entries recorded in stack`);
-      return signals;
-    }
+    if (this.filledEntries.length === 0) return [];
 
     const filledAmount = order.executedQuantity || order.quantity;
     const filledPrice = order.averagePrice || order.price!;
-
-    // Get the entry that this TP belongs to
     const entry = this.filledEntries.pop()!;
     const entrySide = entry.side;
 
-    // Update position amount (respecting min/max limits)
-    if (entrySide === 'LONG') {
-      // TP for long = sell, reduce position
-      const newPosition = this.positionAmount - filledAmount.toNumber();
-      this.positionAmount = Math.max(newPosition, this.minPositionAmount);
-    } else {
-      // TP for short = buy, increase position
-      const newPosition = this.positionAmount + filledAmount.toNumber();
-      this.positionAmount = Math.min(newPosition, this.maxPositionAmount);
-    }
+    // Update tradedSize
+    const amount = filledAmount.toNumber();
+    this.tradedSize += (entrySide === 'LONG' ? -amount : amount);
 
-    // Restore reference price from the entry record (precise stepping)
+    // Restore reference price from entry (precise stepping back)
     const oldReference = this.referencePrice;
     this.referencePrice = entry.referencePriceBefore;
-    this.currentLevelRepeats = 0; // Reset counter for new (restored) level
 
-    this._logger.info(
-      `✅ TP FILLED: ${order.side} ${filledAmount.toString()} @ ${filledPrice.toString()}`,
-    );
-    this._logger.info(`   Entry was: ${entrySide} @ ${entry.price.toString()}`);
-    this._logger.info(`   New Position: ${this.positionAmount}`);
-    this._logger.info(
-      `   🔄 Reference price restored: ${oldReference} -> ${this.referencePrice}`,
-    );
+    this._logger.info(`✅ TP FILLED: ${order.side} ${filledAmount.toString()} @ ${filledPrice.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
+    this._logger.info(`   🔄 Ref: ${oldReference.toFixed(4)} -> ${this.referencePrice.toFixed(4)}`);
 
-    // Clear trackers
     this.openTpOrder = null;
     if (this.pendingTpClientOrderId === order.clientOrderId) {
       this.pendingTpClientOrderId = null;
@@ -1134,59 +830,25 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.orderMetadataMap.delete(metadata.parentOrderId);
     }
 
-    // If an entry order is pending, cancel it
-    if (this.openEntryOrder) {
-      this._logger.info(
-        `   ❌ Cancel existing entry: ${this.openEntryOrder.clientOrderId}`,
-      );
-      signals.push({
-        action: 'cancel',
-        clientOrderId: this.openEntryOrder.clientOrderId,
-        symbol: this._symbol,
-        reason: 'tp_filled_replace_entry',
-      });
-      this.openEntryOrder = null;
-      // Do NOT return here, continue to generate new signals
-    }
-
-    // Generate new entry signal (at restored reference price)
-    this._logger.info(`   🔄 Generating new entry after TP`);
-    const entrySignal = this.checkEntryConditions();
-    if (this.isOrderSignal(entrySignal)) {
-      signals.push(entrySignal);
-    }
-
-    // Generate new TP signal if there are more entries in the stack
-    if (this.filledEntries.length > 0) {
-      this._logger.info(`   🔄 Generating new TP for remaining position`);
-      const tpSignal = this.generateTakeProfitSignal();
-      if (tpSignal) {
-        signals.push(tpSignal);
-      }
-    }
-
-    return signals;
+    // Maintain 2 orders
+    return this.updateLadderOrders();
   }
 
-  /**
-   * Handle order cancellation/rejection
-   *
-   * After entry order is canceled:
-   * - Clear open entry order
-   * - Attempt to place a new entry order (ORDER-STATUS-ONLY approach)
-   */
   private handleOrderCancellation(
     order: Order,
     metadata: SignalMetaData | undefined,
-  ): StrategyResult | null {
+  ): StrategyResult[] {
     if (!metadata) {
       this._logger.warn(
         `⚠️ Order ${order.status} without metadata: ${order.clientOrderId}`,
       );
-      return null;
+      return [];
     }
 
     this._logger.info(`❌ Order ${order.status}: ${order.clientOrderId}`);
+
+    // Track order status
+    this.orders.set(order.clientOrderId!, order);
 
     if (metadata.signalType === SignalType.Entry) {
       // Entry order canceled - clear open entry
@@ -1199,8 +861,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       // Cleanup metadata
       this.orderMetadataMap.delete(order.clientOrderId!);
 
-      // Immediately check for new entry after cancellation (ORDER-STATUS-ONLY approach)
-      return this.checkEntryConditions();
+      // Immediately check for new entry after cancellation
+      return this.updateLadderOrders();
     } else if (metadata.signalType === SignalType.TakeProfit) {
       // TP order canceled - clear open TP
       this.openTpOrder = null;
@@ -1209,18 +871,18 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }
       this._logger.info(`   TP order cleared`);
 
-      // If we still have filled entries, generate new TP
+      // Cleanup metadata
+      this.orderMetadataMap.delete(order.clientOrderId!);
+
+      // If we still have filled entries, updateLadderOrders will re-generate TP
       if (this.filledEntries.length > 0) {
-        this._logger.info(`   Re-generating TP for last filled entry...`);
-        // Cleanup metadata first
-        this.orderMetadataMap.delete(order.clientOrderId!);
-        return this.generateTakeProfitSignal();
+        return this.updateLadderOrders();
       }
     }
 
     // Cleanup metadata
     this.orderMetadataMap.delete(order.clientOrderId!);
-    return null;
+    return [];
   }
 
   /**
@@ -1268,9 +930,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.pendingEntryClientOrderId = null;
     this.pendingTpClientOrderId = null;
     this.filledEntries = [];
-    this.lastFilledDirection = null;
-    this.positionAmount = 0;
-    this.currentLevelRepeats = 0;
+    this.tradedSize = 0;
     this.initialDataProcessed = false;
     this.initialEntrySignalGenerated = false;
     this.orderSequence = 0;
@@ -1281,7 +941,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const state = await super.saveState();
     state.internalState = {
       referencePrice: this.referencePrice,
-      currentLevelRepeats: this.currentLevelRepeats,
       filledEntries: this.filledEntries.map((entry) => ({
         side: entry.side,
         price: entry.price.toString(),
@@ -1290,8 +949,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         timestamp: entry.timestamp,
         referencePriceBefore: entry.referencePriceBefore,
       })),
-      lastFilledDirection: this.lastFilledDirection,
-      positionAmount: this.positionAmount,
+      tradedSize: this.tradedSize,
       orderSequence: this.orderSequence,
       initialEntrySignalGenerated: this.initialEntrySignalGenerated,
     };
@@ -1307,9 +965,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (typeof internalState.referencePrice === 'number') {
       this.referencePrice = internalState.referencePrice;
     }
-    if (typeof internalState.currentLevelRepeats === 'number') {
-      this.currentLevelRepeats = internalState.currentLevelRepeats;
-    }
 
     if (Array.isArray(internalState.filledEntries)) {
       this.filledEntries = internalState.filledEntries.map((e: any) => ({
@@ -1320,26 +975,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         timestamp: e.timestamp,
         referencePriceBefore: e.referencePriceBefore || this.referencePrice,
       }));
-    } else if (internalState.lastFilled) {
-      // Migration from old state format
-      this.filledEntries = [
-        {
-          side: internalState.lastFilled.side,
-          price: new Decimal(internalState.lastFilled.price),
-          amount: new Decimal(internalState.lastFilled.amount),
-          clientOrderId: internalState.lastFilled.clientOrderId,
-          timestamp: internalState.lastFilled.timestamp,
-          referencePriceBefore: this.referencePrice,
-        },
-      ];
     }
 
-    if (typeof internalState.lastFilledDirection !== 'undefined') {
-      this.lastFilledDirection = internalState.lastFilledDirection;
+    if (typeof internalState.tradedSize === 'number') {
+      this.tradedSize = internalState.tradedSize;
+    } else if (typeof internalState.positionAmount === 'number') {
+      this.tradedSize = internalState.positionAmount;
     }
-    if (typeof internalState.positionAmount === 'number') {
-      this.positionAmount = internalState.positionAmount;
-    }
+
     if (typeof internalState.orderSequence === 'number') {
       this.orderSequence = internalState.orderSequence;
     }
@@ -1361,10 +1004,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     return {
       strategyId: this.getStrategyId(),
       strategyType: this.strategyType,
-      positionAmount: this.positionAmount,
+      tradedSize: this.tradedSize,
       referencePrice: this.referencePrice,
-      currentLevelRepeats: this.currentLevelRepeats,
-      maxRepeatsPerLevel: this.maxRepeatsPerLevel,
       filledEntriesCount: this.filledEntries.length,
       lastFilled:
         this.filledEntries.length > 0
@@ -1374,21 +1015,19 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
               amount: this.filledEntries[this.filledEntries.length - 1].amount.toString(),
             }
           : null,
-      lastFilledDirection: this.lastFilledDirection,
-      preferredDirection: this.preferredDirection,
       openEntryOrder: this.openEntryOrder?.clientOrderId || null,
       openTpOrder: this.openTpOrder?.clientOrderId || null,
       initialEntrySignalGenerated: this.initialEntrySignalGenerated,
-      positionLimits: {
-        min: this.minPositionAmount,
-        max: this.maxPositionAmount,
+      sizeLimits: {
+        min: this.minSize,
+        max: this.maxSize,
       },
       canAddLong: this.canAddLong(),
       canAddShort: this.canAddShort(),
       mode: this.getPositionMode(),
       // Calculated entry prices for monitoring
-      longEntryPrice: this.referencePrice * (1 - this.dropPercent),
-      shortEntryPrice: this.referencePrice * (1 + this.risePercent),
+      buyPrice: this.referencePrice * (1 - this.stepPercent),
+      sellPrice: this.referencePrice * (1 + this.stepPercent),
     };
   }
 
