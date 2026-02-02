@@ -269,7 +269,7 @@ describe('SingleLadderLifoTPStrategy', () => {
 
       const state = strategy.getStrategyState();
       // Requirement 1: tradedSize should remain 0 as it's only for strategy orders
-      expect(state.tradedSize).toBe(0);
+      expect(state.tradedSize.toNumber()).toBe(0);
     });
 
     it('should update tradedSize when strategy orders fill', async () => {
@@ -297,7 +297,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       );
       await strategy.analyze(createDataUpdate({ orders: [orderFilled] }));
 
-      expect(strategy.getStrategyState().tradedSize).toBe(100);
+      expect(strategy.getStrategyState().tradedSize.toNumber()).toBe(100);
     });
   });
 

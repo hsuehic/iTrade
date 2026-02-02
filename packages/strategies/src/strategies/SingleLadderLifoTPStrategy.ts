@@ -286,7 +286,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private openEntryOrder: Order | null = null;
   private openTpOrder: Order | null = null;
   private pendingClientOrderIds: Set<string> = new Set();
-  private initialEntrySignalGenerated: boolean = false; // Track if initial entry was generated
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
   private processedQuantityMap: Map<string, Decimal> = new Map(); // Track delta executed quantity per order
@@ -428,8 +427,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.initialDataProcessed = true;
 
     // Generate INITIAL entry signals IMMEDIATELY after initialization if no open orders
-    if (!this.initialEntrySignalGenerated && !this.openEntryOrder && !this.openTpOrder) {
-      this.initialEntrySignalGenerated = true;
+    if (!this.openEntryOrder && !this.openTpOrder) {
       const signals = this.updateLadderOrders();
       this._logger.info(
         `🚀 [SingleLadderLifoTP] Generated ${signals.length} initial signals`,
@@ -635,6 +633,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         const buyPrice = this.referencePrice.mul(1 - this.stepPercent);
         signals.push(this.generateLongEntrySignal(buyPrice));
       }
+    } else {
+      this._logger.info(`   ⚠️ Long entry skipped: limits [${this.minSize}, ${this.maxSize}], current size ${this.tradedSize.toString()}`);
     }
 
     // 2. Upper Order (Sell Entry if not long, or Sell TP if long)
@@ -652,6 +652,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
         signals.push(this.generateShortEntrySignal(sellPrice));
       }
+    } else {
+      this._logger.info(`   ⚠️ Short entry skipped: limits [${this.minSize}, ${this.maxSize}], current size ${this.tradedSize.toString()}`);
     }
 
     return signals;
@@ -972,7 +974,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.filledEntries = [];
     this.tradedSize = new Decimal(0);
     this.initialDataProcessed = false;
-    this.initialEntrySignalGenerated = false;
+    this.initialDataProcessed = false;
     this.orderSequence = 0;
     this.processedQuantityMap.clear();
     this._logger.info(`🧹 [SingleLadderLifoTP] Strategy cleaned up`);
@@ -992,7 +994,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       })),
       tradedSize: this.tradedSize.toNumber(),
       orderSequence: this.orderSequence,
-      initialEntrySignalGenerated: this.initialEntrySignalGenerated,
     };
     return state;
   }
@@ -1003,7 +1004,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const context = await super.loadState(snapshot);
     const internalState = snapshot.internalState as any;
 
-    if (typeof internalState.referencePrice === 'number') {
+    if (internalState.referencePrice !== undefined) {
       this.referencePrice = new Decimal(internalState.referencePrice);
     }
 
@@ -1018,17 +1019,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }));
     }
 
-    if (typeof internalState.tradedSize === 'number') {
+    if (internalState.tradedSize !== undefined) {
       this.tradedSize = new Decimal(internalState.tradedSize);
-    } else if (typeof internalState.positionAmount === 'number') {
+    } else if (internalState.positionAmount !== undefined) {
       this.tradedSize = new Decimal(internalState.positionAmount);
     }
 
     if (typeof internalState.orderSequence === 'number') {
       this.orderSequence = internalState.orderSequence;
-    }
-    if (typeof internalState.initialEntrySignalGenerated === 'boolean') {
-      this.initialEntrySignalGenerated = internalState.initialEntrySignalGenerated;
     }
 
     return context;
@@ -1058,7 +1056,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           : null,
       openEntryOrder: this.openEntryOrder?.clientOrderId || null,
       openTpOrder: this.openTpOrder?.clientOrderId || null,
-      initialEntrySignalGenerated: this.initialEntrySignalGenerated,
       sizeLimits: {
         min: this.minSize,
         max: this.maxSize,
