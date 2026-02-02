@@ -52,6 +52,21 @@ export class OrderTracker {
   async start(): Promise<void> {
     this.logger.info('Starting Order Tracker...');
 
+    // 🆕 Load existing open orders from database to prevent duplicate notifications on restart
+    // This allows the tracker to reconcile its state before receiving events
+    try {
+      this.logger.info(`🔍 Loading existing orders from database for user: ${this.userId || 'ALL'}...`);
+      const existingOrders = await this.dataManager.getOrders({
+        userId: this.userId,
+      });
+      for (const order of existingOrders) {
+        this.orderManager.addOrder(order);
+      }
+      this.logger.info(`✅ Loaded ${existingOrders.length} existing orders from database`);
+    } catch (error) {
+      this.logger.error('❌ Failed to load existing orders from database', error as Error);
+    }
+
     // Listen for order events
     this.eventBus.onOrderCreated((data: OrderEventData) => {
       this.handleOrderCreated(data.order);
@@ -168,7 +183,8 @@ export class OrderTracker {
         return;
       }
 
-      if (!this.orderManager.getOrder(order.id)) {
+      const isNew = !this.orderManager.getOrder(order.id);
+      if (isNew) {
         this.totalOrders++;
       }
       this.orderManager.addOrder(order);
@@ -206,7 +222,13 @@ export class OrderTracker {
         `💾 Order saved: ${order.id} | Strategy: ${order.strategyName || 'none'} (ID: ${strategyId || 'N/A'}) | Exchange: ${exchange || 'unknown'}`,
       );
 
-      await this.pushNotificationService?.notifyOrderUpdate(order, 'created');
+      if (isNew) {
+        await this.pushNotificationService?.notifyOrderUpdate(order, 'created');
+      } else {
+        this.logger.debug(
+          `ℹ️  Suppressing notifyOrderUpdate(created) for already tracked order: ${order.id}`,
+        );
+      }
     } catch (error) {
       this.logger.error('❌ Failed to save order to database', error as Error);
     }

@@ -1053,9 +1053,18 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // 🆕 Always emit OrderCreated first if this is the first time we've seen this order
       // This ensures OrderTracker can create the order record before any updates
       if (!this._emittedOrderCreated.has(order.id)) {
-        this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
         this._emittedOrderCreated.add(order.id);
-        this.logger.debug(`✨ First time seeing order ${order.id}, emitted OrderCreated`);
+        
+        // Suppress OrderCreated for "old" orders (re-seen after restart or sync)
+        // Only emit if the order was created very recently (e.g. last 60 seconds)
+        // This prevents duplicate push notifications and global events for existing orders
+        const isRecentlyCreated = Date.now() - order.timestamp.getTime() < 60000;
+        if (isRecentlyCreated) {
+          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+          this.logger.debug(`✨ First time seeing order ${order.id}, emitted OrderCreated`);
+        } else {
+          this.logger.debug(`ℹ️  Existing order ${order.id} seen (created at ${order.timestamp.toISOString()}), skipping global OrderCreated event`);
+        }
       }
 
       // Emit status-specific events for non-NEW statuses
