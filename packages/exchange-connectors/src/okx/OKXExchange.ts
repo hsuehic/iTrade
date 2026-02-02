@@ -549,14 +549,15 @@ export class OKXExchange extends BaseExchange {
       tradingData.details.forEach((detail: any) => {
         const free = this.formatDecimal(detail.availBal ?? detail.cashBal ?? '0');
         const locked = this.formatDecimal(detail.frozenBal ?? '0');
-        const totalValue = detail.bal ?? detail.cashBal ?? free.add(locked).toString();
+        // Calculate total as free + locked for consistency with other exchanges
+        const total = free.add(locked);
 
         balancesMap.set(detail.ccy, {
           asset: detail.ccy,
           free,
           locked,
           saving: new Decimal(0),
-          total: this.formatDecimal(totalValue),
+          total,
         });
       });
     }
