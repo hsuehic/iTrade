@@ -231,7 +231,7 @@ interface FilledEntry {
   amount: Decimal;
   clientOrderId: string;
   timestamp: number;
-  referencePriceBefore: number; // To restore reference price on TP
+  referencePriceBefore: Decimal; // To restore reference price on TP
 }
 
 /**
@@ -277,9 +277,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
   // Strategy state
-  private tradedSize: number = 0; // Internal net size tracked from strategy orders
+  private tradedSize: Decimal = new Decimal(0); // Internal net size tracked from strategy orders
   private filledEntries: FilledEntry[] = [];
-  private referencePrice: number;
+  private referencePrice: Decimal;
   private initialDataProcessed: boolean = false; // Flag to trigger initial entry
 
   // Order tracking
@@ -289,6 +289,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private initialEntrySignalGenerated: boolean = false; // Track if initial entry was generated
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, SignalMetaData> = new Map();
+  private processedQuantityMap: Map<string, Decimal> = new Map(); // Track delta executed quantity per order
 
   // Last ticker for price reference (optional, for monitoring only)
   private lastTicker: Ticker | null = null;
@@ -317,7 +318,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     }
 
     // Initialize reference price from base price
-    this.referencePrice = this.basePrice;
+    this.referencePrice = new Decimal(this.basePrice);
 
     // Validate size limits
     if (this.minSize > this.maxSize) {
@@ -365,14 +366,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * Check if we can add long position
    */
   private canAddLong(): boolean {
-    return this.tradedSize + this.orderAmount <= this.maxSize;
+    return this.tradedSize.plus(this.orderAmount).lte(this.maxSize);
   }
 
   /**
    * Check if we can add short position
    */
   private canAddShort(): boolean {
-    return this.tradedSize - this.orderAmount >= this.minSize;
+    return this.tradedSize.minus(this.orderAmount).gte(this.minSize);
   }
 
   /**
@@ -401,8 +402,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           this.orders.set(order.clientOrderId || order.id, order);
           this.ensureRecoveredMetadata(order);
 
-          // Try to identify entry vs TP orders by clientOrderId pattern
-          if (order.clientOrderId) {
+          // Try to identify entry vs TP orders by strategyId and clientOrderId pattern
+          const isOwned = (order.strategyId && order.strategyId === this.getStrategyId()) ||
+                         (order.clientOrderId && this.isStrategyOrderId(order.clientOrderId));
+
+          if (isOwned && order.clientOrderId) {
             if (order.clientOrderId.startsWith('E')) {
               // Entry order
               if (!this.openEntryOrder) {
@@ -619,7 +623,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     // Now generate exactly up to 2 new orders based on current state
 
     // 1. Lower Order (Buy Entry if not short, or Buy TP if short)
-    if (this.tradedSize < 0) {
+    if (this.tradedSize.lt(0)) {
       // Case 2/4: TP for Short
       if (!tpPending) {
         const tpSignal = this.generateTakeProfitSignal();
@@ -628,13 +632,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (canLong) {
       // Case 1/3: Long Entry
       if (!entryPending) {
-        const buyPrice = new Decimal(this.referencePrice).mul(1 - this.stepPercent);
+        const buyPrice = this.referencePrice.mul(1 - this.stepPercent);
         signals.push(this.generateLongEntrySignal(buyPrice));
       }
     }
 
     // 2. Upper Order (Sell Entry if not long, or Sell TP if long)
-    if (this.tradedSize > 0) {
+    if (this.tradedSize.gt(0)) {
       // Case 2/4: TP for Long
       if (!tpPending) {
         const tpSignal = this.generateTakeProfitSignal();
@@ -645,7 +649,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (canShort) {
       // Case 1/3: Short Entry
       if (!entryPending) {
-        const sellPrice = new Decimal(this.referencePrice).mul(1 + this.stepPercent);
+        const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
         signals.push(this.generateShortEntrySignal(sellPrice));
       }
     }
@@ -698,8 +702,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           `🔄 Order status: ${order.clientOrderId.substring(0, 12)}... ${existingOrder?.status || 'NEW'} -> ${order.status}`,
         );
 
-        // Handle FILLED status
-        if (order.status === OrderStatus.FILLED) {
+        // Handle FILLED/PARTIALLY_FILLED status
+        if (order.status === OrderStatus.FILLED || order.status === OrderStatus.PARTIALLY_FILLED) {
           const filledSignals = this.handleOrderFilled(order, metadata);
           signals.push(...filledSignals);
         }
@@ -710,6 +714,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           order.status === OrderStatus.REJECTED ||
           order.status === OrderStatus.EXPIRED
         ) {
+          // Cleanup processed quantity on termination
+          this.processedQuantityMap.delete(order.clientOrderId);
           const cancelSignals = this.handleOrderCancellation(order, metadata);
           signals.push(...cancelSignals);
         }
@@ -741,6 +747,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private isStrategyOrderId(clientOrderId: string): boolean {
     const strategyId = this.getStrategyId();
     if (!strategyId) return false;
+    // Also support checking database strategyId if present in metadata/tracked orders etc.
     const match = /^(E|T)(\d+)D/.exec(clientOrderId);
     return !!match && match[2] === String(strategyId);
   }
@@ -753,8 +760,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     order: Order,
     metadata: SignalMetaData | undefined,
   ): StrategyResult[] {
-    // Clear pending status if this order was pending
-    if (order.clientOrderId) {
+    // Clear pending status ONLY if fully filled
+    if (order.clientOrderId && order.status === OrderStatus.FILLED) {
       this.pendingClientOrderIds.delete(order.clientOrderId);
     }
 
@@ -764,10 +771,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     }
 
     if (metadata.signalType === SignalType.Entry) {
-      // Entry fill returns array: [TP signal, next entry signal (if allowed)]
       return this.handleEntryFilled(order);
     } else if (metadata.signalType === SignalType.TakeProfit) {
-      // TP fill returns single signal or empty
       return this.handleTpFilled(order, metadata);
     }
 
@@ -787,64 +792,83 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    * @returns Array of signals: [TP signal]
    */
   private handleEntryFilled(order: Order): StrategyResult[] {
-    const filledAmount = order.executedQuantity || order.quantity;
+    const totalFilled = order.executedQuantity || order.quantity;
+    const lastProcessed = this.processedQuantityMap.get(order.clientOrderId!) || new Decimal(0);
+    const delta = totalFilled.minus(lastProcessed);
+
+    // If no new fill delta, skip state updates
+    if (delta.lte(0)) return [];
+
     const filledPrice = order.averagePrice || order.price!;
     const side: EntrySide = order.side === OrderSide.BUY ? 'LONG' : 'SHORT';
 
     // Update tradedSize
-    const amount = filledAmount.toNumber();
-    this.tradedSize += (side === 'LONG' ? amount : -amount);
+    this.tradedSize = this.tradedSize.plus(side === 'LONG' ? delta : delta.neg());
 
-    // Update reference price to the filled entry price (simpler than complex step calculation)
+    // Update reference price to the filled entry price
     const oldReference = this.referencePrice;
-    this.referencePrice = filledPrice.toNumber();
+    this.referencePrice = filledPrice;
 
     // Record filled entry (LIFO stack)
     this.filledEntries.push({
       side,
       price: filledPrice,
-      amount: filledAmount,
+      amount: delta,
       clientOrderId: order.clientOrderId!,
       timestamp: Date.now(),
       referencePriceBefore: oldReference,
     });
 
-    this.openEntryOrder = null;
-    // Clearing pending handled in handleOrderFilled
+    // Update processed quantity
+    this.processedQuantityMap.set(order.clientOrderId!, totalFilled);
 
-    this._logger.info(`✅ Entry FILLED: ${side} ${filledAmount.toString()} @ ${filledPrice.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
+    if (order.status === OrderStatus.FILLED) {
+      this.openEntryOrder = null;
+    }
+
+    this._logger.info(`✅ Entry FILLED (delta): ${side} ${delta.toString()} @ ${filledPrice.toString()}, Total: ${totalFilled.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
     this._logger.info(`   🔄 Ref: ${oldReference.toFixed(4)} -> ${this.referencePrice.toFixed(4)}`);
 
-    // Maintain 2 orders
+    // Maintain orders
     return this.updateLadderOrders();
   }
 
   private handleTpFilled(order: Order, metadata: SignalMetaData): StrategyResult[] {
     if (this.filledEntries.length === 0) return [];
 
-    const filledAmount = order.executedQuantity || order.quantity;
+    const totalFilled = order.executedQuantity || order.quantity;
+    const lastProcessed = this.processedQuantityMap.get(order.clientOrderId!) || new Decimal(0);
+    const delta = totalFilled.minus(lastProcessed);
+
+    // If no new fill delta, skip state updates
+    if (delta.lte(0)) return [];
+
     const filledPrice = order.averagePrice || order.price!;
+
+    // TP always closes the last entry per LIFO
     const entry = this.filledEntries.pop()!;
     const entrySide = entry.side;
 
     // Update tradedSize
-    const amount = filledAmount.toNumber();
-    this.tradedSize += (entrySide === 'LONG' ? -amount : amount);
+    this.tradedSize = this.tradedSize.plus(entrySide === 'LONG' ? delta.neg() : delta);
 
     // Restore reference price from entry (precise stepping back)
     const oldReference = this.referencePrice;
     this.referencePrice = entry.referencePriceBefore;
 
-    this._logger.info(`✅ TP FILLED: ${order.side} ${filledAmount.toString()} @ ${filledPrice.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
+    this._logger.info(`✅ TP FILLED (delta): ${order.side} ${delta.toString()} @ ${filledPrice.toString()}, Total: ${totalFilled.toString()}, Size: ${this.tradedSize.toFixed(4)}`);
     this._logger.info(`   🔄 Ref: ${oldReference.toFixed(4)} -> ${this.referencePrice.toFixed(4)}`);
 
-    this.openTpOrder = null;
-    // Clearing pending handled in handleOrderFilled
+    // Update processed quantity
+    this.processedQuantityMap.set(order.clientOrderId!, totalFilled);
 
-    // Cleanup metadata
-    this.orderMetadataMap.delete(order.clientOrderId!);
-    if (metadata.parentOrderId) {
-      this.orderMetadataMap.delete(metadata.parentOrderId);
+    if (order.status === OrderStatus.FILLED) {
+      this.openTpOrder = null;
+      // Cleanup metadata on full fill
+      this.orderMetadataMap.delete(order.clientOrderId!);
+      if (metadata.parentOrderId) {
+        this.orderMetadataMap.delete(metadata.parentOrderId);
+      }
     }
 
     // Maintain 2 orders
@@ -946,26 +970,27 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.openTpOrder = null;
     this.pendingClientOrderIds.clear();
     this.filledEntries = [];
-    this.tradedSize = 0;
+    this.tradedSize = new Decimal(0);
     this.initialDataProcessed = false;
     this.initialEntrySignalGenerated = false;
     this.orderSequence = 0;
+    this.processedQuantityMap.clear();
     this._logger.info(`🧹 [SingleLadderLifoTP] Strategy cleaned up`);
   }
 
   public override async saveState(): Promise<StrategyStateSnapshot> {
     const state = await super.saveState();
     state.internalState = {
-      referencePrice: this.referencePrice,
+      referencePrice: this.referencePrice.toNumber(),
       filledEntries: this.filledEntries.map((entry) => ({
         side: entry.side,
         price: entry.price.toString(),
         amount: entry.amount.toString(),
         clientOrderId: entry.clientOrderId,
         timestamp: entry.timestamp,
-        referencePriceBefore: entry.referencePriceBefore,
+        referencePriceBefore: entry.referencePriceBefore instanceof Decimal ? entry.referencePriceBefore.toNumber() : entry.referencePriceBefore,
       })),
-      tradedSize: this.tradedSize,
+      tradedSize: this.tradedSize.toNumber(),
       orderSequence: this.orderSequence,
       initialEntrySignalGenerated: this.initialEntrySignalGenerated,
     };
@@ -979,7 +1004,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const internalState = snapshot.internalState as any;
 
     if (typeof internalState.referencePrice === 'number') {
-      this.referencePrice = internalState.referencePrice;
+      this.referencePrice = new Decimal(internalState.referencePrice);
     }
 
     if (Array.isArray(internalState.filledEntries)) {
@@ -989,14 +1014,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         amount: new Decimal(e.amount),
         clientOrderId: e.clientOrderId,
         timestamp: e.timestamp,
-        referencePriceBefore: e.referencePriceBefore || this.referencePrice,
+        referencePriceBefore: new Decimal(e.referencePriceBefore || internalState.referencePrice),
       }));
     }
 
     if (typeof internalState.tradedSize === 'number') {
-      this.tradedSize = internalState.tradedSize;
+      this.tradedSize = new Decimal(internalState.tradedSize);
     } else if (typeof internalState.positionAmount === 'number') {
-      this.tradedSize = internalState.positionAmount;
+      this.tradedSize = new Decimal(internalState.positionAmount);
     }
 
     if (typeof internalState.orderSequence === 'number') {
@@ -1042,8 +1067,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       canAddShort: this.canAddShort(),
       mode: this.getPositionMode(),
       // Calculated entry prices for monitoring
-      buyPrice: this.referencePrice * (1 - this.stepPercent),
-      sellPrice: this.referencePrice * (1 + this.stepPercent),
+      buyPrice: this.referencePrice.mul(1 - this.stepPercent).toNumber(),
+      sellPrice: this.referencePrice.mul(1 + this.stepPercent).toNumber(),
     };
   }
 
@@ -1055,7 +1080,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
    */
   public override getSubscriptionConfig() {
     return {
-      ticker: { enabled: false }, // Ticker not required for entry signals
+      ticker: { enabled: true }, // Enable ticker for monitoring and reliable analysis trigger
       method: 'websocket' as const,
       exchange: this._context.exchange,
     };
