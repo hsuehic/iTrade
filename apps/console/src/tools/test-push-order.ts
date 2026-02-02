@@ -85,8 +85,8 @@ async function main() {
         kind === 'created'
           ? OrderStatus.NEW
           : kind === 'partial'
-          ? OrderStatus.PARTIALLY_FILLED
-          : OrderStatus.FILLED,
+            ? OrderStatus.PARTIALLY_FILLED
+            : OrderStatus.FILLED,
       timeInForce: TimeInForce.GTC,
       timestamp: new Date(),
       updateTime: new Date(),

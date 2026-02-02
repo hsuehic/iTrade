@@ -105,10 +105,10 @@ export class DryRunOrderEntity implements Order {
     cascade: true,
   })
   fills?: DryRunOrderFillEntity[] | undefined;
- 
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
- 
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 }

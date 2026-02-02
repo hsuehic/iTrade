@@ -259,8 +259,8 @@ function buildOrderData(
       kind === 'created'
         ? 'order_created'
         : kind === 'filled'
-        ? 'order_filled'
-        : 'order_partially_filled',
+          ? 'order_filled'
+          : 'order_partially_filled',
     orderId: order.id,
     symbol: order.symbol,
     side: order.side,

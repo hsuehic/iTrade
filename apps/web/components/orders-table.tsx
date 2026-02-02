@@ -123,7 +123,6 @@ const formatNumber = (value: string | number | undefined, decimals: number = 4) 
   return num.toFixed(decimals);
 };
 
-
 const getStatusIcon = (status: string) => {
   switch (status.toUpperCase()) {
     case 'FILLED':

@@ -37,7 +37,10 @@ export class OrderTracker {
     private dataManager: TypeOrmDataManager,
     private logger: ILogger,
     private pushNotificationService?: {
-      notifyOrderUpdate(order: Order, kind: 'created' | 'filled' | 'partial'): Promise<void>;
+      notifyOrderUpdate(
+        order: Order,
+        kind: 'created' | 'filled' | 'partial',
+      ): Promise<void>;
     },
     private userId?: string,
   ) {

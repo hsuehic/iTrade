@@ -48,7 +48,7 @@ export class BacktestTradeEntity implements BacktestTrade {
 
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   entryTime!: Date;
- 
+
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   exitTime!: Date;
 

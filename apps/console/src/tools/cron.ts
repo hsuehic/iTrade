@@ -167,7 +167,7 @@ async function initialize() {
           updateTime: new Date(),
           isActive: true,
         },
-        ['userId', 'exchange']
+        ['userId', 'exchange'],
       );
 
       const accountInfo = await accountInfoRepo.findOne({

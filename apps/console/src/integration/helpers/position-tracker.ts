@@ -154,14 +154,13 @@ export class PositionTracker {
       // 1. Handle Deletions
       if (toDelete.length > 0) {
         for (const update of toDelete) {
-          await this.dataManager.getPositionRepository().deleteBySymbol(
-            update.symbol,
-            update.exchange,
-            userId,
-            update.position.side,
-          );
+          await this.dataManager
+            .getPositionRepository()
+            .deleteBySymbol(update.symbol, update.exchange, userId, update.position.side);
         }
-        this.logger.debug(`🗑️ Deleted ${toDelete.length} closed position(s) from database`);
+        this.logger.debug(
+          `🗑️ Deleted ${toDelete.length} closed position(s) from database`,
+        );
       }
 
       // 2. Handle Upserts

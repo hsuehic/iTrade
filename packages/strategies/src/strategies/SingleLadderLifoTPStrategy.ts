@@ -1092,7 +1092,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     const filledAmount = order.executedQuantity || order.quantity;
     const filledPrice = order.averagePrice || order.price!;
-    
+
     // Get the entry that this TP belongs to
     const entry = this.filledEntries.pop()!;
     const entrySide = entry.side;
@@ -1366,13 +1366,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       currentLevelRepeats: this.currentLevelRepeats,
       maxRepeatsPerLevel: this.maxRepeatsPerLevel,
       filledEntriesCount: this.filledEntries.length,
-      lastFilled: this.filledEntries.length > 0
-        ? {
-            side: this.filledEntries[this.filledEntries.length - 1].side,
-            price: this.filledEntries[this.filledEntries.length - 1].price.toString(),
-            amount: this.filledEntries[this.filledEntries.length - 1].amount.toString(),
-          }
-        : null,
+      lastFilled:
+        this.filledEntries.length > 0
+          ? {
+              side: this.filledEntries[this.filledEntries.length - 1].side,
+              price: this.filledEntries[this.filledEntries.length - 1].price.toString(),
+              amount: this.filledEntries[this.filledEntries.length - 1].amount.toString(),
+            }
+          : null,
       lastFilledDirection: this.lastFilledDirection,
       preferredDirection: this.preferredDirection,
       openEntryOrder: this.openEntryOrder?.clientOrderId || null,

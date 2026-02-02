@@ -64,7 +64,9 @@ export async function GET(request: Request) {
     // Optimized: Get latest state from AccountInfo aggregate fields
     let accounts = await dm.getUserAccountsWithBalances(userId);
     if (exchange !== 'all') {
-      accounts = accounts.filter(a => a.exchange.toLowerCase() === exchange.toLowerCase());
+      accounts = accounts.filter(
+        (a) => a.exchange.toLowerCase() === exchange.toLowerCase(),
+      );
     }
 
     const latestSnapshots = accounts;

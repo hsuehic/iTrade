@@ -65,7 +65,6 @@ export class User {
   })
   pushDevices?: PushDeviceEntity[];
 
-
   @OneToMany('dry_run_sessions', 'user', {
     onDelete: 'CASCADE',
   })

@@ -117,9 +117,7 @@ export function AccountList({ initialAccounts }: { initialAccounts: AccountListI
                     </span>
                   </TableCell>
                   <TableCell className="font-mono text-xs">{account.apiKey}</TableCell>
-                  <TableCell>
-                    {formatDate(account.updatedTime, locale)}
-                  </TableCell>
+                  <TableCell>{formatDate(account.updatedTime, locale)}</TableCell>
                   <TableCell className="text-right space-x-2">
                     <Button
                       variant="ghost"

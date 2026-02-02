@@ -9,26 +9,29 @@ export class BalanceRepository {
     this.repository = dataSource.getRepository(BalanceEntity);
   }
 
-  async updateBalances(accountInfoId: number, balances: Array<{
-    asset: string;
-    free: Decimal | string;
-    locked: Decimal | string;
-    total: Decimal | string;
-  }>): Promise<void> {
-    const assets = balances.map(b => b.asset);
-    
+  async updateBalances(
+    accountInfoId: number,
+    balances: Array<{
+      asset: string;
+      free: Decimal | string;
+      locked: Decimal | string;
+      total: Decimal | string;
+    }>,
+  ): Promise<void> {
+    const assets = balances.map((b) => b.asset);
+
     // Perform bulk upsert
     // Note: TypeORM upsert might be tricky with unique constraints on some DBs
     // but here we use the composite unique index [accountInfoId, asset]
     await this.repository.upsert(
-      balances.map(b => ({
+      balances.map((b) => ({
         accountInfoId,
         asset: b.asset,
         free: new Decimal(b.free),
         locked: new Decimal(b.locked),
         total: new Decimal(b.total),
       })),
-      ['accountInfoId', 'asset']
+      ['accountInfoId', 'asset'],
     );
 
     // [Optional] Clean up assets that no longer exist in this account

@@ -17,9 +17,12 @@ export const formatDate = (
   } else {
     const dateStr = dateInput.toString();
     // If the date string doesn't have a timezone indicator, treat it as UTC
-    const normalizedDateStr = (dateStr.endsWith('Z') || dateStr.includes('+')) 
-      ? dateStr 
-      : (dateStr.includes('T') ? `${dateStr}Z` : `${dateStr.replace(' ', 'T')}Z`);
+    const normalizedDateStr =
+      dateStr.endsWith('Z') || dateStr.includes('+')
+        ? dateStr
+        : dateStr.includes('T')
+          ? `${dateStr}Z`
+          : `${dateStr.replace(' ', 'T')}Z`;
     date = new Date(normalizedDateStr);
   }
 
@@ -43,9 +46,12 @@ export const formatFullDate = (
     date = dateInput;
   } else {
     const dateStr = dateInput.toString();
-    const normalizedDateStr = (dateStr.endsWith('Z') || dateStr.includes('+')) 
-      ? dateStr 
-      : (dateStr.includes('T') ? `${dateStr}Z` : `${dateStr.replace(' ', 'T')}Z`);
+    const normalizedDateStr =
+      dateStr.endsWith('Z') || dateStr.includes('+')
+        ? dateStr
+        : dateStr.includes('T')
+          ? `${dateStr}Z`
+          : `${dateStr.replace(' ', 'T')}Z`;
     date = new Date(normalizedDateStr);
   }
 

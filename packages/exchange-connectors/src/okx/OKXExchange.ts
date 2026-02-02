@@ -752,18 +752,18 @@ export class OKXExchange extends BaseExchange {
       const marketValue = quantity.abs().mul(markPrice);
       const leverage = this.getOkxLeverage(pos, quantity, avgPrice, markPrice);
 
-        return {
-          symbol: this.denormalizeSymbol(pos.instId),
-          side: this.resolveOkxPositionSide(pos, quantity),
-          quantity: quantity.abs(), // Use absolute quantity
-          avgPrice,
-          markPrice,
-          unrealizedPnl,
-          leverage,
-          timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
-          marketValue,
-          notionalUsd: pos.notionalUsd,
-        };
+      return {
+        symbol: this.denormalizeSymbol(pos.instId),
+        side: this.resolveOkxPositionSide(pos, quantity),
+        quantity: quantity.abs(), // Use absolute quantity
+        avgPrice,
+        markPrice,
+        unrealizedPnl,
+        leverage,
+        timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
+        marketValue,
+        notionalUsd: pos.notionalUsd,
+      };
     });
   }
 

@@ -117,10 +117,10 @@ export async function GET(request: Request) {
     const minValue = parseFloat(searchParams.get('minValue') || '0');
 
     const dm = await getDataManager();
-    
+
     // Optimized: Get latest state from AccountInfo and Balance entities
     const accounts = await dm.getUserAccountsWithBalances(session.user.id);
-    
+
     if (accounts.length === 0) {
       return NextResponse.json({
         summary: { totalAssets: 0, uniqueAssets: 0, totalValue: 0, exchanges: [] },
@@ -141,7 +141,7 @@ export async function GET(request: Request) {
     for (const account of accounts) {
       const balances = await dm.getAccountBalances(account.id);
       const exchange = account.exchange;
-      
+
       if (!exchanges.includes(exchange)) {
         exchanges.push(exchange);
       }

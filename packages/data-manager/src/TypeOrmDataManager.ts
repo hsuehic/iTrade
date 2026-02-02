@@ -973,7 +973,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async saveAccountSnapshot(data: AccountSnapshotData): Promise<void> {
     this.ensureInitialized();
-    
+
     // 1. Save historical snapshot (archive)
     await this.accountSnapshotRepository.save(data);
 
@@ -1011,7 +1011,7 @@ export class TypeOrmDataManager implements IDataManager {
       // Get userId from AccountInfo
       const accountInfo = await this.accountInfoRepository.findOne({
         where: { id: accountInfoId },
-        select: ['userId']
+        select: ['userId'],
       });
 
       if (accountInfo) {
@@ -1128,7 +1128,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.ensureInitialized();
     return await this.accountInfoRepository.find({
       where: { userId, isActive: true },
-      order: { exchange: 'ASC' }
+      order: { exchange: 'ASC' },
     });
   }
 

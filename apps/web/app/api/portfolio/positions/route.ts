@@ -19,16 +19,18 @@ export async function GET(request: NextRequest) {
 
     const dataManager = await getDataManager();
     const positionRepository = dataManager.getPositionRepository();
-    
+
     // Fetch all user positions once for both data and metadata (exchanges/symbols)
-    const allUserPositions = await positionRepository.findAll({ userId: session.user.id });
-    
+    const allUserPositions = await positionRepository.findAll({
+      userId: session.user.id,
+    });
+
     // Core filter: always exclude zero quantity positions
     const activeUserPositions = allUserPositions.filter((pos) => !pos.quantity.isZero());
-    
+
     // Apply optional filters
     let filteredPositions = activeUserPositions;
-    
+
     if (exchange && exchange !== 'all') {
       filteredPositions = filteredPositions.filter((pos) => pos.exchange === exchange);
     }
@@ -41,12 +43,16 @@ export async function GET(request: NextRequest) {
     if (minQuantity) {
       const qty = parseFloat(minQuantity);
       if (!isNaN(qty)) {
-        filteredPositions = filteredPositions.filter((pos) => pos.quantity.abs().gte(qty));
+        filteredPositions = filteredPositions.filter((pos) =>
+          pos.quantity.abs().gte(qty),
+        );
       }
     }
 
     // Get available exchanges and symbols for filtering (only from active positions)
-    const exchanges = Array.from(new Set(activeUserPositions.map((p) => p.exchange))).sort();
+    const exchanges = Array.from(
+      new Set(activeUserPositions.map((p) => p.exchange)),
+    ).sort();
     const symbols = Array.from(
       new Set(
         activeUserPositions
@@ -74,7 +80,10 @@ export async function GET(request: NextRequest) {
       // Calculate PnL percentage
       pnlPercentage:
         pos.avgPrice.gt(0) && pos.quantity.abs().gt(0)
-          ? pos.unrealizedPnl.div(pos.avgPrice.mul(pos.quantity.abs())).mul(100).toFixed(2)
+          ? pos.unrealizedPnl
+              .div(pos.avgPrice.mul(pos.quantity.abs()))
+              .mul(100)
+              .toFixed(2)
           : '0.00',
     }));
 

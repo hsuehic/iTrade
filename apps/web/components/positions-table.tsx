@@ -106,7 +106,6 @@ const formatPercentage = (value: string | number) => {
   return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
 };
 
-
 export function PositionsTable({
   selectedExchange = 'all',
   refreshInterval = 30000,
