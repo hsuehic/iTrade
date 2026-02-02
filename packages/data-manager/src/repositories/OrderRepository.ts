@@ -1,4 +1,5 @@
 import { Brackets, DataSource, Repository } from 'typeorm';
+import { OrderStatus } from '@itrade/core';
 
 import { OrderEntity } from '../entities/Order';
 
@@ -74,7 +75,13 @@ export class OrderRepository {
       query.andWhere('order.exchange = :exchange', { exchange: filters.exchange });
     }
     if (filters?.status) {
-      query.andWhere('order.status = :status', { status: filters.status });
+      if (filters.status === 'OPEN') {
+        query.andWhere('order.status IN (:...statuses)', {
+          statuses: [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED],
+        });
+      } else {
+        query.andWhere('order.status = :status', { status: filters.status });
+      }
     }
     if (filters?.startDate) {
       query.andWhere('order.timestamp >= :startDate', {
