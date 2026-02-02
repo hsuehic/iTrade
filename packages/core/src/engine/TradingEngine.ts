@@ -1068,16 +1068,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         order.userId = this._userId;
       }
 
-      // 🔥 FIX: Only emit OrderCreated once per order, regardless of timing
-      // This prevents duplicate notifications when exchanges send multiple updates for the same order
-      // (e.g., OKX sending updates when order status changes from "new" -> "open")
-      //
-      // The _emittedOrderCreated Set is the ONLY source of truth for whether to emit.
-      // Removed time-based filtering that was causing duplicate events for orders \u003c 60s old.
+       
       if (!this._emittedOrderCreated.has(order.id)) {
-        this._emittedOrderCreated.add(order.id);
-        this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
-        this.logger.debug(`✨ First time seeing order ${order.id}, emitted OrderCreated`);
+         // to cover orders that not initialed via executeOrder
+        if (
+          order.status === OrderStatus.NEW
+        ) {
+          this._emittedOrderCreated.add(order.id);
+          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+          return;
+        } 
       }
 
       // Emit status-specific events for non-NEW statuses

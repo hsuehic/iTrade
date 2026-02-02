@@ -63,6 +63,14 @@ export class PushNotificationService {
       return;
     }
 
+    // 🆕 Check if order status is 'CANCELED' or 'REJECTED' to suppress notification
+    if (order.status === 'CANCELED' || order.status === 'REJECTED') {
+      this.logger.info(
+        `📨 Push skipped: order ${order.id} is ${order.status}, suppressing notification`,
+      );
+      return;
+    }
+
     const devices = await this.getActiveTokens(userId);
     if (devices.length === 0) {
       this.logger.info(`📨 Push skipped: no active devices for user ${userId}`);

@@ -491,6 +491,35 @@ describe('TradingEngine - Order Event Emission', () => {
       expect(orderPartiallyFilledSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('should NOT emit OrderCreated when receiving CANCELLED order for the first time', async () => {
+      await engine.addExchange('mockExchange', mockExchange);
+
+      const cancelledOrder: Order = {
+        id: 'order-cancelled-immediate',
+        clientOrderId: 'client-cancelled',
+        symbol: 'BTC/USDT',
+        side: OrderSide.BUY,
+        type: OrderType.LIMIT,
+        quantity: new Decimal(0.1),
+        price: new Decimal(50000),
+        status: OrderStatus.CANCELED,
+        timeInForce: TimeInForce.GTC,
+        timestamp: new Date(),
+        executedQuantity: new Decimal(0),
+        updateTime: new Date(),
+        exchange: 'mockExchange',
+      };
+
+      // Simulate exchange pushing a CANCELLED order
+      mockExchange.emit('orderUpdate', 'BTC/USDT', cancelledOrder);
+
+      // Wait for async processing
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Should NOT emit OrderCreated
+      expect(orderCreatedSpy).not.toHaveBeenCalled();
+    });
+
     it('should NOT emit duplicate OrderCreated for the same order', async () => {
       await engine.addExchange('mockExchange', mockExchange);
 
