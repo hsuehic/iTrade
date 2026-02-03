@@ -10,8 +10,7 @@ import {
   TradeMode,
   SignalType,
   SignalMetaData,
-  StrategyRecoveryContext,
-  StrategyStateSnapshot,
+
   StrategyAnalyzeResult,
   InitialDataResult,
 } from '@itrade/core';
@@ -161,7 +160,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
   // 🆕 Track last processed kline timestamp to avoid reprocessing
   private lastProcessedKlineTime: number = 0;
-  private recoveryContext: StrategyRecoveryContext | null = null;
+
 
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
     super(config);
@@ -186,9 +185,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   public override async processInitialData(
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
-    if (this.recoveryContext?.recovered) {
-      this._logger.info(`🔄 Applying recovered state for initial setup`);
-    }
+
     // Load current positions to track size
     if (initialData.positions && initialData.positions.length > 0) {
       const position = initialData.positions.find(
@@ -843,42 +840,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     return !!match && match[2] === String(strategyId);
   }
 
-  public override async saveState(): Promise<StrategyStateSnapshot> {
-    const state = await super.saveState();
-    state.internalState = {
-      size: this.size,
-      lastProcessedKlineTime: this.lastProcessedKlineTime,
-      orderSequence: this.orderSequence,
-    };
-    return state;
-  }
 
-  public override async loadState(
-    snapshot: StrategyStateSnapshot,
-  ): Promise<StrategyRecoveryContext> {
-    const context = await super.loadState(snapshot);
-    const internalState = snapshot.internalState as {
-      size?: number;
-      lastProcessedKlineTime?: number;
-      orderSequence?: number;
-    };
-
-    if (typeof internalState.size === 'number') {
-      this.size = internalState.size;
-    }
-    if (typeof internalState.lastProcessedKlineTime === 'number') {
-      this.lastProcessedKlineTime = internalState.lastProcessedKlineTime;
-    }
-    if (typeof internalState.orderSequence === 'number') {
-      this.orderSequence = internalState.orderSequence;
-    }
-
-    return context;
-  }
-
-  public async setRecoveryContext(context: StrategyRecoveryContext): Promise<void> {
-    this.recoveryContext = context;
-  }
 
   public getStrategyState() {
     return {

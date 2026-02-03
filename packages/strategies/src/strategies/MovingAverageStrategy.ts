@@ -3,7 +3,7 @@ import {
   BaseStrategy,
   StrategyResult,
   StrategyConfig,
-  StrategyRecoveryContext,
+
   DataUpdate,
   StrategyParameters,
   SignalType,
@@ -255,125 +255,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     return this.position;
   }
 
-  // 🔄 State Management Implementation
 
-  /**
-   * Override stateVersion for MovingAverage strategy
-   */
-  protected _stateVersion = '1.1.0';
-
-  /**
-   * Save technical indicator data for MovingAverage strategy
-   */
-  protected async getIndicatorData(): Promise<Record<string, unknown>> {
-    return {
-      priceHistory: this.priceHistory.map((price) => price.toString()),
-      fastMA: this.fastMA.toString(),
-      slowMA: this.slowMA.toString(),
-      indicatorTimestamp: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * Restore technical indicator data for MovingAverage strategy
-   */
-  protected async setIndicatorData(data: Record<string, unknown>): Promise<void> {
-    try {
-      // Restore price history
-      if (data.priceHistory && Array.isArray(data.priceHistory)) {
-        this.priceHistory = (data.priceHistory as string[]).map(
-          (price) => new Decimal(price),
-        );
-      }
-
-      // Restore moving averages
-      if (data.fastMA && typeof data.fastMA === 'string') {
-        this.fastMA = new Decimal(data.fastMA);
-      }
-
-      if (data.slowMA && typeof data.slowMA === 'string') {
-        this.slowMA = new Decimal(data.slowMA);
-      }
-
-      this.emit('indicatorsRestored', {
-        priceHistoryLength: this.priceHistory.length,
-        fastMA: this.fastMA.toString(),
-        slowMA: this.slowMA.toString(),
-      });
-    } catch (error) {
-      this.emit('stateRecoveryError', {
-        phase: 'indicatorData',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-
-      // Fallback: reset indicators if restoration fails
-      this.priceHistory = [];
-      this.fastMA = new Decimal(0);
-      this.slowMA = new Decimal(0);
-    }
-  }
-
-  /**
-   * Handle recovery context setup specific to MovingAverage strategy
-   */
-  protected async onRecoveryContextSet(context: StrategyRecoveryContext): Promise<void> {
-    const { openOrders, totalPosition } = context;
-
-    // Log recovery information
-    this.emit('recoveryInfo', {
-      strategyType: 'MovingAverage',
-      openOrdersCount: openOrders?.length ?? 0,
-      totalPosition: totalPosition,
-      priceHistoryLength: this.priceHistory.length,
-      lastSignal: this.getLastSignal(),
-    });
-
-    // Validate recovered state
-    const fastPeriod = this.getParameter('fastPeriod');
-    const slowPeriod = this.getParameter('slowPeriod');
-
-    if (this.priceHistory.length < slowPeriod) {
-      this.emit('recoveryWarning', {
-        message: `Insufficient price history (${this.priceHistory.length}/${slowPeriod}). Strategy may need to rebuild indicators.`,
-        recommendation: 'Consider fetching recent price data to rebuild indicators',
-      });
-    }
-
-    // Recalculate MAs if we have sufficient data but MAs are zero
-    if (
-      this.priceHistory.length >= slowPeriod &&
-      this.fastMA.eq(0) &&
-      this.slowMA.eq(0)
-    ) {
-      try {
-        this.fastMA = this.calculateSMA(fastPeriod);
-        this.slowMA = this.calculateSMA(slowPeriod);
-
-        this.emit('indicatorsRecalculated', {
-          fastMA: this.fastMA.toString(),
-          slowMA: this.slowMA.toString(),
-          priceHistoryLength: this.priceHistory.length,
-        });
-      } catch (error) {
-        this.emit('recoveryError', {
-          phase: 'indicatorRecalculation',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
-    }
-
-    // Update position based on total position from context
-    if (totalPosition && !new Decimal(totalPosition).eq(0)) {
-      const positionDecimal = new Decimal(totalPosition);
-      if (positionDecimal.gt(0)) {
-        this.position = 'long';
-      } else if (positionDecimal.lt(0)) {
-        this.position = 'short';
-      } else {
-        this.position = 'none';
-      }
-    }
-  }
 
   /**
    * Get comprehensive strategy status for monitoring
@@ -390,7 +272,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       averagePrice: this.getAveragePrice()?.toString(),
       lastSignal: this.getLastSignal(),
       isInitialized: this._isInitialized,
-      stateVersion: this._stateVersion,
+
     };
   }
 }

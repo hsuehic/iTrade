@@ -3,14 +3,7 @@ import {
   IStrategy,
   ILogger,
   EventBus,
-  StrategyStateManager,
-  StrategyStateMonitor,
-  TypeOrmStrategyStateAdapter,
-  type InitialDataConfig,
-  type StrategyRecoveryContext,
-  type StrategyRecoveryResult,
-  type StateRecoveryMetrics,
-  type StrategyHealthStatus,
+  InitialDataConfig,
 } from '@itrade/core';
 import {
   TypeOrmDataManager,
@@ -38,15 +31,13 @@ export class StrategyManager {
   private strategyMetrics = new Map<number, StrategyMetrics>();
   private syncInterval: NodeJS.Timeout | null = null;
   private reportInterval: NodeJS.Timeout | null = null;
-  private stateBackupInterval: NodeJS.Timeout | null = null;
   private eventBus: EventBus;
-  private stateManager: StrategyStateManager;
-  private stateMonitor: StrategyStateMonitor;
+
 
   // Configuration
   private readonly SYNC_INTERVAL_MS: number;
   private readonly REPORT_INTERVAL_MS: number;
-  private readonly STATE_BACKUP_INTERVAL_MS: number;
+
 
   constructor(
     private engine: TradingEngine,
@@ -55,10 +46,6 @@ export class StrategyManager {
     private userId?: string, // 🆕 Support multi-user system
   ) {
     this.eventBus = EventBus.getInstance();
-    const stateAdapter = new TypeOrmStrategyStateAdapter(dataManager);
-    this.stateManager = new StrategyStateManager(stateAdapter, logger);
-    this.stateMonitor = new StrategyStateMonitor(logger);
-    this.setupMonitoringEvents();
 
     this.SYNC_INTERVAL_MS = StrategyManager.parseInterval(
       process.env.STRATEGY_SYNC_INTERVAL_MS,
@@ -68,10 +55,7 @@ export class StrategyManager {
       process.env.STRATEGY_REPORT_INTERVAL_MS,
       600000,
     );
-    this.STATE_BACKUP_INTERVAL_MS = StrategyManager.parseInterval(
-      process.env.STRATEGY_STATE_BACKUP_INTERVAL_MS,
-      60000,
-    );
+
   }
 
   async start(): Promise<void> {
@@ -101,9 +85,6 @@ export class StrategyManager {
     // Setup event listeners for monitoring
     this.setupEventListeners();
 
-    // Start state monitoring
-    this.stateMonitor.start();
-
     // Start periodic database sync
     this.syncInterval = setInterval(() => {
       this.logger.info('Syncing strategies with database...');
@@ -117,13 +98,8 @@ export class StrategyManager {
       this.reportStrategyMetrics();
     }, this.REPORT_INTERVAL_MS);
 
-    // Start periodic state backup
-    this.stateBackupInterval = setInterval(() => {
-      this.backupStrategyStates();
-    }, this.STATE_BACKUP_INTERVAL_MS);
-
     this.logger.info(
-      `Strategy Manager started (sync every ${this.SYNC_INTERVAL_MS / 1000}s, report every ${this.REPORT_INTERVAL_MS / 1000}s, backup every ${this.STATE_BACKUP_INTERVAL_MS / 1000}s)`,
+      `Strategy Manager started (sync every ${this.SYNC_INTERVAL_MS / 1000}s, report every ${this.REPORT_INTERVAL_MS / 1000}s)`,
     );
   }
 
@@ -138,19 +114,8 @@ export class StrategyManager {
       this.reportInterval = null;
     }
 
-    if (this.stateBackupInterval) {
-      clearInterval(this.stateBackupInterval);
-      this.stateBackupInterval = null;
-    }
-
     // Final report before stopping
     this.reportStrategyMetrics();
-
-    // Final state backup before stopping
-    await this.backupStrategyStates();
-
-    // Stop state monitoring
-    this.stateMonitor.stop();
 
     // Remove all strategies from engine
     for (const [strategyId] of this.strategies) {
@@ -281,77 +246,6 @@ export class StrategyManager {
 
       // Create strategy instance based on type
       const strategy = this.createStrategyInstance(dbStrategy);
-
-      // 🔄 State Recovery: Attempt to recover strategy state from database
-      const recoveryStartTime = new Date();
-      this.stateMonitor.recordRecoveryAttempt(strategyId, recoveryStartTime);
-      let recoveryResult: StrategyRecoveryResult | null = null;
-
-      try {
-        recoveryResult = await this.stateManager.recoverStrategyState(
-          strategyId,
-          dbStrategy.exchange || undefined,
-        );
-        const recoveryEndTime = new Date();
-
-        if (recoveryResult.recovered) {
-          this.stateMonitor.recordRecoverySuccess(
-            strategyId,
-            recoveryStartTime,
-            recoveryEndTime,
-          );
-
-          this.logger.info(
-            `🔄 Strategy state recovered for ${dbStrategy.name} (ID: ${strategyId})`,
-          );
-
-          if (recoveryResult.warnings && recoveryResult.warnings.length > 0) {
-            recoveryResult.warnings.forEach((warning) => {
-              this.logger.warn(`⚠️  Recovery warning: ${warning}`);
-            });
-          }
-        } else {
-          this.stateMonitor.recordRecoverySuccess(
-            strategyId,
-            recoveryStartTime,
-            recoveryEndTime,
-          );
-
-          this.logger.info(
-            `🆕 No previous state found for ${dbStrategy.name} (ID: ${strategyId}) - starting fresh`,
-          );
-        }
-
-        // Log recovery metrics
-        if (recoveryResult.metrics) {
-          const { savedStates, openOrders, totalPosition } = recoveryResult.metrics;
-          this.logger.debug(
-            `📊 Recovery metrics - States: ${savedStates}, Open Orders: ${openOrders}, Position: ${totalPosition}`,
-          );
-        }
-      } catch (recoveryError) {
-        this.stateMonitor.recordRecoveryFailure(
-          strategyId,
-          (recoveryError as Error).message,
-        );
-
-        this.logger.error(
-          `❌ State recovery failed for strategy ${strategyId}: ${(recoveryError as Error).message}`,
-        );
-        this.logger.warn('🔄 Strategy will start with fresh state');
-
-        // Emit recovery failure event for monitoring
-        this.eventBus.emit('strategyRecoveryFailed', {
-          strategyId,
-          strategyName: dbStrategy.name,
-          error: (recoveryError as Error).message,
-        });
-      }
-
-      // Apply recovered state/context to strategy before engine registration
-      if (recoveryResult) {
-        await this.applyRecoveryToStrategy(strategy, dbStrategy, recoveryResult);
-      }
 
       // Generate unique name for engine
       const engineName = `strategy_${strategyId}`;
@@ -487,72 +381,7 @@ export class StrategyManager {
     }
   }
 
-  private async applyRecoveryToStrategy(
-    strategy: IStrategy,
-    dbStrategy: StrategyEntity,
-    recoveryResult: StrategyRecoveryResult,
-  ): Promise<void> {
-    if (recoveryResult.recoveredState && strategy.loadState) {
-      try {
-        await strategy.loadState({
-          strategyId: recoveryResult.recoveredState.strategyId,
-          strategyType: dbStrategy.type,
-          stateVersion: strategy.getStateVersion?.(),
-          timestamp: recoveryResult.recoveredState.lastUpdateTime,
-          internalState: recoveryResult.recoveredState.internalState,
-          indicatorData: recoveryResult.recoveredState.indicatorData,
-          lastSignal: recoveryResult.recoveredState.lastSignal,
-          signalTime: recoveryResult.recoveredState.signalTime,
-          currentPosition: recoveryResult.recoveredState.currentPosition,
-          averagePrice: recoveryResult.recoveredState.averagePrice,
-        });
-      } catch (error) {
-        this.logger.warn(
-          `⚠️  Failed to apply saved state for ${dbStrategy.name} (ID: ${dbStrategy.id}): ${
-            (error as Error).message
-          }`,
-        );
-      }
-    }
 
-    if (strategy.setRecoveryContext) {
-      const context: StrategyRecoveryContext = {
-        recovered: recoveryResult.recovered,
-        strategyId: dbStrategy.id,
-        savedState: recoveryResult.recoveredState
-          ? {
-              strategyId: recoveryResult.recoveredState.strategyId,
-              strategyType: dbStrategy.type,
-              stateVersion: strategy.getStateVersion?.(),
-              timestamp: recoveryResult.recoveredState.lastUpdateTime,
-              internalState: recoveryResult.recoveredState.internalState,
-              indicatorData: recoveryResult.recoveredState.indicatorData,
-              lastSignal: recoveryResult.recoveredState.lastSignal,
-              signalTime: recoveryResult.recoveredState.signalTime,
-              currentPosition: recoveryResult.recoveredState.currentPosition,
-              averagePrice: recoveryResult.recoveredState.averagePrice,
-            }
-          : undefined,
-        openOrders: recoveryResult.openOrders.map((order) => ({
-          orderId: order.orderId,
-          status: order.status,
-          executedQuantity: order.executedQuantity,
-          remainingQuantity: order.remainingQuantity,
-        })),
-        totalPosition: recoveryResult.totalPosition,
-      };
-
-      try {
-        await strategy.setRecoveryContext(context);
-      } catch (error) {
-        this.logger.warn(
-          `⚠️  Failed to apply recovery context for ${dbStrategy.name} (ID: ${dbStrategy.id}): ${
-            (error as Error).message
-          }`,
-        );
-      }
-    }
-  }
 
   /**
    * Get default subscription configuration for a strategy type
@@ -729,149 +558,8 @@ export class StrategyManager {
     return this.strategyMetrics.get(strategyId);
   }
 
-  /**
-   * Backup strategy states for all active strategies
-   */
-  private async backupStrategyStates(): Promise<void> {
-    if (this.strategies.size === 0) {
-      return; // No strategies to backup
-    }
 
-    let successCount = 0;
-    let errorCount = 0;
 
-    for (const [strategyId, { instance }] of this.strategies) {
-      try {
-        if (instance.saveState) {
-          const state = await instance.saveState();
-          await this.stateManager.saveStrategyState(strategyId, state);
-          this.stateMonitor.recordBackupSuccess(strategyId);
-          successCount++;
-        } else {
-          this.logger.debug(
-            `Strategy ${strategyId} does not implement saveState(), skipping backup`,
-          );
-        }
-      } catch (error) {
-        this.stateMonitor.recordBackupFailure(strategyId, (error as Error).message);
-        errorCount++;
-        this.logger.error(
-          `Failed to backup state for strategy ${strategyId}: ${(error as Error).message}`,
-        );
-
-        // Emit backup failure event for monitoring
-        this.eventBus.emit('strategyBackupFailed', {
-          strategyId,
-          error: (error as Error).message,
-        });
-      }
-    }
-
-    if (successCount > 0) {
-      this.logger.debug(
-        `💾 Strategy state backup completed: ${successCount} successful, ${errorCount} failed`,
-      );
-    }
-
-    if (errorCount > 0) {
-      this.logger.warn(
-        `⚠️  Strategy state backup had ${errorCount} failures out of ${this.strategies.size} strategies`,
-      );
-    }
-  }
-
-  /**
-   * Setup monitoring event listeners
-   */
-  private setupMonitoringEvents(): void {
-    // Setup state manager event listeners
-    this.stateManager.on('dataInconsistency', (data) => {
-      this.stateMonitor.recordDataInconsistency(data.strategyId, data.details);
-    });
-
-    // Setup state monitor alert listeners
-    this.stateMonitor.on('alert', (alert) => {
-      this.handleMonitoringAlert(alert);
-    });
-
-    // Setup strategy event listeners for monitoring
-    this.eventBus.on('strategyRecoveryFailed', (data) => {
-      this.logger.error(
-        `🚨 Strategy recovery failed: ${data.strategyName} (ID: ${data.strategyId})`,
-      );
-    });
-
-    this.eventBus.on('strategyBackupFailed', (data) => {
-      this.stateMonitor.recordBackupFailure(data.strategyId, data.error);
-    });
-  }
-
-  /**
-   * Handle monitoring alerts
-   */
-  private handleMonitoringAlert(alert: {
-    type: string;
-    strategyId: number;
-    failures?: number;
-    threshold?: number;
-    recoveryTime?: number;
-    details?: string;
-  }): void {
-    const { type, strategyId } = alert;
-
-    switch (type) {
-      case 'excessive_failures':
-        this.logger.error(
-          `🚨 CRITICAL: Strategy ${strategyId} has ${alert.failures} recovery failures (threshold: ${alert.threshold})`,
-        );
-        // Could integrate with external alerting system here
-        break;
-
-      case 'slow_recovery':
-        this.logger.warn(
-          `⚠️  PERFORMANCE: Strategy ${strategyId} recovery took ${alert.recoveryTime}ms (threshold: ${alert.threshold}ms)`,
-        );
-        break;
-
-      case 'state_corruption':
-        this.logger.error(
-          `🚨 CORRUPTION: Strategy ${strategyId} state corruption detected: ${alert.details}`,
-        );
-        break;
-
-      case 'data_inconsistency':
-        this.logger.warn(
-          `⚠️  INCONSISTENCY: Strategy ${strategyId} data inconsistency: ${alert.details}`,
-        );
-        break;
-
-      default:
-        this.logger.warn(`🚨 UNKNOWN ALERT [${type}]: Strategy ${strategyId}`, alert);
-    }
-  }
-
-  /**
-   * Get monitoring health report
-   */
-  public getHealthReport(): {
-    overall: {
-      totalStrategies: number;
-      healthyStrategies: number;
-      unhealthyStrategies: number;
-      successRate: number;
-    };
-    metrics: StateRecoveryMetrics;
-    strategies: StrategyHealthStatus[];
-  } {
-    return this.stateMonitor.generateHealthReport();
-  }
-
-  /**
-   * Get monitoring metrics
-   */
-  public getMonitoringMetrics(): StateRecoveryMetrics {
-    return this.stateMonitor.getMetrics();
-  }
 
   private static parseInterval(value: string | undefined, fallbackMs: number): number {
     const parsed = Number.parseInt(value ?? '', 10);

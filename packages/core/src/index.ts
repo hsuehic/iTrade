@@ -44,16 +44,6 @@ export type {
   ExchangeEvent,
 } from './events';
 
-// Strategy State Management & Monitoring
-export { StrategyStateManager } from './models/StrategyStateManager';
-export { StrategyStateMonitor } from './monitoring/StrategyStateMonitor';
-export { TypeOrmStrategyStateAdapter } from './adapters/TypeOrmStrategyStateAdapter';
-export type {
-  StateRecoveryMetrics,
-  StrategyHealthStatus,
-} from './monitoring/StrategyStateMonitor';
-export type { StrategyRecoveryResult } from './models/StrategyStateManager';
-
 // Subscription Management
 export { SubscriptionCoordinator } from './engine/SubscriptionCoordinator';
 export { SubscriptionManager } from './engine/SubscriptionManager'; // Legacy

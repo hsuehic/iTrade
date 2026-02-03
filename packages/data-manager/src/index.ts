@@ -46,7 +46,7 @@ export { OrderFillEntity } from './entities/OrderFill';
 export { PositionEntity } from './entities/Position';
 export { StrategyEntity } from './entities/Strategy';
 export { StrategyStatus, MarketType } from './entities/Strategy';
-export { StrategyStateEntity } from './entities/StrategyState';
+
 export { AccountInfoEntity } from './entities/AccountInfo';
 export { BalanceEntity } from './entities/Balance';
 export {

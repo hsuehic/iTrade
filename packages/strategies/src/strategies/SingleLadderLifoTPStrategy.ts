@@ -12,8 +12,7 @@ import {
   TradeMode,
   SignalType,
   SignalMetaData,
-  StrategyRecoveryContext,
-  StrategyStateSnapshot,
+
   InitialDataResult,
   Ticker,
   OrderSide,
@@ -213,7 +212,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, ExtendedSignalMetaData> = new Map();
   private processedQuantityMap: Map<string, Decimal> = new Map();
-  private recoveryContext: StrategyRecoveryContext | null = null;
+
 
   constructor(config: StrategyConfig<SingleLadderLifoTPParameters>) {
     super(config);
@@ -646,45 +645,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.filledEntries = [];
     this.tradedSize = new Decimal(0);
     this.initialDataProcessed = false;
-    this.recoveryContext = null;
+
     this.processedQuantityMap.clear();
     this._logger.info(`🧹 Strategy cleaned up`);
   }
 
-  public override async saveState(): Promise<StrategyStateSnapshot> {
-    const state = await super.saveState();
-    state.internalState = {
-      referencePrice: this.referencePrice.toNumber(),
-      filledEntries: this.filledEntries.map((e) => ({
-        ...e,
-        price: e.price.toString(),
-        amount: e.amount.toString(),
-        referencePriceBefore: e.referencePriceBefore.toString()
-      })),
-      tradedSize: this.tradedSize.toNumber(),
-    };
-    return state;
-  }
 
-  public override async loadState(snapshot: StrategyStateSnapshot): Promise<StrategyRecoveryContext> {
-    const context = await super.loadState(snapshot);
-    const s = snapshot.internalState as any;
-    if (s.referencePrice !== undefined) this.referencePrice = new Decimal(s.referencePrice);
-    if (Array.isArray(s.filledEntries)) {
-      this.filledEntries = s.filledEntries.map((e: any) => ({
-        ...e,
-        price: new Decimal(e.price),
-        amount: new Decimal(e.amount),
-        referencePriceBefore: new Decimal(e.referencePriceBefore)
-      }));
-    }
-    if (s.tradedSize !== undefined) this.tradedSize = new Decimal(s.tradedSize);
-    return context;
-  }
-
-  public async setRecoveryContext(context: StrategyRecoveryContext): Promise<void> {
-    this.recoveryContext = context;
-  }
 
   public getStrategyState() {
     return {

@@ -94,35 +94,7 @@ export interface IExchange extends EventEmitter {
   getSymbolInfo(symbol: string): Promise<SymbolInfo>;
 }
 
-// Strategy State Management Types
-export interface StrategyStateSnapshot {
-  strategyId?: number;
-  strategyType?: string;
-  stateVersion?: string;
-  timestamp?: Date;
-  internalState: Record<string, unknown>;
-  indicatorData: Record<string, unknown>;
-  lastSignal?: string;
-  signalTime?: Date;
-  currentPosition: string; // Decimal as string
-  averagePrice?: string; // Decimal as string
-}
 
-export interface StrategyRecoveryContext {
-  recovered?: boolean;
-  message?: string;
-  metrics?: Record<string, unknown>;
-  strategyId?: number;
-  savedState?: StrategyStateSnapshot;
-  openOrders?: Array<{
-    orderId: string;
-    status: string;
-    executedQuantity: string;
-    remainingQuantity: string;
-  }>;
-  totalPosition?: string;
-  lastExecutionTime?: Date;
-}
 
 export interface MarketDataUpdate {
   exchangeName?: string;
@@ -196,10 +168,7 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   getStrategyId?(): number | undefined; // Get strategy ID
 
   // 🆕 State Management Methods (optional - implemented in BaseStrategy)
-  saveState?(): Promise<StrategyStateSnapshot>;
-  loadState?(snapshot: StrategyStateSnapshot): Promise<StrategyRecoveryContext>;
-  setRecoveryContext?(context: StrategyRecoveryContext): Promise<void>;
-  getStateVersion?(): string; // For state schema versioning
+
 
   // 🆕 Initial Data Processing (required - implemented in BaseStrategy)
   /**

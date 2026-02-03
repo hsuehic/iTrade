@@ -5,8 +5,6 @@ import { Decimal } from 'decimal.js';
 import {
   DataUpdate,
   IStrategy,
-  StrategyStateSnapshot,
-  StrategyRecoveryContext,
   ILogger,
 } from '../interfaces';
 import {
@@ -253,49 +251,7 @@ export abstract class BaseStrategy<
   /**
    * Save current strategy state - override in derived classes for custom state
    */
-  public async saveState(): Promise<StrategyStateSnapshot> {
-    const state: StrategyStateSnapshot = {
-      strategyId: this._strategyId,
-      strategyType: this.strategyType,
-      stateVersion: this._stateVersion,
-      timestamp: new Date(),
-      internalState: {},
-      indicatorData: {},
-      lastSignal: this._lastSignal,
-      signalTime: this._lastSignalTime,
-      currentPosition: this._currentPosition.toString(),
-      averagePrice: this._averagePrice?.toString(),
-    };
-    // Derived classes should populate internalState and indicatorData
-    return state;
-  }
 
-  /**
-   * Load strategy state for recovery - override in derived classes for custom state
-   */
-  public async loadState(
-    snapshot: StrategyStateSnapshot,
-  ): Promise<StrategyRecoveryContext> {
-    this._strategyId = snapshot.strategyId;
-    this._lastSignal = snapshot.lastSignal;
-    this._lastSignalTime = snapshot.signalTime;
-    this._currentPosition = new Decimal(snapshot.currentPosition || 0);
-    this._averagePrice = snapshot.averagePrice
-      ? new Decimal(snapshot.averagePrice)
-      : undefined;
-    this._stateVersion = snapshot.stateVersion || '1.0.0';
-
-    // Derived classes should use snapshot.internalState and snapshot.indicatorData
-    return {
-      recovered: true,
-      message: `State loaded for ${this.strategyType}:${this._strategyId} (version ${this._stateVersion})`,
-      metrics: {
-        recoveryTime: new Date(),
-        lastSignal: this._lastSignal,
-        currentPosition: this._currentPosition,
-      },
-    };
-  }
 
   /**
    * Process initial data loaded by TradingEngine

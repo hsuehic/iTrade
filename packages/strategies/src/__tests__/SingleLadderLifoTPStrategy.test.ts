@@ -363,44 +363,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       expect(entries).toHaveLength(0);
     });
 
-    it('should NOT generate TP orders when starting even if position exists', async () => {
-      strategy = new SingleLadderLifoTPStrategy(createStrategyConfig({ basePrice: 100, maxSize: 500 }));
-      
-      // Load state with a long position
-      await strategy.loadState({
-        strategyId: 1,
-        strategyType: 'SingleLadderLifoTPStrategy',
-        stateVersion: '1.0.0',
-        timestamp: new Date(),
-        indicatorData: {},
-        internalState: {
-          tradedSize: 100,
-          referencePrice: 100,
-          filledEntries: [{
-            side: 'LONG',
-            price: '100',
-            amount: '100',
-            clientOrderId: 'E1D1D123',
-            timestamp: Date.now(),
-            referencePriceBefore: '100'
-          }]
-        },
-        currentPosition: '100'
-      });
 
-      const result = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
-
-      const tp = findOrderSignalsByType(result, SignalType.TakeProfit);
-      expect(tp).toHaveLength(0); // Should be empty per user request
-
-      // Should still have entry signals
-      const entries = findOrderSignalsByType(result, SignalType.Entry);
-      expect(entries.length).toBeGreaterThan(0);
-    });
 
     it('should cancel existing TP orders found on the exchange during start', async () => {
       strategy = new SingleLadderLifoTPStrategy(createStrategyConfig({ strategyId: 1 }));
