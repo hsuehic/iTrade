@@ -32,6 +32,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   // State
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _isInitialLoad = true;
+  bool _isUpdatingExchange = false;
   String? _error;
   String _selectedExchange = 'all';
   String? _selectedAsset;
@@ -179,12 +181,13 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       setState(() {
         _isLoading = false;
         _error = 'API client not initialized. Please login first.';
+        _isUpdatingExchange = false;
       });
       return;
     }
 
     setState(() {
-      _isLoading = true;
+      _isLoading = _isInitialLoad;
       _error = null;
     });
 
@@ -218,6 +221,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           _positionsData = results[1] as PositionsData;
           _pnlData = results[2] as PnLData;
           _isLoading = false;
+          _isInitialLoad = false;
+          _isUpdatingExchange = false;
         });
 
         // Start auto-refresh after initial load
@@ -228,6 +233,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         setState(() {
           _isLoading = false;
           _error = e.toString();
+          _isUpdatingExchange = false;
         });
       }
     }
@@ -257,6 +263,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     setState(() {
       _selectedExchange = normalizedExchange;
       _selectedAsset = null;
+      _isUpdatingExchange = true;
     });
     _loadData();
   }
@@ -280,7 +287,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   }
 
   Widget _buildBody(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading && _isInitialLoad) {
       return _buildLoadingState(context);
     }
 
@@ -293,18 +300,20 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         ? _portfolioData
         : _buildPortfolioViewData(displayAssets);
 
-    return RefreshIndicator(
-      onRefresh: _refreshData,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
-          SliverToBoxAdapter(
-            child: PortfolioSummaryCard(
-              portfolio: displayPortfolio,
-              pnl: _pnlData,
-            ),
-          ),
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _refreshData,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
+              SliverToBoxAdapter(
+                child: PortfolioSummaryCard(
+                  portfolio: displayPortfolio,
+                  pnl: _pnlData,
+                ),
+              ),
 
           // Exchange Filter - always use _allExchanges to keep all options visible
           if (_allExchanges.isNotEmpty)
@@ -366,10 +375,28 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             ),
           ),
 
-          // Bottom padding
-          SliverToBoxAdapter(child: SizedBox(height: 24)),
-        ],
-      ),
+              // Bottom padding
+              SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+        ),
+        if (_isUpdatingExchange || _isRefreshing)
+          Positioned(
+            left: 16.w,
+            right: 16.w,
+            top: 8,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 3,
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.15),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

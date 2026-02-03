@@ -114,7 +114,11 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const exchangeFilter = (searchParams.get('exchange') || 'all').trim().toLowerCase();
-    const minValue = parseFloat(searchParams.get('minValue') || '0');
+    const requestedMinValue = parseFloat(searchParams.get('minValue') || '0');
+    const minValue = Math.max(
+      Number.isNaN(requestedMinValue) ? 0 : requestedMinValue,
+      0.01,
+    );
 
     const dm = await getDataManager();
 
