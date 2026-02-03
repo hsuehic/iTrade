@@ -45,7 +45,11 @@ export { OrderEntity } from './entities/Order';
 export { OrderFillEntity } from './entities/OrderFill';
 export { PositionEntity } from './entities/Position';
 export { StrategyEntity } from './entities/Strategy';
+export { StrategyPerformanceEntity } from './entities/StrategyPerformance';
 export { StrategyStatus, MarketType } from './entities/Strategy';
+
+// Performance utilities
+export { performanceToEntity, entityToPerformance } from './utils/performance-converter';
 
 export { AccountInfoEntity } from './entities/AccountInfo';
 export { BalanceEntity } from './entities/Balance';

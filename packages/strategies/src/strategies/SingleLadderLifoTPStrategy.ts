@@ -311,7 +311,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     }
 
     this.initialDataProcessed = true;
-    // Call updateLadderOrders with excludeTp=true to avoid generating new TPs on start
     const newSignals = this.updateLadderOrders(true);
     signals.push(...newSignals);
 
@@ -433,7 +432,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const { orders } = dataUpdate;
     if (orders && orders.length > 0) {
       const signals = this.handleOrderUpdates(orders);
-      if (signals.length > 0) return signals.length === 1 ? signals[0] : signals;
+      if (signals.length > 0) return signals;
     }
     return { action: 'hold' };
   }
@@ -496,6 +495,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private handleOrderUpdates(orders: Order[]): StrategyResult[] {
     const signals: StrategyResult[] = [];
     for (const order of orders) {
+      if (order.status === OrderStatus.PARTIALLY_FILLED) {
+        this._logger.info(
+          `🔄 Partially filled: ${order.side} ${order.symbol} ${order.price} ${order.executedQuantity}/${order.quantity} ${order.status}`,
+        );
+      }
       if (!order.clientOrderId) continue;
 
       let metadata = this.orderMetadataMap.get(order.clientOrderId);

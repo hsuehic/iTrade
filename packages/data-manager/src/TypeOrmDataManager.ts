@@ -11,6 +11,7 @@ import { OrderEntity } from './entities/Order';
 import { OrderFillEntity } from './entities/OrderFill';
 import { PositionEntity } from './entities/Position';
 import { StrategyEntity } from './entities/Strategy';
+import { StrategyPerformanceEntity } from './entities/StrategyPerformance';
 import { StrategyStateEntity } from './entities/StrategyState';
 import { AccountInfoEntity } from './entities/AccountInfo';
 import { BalanceEntity } from './entities/Balance';
@@ -94,6 +95,7 @@ export const EntityMap: Record<string, any> = {
   session: Session,
   verification: Verification,
   strategies: StrategyEntity, // matches your decorator @OneToMany('strategies', ...)
+  strategy_performance: StrategyPerformanceEntity,
   klines: KlineEntity,
   symbols: SymbolEntity,
   data_quality: DataQualityEntity,
@@ -838,6 +840,7 @@ export class TypeOrmDataManager implements IDataManager {
     status?: string;
     exchange?: string;
     includeUser?: boolean;
+    includePerformance?: boolean;
   }): Promise<StrategyEntity[]> {
     this.ensureInitialized();
     return await this.strategyRepository.findAll(filters);
@@ -868,6 +871,35 @@ export class TypeOrmDataManager implements IDataManager {
   ): Promise<void> {
     this.ensureInitialized();
     await this.strategyRepository.updateStatus(id, status, errorMessage);
+  }
+
+  /**
+   * 🆕 Update strategy performance metrics
+   * @param id - Strategy ID
+   * @param performance - Performance metrics to update
+   */
+  async updateStrategyPerformance(
+    id: number,
+    performance: import('@itrade/core').StrategyPerformance,
+  ): Promise<void> {
+    this.ensureInitialized();
+
+    const { performanceToEntity } = await import('./utils/performance-converter');
+    const performanceData = performanceToEntity(performance, id);
+
+    const perfRepo = this.dataSource.getRepository(StrategyPerformanceEntity);
+
+    // Check if performance record exists
+    const existing = await perfRepo.findOne({ where: { strategyId: id } });
+
+    if (existing) {
+      // Update existing record
+      await perfRepo.update({ strategyId: id }, performanceData);
+    } else {
+      // Create new record
+      const newPerf = perfRepo.create(performanceData);
+      await perfRepo.save(newPerf);
+    }
   }
 
   // -------------------- Order Management --------------------

@@ -64,6 +64,7 @@ export class BotInstance {
       this.portfolioManager,
       this.logger,
       userId,
+      dataManager, // 🆕 Pass dataManager for performance persistence
     );
 
     this.pushNotificationService = new PushNotificationService(dataManager, logger, {

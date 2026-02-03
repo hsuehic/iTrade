@@ -12,7 +12,12 @@
  */
 
 import type { ILogger } from '../interfaces';
-import type { SubscriptionConfig, InitialDataConfig, InitialDataResult } from '.';
+import type {
+  SubscriptionConfig,
+  InitialDataConfig,
+  InitialDataResult,
+  StrategyPerformance,
+} from '.';
 
 /**
  * 📦 Base Strategy Parameters
@@ -40,6 +45,9 @@ export interface StrategyRuntimeContext {
   subscription?: SubscriptionConfig;
   initialDataConfig?: InitialDataConfig;
   loadedInitialData?: InitialDataResult;
+
+  // 🆕 Performance tracking (mandatory)
+  performance: StrategyPerformance;
 }
 
 /**

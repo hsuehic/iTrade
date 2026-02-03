@@ -6,6 +6,9 @@ export * from './subscription';
 // Re-export strategy types
 export * from './strategy-types';
 
+// Re-export performance types
+export * from './performance-types';
+
 // Strategy Health Status
 export interface StrategyHealthStatus {
   status: 'healthy' | 'unhealthy' | 'initializing' | 'stopped';
@@ -119,6 +122,7 @@ export interface Trade {
   takerOrderId?: string;
   makerOrderId?: string;
   exchange?: string; // 交易所名称，用于区分多交易所数据
+  fee?: Decimal; // 🆕 Trading fee
 }
 
 export interface Kline {

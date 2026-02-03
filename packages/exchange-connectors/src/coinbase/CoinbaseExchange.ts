@@ -1342,7 +1342,9 @@ export class CoinbaseExchange extends BaseExchange {
       updateTime: orderData.updated_at ? new Date(orderData.updated_at) : undefined,
       executedQuantity: orderData.filled_size
         ? this.formatDecimal(orderData.filled_size)
-        : undefined,
+        : orderData.leaves_quantity && !quantity.isZero()
+          ? quantity.minus(this.formatDecimal(orderData.leaves_quantity))
+          : undefined,
       cummulativeQuoteQuantity: orderData.filled_value
         ? this.formatDecimal(orderData.filled_value)
         : undefined,

@@ -3,6 +3,7 @@ import {
   CreateDateColumn,
   Entity,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
   ManyToOne,
@@ -16,6 +17,7 @@ import type { OrderEntity } from './Order';
 import type { User } from './User';
 import type { DryRunSessionEntity } from './DryRunSession';
 import type { BacktestResultEntity } from './BacktestResult';
+import type { StrategyPerformanceEntity } from './StrategyPerformance';
 
 export enum StrategyStatus {
   ACTIVE = 'active',
@@ -103,6 +105,13 @@ export class StrategyEntity {
    */
   @Column({ type: 'jsonb', nullable: true })
   initialDataConfig?: Record<string, unknown>;
+
+  /**
+   * Performance metrics (OneToOne relationship)
+   * Comprehensive performance data stored in separate table for efficient querying
+   */
+  @OneToOne('strategy_performance', 'strategy', { cascade: true, eager: false })
+  performance?: StrategyPerformanceEntity;
 
   @Column({ type: 'text', nullable: true })
   errorMessage?: string;

@@ -4,6 +4,7 @@ import {
   ILogger,
   EventBus,
   InitialDataConfig,
+  createEmptyPerformance,
 } from '@itrade/core';
 import {
   TypeOrmDataManager,
@@ -128,6 +129,7 @@ export class StrategyManager {
       const dbStrategies = await this.dataManager.getStrategies({
         userId: this.userId,
         status: StrategyStatus.ACTIVE,
+        includePerformance: true, // 🆕 Load performance metrics
       });
 
       this.logger.info(`Loading ${dbStrategies.length} active strategies...`);
@@ -165,6 +167,7 @@ export class StrategyManager {
       const activeStrategies = await this.dataManager.getStrategies({
         userId: this.userId,
         status: StrategyStatus.ACTIVE,
+        includePerformance: true, // 🆕 Load performance metrics
       });
       const activeStrategyIds = new Set(activeStrategies.map((s) => s.id));
 
@@ -324,6 +327,26 @@ export class StrategyManager {
        - InitialData: ${JSON.stringify(initialDataConfig || 'N/A')}`,
     );
 
+    // 🆕 Initialize performance from database entity or create empty
+    let performance;
+    if (dbStrategy.performance) {
+      // Convert entity to StrategyPerformance
+      const { entityToPerformance } = require('@itrade/data-manager');
+      performance = entityToPerformance(
+        dbStrategy.performance,
+        dbStrategy.symbol || '',
+        dbStrategy.exchange || '',
+      );
+    } else {
+      // Create empty performance
+      performance = createEmptyPerformance(
+        dbStrategy.symbol || '',
+        dbStrategy.exchange || '',
+        dbStrategy.id,
+        dbStrategy.name,
+      );
+    }
+
     return createStrategyInstance(
       dbStrategy.type as StrategyTypeKey,
       {
@@ -337,6 +360,8 @@ export class StrategyManager {
         // 🆕 Use initialData configuration from database
         // This is the historical data to fetch when strategy starts
         initialDataConfig,
+        // 🆕 Performance tracking
+        performance,
       },
       dbStrategy.id,
       dbStrategy.name,
@@ -496,10 +521,27 @@ export class StrategyManager {
       const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
       const minutes = (runTime / (1000 * 60)).toFixed(0);
 
-      this.logger.info(`\n📈 ${strategy.name}:`);
+      this.logger.info(`\\n📈 ${strategy.name}:`);
       this.logger.info(`   Running for: ${hours}h (${minutes}m)`);
       this.logger.info(`   Signals generated: ${metrics.totalSignals}`);
       this.logger.info(`   Orders executed: ${metrics.totalOrders}`);
+
+      // 🆕 Get performance summary from strategy instance
+      try {
+        const perfSummary = strategy.instance.getPerformanceSummary?.();
+        if (perfSummary) {
+          this.logger.info(`   📊 Performance Summary:`);
+          this.logger.info(`      Total Orders: ${perfSummary.totalOrders}`);
+          this.logger.info(`      Filled Orders: ${perfSummary.filledOrders}`);
+          this.logger.info(`      Pending Orders: ${perfSummary.pendingOrders}`);
+          this.logger.info(`      Total PnL: ${perfSummary.totalPnL}`);
+          this.logger.info(`      Win Rate: ${perfSummary.winRate}`);
+          this.logger.info(`      Total Volume: ${perfSummary.totalVolume}`);
+          this.logger.info(`      Current Position: ${perfSummary.currentPosition}`);
+        }
+      } catch (error) {
+        this.logger.debug(`   Could not get performance summary: ${error}`);
+      }
 
       if (metrics.lastSignalTime) {
         const lastSignalAgo = Math.round(

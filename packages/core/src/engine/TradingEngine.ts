@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 
 import { v4 as uuidv4 } from 'uuid';
+import { Decimal } from 'decimal.js';
 
 import {
   ITradingEngine,
@@ -10,6 +11,7 @@ import {
   IPortfolioManager,
   ILogger,
   ExecuteOrderParameters,
+  IDataManager,
 } from '../interfaces';
 import {
   Order,
@@ -57,6 +59,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private _eventBus: EventBus;
   private subscriptionCoordinator: SubscriptionCoordinator;
   private readonly _userId?: string;
+  private readonly _dataManager?: IDataManager;
+
+  // 🆕 Performance Persistence Debounce Timers
+  private readonly _performanceSaveTimers = new Map<number, NodeJS.Timeout>();
 
   // Account state tracking (keyed by exchange name)
   private readonly _positions = new Map<string, Position[]>();
@@ -82,11 +88,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     private portfolioManager: IPortfolioManager,
     private logger: ILogger,
     userId?: string,
+    dataManager?: IDataManager,
   ) {
     super();
     this._eventBus = EventBus.getInstance();
     this.subscriptionCoordinator = new SubscriptionCoordinator(logger);
     this._userId = userId;
+    this._dataManager = dataManager;
     this.setupEventListeners();
   }
 
@@ -180,6 +188,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Cleanup all strategies
       for (const [name, strategy] of this._strategies) {
         try {
+          // 🆕 Save final performance metrics before stopping
+          await this.forceSaveStrategyPerformance(name, strategy);
+
           await strategy.cleanup?.();
         } catch (error) {
           this.logger.error(`Failed to cleanup strategy ${name}`, error as Error);
@@ -1055,7 +1066,27 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Store/update order in the orders map
       const orders = this._orders.get(exchangeName) || [];
       const existingOrderIndex = orders.findIndex((o) => o.id === order.id);
+
+      // 🆕 Calculate execution delta for partial fills
+      let trade: Trade | undefined;
+      let previousExecutedQty = new Decimal(0);
+      let previousCumQuoteQty = new Decimal(0);
+
       if (existingOrderIndex >= 0) {
+        const existingOrder = orders[existingOrderIndex];
+        previousExecutedQty = existingOrder.executedQuantity || new Decimal(0);
+        previousCumQuoteQty = existingOrder.cummulativeQuoteQuantity || new Decimal(0);
+
+        // 🆕 Safety: If incoming order has undefined executedQuantity, inherit from previous state
+        // This prevents regression to 0 which would cause double-counting on next fill
+        if (order.executedQuantity === undefined) {
+          order.executedQuantity = previousExecutedQty;
+        }
+        // Inherit cumulative quote qty if missing too
+        if (order.cummulativeQuoteQuantity === undefined) {
+          order.cummulativeQuoteQuantity = previousCumQuoteQty;
+        }
+
         // Update existing order
         orders[existingOrderIndex] = order;
       } else {
@@ -1063,6 +1094,39 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         orders.push(order);
       }
       this._orders.set(exchangeName, orders);
+
+      // Calculate delta to detect if a trade occurred
+      const currentExecutedQty = order.executedQuantity || new Decimal(0);
+      const currentCumQuoteQty = order.cummulativeQuoteQuantity || new Decimal(0);
+      const deltaQty = currentExecutedQty.minus(previousExecutedQty);
+
+      if (deltaQty.gt(0)) {
+        // A trade occurred (partial or final fill)
+        const deltaQuote = currentCumQuoteQty.minus(previousCumQuoteQty);
+        // Calculate average price of this chunk
+        const fillPrice = deltaQty.isZero() ? new Decimal(0) : deltaQuote.div(deltaQty);
+
+        trade = {
+          id: `${order.id}-${Date.now()}`, // Generate unique trade ID for this fill
+          symbol: order.symbol,
+          price: fillPrice.isZero() ? order.price || new Decimal(0) : fillPrice,
+          quantity: deltaQty,
+          side: order.side === OrderSide.BUY ? 'buy' : 'sell',
+          timestamp: new Date(),
+          exchange: exchangeName,
+          // Calculate fee for this chunk if possible (requires order fee info which might be cumulative or not)
+          // For now, we assume fees are handled in the order object or subsequent events
+        };
+
+        this.logger.info(
+          `⚖️ Execution detected: ${trade.side} ${trade.quantity} @ ${trade.price} ` +
+            `(Order: ${order.clientOrderId})`,
+        );
+
+        // Notify strategies of the trade execution
+        this.notifyStrategiesTradeExecuted(trade, exchangeName);
+      }
+
       order.exchange = exchange.name;
       if (!order.userId) {
         order.userId = this._userId;
@@ -1085,6 +1149,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           break;
         case OrderStatus.PARTIALLY_FILLED:
           this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
+          // Note: trade notification handled above
           break;
         case OrderStatus.CANCELED:
           this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
@@ -1273,10 +1338,37 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       try {
         if (strategy.config.exchange === exchangeName) {
           await strategy.onOrderFilled(order);
+          // 🆕 Trigger debounced performance save (updates counts)
+          this.saveStrategyPerformance(name, strategy);
         }
       } catch (error) {
         this.logger.error(
           `Error notifying strategy ${name} of order fill`,
+          error as Error,
+        );
+      }
+    }
+  }
+
+  /**
+   * 🆕 Notify strategies of trade execution (partial or full fill)
+   */
+  private async notifyStrategiesTradeExecuted(
+    trade: Trade,
+    exchangeName: string,
+  ): Promise<void> {
+    for (const [name, strategy] of this._strategies) {
+      try {
+        if (strategy.config.exchange === exchangeName) {
+          if (strategy.onTradeExecuted) {
+            await strategy.onTradeExecuted(trade);
+            // 🆕 Trigger debounced performance save (updates PnL/volume)
+            this.saveStrategyPerformance(name, strategy);
+          }
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error notifying strategy ${name} of trade execution`,
           error as Error,
         );
       }
@@ -1622,5 +1714,58 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   public getSubscriptionStats() {
     return this.subscriptionCoordinator.getStats();
+  }
+
+  /**
+   * 🆕 Save strategy performance with debouncing (throttle)
+   * Prevents database thrashing during high-frequency updates
+   */
+  private saveStrategyPerformance(strategyName: string, strategy: IStrategy): void {
+    if (!this._dataManager?.updateStrategyPerformance) return;
+
+    const strategyId = strategy.getStrategyId?.() ?? strategy.config.strategyId;
+    if (!strategyId) return;
+
+    // Clear existing timer if any (debounce behavior)
+    if (this._performanceSaveTimers.has(strategyId)) {
+      clearTimeout(this._performanceSaveTimers.get(strategyId));
+    }
+
+    // Set new timer (2 seconds debounce)
+    const timer = setTimeout(async () => {
+      try {
+        await this.forceSaveStrategyPerformance(strategyName, strategy);
+      } finally {
+        this._performanceSaveTimers.delete(strategyId);
+      }
+    }, 2000);
+
+    this._performanceSaveTimers.set(strategyId, timer);
+  }
+
+  /**
+   * 🆕 Force immediate save of strategy performance
+   * Used during stop/cleanup or when timer fires
+   */
+  private async forceSaveStrategyPerformance(
+    strategyName: string,
+    strategy: IStrategy,
+  ): Promise<void> {
+    if (!this._dataManager?.updateStrategyPerformance) return;
+
+    const strategyId = strategy.getStrategyId?.() ?? strategy.config.strategyId;
+    if (!strategyId) return;
+
+    try {
+      const performance = strategy.getPerformance?.();
+      if (performance) {
+        await this._dataManager.updateStrategyPerformance(strategyId, performance);
+        this.logger.debug(
+          `💾 Saved performance for strategy ${strategyName} (ID: ${strategyId})`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(`Failed to save performance for ${strategyName}`, error as Error);
+    }
   }
 }

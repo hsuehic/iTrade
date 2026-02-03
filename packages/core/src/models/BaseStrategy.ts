@@ -21,8 +21,11 @@ import {
   InitialDataResult,
   InitialDataConfig,
   SubscriptionConfig,
+  StrategyPerformance,
+  createEmptyPerformance,
 } from '../types';
 import { ConsoleLogger } from './ConsoleLogger';
+import { PerformanceTracker } from '../utils/PerformanceTracker';
 
 export abstract class BaseStrategy<
     TParams extends StrategyParameters = StrategyParameters,
@@ -72,6 +75,7 @@ export abstract class BaseStrategy<
       subscription,
       initialDataConfig,
       loadedInitialData,
+      performance,
     } = config;
 
     this._strategyType = type;
@@ -85,6 +89,14 @@ export abstract class BaseStrategy<
       subscription,
       initialDataConfig,
       loadedInitialData,
+      performance:
+        performance ||
+        createEmptyPerformance(
+          symbol,
+          Array.isArray(exchange) ? exchange[0] : exchange,
+          strategyId,
+          strategyName,
+        ),
     };
 
     this._logger = logger || new ConsoleLogger();
@@ -158,17 +170,44 @@ export abstract class BaseStrategy<
 
   public async onOrderFilled(order: Order): Promise<void> {
     this.emit('orderFilled', order);
-    // Default implementation: update position
+
+    // Only update performance counters (counts/status)
+    // Volume/Fees/Position updates are handled in onTradeExecuted via partial fills
     if (order.symbol === this._symbol && order.exchange === this._exchangeName) {
-      const filledQuantity = order.executedQuantity || new Decimal(0);
-      if (order.side === OrderSide.BUY) {
-        this._currentPosition = this._currentPosition.plus(filledQuantity);
-      } else if (order.side === OrderSide.SELL) {
-        this._currentPosition = this._currentPosition.minus(filledQuantity);
+      this._context.performance = PerformanceTracker.updateWithOrder(
+        this._context.performance,
+        order,
+      );
+    }
+  }
+
+  /**
+   * 🆕 Called when a trade execution (fill) occurs
+   * Handles both partial fills and final fills
+   */
+  public async onTradeExecuted(trade: Trade): Promise<void> {
+    this.emit('tradeExecuted', trade);
+
+    if (trade.symbol === this._symbol && trade.exchange === this._exchangeName) {
+      // Update internal position state incrementally
+      const quantity = trade.quantity;
+      if (String(trade.side).toLowerCase() === 'buy') {
+        this._currentPosition = this._currentPosition.plus(quantity);
+      } else if (String(trade.side).toLowerCase() === 'sell') {
+        this._currentPosition = this._currentPosition.minus(quantity);
       }
-      this._averagePrice = order.averagePrice;
+
+      // Update average price if available
+      this._averagePrice = trade.price;
+
       this._logger.debug(
-        `[${this.strategyType}:${this._strategyId}] Position updated: ${this._currentPosition.toString()} @ ${this._averagePrice?.toString()}`,
+        `[${this.strategyType}:${this._strategyId}] Trade executed: ${trade.side} ${quantity} @ ${trade.price}`,
+      );
+
+      // Update performance metrics (Volume, Fees, PnL)
+      this._context.performance = PerformanceTracker.updateWithTrade(
+        this._context.performance,
+        trade,
       );
     }
   }
@@ -183,6 +222,12 @@ export abstract class BaseStrategy<
       this._averagePrice = position.avgPrice;
       this._logger.debug(
         `[${this.strategyType}:${this._strategyId}] External position update: ${this._currentPosition.toString()} @ ${this._averagePrice?.toString()}`,
+      );
+
+      // 🆕 Update performance metrics
+      this._context.performance = PerformanceTracker.updateWithPosition(
+        this._context.performance,
+        position,
       );
     }
   }
@@ -365,5 +410,23 @@ export abstract class BaseStrategy<
 
   protected getAveragePrice(): Decimal | undefined {
     return this._averagePrice;
+  }
+
+  /**
+   * 🆕 Get current performance metrics
+   */
+  public getPerformance(): StrategyPerformance {
+    // Update time metrics before returning
+    this._context.performance = PerformanceTracker.updateTimeMetrics(
+      this._context.performance,
+    );
+    return this._context.performance;
+  }
+
+  /**
+   * 🆕 Get performance summary for quick display
+   */
+  public getPerformanceSummary() {
+    return PerformanceTracker.getSummary(this._context.performance);
   }
 }

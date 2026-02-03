@@ -65,13 +65,21 @@ export class StrategyRepository {
 
   async findById(
     id: number,
-    options?: { includeUser?: boolean },
+    options?: { includeUser?: boolean; includePerformance?: boolean },
   ): Promise<StrategyEntity | null> {
-    // Don't join by default - only if explicitly requested
+    const relations: string[] = [];
+
     if (options?.includeUser) {
+      relations.push('user');
+    }
+    if (options?.includePerformance) {
+      relations.push('performance');
+    }
+
+    if (relations.length > 0) {
       return await this.repository.findOne({
         where: { id },
-        relations: ['user'],
+        relations,
       });
     }
 
@@ -85,12 +93,18 @@ export class StrategyRepository {
     status?: string;
     exchange?: string;
     includeUser?: boolean; // Control whether to load user relation
+    includePerformance?: boolean; // Control whether to load performance relation
   }): Promise<StrategyEntity[]> {
     const query = this.repository.createQueryBuilder('strategy');
 
     // Only join user if explicitly requested
     if (filters?.includeUser) {
       query.leftJoinAndSelect('strategy.user', 'user');
+    }
+
+    // Only join performance if explicitly requested
+    if (filters?.includePerformance) {
+      query.leftJoinAndSelect('strategy.performance', 'performance');
     }
 
     if (filters?.userId) {

@@ -27,6 +27,7 @@ import {
   StrategyConfig,
   StrategyRuntimeContext,
   TradeMode,
+  StrategyPerformance,
 } from '../types';
 
 // Exchange Interface
@@ -158,6 +159,9 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   onOrderCreated?(order: Order): Promise<void>; // Called when order is created from strategy signal
   onOrderFilled(order: Order): Promise<void>; // Called when order is filled
 
+  // 🆕 Trade Execution Callback (for partial fills and exact performance tracking)
+  onTradeExecuted?(trade: Trade): Promise<void>;
+
   // 🆕 Strategy Name Management (optional - implemented in BaseStrategy)
   setStrategyName?(name: string): void; // Set user-defined strategy name from database
 
@@ -179,6 +183,27 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
    * @param initialData - The loaded initial data containing klines, positions, orders, etc.
    */
   processInitialData(initialData: InitialDataResult): Promise<StrategyAnalyzeResult>;
+
+  // 🆕 Performance Tracking Methods (optional - implemented in BaseStrategy)
+  /**
+   * Get current performance metrics for this strategy
+   * @returns Complete performance metrics including orders, PnL, positions, etc.
+   */
+  getPerformance?(): StrategyPerformance;
+
+  /**
+   * Get a summary of key performance metrics for quick display
+   * @returns Simplified performance summary with key metrics
+   */
+  getPerformanceSummary?(): {
+    totalOrders: number;
+    filledOrders: number;
+    pendingOrders: number;
+    totalPnL: string;
+    winRate: string;
+    totalVolume: string;
+    currentPosition: string;
+  };
 
   cleanup?(): Promise<void>;
 }
@@ -261,6 +286,9 @@ export interface IDataManager {
   // Utility methods
   getAvailableSymbols?(): Promise<string[]>;
   getAvailableIntervals?(symbol: string): Promise<string[]>;
+
+  // 🆕 Performance Persistence
+  updateStrategyPerformance?(id: number, performance: StrategyPerformance): Promise<void>;
 }
 
 // Backtesting Engine Interface
