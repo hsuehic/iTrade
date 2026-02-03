@@ -10,6 +10,7 @@ import 'package:local_auth/local_auth.dart';
 import '../constant/network.dart';
 import '../design/extensions/spacing_extension.dart';
 import '../services/api_client.dart';
+import '../services/app_bootstrap.dart';
 import '../services/preference.dart';
 import '../utils/responsive_layout.dart';
 
@@ -81,6 +82,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       _showSnack('Biometric error: $e');
     }
+  }
+
+  Future<bool> _ensureApiClientReady() async {
+    await AppBootstrap.instance.ensureApiClientReady(
+      timeout: const Duration(seconds: 8),
+    );
+    if (ApiClient.instance.isInitialized) {
+      return true;
+    }
+    if (!mounted) return false;
+    setState(() {
+      _error = 'Login failed: ApiClient not initialized. '
+          'Long press the logo to check API_BASE_URL.';
+    });
+    return false;
   }
 
   void _showSnack(String text) {
@@ -273,6 +289,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
+      if (!await _ensureApiClientReady()) return;
       final User? user = await AuthService.instance.signInWithGoogle();
       if (user != null) {
         if (!mounted) return;
@@ -306,6 +323,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
+      if (!await _ensureApiClientReady()) return;
       final User? user = await AuthService.instance.signInWithApple();
       if (user != null) {
         if (!mounted) return;
@@ -341,6 +359,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
+      if (!await _ensureApiClientReady()) return;
       final User? user = await AuthService.instance.signInWithCredentials(
         _emailController.text.trim(),
         _passwordController.text,

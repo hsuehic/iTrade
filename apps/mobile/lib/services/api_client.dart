@@ -4,6 +4,7 @@ import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// REST client using Dio with cookie-session authorization and persistent cookies.
@@ -17,7 +18,7 @@ class ApiClient {
   static final ApiClient instance = ApiClient._internal();
 
   late final Dio _dio;
-  PersistCookieJar? _cookieJar;
+  CookieJar? _cookieJar;
   bool _initialized = false;
 
   bool get isInitialized => _initialized;
@@ -33,15 +34,20 @@ class ApiClient {
   }) async {
     if (_initialized) return;
 
-    final Directory appDir = await getApplicationSupportDirectory();
-    final Directory jarDir = Directory(
-      '${appDir.path}${Platform.pathSeparator}cookies',
-    );
-    if (!await jarDir.exists()) {
-      await jarDir.create(recursive: true);
+    try {
+      final Directory appDir = await getApplicationSupportDirectory();
+      final Directory jarDir = Directory(
+        '${appDir.path}${Platform.pathSeparator}cookies',
+      );
+      if (!await jarDir.exists()) {
+        await jarDir.create(recursive: true);
+      }
+      _cookieJar = PersistCookieJar(storage: FileStorage(jarDir.path));
+    } catch (error) {
+      // Fallback to in-memory cookies if storage is unavailable.
+      debugPrint('ApiClient cookie storage unavailable: $error');
+      _cookieJar = CookieJar();
     }
-
-    _cookieJar = PersistCookieJar(storage: FileStorage(jarDir.path));
 
     _dio = Dio(
       BaseOptions(
