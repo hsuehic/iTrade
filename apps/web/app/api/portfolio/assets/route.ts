@@ -113,7 +113,7 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const exchangeFilter = searchParams.get('exchange') || 'all';
+    const exchangeFilter = (searchParams.get('exchange') || 'all').trim().toLowerCase();
     const minValue = parseFloat(searchParams.get('minValue') || '0');
 
     const dm = await getDataManager();
@@ -134,13 +134,26 @@ export async function GET(request: Request) {
     // Process assets from all accounts
     const allAssets: AssetData[] = [];
     const assetsByExchange: Record<string, AssetData[]> = {};
-    const aggregatedAssetsMap = new Map<string, any>();
+    const aggregatedAssetsMap = new Map<
+      string,
+      {
+        asset: string;
+        free: number;
+        locked: number;
+        total: number;
+      }
+    >();
     const exchanges: string[] = [];
     const assetsByExchangeMap = new Map<string, Set<string>>();
 
     for (const account of accounts) {
       const balances = await dm.getAccountBalances(account.id);
       const exchange = account.exchange;
+      const exchangeLower = exchange.toLowerCase();
+
+      if (exchangeFilter != 'all' && exchangeLower != exchangeFilter) {
+        continue;
+      }
 
       if (!exchanges.includes(exchange)) {
         exchanges.push(exchange);

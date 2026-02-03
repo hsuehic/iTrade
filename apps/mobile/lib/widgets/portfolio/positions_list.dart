@@ -26,9 +26,15 @@ class PositionsList extends StatelessWidget {
     }
 
     // Filter by exchange if selected
-    final filteredPositions = selectedExchange != null && selectedExchange != 'all'
-        ? positions.where((p) => p.exchange == selectedExchange).toList()
-        : positions;
+    final normalizedSelectedExchange = selectedExchange?.toLowerCase();
+    final filteredPositions =
+        normalizedSelectedExchange != null && normalizedSelectedExchange != 'all'
+            ? positions
+                .where(
+                  (p) => p.exchange.toLowerCase() == normalizedSelectedExchange,
+                )
+                .toList()
+            : positions;
 
     // Calculate total unrealized PnL
     final totalPnl = filteredPositions.fold(

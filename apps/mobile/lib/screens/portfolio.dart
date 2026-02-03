@@ -47,6 +47,84 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   StreamSubscription<PortfolioData>? _portfolioSubscription;
   StreamSubscription<List<Position>>? _positionsSubscription;
 
+  String _normalizeExchange(String exchange) {
+    return exchange.trim().toLowerCase();
+  }
+
+  List<PortfolioAsset> _assetsForSelectedExchange() {
+    if (_selectedExchange == 'all') {
+      return _portfolioData.assets;
+    }
+
+    if (_portfolioData.assetsByExchange.containsKey(_selectedExchange)) {
+      return _portfolioData.assetsByExchange[_selectedExchange] ?? [];
+    }
+
+    final matchingKey = _portfolioData.assetsByExchange.keys.firstWhere(
+      (key) => key.toLowerCase() == _selectedExchange,
+      orElse: () => '',
+    );
+
+    if (matchingKey.isNotEmpty) {
+      return _portfolioData.assetsByExchange[matchingKey] ?? [];
+    }
+
+    return _portfolioData.assets
+        .where((asset) => asset.exchange.toLowerCase() == _selectedExchange)
+        .toList();
+  }
+
+  PortfolioData _buildPortfolioViewData(List<PortfolioAsset> assets) {
+    final totalValue = assets.fold(
+      0.0,
+      (sum, asset) => sum + (asset.estimatedValue ?? 0),
+    );
+    final uniqueAssets = assets.map((asset) => asset.asset).toSet().length;
+    final exchanges = assets
+        .map((asset) => asset.exchange.toLowerCase())
+        .toSet()
+        .toList();
+
+    final Map<String, _AggregatedTotals> aggregatedMap = {};
+    for (final asset in assets) {
+      final key = asset.asset;
+      final totals = aggregatedMap.putIfAbsent(
+        key,
+        () => _AggregatedTotals(),
+      );
+      totals.free += asset.free;
+      totals.locked += asset.locked;
+      totals.quantity += asset.total;
+      totals.value += asset.estimatedValue ?? 0;
+    }
+
+    final aggregatedAssets = aggregatedMap.entries.map((entry) {
+      final totals = entry.value;
+      final percentage =
+          totalValue > 0 ? (totals.value / totalValue) * 100 : 0.0;
+      return AggregatedAsset(
+        asset: entry.key,
+        free: totals.free,
+        locked: totals.locked,
+        total: totals.value,
+        percentage: percentage,
+      );
+    }).toList();
+
+    return PortfolioData(
+      summary: AssetsSummary(
+        totalAssets: assets.length,
+        uniqueAssets: uniqueAssets,
+        totalValue: totalValue,
+        exchanges: exchanges,
+      ),
+      assets: assets,
+      assetsByExchange: _portfolioData.assetsByExchange,
+      aggregatedAssets: aggregatedAssets,
+      timestamp: DateTime.now(),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -72,28 +150,28 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   }
 
   void _setupStreams() {
-    _portfolioSubscription = PortfolioService.instance.portfolioStream.listen(
-      (data) {
-        if (mounted) {
-          setState(() {
-            _portfolioData = data;
-          });
-        }
-      },
-    );
+    _portfolioSubscription = PortfolioService.instance.portfolioStream.listen((
+      data,
+    ) {
+      if (mounted) {
+        setState(() {
+          _portfolioData = data;
+        });
+      }
+    });
 
-    _positionsSubscription = PortfolioService.instance.positionsStream.listen(
-      (positions) {
-        if (mounted) {
-          setState(() {
-            _positionsData = PositionsData(
-              positions: positions,
-              summary: _positionsData.summary,
-            );
-          });
-        }
-      },
-    );
+    _positionsSubscription = PortfolioService.instance.positionsStream.listen((
+      positions,
+    ) {
+      if (mounted) {
+        setState(() {
+          _positionsData = PositionsData(
+            positions: positions,
+            summary: _positionsData.summary,
+          );
+        });
+      }
+    });
   }
 
   Future<void> _loadData() async {
@@ -116,7 +194,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         final allData = await PortfolioService.instance.fetchPortfolioAssets(
           exchange: 'all',
         );
-        _allExchanges = List<String>.from(allData.summary.exchanges);
+        final normalizedExchanges = <String>{};
+        for (final exchange in allData.summary.exchanges) {
+          normalizedExchanges.add(_normalizeExchange(exchange));
+        }
+        _allExchanges = normalizedExchanges.toList();
       }
 
       // Then fetch filtered data
@@ -170,8 +252,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   }
 
   void _onExchangeSelected(String exchange) {
+    final normalizedExchange = _normalizeExchange(exchange);
+    PortfolioService.instance.stopAutoRefresh();
     setState(() {
-      _selectedExchange = exchange;
+      _selectedExchange = normalizedExchange;
       _selectedAsset = null;
     });
     _loadData();
@@ -184,7 +268,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0D1117) : const Color(0xFFF5F7FA),
+      backgroundColor: isDark
+          ? const Color(0xFF0D1117)
+          : const Color(0xFFF5F7FA),
       appBar: CustomAppBar(
         title: 'Portfolio',
         // No refresh icon - data updates automatically via PortfolioService
@@ -202,6 +288,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       return _buildErrorState(context);
     }
 
+    final displayAssets = _assetsForSelectedExchange();
+    final displayPortfolio = _selectedExchange == 'all'
+        ? _portfolioData
+        : _buildPortfolioViewData(displayAssets);
+
     return RefreshIndicator(
       onRefresh: _refreshData,
       child: CustomScrollView(
@@ -210,7 +301,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
           SliverToBoxAdapter(
             child: PortfolioSummaryCard(
-              portfolio: _portfolioData,
+              portfolio: displayPortfolio,
               pnl: _pnlData,
             ),
           ),
@@ -233,7 +324,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             child: Padding(
               padding: EdgeInsets.only(top: 16),
               child: AssetAllocationChart(
-                assets: _portfolioData.aggregatedAssets,
+                assets: displayPortfolio.aggregatedAssets,
                 selectedAsset: _selectedAsset,
                 onAssetSelected: (asset) {
                   setState(() {
@@ -258,9 +349,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               padding: EdgeInsets.only(top: 12),
               child: _selectedTab == 0
                   ? AssetsList(
-                      assets: _selectedExchange == 'all'
-                          ? _portfolioData.assets
-                          : _portfolioData.assetsByExchange[_selectedExchange] ?? [],
+                      assets: displayAssets,
                       selectedAsset: _selectedAsset,
                       onAssetTap: (asset) {
                         setState(() {
@@ -278,9 +367,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           ),
 
           // Bottom padding
-          SliverToBoxAdapter(
-            child: SizedBox(height: 24),
-          ),
+          SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
     );
@@ -293,9 +380,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     return Container(
       height: 44,
       decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF1A1F2E)
-            : Colors.white,
+        color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark
@@ -314,10 +399,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         dividerColor: Colors.transparent,
         labelColor: Colors.white,
         unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,
-        labelStyle: TextStyle(
-          fontSize: 13.sp,
-          fontWeight: FontWeight.w600,
-        ),
+        labelStyle: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
         unselectedLabelStyle: TextStyle(
           fontSize: 13.sp,
           fontWeight: FontWeight.w500,
@@ -419,10 +501,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               icon: Icon(Icons.refresh_rounded, size: 18.w),
               label: Text(
                 'Try Again',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
@@ -438,4 +517,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       ),
     );
   }
+}
+
+class _AggregatedTotals {
+  double free = 0;
+  double locked = 0;
+  double quantity = 0;
+  double value = 0;
 }

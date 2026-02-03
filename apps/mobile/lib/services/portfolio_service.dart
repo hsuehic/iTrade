@@ -28,10 +28,11 @@ class PortfolioService {
     double minValue = 0,
   }) async {
     try {
+      final normalizedExchange = exchange.trim().toLowerCase();
       final response = await ApiClient.instance.getJson<Map<String, dynamic>>(
         '/api/portfolio/assets',
         queryParameters: {
-          'exchange': exchange,
+          'exchange': normalizedExchange,
           if (minValue > 0) 'minValue': minValue.toString(),
         },
       );
@@ -63,7 +64,7 @@ class PortfolioService {
     try {
       final queryParams = <String, dynamic>{};
       if (exchange != null && exchange != 'all') {
-        queryParams['exchange'] = exchange;
+        queryParams['exchange'] = exchange.trim().toLowerCase();
       }
       if (symbol != null) {
         queryParams['symbol'] = symbol;

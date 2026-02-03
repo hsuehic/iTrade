@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const exchange = searchParams.get('exchange');
+    const exchange = searchParams.get('exchange')?.trim().toLowerCase();
     const symbol = searchParams.get('symbol');
     const side = searchParams.get('side') as 'long' | 'short' | null;
     const minQuantity = searchParams.get('minQuantity');
@@ -32,7 +32,9 @@ export async function GET(request: NextRequest) {
     let filteredPositions = activeUserPositions;
 
     if (exchange && exchange !== 'all') {
-      filteredPositions = filteredPositions.filter((pos) => pos.exchange === exchange);
+      filteredPositions = filteredPositions.filter(
+        (pos) => pos.exchange.toLowerCase() === exchange,
+      );
     }
     if (symbol) {
       filteredPositions = filteredPositions.filter((pos) => pos.symbol === symbol);
