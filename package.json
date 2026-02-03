@@ -14,7 +14,8 @@
     "lint": "pnpm -r --workspace-concurrency=1 run lint",
     "lint:fix": "pnpm -r --workspace-concurrency=1 run lint --fix",
     "test": "turbo run test",
-    "clean": "find . -type d -name dist -o -name build | xargs rm -rf"
+    "clean": "find . -type d -name dist -o -name build | xargs rm -rf",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.4.8",
@@ -34,6 +35,8 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.0",
     "globals": "^16.4.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "pkgroll": "^2.18.1",
     "prettier": "^3.2.5",
     "tsconfig-paths": "^4.2.0",
@@ -48,5 +51,14 @@
   },
   "dependencies": {
     "ws": "^8.18.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
