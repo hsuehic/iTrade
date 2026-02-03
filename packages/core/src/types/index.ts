@@ -400,6 +400,11 @@ export interface SymbolInfo {
   tickSize: Decimal; // Price increment (e.g., 0.01)
   status: 'active' | 'inactive' | 'pre_trading' | 'post_trading';
   market: 'spot' | 'futures' | 'swap' | 'option';
+
+  // Contract-based instruments (SWAP/FUTURES/OPTIONS)
+  // For derivatives, order size is in contracts, not base currency
+  contractValue?: Decimal; // Value of 1 contract in base currency (e.g., 0.01 BTC for BTC-USDT-SWAP)
+  contractMultiplier?: Decimal; // Contract multiplier (usually 1 for crypto)
 }
 
 // Event Types

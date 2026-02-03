@@ -220,6 +220,22 @@ export class OKXExchange extends BaseExchange {
     // Determine instrument type from OKX instId
     const isSwap = instId.endsWith('-SWAP') || /-\d{6}$/.test(instId);
 
+    // 🆕 Fetch symbol info to get contract value for derivatives
+    // This is critical for correct order sizing on SWAP/FUTURES
+    const symbolInfo = await this.getSymbolInfo(symbol);
+
+    // 🆕 Calculate correct order size in contracts for derivatives
+    // For SPOT: quantity remains in base currency
+    // For SWAP/FUTURES: convert to number of contracts based on ctVal
+    const orderSize = await this.calculateContractSize(quantity, symbolInfo);
+
+    // Log the conversion for debugging
+    if (isSwap) {
+      console.log(
+        `[OKX] Order size conversion for ${symbol}: ${quantity.toString()} ${symbolInfo.baseAsset} = ${orderSize.toString()} contracts (ctVal=${symbolInfo.contractValue?.toString()})`,
+      );
+    }
+
     // Determine tdMode: use option if provided, else default
     // SPOT: cash (non-margin trading)
     // SWAP/FUTURES: isolated (safer than cross), or cross if specified
@@ -242,7 +258,7 @@ export class OKXExchange extends BaseExchange {
       tdMode, // cash=spot, isolated=isolated margin, cross=cross margin
       side: side.toLowerCase(),
       ordType: this.normalizeOrderType(type),
-      sz: quantity.toString(),
+      sz: orderSize.toString(), // 🆕 Use calculated contract size
     };
 
     // Set leverage and posSide for SWAP/FUTURES
@@ -846,6 +862,18 @@ export class OKXExchange extends BaseExchange {
     // Denormalize symbol back to unified format
     const unifiedSymbol = this.denormalizeSymbol(okxSymbol);
 
+    // Extract contract value and multiplier for derivatives
+    // For SWAP/FUTURES, ctVal represents the value of 1 contract in base currency
+    // For example: BTC-USDT-SWAP has ctVal=0.01, meaning 1 contract = 0.01 BTC
+    const contractValue =
+      instrumentData.ctVal && instrumentData.ctVal !== ''
+        ? new Decimal(instrumentData.ctVal)
+        : undefined;
+    const contractMultiplier =
+      instrumentData.ctMult && instrumentData.ctMult !== ''
+        ? new Decimal(instrumentData.ctMult)
+        : undefined;
+
     return {
       symbol: unifiedSymbol,
       nativeSymbol: okxSymbol,
@@ -862,6 +890,8 @@ export class OKXExchange extends BaseExchange {
       tickSize,
       status: this.mapOKXStatus(instrumentData.state),
       market,
+      contractValue,
+      contractMultiplier,
     };
   }
 
@@ -870,6 +900,52 @@ export class OKXExchange extends BaseExchange {
     const parts = sizeString.split('.');
     if (parts.length === 1) return 0;
     return parts[1].length;
+  }
+
+  /**
+   * Calculate order size in contracts for SWAP/FUTURES instruments
+   *
+   * For OKX derivatives:
+   * - Order size (sz) must be in number of contracts, not base currency
+   * - Each contract has a ctVal (contract value) in base currency
+   * - Formula: contracts = quantity / (ctVal * ctMult)
+   *
+   * Example:
+   * - BTC-USDT-SWAP: ctVal=0.01, ctMult=1
+   * - To buy 0.1 BTC worth: 0.1 / (0.01 * 1) = 10 contracts
+   *
+   * @param quantity - Desired quantity in base currency (e.g., 0.1 BTC)
+   * @param symbolInfo - Symbol information containing contract value and multiplier
+   * @returns Order size in number of contracts
+   */
+  private async calculateContractSize(
+    quantity: Decimal,
+    symbolInfo: SymbolInfo,
+  ): Promise<Decimal> {
+    // For SPOT, quantity is already in base currency
+    if (symbolInfo.market === 'spot') {
+      return quantity;
+    }
+
+    // For derivatives, convert to contract size
+    if (!symbolInfo.contractValue) {
+      throw new Error(
+        `Contract value (ctVal) not available for ${symbolInfo.symbol}. Cannot calculate contract size.`,
+      );
+    }
+
+    const ctVal = symbolInfo.contractValue;
+    const ctMult = symbolInfo.contractMultiplier || new Decimal(1);
+
+    // Calculate number of contracts
+    // contracts = quantity / (ctVal * ctMult)
+    const contracts = quantity.div(ctVal.mul(ctMult));
+
+    // Round to lot size precision
+    const lotSize = symbolInfo.stepSize;
+    const roundedContracts = contracts.div(lotSize).floor().mul(lotSize);
+
+    return roundedContracts;
   }
 
   private mapOKXStatus(
