@@ -39,12 +39,12 @@ export class CoinbaseExchange extends BaseExchange {
   private subscribedGranularities = new Map<string, string>(); // productId -> granularity (in seconds)
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private balancePollingInterval: NodeJS.Timeout | null = null; // Periodic balance polling
-  
+
   // 🆕 Initial snapshot tracking for user channel
   private isReceivingInitialSnapshot = true; // true until we receive first batch < 50 orders
   private initialSnapshotOrderCount = 0; // track total orders in initial snapshot
   private static readonly COINBASE_ORDER_BATCH_SIZE = 50; // Coinbase sends orders in batches of 50
-  
+
   private static readonly MAINNET_BASE_URL = 'https://api.coinbase.com';
   private static readonly PUBLIC_BASE_URL = 'https://api.exchange.coinbase.com';
   private static readonly MAINNET_WS_URL = 'wss://advanced-trade-ws.coinbase.com';
@@ -100,7 +100,9 @@ export class CoinbaseExchange extends BaseExchange {
   private resetInitialSnapshotState(): void {
     this.isReceivingInitialSnapshot = true;
     this.initialSnapshotOrderCount = 0;
-    console.log('[Coinbase] 🔄 Initial snapshot state reset - will suppress events for existing orders');
+    console.log(
+      '[Coinbase] 🔄 Initial snapshot state reset - will suppress events for existing orders',
+    );
   }
 
   /**
@@ -907,14 +909,15 @@ export class CoinbaseExchange extends BaseExchange {
             // 🆕 Handle case where orders array exists but is empty (no open orders)
             if (e.orders !== undefined) {
               const batchSize = e.orders.length;
-              
+
               // 🆕 Detect and handle initial snapshot phase
               if (this.isReceivingInitialSnapshot) {
                 this.initialSnapshotOrderCount += batchSize;
-                
+
                 // Snapshot ends when we receive a batch with fewer than 50 orders
-                const snapshotComplete = batchSize < CoinbaseExchange.COINBASE_ORDER_BATCH_SIZE;
-                
+                const snapshotComplete =
+                  batchSize < CoinbaseExchange.COINBASE_ORDER_BATCH_SIZE;
+
                 if (snapshotComplete) {
                   this.isReceivingInitialSnapshot = false;
                   console.log(
@@ -925,7 +928,7 @@ export class CoinbaseExchange extends BaseExchange {
                     `[Coinbase] 📸 Initial snapshot batch: ${batchSize} orders (total so far: ${this.initialSnapshotOrderCount}, events suppressed)`,
                   );
                 }
-                
+
                 // 🔇 Skip event emission for snapshot orders
                 // But continue to next event (don't skip processing balances/positions in this same message)
                 // If batchSize is 0, there's nothing to skip anyway
@@ -934,11 +937,11 @@ export class CoinbaseExchange extends BaseExchange {
                     `[Coinbase] 🔇 Suppressing events for ${batchSize} snapshot orders`,
                   );
                 }
-                
+
                 // Continue to next event (skip order processing for this batch)
                 continue;
               }
-              
+
               // 🆕 Normal operation: process and emit events for real-time order updates
               if (batchSize > 0) {
                 console.log(`[Coinbase] Processing ${batchSize} order updates`);

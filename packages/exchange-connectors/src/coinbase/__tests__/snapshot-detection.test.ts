@@ -1,6 +1,6 @@
 /**
  * Unit test for Coinbase Initial Snapshot Detection
- * 
+ *
  * Tests that the CoinbaseExchange correctly:
  * 1. Detects initial snapshot when receiving batches of 50 orders
  * 2. Suppresses orderUpdate events during snapshot
@@ -64,9 +64,7 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
 
   test('should suppress events for initial snapshot of 50 orders', () => {
     // Simulate first batch of 50 orders (initial snapshot)
-    const orders = Array.from({ length: 50 }, (_, i) => 
-      createMockOrder(`order-${i}`)
-    );
+    const orders = Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i}`));
 
     simulateUserChannelMessage(orders);
 
@@ -78,19 +76,19 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   test('should suppress events for multiple batches until batch < 50', () => {
     // First batch: 50 orders
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-batch1-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-batch1-${i}`)),
     );
     expect(orderUpdateCount).toBe(0);
 
     // Second batch: 50 orders (still in snapshot)
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-batch2-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-batch2-${i}`)),
     );
     expect(orderUpdateCount).toBe(0);
 
     // Third batch: 9 orders (end of snapshot)
     simulateUserChannelMessage(
-      Array.from({ length: 9 }, (_, i) => createMockOrder(`order-batch3-${i}`))
+      Array.from({ length: 9 }, (_, i) => createMockOrder(`order-batch3-${i}`)),
     );
     expect(orderUpdateCount).toBe(0);
 
@@ -100,12 +98,12 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   test('should emit events for new orders after snapshot completes', () => {
     // Complete the initial snapshot
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`snapshot-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`snapshot-${i}`)),
     );
     simulateUserChannelMessage(
-      Array.from({ length: 9 }, (_, i) => createMockOrder(`snapshot-last-${i}`))
+      Array.from({ length: 9 }, (_, i) => createMockOrder(`snapshot-last-${i}`)),
     );
-    
+
     expect(orderUpdateCount).toBe(0); // No events during snapshot
 
     // Now send a real-time order update (after snapshot)
@@ -156,7 +154,7 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   test('should handle case with exactly 50 existing orders', () => {
     // First batch: 50 orders (full batch, might be more)
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i}`)),
     );
     expect(orderUpdateCount).toBe(0);
 
@@ -172,7 +170,7 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   test('should handle single batch with < 50 orders', () => {
     // Single batch with 25 orders (snapshot complete immediately)
     simulateUserChannelMessage(
-      Array.from({ length: 25 }, (_, i) => createMockOrder(`order-${i}`))
+      Array.from({ length: 25 }, (_, i) => createMockOrder(`order-${i}`)),
     );
 
     // No events for snapshot
@@ -186,10 +184,10 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   test('should reset snapshot state on reconnection', () => {
     // Complete first snapshot
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`first-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`first-${i}`)),
     );
     simulateUserChannelMessage(
-      Array.from({ length: 9 }, (_, i) => createMockOrder(`first-last-${i}`))
+      Array.from({ length: 9 }, (_, i) => createMockOrder(`first-last-${i}`)),
     );
 
     // Verify snapshot complete - new orders trigger events
@@ -201,15 +199,15 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
 
     // After reset, new snapshot should suppress events again
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`reconnect-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`reconnect-${i}`)),
     );
-    
+
     // Should still be 1 (no new events during second snapshot)
     expect(orderUpdateCount).toBe(1);
 
     // Complete second snapshot
     simulateUserChannelMessage(
-      Array.from({ length: 10 }, (_, i) => createMockOrder(`reconnect-last-${i}`))
+      Array.from({ length: 10 }, (_, i) => createMockOrder(`reconnect-last-${i}`)),
     );
 
     // New order after second snapshot should trigger event
@@ -222,22 +220,22 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
 
     // First batch: 50
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i}`)),
     );
 
     // Second batch: 50
     simulateUserChannelMessage(
-      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i + 50}`))
+      Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i + 50}`)),
     );
 
     // Final batch: 9 (total = 109)
     simulateUserChannelMessage(
-      Array.from({ length: 9 }, (_, i) => createMockOrder(`order-${i + 100}`))
+      Array.from({ length: 9 }, (_, i) => createMockOrder(`order-${i + 100}`)),
     );
 
     // Check that the completion message logged the correct total
     expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Initial snapshot complete - received 109 existing orders')
+      expect.stringContaining('Initial snapshot complete - received 109 existing orders'),
     );
 
     consoleLogSpy.mockRestore();

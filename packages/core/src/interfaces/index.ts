@@ -94,8 +94,6 @@ export interface IExchange extends EventEmitter {
   getSymbolInfo(symbol: string): Promise<SymbolInfo>;
 }
 
-
-
 export interface MarketDataUpdate {
   exchangeName?: string;
   symbol?: string;
@@ -168,7 +166,6 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   getStrategyId?(): number | undefined; // Get strategy ID
 
   // 🆕 State Management Methods (optional - implemented in BaseStrategy)
-
 
   // 🆕 Initial Data Processing (required - implemented in BaseStrategy)
   /**

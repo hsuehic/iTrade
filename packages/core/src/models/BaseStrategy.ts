@@ -2,11 +2,7 @@ import { EventEmitter } from 'events';
 
 import { Decimal } from 'decimal.js';
 
-import {
-  DataUpdate,
-  IStrategy,
-  ILogger,
-} from '../interfaces';
+import { DataUpdate, IStrategy, ILogger } from '../interfaces';
 import {
   StrategyParameters,
   StrategyConfig,
@@ -251,7 +247,6 @@ export abstract class BaseStrategy<
   /**
    * Save current strategy state - override in derived classes for custom state
    */
-
 
   /**
    * Process initial data loaded by TradingEngine

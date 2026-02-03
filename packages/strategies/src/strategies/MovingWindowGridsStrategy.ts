@@ -10,7 +10,6 @@ import {
   TradeMode,
   SignalType,
   SignalMetaData,
-
   StrategyAnalyzeResult,
   InitialDataResult,
 } from '@itrade/core';
@@ -161,7 +160,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   // 🆕 Track last processed kline timestamp to avoid reprocessing
   private lastProcessedKlineTime: number = 0;
 
-
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
     super(config);
 
@@ -185,7 +183,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   public override async processInitialData(
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
-
     // Load current positions to track size
     if (initialData.positions && initialData.positions.length > 0) {
       const position = initialData.positions.find(
@@ -839,8 +836,6 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const match = /^(E|T)(\d+)D/.exec(clientOrderId);
     return !!match && match[2] === String(strategyId);
   }
-
-
 
   public getStrategyState() {
     return {

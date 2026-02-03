@@ -539,12 +539,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       clientOrderId: providedClientOrderId, // 🆕 Accept clientOrderId from params
     } = params;
     if (!this._isRunning) {
-      const stateMsg = this._isInitializing 
+      const stateMsg = this._isInitializing
         ? 'Engine is still initializing'
         : 'Engine is not running';
       throw new Error(
         `Trading engine is not ready to execute orders: ${stateMsg}. ` +
-        `Make sure engine.start() has been called and completed successfully.`
+          `Make sure engine.start() has been called and completed successfully.`,
       );
     }
 
@@ -1068,16 +1068,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         order.userId = this._userId;
       }
 
-       
       if (!this._emittedOrderCreated.has(order.id)) {
-         // to cover orders that not initialed via executeOrder
-        if (
-          order.status === OrderStatus.NEW
-        ) {
+        // to cover orders that not initialed via executeOrder
+        if (order.status === OrderStatus.NEW) {
           this._emittedOrderCreated.add(order.id);
           this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
           return;
-        } 
+        }
       }
 
       // Emit status-specific events for non-NEW statuses
@@ -1318,7 +1315,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
       const initialSignals = await strategy.processInitialData(loadedData);
       if (initialSignals) {
-        await this.processStrategyResults(name, context.symbol, initialSignals, 'initial_data');
+        await this.processStrategyResults(
+          name,
+          context.symbol,
+          initialSignals,
+          'initial_data',
+        );
       }
 
       // Mark as loaded to prevent duplicate loading

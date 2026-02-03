@@ -17,7 +17,6 @@ import type { User } from './User';
 import type { DryRunSessionEntity } from './DryRunSession';
 import type { BacktestResultEntity } from './BacktestResult';
 
-
 export enum StrategyStatus {
   ACTIVE = 'active',
   STOPPED = 'stopped',
@@ -121,8 +120,6 @@ export class StrategyEntity {
 
   @OneToMany('backtest_results', 'strategy')
   backtestResults?: BacktestResultEntity[];
-
-
 
   // TypeORM relation - loads the full User object when needed
   @ManyToOne('user', 'strategies', { nullable: false, onDelete: 'CASCADE' })

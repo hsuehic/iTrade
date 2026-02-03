@@ -33,11 +33,9 @@ export class StrategyManager {
   private reportInterval: NodeJS.Timeout | null = null;
   private eventBus: EventBus;
 
-
   // Configuration
   private readonly SYNC_INTERVAL_MS: number;
   private readonly REPORT_INTERVAL_MS: number;
-
 
   constructor(
     private engine: TradingEngine,
@@ -55,7 +53,6 @@ export class StrategyManager {
       process.env.STRATEGY_REPORT_INTERVAL_MS,
       600000,
     );
-
   }
 
   async start(): Promise<void> {
@@ -381,8 +378,6 @@ export class StrategyManager {
     }
   }
 
-
-
   /**
    * Get default subscription configuration for a strategy type
    * Used as fallback when subscription is not configured in database
@@ -557,9 +552,6 @@ export class StrategyManager {
   getStrategyMetrics(strategyId: number): StrategyMetrics | undefined {
     return this.strategyMetrics.get(strategyId);
   }
-
-
-
 
   private static parseInterval(value: string | undefined, fallbackMs: number): number {
     const parsed = Number.parseInt(value ?? '', 10);

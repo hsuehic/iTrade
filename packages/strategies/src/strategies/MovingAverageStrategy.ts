@@ -3,7 +3,6 @@ import {
   BaseStrategy,
   StrategyResult,
   StrategyConfig,
-
   DataUpdate,
   StrategyParameters,
   SignalType,
@@ -255,8 +254,6 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     return this.position;
   }
 
-
-
   /**
    * Get comprehensive strategy status for monitoring
    */
@@ -272,7 +269,6 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       averagePrice: this.getAveragePrice()?.toString(),
       lastSignal: this.getLastSignal(),
       isInitialized: this._isInitialized,
-
     };
   }
 }

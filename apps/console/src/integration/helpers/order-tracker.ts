@@ -32,7 +32,7 @@ export class OrderTracker {
   // Debounce configuration (only for partial fills)
   private readonly DEBOUNCE_MS = 1000; // 1 second debounce for partial fills
   private readonly strategyUserCache = new Map<number, string>();
-  
+
   // 🆕 Track which orders have been notified (separate from OrderManager)
   // This prevents re-notifying orders loaded from DB on startup
   private readonly notifiedOrderIds = new Set<string>();
@@ -59,7 +59,9 @@ export class OrderTracker {
     // 🆕 Load existing OPEN orders from database to prevent duplicate notifications on restart
     // Only open orders need to be tracked - closed orders are cleaned up automatically
     try {
-      this.logger.info(`🔍 Loading existing open orders for user: ${this.userId || 'ALL'}...`);
+      this.logger.info(
+        `🔍 Loading existing open orders for user: ${this.userId || 'ALL'}...`,
+      );
       const existingOrders = await this.dataManager.getOrders({
         userId: this.userId,
         status: 'OPEN', // 🎯 Only load open orders to minimize memory usage
@@ -74,7 +76,10 @@ export class OrderTracker {
         `✅ Loaded ${existingOrders.length} open orders from database (marked as already notified)`,
       );
     } catch (error) {
-      this.logger.error('❌ Failed to load existing orders from database', error as Error);
+      this.logger.error(
+        '❌ Failed to load existing orders from database',
+        error as Error,
+      );
     }
 
     // Listen for order events
@@ -316,7 +321,7 @@ export class OrderTracker {
       // 🧹 Clean up: remove from notified set (order is now closed)
       // This prevents memory leaks during long-running sessions
       this.notifiedOrderIds.delete(mergedOrder.id);
-      
+
       // 🧹 Clean up: remove from OrderManager (order is now closed)
       // This prevents unbounded growth in OrderManager's internal maps
       setTimeout(() => {
@@ -469,7 +474,7 @@ export class OrderTracker {
 
       // 🧹 Clean up: remove from notified set (order is now closed)
       this.notifiedOrderIds.delete(mergedOrder.id);
-      
+
       // 🧹 Clean up: remove from OrderManager (order is now closed)
       setTimeout(() => {
         this.orderManager.removeOrder(mergedOrder.id);
@@ -520,7 +525,7 @@ export class OrderTracker {
 
       // 🧹 Clean up: remove from notified set (order is now closed)
       this.notifiedOrderIds.delete(mergedOrder.id);
-      
+
       // 🧹 Clean up: remove from OrderManager (order is now closed)
       setTimeout(() => {
         this.orderManager.removeOrder(mergedOrder.id);

@@ -45,7 +45,6 @@ function createStrategyConfig(
   };
 }
 
-
 /**
  * Helper function to create a position
  */
@@ -124,7 +123,6 @@ function findOrderSignalsByType(
       (s.action === 'buy' || s.action === 'sell') && s.metadata?.signalType === type,
   );
 }
-
 
 describe('SingleLadderLifoTPStrategy', () => {
   describe('Initialization', () => {
@@ -273,27 +271,37 @@ describe('SingleLadderLifoTPStrategy', () => {
     });
 
     it('should update tradedSize when strategy orders fill', async () => {
-      const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig({ basePrice: 100 }));
+      const strategy = new SingleLadderLifoTPStrategy(
+        createStrategyConfig({ basePrice: 100 }),
+      );
       const initResult = await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
         timestamp: new Date(),
       });
 
-      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(s => s.action === 'buy')!;
-      
+      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
       // 1. Create order as NEW
-      const orderNew = createOrder(buyEntrySignal.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 100);
+      const orderNew = createOrder(
+        buyEntrySignal.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        100,
+      );
       await strategy.onOrderCreated(orderNew);
-      
+
       // 2. Simulate FILL update with a later timestamp
       const orderFilled = createOrder(
-        buyEntrySignal.clientOrderId!, 
-        OrderSide.BUY, 
-        OrderStatus.FILLED, 
-        98, 
+        buyEntrySignal.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
         100,
-        new Date(orderNew.timestamp.getTime() + 1000)
+        new Date(orderNew.timestamp.getTime() + 1000),
       );
       await strategy.analyze(createDataUpdate({ orders: [orderFilled] }));
 
@@ -334,25 +342,35 @@ describe('SingleLadderLifoTPStrategy', () => {
         exchange: 'okx',
         timestamp: new Date(),
       });
-      const buySign = findOrderSignalsByType(initResult, SignalType.Entry).find(s => s.action === 'buy')!;
-      
+      const buySign = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
       // NEW
-      const orderNew = createOrder(buySign.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 100);
+      const orderNew = createOrder(
+        buySign.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        100,
+      );
       await strategy.onOrderCreated(orderNew);
-      
+
       // FILLED
       const orderFilled = createOrder(
-        buySign.clientOrderId!, 
-        OrderSide.BUY, 
-        OrderStatus.FILLED, 
-        98, 
+        buySign.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
         100,
-        new Date(orderNew.timestamp.getTime() + 1000)
+        new Date(orderNew.timestamp.getTime() + 1000),
       );
-      
+
       // analyze should return TP for the 100 filled, and no new entry because maxSize is 100
-      const followUp = await strategy.analyze(createDataUpdate({ orders: [orderFilled] }));
-      
+      const followUp = await strategy.analyze(
+        createDataUpdate({ orders: [orderFilled] }),
+      );
+
       const tp = findOrderSignalsByType(followUp, SignalType.TakeProfit);
       expect(tp).toHaveLength(1);
       expect(tp[0].action).toBe('sell');
@@ -363,14 +381,18 @@ describe('SingleLadderLifoTPStrategy', () => {
       expect(entries).toHaveLength(0);
     });
 
-
-
     it('should cancel existing TP orders found on the exchange during start', async () => {
       strategy = new SingleLadderLifoTPStrategy(createStrategyConfig({ strategyId: 1 }));
-      
+
       // Simulate an existing TP order on the exchange
-      const tpOrder = createOrder('T1D9D123456', OrderSide.SELL, OrderStatus.NEW, 101.5, 100);
-      
+      const tpOrder = createOrder(
+        'T1D9D123456',
+        OrderSide.SELL,
+        OrderStatus.NEW,
+        101.5,
+        100,
+      );
+
       const result = await strategy.processInitialData({
         symbol: 'BTC/USDT',
         exchange: 'okx',
@@ -378,7 +400,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         timestamp: new Date(),
       });
 
-      const cancels = toSignalArray(result).filter(s => s.action === 'cancel');
+      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
       expect(cancels).toHaveLength(1);
       expect(cancels[0].clientOrderId).toBe('T1D9D123456');
     });
@@ -396,30 +418,70 @@ describe('SingleLadderLifoTPStrategy', () => {
       });
 
       // 1. Get Buy Entry signal from init
-      const buySign1 = findOrderSignalsByType(initResult, SignalType.Entry).find(s => s.action === 'buy')!;
-      
+      const buySign1 = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
       // NEW
-      const order1New = createOrder(buySign1.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 98, 100);
+      const order1New = createOrder(
+        buySign1.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        100,
+      );
       await strategy.onOrderCreated(order1New);
       // FILLED
-      const order1Filled = createOrder(buySign1.clientOrderId!, OrderSide.BUY, OrderStatus.FILLED, 98, 100, new Date(order1New.timestamp.getTime() + 1000));
-      const fill1Result = await strategy.analyze(createDataUpdate({ orders: [order1Filled] }));
+      const order1Filled = createOrder(
+        buySign1.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
+        100,
+        new Date(order1New.timestamp.getTime() + 1000),
+      );
+      const fill1Result = await strategy.analyze(
+        createDataUpdate({ orders: [order1Filled] }),
+      );
 
       // 2. Get next Buy Entry signal and TP signal from fill1Result
       const fill1Signals = toSignalArray(fill1Result);
-      const buySign2 = findOrderSignalsByType(fill1Signals, SignalType.Entry).find(s => s.action === 'buy')!;
+      const buySign2 = findOrderSignalsByType(fill1Signals, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
       const tpSign1 = findOrderSignalsByType(fill1Signals, SignalType.TakeProfit)[0];
-      
+
       // We must acknowledge the TP signal so it's not "pending" anymore
       if (tpSign1) {
-        await strategy.onOrderCreated(createOrder(tpSign1.clientOrderId!, OrderSide.SELL, OrderStatus.NEW, tpSign1.price!.toNumber(), 100));
+        await strategy.onOrderCreated(
+          createOrder(
+            tpSign1.clientOrderId!,
+            OrderSide.SELL,
+            OrderStatus.NEW,
+            tpSign1.price!.toNumber(),
+            100,
+          ),
+        );
       }
 
       // NEW for Entry 2
-      const order2New = createOrder(buySign2.clientOrderId!, OrderSide.BUY, OrderStatus.NEW, 96.04, 100);
+      const order2New = createOrder(
+        buySign2.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        96.04,
+        100,
+      );
       await strategy.onOrderCreated(order2New);
       // FILLED for Entry 2
-      const order2Filled = createOrder(buySign2.clientOrderId!, OrderSide.BUY, OrderStatus.FILLED, 96.04, 100, new Date(order2New.timestamp.getTime() + 1000));
+      const order2Filled = createOrder(
+        buySign2.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        96.04,
+        100,
+        new Date(order2New.timestamp.getTime() + 1000),
+      );
       const result = await strategy.analyze(createDataUpdate({ orders: [order2Filled] }));
 
       // TP should target 96.04 (the last filled)
