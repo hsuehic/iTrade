@@ -42,7 +42,7 @@
     },
     "mobile": {
       "badge": "Trade on the Go",
-      "title": "Download iTrade<br/><accent>Mobile App</accent>",
+      "title": "Download iTrade <accent>Mobile App</accent>",
       "description": "Take control of your crypto portfolio anywhere, anytime. Real-time market data, instant order execution, and advanced trading tools at your fingertips.",
       "scanToDownload": "Scan to Download",
       "appStore": "App Store",

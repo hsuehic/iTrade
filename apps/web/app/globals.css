@@ -119,6 +119,7 @@
   
   html {
     overflow-y: auto; /* Force vertical scroll availability */
+    overscroll-behavior-y: none;
   }
   
   body {
