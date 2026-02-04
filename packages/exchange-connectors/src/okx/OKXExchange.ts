@@ -54,6 +54,7 @@ export class OKXExchange extends BaseExchange {
   private okxPrivateAuthenticated = false;
   private symbolMap = new Map<string, string>(); // OKX instId -> original symbol mapping
   private leverageCache = new Map<string, number>();
+  private symbolInfoCache = new Map<string, SymbolInfo>();
   private static readonly OKX_FUNDING_ACCOUNT = '6';
   private static readonly OKX_TRADING_ACCOUNT = '18';
 
@@ -222,7 +223,7 @@ export class OKXExchange extends BaseExchange {
 
     // 🆕 Fetch symbol info to get contract value for derivatives
     // This is critical for correct order sizing on SWAP/FUTURES
-    const symbolInfo = await this.getSymbolInfo(symbol);
+    const symbolInfo = await this.getCachedSymbolInfo(symbol);
 
     // 🆕 Calculate correct order size in contracts for derivatives
     // For SPOT: quantity remains in base currency
@@ -407,12 +408,17 @@ export class OKXExchange extends BaseExchange {
     const data = response.data.data[0];
     // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
     const unifiedSymbol = this.denormalizeSymbol(data.instId);
+
+    // 🆕 Convert quantity (sz) to base asset
+    const quantityRaw = this.formatDecimal(data.sz);
+    const quantity = await this.getQuantityInBaseAsset(unifiedSymbol, quantityRaw);
+
     return this.transformOKXOrder(
       data,
       unifiedSymbol,
       data.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
       this.transformOKXOrderType(data.ordType),
-      this.formatDecimal(data.sz),
+      quantity,
       data.px ? this.formatDecimal(data.px) : undefined,
     );
   }
@@ -448,18 +454,24 @@ export class OKXExchange extends BaseExchange {
       throw new Error(`OKX API error: ${response.data.msg}`);
     }
 
-    return response.data.data.map((order: any) => {
-      // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
-      const unifiedSymbol = this.denormalizeSymbol(order.instId);
-      return this.transformOKXOrder(
-        order,
-        unifiedSymbol,
-        order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-        this.transformOKXOrderType(order.ordType),
-        this.formatDecimal(order.sz),
-        order.px ? this.formatDecimal(order.px) : undefined,
-      );
-    });
+    return Promise.all(
+      response.data.data.map(async (order: any) => {
+        // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
+        const unifiedSymbol = this.denormalizeSymbol(order.instId);
+
+        const quantityRaw = this.formatDecimal(order.sz);
+        const quantity = await this.getQuantityInBaseAsset(unifiedSymbol, quantityRaw);
+
+        return this.transformOKXOrder(
+          order,
+          unifiedSymbol,
+          order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+          this.transformOKXOrderType(order.ordType),
+          quantity,
+          order.px ? this.formatDecimal(order.px) : undefined,
+        );
+      }),
+    );
   }
 
   public async getOrderHistory(symbol?: string, limit = 100): Promise<Order[]> {
@@ -507,18 +519,27 @@ export class OKXExchange extends BaseExchange {
           throw new Error(`OKX API error: ${response.data.msg}`);
         }
 
-        const orders = response.data.data.map((order: any) => {
-          // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
-          const unifiedSymbol = this.denormalizeSymbol(order.instId);
-          return this.transformOKXOrder(
-            order,
-            unifiedSymbol,
-            order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-            this.transformOKXOrderType(order.ordType),
-            this.formatDecimal(order.sz),
-            order.px ? this.formatDecimal(order.px) : undefined,
-          );
-        });
+        const orders = await Promise.all(
+          response.data.data.map(async (order: any) => {
+            // Denormalize symbol: WLD-USDT-SWAP → WLD/USDT:USDT
+            const unifiedSymbol = this.denormalizeSymbol(order.instId);
+
+            const quantityRaw = this.formatDecimal(order.sz);
+            const quantity = await this.getQuantityInBaseAsset(
+              unifiedSymbol,
+              quantityRaw,
+            );
+
+            return this.transformOKXOrder(
+              order,
+              unifiedSymbol,
+              order.side === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+              this.transformOKXOrderType(order.ordType),
+              quantity,
+              order.px ? this.formatDecimal(order.px) : undefined,
+            );
+          }),
+        );
 
         allOrders.push(...orders);
       }
@@ -756,8 +777,15 @@ export class OKXExchange extends BaseExchange {
       throw new Error(`OKX API error: ${response.data.msg}`);
     }
 
-    return response.data.data.map((pos: any) => {
-      const quantity = this.formatDecimal((pos.pos ?? '0').toString());
+    const positions: Position[] = [];
+
+    for (const pos of response.data.data) {
+      const unifiedSymbol = this.denormalizeSymbol(pos.instId);
+      const quantityRaw = this.formatDecimal((pos.pos ?? '0').toString());
+
+      // 🆕 Convert quantity to base asset (coins)
+      const quantity = await this.getQuantityInBaseAsset(unifiedSymbol, quantityRaw);
+
       const avgPrice = this.formatDecimal((pos.avgPx ?? '0').toString());
       const markPrice = this.resolveOkxMarkPrice(pos, quantity);
       const unrealizedPnl = this.resolveOkxUnrealizedPnl(
@@ -769,8 +797,8 @@ export class OKXExchange extends BaseExchange {
       const marketValue = quantity.abs().mul(markPrice);
       const leverage = this.getOkxLeverage(pos, quantity, avgPrice, markPrice);
 
-      return {
-        symbol: this.denormalizeSymbol(pos.instId),
+      positions.push({
+        symbol: unifiedSymbol,
         side: this.resolveOkxPositionSide(pos, quantity),
         quantity: quantity.abs(), // Use absolute quantity
         avgPrice,
@@ -780,24 +808,45 @@ export class OKXExchange extends BaseExchange {
         timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
         marketValue,
         notionalUsd: pos.notionalUsd,
-      };
-    });
+      });
+    }
+
+    return positions;
   }
 
   public async getExchangeInfo(): Promise<ExchangeInfo> {
-    const response = await this.httpClient.get('/api/v5/public/instruments', {
-      params: { instType: 'SPOT' },
-    });
+    // Fetch SPOT and SWAP instruments
+    const [spotRes, swapRes] = await Promise.all([
+      this.httpClient.get('/api/v5/public/instruments', {
+        params: { instType: 'SPOT' },
+      }),
+      this.httpClient.get('/api/v5/public/instruments', {
+        params: { instType: 'SWAP' },
+      }),
+    ]);
 
-    if (response.data.code !== '0') {
-      throw new Error(`OKX API error: ${response.data.msg}`);
+    if (spotRes.data.code !== '0') {
+      throw new Error(`OKX API error: ${spotRes.data.msg}`);
+    }
+    if (swapRes.data.code !== '0') {
+      throw new Error(`OKX API error: ${swapRes.data.msg}`);
     }
 
-    const symbols = response.data.data.map((inst: any) => inst.instId);
+    const allInstruments = [...spotRes.data.data, ...swapRes.data.data];
+    const symbols = allInstruments.map((inst: any) => inst.instId);
     const minTradeSize: { [symbol: string]: Decimal } = {};
 
-    response.data.data.forEach((inst: any) => {
-      minTradeSize[inst.instId] = this.formatDecimal(inst.minSz);
+    allInstruments.forEach((inst: any) => {
+      let minSz = this.formatDecimal(inst.minSz);
+
+      // 🆕 Adjust minTradeSize for derivatives (convert to base asset)
+      if (inst.instType !== 'SPOT' && inst.ctVal) {
+        const ctVal = new Decimal(inst.ctVal);
+        const ctMult = inst.ctMult ? new Decimal(inst.ctMult) : new Decimal(1);
+        minSz = minSz.mul(ctVal).mul(ctMult);
+      }
+
+      minTradeSize[inst.instId] = minSz;
     });
 
     return {
@@ -874,25 +923,103 @@ export class OKXExchange extends BaseExchange {
         ? new Decimal(instrumentData.ctMult)
         : undefined;
 
+    // 🆕 Adjust minQuantity and stepSize for derivatives
+    let adjustedMinQuantity = minQuantity;
+    let adjustedStepSize = stepSize;
+    let adjustedQuantityPrecision = quantityPrecision;
+
+    if (contractValue && market !== 'spot') {
+      const multiplier = contractMultiplier || new Decimal(1);
+      const scale = contractValue.mul(multiplier);
+      adjustedMinQuantity = minQuantity.mul(scale);
+      adjustedStepSize = stepSize.mul(scale);
+
+      // Recalculate precision based on adjusted step size
+      // e.g. stepSize "0.1" -> precision 1
+      adjustedQuantityPrecision = this.calculatePrecision(adjustedStepSize.toString());
+    }
+
     return {
       symbol: unifiedSymbol,
       nativeSymbol: okxSymbol,
       baseAsset: instrumentData.baseCcy || '',
       quoteAsset: instrumentData.quoteCcy || instrumentData.settleCcy || '',
       pricePrecision,
-      quantityPrecision,
-      minQuantity,
+      quantityPrecision: adjustedQuantityPrecision,
+      minQuantity: adjustedMinQuantity,
       maxQuantity: instrumentData.maxMktSz
         ? new Decimal(instrumentData.maxMktSz)
         : undefined,
       minNotional,
-      stepSize,
+      stepSize: adjustedStepSize,
       tickSize,
       status: this.mapOKXStatus(instrumentData.state),
       market,
       contractValue,
       contractMultiplier,
     };
+  }
+
+  private async getCachedSymbolInfo(symbol: string): Promise<SymbolInfo> {
+    // 1. Check exact match
+    if (this.symbolInfoCache.has(symbol)) {
+      return this.symbolInfoCache.get(symbol)!;
+    }
+
+    // 2. Check normalized (native) match
+    const normalized = this.normalizeSymbol(symbol);
+    if (this.symbolInfoCache.has(normalized)) {
+      return this.symbolInfoCache.get(normalized)!;
+    }
+
+    // 3. Fallback: Check denormalized (unified) match if different
+    const unified = this.denormalizeSymbol(normalized);
+    if (unified !== symbol && this.symbolInfoCache.has(unified)) {
+      return this.symbolInfoCache.get(unified)!;
+    }
+
+    // 4. Fetch and Cache
+    try {
+      const info = await this.getSymbolInfo(symbol);
+
+      this.symbolInfoCache.set(symbol, info);
+      this.symbolInfoCache.set(normalized, info);
+      if (unified !== symbol) {
+        this.symbolInfoCache.set(unified, info);
+      }
+      return info;
+    } catch (error) {
+      console.error(`[OKX] Failed to cache symbol info for ${symbol}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert quantity from contracts (OKX "sz" or "pos") to base asset quantity.
+   * For SPOT: returns quantity as is.
+   * For SWAP/FUTURES: returns contracts * ctVal * ctMult
+   */
+  private async getQuantityInBaseAsset(
+    symbol: string,
+    quantityContracts: Decimal,
+  ): Promise<Decimal> {
+    try {
+      const info = await this.getCachedSymbolInfo(symbol);
+      if (info.market === 'spot') return quantityContracts;
+
+      // quantityContracts is "sz" or "pos"
+      if (!info.contractValue) return quantityContracts; // Should not happen for derivatives
+
+      const ctVal = info.contractValue;
+      const ctMult = info.contractMultiplier || new Decimal(1);
+
+      return quantityContracts.mul(ctVal).mul(ctMult);
+    } catch (error) {
+      console.warn(
+        `[OKX] Failed to get symbol info for ${symbol}, returning raw quantity: ${error}`,
+      );
+      return quantityContracts;
+    }
   }
 
   private calculatePrecision(sizeString: string): number {
@@ -939,11 +1066,18 @@ export class OKXExchange extends BaseExchange {
 
     // Calculate number of contracts
     // contracts = quantity / (ctVal * ctMult)
-    const contracts = quantity.div(ctVal.mul(ctMult));
+    const scale = ctVal.mul(ctMult);
+    const contracts = quantity.div(scale);
 
-    // Round to lot size precision
-    const lotSize = symbolInfo.stepSize;
-    const roundedContracts = contracts.div(lotSize).floor().mul(lotSize);
+    // Filter out invalid step size (e.g. 0)
+    if (symbolInfo.stepSize.isZero()) return contracts;
+
+    // symbolInfo.stepSize is now in base currency (adjusted).
+    // We need the raw lot size in contracts for rounding.
+    // rawLotSize = stepSize / scale
+    const rawLotSize = symbolInfo.stepSize.div(scale);
+
+    const roundedContracts = contracts.div(rawLotSize).floor().mul(rawLotSize);
 
     return roundedContracts;
   }
@@ -1141,7 +1275,7 @@ export class OKXExchange extends BaseExchange {
     }
   }
 
-  protected handleWebSocketMessage(message: any): void {
+  protected async handleWebSocketMessage(message: any): Promise<void> {
     // OKX message format
     if (message.event === 'subscribe') {
       this.emit('ws_subscribed', message.arg);
@@ -1210,7 +1344,7 @@ export class OKXExchange extends BaseExchange {
             cTime: data.cTime,
           });
 
-          const order = this.transformOKXPrivateOrder(data);
+          const order = await this.transformOKXPrivateOrder(data);
 
           // 🆕 DEBUG: Log transformed order
           console.log('[OKX] 📦 Transformed Order:', {
@@ -1230,7 +1364,7 @@ export class OKXExchange extends BaseExchange {
         }
       } else if (channel === 'balance_and_position') {
         try {
-          const { balances, positions } = this.transformOKXBalanceAndPosition(data);
+          const { balances, positions } = await this.transformOKXBalanceAndPosition(data);
           if (balances.length) this.emit('accountUpdate', 'okx', balances);
           if (positions.length) {
             this.emit('positionUpdate', 'okx', positions);
@@ -1445,8 +1579,13 @@ export class OKXExchange extends BaseExchange {
       cummulativeQuoteQuantity = accFillSz.mul(avgPx);
     }
 
+    const derivedId = (order.ordId || uuidv4()).toString().trim();
+    if (!order.ordId) {
+      console.warn(`[OKX] REST response missing ordId, generated UUID: ${derivedId}`);
+    }
+
     return {
-      id: order.ordId || uuidv4(),
+      id: derivedId,
       clientOrderId: order.clOrdId,
       symbol: symbol,
       side: side,
@@ -1536,22 +1675,32 @@ export class OKXExchange extends BaseExchange {
     };
   }
 
-  private transformOKXPrivateOrder(data: any): Order {
+  private async transformOKXPrivateOrder(data: any): Promise<Order> {
     // OKX private orders push format: ref docs v5 (orders channel)
     // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
     const symbol = this.denormalizeSymbol(data.instId);
     const side = (data.side || 'buy') === 'buy' ? OrderSide.BUY : OrderSide.SELL;
     const type = this.transformOKXOrderType(data.ordType || 'limit');
-    const qty = this.formatDecimal(data.sz || '0');
+
+    const qtyRaw = this.formatDecimal(data.sz || '0');
+    // 🆕 Convert quantity to base coins for derivatives
+    const qty = await this.getQuantityInBaseAsset(symbol, qtyRaw);
+
     const price = data.px ? this.formatDecimal(data.px) : undefined;
 
     // Calculate cummulativeQuoteQuantity from filled size and average price
     let cummulativeQuoteQuantity: Decimal | undefined;
     let averagePrice: Decimal | undefined;
-    if (data.accFillSz && data.avgPx) {
-      const accFillSz = this.formatDecimal(data.accFillSz);
+
+    let executedQuantity: Decimal | undefined;
+    if (data.accFillSz) {
+      const execQtyRaw = this.formatDecimal(data.accFillSz);
+      executedQuantity = await this.getQuantityInBaseAsset(symbol, execQtyRaw);
+    }
+
+    if (executedQuantity && data.avgPx) {
       const avgPx = this.formatDecimal(data.avgPx);
-      cummulativeQuoteQuantity = accFillSz.mul(avgPx);
+      cummulativeQuoteQuantity = executedQuantity.mul(avgPx);
       averagePrice = avgPx; // 🆕 Set average execution price
     }
 
@@ -1566,15 +1715,17 @@ export class OKXExchange extends BaseExchange {
       symbol,
       state: data.state,
       status: this.transformOKXOrderStatus(data.state || 'live'),
-      accFillSz: data.accFillSz,
-      sz: data.sz,
+      szRaw: data.sz,
+      sz: qty.toString(),
+      accFillSzRaw: data.accFillSz,
+      accFillSz: executedQuantity?.toString(),
       avgPx: data.avgPx,
       uTime: data.uTime,
       updateTime: updateTime.toISOString(),
     });
 
     return {
-      id: (data.ordId || uuidv4()).toString(),
+      id: (data.ordId || uuidv4()).toString().trim(),
       clientOrderId: data.clOrdId,
       symbol,
       side,
@@ -1585,17 +1736,17 @@ export class OKXExchange extends BaseExchange {
       timeInForce: 'GTC' as TimeInForce,
       timestamp: data.cTime ? new Date(parseInt(data.cTime)) : new Date(),
       updateTime, // 🔥 Now always set
-      executedQuantity: data.accFillSz ? this.formatDecimal(data.accFillSz) : undefined,
+      executedQuantity,
       cummulativeQuoteQuantity,
       averagePrice, // 🆕 Include average execution price
       exchange: this.name, // 🔥 Ensure exchange is set
     };
   }
 
-  private transformOKXBalanceAndPosition(data: any): {
+  private async transformOKXBalanceAndPosition(data: any): Promise<{
     balances: Balance[];
     positions: Position[];
-  } {
+  }> {
     const balances: Balance[] = [];
     const positions: Position[] = [];
 
@@ -1614,7 +1765,11 @@ export class OKXExchange extends BaseExchange {
       for (const p of data.posData) {
         // Denormalize symbol: APT-USDT-SWAP → APT/USDT:USDT
         const unifiedSymbol = this.denormalizeSymbol(p.instId);
-        const quantity = this.formatDecimal(p.pos || '0');
+        const quantityRaw = this.formatDecimal(p.pos || '0');
+
+        // 🆕 Convert contract quantity to base asset quantity (coins)
+        const quantity = await this.getQuantityInBaseAsset(unifiedSymbol, quantityRaw);
+
         const avgPrice = this.formatDecimal(p.avgPx || '0');
         const markPrice = this.resolveOkxMarkPrice(p, quantity);
         const unrealizedPnl = this.resolveOkxUnrealizedPnl(
@@ -1628,6 +1783,7 @@ export class OKXExchange extends BaseExchange {
 
         console.log('[OKX] 📊 Position calculated:', {
           symbol: unifiedSymbol,
+          quantityRaw: quantityRaw.toString(),
           quantity: quantity.toString(),
           avgPrice: p.avgPx,
           markPrice: markPrice.toString(),

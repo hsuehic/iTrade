@@ -353,6 +353,9 @@ export interface IPortfolioManager {
   ): Promise<void>;
   closePosition(symbol: string): Promise<void>;
 
+  // 🆕 Position Synchronization
+  syncPositions(positions: Position[], exchangeName?: string): Promise<void>;
+
   // Performance Tracking
   getUnrealizedPnl(): Promise<Decimal>;
   getRealizedPnl(period?: { start: Date; end: Date }): Promise<Decimal>;

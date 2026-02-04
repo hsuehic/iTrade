@@ -711,14 +711,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         executedOrder.userId = this._userId;
       }
 
-      this._eventBus.emitOrderCreated({
-        order: executedOrder,
-        timestamp: new Date(),
-      });
-
-      // 🆕 Mark this order as having emitted OrderCreated to avoid duplicate events
-      this._emittedOrderCreated.add(executedOrder.id);
-
       this.logger.logTrade('Order executed', {
         order: executedOrder,
         strategyId,
@@ -1132,15 +1124,6 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         order.userId = this._userId;
       }
 
-      if (!this._emittedOrderCreated.has(order.id)) {
-        // to cover orders that not initialed via executeOrder
-        if (order.status === OrderStatus.NEW) {
-          this._emittedOrderCreated.add(order.id);
-          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
-          return;
-        }
-      }
-
       // Emit status-specific events for non-NEW statuses
       switch (order.status) {
         case OrderStatus.FILLED:
@@ -1161,6 +1144,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           // Expired orders - emit if needed
           break;
         case OrderStatus.NEW:
+          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
           // NEW status already handled by OrderCreated above, no additional event needed
           break;
       }
@@ -1204,6 +1188,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         positions,
         timestamp: new Date(),
       });
+
+      // Sync portfolio manager to handle closed positions
+      // This ensures that getPositions() returns accurate data
+      this.portfolioManager.syncPositions(positions, exchangeName);
 
       // Notify strategies of specific position update
       this.onAccountUpdate({ positions, exchangeName });

@@ -93,6 +93,45 @@ export class PortfolioManager extends EventEmitter implements IPortfolioManager 
     this.emit('positionUpdated', symbol, this.positions.get(symbol));
   }
 
+  async syncPositions(positions: Position[], exchangeName?: string): Promise<void> {
+    const snapshotSymbols = new Set<string>();
+
+    for (const pos of positions) {
+      snapshotSymbols.add(pos.symbol);
+
+      // Inject exchange name if provided
+      if (exchangeName) {
+        (pos as any).exchange = exchangeName;
+      }
+
+      // Overwrite with authoritative snapshot data
+      this.positions.set(pos.symbol, pos);
+      this.emit('positionUpdated', pos.symbol, pos);
+    }
+
+    // Remove missing positions (closed)
+    for (const [symbol, position] of this.positions) {
+      // If exchangeName is provided, only prune positions belonging to that exchange
+      if (exchangeName) {
+        const posExchange = (position as any).exchange;
+        // If position belongs to this exchange AND is not in local snapshot -> delete it
+        // If position belongs to OTHER exchange -> keep it
+        // If position has no exchange info -> strictly speaking we shouldn't touch it if we are in exchange-specific mode,
+        // essentially assuming it might belong to another exchange.
+        if (posExchange === exchangeName && !snapshotSymbols.has(symbol)) {
+          this.positions.delete(symbol);
+          this.emit('positionClosed', symbol);
+        }
+      } else {
+        // Global sync (legacy behavior or single exchange)
+        if (!snapshotSymbols.has(symbol)) {
+          this.positions.delete(symbol);
+          this.emit('positionClosed', symbol);
+        }
+      }
+    }
+  }
+
   calculateUnrealizedPnl(symbol: string, quantity: Decimal, avgPrice: Decimal): Decimal {
     // This would typically use current market prices
     // For now, return zero as a placeholder

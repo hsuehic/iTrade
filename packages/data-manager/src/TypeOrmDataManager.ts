@@ -1048,23 +1048,49 @@ export class TypeOrmDataManager implements IDataManager {
     });
 
     // Update current positions
-    if (data.positions.length > 0) {
-      // Get userId from AccountInfo
-      const accountInfo = await this.accountInfoRepository.findOne({
-        where: { id: accountInfoId },
-        select: ['userId'],
+    // always run this block to ensure we sync the state (handle closed positions)
+    const accountInfo = await this.accountInfoRepository.findOne({
+      where: { id: accountInfoId },
+      select: ['userId'],
+    });
+
+    if (accountInfo) {
+      // 1. Get all currently stored positions for this exchange & user
+      const existingPositions = await this.positionRepository.findByExchange(
+        data.exchange,
+        accountInfo.userId,
+      );
+
+      // 2. Identify positions that are still open in the new snapshot
+      // Key: "symbol:side"
+      const snapshotKeys = new Set<string>();
+      data.positions.forEach((p) => {
+        snapshotKeys.add(`${p.symbol}:${p.side}`);
       });
 
-      if (accountInfo) {
+      // 3. Delete positions that are in DB but MISSING from snapshot (meaning they are closed)
+      for (const dbPos of existingPositions) {
+        const key = `${dbPos.symbol}:${dbPos.side}`;
+        if (!snapshotKeys.has(key)) {
+          await this.positionRepository.delete(dbPos.id);
+        }
+      }
+
+      // 4. Update/Insert current positions from snapshot
+      if (data.positions.length > 0) {
         for (const pos of data.positions) {
           const quantity = new Decimal(pos.quantity);
+
+          // If snapshot explicitly says quantity is 0 (rare, but handle it), delete
           if (quantity.isZero()) {
             await this.positionRepository.deleteBySymbol(
               pos.symbol,
               data.exchange,
               accountInfo.userId,
+              pos.side,
             );
           } else {
+            // Upsert position
             await this.positionRepository.save({
               userId: accountInfo.userId,
               exchange: data.exchange,

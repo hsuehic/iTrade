@@ -128,6 +128,42 @@ export class PositionTracker extends EventEmitter {
   }
 
   // Market Price Updates
+
+  /**
+   * Syncs the internal state with a snapshot of positions from the exchange.
+   * This handles creating new positions, updating existing ones, and REMOVING closed positions.
+   */
+  syncPositions(snapshotPositions: Position[]): void {
+    const snapshotSymbols = new Set<string>();
+
+    for (const snapshotPos of snapshotPositions) {
+      snapshotSymbols.add(snapshotPos.symbol);
+      const existingPos = this.positions.get(snapshotPos.symbol);
+
+      if (existingPos) {
+        // Update existing position with snapshot data
+        this.positions.set(snapshotPos.symbol, snapshotPos);
+        this.emit('positionUpdated', snapshotPos.symbol, snapshotPos);
+      } else {
+        // Create new position from snapshot
+        this.positions.set(snapshotPos.symbol, snapshotPos);
+        this.emit('positionOpened', snapshotPos.symbol, snapshotPos);
+      }
+
+      // Update market price if available in snapshot
+      if (snapshotPos.markPrice) {
+        this.marketPrices.set(snapshotPos.symbol, snapshotPos.markPrice);
+      }
+    }
+
+    // Identify and remove positions that are missing from the snapshot
+    for (const symbol of this.positions.keys()) {
+      if (!snapshotSymbols.has(symbol)) {
+        this.positions.delete(symbol);
+        this.emit('positionClosed', symbol);
+      }
+    }
+  }
   updateMarketPrice(symbol: string, price: Decimal): void {
     this.marketPrices.set(symbol, price);
 
