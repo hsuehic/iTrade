@@ -8,6 +8,7 @@
  */
 
 import type { IStrategy, StrategyConfig, StrategyParameters } from '@itrade/core';
+import { createEmptyPerformance } from '@itrade/core';
 
 import {
   MovingAverageStrategy,
@@ -271,6 +272,16 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
     subscription: contextFields.subscription,
     initialDataConfig: contextFields.initialDataConfig,
     loadedInitialData: contextFields.loadedInitialData,
+    performance:
+      contextFields.performance ||
+      createEmptyPerformance(
+        contextFields.symbol || '',
+        Array.isArray(contextFields.exchange)
+          ? contextFields.exchange[0]
+          : contextFields.exchange || '',
+        strategyId,
+        strategyName,
+      ),
   };
 
   // 🔧 确保必要的 symbol 和 exchange

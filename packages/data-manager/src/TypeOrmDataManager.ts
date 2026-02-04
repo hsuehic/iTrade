@@ -1036,7 +1036,16 @@ export class TypeOrmDataManager implements IDataManager {
     });
 
     // Update current per-asset balances
-    await this.balanceRepository.updateBalances(accountInfoId, data.balances);
+    const allowEmptyPurge =
+      data.totalBalance.isZero() &&
+      data.availableBalance.isZero() &&
+      data.lockedBalance.isZero() &&
+      data.totalPositionValue.isZero() &&
+      data.positionCount === 0;
+
+    await this.balanceRepository.updateBalances(accountInfoId, data.balances, {
+      allowEmptyPurge,
+    });
 
     // Update current positions
     if (data.positions.length > 0) {
