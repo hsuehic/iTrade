@@ -278,9 +278,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
             if (!metadata) {
               metadata = this.ensureRecoveredMetadata(order);
             }
+            this.orders.set(order.clientOrderId, order);
 
-            // Requirement: there should not be tp order when starting.
-            // If we find an existing TP order, we cancel it and don't track it.
             if (metadata?.signalType === SignalType.TakeProfit) {
               this._logger.info(
                 `🗑️ Found existing TP order on start, cancelling per requirement: ${order.clientOrderId}`,
@@ -292,7 +291,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
                 reason: 'no_tp_on_start',
               });
             } else {
-              this.orders.set(order.clientOrderId, order);
               if (order.side === OrderSide.BUY) {
                 this.openLowerOrder = order;
                 this._logger.info(
@@ -526,14 +524,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         ) {
           signals.push(...this.handleOrderFilled(order, metadata));
         }
-        if (
-          [OrderStatus.CANCELED, OrderStatus.REJECTED, OrderStatus.EXPIRED].includes(
-            order.status,
-          )
-        ) {
-          this.processedQuantityMap.delete(order.clientOrderId);
-          signals.push(...this.handleOrderCancellation(order, metadata));
-        }
       }
     }
     return signals;
@@ -672,35 +662,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     return this.updateLadderOrders();
   }
 
-  private handleOrderCancellation(
-    order: Order,
-    metadata: ExtendedSignalMetaData,
-  ): StrategyResult[] {
-    this._logger.info(`❌ Order ${order.status}: ${order.clientOrderId}`);
-    if (order.side === OrderSide.BUY) this.openLowerOrder = null;
-    else this.openUpperOrder = null;
-
-    if (order.clientOrderId) {
-      this.pendingClientOrderIds.delete(order.clientOrderId);
-      this.orderMetadataMap.delete(order.clientOrderId);
-    }
-    return this.updateLadderOrders();
-  }
-
   public override async onOrderCreated(order: Order): Promise<void> {
     if (order.side === OrderSide.BUY) this.openLowerOrder = order;
     else this.openUpperOrder = order;
     if (order.clientOrderId) this.pendingClientOrderIds.delete(order.clientOrderId);
     this.orders.set(order.clientOrderId || order.id, order);
-  }
-
-  public override async onOrderFilled(order: Order): Promise<void> {
-    this._logger.debug(`[onOrderFilled] ${order.clientOrderId}`);
-  }
-
-  public override async onPositionUpdate(_position: Position): Promise<void> {
-    // No-op: strictly track ONLY strategy-generated trades via tradedSize
-    this._logger.debug(`[onPositionUpdate] Ignored external position update`);
   }
 
   protected async onCleanup(): Promise<void> {

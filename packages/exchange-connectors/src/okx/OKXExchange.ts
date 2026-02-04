@@ -1592,7 +1592,7 @@ export class OKXExchange extends BaseExchange {
       type: type,
       quantity: quantity,
       price: price,
-      status: this.transformOKXOrderStatus(order.state),
+      status: this.transformOKXOrderStatus(order.state || 'live'),
       timeInForce: 'GTC' as TimeInForce,
       timestamp: order.cTime
         ? new Date(parseInt(order.cTime))
