@@ -145,6 +145,11 @@ function assertNoTpSignals(result: StrategyAnalyzeResult): void {
   expect(tpSignals).toHaveLength(0);
 }
 
+function assertNoEntrySignals(result: StrategyAnalyzeResult): void {
+  const entrySignals = findOrderSignalsByType(result, SignalType.Entry);
+  expect(entrySignals).toHaveLength(0);
+}
+
 describe('SingleLadderLifoTPStrategy', () => {
   describe('Initialization', () => {
     it('should initialize with default parameters', async () => {
@@ -337,6 +342,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           createDataUpdate({ orders: [partialUpdate] }),
         );
         assertSingleTpSignal(result, fill.qty);
+        assertNoEntrySignals(result);
       }
 
       const filled = {
@@ -410,6 +416,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         const tpQty = tpSignal?.quantity;
         expect(tpQty).toBeDefined();
         expect(tpQty!.toNumber()).toBe(increments[i]);
+        assertNoEntrySignals(result);
       }
 
       const filled = {
@@ -464,6 +471,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         createDataUpdate({ orders: [firstUpdate] }),
       );
       assertSingleTpSignal(firstResult, 500);
+      assertNoEntrySignals(firstResult);
 
       // Duplicate update with same executedQuantity should be ignored.
       const duplicateUpdate = {
@@ -477,6 +485,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         createDataUpdate({ orders: [duplicateUpdate] }),
       );
       assertNoTpSignals(duplicateResult);
+      assertNoEntrySignals(duplicateResult);
 
       // Out-of-order update with lower executedQuantity should be ignored.
       const outOfOrderLower = {
@@ -490,6 +499,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         createDataUpdate({ orders: [outOfOrderLower] }),
       );
       assertNoTpSignals(outOfOrderResult);
+      assertNoEntrySignals(outOfOrderResult);
 
       // Next valid increase should generate refreshed TP.
       const nextUpdate = {
@@ -503,6 +513,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         createDataUpdate({ orders: [nextUpdate] }),
       );
       assertSingleTpSignal(nextResult, 900);
+      assertNoEntrySignals(nextResult);
     });
 
     it('should debounce TP refresh by quantity and time thresholds', async () => {
@@ -544,6 +555,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       };
       const result1 = await strategy.analyze(createDataUpdate({ orders: [update1] }));
       assertNoTpSignals(result1);
+      assertNoEntrySignals(result1);
 
       const update2 = {
         ...orderNew,
@@ -554,6 +566,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       };
       const result2 = await strategy.analyze(createDataUpdate({ orders: [update2] }));
       assertNoTpSignals(result2);
+      assertNoEntrySignals(result2);
 
       const update3 = {
         ...orderNew,
@@ -564,6 +577,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       };
       const result3 = await strategy.analyze(createDataUpdate({ orders: [update3] }));
       assertNoTpSignals(result3);
+      assertNoEntrySignals(result3);
 
       const update4 = {
         ...orderNew,
@@ -574,6 +588,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       };
       const result4 = await strategy.analyze(createDataUpdate({ orders: [update4] }));
       assertSingleTpSignal(result4, 350);
+      assertNoEntrySignals(result4);
 
       const update5 = {
         ...orderNew,
@@ -584,6 +599,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       };
       const result5 = await strategy.analyze(createDataUpdate({ orders: [update5] }));
       assertSingleTpSignal(result5, 360);
+      assertNoEntrySignals(result5);
     });
   });
 

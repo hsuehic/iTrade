@@ -273,6 +273,29 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     );
   }
 
+  private isActiveEntryOrder(order: Order): boolean {
+    if (
+      order.status !== OrderStatus.NEW &&
+      order.status !== OrderStatus.PARTIALLY_FILLED
+    ) {
+      return false;
+    }
+    const metadata = order.clientOrderId
+      ? this.orderMetadataMap.get(order.clientOrderId)
+      : undefined;
+    return metadata?.signalType === SignalType.Entry;
+  }
+
+  private hasActiveEntry(side: OrderSide): boolean {
+    const direct = side === OrderSide.BUY ? this.openLowerOrder : this.openUpperOrder;
+    if (direct && this.isActiveEntryOrder(direct)) return true;
+
+    for (const order of this.orders.values()) {
+      if (order.side === side && this.isActiveEntryOrder(order)) return true;
+    }
+    return false;
+  }
+
   private shouldRefreshTakeProfit(
     order: Order,
     totalFilled: Decimal,
@@ -577,14 +600,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const pendingOrderIds = Array.from(this.pendingClientOrderIds);
 
     const lowerPending =
-      !!this.openLowerOrder ||
+      this.hasActiveEntry(OrderSide.BUY) ||
       pendingOrderIds.some((id) => {
         const m = this.orderMetadataMap.get(id);
         return m?.side === OrderSide.BUY;
       });
 
     const upperPending =
-      !!this.openUpperOrder ||
+      this.hasActiveEntry(OrderSide.SELL) ||
       pendingOrderIds.some((id) => {
         const m = this.orderMetadataMap.get(id);
         return m?.side === OrderSide.SELL;
@@ -647,6 +670,18 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         continue;
 
       this.orders.set(order.clientOrderId, order);
+      if (metadata.signalType === SignalType.Entry) {
+        if (
+          order.status === OrderStatus.NEW ||
+          order.status === OrderStatus.PARTIALLY_FILLED
+        ) {
+          if (order.side === OrderSide.BUY) this.openLowerOrder = order;
+          else this.openUpperOrder = order;
+        } else if (order.status === OrderStatus.FILLED) {
+          if (order.side === OrderSide.BUY) this.openLowerOrder = null;
+          else this.openUpperOrder = null;
+        }
+      }
 
       const totalFilled = order.executedQuantity || order.quantity;
       const lastProcessed =
