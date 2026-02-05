@@ -283,6 +283,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           basePrice: 100,
           minSize: 0,
           maxSize: 5000,
+          tpRefreshMinIntervalMs: 0,
         }),
       );
 
@@ -356,6 +357,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           basePrice: 100,
           minSize: 0,
           maxSize: 10000,
+          tpRefreshMinIntervalMs: 0,
         }),
       );
 
@@ -428,6 +430,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           basePrice: 100,
           minSize: 0,
           maxSize: 3000,
+          tpRefreshMinIntervalMs: 0,
         }),
       );
 
@@ -500,6 +503,87 @@ describe('SingleLadderLifoTPStrategy', () => {
         createDataUpdate({ orders: [nextUpdate] }),
       );
       assertSingleTpSignal(nextResult, 900);
+    });
+
+    it('should debounce TP refresh by quantity and time thresholds', async () => {
+      const strategy = new SingleLadderLifoTPStrategy(
+        createStrategyConfig({
+          orderAmount: 1000,
+          basePrice: 100,
+          minSize: 0,
+          maxSize: 3000,
+          tpRefreshMinIntervalMs: 500,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData({
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        timestamp: new Date(),
+      });
+
+      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
+      const orderNew = createOrder(
+        buyEntrySignal.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        1000,
+      );
+      await strategy.onOrderCreated(orderNew);
+
+      const update1 = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(100),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 100),
+      };
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [update1] }));
+      assertNoTpSignals(result1);
+
+      const update2 = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(250),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 200),
+      };
+      const result2 = await strategy.analyze(createDataUpdate({ orders: [update2] }));
+      assertNoTpSignals(result2);
+
+      const update3 = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(310),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 480),
+      };
+      const result3 = await strategy.analyze(createDataUpdate({ orders: [update3] }));
+      assertNoTpSignals(result3);
+
+      const update4 = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(350),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 600),
+      };
+      const result4 = await strategy.analyze(createDataUpdate({ orders: [update4] }));
+      assertSingleTpSignal(result4, 350);
+
+      const update5 = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(360),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 1100),
+      };
+      const result5 = await strategy.analyze(createDataUpdate({ orders: [update5] }));
+      assertSingleTpSignal(result5, 360);
     });
   });
 

@@ -37,6 +37,8 @@ export interface SingleLadderLifoTPParameters extends StrategyParameters {
   maxSize: number;
   /** Leverage for futures trading */
   leverage?: number;
+  /** Refresh TP at most once per interval (ms); 0 disables time gating */
+  tpRefreshMinIntervalMs?: number;
 }
 
 export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<SingleLadderLifoTPParameters> =
@@ -56,6 +58,7 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
       minSize: 0,
       maxSize: 1000,
       leverage: 10,
+      tpRefreshMinIntervalMs: 500,
     },
     parameterDefinitions: [
       {
@@ -139,6 +142,19 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         group: 'Risk Management',
         order: 7,
       },
+      {
+        name: 'tpRefreshMinIntervalMs',
+        type: 'number',
+        description:
+          'Minimum time interval between TP refreshes in ms (0 = no time gating)',
+        defaultValue: 500,
+        required: false,
+        min: 0,
+        max: 600000,
+        group: 'Take Profit',
+        order: 8,
+        unit: 'ms',
+      },
     ],
     subscriptionRequirements: {
       ticker: {
@@ -200,6 +216,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private minSize: number;
   private maxSize: number;
   private leverage: number;
+  private tpRefreshMinIntervalMs: number;
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
   private tradedSize: Decimal = new Decimal(0);
@@ -213,6 +230,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, ExtendedSignalMetaData> = new Map();
   private processedQuantityMap: Map<string, Decimal> = new Map();
+  private tpRefreshTracker: Map<string, { qty: Decimal; time: number }> = new Map();
 
   constructor(config: StrategyConfig<SingleLadderLifoTPParameters>) {
     super(config);
@@ -225,6 +243,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.minSize = parameters.minSize;
     this.maxSize = parameters.maxSize;
     this.leverage = parameters.leverage ?? 10;
+    this.tpRefreshMinIntervalMs = Math.max(parameters.tpRefreshMinIntervalMs ?? 0, 0);
 
     if (this.takeProfitPercent < this.stepPercent / 2) {
       throw new Error(
@@ -252,6 +271,25 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     return orders.reduce((latest, current) =>
       this.getOrderTime(current) > this.getOrderTime(latest) ? current : latest,
     );
+  }
+
+  private shouldRefreshTakeProfit(
+    order: Order,
+    totalFilled: Decimal,
+    timestamp: number,
+  ): boolean {
+    if (order.status === OrderStatus.FILLED) return true;
+    if (this.tpRefreshMinIntervalMs <= 0) return true;
+
+    const tracker = this.tpRefreshTracker.get(order.clientOrderId!);
+    const lastTime = tracker?.time ?? order.timestamp.getTime();
+
+    if (
+      this.tpRefreshMinIntervalMs > 0 &&
+      timestamp - lastTime >= this.tpRefreshMinIntervalMs
+    )
+      return true;
+    return false;
   }
 
   private getPositionMode(): string {
@@ -704,77 +742,86 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.processedQuantityMap.set(order.clientOrderId!, totalFilled);
 
     const signals: StrategyResult[] = [];
+    const now = (order.updateTime ?? order.timestamp).getTime();
+    const shouldRefreshTp = this.shouldRefreshTakeProfit(order, totalFilled, now);
+    if (shouldRefreshTp) {
+      this.tpRefreshTracker.set(order.clientOrderId!, { qty: totalFilled, time: now });
+    }
 
     if (order.side === OrderSide.BUY) {
       if (order.status === OrderStatus.FILLED) {
         this.openLowerOrder = null;
       }
-      // Refresh SELL TP on any buy fill delta (partial or full)
-      if (this.openUpperOrder) {
-        const m = this.orderMetadataMap.get(this.openUpperOrder.clientOrderId!);
-        if (m?.signalType === SignalType.TakeProfit) {
-          signals.push({
-            action: 'cancel',
-            clientOrderId: this.openUpperOrder.clientOrderId,
-            symbol: this._symbol,
-            reason: 'lifo_tp_refresh',
-          });
-          this.pendingClientOrderIds.delete(this.openUpperOrder.clientOrderId!);
-          this.orderMetadataMap.delete(this.openUpperOrder.clientOrderId!);
-          this.openUpperOrder = null;
+      if (shouldRefreshTp) {
+        // Refresh SELL TP on any buy fill delta (partial or full)
+        if (this.openUpperOrder) {
+          const m = this.orderMetadataMap.get(this.openUpperOrder.clientOrderId!);
+          if (m?.signalType === SignalType.TakeProfit) {
+            signals.push({
+              action: 'cancel',
+              clientOrderId: this.openUpperOrder.clientOrderId,
+              symbol: this._symbol,
+              reason: 'lifo_tp_refresh',
+            });
+            this.pendingClientOrderIds.delete(this.openUpperOrder.clientOrderId!);
+            this.orderMetadataMap.delete(this.openUpperOrder.clientOrderId!);
+            this.openUpperOrder = null;
+          }
         }
-      }
-      // Cancel pending SELL TP signals to allow refresh with new quantity
-      for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
-        const metadata = this.orderMetadataMap.get(clientOrderId);
-        if (
-          metadata?.signalType === SignalType.TakeProfit &&
-          metadata.side === OrderSide.SELL
-        ) {
-          signals.push({
-            action: 'cancel',
-            clientOrderId,
-            symbol: this._symbol,
-            reason: 'lifo_tp_refresh',
-          });
-          this.pendingClientOrderIds.delete(clientOrderId);
-          this.orderMetadataMap.delete(clientOrderId);
+        // Cancel pending SELL TP signals to allow refresh with new quantity
+        for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
+          const metadata = this.orderMetadataMap.get(clientOrderId);
+          if (
+            metadata?.signalType === SignalType.TakeProfit &&
+            metadata.side === OrderSide.SELL
+          ) {
+            signals.push({
+              action: 'cancel',
+              clientOrderId,
+              symbol: this._symbol,
+              reason: 'lifo_tp_refresh',
+            });
+            this.pendingClientOrderIds.delete(clientOrderId);
+            this.orderMetadataMap.delete(clientOrderId);
+          }
         }
       }
     } else {
       if (order.status === OrderStatus.FILLED) {
         this.openUpperOrder = null;
       }
-      // Refresh BUY TP on any sell fill delta (partial or full)
-      if (this.openLowerOrder) {
-        const m = this.orderMetadataMap.get(this.openLowerOrder.clientOrderId!);
-        if (m?.signalType === SignalType.TakeProfit) {
-          signals.push({
-            action: 'cancel',
-            clientOrderId: this.openLowerOrder.clientOrderId,
-            symbol: this._symbol,
-            reason: 'lifo_tp_refresh',
-          });
-          this.pendingClientOrderIds.delete(this.openLowerOrder.clientOrderId!);
-          this.orderMetadataMap.delete(this.openLowerOrder.clientOrderId!);
-          this.openLowerOrder = null;
+      if (shouldRefreshTp) {
+        // Refresh BUY TP on any sell fill delta (partial or full)
+        if (this.openLowerOrder) {
+          const m = this.orderMetadataMap.get(this.openLowerOrder.clientOrderId!);
+          if (m?.signalType === SignalType.TakeProfit) {
+            signals.push({
+              action: 'cancel',
+              clientOrderId: this.openLowerOrder.clientOrderId,
+              symbol: this._symbol,
+              reason: 'lifo_tp_refresh',
+            });
+            this.pendingClientOrderIds.delete(this.openLowerOrder.clientOrderId!);
+            this.orderMetadataMap.delete(this.openLowerOrder.clientOrderId!);
+            this.openLowerOrder = null;
+          }
         }
-      }
-      // Cancel pending BUY TP signals to allow refresh with new quantity
-      for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
-        const metadata = this.orderMetadataMap.get(clientOrderId);
-        if (
-          metadata?.signalType === SignalType.TakeProfit &&
-          metadata.side === OrderSide.BUY
-        ) {
-          signals.push({
-            action: 'cancel',
-            clientOrderId,
-            symbol: this._symbol,
-            reason: 'lifo_tp_refresh',
-          });
-          this.pendingClientOrderIds.delete(clientOrderId);
-          this.orderMetadataMap.delete(clientOrderId);
+        // Cancel pending BUY TP signals to allow refresh with new quantity
+        for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
+          const metadata = this.orderMetadataMap.get(clientOrderId);
+          if (
+            metadata?.signalType === SignalType.TakeProfit &&
+            metadata.side === OrderSide.BUY
+          ) {
+            signals.push({
+              action: 'cancel',
+              clientOrderId,
+              symbol: this._symbol,
+              reason: 'lifo_tp_refresh',
+            });
+            this.pendingClientOrderIds.delete(clientOrderId);
+            this.orderMetadataMap.delete(clientOrderId);
+          }
         }
       }
     }
@@ -782,7 +829,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(
       `✅ Entry FILLED: ${side} ${delta.toString()} @ ${filledPrice.toString()}. Size: ${this.tradedSize.toFixed(4)}`,
     );
-    signals.push(...this.updateLadderOrders());
+    signals.push(...this.updateLadderOrders(!shouldRefreshTp));
     return signals;
   }
 
@@ -850,6 +897,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.initialDataProcessed = false;
 
     this.processedQuantityMap.clear();
+    this.tpRefreshTracker.clear();
     this._logger.info(`🧹 Strategy cleaned up`);
   }
 
