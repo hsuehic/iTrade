@@ -9,6 +9,55 @@ import { Decimal } from 'decimal.js';
 import { StrategyPerformance } from '@itrade/core';
 import type { StrategyPerformanceEntity } from '../entities/StrategyPerformance';
 
+const stripWrappedQuotes = (value: string): string => {
+  let cleaned = value.trim();
+  while (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned;
+};
+
+const toDecimal = (value: Decimal | number | string | null | undefined): Decimal => {
+  if (Decimal.isDecimal(value)) {
+    return value as Decimal;
+  }
+
+  if (value === null || value === undefined) {
+    return new Decimal(0);
+  }
+
+  if (typeof value === 'string') {
+    const cleaned = stripWrappedQuotes(value);
+    if (cleaned === '') {
+      return new Decimal(0);
+    }
+    return new Decimal(cleaned);
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Decimal(value);
+  }
+
+  return new Decimal(0);
+};
+
+const toInteger = (value: number | string | null | undefined): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === 'string') {
+    const cleaned = stripWrappedQuotes(value);
+    const parsed = Number.parseInt(cleaned, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
+
 /**
  * Convert StrategyPerformance to StrategyPerformanceEntity
  * for database storage
@@ -20,89 +69,97 @@ export function performanceToEntity(
   Partial<StrategyPerformanceEntity>,
   'id' | 'strategy' | 'createdAt' | 'updatedAt'
 > {
+  const longOrdersFilledCount = toInteger(performance.orders.long.filled.count);
+  const longOrdersPendingCount = toInteger(performance.orders.long.pending.count);
+  const longOrdersTotalCount = toInteger(performance.orders.long.total.count);
+  const shortOrdersFilledCount = toInteger(performance.orders.short.filled.count);
+  const shortOrdersPendingCount = toInteger(performance.orders.short.pending.count);
+  const shortOrdersTotalCount = toInteger(performance.orders.short.total.count);
+  const cancelledOrdersCount = toInteger(performance.orders.cancelled.count);
+  const rejectedOrdersCount = toInteger(performance.orders.rejected.count);
+
   return {
     strategyId,
 
     // Order Metrics - Long
-    longOrdersFilledCount: performance.orders.long.filled.count,
-    longOrdersFilledValue: performance.orders.long.filled.totalValue,
-    longOrdersFilledQuantity: performance.orders.long.filled.totalQuantity,
-    longOrdersFilledFees: performance.orders.long.filled.totalFees,
-    longOrdersPendingCount: performance.orders.long.pending.count,
-    longOrdersPendingValue: performance.orders.long.pending.totalValue,
-    longOrdersTotalCount: performance.orders.long.total.count,
-    longOrdersTotalValue: performance.orders.long.total.totalValue,
+    longOrdersFilledCount,
+    longOrdersFilledValue: toDecimal(performance.orders.long.filled.totalValue),
+    longOrdersFilledQuantity: toDecimal(performance.orders.long.filled.totalQuantity),
+    longOrdersFilledFees: toDecimal(performance.orders.long.filled.totalFees),
+    longOrdersPendingCount,
+    longOrdersPendingValue: toDecimal(performance.orders.long.pending.totalValue),
+    longOrdersTotalCount,
+    longOrdersTotalValue: toDecimal(performance.orders.long.total.totalValue),
 
     // Order Metrics - Short
-    shortOrdersFilledCount: performance.orders.short.filled.count,
-    shortOrdersFilledValue: performance.orders.short.filled.totalValue,
-    shortOrdersFilledQuantity: performance.orders.short.filled.totalQuantity,
-    shortOrdersFilledFees: performance.orders.short.filled.totalFees,
-    shortOrdersPendingCount: performance.orders.short.pending.count,
-    shortOrdersPendingValue: performance.orders.short.pending.totalValue,
-    shortOrdersTotalCount: performance.orders.short.total.count,
-    shortOrdersTotalValue: performance.orders.short.total.totalValue,
+    shortOrdersFilledCount,
+    shortOrdersFilledValue: toDecimal(performance.orders.short.filled.totalValue),
+    shortOrdersFilledQuantity: toDecimal(performance.orders.short.filled.totalQuantity),
+    shortOrdersFilledFees: toDecimal(performance.orders.short.filled.totalFees),
+    shortOrdersPendingCount,
+    shortOrdersPendingValue: toDecimal(performance.orders.short.pending.totalValue),
+    shortOrdersTotalCount,
+    shortOrdersTotalValue: toDecimal(performance.orders.short.total.totalValue),
 
     // Order Metrics - Other
-    cancelledOrdersCount: performance.orders.cancelled.count,
-    rejectedOrdersCount: performance.orders.rejected.count,
-    totalOrders:
-      performance.orders.long.total.count + performance.orders.short.total.count,
+    cancelledOrdersCount,
+    rejectedOrdersCount,
+    totalOrders: longOrdersTotalCount + shortOrdersTotalCount,
 
     // PnL Metrics
-    realizedPnL: performance.pnl.realizedPnL,
-    unrealizedPnL: performance.pnl.unrealizedPnL,
-    totalPnL: performance.pnl.totalPnL,
-    totalFees: performance.pnl.totalFees,
-    netPnL: performance.pnl.netPnL,
-    roi: performance.pnl.roi,
-    winRate: performance.pnl.winRate,
-    profitFactor: performance.pnl.profitFactor,
+    realizedPnL: toDecimal(performance.pnl.realizedPnL),
+    unrealizedPnL: toDecimal(performance.pnl.unrealizedPnL),
+    totalPnL: toDecimal(performance.pnl.totalPnL),
+    totalFees: toDecimal(performance.pnl.totalFees),
+    netPnL: toDecimal(performance.pnl.netPnL),
+    roi: toDecimal(performance.pnl.roi),
+    winRate: toDecimal(performance.pnl.winRate),
+    profitFactor: toDecimal(performance.pnl.profitFactor),
 
     // Position Metrics
-    currentPosition: performance.position.currentPosition,
-    avgEntryPrice: performance.position.avgEntryPrice,
-    currentPrice: performance.position.currentPrice,
-    marketValue: performance.position.marketValue,
-    positionSide: performance.position.side,
-    leverage: performance.position.leverage,
+    currentPosition: toDecimal(performance.position.currentPosition),
+    avgEntryPrice: toDecimal(performance.position.avgEntryPrice),
+    currentPrice: toDecimal(performance.position.currentPrice),
+    marketValue: toDecimal(performance.position.marketValue),
+    positionSide: performance.position.side || 'flat',
+    leverage: toDecimal(performance.position.leverage),
 
     // Activity Metrics
-    totalTrades: performance.activity.totalTrades,
-    winningTrades: performance.activity.winningTrades,
-    losingTrades: performance.activity.losingTrades,
-    avgTradeSize: performance.activity.avgTradeSize,
-    avgTradeValue: performance.activity.avgTradeValue,
-    largestWin: performance.activity.largestWin,
-    largestLoss: performance.activity.largestLoss,
-    avgHoldingTime: performance.activity.avgHoldingTime,
-    totalVolume: performance.activity.totalVolume,
+    totalTrades: toInteger(performance.activity.totalTrades),
+    winningTrades: toInteger(performance.activity.winningTrades),
+    losingTrades: toInteger(performance.activity.losingTrades),
+    avgTradeSize: toDecimal(performance.activity.avgTradeSize),
+    avgTradeValue: toDecimal(performance.activity.avgTradeValue),
+    largestWin: toDecimal(performance.activity.largestWin),
+    largestLoss: toDecimal(performance.activity.largestLoss),
+    avgHoldingTime: toInteger(performance.activity.avgHoldingTime),
+    totalVolume: toDecimal(performance.activity.totalVolume),
 
     // Symbol Statistics (first symbol only for now)
-    boughtQuantity: performance.symbols[0]?.boughtQuantity || new Decimal(0),
-    boughtValue: performance.symbols[0]?.boughtValue || new Decimal(0),
-    soldQuantity: performance.symbols[0]?.soldQuantity || new Decimal(0),
-    soldValue: performance.symbols[0]?.soldValue || new Decimal(0),
-    netPosition: performance.symbols[0]?.netPosition || new Decimal(0),
-    avgBuyPrice: performance.symbols[0]?.avgBuyPrice || new Decimal(0),
-    avgSellPrice: performance.symbols[0]?.avgSellPrice || new Decimal(0),
-    buyOrderCount: performance.symbols[0]?.buyOrderCount || 0,
-    sellOrderCount: performance.symbols[0]?.sellOrderCount || 0,
+    boughtQuantity: toDecimal(performance.symbols[0]?.boughtQuantity),
+    boughtValue: toDecimal(performance.symbols[0]?.boughtValue),
+    soldQuantity: toDecimal(performance.symbols[0]?.soldQuantity),
+    soldValue: toDecimal(performance.symbols[0]?.soldValue),
+    netPosition: toDecimal(performance.symbols[0]?.netPosition),
+    avgBuyPrice: toDecimal(performance.symbols[0]?.avgBuyPrice),
+    avgSellPrice: toDecimal(performance.symbols[0]?.avgSellPrice),
+    buyOrderCount: toInteger(performance.symbols[0]?.buyOrderCount),
+    sellOrderCount: toInteger(performance.symbols[0]?.sellOrderCount),
 
     // Time Metrics
     startTime: performance.time.startTime,
     lastOrderTime: performance.time.lastOrderTime,
     lastSignalTime: performance.time.lastSignalTime,
-    totalRuntime: performance.time.totalRuntime,
-    activeTradingTime: performance.time.activeTradingTime,
+    totalRuntime: toInteger(performance.time.totalRuntime),
+    activeTradingTime: toInteger(performance.time.activeTradingTime),
 
     // Risk Metrics
-    maxDrawdown: performance.risk.maxDrawdown,
-    currentDrawdown: performance.risk.currentDrawdown,
-    sharpeRatio: performance.risk.sharpeRatio,
-    maxPositionSize: performance.risk.maxPositionSize,
-    totalExposure: performance.risk.totalExposure,
-    valueAtRisk: performance.risk.valueAtRisk,
+    maxDrawdown: toDecimal(performance.risk.maxDrawdown),
+    currentDrawdown: toDecimal(performance.risk.currentDrawdown),
+    sharpeRatio: toDecimal(performance.risk.sharpeRatio),
+    maxPositionSize: toDecimal(performance.risk.maxPositionSize),
+    totalExposure: toDecimal(performance.risk.totalExposure),
+    valueAtRisk: toDecimal(performance.risk.valueAtRisk),
   };
 }
 
