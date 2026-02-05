@@ -202,7 +202,6 @@ export function OrdersTable({
   const [orders, setOrders] = React.useState<OrderData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
-    { id: 'status', desc: false },
     { id: 'timestamp', desc: true },
   ]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
