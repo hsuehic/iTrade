@@ -223,6 +223,36 @@ describe('SingleLadderLifoTPStrategy', () => {
       const state4 = longOnly.getStrategyState();
       expect(state4.mode).toBe('LONG_ONLY');
     });
+
+    it('should restore pending entry fills and only create TP on restart', async () => {
+      const config = createStrategyConfig({
+        basePrice: 100,
+        orderAmount: 3000,
+        minSize: 0,
+        maxSize: 10000,
+      });
+      config.performance.position.currentPosition = new Decimal(120);
+      config.performance.position.avgEntryPrice = new Decimal(98);
+      const strategy = new SingleLadderLifoTPStrategy(config);
+
+      const openOrder = {
+        ...createOrder('E1DINIT', OrderSide.BUY, OrderStatus.PARTIALLY_FILLED, 98, 3000),
+        executedQuantity: new Decimal(120),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(),
+      };
+
+      const initResult = await strategy.processInitialData({
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        timestamp: new Date(),
+        openOrders: [openOrder],
+      });
+
+      assertSingleTpSignal(initResult, 120);
+      const entrySignals = findOrderSignalsByType(initResult, SignalType.Entry);
+      expect(entrySignals).toHaveLength(0);
+    });
   });
 
   describe('Order-Status-Only Entry Signal Generation', () => {

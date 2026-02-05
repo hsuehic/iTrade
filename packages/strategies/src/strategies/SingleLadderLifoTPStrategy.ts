@@ -337,9 +337,15 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(`📊 [SingleLadderLifoTP] Processing initial data...`);
     const signals: StrategyResult[] = [];
     const performanceSummary = this.getPerformanceSummary?.();
+    const performance = this.getPerformance?.();
     if (performanceSummary) {
       this._logger.info(
         `📈 [SingleLadderLifoTP] Performance summary on start: totalOrders=${performanceSummary.totalOrders}, pendingOrders=${performanceSummary.pendingOrders}, currentPosition=${performanceSummary.currentPosition}`,
+      );
+    }
+    if (performance) {
+      this._logger.info(
+        `📈 [SingleLadderLifoTP] Performance snapshot: currentPosition=${performance.position.currentPosition.toFixed(8)}, avgEntryPrice=${performance.position.avgEntryPrice.toFixed(8)}, filledQty=${performance.orders.long.filled.totalQuantity.plus(performance.orders.short.filled.totalQuantity).toFixed(8)}`,
       );
     }
 
@@ -354,6 +360,14 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
       const entryBuys: Order[] = [];
       const entrySells: Order[] = [];
+      const filledSnapshots: Array<{
+        side: EntrySide;
+        amount: Decimal;
+        price: Decimal;
+        clientOrderId: string;
+        timestamp: number;
+        referencePriceBefore: Decimal;
+      }> = [];
 
       ownedOrders.forEach((order) => {
         if (!order.clientOrderId) return;
@@ -380,6 +394,24 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           entryBuys.push(order);
         } else {
           entrySells.push(order);
+        }
+
+        if (
+          metadata?.signalType === SignalType.Entry &&
+          order.executedQuantity &&
+          order.executedQuantity.gt(0)
+        ) {
+          const filledPrice = order.averagePrice || order.price || this.referencePrice;
+          const side: EntrySide = order.side === OrderSide.BUY ? 'LONG' : 'SHORT';
+          filledSnapshots.push({
+            side,
+            amount: order.executedQuantity,
+            price: filledPrice,
+            clientOrderId: order.clientOrderId,
+            timestamp: this.getOrderTime(order),
+            referencePriceBefore: this.referencePrice,
+          });
+          this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
         }
       });
 
@@ -431,6 +463,28 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           `🔍 Found existing Upper Entry order: ${keepSell.clientOrderId}`,
         );
       }
+
+      if (filledSnapshots.length > 0) {
+        filledSnapshots.sort((a, b) => a.timestamp - b.timestamp);
+        this.filledEntries = filledSnapshots.map((snapshot) => ({
+          side: snapshot.side,
+          price: snapshot.price,
+          amount: snapshot.amount,
+          clientOrderId: snapshot.clientOrderId,
+          timestamp: snapshot.timestamp,
+          referencePriceBefore: snapshot.referencePriceBefore,
+        }));
+        const lastSnapshot = filledSnapshots[filledSnapshots.length - 1];
+        if (lastSnapshot) this.referencePrice = lastSnapshot.price;
+        this.tradedSize = filledSnapshots.reduce((total, snapshot) => {
+          return total.plus(
+            snapshot.side === 'LONG' ? snapshot.amount : snapshot.amount.neg(),
+          );
+        }, new Decimal(0));
+        this._logger.info(
+          `🧩 Restored ${filledSnapshots.length} filled entries from open orders. Size=${this.tradedSize.toFixed(8)}`,
+        );
+      }
     }
 
     if (initialData.positions && initialData.positions.length > 0) {
@@ -439,17 +493,20 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       );
     }
 
-    if (performanceSummary) {
-      const summaryPosition = new Decimal(performanceSummary.currentPosition);
-      if (!summaryPosition.isZero()) {
-        this.tradedSize = summaryPosition;
-        this._logger.info(
-          `📌 Restored position from performance summary: size=${this.tradedSize.toFixed(8)}`,
-        );
+    const performancePosition = performance?.position.currentPosition ?? null;
+    const performanceAvgPrice = performance?.position.avgEntryPrice ?? null;
+    if (
+      performancePosition &&
+      !performancePosition.isZero() &&
+      this.filledEntries.length === 0
+    ) {
+      this.tradedSize = performancePosition;
+      if (performanceAvgPrice && performanceAvgPrice.gt(0)) {
+        this.referencePrice = performanceAvgPrice;
       }
-    }
-
-    if (!this.tradedSize.isZero() && this.filledEntries.length === 0) {
+      this._logger.info(
+        `📌 Restored position from performance: size=${this.tradedSize.toFixed(8)} avgPrice=${this.referencePrice.toFixed(8)}`,
+      );
       const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
       const amount = this.tradedSize.abs();
       this.filledEntries.push({
@@ -461,12 +518,40 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         referencePriceBefore: this.referencePrice,
       });
       this._logger.info(
-        `🧩 Seeded LIFO entry from restored position: ${side} ${amount.toFixed(8)} @ ${this.referencePrice.toFixed(8)}`,
+        `🧩 Seeded LIFO entry from performance position: ${side} ${amount.toFixed(8)} @ ${this.referencePrice.toFixed(8)}`,
       );
+    } else if (
+      performanceSummary &&
+      this.tradedSize.isZero() &&
+      this.filledEntries.length === 0
+    ) {
+      const summaryPosition = new Decimal(performanceSummary.currentPosition);
+      if (!summaryPosition.isZero()) {
+        this.tradedSize = summaryPosition;
+        if (performanceAvgPrice && performanceAvgPrice.gt(0)) {
+          this.referencePrice = performanceAvgPrice;
+        }
+        this._logger.info(
+          `📌 Restored position from performance summary: size=${this.tradedSize.toFixed(8)} avgPrice=${this.referencePrice.toFixed(8)}`,
+        );
+        const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
+        const amount = this.tradedSize.abs();
+        this.filledEntries.push({
+          side,
+          price: this.referencePrice,
+          amount,
+          clientOrderId: 'recovered_position',
+          timestamp: Date.now(),
+          referencePriceBefore: this.referencePrice,
+        });
+        this._logger.info(
+          `🧩 Seeded LIFO entry from performance summary: ${side} ${amount.toFixed(8)} @ ${this.referencePrice.toFixed(8)}`,
+        );
+      }
     }
 
     this.initialDataProcessed = true;
-    const newSignals = this.updateLadderOrders(true);
+    const newSignals = this.updateLadderOrders(false);
     signals.push(...newSignals);
 
     this._logger.info(
