@@ -18,6 +18,8 @@ import {
   StrategyResult,
   StrategyOrderResult,
   SignalType,
+  createEmptyPerformance,
+  isCancelOrderResult,
 } from '@itrade/core';
 
 /**
@@ -42,6 +44,12 @@ function createStrategyConfig(
     exchange: 'okx',
     strategyId: 1,
     strategyName: 'Test Single Ladder LIFO TP',
+    performance: createEmptyPerformance(
+      'BTC/USDT',
+      'okx',
+      1,
+      'Test Single Ladder LIFO TP',
+    ),
   };
 }
 
@@ -122,6 +130,19 @@ function findOrderSignalsByType(
     (s): s is StrategyOrderResult =>
       (s.action === 'buy' || s.action === 'sell') && s.metadata?.signalType === type,
   );
+}
+
+function assertSingleTpSignal(result: StrategyAnalyzeResult, expectedQty: number): void {
+  const tpSignals = findOrderSignalsByType(result, SignalType.TakeProfit);
+  expect(tpSignals).toHaveLength(1);
+  const tpQty = tpSignals[0]?.quantity;
+  expect(tpQty).toBeDefined();
+  expect(tpQty!.toNumber()).toBe(expectedQty);
+}
+
+function assertNoTpSignals(result: StrategyAnalyzeResult): void {
+  const tpSignals = findOrderSignalsByType(result, SignalType.TakeProfit);
+  expect(tpSignals).toHaveLength(0);
 }
 
 describe('SingleLadderLifoTPStrategy', () => {
@@ -251,6 +272,234 @@ describe('SingleLadderLifoTPStrategy', () => {
       // Should ONLY have Buy entry because minSize is 0 (can't add short)
       expect(entries).toHaveLength(1);
       expect(entries[0].action).toBe('buy');
+    });
+  });
+
+  describe('Entry Partial Fills', () => {
+    it('should refresh TP quantity on multiple partial fills', async () => {
+      const strategy = new SingleLadderLifoTPStrategy(
+        createStrategyConfig({
+          orderAmount: 2000,
+          basePrice: 100,
+          minSize: 0,
+          maxSize: 5000,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData({
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        timestamp: new Date(),
+      });
+
+      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
+      const orderNew = createOrder(
+        buyEntrySignal.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        2000,
+      );
+      await strategy.onOrderCreated(orderNew);
+
+      const partialFills = [
+        { qty: 80, delayMs: 120 },
+        { qty: 150, delayMs: 40 },
+        { qty: 280, delayMs: 300 },
+        { qty: 360, delayMs: 30 },
+        { qty: 520, delayMs: 500 },
+        { qty: 680, delayMs: 70 },
+        { qty: 890, delayMs: 200 },
+        { qty: 1040, delayMs: 25 },
+        { qty: 1235, delayMs: 800 },
+        { qty: 1420, delayMs: 60 },
+        { qty: 1608, delayMs: 400 },
+        { qty: 1750, delayMs: 90 },
+        { qty: 1888, delayMs: 600 },
+        { qty: 1976, delayMs: 20 },
+      ];
+
+      let accumulatedDelay = 0;
+      for (const fill of partialFills) {
+        accumulatedDelay += fill.delayMs;
+        const partialUpdate = {
+          ...orderNew,
+          status: OrderStatus.PARTIALLY_FILLED,
+          executedQuantity: new Decimal(fill.qty),
+          averagePrice: new Decimal(98),
+          updateTime: new Date(orderNew.timestamp.getTime() + accumulatedDelay),
+        };
+        const result = await strategy.analyze(
+          createDataUpdate({ orders: [partialUpdate] }),
+        );
+        assertSingleTpSignal(result, fill.qty);
+      }
+
+      const filled = {
+        ...orderNew,
+        status: OrderStatus.FILLED,
+        executedQuantity: new Decimal(2000),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + accumulatedDelay + 1000),
+      };
+      const resultFinal = await strategy.analyze(createDataUpdate({ orders: [filled] }));
+      assertSingleTpSignal(resultFinal, 2000);
+    });
+
+    it('should handle dozens of incremental fills with mixed timing', async () => {
+      const strategy = new SingleLadderLifoTPStrategy(
+        createStrategyConfig({
+          orderAmount: 5000,
+          basePrice: 100,
+          minSize: 0,
+          maxSize: 10000,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData({
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        timestamp: new Date(),
+      });
+
+      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
+      const orderNew = createOrder(
+        buyEntrySignal.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        5000,
+      );
+      await strategy.onOrderCreated(orderNew);
+
+      const increments = [
+        80, 130, 210, 260, 340, 430, 520, 610, 700, 820, 930, 1010, 1150, 1280, 1400,
+        1520, 1670, 1800, 1950, 2100, 2250, 2410, 2580, 2750, 2920, 3100, 3290, 3470,
+        3680, 3900, 4120, 4350, 4580, 4820, 4950,
+      ];
+      const delays = [
+        120, 40, 300, 30, 500, 70, 200, 25, 800, 60, 400, 90, 600, 20, 150, 35, 450, 55,
+        700, 45, 380, 65, 520, 75, 610, 50, 430, 85, 560, 95, 310, 110, 260, 140, 90,
+      ];
+
+      let accumulatedDelay = 0;
+      for (let i = 0; i < increments.length; i++) {
+        accumulatedDelay += delays[i];
+        const partialUpdate = {
+          ...orderNew,
+          status: OrderStatus.PARTIALLY_FILLED,
+          executedQuantity: new Decimal(increments[i]),
+          averagePrice: new Decimal(98),
+          updateTime: new Date(orderNew.timestamp.getTime() + accumulatedDelay),
+        };
+        const result = await strategy.analyze(
+          createDataUpdate({ orders: [partialUpdate] }),
+        );
+        const tpSignals = findOrderSignalsByType(result, SignalType.TakeProfit);
+        expect(tpSignals).toHaveLength(1);
+        const tpSignal = tpSignals[0];
+        expect(tpSignal).toBeDefined();
+        const tpQty = tpSignal?.quantity;
+        expect(tpQty).toBeDefined();
+        expect(tpQty!.toNumber()).toBe(increments[i]);
+      }
+
+      const filled = {
+        ...orderNew,
+        status: OrderStatus.FILLED,
+        executedQuantity: new Decimal(5000),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + accumulatedDelay + 1000),
+      };
+      const resultFinal = await strategy.analyze(createDataUpdate({ orders: [filled] }));
+      assertSingleTpSignal(resultFinal, 5000);
+    });
+
+    it('should ignore duplicate and out-of-order partial updates', async () => {
+      const strategy = new SingleLadderLifoTPStrategy(
+        createStrategyConfig({
+          orderAmount: 1000,
+          basePrice: 100,
+          minSize: 0,
+          maxSize: 3000,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData({
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        timestamp: new Date(),
+      });
+
+      const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
+        (s) => s.action === 'buy',
+      )!;
+
+      const orderNew = createOrder(
+        buyEntrySignal.clientOrderId!,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        98,
+        1000,
+      );
+      await strategy.onOrderCreated(orderNew);
+
+      const firstUpdate = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(500),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 1000),
+      };
+      const firstResult = await strategy.analyze(
+        createDataUpdate({ orders: [firstUpdate] }),
+      );
+      assertSingleTpSignal(firstResult, 500);
+
+      // Duplicate update with same executedQuantity should be ignored.
+      const duplicateUpdate = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(500),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 1500),
+      };
+      const duplicateResult = await strategy.analyze(
+        createDataUpdate({ orders: [duplicateUpdate] }),
+      );
+      assertNoTpSignals(duplicateResult);
+
+      // Out-of-order update with lower executedQuantity should be ignored.
+      const outOfOrderLower = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(420),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 900),
+      };
+      const outOfOrderResult = await strategy.analyze(
+        createDataUpdate({ orders: [outOfOrderLower] }),
+      );
+      assertNoTpSignals(outOfOrderResult);
+
+      // Next valid increase should generate refreshed TP.
+      const nextUpdate = {
+        ...orderNew,
+        status: OrderStatus.PARTIALLY_FILLED,
+        executedQuantity: new Decimal(900),
+        averagePrice: new Decimal(98),
+        updateTime: new Date(orderNew.timestamp.getTime() + 2000),
+      };
+      const nextResult = await strategy.analyze(
+        createDataUpdate({ orders: [nextUpdate] }),
+      );
+      assertSingleTpSignal(nextResult, 900);
     });
   });
 
@@ -400,7 +649,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         timestamp: new Date(),
       });
 
-      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
+      const cancels = toSignalArray(result).filter(isCancelOrderResult);
       expect(cancels).toHaveLength(1);
       expect(cancels[0].clientOrderId).toBe('T1D9D123456');
     });

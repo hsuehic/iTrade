@@ -610,16 +610,23 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
       this.orders.set(order.clientOrderId, order);
 
+      const totalFilled = order.executedQuantity || order.quantity;
+      const lastProcessed =
+        this.processedQuantityMap.get(order.clientOrderId) || new Decimal(0);
+      const hasNewFill = totalFilled.gt(lastProcessed);
+
       if (!existingOrder || existingOrder.status !== order.status) {
         this._logger.info(
           `🔄 Order status: ${order.clientOrderId.substring(0, 12)}... ${order.status}`,
         );
-        if (
-          order.status === OrderStatus.FILLED ||
-          order.status === OrderStatus.PARTIALLY_FILLED
-        ) {
-          signals.push(...this.handleOrderFilled(order, metadata));
-        }
+      }
+
+      if (
+        hasNewFill &&
+        (order.status === OrderStatus.FILLED ||
+          order.status === OrderStatus.PARTIALLY_FILLED)
+      ) {
+        signals.push(...this.handleOrderFilled(order, metadata));
       }
     }
     return signals;
@@ -674,49 +681,100 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const oldReference = this.referencePrice;
     this.referencePrice = filledPrice;
 
-    this.filledEntries.push({
-      side,
-      price: filledPrice,
-      amount: delta,
-      clientOrderId: order.clientOrderId!,
-      timestamp: Date.now(),
-      referencePriceBefore: oldReference,
-    });
+    const lastEntry = this.filledEntries[this.filledEntries.length - 1];
+    if (
+      lastEntry &&
+      lastEntry.clientOrderId === order.clientOrderId &&
+      lastEntry.side === side
+    ) {
+      lastEntry.amount = lastEntry.amount.plus(delta);
+      lastEntry.price = filledPrice;
+      lastEntry.timestamp = Date.now();
+    } else {
+      this.filledEntries.push({
+        side,
+        price: filledPrice,
+        amount: delta,
+        clientOrderId: order.clientOrderId!,
+        timestamp: Date.now(),
+        referencePriceBefore: oldReference,
+      });
+    }
 
     this.processedQuantityMap.set(order.clientOrderId!, totalFilled);
 
     const signals: StrategyResult[] = [];
 
-    if (order.status === OrderStatus.FILLED) {
-      if (order.side === OrderSide.BUY) {
+    if (order.side === OrderSide.BUY) {
+      if (order.status === OrderStatus.FILLED) {
         this.openLowerOrder = null;
-        // If we filled a LONG entry, cancel existing SELL TP to refresh it for LIFO
-        if (this.openUpperOrder) {
-          const m = this.orderMetadataMap.get(this.openUpperOrder.clientOrderId!);
-          if (m?.signalType === SignalType.TakeProfit) {
-            signals.push({
-              action: 'cancel',
-              clientOrderId: this.openUpperOrder.clientOrderId,
-              symbol: this._symbol,
-              reason: 'lifo_tp_refresh',
-            });
-            this.openUpperOrder = null;
-          }
+      }
+      // Refresh SELL TP on any buy fill delta (partial or full)
+      if (this.openUpperOrder) {
+        const m = this.orderMetadataMap.get(this.openUpperOrder.clientOrderId!);
+        if (m?.signalType === SignalType.TakeProfit) {
+          signals.push({
+            action: 'cancel',
+            clientOrderId: this.openUpperOrder.clientOrderId,
+            symbol: this._symbol,
+            reason: 'lifo_tp_refresh',
+          });
+          this.pendingClientOrderIds.delete(this.openUpperOrder.clientOrderId!);
+          this.orderMetadataMap.delete(this.openUpperOrder.clientOrderId!);
+          this.openUpperOrder = null;
         }
-      } else {
+      }
+      // Cancel pending SELL TP signals to allow refresh with new quantity
+      for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
+        const metadata = this.orderMetadataMap.get(clientOrderId);
+        if (
+          metadata?.signalType === SignalType.TakeProfit &&
+          metadata.side === OrderSide.SELL
+        ) {
+          signals.push({
+            action: 'cancel',
+            clientOrderId,
+            symbol: this._symbol,
+            reason: 'lifo_tp_refresh',
+          });
+          this.pendingClientOrderIds.delete(clientOrderId);
+          this.orderMetadataMap.delete(clientOrderId);
+        }
+      }
+    } else {
+      if (order.status === OrderStatus.FILLED) {
         this.openUpperOrder = null;
-        // If we filled a SHORT entry, cancel existing BUY TP
-        if (this.openLowerOrder) {
-          const m = this.orderMetadataMap.get(this.openLowerOrder.clientOrderId!);
-          if (m?.signalType === SignalType.TakeProfit) {
-            signals.push({
-              action: 'cancel',
-              clientOrderId: this.openLowerOrder.clientOrderId,
-              symbol: this._symbol,
-              reason: 'lifo_tp_refresh',
-            });
-            this.openLowerOrder = null;
-          }
+      }
+      // Refresh BUY TP on any sell fill delta (partial or full)
+      if (this.openLowerOrder) {
+        const m = this.orderMetadataMap.get(this.openLowerOrder.clientOrderId!);
+        if (m?.signalType === SignalType.TakeProfit) {
+          signals.push({
+            action: 'cancel',
+            clientOrderId: this.openLowerOrder.clientOrderId,
+            symbol: this._symbol,
+            reason: 'lifo_tp_refresh',
+          });
+          this.pendingClientOrderIds.delete(this.openLowerOrder.clientOrderId!);
+          this.orderMetadataMap.delete(this.openLowerOrder.clientOrderId!);
+          this.openLowerOrder = null;
+        }
+      }
+      // Cancel pending BUY TP signals to allow refresh with new quantity
+      for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
+        const metadata = this.orderMetadataMap.get(clientOrderId);
+        if (
+          metadata?.signalType === SignalType.TakeProfit &&
+          metadata.side === OrderSide.BUY
+        ) {
+          signals.push({
+            action: 'cancel',
+            clientOrderId,
+            symbol: this._symbol,
+            reason: 'lifo_tp_refresh',
+          });
+          this.pendingClientOrderIds.delete(clientOrderId);
+          this.orderMetadataMap.delete(clientOrderId);
         }
       }
     }
