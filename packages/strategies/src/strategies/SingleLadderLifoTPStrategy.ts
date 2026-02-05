@@ -6,7 +6,6 @@ import {
   StrategyConfig,
   Order,
   OrderStatus,
-  Position,
   DataUpdate,
   StrategyParameters,
   TradeMode,
@@ -244,6 +243,17 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(`🪜 [SingleLadderLifoTP] Strategy initialized.`);
   }
 
+  private getOrderTime(order: Order): number {
+    return (order.updateTime ?? order.timestamp).getTime();
+  }
+
+  private pickLatestOrder(orders: Order[]): Order | null {
+    if (orders.length === 0) return null;
+    return orders.reduce((latest, current) =>
+      this.getOrderTime(current) > this.getOrderTime(latest) ? current : latest,
+    );
+  }
+
   private getPositionMode(): string {
     if (this.minSize > 0) return 'LONG_ONLY_WITH_BASE';
     if (this.maxSize < 0) return 'SHORT_ONLY_WITH_BASE';
@@ -265,47 +275,133 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   ): Promise<StrategyAnalyzeResult> {
     this._logger.info(`📊 [SingleLadderLifoTP] Processing initial data...`);
     const signals: StrategyResult[] = [];
+    const performanceSummary = this.getPerformanceSummary?.();
+    if (performanceSummary) {
+      this._logger.info(
+        `📈 [SingleLadderLifoTP] Performance summary on start: totalOrders=${performanceSummary.totalOrders}, pendingOrders=${performanceSummary.pendingOrders}, currentPosition=${performanceSummary.currentPosition}`,
+      );
+    }
 
     if (initialData.openOrders) {
-      initialData.openOrders.forEach((order) => {
-        if (order.symbol === this._context.symbol) {
-          const isOwned =
-            (order.strategyId && order.strategyId === this.getStrategyId()) ||
-            (order.clientOrderId && this.isStrategyOrderId(order.clientOrderId));
+      const ownedOrders = initialData.openOrders.filter((order) => {
+        if (order.symbol !== this._context.symbol) return false;
+        return (
+          (order.strategyId && order.strategyId === this.getStrategyId()) ||
+          (order.clientOrderId && this.isStrategyOrderId(order.clientOrderId))
+        );
+      });
 
-          if (isOwned && order.clientOrderId) {
-            let metadata = this.orderMetadataMap.get(order.clientOrderId);
-            if (!metadata) {
-              metadata = this.ensureRecoveredMetadata(order);
-            }
-            this.orders.set(order.clientOrderId, order);
+      const entryBuys: Order[] = [];
+      const entrySells: Order[] = [];
 
-            if (metadata?.signalType === SignalType.TakeProfit) {
-              this._logger.info(
-                `🗑️ Found existing TP order on start, cancelling per requirement: ${order.clientOrderId}`,
-              );
-              signals.push({
-                action: 'cancel',
-                clientOrderId: order.clientOrderId,
-                symbol: this._symbol,
-                reason: 'no_tp_on_start',
-              });
-            } else {
-              if (order.side === OrderSide.BUY) {
-                this.openLowerOrder = order;
-                this._logger.info(
-                  `🔍 Found existing Lower Entry order: ${order.clientOrderId}`,
-                );
-              } else {
-                this.openUpperOrder = order;
-                this._logger.info(
-                  `🔍 Found existing Upper Entry order: ${order.clientOrderId}`,
-                );
-              }
-            }
-          }
+      ownedOrders.forEach((order) => {
+        if (!order.clientOrderId) return;
+        let metadata = this.orderMetadataMap.get(order.clientOrderId);
+        if (!metadata) {
+          metadata = this.ensureRecoveredMetadata(order);
+        }
+        this.orders.set(order.clientOrderId, order);
+
+        if (metadata?.signalType === SignalType.TakeProfit) {
+          this._logger.info(
+            `🗑️ Found existing TP order on start, cancelling per requirement: ${order.clientOrderId}`,
+          );
+          signals.push({
+            action: 'cancel',
+            clientOrderId: order.clientOrderId,
+            symbol: this._symbol,
+            reason: 'no_tp_on_start',
+          });
+          return;
+        }
+
+        if (order.side === OrderSide.BUY) {
+          entryBuys.push(order);
+        } else {
+          entrySells.push(order);
         }
       });
+
+      const keepBuy = this.pickLatestOrder(entryBuys);
+      const keepSell = this.pickLatestOrder(entrySells);
+
+      if (entryBuys.length > 1) {
+        this._logger.warn(
+          `⚠️ Found multiple BUY orders on start. Keeping ${keepBuy?.clientOrderId ?? 'none'} and cancelling ${entryBuys.length - 1} extra order(s).`,
+        );
+      }
+      if (entrySells.length > 1) {
+        this._logger.warn(
+          `⚠️ Found multiple SELL orders on start. Keeping ${keepSell?.clientOrderId ?? 'none'} and cancelling ${entrySells.length - 1} extra order(s).`,
+        );
+      }
+
+      entryBuys.forEach((order) => {
+        if (keepBuy && order.clientOrderId === keepBuy.clientOrderId) return;
+        if (!order.clientOrderId) return;
+        signals.push({
+          action: 'cancel',
+          clientOrderId: order.clientOrderId,
+          symbol: this._symbol,
+          reason: 'single_buy_order_enforced',
+        });
+      });
+
+      entrySells.forEach((order) => {
+        if (keepSell && order.clientOrderId === keepSell.clientOrderId) return;
+        if (!order.clientOrderId) return;
+        signals.push({
+          action: 'cancel',
+          clientOrderId: order.clientOrderId,
+          symbol: this._symbol,
+          reason: 'single_sell_order_enforced',
+        });
+      });
+
+      if (keepBuy?.clientOrderId) {
+        this.openLowerOrder = keepBuy;
+        this._logger.info(
+          `🔍 Found existing Lower Entry order: ${keepBuy.clientOrderId}`,
+        );
+      }
+      if (keepSell?.clientOrderId) {
+        this.openUpperOrder = keepSell;
+        this._logger.info(
+          `🔍 Found existing Upper Entry order: ${keepSell.clientOrderId}`,
+        );
+      }
+    }
+
+    if (initialData.positions && initialData.positions.length > 0) {
+      this._logger.info(
+        `ℹ️ Initial positions loaded (${initialData.positions.length}) but not applied to tradedSize per strategy rule.`,
+      );
+    }
+
+    if (performanceSummary) {
+      const summaryPosition = new Decimal(performanceSummary.currentPosition);
+      if (!summaryPosition.isZero()) {
+        this.tradedSize = summaryPosition;
+        this._logger.info(
+          `📌 Restored position from performance summary: size=${this.tradedSize.toFixed(8)}`,
+        );
+      }
+    }
+
+    if (!this.tradedSize.isZero() && this.filledEntries.length === 0) {
+      const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
+      const amount = this.tradedSize.abs();
+      this.filledEntries.push({
+        side,
+        price: this.referencePrice,
+        amount,
+        clientOrderId: 'recovered_position',
+        timestamp: Date.now(),
+        referencePriceBefore: this.referencePrice,
+      });
+      this._logger.info(
+        `🧩 Seeded LIFO entry from restored position: ${side} ${amount.toFixed(8)} @ ${this.referencePrice.toFixed(8)}`,
+      );
     }
 
     this.initialDataProcessed = true;
@@ -644,9 +740,25 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const delta = totalFilled.minus(lastProcessed);
     if (delta.lte(0)) return [];
 
-    const entry = this.filledEntries.pop()!;
-    this.tradedSize = this.tradedSize.plus(entry.side === 'LONG' ? delta.neg() : delta);
-    this.referencePrice = entry.referencePriceBefore;
+    let remaining = delta;
+    let lastReference: Decimal | null = null;
+    while (remaining.gt(0) && this.filledEntries.length > 0) {
+      const entry = this.filledEntries[this.filledEntries.length - 1];
+      const closeAmount = Decimal.min(remaining, entry.amount);
+      this.tradedSize = this.tradedSize.plus(
+        entry.side === 'LONG' ? closeAmount.neg() : closeAmount,
+      );
+      entry.amount = entry.amount.minus(closeAmount);
+      remaining = remaining.minus(closeAmount);
+
+      if (entry.amount.lte(0)) {
+        lastReference = entry.referencePriceBefore;
+        this.filledEntries.pop();
+      }
+    }
+    if (lastReference) {
+      this.referencePrice = lastReference;
+    }
 
     this.processedQuantityMap.set(order.clientOrderId!, totalFilled);
     if (order.status === OrderStatus.FILLED) {
@@ -722,7 +834,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   public override getInitialDataConfig() {
     return {
-      fetchPositions: false,
+      fetchPositions: true,
       fetchOpenOrders: true,
       fetchBalance: true,
       fetchTicker: true,
