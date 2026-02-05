@@ -21,7 +21,7 @@ export class AccountInfoEntity implements AccountInfo {
     default: 0,
     transformer: decimalTransformer,
   })
-  totalBalance!: Decimal;
+  totalBalance: Decimal = new Decimal(0);
 
   @Column({
     type: 'decimal',
@@ -30,7 +30,7 @@ export class AccountInfoEntity implements AccountInfo {
     default: 0,
     transformer: decimalTransformer,
   })
-  availableBalance!: Decimal;
+  availableBalance: Decimal = new Decimal(0);
 
   @Column({
     type: 'decimal',
@@ -39,7 +39,7 @@ export class AccountInfoEntity implements AccountInfo {
     default: 0,
     transformer: decimalTransformer,
   })
-  lockedBalance!: Decimal;
+  lockedBalance: Decimal = new Decimal(0);
 
   @Column({
     type: 'decimal',
@@ -48,7 +48,7 @@ export class AccountInfoEntity implements AccountInfo {
     default: 0,
     transformer: decimalTransformer,
   })
-  totalPositionValue!: Decimal;
+  totalPositionValue: Decimal = new Decimal(0);
 
   @Column({
     type: 'decimal',
@@ -57,7 +57,7 @@ export class AccountInfoEntity implements AccountInfo {
     default: 0,
     transformer: decimalTransformer,
   })
-  unrealizedPnl!: Decimal;
+  unrealizedPnl: Decimal = new Decimal(0);
 
   @Column({ type: 'integer', default: 0 })
   positionCount!: number;
