@@ -53,6 +53,7 @@ export class OKXExchange extends BaseExchange {
   private okxSubscriptions = new Map<string, Set<string>>();
   private okxLastActivityAt: Partial<Record<OkxWsType, number>> = {};
   private okxPrivateAuthenticated = false;
+  private shouldSubscribeUserData = false;
   private symbolMap = new Map<string, string>(); // OKX instId -> original symbol mapping
   private leverageCache = new Map<string, number>();
   private symbolInfoCache = new Map<string, SymbolInfo>();
@@ -1161,6 +1162,9 @@ export class OKXExchange extends BaseExchange {
   }
 
   private async createWsConnect(key: OkxWsType) {
+    if (key === 'private') {
+      this.okxPrivateAuthenticated = false;
+    }
     // Clear scheduled reconnect
     if (this.okxReconnectTimers[key]) {
       clearTimeout(this.okxReconnectTimers[key]!);
@@ -1299,6 +1303,11 @@ export class OKXExchange extends BaseExchange {
       // Private login ack
       if (message.code === '0') {
         this.okxPrivateAuthenticated = true;
+        if (this.shouldSubscribeUserData) {
+          this.sendUserDataSubscriptions().catch((e) =>
+            console.error('[OKX] Failed to resubscribe user data:', e),
+          );
+        }
       } else {
         this.okxPrivateAuthenticated = false;
       }
@@ -2131,6 +2140,7 @@ export class OKXExchange extends BaseExchange {
       throw new Error('OKX credentials required for user data subscription');
     }
 
+    this.shouldSubscribeUserData = true;
     console.log('[OKX] Subscribing to user data streams...');
 
     // Create private connection and authenticate
@@ -2157,9 +2167,17 @@ export class OKXExchange extends BaseExchange {
 
     console.log('[OKX] Private WebSocket authenticated, subscribing to channels...');
 
+    await this.sendUserDataSubscriptions();
+  }
+
+  private async sendUserDataSubscriptions(): Promise<void> {
     const ws = this.wsConnections.get('private');
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      throw new Error('OKX private WebSocket not connected');
+      // If not open, we can't send. Reconnect logic should handle it eventually or it's dead.
+      console.warn(
+        '[OKX] Private WebSocket not OPEN, cannot send user data subscriptions',
+      );
+      return;
     }
 
     // Subscribe to orders channel (all instruments, all order types)

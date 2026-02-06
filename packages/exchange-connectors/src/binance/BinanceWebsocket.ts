@@ -66,9 +66,10 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     if (this.config.apiKey) {
       await this.initUserDataStream('spot');
       await this.initUserDataStream('futures');
+    } else {
+      this.connectMarket('spot');
+      this.connectMarket('futures');
     }
-    this.connectMarket('spot');
-    this.connectMarket('futures');
   }
 
   stop() {
@@ -162,6 +163,12 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       });
       const key = resp.data.listenKey;
       this.listenKeyMap.set(market, key);
+
+      // Clear existing timer if any
+      if (this.keepAliveTimers.has(market)) {
+        clearInterval(this.keepAliveTimers.get(market));
+        this.keepAliveTimers.delete(market);
+      }
 
       const interval = market === 'spot' ? 20 * 60 * 1000 : 30 * 60 * 1000;
       const timer = setInterval(() => this.keepAliveListenKey(market), interval);
@@ -340,11 +347,24 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     if (activityTimer) clearInterval(activityTimer);
     this.activityTimers.delete(market);
 
+    // Stop keep-alive timer since connection is dead
+    const keepAliveTimer = this.keepAliveTimers.get(market);
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer);
+      this.keepAliveTimers.delete(market);
+    }
+
     if (this.config.autoReconnect) {
-      const timer = setTimeout(
-        () => this.connectMarket(market),
-        this.config.reconnectInterval,
-      );
+      const timer = setTimeout(() => {
+        // If we had a listen key, we must re-initialize to get a fresh one
+        if (this.listenKeyMap.has(market)) {
+          this.initUserDataStream(market).catch((err) => {
+            this.logger.error(`[WS][${market}] Failed to reconnect user stream`, err);
+          });
+        } else {
+          this.connectMarket(market);
+        }
+      }, this.config.reconnectInterval);
       this.reconnectTimers.set(market, timer);
     }
   }
