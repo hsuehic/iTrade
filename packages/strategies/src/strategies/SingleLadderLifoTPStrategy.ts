@@ -13,6 +13,7 @@ import {
   SignalMetaData,
   InitialDataResult,
   OrderSide,
+  OrderBook,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
@@ -213,11 +214,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private stepPercent: number;
   private takeProfitPercent: number;
   private orderAmount: number;
-  private minSize: number;
-  private maxSize: number;
   private leverage: number;
   private tpRefreshMinIntervalMs: number;
+  private minSize: number;
+  private maxSize: number;
   private tradeMode: TradeMode = TradeMode.ISOLATED;
+
+  private lastOrderBook: OrderBook | null = null;
 
   private tradedSize: Decimal = new Decimal(0);
   private filledEntries: FilledEntry[] = [];
@@ -321,12 +324,33 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.lastTickerPrice = price;
   }
 
-  private isSignalPriceWithinTickerRange(price: Decimal): boolean {
-    if (!this.lastTickerPrice) return false;
-    const tierSize = this.lastTickerPrice.mul(this.stepPercent);
-    if (tierSize.lte(0)) return false;
-    const maxDistance = tierSize.mul(5);
-    return price.sub(this.lastTickerPrice).abs().lte(maxDistance);
+  private isSignalPriceInBookRange(price: Decimal, side: OrderSide): boolean {
+    if (
+      !this.lastOrderBook ||
+      !this.lastOrderBook.bids?.length ||
+      !this.lastOrderBook.asks?.length
+    ) {
+      // If we don't have order book data, we conservatively block signals
+      // strictly following "only when in range"
+      return false;
+    }
+
+    if (side === OrderSide.BUY) {
+      // For BUY, price must be within range of current Bids
+      // Bids are sorted Descending (Best/High -> Worst/Low)
+      // We check if price >= Lowest Bid in the provided snapshot
+      // The snapshot depth is configured to 5 in getSubscriptionConfig
+      const depth = Math.min(this.lastOrderBook.bids.length, 5);
+      const lowestBid = this.lastOrderBook.bids[depth - 1][0];
+      return price.gte(lowestBid);
+    } else {
+      // For SELL, price must be within range of current Asks
+      // Asks are sorted Ascending (Best/Low -> Worst/High)
+      // We check if price <= Highest Ask in the provided snapshot
+      const depth = Math.min(this.lastOrderBook.asks.length, 5);
+      const highestAsk = this.lastOrderBook.asks[depth - 1][0];
+      return price.lte(highestAsk);
+    }
   }
 
   private getPositionMode(): string {
@@ -713,6 +737,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (dataUpdate.ticker?.price) {
       this.updateTickerPrice(dataUpdate.ticker.price);
     }
+    if (dataUpdate.orderbook) {
+      this.lastOrderBook = dataUpdate.orderbook;
+    }
     if (orders && orders.length > 0) {
       const signals = this.handleOrderUpdates(orders);
       if (signals.length > 0) return signals;
@@ -756,11 +783,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       if (!excludeTp && !lowerPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
-          if (this.isSignalPriceWithinTickerRange(tpPlan.tpPrice)) {
+          const side = tpPlan.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+          if (this.isSignalPriceInBookRange(tpPlan.tpPrice, side)) {
             signals.push(this.createTakeProfitSignal(tpPlan));
           } else {
             this._logger.warn(
-              `⏳ Skip TP signal below range: price=${tpPlan.tpPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+              `⏳ Skip TP signal outside book range: price=${tpPlan.tpPrice.toString()}`,
             );
           }
         }
@@ -768,11 +796,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (canLong) {
       if (!lowerPending) {
         const buyPrice = this.referencePrice.mul(1 - this.stepPercent);
-        if (this.isSignalPriceWithinTickerRange(buyPrice)) {
+        if (this.isSignalPriceInBookRange(buyPrice, OrderSide.BUY)) {
           signals.push(this.generateLongEntrySignal(buyPrice));
         } else {
-          this._logger.warn(
-            `⏳ Skip BUY entry outside range: price=${buyPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+          this._logger.debug(
+            `⏳ Skip BUY entry outside book range: price=${buyPrice.toString()}`,
           );
         }
       }
@@ -783,11 +811,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       if (!excludeTp && !upperPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
-          if (this.isSignalPriceWithinTickerRange(tpPlan.tpPrice)) {
+          const side = tpPlan.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+          if (this.isSignalPriceInBookRange(tpPlan.tpPrice, side)) {
             signals.push(this.createTakeProfitSignal(tpPlan));
           } else {
             this._logger.warn(
-              `⏳ Skip TP signal above range: price=${tpPlan.tpPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+              `⏳ Skip TP signal outside book range: price=${tpPlan.tpPrice.toString()}`,
             );
           }
         }
@@ -795,11 +824,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (canShort) {
       if (!upperPending) {
         const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
-        if (this.isSignalPriceWithinTickerRange(sellPrice)) {
+        if (this.isSignalPriceInBookRange(sellPrice, OrderSide.SELL)) {
           signals.push(this.generateShortEntrySignal(sellPrice));
         } else {
-          this._logger.warn(
-            `⏳ Skip SELL entry outside range: price=${sellPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+          this._logger.debug(
+            `⏳ Skip SELL entry outside book range: price=${sellPrice.toString()}`,
           );
         }
       }
@@ -1129,6 +1158,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   public override getSubscriptionConfig() {
     return {
       ticker: { enabled: true },
+      orderbook: { enabled: true, depth: 5 },
       method: 'websocket' as const,
       exchange: this._context.exchange,
     };
