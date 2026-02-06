@@ -158,9 +158,9 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
     ],
     subscriptionRequirements: {
       ticker: {
-        required: false,
-        editable: true,
-        description: 'Optional: Ticker data for monitoring',
+        required: true,
+        editable: false,
+        description: 'Required: Ticker data for order gating',
       },
       klines: {
         required: false,
@@ -178,7 +178,7 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         description: 'Fetch open orders',
       },
       fetchBalance: { required: true, editable: false, description: 'Fetch balance' },
-      fetchTicker: { required: false, editable: true, description: 'Fetch ticker' },
+      fetchTicker: { required: false, editable: false, description: 'Fetch ticker' },
     },
     documentation: {
       overview: 'Single ladder strategy with LIFO take-profit.',
@@ -222,7 +222,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private tradedSize: Decimal = new Decimal(0);
   private filledEntries: FilledEntry[] = [];
   private referencePrice: Decimal;
-  private initialDataProcessed: boolean = false;
 
   private openLowerOrder: Order | null = null; // Always BUY (Entry or TP)
   private openUpperOrder: Order | null = null; // Always SELL (Entry or TP)
@@ -231,6 +230,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private orderMetadataMap: Map<string, ExtendedSignalMetaData> = new Map();
   private processedQuantityMap: Map<string, Decimal> = new Map();
   private tpRefreshTracker: Map<string, { qty: Decimal; time: number }> = new Map();
+  private lastTickerPrice: Decimal | null = null;
+  private initialDataProcessed = false;
 
   constructor(config: StrategyConfig<SingleLadderLifoTPParameters>) {
     super(config);
@@ -313,6 +314,19 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     )
       return true;
     return false;
+  }
+
+  private updateTickerPrice(price?: Decimal): void {
+    if (!price || price.lte(0)) return;
+    this.lastTickerPrice = price;
+  }
+
+  private isSignalPriceWithinTickerRange(price: Decimal): boolean {
+    if (!this.lastTickerPrice) return false;
+    const tierSize = this.lastTickerPrice.mul(this.stepPercent);
+    if (tierSize.lte(0)) return false;
+    const maxDistance = tierSize.mul(5);
+    return price.sub(this.lastTickerPrice).abs().lte(maxDistance);
   }
 
   private getPositionMode(): string {
@@ -487,6 +501,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }
     }
 
+    if (initialData.ticker?.price) {
+      this.updateTickerPrice(initialData.ticker.price);
+    }
+
     if (initialData.positions && initialData.positions.length > 0) {
       this._logger.info(
         `ℹ️ Initial positions loaded (${initialData.positions.length}) but not applied to tradedSize per strategy rule.`,
@@ -620,7 +638,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
   }
 
-  private generateTakeProfitSignal(): StrategyOrderResult | null {
+  private getTakeProfitPlan(): {
+    tpPrice: Decimal;
+    action: 'buy' | 'sell';
+    amount: Decimal;
+    parentOrderId: string;
+    entryPrice: Decimal;
+  } | null {
     const lastFilled = this.filledEntries[this.filledEntries.length - 1];
     if (!lastFilled) return null;
 
@@ -629,7 +653,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const amount = lastFilled.amount;
     const parentOrderId = lastFilled.clientOrderId;
 
-    const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
     let tpPrice: Decimal;
     let action: 'buy' | 'sell';
 
@@ -641,24 +664,41 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       action = 'buy';
     }
 
+    return {
+      tpPrice,
+      action,
+      amount,
+      parentOrderId,
+      entryPrice,
+    };
+  }
+
+  private createTakeProfitSignal(plan: {
+    tpPrice: Decimal;
+    action: 'buy' | 'sell';
+    amount: Decimal;
+    parentOrderId: string;
+    entryPrice: Decimal;
+  }): StrategyOrderResult {
+    const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
     const metadata: ExtendedSignalMetaData = {
       signalType: SignalType.TakeProfit,
-      parentOrderId,
-      entryPrice: entryPrice.toString(),
-      takeProfitPrice: tpPrice.toString(),
+      parentOrderId: plan.parentOrderId,
+      entryPrice: plan.entryPrice.toString(),
+      takeProfitPrice: plan.tpPrice.toString(),
       profitRatio: this.takeProfitPercent,
       timestamp: Date.now(),
       clientOrderId,
-      side: action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+      side: plan.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
     };
 
     this.orderMetadataMap.set(clientOrderId, metadata);
     this.pendingClientOrderIds.add(clientOrderId);
 
     return {
-      action,
-      price: tpPrice,
-      quantity: amount,
+      action: plan.action,
+      price: plan.tpPrice,
+      quantity: plan.amount,
       symbol: this._symbol,
       clientOrderId,
       leverage: this.leverage,
@@ -670,8 +710,16 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
     const { orders } = dataUpdate;
+    if (dataUpdate.ticker?.price) {
+      this.updateTickerPrice(dataUpdate.ticker.price);
+    }
     if (orders && orders.length > 0) {
       const signals = this.handleOrderUpdates(orders);
+      if (signals.length > 0) return signals;
+      return { action: 'hold' };
+    }
+    if (dataUpdate.ticker?.price) {
+      const signals = this.updateLadderOrders();
       if (signals.length > 0) return signals;
     }
     return { action: 'hold' };
@@ -706,26 +754,54 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     // 1. Lower Order (Buy Entry or Buy TP)
     if (this.tradedSize.lt(0)) {
       if (!excludeTp && !lowerPending) {
-        const tpSignal = this.generateTakeProfitSignal();
-        if (tpSignal) signals.push(tpSignal);
+        const tpPlan = this.getTakeProfitPlan();
+        if (tpPlan) {
+          if (this.isSignalPriceWithinTickerRange(tpPlan.tpPrice)) {
+            signals.push(this.createTakeProfitSignal(tpPlan));
+          } else {
+            this._logger.warn(
+              `⏳ Skip TP signal below range: price=${tpPlan.tpPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+            );
+          }
+        }
       }
     } else if (canLong) {
       if (!lowerPending) {
         const buyPrice = this.referencePrice.mul(1 - this.stepPercent);
-        signals.push(this.generateLongEntrySignal(buyPrice));
+        if (this.isSignalPriceWithinTickerRange(buyPrice)) {
+          signals.push(this.generateLongEntrySignal(buyPrice));
+        } else {
+          this._logger.warn(
+            `⏳ Skip BUY entry outside range: price=${buyPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+          );
+        }
       }
     }
 
     // 2. Upper Order (Sell Entry or Sell TP)
     if (this.tradedSize.gt(0)) {
       if (!excludeTp && !upperPending) {
-        const tpSignal = this.generateTakeProfitSignal();
-        if (tpSignal) signals.push(tpSignal);
+        const tpPlan = this.getTakeProfitPlan();
+        if (tpPlan) {
+          if (this.isSignalPriceWithinTickerRange(tpPlan.tpPrice)) {
+            signals.push(this.createTakeProfitSignal(tpPlan));
+          } else {
+            this._logger.warn(
+              `⏳ Skip TP signal above range: price=${tpPlan.tpPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+            );
+          }
+        }
       }
     } else if (canShort) {
       if (!upperPending) {
         const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
-        signals.push(this.generateShortEntrySignal(sellPrice));
+        if (this.isSignalPriceWithinTickerRange(sellPrice)) {
+          signals.push(this.generateShortEntrySignal(sellPrice));
+        } else {
+          this._logger.warn(
+            `⏳ Skip SELL entry outside range: price=${sellPrice.toString()} ticker=${this.lastTickerPrice?.toString() ?? 'n/a'}`,
+          );
+        }
       }
     }
 

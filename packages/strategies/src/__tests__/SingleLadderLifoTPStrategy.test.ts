@@ -14,6 +14,7 @@ import {
   Position,
   Ticker,
   DataUpdate,
+  InitialDataResult,
   StrategyAnalyzeResult,
   StrategyResult,
   StrategyOrderResult,
@@ -99,6 +100,28 @@ function createOrder(
   };
 }
 
+function createTicker(price: number = 100): Ticker {
+  return {
+    symbol: 'BTC/USDT',
+    price: new Decimal(price),
+    volume: new Decimal(0),
+    timestamp: new Date(),
+    exchange: 'okx',
+  };
+}
+
+function createInitialData(
+  overrides: Partial<InitialDataResult> = {},
+): InitialDataResult {
+  return {
+    symbol: 'BTC/USDT',
+    exchange: 'okx',
+    timestamp: new Date(),
+    ticker: createTicker(),
+    ...overrides,
+  };
+}
+
 /**
  * Helper function to create DataUpdate
  */
@@ -109,10 +132,11 @@ function createDataUpdate(
     orders?: Order[];
   } = {},
 ): DataUpdate {
+  const ticker = options.ticker ?? createTicker();
   return {
     exchangeName: 'okx',
     symbol: 'BTC/USDT',
-    ticker: options.ticker,
+    ticker,
     positions: options.positions,
     orders: options.orders,
   };
@@ -242,12 +266,9 @@ describe('SingleLadderLifoTPStrategy', () => {
         updateTime: new Date(),
       };
 
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-        openOrders: [openOrder],
-      });
+      const initResult = await strategy.processInitialData(
+        createInitialData({ openOrders: [openOrder] }),
+      );
 
       assertSingleTpSignal(initResult, 120);
       const entrySignals = findOrderSignalsByType(initResult, SignalType.Entry);
@@ -272,11 +293,7 @@ describe('SingleLadderLifoTPStrategy', () => {
     });
 
     it('should generate two entry signals immediately after processInitialData (Case 1)', async () => {
-      const result = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const result = await strategy.processInitialData(createInitialData());
 
       // Case 1: 2 entries (Buy Entry and Sell Entry)
       const entries = findOrderSignalsByType(result, SignalType.Entry);
@@ -297,11 +314,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         }),
       );
 
-      const result = await longOnlyStrategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const result = await longOnlyStrategy.processInitialData(createInitialData());
 
       const entries = findOrderSignalsByType(result, SignalType.Entry);
       // Should ONLY have Buy entry because minSize is 0 (can't add short)
@@ -322,11 +335,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         }),
       );
 
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
 
       const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
         (s) => s.action === 'buy',
@@ -397,11 +406,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         }),
       );
 
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
 
       const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
         (s) => s.action === 'buy',
@@ -471,11 +476,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         }),
       );
 
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
 
       const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
         (s) => s.action === 'buy',
@@ -557,11 +558,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         }),
       );
 
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
 
       const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
         (s) => s.action === 'buy',
@@ -637,12 +634,9 @@ describe('SingleLadderLifoTPStrategy', () => {
     it('should NOT sync tradedSize with exchange positions', async () => {
       const strategy = new SingleLadderLifoTPStrategy(createStrategyConfig());
 
-      await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        positions: [createPosition(200, 'long')], // Exchange has 200
-        timestamp: new Date(),
-      });
+      await strategy.processInitialData(
+        createInitialData({ positions: [createPosition(200, 'long')] }),
+      );
 
       const state = strategy.getStrategyState();
       // Requirement 1: tradedSize should remain 0 as it's only for strategy orders
@@ -653,11 +647,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({ basePrice: 100 }),
       );
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
 
       const buyEntrySignal = findOrderSignalsByType(initResult, SignalType.Entry).find(
         (s) => s.action === 'buy',
@@ -705,22 +695,14 @@ describe('SingleLadderLifoTPStrategy', () => {
     });
 
     it('Case 1: 0 position -> 2 entry signals (if limits allow, here 1 as it is long only)', async () => {
-      const result = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const result = await strategy.processInitialData(createInitialData());
       const entries = findOrderSignalsByType(result, SignalType.Entry);
       expect(entries).toHaveLength(1); // Long entry only due to minSize=0
       expect(entries[0].action).toBe('buy');
     });
 
     it('Case 2: 1 entry fills -> 1 TP + 1 Entry', async () => {
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
       const buySign = findOrderSignalsByType(initResult, SignalType.Entry).find(
         (s) => s.action === 'buy',
       )!;
@@ -772,12 +754,9 @@ describe('SingleLadderLifoTPStrategy', () => {
         100,
       );
 
-      const result = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        openOrders: [tpOrder],
-        timestamp: new Date(),
-      });
+      const result = await strategy.processInitialData(
+        createInitialData({ openOrders: [tpOrder] }),
+      );
 
       const cancels = toSignalArray(result).filter(isCancelOrderResult);
       expect(cancels).toHaveLength(1);
@@ -790,11 +769,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       const strategy = new SingleLadderLifoTPStrategy(
         createStrategyConfig({ basePrice: 100, maxSize: 1000, minSize: 0 }),
       );
-      const initResult = await strategy.processInitialData({
-        symbol: 'BTC/USDT',
-        exchange: 'okx',
-        timestamp: new Date(),
-      });
+      const initResult = await strategy.processInitialData(createInitialData());
 
       // 1. Get Buy Entry signal from init
       const buySign1 = findOrderSignalsByType(initResult, SignalType.Entry).find(
