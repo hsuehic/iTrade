@@ -15,6 +15,7 @@ interface WebSocketState {
   subscriptions: Map<string, SubscriptionInfo>; // channel -> SubscriptionInfo
   authenticated: boolean;
   jwtToken: string | null;
+  lastActivityAt: number | null;
 }
 
 /**
@@ -30,7 +31,7 @@ interface WebSocketState {
 export class CoinbaseWebSocketManager extends EventEmitter {
   private state: WebSocketState;
   private readonly wsUrl: string;
-  private readonly maxReconnectAttempts = 10;
+  private readonly maxReconnectAttempts = 0;
   private readonly baseReconnectDelay = 1000;
   private readonly heartbeatInterval = 15000; // 30 seconds
   private isConnecting: boolean = false; // Track if connection is in progress
@@ -50,6 +51,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       subscriptions: new Map(),
       authenticated: false,
       jwtToken: null,
+      lastActivityAt: null,
     };
   }
 
@@ -77,11 +79,19 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     this.logger.info('[Coinbase] Creating WebSocket connection...');
     this.isConnecting = true;
 
+    if (this.state.ws) {
+      this.state.ws.removeAllListeners();
+      if (this.state.ws.readyState !== WebSocket.CLOSED) {
+        this.state.ws.terminate();
+      }
+    }
+
     this.state.ws = new WebSocket(this.wsUrl);
 
     this.state.ws.on('open', () => {
       this.logger.info('[Coinbase] WebSocket connected');
       this.state.reconnectAttempts = 0;
+      this.state.lastActivityAt = Date.now();
       this.isConnecting = false;
       this.emit('connected');
       this.startHeartbeat();
@@ -97,6 +107,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
     this.state.ws.on('message', (data: WebSocket.Data) => {
       try {
+        this.state.lastActivityAt = Date.now();
         const message = JSON.parse(data.toString());
         this.handleMessage(message);
       } catch (error) {
@@ -104,17 +115,28 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       }
     });
 
+    this.state.ws.on('pong', () => {
+      this.state.lastActivityAt = Date.now();
+    });
+
+    this.state.ws.on('ping', () => {
+      this.state.lastActivityAt = Date.now();
+      this.state.ws?.pong();
+    });
+
     this.state.ws.on('close', (code: number, reason: Buffer) => {
       console.log(`[Coinbase] WebSocket closed: ${code} - ${reason.toString()}`);
       this.isConnecting = false;
       this.stopHeartbeat();
       this.state.authenticated = false;
+      this.state.lastActivityAt = null;
       this.emit('disconnected', code);
       this.scheduleReconnect();
     });
 
     this.state.ws.on('error', (error: Error) => {
       console.error('[Coinbase] WebSocket error:', error.message);
+      this.isConnecting = false;
       this.emit('error', error);
     });
   }
@@ -267,6 +289,14 @@ export class CoinbaseWebSocketManager extends EventEmitter {
         // The heartbeat channel keeps the connection alive
         // We don't need to send explicit pings
       }
+
+      const lastActivityAt = this.state.lastActivityAt ?? 0;
+      const now = Date.now();
+      const staleThreshold = this.heartbeatInterval * 4;
+      if (lastActivityAt && now - lastActivityAt > staleThreshold) {
+        this.logger.warn('[Coinbase] Connection stale, terminating to trigger reconnect');
+        this.state.ws?.terminate();
+      }
     }, this.heartbeatInterval);
   }
 
@@ -288,7 +318,10 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       return; // Already scheduled
     }
 
-    if (this.state.reconnectAttempts >= this.maxReconnectAttempts) {
+    if (
+      this.maxReconnectAttempts > 0 &&
+      this.state.reconnectAttempts >= this.maxReconnectAttempts
+    ) {
       this.logger.error('[Coinbase] Max reconnection attempts reached, giving up');
       this.emit('max_reconnect_failed');
       return;

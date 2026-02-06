@@ -45,7 +45,9 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
   private listenKeyMap: Map<MarketType, string> = new Map();
   private keepAliveTimers: Map<MarketType, NodeJS.Timeout> = new Map();
   private pingTimers: Map<MarketType, NodeJS.Timeout> = new Map();
+  private activityTimers: Map<MarketType, NodeJS.Timeout> = new Map();
   private reconnectTimers: Map<MarketType, NodeJS.Timeout> = new Map();
+  private lastActivityAt: Map<MarketType, number> = new Map();
   private logger: Logger;
 
   constructor(private config: WSConfig) {
@@ -73,6 +75,7 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     this.wsMap.forEach((ws) => ws.close());
     this.keepAliveTimers.forEach((t) => clearInterval(t));
     this.pingTimers.forEach((t) => clearInterval(t));
+    this.activityTimers.forEach((t) => clearInterval(t));
     this.reconnectTimers.forEach((t) => clearTimeout(t));
   }
 
@@ -203,9 +206,12 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
 
     ws.on('open', () => {
       this.logger.info(`[WS][${market}] Connected`);
+      this.lastActivityAt.set(market, Date.now());
       this.startPing(ws, market);
+      this.startActivityMonitor(ws, market);
       this.resubscribeAll(market);
     });
+    ws.on('pong', () => this.lastActivityAt.set(market, Date.now()));
     ws.on('ping', () => ws.pong());
     ws.on('message', (msg) => this.handleMessage(msg, market));
     ws.on('close', () => this.handleClose(market));
@@ -219,6 +225,21 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       this.logger.debug?.(`[WS][${market}] Ping`);
     }, this.config.pingInterval!);
     this.pingTimers.set(market, timer);
+  }
+
+  private startActivityMonitor(ws: WebSocket, market: MarketType) {
+    const timer = setInterval(() => {
+      const lastActivity = this.lastActivityAt.get(market) ?? 0;
+      const now = Date.now();
+      const staleThreshold = (this.config.pingInterval ?? 180000) * 2;
+      if (lastActivity && now - lastActivity > staleThreshold) {
+        this.logger.warn?.(
+          `[WS][${market}] Connection stale, terminating to trigger reconnect`,
+        );
+        ws.terminate();
+      }
+    }, this.config.pingInterval ?? 180000);
+    this.activityTimers.set(market, timer);
   }
 
   /** ==================== Subscribe/Unsubscribe ==================== */
@@ -253,6 +274,7 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
   private handleMessage(msg: WebSocket.Data, market: MarketType) {
     let data: any;
     try {
+      this.lastActivityAt.set(market, Date.now());
       data = JSON.parse(msg.toString());
     } catch {
       return;
@@ -314,6 +336,9 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
   private handleClose(market: MarketType) {
     this.logger.warn?.(`[WS][${market}] Connection closed`);
     this.emit('disconnected', market);
+    const activityTimer = this.activityTimers.get(market);
+    if (activityTimer) clearInterval(activityTimer);
+    this.activityTimers.delete(market);
 
     if (this.config.autoReconnect) {
       const timer = setTimeout(

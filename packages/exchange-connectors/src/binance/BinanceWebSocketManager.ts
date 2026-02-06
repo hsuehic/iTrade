@@ -15,6 +15,7 @@ interface WebSocketState {
   streamToSymbol: Map<string, string>; // streamName -> symbol (for depth snapshots)
   reconnectAttempts: number;
   heartbeatTimer?: NodeJS.Timeout;
+  lastActivityAt?: number;
 }
 
 /**
@@ -42,7 +43,7 @@ export class BinanceWebSocketManager extends EventEmitter {
     super();
     this.config = {
       ...config,
-      maxReconnectAttempts: config.maxReconnectAttempts ?? 10,
+      maxReconnectAttempts: config.maxReconnectAttempts ?? 0,
       reconnectDelay: config.reconnectDelay ?? 5000,
       heartbeatInterval: config.heartbeatInterval ?? 180000, // 3 minutes
     };
@@ -85,6 +86,7 @@ export class BinanceWebSocketManager extends EventEmitter {
       subscriptions: new Map(),
       streamToSymbol: new Map(),
       reconnectAttempts: 0,
+      lastActivityAt: Date.now(),
     };
 
     this.connections.set(marketType, state);
@@ -98,13 +100,19 @@ export class BinanceWebSocketManager extends EventEmitter {
         clearTimeout(timeout);
         console.log(`[BinanceWS] ${marketType} connection opened`);
         state.reconnectAttempts = 0;
+        state.lastActivityAt = Date.now();
         this.startHeartbeat(marketType);
         this.emit('connected', marketType);
         resolve();
       });
 
+      ws.on('pong', () => {
+        state.lastActivityAt = Date.now();
+      });
+
       ws.on('message', (data: string) => {
         try {
+          state.lastActivityAt = Date.now();
           const message = JSON.parse(data);
           this.handleMessage(message, marketType);
         } catch (error) {
@@ -296,6 +304,16 @@ export class BinanceWebSocketManager extends EventEmitter {
       if (state.ws.readyState === WebSocket.OPEN) {
         state.ws.ping();
       }
+
+      const lastActivityAt = state.lastActivityAt ?? 0;
+      const now = Date.now();
+      const staleThreshold = this.config.heartbeatInterval * 2;
+      if (lastActivityAt && now - lastActivityAt > staleThreshold) {
+        console.warn(
+          `[BinanceWS] ${marketType} connection stale, terminating to trigger reconnect`,
+        );
+        state.ws.terminate();
+      }
     }, this.config.heartbeatInterval);
   }
 
@@ -317,7 +335,10 @@ export class BinanceWebSocketManager extends EventEmitter {
     const state = this.connections.get(marketType);
     if (!state) return;
 
-    if (state.reconnectAttempts >= this.config.maxReconnectAttempts) {
+    if (
+      this.config.maxReconnectAttempts > 0 &&
+      state.reconnectAttempts >= this.config.maxReconnectAttempts
+    ) {
       console.error(`[BinanceWS] Max reconnect attempts reached for ${marketType}`);
       this.emit('max_reconnect_reached', marketType);
       return;

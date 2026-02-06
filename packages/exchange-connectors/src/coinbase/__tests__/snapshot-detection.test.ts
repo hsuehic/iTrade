@@ -8,8 +8,9 @@
  * 4. Resets state on reconnection
  */
 
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
 import { CoinbaseExchange } from '@itrade/exchange-connectors';
-import { EventEmitter } from 'events';
 
 describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   let exchange: CoinbaseExchange;
@@ -216,7 +217,7 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   });
 
   test('should track total snapshot order count correctly', () => {
-    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     // First batch: 50
     simulateUserChannelMessage(

@@ -51,6 +51,7 @@ export class OKXExchange extends BaseExchange {
   private okxHeartbeatTimers: Partial<Record<OkxWsType, NodeJS.Timeout>> = {};
   private okxReconnectTimers: Partial<Record<OkxWsType, NodeJS.Timeout>> = {};
   private okxSubscriptions = new Map<string, Set<string>>();
+  private okxLastActivityAt: Partial<Record<OkxWsType, number>> = {};
   private okxPrivateAuthenticated = false;
   private symbolMap = new Map<string, string>(); // OKX instId -> original symbol mapping
   private leverageCache = new Map<string, number>();
@@ -1187,14 +1188,20 @@ export class OKXExchange extends BaseExchange {
     ws.on('open', () => {
       this.emit('ws_connected', `${this.name}:${key}`);
       this.okxReconnectAttemptsMap[key] = 0;
+      this.okxLastActivityAt[key] = Date.now();
       this.startOkxHeartbeat(key, ws);
       this.authenticatePrivateIfNeeded(key, ws).catch((e) => this.emit('ws_error', e));
       this.resubscribeForKey(key).catch((e) => this.emit('ws_error', e));
     });
 
+    ws.on('pong', () => {
+      this.okxLastActivityAt[key] = Date.now();
+    });
+
     ws.on('ping', () => ws.pong());
     ws.on('message', (data: string) => {
       try {
+        this.okxLastActivityAt[key] = Date.now();
         const message = JSON.parse(data);
         this.handleWebSocketMessage(message);
       } catch (error) {
@@ -1563,20 +1570,22 @@ export class OKXExchange extends BaseExchange {
     return statusMap[state] || OrderStatus.NEW;
   }
 
-  private transformOKXOrder(
+  private async transformOKXOrder(
     order: any,
     symbol: string,
     side: OrderSide,
     type: OrderType,
     quantity: Decimal,
     price?: Decimal,
-  ): Order {
+  ): Promise<Order> {
     // Calculate cummulativeQuoteQuantity from filled size and average price
     let cummulativeQuoteQuantity: Decimal | undefined;
-    if (order.accFillSz && order.avgPx) {
-      const accFillSz = this.formatDecimal(order.accFillSz);
-      const avgPx = this.formatDecimal(order.avgPx);
-      cummulativeQuoteQuantity = accFillSz.mul(avgPx);
+    const executedQuantity = order.accFillSz
+      ? await this.getQuantityInBaseAsset(symbol, this.formatDecimal(order.accFillSz))
+      : undefined;
+    const avgPx = order.avgPx ? this.formatDecimal(order.avgPx) : undefined;
+    if (executedQuantity && avgPx) {
+      cummulativeQuoteQuantity = executedQuantity.mul(avgPx);
     }
 
     const derivedId = (order.ordId || uuidv4()).toString().trim();
@@ -1600,7 +1609,7 @@ export class OKXExchange extends BaseExchange {
           ? new Date(parseInt(order.uTime))
           : new Date(),
       updateTime: order.uTime ? new Date(parseInt(order.uTime)) : undefined,
-      executedQuantity: order.accFillSz ? this.formatDecimal(order.accFillSz) : undefined,
+      executedQuantity,
       cummulativeQuoteQuantity,
     };
   }
@@ -2009,6 +2018,14 @@ export class OKXExchange extends BaseExchange {
         } catch (_) {
           // ignore
         }
+      }
+
+      const lastActivityAt = this.okxLastActivityAt[key] ?? 0;
+      const now = Date.now();
+      const staleThreshold = 60000;
+      if (lastActivityAt && now - lastActivityAt > staleThreshold) {
+        console.warn(`[OKX] ${key} connection stale, terminating to trigger reconnect`);
+        ws.terminate();
       }
     }, 20000);
   }

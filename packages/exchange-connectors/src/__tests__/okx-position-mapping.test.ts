@@ -13,9 +13,9 @@ type OkxExchangeInternals = OKXExchange & {
 };
 
 describe('OKXExchange position mapping', () => {
-  it('falls back to last price for mark price and computes unrealized PnL', () => {
+  it('falls back to last price for mark price and computes unrealized PnL', async () => {
     const exchange = new OKXExchange(false) as OkxExchangeInternals;
-    const { positions } = exchange.transformOKXBalanceAndPosition({
+    const { positions } = await exchange.transformOKXBalanceAndPosition({
       posData: [
         {
           instId: 'BTC-USDT-SWAP',
@@ -29,14 +29,14 @@ describe('OKXExchange position mapping', () => {
 
     expect(positions).toHaveLength(1);
     expect(positions[0].markPrice.eq(new Decimal('2500'))).toBe(true);
-    expect(positions[0].unrealizedPnl.eq(new Decimal('1000'))).toBe(true);
+    expect(positions[0].unrealizedPnl.eq(new Decimal('10'))).toBe(true);
     expect(positions[0].side).toBe('long');
-    expect(positions[0].marketValue?.eq(new Decimal('5000'))).toBe(true);
+    expect(positions[0].marketValue?.eq(new Decimal('50'))).toBe(true);
   });
 
-  it('derives mark price from notionalUsd when price fields are missing', () => {
+  it('derives mark price from notionalUsd when price fields are missing', async () => {
     const exchange = new OKXExchange(false) as OkxExchangeInternals;
-    const { positions } = exchange.transformOKXBalanceAndPosition({
+    const { positions } = await exchange.transformOKXBalanceAndPosition({
       posData: [
         {
           instId: 'ETH-USDT-SWAP',
@@ -49,7 +49,7 @@ describe('OKXExchange position mapping', () => {
     });
 
     expect(positions).toHaveLength(1);
-    expect(positions[0].markPrice.eq(new Decimal('1000'))).toBe(true);
-    expect(positions[0].unrealizedPnl.eq(new Decimal('300'))).toBe(true);
+    expect(positions[0].markPrice.eq(new Decimal('10000'))).toBe(true);
+    expect(positions[0].unrealizedPnl.eq(new Decimal('2730'))).toBe(true);
   });
 });
