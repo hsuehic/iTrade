@@ -1169,7 +1169,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       fetchPositions: true,
       fetchOpenOrders: true,
       fetchBalance: true,
-      fetchTicker: true,
     };
   }
 }

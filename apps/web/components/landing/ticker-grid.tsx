@@ -16,10 +16,14 @@ const BINANCE_COINS = COMMON_COINS.map((base) => ({
 }));
 
 const OKX_COINS = COMMON_COINS.map((base) => ({
-  symbol: `${base}-USDT`,
+  symbol: `${base}-USDT-SWAP`,
   display: `${base}/USDT`,
   base,
 }));
+
+// Create lookup maps for precise matching between API symbols and Display symbols
+const BINANCE_SYMBOL_MAP = new Map(BINANCE_COINS.map((c) => [c.symbol, c.display]));
+const OKX_SYMBOL_MAP = new Map(OKX_COINS.map((c) => [c.symbol, c.display]));
 
 interface BinanceTickerData {
   e: string; // Event type
@@ -106,10 +110,7 @@ export function TickerGrid() {
   // Handle visibility change for ticker cards
   const handleVisibilityChange = useCallback((tickerId: string, visible: boolean) => {
     // With global throttling, individual visibility tracking for updates is less critical for performance
-    // but can still be kept if we want to pause purely rendering processing (though React handles hidden nodes well).
-    // For this 'global flush' approach, we will simplify and just let the global interval handle updates.
-    // We can keep `visibleCardsRef` if we want to resume precise 'pause when offscreen' logic later,
-    // but for now, the 1s throttle solves the main "slow" issue.
+    // but can still be kept if we want to pause purely rendering processing.
     if (visible) {
       visibleCardsRef.current.add(tickerId);
     } else {
@@ -126,12 +127,24 @@ export function TickerGrid() {
       exchange: 'Binance' | 'OKX',
       symbol: string,
     ) => {
-      // Format symbol: BTCUSDT -> BTC/USDT, BTC-USDT -> BTC/USDT
+      // Resolve display symbol strictly using the map, with fallback parsing
       let displaySymbol = symbol;
-      if (symbol.includes('-')) {
-        displaySymbol = symbol.replace('-', '/'); // OKX: BTC-USDT -> BTC/USDT
-      } else if (symbol.endsWith('USDT')) {
-        displaySymbol = symbol.replace('USDT', '/USDT'); // Binance: BTCUSDT -> BTC/USDT
+
+      if (exchange === 'Binance') {
+        if (BINANCE_SYMBOL_MAP.has(symbol)) {
+          displaySymbol = BINANCE_SYMBOL_MAP.get(symbol)!;
+        } else if (symbol.endsWith('USDT')) {
+          displaySymbol = symbol.replace('USDT', '/USDT');
+        }
+      } else if (exchange === 'OKX') {
+        if (OKX_SYMBOL_MAP.has(symbol)) {
+          displaySymbol = OKX_SYMBOL_MAP.get(symbol)!;
+        } else if (symbol.includes('-SWAP')) {
+          const base = symbol.split('-')[0];
+          displaySymbol = `${base}/USDT`;
+        } else if (symbol.includes('-')) {
+          displaySymbol = symbol.replace('-', '/');
+        }
       }
 
       const fullTickerData: TickerData = {
@@ -144,7 +157,7 @@ export function TickerGrid() {
         exchange,
       };
 
-      // Update the latest data refs immediately
+      // Update the latest data refs immediately with the resolved display symbol
       if (exchange === 'Binance') {
         latestBinanceDataRef.current.set(displaySymbol, fullTickerData);
       } else {
@@ -156,10 +169,15 @@ export function TickerGrid() {
     const flushUpdates = () => {
       // Flush Binance updates if needed
       if (latestBinanceDataRef.current.size > 0) {
+        // Create a snapshot of the current updates to avoid race conditions with state updates
+        const updates = new Map(latestBinanceDataRef.current);
+        latestBinanceDataRef.current.clear();
+
         setBinanceTickers((prev) => {
           let hasChanges = false;
           const next = prev.map((t) => {
-            const update = latestBinanceDataRef.current.get(t.symbol);
+            // Look up update using the display symbol (e.g., BTC/USDT)
+            const update = updates.get(t.symbol);
             if (update) {
               hasChanges = true;
               return update;
@@ -168,27 +186,22 @@ export function TickerGrid() {
           });
 
           if (hasChanges) {
-            // Clear the buffer after applying updates
-            // Note: We clear individually or just keep them?
-            // Clearing ensures we don't re-process, but keeping is fine if mapped by key.
-            // But we want to know if we need to re-render.
-            // Optimization: Only create new array if hasChanges.
             return next;
           }
           return prev;
         });
-        // We can optionally clear the map here if we want to ensure we only update strict new data,
-        // but overwriting map entries is cheap.
-        // Let's clear it to avoid re-scanning the map unnecessarily if no NEW data arrived.
-        latestBinanceDataRef.current.clear();
       }
 
       // Flush OKX updates if needed
       if (latestOkxDataRef.current.size > 0) {
+        // Create a snapshot of the current updates
+        const updates = new Map(latestOkxDataRef.current);
+        latestOkxDataRef.current.clear();
+
         setOkxTickers((prev) => {
           let hasChanges = false;
           const next = prev.map((t) => {
-            const update = latestOkxDataRef.current.get(t.symbol);
+            const update = updates.get(t.symbol);
             if (update) {
               hasChanges = true;
               return update;
@@ -201,23 +214,23 @@ export function TickerGrid() {
           }
           return prev;
         });
-        latestOkxDataRef.current.clear();
       }
     };
 
     // Start the flush loop (every 1000ms = 1s)
     const intervalId = setInterval(flushUpdates, 1000);
 
-    // Connect to Binance WebSocket
+    // Connect to Binance WebSocket (Futures)
     const connectBinance = () => {
       const streams = BINANCE_COINS.map(
         (coin) => `${coin.symbol.toLowerCase()}@ticker`,
       ).join('/');
-      const ws = new WebSocket(`wss://stream.binance.com/stream?streams=${streams}`);
+      // Use fstream.binance.com for Futures
+      const ws = new WebSocket(`wss://fstream.binance.com/stream?streams=${streams}`);
       binanceWsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('✅ Binance WebSocket connected directly');
+        console.log('✅ Binance Futures WebSocket connected directly');
         binanceConnected = true;
         if (okxConnected) {
           setConnectionStatus('websocket');

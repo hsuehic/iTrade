@@ -138,25 +138,46 @@ export class CoinbaseExchange extends BaseExchange {
 
   public async getTicker(symbol: string): Promise<Ticker> {
     const productId = this.normalizeSymbol(symbol);
-    const resp = await this.publicHttpClient.get(
-      // `/api/v3/brokerage/products/${productId}/ticker`
-      `/products/${productId}/ticker`,
-    );
-    const data = resp.data;
-    return {
-      symbol, // Use unified symbol format
-      exchange: this.name, // Add exchange name
-      price: this.formatDecimal(data.price || data.best_ask || '0'),
-      volume: this.formatDecimal(data.volume_24h || '0'),
-      timestamp: new Date(),
-      bid: data.best_bid ? this.formatDecimal(data.best_bid) : undefined,
-      ask: data.best_ask ? this.formatDecimal(data.best_ask) : undefined,
-      high24h: data.high_24h ? this.formatDecimal(data.high_24h) : undefined,
-      low24h: data.low_24h ? this.formatDecimal(data.low_24h) : undefined,
-      change24h: data.price_percentage_change_24h
-        ? this.formatDecimal(data.price_percentage_change_24h)
-        : undefined,
-    };
+
+    try {
+      const resp = await this.publicHttpClient.get(
+        // `/api/v3/brokerage/products/${productId}/ticker`
+        `/products/${productId}/ticker`,
+      );
+      const data = resp.data;
+      return {
+        symbol, // Use unified symbol format
+        exchange: this.name, // Add exchange name
+        price: this.formatDecimal(data.price || data.best_ask || '0'),
+        volume: this.formatDecimal(data.volume_24h || '0'),
+        timestamp: new Date(),
+        bid: data.best_bid ? this.formatDecimal(data.best_bid) : undefined,
+        ask: data.best_ask ? this.formatDecimal(data.best_ask) : undefined,
+        high24h: data.high_24h ? this.formatDecimal(data.high_24h) : undefined,
+        low24h: data.low_24h ? this.formatDecimal(data.low_24h) : undefined,
+        change24h: data.price_percentage_change_24h
+          ? this.formatDecimal(data.price_percentage_change_24h)
+          : undefined,
+      };
+    } catch (error: any) {
+      // Handle 404 for INTX perpetual products that don't have ticker data in public API
+      if (error.response?.status === 404 && productId.includes('-PERP-INTX')) {
+        console.warn(
+          `[Coinbase] Ticker data not available for INTX product ${productId}, using fallback`,
+        );
+        // Return a minimal ticker with zero values
+        // The actual price will be updated via WebSocket or position data
+        return {
+          symbol,
+          exchange: this.name,
+          price: this.formatDecimal('0'),
+          volume: this.formatDecimal('0'),
+          timestamp: new Date(),
+        };
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   public async getOrderBook(symbol: string, limit = 50): Promise<OrderBook> {
