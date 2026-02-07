@@ -12,6 +12,8 @@ interface JsonEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   minHeight?: string;
+  readOnly?: boolean;
+  className?: string;
 }
 
 export function JsonEditor({
@@ -19,6 +21,8 @@ export function JsonEditor({
   onChange,
   placeholder = '{}',
   minHeight = '200px',
+  readOnly = false,
+  className,
 }: JsonEditorProps) {
   const [isValid, setIsValid] = useState(true);
   const [error, setError] = useState<string>('');
@@ -84,7 +88,7 @@ export function JsonEditor({
           variant="outline"
           size="sm"
           onClick={formatJson}
-          disabled={!isValid}
+          disabled={!isValid || readOnly}
         >
           <IconWand className="h-3 w-3 mr-1" />
           Format
@@ -95,9 +99,11 @@ export function JsonEditor({
         value={localValue}
         onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
+        readOnly={readOnly}
         className={cn(
           'font-mono text-sm',
           !isValid && 'border-red-500 focus-visible:ring-red-500',
+          className,
         )}
         style={{ minHeight }}
         rows={10}

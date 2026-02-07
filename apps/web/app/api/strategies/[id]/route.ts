@@ -27,7 +27,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const dataManager = await getDataManager();
     // Include user for ownership check
-    const strategy = await dataManager.getStrategy(id, { includeUser: true });
+    const strategy = await dataManager.getStrategy(id, {
+      includeUser: true,
+      includePerformance: true,
+    });
 
     if (!strategy) {
       return NextResponse.json({ error: 'Strategy not found' }, { status: 404 });

@@ -1,6 +1,7 @@
 'use client';
 import Image from 'next/image';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import type { StrategyEntity } from '@itrade/data-manager';
@@ -74,6 +75,8 @@ import {
 import { SubscriptionConfig } from '@itrade/core';
 
 export default function StrategyPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const t = useTranslations('strategy');
   const [strategies, setStrategies] = useState<StrategyEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -420,6 +423,17 @@ export default function StrategyPage() {
     setNameError('');
     setIsCreating(false); // Reset creating state
   };
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && strategies.length > 0) {
+      const strategyToEdit = strategies.find((s) => s.id === parseInt(editId));
+      if (strategyToEdit) {
+        editStrategy(strategyToEdit);
+        router.replace('/strategy');
+      }
+    }
+  }, [searchParams, strategies, router]);
 
   const updateStrategyStatus = async (id: number, newStatus: string) => {
     // Prevent multiple status updates for the same strategy
@@ -1211,7 +1225,10 @@ export default function StrategyPage() {
                         <CardHeader>
                           <div className="flex justify-between items-start mb-2">
                             <div className="flex-1">
-                              <CardTitle className="text-lg flex items-center gap-2">
+                              <CardTitle
+                                className="text-lg flex items-center gap-2 cursor-pointer hover:underline"
+                                onClick={() => router.push(`/strategy/${strategy.id}`)}
+                              >
                                 <div
                                   className={`h-2 w-2 rounded-full ${getStatusColor(strategy.status)}`}
                                 />
