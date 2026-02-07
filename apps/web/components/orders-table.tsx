@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   IconSearch,
@@ -590,14 +591,28 @@ export function OrdersTable({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className="max-w-[120px] truncate cursor-help">
-                    {name}
-                  </Badge>
+                  {row.original.strategyId ? (
+                    <Link href={`/strategy/${row.original.strategyId}`}>
+                      <Badge
+                        variant="outline"
+                        className="max-w-[120px] truncate cursor-pointer hover:bg-accent"
+                      >
+                        {name}
+                      </Badge>
+                    </Link>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="max-w-[120px] truncate cursor-help"
+                    >
+                      {name}
+                    </Badge>
+                  )}
                 </TooltipTrigger>
                 <TooltipContent>
                   <p>{name}</p>
                   {row.original.strategyId && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground mr-1">
                       {t('cells.strategyId', { id: row.original.strategyId })}
                     </p>
                   )}

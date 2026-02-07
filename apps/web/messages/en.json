@@ -1254,6 +1254,7 @@
       "updateStrategy": "Update Strategy",
       "start": "Start",
       "stop": "Stop",
+      "edit": "Edit",
       "starting": "Starting...",
       "stopping": "Stopping...",
       "deleting": "Deleting...",
@@ -1282,6 +1283,14 @@
         "label": "Subscriptions",
         "description": "Real-time data that for analysis (optional)"
       }
+    },
+    "config": {
+      "parametersTitle": "Parameters",
+      "parametersDesc": "Current strategy configuration parameters",
+      "subscriptionTitle": "Market Data Subscriptions",
+      "subscriptionDesc": "Active market data feeds",
+      "initialDataTitle": "Initial Data Configuration",
+      "initialDataDesc": "Historical data loaded at startup"
     },
     "fields": {
       "name": "Strategy Name",
@@ -1325,7 +1334,8 @@
       "createStrategy": "Failed to create strategy",
       "generic": "An error occurred",
       "updateStatus": "Failed to update strategy status",
-      "deleteStrategy": "Failed to delete strategy"
+      "deleteStrategy": "Failed to delete strategy",
+      "notFound": "Strategy not found"
     },
     "messages": {
       "updated": "Strategy updated successfully",
@@ -1361,7 +1371,21 @@
       "symbol": "Symbol:",
       "exchange": "Exchange:",
       "warning": "This action cannot be undone. This will permanently delete the strategy and all associated data."
-    }
+    },
+    "performance": {
+      "title": "Strategy Performance",
+      "noData": "No performance data available yet. Start the strategy to generate metrics.",
+      "totalPnL": "Total PnL",
+      "roi": "ROI",
+      "winRate": "Win Rate",
+      "orders": "Orders",
+      "maxDrawdown": "Max Drawdown"
+    },
+    "tabs": {
+      "orders": "Orders",
+      "configuration": "Configuration"
+    },
+    "backToList": "Back to Strategies List"
   },
   "orders": {
     "title": "Orders",

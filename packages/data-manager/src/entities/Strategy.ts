@@ -13,11 +13,11 @@ import {
 import type { StrategyParameters } from '@itrade/core';
 
 import { SupportedExchange } from '../constants/exchanges';
-import type { OrderEntity } from './Order';
-import type { User } from './User';
-import type { DryRunSessionEntity } from './DryRunSession';
-import type { BacktestResultEntity } from './BacktestResult';
-import type { StrategyPerformanceEntity } from './StrategyPerformance';
+import { OrderEntity } from './Order';
+import { User } from './User';
+import { DryRunSessionEntity } from './DryRunSession';
+import { BacktestResultEntity } from './BacktestResult';
+import { StrategyPerformanceEntity } from './StrategyPerformance';
 
 export enum StrategyStatus {
   ACTIVE = 'active',
@@ -110,7 +110,10 @@ export class StrategyEntity {
    * Performance metrics (OneToOne relationship)
    * Comprehensive performance data stored in separate table for efficient querying
    */
-  @OneToOne('strategy_performance', 'strategy', { cascade: true, eager: false })
+  @OneToOne(() => StrategyPerformanceEntity, (performance) => performance.strategy, {
+    cascade: true,
+    eager: false,
+  })
   performance?: StrategyPerformanceEntity;
 
   @Column({ type: 'text', nullable: true })
@@ -119,19 +122,22 @@ export class StrategyEntity {
   @Column({ type: 'timestamptz', nullable: true })
   lastExecutionTime?: Date;
 
-  @OneToMany('orders', 'strategy', {
+  @OneToMany(() => OrderEntity, (order) => order.strategy, {
     onDelete: 'CASCADE',
   })
   orders?: OrderEntity[];
 
-  @OneToMany('dry_run_sessions', 'strategy')
+  @OneToMany(() => DryRunSessionEntity, (session) => session.strategy)
   dryRunSessions?: DryRunSessionEntity[];
 
-  @OneToMany('backtest_results', 'strategy')
+  @OneToMany(() => BacktestResultEntity, (result) => result.strategy)
   backtestResults?: BacktestResultEntity[];
 
   // TypeORM relation - loads the full User object when needed
-  @ManyToOne('user', 'strategies', { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.strategies, {
+    nullable: false,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

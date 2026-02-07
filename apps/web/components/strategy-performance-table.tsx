@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { IconTrendingDown, IconTrendingUp, IconCheck, IconX } from '@tabler/icons-react';
 import { useLocale, useTranslations } from 'next-intl';
+import Link from 'next/link';
 
 import {
   Card,
@@ -167,9 +168,18 @@ export function StrategyPerformanceTable() {
                   <TableBody>
                     {topStrategies.map((strategy) => (
                       <TableRow key={strategy.id}>
-                        <TableCell className="font-medium">{strategy.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/strategy/${strategy.id}`}
+                            className="hover:underline hover:text-primary transition-colors"
+                          >
+                            {strategy.name}
+                          </Link>
+                        </TableCell>
                         <TableCell>
-                          <StrategySymbol strategy={strategy} />
+                          <Link href={`/strategy/${strategy.id}`}>
+                            <StrategySymbol strategy={strategy} />
+                          </Link>
                         </TableCell>
                         <TableCell>
                           <Badge
