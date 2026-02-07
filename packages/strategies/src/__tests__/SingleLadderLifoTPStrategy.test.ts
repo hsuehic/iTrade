@@ -13,6 +13,7 @@ import {
   TimeInForce,
   Position,
   Ticker,
+  OrderBook,
   DataUpdate,
   InitialDataResult,
   StrategyAnalyzeResult,
@@ -100,12 +101,24 @@ function createOrder(
   };
 }
 
-function createTicker(price: number = 100): Ticker {
+function createOrderBook(
+  mid: number = 100,
+  range: number = 100,
+  levels: number = 5,
+): OrderBook {
+  const step = new Decimal(range).div(levels);
+  const midPrice = new Decimal(mid);
+  const bids: Array<[Decimal, Decimal]> = [];
+  const asks: Array<[Decimal, Decimal]> = [];
+  for (let i = 0; i < levels; i += 1) {
+    bids.push([midPrice.minus(step.mul(i)), new Decimal(1)]);
+    asks.push([midPrice.plus(step.mul(i)), new Decimal(1)]);
+  }
   return {
     symbol: 'BTC/USDT',
-    price: new Decimal(price),
-    volume: new Decimal(0),
     timestamp: new Date(),
+    bids,
+    asks,
     exchange: 'okx',
   };
 }
@@ -117,7 +130,7 @@ function createInitialData(
     symbol: 'BTC/USDT',
     exchange: 'okx',
     timestamp: new Date(),
-    ticker: createTicker(),
+    orderBook: createOrderBook(),
     ...overrides,
   };
 }
@@ -128,15 +141,16 @@ function createInitialData(
 function createDataUpdate(
   options: {
     ticker?: Ticker;
+    orderbook?: OrderBook;
     positions?: Position[];
     orders?: Order[];
   } = {},
 ): DataUpdate {
-  const ticker = options.ticker ?? createTicker();
   return {
     exchangeName: 'okx',
     symbol: 'BTC/USDT',
-    ticker,
+    ticker: options.ticker,
+    orderbook: options.orderbook ?? createOrderBook(),
     positions: options.positions,
     orders: options.orders,
   };

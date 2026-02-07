@@ -20,9 +20,28 @@ const stripWrappedQuotes = (value: string): string => {
   return cleaned;
 };
 
+const normalizeDecimalInput = (value: string): string => {
+  const unwrapped = stripWrappedQuotes(value);
+  const withoutQuotes = unwrapped.replace(/["']/g, '');
+  return withoutQuotes.trim();
+};
+
+const parseDecimal = (value: string): Decimal => {
+  const cleaned = normalizeDecimalInput(value);
+  if (cleaned === '') {
+    return new Decimal(0);
+  }
+
+  try {
+    return new Decimal(cleaned);
+  } catch {
+    return new Decimal(0);
+  }
+};
+
 const toDecimal = (value: Decimal | number | string | null | undefined): Decimal => {
   if (Decimal.isDecimal(value)) {
-    return value as Decimal;
+    return parseDecimal(value.toString());
   }
 
   if (value === null || value === undefined) {
@@ -30,11 +49,7 @@ const toDecimal = (value: Decimal | number | string | null | undefined): Decimal
   }
 
   if (typeof value === 'string') {
-    const cleaned = stripWrappedQuotes(value);
-    if (cleaned === '') {
-      return new Decimal(0);
-    }
-    return new Decimal(cleaned);
+    return parseDecimal(value);
   }
 
   if (typeof value === 'number' && Number.isFinite(value)) {

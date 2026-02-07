@@ -38,6 +38,8 @@ export interface SingleLadderLifoTPParameters extends StrategyParameters {
   maxSize: number;
   /** Leverage for futures trading */
   leverage?: number;
+  /** Whether to gate signals based on market (orderbook) prices */
+  checkMarketPrice?: boolean;
   /** Refresh TP at most once per interval (ms); 0 disables time gating */
   tpRefreshMinIntervalMs?: number;
 }
@@ -59,6 +61,7 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
       minSize: 0,
       maxSize: 1000,
       leverage: 10,
+      checkMarketPrice: true,
       tpRefreshMinIntervalMs: 500,
     },
     parameterDefinitions: [
@@ -144,6 +147,16 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         order: 7,
       },
       {
+        name: 'checkMarketPrice',
+        type: 'boolean',
+        description:
+          'If true, only place signals when price is within current orderbook range',
+        defaultValue: true,
+        required: false,
+        group: 'Market Data',
+        order: 8,
+      },
+      {
         name: 'tpRefreshMinIntervalMs',
         type: 'number',
         description:
@@ -153,22 +166,17 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         min: 0,
         max: 600000,
         group: 'Take Profit',
-        order: 8,
+        order: 9,
         unit: 'ms',
       },
     ],
     subscriptionRequirements: {
-      ticker: {
-        required: true,
-        editable: false,
-        description: 'Required: Ticker data for order gating',
-      },
       orderbook: {
-        required: true,
-        editable: false,
-        defaultDepth: 5,
-        depthEditable: false,
-        description: 'Required: Order book data (depth 5) for smart entry',
+        required: false,
+        editable: true,
+        defaultDepth: 20,
+        depthEditable: true,
+        description: 'Required when checkMarketPrice is enabled.',
       },
       klines: {
         required: false,
@@ -186,7 +194,13 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         description: 'Fetch open orders',
       },
       fetchBalance: { required: true, editable: false, description: 'Fetch balance' },
-      fetchTicker: { required: false, editable: false, description: 'Fetch ticker' },
+      fetchOrderBook: {
+        required: false,
+        editable: true,
+        defaultDepth: 20,
+        depthEditable: true,
+        description: 'Fetch orderbook snapshot',
+      },
     },
     documentation: {
       overview: 'Single ladder strategy with LIFO take-profit.',
@@ -222,6 +236,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private takeProfitPercent: number;
   private orderAmount: number;
   private leverage: number;
+  private checkMarketPrice: boolean;
   private tpRefreshMinIntervalMs: number;
   private minSize: number;
   private maxSize: number;
@@ -240,7 +255,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private orderMetadataMap: Map<string, ExtendedSignalMetaData> = new Map();
   private processedQuantityMap: Map<string, Decimal> = new Map();
   private tpRefreshTracker: Map<string, { qty: Decimal; time: number }> = new Map();
-  private lastTickerPrice: Decimal | null = null;
+  private lastOrderBookPrice: Decimal | null = null;
   private initialDataProcessed = false;
 
   constructor(config: StrategyConfig<SingleLadderLifoTPParameters>) {
@@ -254,6 +269,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.minSize = parameters.minSize;
     this.maxSize = parameters.maxSize;
     this.leverage = parameters.leverage ?? 10;
+    this.checkMarketPrice = parameters.checkMarketPrice ?? true;
     this.tpRefreshMinIntervalMs = Math.max(parameters.tpRefreshMinIntervalMs ?? 0, 0);
 
     if (this.takeProfitPercent < this.stepPercent / 2) {
@@ -326,38 +342,51 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     return false;
   }
 
-  private updateTickerPrice(price?: Decimal): void {
-    if (!price || price.lte(0)) return;
-    this.lastTickerPrice = price;
+  private updateOrderBookPrice(orderbook?: OrderBook): void {
+    if (!orderbook) return;
+    this.lastOrderBook = orderbook;
+    const bestBid = orderbook.bids?.[0]?.[0];
+    const bestAsk = orderbook.asks?.[0]?.[0];
+    let price: Decimal | null = null;
+    if (bestBid && bestAsk && bestBid.gt(0) && bestAsk.gt(0)) {
+      price = bestBid.plus(bestAsk).div(2);
+    } else if (bestBid && bestBid.gt(0)) {
+      price = bestBid;
+    } else if (bestAsk && bestAsk.gt(0)) {
+      price = bestAsk;
+    }
+    if (!price) return;
+    this.lastOrderBookPrice = price;
   }
 
-  private isSignalPriceInBookRange(price: Decimal, side: OrderSide): boolean {
-    if (
-      !this.lastOrderBook ||
-      !this.lastOrderBook.bids?.length ||
-      !this.lastOrderBook.asks?.length
-    ) {
-      // If we don't have order book data, we conservatively block signals
-      // strictly following "only when in range"
-      return false;
-    }
+  private getOrderBookRange(): { minBid: Decimal; maxAsk: Decimal } | null {
+    if (!this.lastOrderBook) return null;
+    const bids = this.lastOrderBook.bids ?? [];
+    const asks = this.lastOrderBook.asks ?? [];
+    if (bids.length === 0 || asks.length === 0) return null;
+    const minBid = bids[bids.length - 1]?.[0];
+    const maxAsk = asks[asks.length - 1]?.[0];
+    if (!minBid || !maxAsk || minBid.lte(0) || maxAsk.lte(0)) return null;
+    return { minBid, maxAsk };
+  }
 
+  private isSignalPriceWithinOrderBookRange(price: Decimal, side: OrderSide): boolean {
+    if (!this.checkMarketPrice) return true;
+    const range = this.getOrderBookRange();
+    if (!range) return false;
+    const { minBid, maxAsk } = range;
     if (side === OrderSide.BUY) {
-      // For BUY, price must be within range of current Bids
-      // Bids are sorted Descending (Best/High -> Worst/Low)
-      // We check if price >= Lowest Bid in the provided snapshot
-      // The snapshot depth is configured to 5 in getSubscriptionConfig
-      const depth = Math.min(this.lastOrderBook.bids.length, 5);
-      const lowestBid = this.lastOrderBook.bids[depth - 1][0];
-      return price.gte(lowestBid);
-    } else {
-      // For SELL, price must be within range of current Asks
-      // Asks are sorted Ascending (Best/Low -> Worst/High)
-      // We check if price <= Highest Ask in the provided snapshot
-      const depth = Math.min(this.lastOrderBook.asks.length, 5);
-      const highestAsk = this.lastOrderBook.asks[depth - 1][0];
-      return price.lte(highestAsk);
+      return price.gte(minBid) && price.lte(maxAsk);
     }
+    return price.gte(minBid) && price.lte(maxAsk);
+  }
+
+  private isTerminalStatus(status: OrderStatus): boolean {
+    return (
+      status === OrderStatus.CANCELED ||
+      status === OrderStatus.REJECTED ||
+      status === OrderStatus.EXPIRED
+    );
   }
 
   private getPositionMode(): string {
@@ -519,8 +548,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           timestamp: snapshot.timestamp,
           referencePriceBefore: snapshot.referencePriceBefore,
         }));
-        const lastSnapshot = filledSnapshots[filledSnapshots.length - 1];
-        if (lastSnapshot) this.referencePrice = lastSnapshot.price;
         this.tradedSize = filledSnapshots.reduce((total, snapshot) => {
           return total.plus(
             snapshot.side === 'LONG' ? snapshot.amount : snapshot.amount.neg(),
@@ -532,8 +559,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }
     }
 
-    if (initialData.ticker?.price) {
-      this.updateTickerPrice(initialData.ticker.price);
+    if (initialData.orderBook) {
+      this.updateOrderBookPrice(initialData.orderBook);
     }
 
     if (initialData.positions && initialData.positions.length > 0) {
@@ -550,17 +577,18 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.filledEntries.length === 0
     ) {
       this.tradedSize = performancePosition;
-      if (performanceAvgPrice && performanceAvgPrice.gt(0)) {
-        this.referencePrice = performanceAvgPrice;
-      }
       this._logger.info(
         `📌 Restored position from performance: size=${this.tradedSize.toFixed(8)} avgPrice=${this.referencePrice.toFixed(8)}`,
       );
       const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
       const amount = this.tradedSize.abs();
+      const entryPrice =
+        performanceAvgPrice && performanceAvgPrice.gt(0)
+          ? performanceAvgPrice
+          : this.referencePrice;
       this.filledEntries.push({
         side,
-        price: this.referencePrice,
+        price: entryPrice,
         amount,
         clientOrderId: 'recovered_position',
         timestamp: Date.now(),
@@ -577,17 +605,18 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       const summaryPosition = new Decimal(performanceSummary.currentPosition);
       if (!summaryPosition.isZero()) {
         this.tradedSize = summaryPosition;
-        if (performanceAvgPrice && performanceAvgPrice.gt(0)) {
-          this.referencePrice = performanceAvgPrice;
-        }
         this._logger.info(
           `📌 Restored position from performance summary: size=${this.tradedSize.toFixed(8)} avgPrice=${this.referencePrice.toFixed(8)}`,
         );
         const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
         const amount = this.tradedSize.abs();
+        const entryPrice =
+          performanceAvgPrice && performanceAvgPrice.gt(0)
+            ? performanceAvgPrice
+            : this.referencePrice;
         this.filledEntries.push({
           side,
-          price: this.referencePrice,
+          price: entryPrice,
           amount,
           clientOrderId: 'recovered_position',
           timestamp: Date.now(),
@@ -741,8 +770,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
     const { orders } = dataUpdate;
-    if (dataUpdate.ticker?.price) {
-      this.updateTickerPrice(dataUpdate.ticker.price);
+    if (dataUpdate.orderbook) {
+      this.updateOrderBookPrice(dataUpdate.orderbook);
     }
     if (dataUpdate.orderbook) {
       this.lastOrderBook = dataUpdate.orderbook;
@@ -752,7 +781,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       if (signals.length > 0) return signals;
       return { action: 'hold' };
     }
-    if (dataUpdate.ticker?.price) {
+    if (dataUpdate.orderbook) {
       const signals = this.updateLadderOrders();
       if (signals.length > 0) return signals;
     }
@@ -790,12 +819,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       if (!excludeTp && !lowerPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
-          const side = tpPlan.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
-          if (this.isSignalPriceInBookRange(tpPlan.tpPrice, side)) {
+          if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.BUY)) {
             signals.push(this.createTakeProfitSignal(tpPlan));
           } else {
             this._logger.warn(
-              `⏳ Skip TP signal outside book range: price=${tpPlan.tpPrice.toString()}`,
+              `⏳ Skip TP signal below range: price=${tpPlan.tpPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
             );
           }
         }
@@ -803,11 +831,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (canLong) {
       if (!lowerPending) {
         const buyPrice = this.referencePrice.mul(1 - this.stepPercent);
-        if (this.isSignalPriceInBookRange(buyPrice, OrderSide.BUY)) {
+        if (this.isSignalPriceWithinOrderBookRange(buyPrice, OrderSide.BUY)) {
           signals.push(this.generateLongEntrySignal(buyPrice));
         } else {
-          this._logger.debug(
-            `⏳ Skip BUY entry outside book range: price=${buyPrice.toString()}`,
+          this._logger.warn(
+            `⏳ Skip BUY entry outside range: price=${buyPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
           );
         }
       }
@@ -818,12 +846,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       if (!excludeTp && !upperPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
-          const side = tpPlan.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
-          if (this.isSignalPriceInBookRange(tpPlan.tpPrice, side)) {
+          if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.SELL)) {
             signals.push(this.createTakeProfitSignal(tpPlan));
           } else {
             this._logger.warn(
-              `⏳ Skip TP signal outside book range: price=${tpPlan.tpPrice.toString()}`,
+              `⏳ Skip TP signal above range: price=${tpPlan.tpPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
             );
           }
         }
@@ -831,11 +858,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     } else if (canShort) {
       if (!upperPending) {
         const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
-        if (this.isSignalPriceInBookRange(sellPrice, OrderSide.SELL)) {
+        if (this.isSignalPriceWithinOrderBookRange(sellPrice, OrderSide.SELL)) {
           signals.push(this.generateShortEntrySignal(sellPrice));
         } else {
-          this._logger.debug(
-            `⏳ Skip SELL entry outside book range: price=${sellPrice.toString()}`,
+          this._logger.warn(
+            `⏳ Skip SELL entry outside range: price=${sellPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
           );
         }
       }
@@ -846,6 +873,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   private handleOrderUpdates(orders: Order[]): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    let shouldRefresh = false;
     for (const order of orders) {
       if (order.status === OrderStatus.PARTIALLY_FILLED) {
         this._logger.info(
@@ -891,13 +919,26 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         );
       }
 
-      if (
-        hasNewFill &&
-        (order.status === OrderStatus.FILLED ||
-          order.status === OrderStatus.PARTIALLY_FILLED)
-      ) {
+      if (hasNewFill) {
         signals.push(...this.handleOrderFilled(order, metadata));
       }
+
+      if (this.isTerminalStatus(order.status)) {
+        this.pendingClientOrderIds.delete(order.clientOrderId);
+        this.processedQuantityMap.delete(order.clientOrderId);
+        this.orders.delete(order.clientOrderId);
+        if (this.openLowerOrder?.clientOrderId === order.clientOrderId) {
+          this.openLowerOrder = null;
+        }
+        if (this.openUpperOrder?.clientOrderId === order.clientOrderId) {
+          this.openUpperOrder = null;
+        }
+        this.orderMetadataMap.delete(order.clientOrderId);
+        shouldRefresh = true;
+      }
+    }
+    if (shouldRefresh) {
+      signals.push(...this.updateLadderOrders());
     }
     return signals;
   }
@@ -949,7 +990,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     this.tradedSize = this.tradedSize.plus(side === 'LONG' ? delta : delta.neg());
     const oldReference = this.referencePrice;
-    this.referencePrice = filledPrice;
 
     const lastEntry = this.filledEntries[this.filledEntries.length - 1];
     if (
@@ -1078,7 +1118,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     if (delta.lte(0)) return [];
 
     let remaining = delta;
-    let lastReference: Decimal | null = null;
     while (remaining.gt(0) && this.filledEntries.length > 0) {
       const entry = this.filledEntries[this.filledEntries.length - 1];
       const closeAmount = Decimal.min(remaining, entry.amount);
@@ -1089,12 +1128,8 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       remaining = remaining.minus(closeAmount);
 
       if (entry.amount.lte(0)) {
-        lastReference = entry.referencePriceBefore;
         this.filledEntries.pop();
       }
-    }
-    if (lastReference) {
-      this.referencePrice = lastReference;
     }
 
     this.processedQuantityMap.set(order.clientOrderId!, totalFilled);
@@ -1164,8 +1199,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   public override getSubscriptionConfig() {
     return {
-      ticker: { enabled: true },
-      orderbook: { enabled: true, depth: 5 },
+      orderbook: this.checkMarketPrice
+        ? { enabled: true, depth: 20 }
+        : { enabled: false },
       method: 'websocket' as const,
       exchange: this._context.exchange,
     };
@@ -1176,6 +1212,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       fetchPositions: true,
       fetchOpenOrders: true,
       fetchBalance: true,
+      fetchOrderBook: this.checkMarketPrice
+        ? { enabled: true, depth: 20 }
+        : { enabled: false },
     };
   }
 }

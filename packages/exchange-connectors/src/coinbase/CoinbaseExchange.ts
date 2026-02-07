@@ -1901,7 +1901,7 @@ export class CoinbaseExchange extends BaseExchange {
           ? this.formatDecimal(o.price || o.limit_price)
           : undefined,
       status,
-      timeInForce: (o.time_in_force as TimeInForce) || TimeInForce.GTC,
+      timeInForce: this.transformTimeInForce(o.time_in_force),
       timestamp: o.submitted_time ? new Date(o.submitted_time) : new Date(),
       updateTime: o.completion_time ? new Date(o.completion_time) : undefined,
       executedQuantity: o.filled_size ? this.formatDecimal(o.filled_size) : undefined,
