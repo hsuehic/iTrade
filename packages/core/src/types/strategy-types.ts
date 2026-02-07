@@ -39,6 +39,7 @@ export interface StrategyRuntimeContext {
   // Optional metadata
   strategyId?: number;
   strategyName?: string;
+  userId?: string; // 🆕 User ID for authorization
   logger?: ILogger;
 
   // System-injected

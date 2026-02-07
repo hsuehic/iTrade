@@ -904,6 +904,75 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
   }
 
+  private enrichOrderWithStrategyInfo(order: Order): void {
+    // If we already have strategy info, just verify user
+    if (order.strategyId && order.strategyName) {
+      if (!order.userId && this._userId) {
+        order.userId = this._userId;
+      }
+      return;
+    }
+
+    // Try to extract strategy ID from clientOrderId
+    let strategyId: number | undefined;
+
+    if (order.clientOrderId) {
+      // Pattern 1: BaseStrategy format E{id}D... or T{id}D...
+      const baseMatch = order.clientOrderId.match(/^[ET](\d+)D/);
+      if (baseMatch) {
+        strategyId = parseInt(baseMatch[1], 10);
+      } else {
+        // Pattern 2: TradingEngine default s{id}{timestamp}
+        // Note: this is less reliable if id is not distinct from timestamp, but s prefix helps
+        const engineMatch = order.clientOrderId.match(/^s(\d+)\d{10,}/); // Assuming timestamp is at least 10 digits
+        if (engineMatch) {
+          strategyId = parseInt(engineMatch[1], 10);
+        } else {
+          // Pattern 3: StrategyManager format strategy_{id}_
+          const mgrMatch = order.clientOrderId.match(/^strategy_(\d+)_/);
+          if (mgrMatch) {
+            strategyId = parseInt(mgrMatch[1], 10);
+          }
+        }
+      }
+    }
+
+    if (!strategyId) {
+      // Fallback: If no clientOrderId pattern matches, try to find strategy managing this symbol
+      // This is less precise as multiple strategies might trade same symbol
+      return;
+    }
+
+    // Look up strategy by ID
+    // Iterate manually since we don't have an ID->Strategy map
+    for (const [name, strategy] of this._strategies) {
+      const configId = strategy.config?.strategyId;
+      const strategyIdFromGetter = strategy.getStrategyId?.();
+      const contextId = strategy.context?.strategyId;
+
+      const currentStrategyId = strategyIdFromGetter ?? configId ?? contextId;
+
+      if (currentStrategyId === strategyId) {
+        // Found the strategy!
+        order.strategyId = strategyId;
+        order.strategyName =
+          strategy.strategyName || strategy.config?.strategyName || name;
+        order.strategyType = strategy.strategyType || strategy.constructor.name;
+
+        // Set userId from strategy if available, otherwise use engine's userId
+        const strategyUserId = strategy.context?.userId || strategy.config?.userId;
+        if (!order.userId) {
+          order.userId = strategyUserId || this._userId;
+        }
+
+        this.logger.debug(
+          `🔍 Enriched order ${order.id} with strategy info: ${order.strategyName} (ID: ${strategyId})`,
+        );
+        return;
+      }
+    }
+  }
+
   private getSymbolInfoCacheKey(exchangeName: string, symbol: string): string {
     return `${exchangeName}:${symbol}`;
   }
@@ -1051,6 +1120,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     // Listen for user data updates
     exchange.on('orderUpdate', (symbol: string, order: Order) => {
+      // 🆕 Enrich order with strategy info BEFORE any processing/logging
+      this.enrichOrderWithStrategyInfo(order);
+
       this.logger.info(
         `📦 Order Update from ${exchangeName}: ${symbol} - ${order.status}`,
       );
