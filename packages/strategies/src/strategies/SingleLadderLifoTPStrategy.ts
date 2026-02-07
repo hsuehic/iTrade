@@ -1189,6 +1189,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(
       `✅ Entry FILLED: ${side} ${delta.toString()} @ ${filledPrice.toString()}. Size: ${this.tradedSize.toFixed(4)}`,
     );
+
+    // Update reference price to the latest entry price
+    this.referencePrice = filledPrice;
+
     signals.push(...this.updateLadderOrders(!shouldRefreshTp));
     return signals;
   }
@@ -1231,6 +1235,15 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this._logger.info(
       `✅ TP FILLED: ${order.side} ${delta.toString()}. Size: ${this.tradedSize.toFixed(4)}`,
     );
+
+    // Update reference price based on remaining entries
+    const lastEntry = this.filledEntries[this.filledEntries.length - 1];
+    if (lastEntry) {
+      this.referencePrice = lastEntry.price;
+    } else {
+      this.referencePrice = new Decimal(this.basePrice);
+    }
+
     return this.updateLadderOrders();
   }
 

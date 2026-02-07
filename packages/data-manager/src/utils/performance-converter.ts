@@ -65,7 +65,8 @@ const toInteger = (value: number | string | null | undefined): number => {
   }
 
   if (typeof value === 'string') {
-    const cleaned = stripWrappedQuotes(value);
+    // Use normalizeDecimalInput logic to strip ALL quotes
+    const cleaned = normalizeDecimalInput(value);
     const parsed = Number.parseInt(cleaned, 10);
     return Number.isFinite(parsed) ? parsed : 0;
   }
