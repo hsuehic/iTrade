@@ -11,7 +11,14 @@ import {
   IconTrash,
   IconEdit,
 } from '@tabler/icons-react';
-import { StrategyEntity, StrategyStatus } from '@itrade/data-manager';
+import type { StrategyEntity } from '@itrade/data-manager';
+
+const StrategyStatus = {
+  ACTIVE: 'active',
+  STOPPED: 'stopped',
+  PAUSED: 'paused',
+  ERROR: 'error',
+} as const;
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
