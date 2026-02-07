@@ -22,6 +22,8 @@ import {
   SignalType,
   createEmptyPerformance,
   isCancelOrderResult,
+  isUpdateOrderResult,
+  StrategyUpdateOrderResult,
 } from '@itrade/core';
 
 /**
@@ -168,6 +170,20 @@ function findOrderSignalsByType(
     (s): s is StrategyOrderResult =>
       (s.action === 'buy' || s.action === 'sell') && s.metadata?.signalType === type,
   );
+}
+
+function findTakeProfitSignalsOrUpdates(
+  result: StrategyAnalyzeResult,
+): Array<StrategyOrderResult | StrategyUpdateOrderResult> {
+  return toSignalArray(result).filter((s) => {
+    if (isUpdateOrderResult(s)) {
+      return s.metadata?.signalType === SignalType.TakeProfit;
+    }
+    return (
+      (s.action === 'buy' || s.action === 'sell') &&
+      s.metadata?.signalType === SignalType.TakeProfit
+    );
+  }) as Array<StrategyOrderResult | StrategyUpdateOrderResult>;
 }
 
 function assertSingleTpSignal(result: StrategyAnalyzeResult, expectedQty: number): void {
@@ -394,7 +410,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         const result = await strategy.analyze(
           createDataUpdate({ orders: [partialUpdate] }),
         );
-        assertSingleTpSignal(result, fill.qty);
+        assertNoTpSignals(result);
         assertNoEntrySignals(result);
       }
 
@@ -459,12 +475,7 @@ describe('SingleLadderLifoTPStrategy', () => {
           createDataUpdate({ orders: [partialUpdate] }),
         );
         const tpSignals = findOrderSignalsByType(result, SignalType.TakeProfit);
-        expect(tpSignals).toHaveLength(1);
-        const tpSignal = tpSignals[0];
-        expect(tpSignal).toBeDefined();
-        const tpQty = tpSignal?.quantity;
-        expect(tpQty).toBeDefined();
-        expect(tpQty!.toNumber()).toBe(increments[i]);
+        expect(tpSignals).toHaveLength(0);
         assertNoEntrySignals(result);
       }
 
@@ -515,7 +526,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       const firstResult = await strategy.analyze(
         createDataUpdate({ orders: [firstUpdate] }),
       );
-      assertSingleTpSignal(firstResult, 500);
+      assertNoTpSignals(firstResult);
       assertNoEntrySignals(firstResult);
 
       // Duplicate update with same executedQuantity should be ignored.
@@ -557,7 +568,7 @@ describe('SingleLadderLifoTPStrategy', () => {
       const nextResult = await strategy.analyze(
         createDataUpdate({ orders: [nextUpdate] }),
       );
-      assertSingleTpSignal(nextResult, 900);
+      assertNoTpSignals(nextResult);
       assertNoEntrySignals(nextResult);
     });
 
@@ -628,7 +639,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         updateTime: new Date(orderNew.timestamp.getTime() + 600),
       };
       const result4 = await strategy.analyze(createDataUpdate({ orders: [update4] }));
-      assertSingleTpSignal(result4, 350);
+      assertNoTpSignals(result4);
       assertNoEntrySignals(result4);
 
       const update5 = {
@@ -639,7 +650,7 @@ describe('SingleLadderLifoTPStrategy', () => {
         updateTime: new Date(orderNew.timestamp.getTime() + 1100),
       };
       const result5 = await strategy.analyze(createDataUpdate({ orders: [update5] }));
-      assertSingleTpSignal(result5, 360);
+      assertNoTpSignals(result5);
       assertNoEntrySignals(result5);
     });
   });
@@ -853,11 +864,15 @@ describe('SingleLadderLifoTPStrategy', () => {
       const result = await strategy.analyze(createDataUpdate({ orders: [order2Filled] }));
 
       // TP should target 96.04 (the last filled)
-      const tpSignals = findOrderSignalsByType(result, SignalType.TakeProfit);
+      const tpSignals = findTakeProfitSignalsOrUpdates(result);
       expect(tpSignals).toHaveLength(1);
       const tp = tpSignals[0];
-      expect(tp.action).toBe('sell');
-      expect(tp.price?.toNumber()).toBeCloseTo(96.04 * 1.015, 2);
+      if (tp.action === 'update') {
+        expect(tp.price?.toNumber()).toBeCloseTo(96.04 * 1.015, 2);
+      } else {
+        expect(tp.action).toBe('sell');
+        expect(tp.price?.toNumber()).toBeCloseTo(96.04 * 1.015, 2);
+      }
     });
   });
 

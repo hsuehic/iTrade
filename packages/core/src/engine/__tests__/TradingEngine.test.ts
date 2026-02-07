@@ -24,6 +24,7 @@ import {
   StrategyParameters,
   RiskLimits,
   RiskMetrics,
+  createEmptyPerformance,
 } from '../../types';
 
 // Mock implementations
@@ -305,6 +306,10 @@ class MockPortfolioManager implements IPortfolioManager {
     return;
   }
 
+  async syncPositions(): Promise<void> {
+    return;
+  }
+
   async closePosition(): Promise<void> {
     return;
   }
@@ -371,6 +376,7 @@ class MockStrategy implements IStrategy {
   context: StrategyRuntimeContext = {
     symbol: 'BTC/USDT',
     exchange: 'mockExchange',
+    performance: createEmptyPerformance('BTC/USDT', 'mockExchange', 1, 'MockStrategy'),
   };
 
   constructor(context: StrategyRuntimeContext) {
@@ -618,6 +624,12 @@ describe('TradingEngine - Order Event Emission', () => {
       const mockStrategy = new MockStrategy({
         exchange: 'mockExchange',
         symbol: 'BTC/USDT',
+        performance: createEmptyPerformance(
+          'BTC/USDT',
+          'mockExchange',
+          1,
+          'MockStrategy',
+        ),
       });
 
       // Mock strategy to return TP signal when receiving filled order
@@ -678,6 +690,12 @@ describe('TradingEngine - Order Event Emission', () => {
       const mockStrategy = new MockStrategy({
         exchange: 'mockExchange',
         symbol: 'BTC/USDT',
+        performance: createEmptyPerformance(
+          'BTC/USDT',
+          'mockExchange',
+          1,
+          'MockStrategy',
+        ),
       });
 
       await engine.addStrategy('test-strategy', mockStrategy as IStrategy);

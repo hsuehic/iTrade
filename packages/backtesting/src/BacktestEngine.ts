@@ -12,6 +12,7 @@ import {
   isHoldResult,
   isActionableResult,
   isCancelOrderResult,
+  isUpdateOrderResult,
   normalizeAnalyzeResult,
   KlineInterval,
 } from '@itrade/core';
@@ -100,7 +101,7 @@ export class BacktestEngine implements IBacktestEngine {
     config: BacktestConfig,
   ): Promise<void> {
     if (!isActionableResult(signal)) return;
-    if (isCancelOrderResult(signal)) return; // Backtest engine currently loops simplified logic, skipping cancels
+    if (isCancelOrderResult(signal) || isUpdateOrderResult(signal)) return;
 
     // Now signal is guaranteed to be StrategyOrderResult
     if (!signal.quantity) return;

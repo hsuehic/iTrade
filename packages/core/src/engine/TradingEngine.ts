@@ -25,9 +25,11 @@ import {
   StrategyAnalyzeResult,
   isOrderResult,
   isCancelOrderResult,
+  isUpdateOrderResult,
   isHoldResult,
   normalizeAnalyzeResult,
   StrategyCancelOrderResult,
+  StrategyUpdateOrderResult,
   Ticker,
   OrderBook,
   Trade,
@@ -718,6 +720,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         strategyName: userDefinedName, // User-defined name
         exchange: exchangeName,
       });
+
+      const emittedKey = executedOrder.clientOrderId || executedOrder.id;
+      if (!this._emittedOrderCreated.has(emittedKey)) {
+        this._eventBus.emitOrderCreated({ order: executedOrder, timestamp: new Date() });
+        this._emittedOrderCreated.add(emittedKey);
+      }
+
       return executedOrder;
     } catch (error) {
       this.logger.error('Failed to execute order', error as Error, { params });
@@ -754,6 +763,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     for (const signal of results) {
       // Skip hold signals
       if (isHoldResult(signal)) {
+        continue;
+      }
+
+      // Handle update order signals
+      if (isUpdateOrderResult(signal)) {
+        await this.executeUpdateOrder(strategyName, symbol, signal);
         continue;
       }
 
@@ -843,6 +858,92 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         symbol: targetSymbol,
         orderId: signal.orderId,
         clientOrderId: signal.clientOrderId,
+      });
+    }
+  }
+
+  /**
+   * Execute an update order signal from strategy (cancel + replace)
+   */
+  private async executeUpdateOrder(
+    strategyName: string,
+    symbol: string,
+    signal: StrategyUpdateOrderResult,
+  ): Promise<void> {
+    const targetSymbol = signal.symbol || symbol;
+
+    const strategy = this._strategies.get(strategyName);
+    const exchangeConfig = strategy?.config?.exchange;
+    const exchangeName = Array.isArray(exchangeConfig)
+      ? exchangeConfig[0]
+      : exchangeConfig;
+
+    const exchange = exchangeName
+      ? this._exchanges.get(exchangeName)
+      : this.findExchangeForSymbol(targetSymbol);
+
+    if (!exchange) {
+      this.logger.error(
+        `Cannot update order: No exchange found for symbol ${targetSymbol}`,
+      );
+      return;
+    }
+
+    try {
+      const existingOrder = await exchange.getOrder(
+        targetSymbol,
+        '',
+        signal.clientOrderId,
+      );
+
+      if (!existingOrder) {
+        this.logger.warn(
+          `Update skipped: existing order not found for ${signal.clientOrderId}`,
+        );
+        return;
+      }
+
+      const nextQuantity = signal.quantity;
+      const nextPrice = signal.price ?? existingOrder.price;
+
+      this.logger.info(
+        `🛠️ Updating order (cancel+replace): ${signal.clientOrderId} -> ${signal.newClientOrderId}`,
+      );
+
+      await exchange.cancelOrder(targetSymbol, '', signal.clientOrderId);
+
+      const orderType = nextPrice ? OrderType.LIMIT : OrderType.MARKET;
+      const side = existingOrder.side;
+
+      const executedOrder = await this.executeOrder({
+        strategyName,
+        symbol: targetSymbol,
+        side,
+        quantity: nextQuantity,
+        type: orderType,
+        price: nextPrice,
+        clientOrderId: signal.newClientOrderId,
+      });
+
+      this.logger.logStrategy('Order updated', {
+        strategy: strategyName,
+        symbol: targetSymbol,
+        orderId: executedOrder.id,
+        oldClientOrderId: signal.clientOrderId,
+        newClientOrderId: signal.newClientOrderId,
+        quantity: nextQuantity.toNumber(),
+        price: nextPrice?.toNumber(),
+        reason: signal.reason,
+      });
+
+      if (strategy && strategy.onOrderCreated) {
+        await strategy.onOrderCreated(executedOrder);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to update order for ${strategyName}`, error as Error, {
+        symbol: targetSymbol,
+        clientOrderId: signal.clientOrderId,
+        newClientOrderId: signal.newClientOrderId,
       });
     }
   }
@@ -1196,6 +1297,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         order.userId = this._userId;
       }
 
+      const emittedKey = order.clientOrderId || order.id;
+      const shouldEmitCreated =
+        order.status !== OrderStatus.CANCELED &&
+        order.status !== OrderStatus.REJECTED &&
+        order.status !== OrderStatus.EXPIRED;
+      if (shouldEmitCreated && !this._emittedOrderCreated.has(emittedKey)) {
+        this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+        this._emittedOrderCreated.add(emittedKey);
+      }
+
       // Emit status-specific events for non-NEW statuses
       switch (order.status) {
         case OrderStatus.FILLED:
@@ -1216,8 +1327,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           // Expired orders - emit if needed
           break;
         case OrderStatus.NEW:
-          this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
-          // NEW status already handled by OrderCreated above, no additional event needed
+          // OrderCreated already handled above
           break;
       }
 

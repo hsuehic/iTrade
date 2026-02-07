@@ -2,6 +2,7 @@ import {
   BaseStrategy,
   StrategyResult,
   StrategyOrderResult,
+  StrategyUpdateOrderResult,
   StrategyAnalyzeResult,
   StrategyConfig,
   Order,
@@ -319,6 +320,29 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     for (const order of this.orders.values()) {
       if (order.side === side && this.isActiveEntryOrder(order)) return true;
+    }
+    return false;
+  }
+
+  private isActiveTakeProfitOrder(order: Order): boolean {
+    if (
+      order.status !== OrderStatus.NEW &&
+      order.status !== OrderStatus.PARTIALLY_FILLED
+    ) {
+      return false;
+    }
+    const metadata = order.clientOrderId
+      ? this.orderMetadataMap.get(order.clientOrderId)
+      : undefined;
+    return metadata?.signalType === SignalType.TakeProfit;
+  }
+
+  private hasActiveTakeProfit(side: OrderSide): boolean {
+    const direct = side === OrderSide.BUY ? this.openLowerOrder : this.openUpperOrder;
+    if (direct && this.isActiveTakeProfitOrder(direct)) return true;
+
+    for (const order of this.orders.values()) {
+      if (order.side === side && this.isActiveTakeProfitOrder(order)) return true;
     }
     return false;
   }
@@ -768,6 +792,53 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     };
   }
 
+  private shouldUpdateTakeProfitOrder(
+    order: Order,
+    plan: { tpPrice: Decimal; amount: Decimal },
+  ): boolean {
+    const currentQty = order.quantity ?? new Decimal(0);
+    const currentPrice = order.price ?? new Decimal(0);
+    if (!currentQty.eq(plan.amount)) return true;
+    if (!currentPrice.eq(plan.tpPrice)) return true;
+    return false;
+  }
+
+  private createTakeProfitUpdateSignal(
+    order: Order,
+    plan: {
+      tpPrice: Decimal;
+      amount: Decimal;
+      parentOrderId: string;
+      entryPrice: Decimal;
+    },
+  ): StrategyUpdateOrderResult {
+    const newClientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
+    const metadata: ExtendedSignalMetaData = {
+      signalType: SignalType.TakeProfit,
+      parentOrderId: plan.parentOrderId,
+      entryPrice: plan.entryPrice.toString(),
+      takeProfitPrice: plan.tpPrice.toString(),
+      profitRatio: this.takeProfitPercent,
+      timestamp: Date.now(),
+      clientOrderId: newClientOrderId,
+      side: order.side,
+    };
+
+    this.orderMetadataMap.set(newClientOrderId, metadata);
+    this.pendingClientOrderIds.add(newClientOrderId);
+
+    return {
+      action: 'update',
+      clientOrderId: order.clientOrderId!,
+      newClientOrderId,
+      symbol: this._symbol,
+      quantity: plan.amount,
+      price: plan.tpPrice,
+      reason: 'lifo_tp_update',
+      metadata,
+    };
+  }
+
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
     const { orders } = dataUpdate;
     if (dataUpdate.orderbook) {
@@ -795,28 +866,42 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     const pendingOrderIds = Array.from(this.pendingClientOrderIds);
 
-    const lowerPending =
+    const lowerEntryPending =
       this.hasActiveEntry(OrderSide.BUY) ||
       pendingOrderIds.some((id) => {
         const m = this.orderMetadataMap.get(id);
-        return m?.side === OrderSide.BUY;
+        return m?.signalType === SignalType.Entry && m.side === OrderSide.BUY;
       });
 
-    const upperPending =
+    const upperEntryPending =
       this.hasActiveEntry(OrderSide.SELL) ||
       pendingOrderIds.some((id) => {
         const m = this.orderMetadataMap.get(id);
-        return m?.side === OrderSide.SELL;
+        return m?.signalType === SignalType.Entry && m.side === OrderSide.SELL;
+      });
+
+    const lowerTpPending =
+      this.hasActiveTakeProfit(OrderSide.BUY) ||
+      pendingOrderIds.some((id) => {
+        const m = this.orderMetadataMap.get(id);
+        return m?.signalType === SignalType.TakeProfit && m.side === OrderSide.BUY;
+      });
+
+    const upperTpPending =
+      this.hasActiveTakeProfit(OrderSide.SELL) ||
+      pendingOrderIds.some((id) => {
+        const m = this.orderMetadataMap.get(id);
+        return m?.signalType === SignalType.TakeProfit && m.side === OrderSide.SELL;
       });
 
     this._logger.debug(
-      `[updateLadderOrders] Size: ${this.tradedSize.toString()}, LowerPending: ${lowerPending}, UpperPending: ${upperPending}`,
+      `[updateLadderOrders] Size: ${this.tradedSize.toString()}, LowerEntryPending: ${lowerEntryPending}, UpperEntryPending: ${upperEntryPending}, LowerTpPending: ${lowerTpPending}, UpperTpPending: ${upperTpPending}`,
     );
 
     // Generate up to 2 orders
     // 1. Lower Order (Buy Entry or Buy TP)
     if (this.tradedSize.lt(0)) {
-      if (!excludeTp && !lowerPending) {
+      if (!excludeTp && !lowerTpPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
           if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.BUY)) {
@@ -829,7 +914,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         }
       }
     } else if (canLong) {
-      if (!lowerPending) {
+      if (!lowerEntryPending) {
         const buyPrice = this.referencePrice.mul(1 - this.stepPercent);
         if (this.isSignalPriceWithinOrderBookRange(buyPrice, OrderSide.BUY)) {
           signals.push(this.generateLongEntrySignal(buyPrice));
@@ -843,7 +928,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     // 2. Upper Order (Sell Entry or Sell TP)
     if (this.tradedSize.gt(0)) {
-      if (!excludeTp && !upperPending) {
+      if (!excludeTp && !upperTpPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
           if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.SELL)) {
@@ -856,7 +941,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         }
       }
     } else if (canShort) {
-      if (!upperPending) {
+      if (!upperEntryPending) {
         const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
         if (this.isSignalPriceWithinOrderBookRange(sellPrice, OrderSide.SELL)) {
           signals.push(this.generateShortEntrySignal(sellPrice));
@@ -919,7 +1004,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         );
       }
 
-      if (hasNewFill) {
+      if (hasNewFill && order.status === OrderStatus.FILLED) {
         signals.push(...this.handleOrderFilled(order, metadata));
       }
 
@@ -969,6 +1054,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     order: Order,
     metadata: ExtendedSignalMetaData,
   ): StrategyResult[] {
+    if (order.status !== OrderStatus.FILLED) return [];
     if (order.status === OrderStatus.FILLED) {
       this.pendingClientOrderIds.delete(order.clientOrderId!);
     }
@@ -1025,21 +1111,22 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         this.openLowerOrder = null;
       }
       if (shouldRefreshTp) {
-        // Refresh SELL TP on any buy fill delta (partial or full)
-        if (this.openUpperOrder) {
-          const m = this.orderMetadataMap.get(this.openUpperOrder.clientOrderId!);
-          if (m?.signalType === SignalType.TakeProfit) {
-            signals.push({
-              action: 'cancel',
-              clientOrderId: this.openUpperOrder.clientOrderId,
-              symbol: this._symbol,
-              reason: 'lifo_tp_refresh',
-            });
-            this.pendingClientOrderIds.delete(this.openUpperOrder.clientOrderId!);
-            this.orderMetadataMap.delete(this.openUpperOrder.clientOrderId!);
-            this.openUpperOrder = null;
-          }
+        const tpPlan = this.getTakeProfitPlan();
+        const activeTp = this.openUpperOrder;
+        const activeTpMetadata = activeTp?.clientOrderId
+          ? this.orderMetadataMap.get(activeTp.clientOrderId)
+          : undefined;
+
+        if (
+          tpPlan &&
+          activeTp &&
+          activeTpMetadata?.signalType === SignalType.TakeProfit &&
+          this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.SELL) &&
+          this.shouldUpdateTakeProfitOrder(activeTp, tpPlan)
+        ) {
+          signals.push(this.createTakeProfitUpdateSignal(activeTp, tpPlan));
         }
+
         // Cancel pending SELL TP signals to allow refresh with new quantity
         for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
           const metadata = this.orderMetadataMap.get(clientOrderId);
@@ -1051,7 +1138,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
               action: 'cancel',
               clientOrderId,
               symbol: this._symbol,
-              reason: 'lifo_tp_refresh',
+              reason: 'lifo_tp_refresh_pending',
             });
             this.pendingClientOrderIds.delete(clientOrderId);
             this.orderMetadataMap.delete(clientOrderId);
@@ -1063,21 +1150,22 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         this.openUpperOrder = null;
       }
       if (shouldRefreshTp) {
-        // Refresh BUY TP on any sell fill delta (partial or full)
-        if (this.openLowerOrder) {
-          const m = this.orderMetadataMap.get(this.openLowerOrder.clientOrderId!);
-          if (m?.signalType === SignalType.TakeProfit) {
-            signals.push({
-              action: 'cancel',
-              clientOrderId: this.openLowerOrder.clientOrderId,
-              symbol: this._symbol,
-              reason: 'lifo_tp_refresh',
-            });
-            this.pendingClientOrderIds.delete(this.openLowerOrder.clientOrderId!);
-            this.orderMetadataMap.delete(this.openLowerOrder.clientOrderId!);
-            this.openLowerOrder = null;
-          }
+        const tpPlan = this.getTakeProfitPlan();
+        const activeTp = this.openLowerOrder;
+        const activeTpMetadata = activeTp?.clientOrderId
+          ? this.orderMetadataMap.get(activeTp.clientOrderId)
+          : undefined;
+
+        if (
+          tpPlan &&
+          activeTp &&
+          activeTpMetadata?.signalType === SignalType.TakeProfit &&
+          this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.BUY) &&
+          this.shouldUpdateTakeProfitOrder(activeTp, tpPlan)
+        ) {
+          signals.push(this.createTakeProfitUpdateSignal(activeTp, tpPlan));
         }
+
         // Cancel pending BUY TP signals to allow refresh with new quantity
         for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
           const metadata = this.orderMetadataMap.get(clientOrderId);
@@ -1089,7 +1177,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
               action: 'cancel',
               clientOrderId,
               symbol: this._symbol,
-              reason: 'lifo_tp_refresh',
+              reason: 'lifo_tp_refresh_pending',
             });
             this.pendingClientOrderIds.delete(clientOrderId);
             this.orderMetadataMap.delete(clientOrderId);

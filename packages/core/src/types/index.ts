@@ -280,6 +280,7 @@ export interface SignalMetaData {
 export type StrategyResult =
   | StrategyOrderResult
   | StrategyCancelOrderResult
+  | StrategyUpdateOrderResult
   | StrategyHoldResult;
 
 /**
@@ -322,6 +323,28 @@ export interface StrategyCancelOrderResult {
 }
 
 /**
+ * Update order result - request to update quantity/price for an existing order
+ * NOTE: Exchanges may not support amend; engines can implement cancel+replace.
+ */
+export interface StrategyUpdateOrderResult {
+  action: 'update';
+  /** Existing client order ID to update */
+  clientOrderId: string;
+  /** New client order ID for the replacement order */
+  newClientOrderId: string;
+  /** Symbol of the order to update */
+  symbol?: string;
+  /** New quantity for the order (required) */
+  quantity: Decimal;
+  /** Optional updated price (limit price) */
+  price?: Decimal;
+  /** Reason for update */
+  reason?: string;
+  /** Optional metadata for replacement order */
+  metadata?: SignalMetaData;
+}
+
+/**
  * Hold result - do nothing
  */
 export interface StrategyHoldResult {
@@ -346,6 +369,15 @@ export function isCancelOrderResult(
 }
 
 /**
+ * Type guard: Check if result is an update order
+ */
+export function isUpdateOrderResult(
+  value: StrategyResult,
+): value is StrategyUpdateOrderResult {
+  return value.action === 'update';
+}
+
+/**
  * Type guard: Check if result is a hold
  */
 export function isHoldResult(value: StrategyResult): value is StrategyHoldResult {
@@ -357,7 +389,7 @@ export function isHoldResult(value: StrategyResult): value is StrategyHoldResult
  */
 export function isActionableResult(
   value: StrategyResult,
-): value is StrategyOrderResult | StrategyCancelOrderResult {
+): value is StrategyOrderResult | StrategyCancelOrderResult | StrategyUpdateOrderResult {
   return value.action !== 'hold';
 }
 
