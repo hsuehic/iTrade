@@ -163,6 +163,13 @@ export const SingleLadderLifoTPStrategyRegistryConfig: StrategyRegistryConfig<Si
         editable: false,
         description: 'Required: Ticker data for order gating',
       },
+      orderbook: {
+        required: true,
+        editable: false,
+        defaultDepth: 5,
+        depthEditable: false,
+        description: 'Required: Order book data (depth 5) for smart entry',
+      },
       klines: {
         required: false,
         allowMultipleIntervals: false,
