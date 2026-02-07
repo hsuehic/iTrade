@@ -322,7 +322,9 @@ export class BinanceExchange extends BaseExchange {
     try {
       // First, set margin type if specified (isolated or cross)
       if (marginType && marginType !== 'cash') {
-        await this.setMarginType(symbol, marginType);
+        // Cast to any to avoid type issues if TradeMode has other values,
+        // though logic implies 'isolated' | 'cross'
+        await this.setMarginType(symbol, marginType as any);
       }
 
       // Set leverage
@@ -333,15 +335,23 @@ export class BinanceExchange extends BaseExchange {
       };
 
       const signedParams = this.signRequest(params);
-      await this.futuresClient.post('/fapi/v1/leverage', null, {
-        params: signedParams,
+      const bodyParams = new URLSearchParams();
+      Object.entries(signedParams).forEach(([key, value]) => {
+        bodyParams.append(key, String(value));
       });
+
+      await this.futuresClient.post('/fapi/v1/leverage', bodyParams);
     } catch (error: any) {
       // If error is "No need to change leverage" or similar, ignore it
-      if (error.response?.data?.code === -4028 || error.response?.data?.code === -4046) {
+      const code = error.response?.data?.code;
+      if (code === -4028 || code === -4046) {
         // Leverage already set, no action needed
       } else {
-        console.error(`[Binance] Failed to set leverage for ${symbol}:`, error.message);
+        console.error(
+          `[Binance] Failed to set leverage for ${symbol}:`,
+          error.response?.data || error.message,
+        );
+        console.error('Stack:', error.stack);
         throw error;
       }
     }
@@ -363,17 +373,24 @@ export class BinanceExchange extends BaseExchange {
       };
 
       const signedParams = this.signRequest(params);
-      await this.futuresClient.post('/fapi/v1/marginType', null, {
-        params: signedParams,
+      const bodyParams = new URLSearchParams();
+      Object.entries(signedParams).forEach(([key, value]) => {
+        bodyParams.append(key, String(value));
       });
+
+      await this.futuresClient.post('/fapi/v1/marginType', bodyParams);
 
       console.log(`[Binance] Set margin type for ${symbol}: ${marginType}`);
     } catch (error: any) {
+      const code = error.response?.data?.code;
       // If error is "No need to change margin type", ignore it
-      if (error.response?.data?.code === -4046) {
+      if (code === -4046) {
         // Margin type already set, no action needed
       } else {
-        console.warn(`[Binance] Failed to set margin type for ${symbol}:`, error.message);
+        console.warn(
+          `[Binance] Failed to set margin type for ${symbol}:`,
+          error.response?.data || error.message,
+        );
         // Don't throw - margin type is optional
       }
     }
