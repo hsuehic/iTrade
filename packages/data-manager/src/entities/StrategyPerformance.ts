@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { Decimal } from 'decimal.js';
 import { DecimalTransformer } from '../transformers/DecimalTransformer';
-import { StrategyEntity } from './Strategy';
+import type { StrategyEntity } from './Strategy';
 
 /**
  * Strategy Performance Entity
@@ -31,7 +31,7 @@ export class StrategyPerformanceEntity {
 
   // ==================== Relationship ====================
 
-  @OneToOne(() => StrategyEntity, (strategy) => strategy.performance, {
+  @OneToOne('strategies', 'performance', {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'strategyId' })
