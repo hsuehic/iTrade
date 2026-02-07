@@ -625,24 +625,22 @@ export class BinanceExchange extends BaseExchange {
         params,
       });
 
-      return (
-        response.data
-          // .filter((pos: any) => parseFloat(pos.positionAmt) !== 0) // Commented out to allow zero positions for deletion logic
-          .map((pos: any) => {
-            const quantity = new Decimal(pos.positionAmt);
-            const unifiedSymbol = this.denormalizeSymbol(pos.symbol, 'futures');
-            return {
-              symbol: unifiedSymbol,
-              side: quantity.isPositive() ? 'long' : 'short',
-              quantity: quantity.abs(),
-              avgPrice: this.formatDecimal(pos.entryPrice),
-              markPrice: this.formatDecimal(pos.markPrice),
-              unrealizedPnl: this.formatDecimal(pos.unRealizedProfit),
-              leverage: parseInt(pos.leverage),
-              timestamp: new Date(parseInt(pos.updateTime)),
-            };
-          })
-      );
+      return response.data
+        .filter((pos: any) => parseFloat(pos.positionAmt) !== 0) // Filter out zero positions
+        .map((pos: any) => {
+          const quantity = new Decimal(pos.positionAmt);
+          const unifiedSymbol = this.denormalizeSymbol(pos.symbol, 'futures');
+          return {
+            symbol: unifiedSymbol,
+            side: quantity.isPositive() ? 'long' : 'short',
+            quantity: quantity.abs(),
+            avgPrice: this.formatDecimal(pos.entryPrice),
+            markPrice: this.formatDecimal(pos.markPrice),
+            unrealizedPnl: this.formatDecimal(pos.unRealizedProfit),
+            leverage: parseInt(pos.leverage),
+            timestamp: new Date(parseInt(pos.updateTime)),
+          };
+        });
     } catch (error) {
       console.error('[Binance] Failed to fetch positions:', error);
       return [];
