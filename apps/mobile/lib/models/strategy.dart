@@ -30,6 +30,7 @@ class Strategy {
     this.lastExecutionTime,
     required this.createdAt,
     required this.updatedAt,
+    this.performance,
   });
 
   factory Strategy.fromJson(Map<String, dynamic> json) {
@@ -50,6 +51,9 @@ class Strategy {
           : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
+      performance: json['performance'] != null
+          ? StrategyPerformance.fromJson(json['performance'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -67,6 +71,7 @@ class Strategy {
       'lastExecutionTime': lastExecutionTime?.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      // performance is typically read-only from backend, but good to have symmetry
     };
   }
 
@@ -74,6 +79,46 @@ class Strategy {
   bool get isStopped => status == 'stopped';
   bool get isPaused => status == 'paused';
   bool get isError => status == 'error';
+
+  final StrategyPerformance? performance;
+}
+
+class StrategyPerformance {
+  final double totalPnL;
+  final double roi;
+  final double winRate;
+  final double maxDrawdown;
+  final int totalOrders;
+  final int winningTrades;
+  final int losingTrades;
+  final int longOrdersFilledCount;
+  final int shortOrdersFilledCount;
+
+  StrategyPerformance({
+    required this.totalPnL,
+    required this.roi,
+    required this.winRate,
+    required this.maxDrawdown,
+    required this.totalOrders,
+    required this.winningTrades,
+    required this.losingTrades,
+    required this.longOrdersFilledCount,
+    required this.shortOrdersFilledCount,
+  });
+
+  factory StrategyPerformance.fromJson(Map<String, dynamic> json) {
+    return StrategyPerformance(
+      totalPnL: (json['totalPnL'] as num?)?.toDouble() ?? 0.0,
+      roi: (json['roi'] as num?)?.toDouble() ?? 0.0,
+      winRate: (json['winRate'] as num?)?.toDouble() ?? 0.0,
+      maxDrawdown: (json['maxDrawdown'] as num?)?.toDouble() ?? 0.0,
+      totalOrders: json['totalOrders'] as int? ?? 0,
+      winningTrades: json['winningTrades'] as int? ?? 0,
+      losingTrades: json['losingTrades'] as int? ?? 0,
+      longOrdersFilledCount: json['longOrdersFilledCount'] as int? ?? 0,
+      shortOrdersFilledCount: json['shortOrdersFilledCount'] as int? ?? 0,
+    );
+  }
 }
 
 /// Strategy PnL data
@@ -98,11 +143,11 @@ class StrategyPnL {
 
   factory StrategyPnL.fromJson(Map<String, dynamic> json) {
     return StrategyPnL(
-      strategyId: json['strategyId'] as int,
-      strategyName: json['strategyName'] as String,
-      totalPnl: (json['pnl'] as num).toDouble(),
-      realizedPnl: (json['realizedPnl'] as num).toDouble(),
-      unrealizedPnl: (json['unrealizedPnl'] as num).toDouble(),
+      strategyId: json['strategyId'] as int? ?? 0,
+      strategyName: json['strategyName'] as String? ?? '',
+      totalPnl: (json['pnl'] as num?)?.toDouble() ?? 0.0,
+      realizedPnl: (json['realizedPnl'] as num?)?.toDouble() ?? 0.0,
+      unrealizedPnl: (json['unrealizedPnl'] as num?)?.toDouble() ?? 0.0,
       totalOrders: json['totalOrders'] as int? ?? 0,
       filledOrders: json['filledOrders'] as int? ?? 0,
     );

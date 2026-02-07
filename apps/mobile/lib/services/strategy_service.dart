@@ -57,7 +57,12 @@ class StrategyService {
       final Response response = await _apiClient.getJson('/api/strategies/$id');
 
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
-        return Strategy.fromJson(response.data as Map<String, dynamic>);
+        final data = response.data as Map<String, dynamic>;
+        // Handle both wrapped { strategy: ... } and direct object
+        if (data.containsKey('strategy') && data['strategy'] is Map<String, dynamic>) {
+            return Strategy.fromJson(data['strategy']);
+        }
+        return Strategy.fromJson(data);
       }
       return null;
     } catch (e) {
