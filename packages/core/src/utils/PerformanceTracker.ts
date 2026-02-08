@@ -137,6 +137,62 @@ export class PerformanceTracker {
     // Update total fees
     updated.pnl.totalFees = updated.pnl.totalFees.plus(fees);
 
+    // 🆕 Calculate Realized PnL if closing a position
+    const currentPos = updated.position.currentPosition;
+    const avgEntryPrice = updated.position.avgEntryPrice;
+
+    let isClosing = false;
+    let closingQty = new Decimal(0);
+
+    if (currentPos.gt(0) && !isLong) {
+      // Long position, Sell trade -> Closing
+      isClosing = true;
+      closingQty = Decimal.min(quantity, currentPos);
+    } else if (currentPos.lt(0) && isLong) {
+      // Short position, Buy trade -> Closing
+      isClosing = true;
+      closingQty = Decimal.min(quantity, currentPos.abs());
+    }
+
+    if (isClosing && closingQty.gt(0)) {
+      let tradePnL = new Decimal(0);
+
+      if (currentPos.gt(0)) {
+        // Closing Long: (Sell Price - Avg Entry) * Qty
+        tradePnL = price.minus(avgEntryPrice).times(closingQty);
+      } else {
+        // Closing Short: (Avg Entry - Buy Price) * Qty
+        tradePnL = avgEntryPrice.minus(price).times(closingQty);
+      }
+
+      // Update PnL metrics
+      updated.pnl.realizedPnL = updated.pnl.realizedPnL.plus(tradePnL);
+      updated.pnl.totalPnL = updated.pnl.realizedPnL.plus(updated.pnl.unrealizedPnL);
+      updated.pnl.netPnL = updated.pnl.totalPnL.minus(updated.pnl.totalFees);
+
+      // Update Win/Loss stats
+      if (tradePnL.gt(0)) {
+        updated.activity.winningTrades++;
+        if (tradePnL.gt(updated.activity.largestWin)) {
+          updated.activity.largestWin = tradePnL;
+        }
+      } else if (tradePnL.lt(0)) {
+        updated.activity.losingTrades++;
+        if (tradePnL.lt(updated.activity.largestLoss)) {
+          updated.activity.largestLoss = tradePnL;
+        }
+      }
+
+      // Update Win Rate
+      const totalClosedTrades =
+        updated.activity.winningTrades + updated.activity.losingTrades;
+      if (totalClosedTrades > 0) {
+        updated.pnl.winRate = new Decimal(updated.activity.winningTrades)
+          .div(totalClosedTrades)
+          .times(100);
+      }
+    }
+
     // Update activity metrics
     updated.activity.totalTrades++;
     updated.activity.totalVolume = updated.activity.totalVolume.plus(value);

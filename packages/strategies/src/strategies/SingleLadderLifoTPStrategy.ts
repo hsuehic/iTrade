@@ -1244,6 +1244,24 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.referencePrice = new Decimal(this.basePrice);
     }
 
+    // 🆕 Fix: Clear any pending TP signals for this side.
+    // If a TP fills, any other pending TPs (e.g. from a concurrent Refresh/Update attempt)
+    // are likely invalid or 'zombies' (e.g. update failed because order filled).
+    // We must remove them to unblock 'updateLadderOrders' from generating the next TP.
+    for (const clientOrderId of Array.from(this.pendingClientOrderIds)) {
+      const metadata = this.orderMetadataMap.get(clientOrderId);
+      if (
+        metadata?.signalType === SignalType.TakeProfit &&
+        metadata.side === order.side
+      ) {
+        this._logger.info(
+          `🧹 Clearing zombie pending TP ${clientOrderId} after fill of ${order.clientOrderId}`,
+        );
+        this.pendingClientOrderIds.delete(clientOrderId);
+        this.orderMetadataMap.delete(clientOrderId);
+      }
+    }
+
     return this.updateLadderOrders();
   }
 
@@ -1314,7 +1332,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       fetchOpenOrders: true,
       fetchBalance: true,
       fetchOrderBook: this.checkMarketPrice
-        ? { enabled: true, depth: 20 }
+        ? { enabled: true, depth: 5 }
         : { enabled: false },
     };
   }
