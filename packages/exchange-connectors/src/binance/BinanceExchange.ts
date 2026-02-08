@@ -335,12 +335,11 @@ export class BinanceExchange extends BaseExchange {
       };
 
       const signedParams = this.signRequest(params);
-      const bodyParams = new URLSearchParams();
-      Object.entries(signedParams).forEach(([key, value]) => {
-        bodyParams.append(key, String(value));
+      await this.futuresClient.post('/fapi/v1/leverage', null, {
+        params: signedParams,
       });
 
-      await this.futuresClient.post('/fapi/v1/leverage', bodyParams);
+      console.log(`[Binance] Set leverage for ${symbol}: ${leverage}`);
     } catch (error: any) {
       // If error is "No need to change leverage" or similar, ignore it
       const code = error.response?.data?.code;
@@ -373,12 +372,9 @@ export class BinanceExchange extends BaseExchange {
       };
 
       const signedParams = this.signRequest(params);
-      const bodyParams = new URLSearchParams();
-      Object.entries(signedParams).forEach(([key, value]) => {
-        bodyParams.append(key, String(value));
+      await this.futuresClient.post('/fapi/v1/marginType', null, {
+        params: signedParams,
       });
-
-      await this.futuresClient.post('/fapi/v1/marginType', bodyParams);
 
       console.log(`[Binance] Set margin type for ${symbol}: ${marginType}`);
     } catch (error: any) {
