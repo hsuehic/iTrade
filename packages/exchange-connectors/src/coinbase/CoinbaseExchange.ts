@@ -1308,15 +1308,44 @@ export class CoinbaseExchange extends BaseExchange {
     const symbol =
       productId !== 'UNKNOWN' ? this.denormalizeSymbol(productId) : productId;
 
+    const orderConfig = orderData.order_configuration;
+    // Extract configuration to check for base_size there as well
+    const limitConfig =
+      orderConfig?.limit_limit_gtc ||
+      orderConfig?.limit_limit_gtd ||
+      orderConfig?.stop_limit_stop_limit_gtc ||
+      orderConfig?.stop_limit_stop_limit_gtd;
+    const marketConfig = orderConfig?.market_market_ioc;
+
     // Extract quantity - check all possible field names that Coinbase uses
-    const quantity = this.formatDecimal(
+    let quantityStr =
       orderData.base_size ||
-        orderData.size ||
-        orderData.order_size ||
-        orderData.quantity ||
-        orderData.leaves_quantity ||
-        '0',
-    );
+      orderData.size ||
+      orderData.order_size ||
+      orderData.quantity ||
+      limitConfig?.base_size ||
+      marketConfig?.base_size;
+
+    // Fallback: If no explicit quantity, try to reconstruct from filled + leaves
+    // Note: Coinbase WebSocket user channel often uses 'cumulative_quantity' for filled amount
+    const filledQtyStr = orderData.cumulative_quantity || orderData.filled_size;
+
+    if (!quantityStr && filledQtyStr && orderData.leaves_quantity) {
+      try {
+        const filled = new Decimal(filledQtyStr);
+        const leaves = new Decimal(orderData.leaves_quantity);
+        quantityStr = filled.plus(leaves).toString();
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Final fallback
+    if (!quantityStr) {
+      quantityStr = orderData.leaves_quantity || '0';
+    }
+
+    const quantity = this.formatDecimal(quantityStr);
 
     // Debug: Log if quantity is zero to help diagnose field name issues
     if (quantity.isZero()) {
@@ -1329,6 +1358,9 @@ export class CoinbaseExchange extends BaseExchange {
             order_size: orderData.order_size,
             quantity: orderData.quantity,
             leaves_quantity: orderData.leaves_quantity,
+            filled_size: orderData.filled_size,
+            cumulative_quantity: orderData.cumulative_quantity,
+            config_base_size: limitConfig?.base_size || marketConfig?.base_size,
             all_keys: Object.keys(orderData),
           },
           null,
@@ -1336,10 +1368,6 @@ export class CoinbaseExchange extends BaseExchange {
         ),
       );
     }
-
-    const orderConfig = orderData.order_configuration;
-    const limitConfig = orderConfig?.limit_limit_gtc;
-    const marketConfig = orderConfig?.market_market_ioc;
     const orderType =
       orderData.order_type ||
       orderData.type ||
@@ -1361,11 +1389,12 @@ export class CoinbaseExchange extends BaseExchange {
       timeInForce: this.transformTimeInForce(orderData.time_in_force),
       timestamp: orderData.created_at ? new Date(orderData.created_at) : new Date(),
       updateTime: orderData.updated_at ? new Date(orderData.updated_at) : undefined,
-      executedQuantity: orderData.filled_size
-        ? this.formatDecimal(orderData.filled_size)
-        : orderData.leaves_quantity && !quantity.isZero()
-          ? quantity.minus(this.formatDecimal(orderData.leaves_quantity))
-          : undefined,
+      executedQuantity:
+        orderData.cumulative_quantity || orderData.filled_size
+          ? this.formatDecimal(orderData.cumulative_quantity || orderData.filled_size)
+          : orderData.leaves_quantity && !quantity.isZero()
+            ? quantity.minus(this.formatDecimal(orderData.leaves_quantity))
+            : undefined,
       cummulativeQuoteQuantity: orderData.filled_value
         ? this.formatDecimal(orderData.filled_value)
         : undefined,
@@ -1887,15 +1916,43 @@ export class CoinbaseExchange extends BaseExchange {
 
     const status = this.transformOrderStatus(o.status || o.order_status || 'NEW');
 
+    const orderConfig = o.order_configuration;
+    const limitConfig =
+      orderConfig?.limit_limit_gtc ||
+      orderConfig?.limit_limit_gtd ||
+      orderConfig?.stop_limit_stop_limit_gtc ||
+      orderConfig?.stop_limit_stop_limit_gtd;
+    const marketConfig = orderConfig?.market_market_ioc;
+
+    let quantityStr =
+      o.quantity ||
+      o.size ||
+      o.order_size ||
+      o.base_size ||
+      limitConfig?.base_size ||
+      marketConfig?.base_size;
+
+    if (!quantityStr && o.filled_size && o.leaves_quantity) {
+      try {
+        const filled = new Decimal(o.filled_size);
+        const leaves = new Decimal(o.leaves_quantity);
+        quantityStr = filled.plus(leaves).toString();
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (!quantityStr) {
+      quantityStr = o.leaves_quantity || '0';
+    }
+
     return {
       id: o.order_id || o.id || uuidv4(),
       clientOrderId: o.client_order_id,
       symbol: o.product_id || 'UNKNOWN',
       side: (o.side?.toUpperCase() || 'BUY') === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformOrderType(o.order_type || o.type || 'LIMIT'),
-      quantity: this.formatDecimal(
-        o.quantity || o.size || o.order_size || o.base_size || o.leaves_quantity || '0',
-      ),
+      quantity: this.formatDecimal(quantityStr),
       price:
         o.price || o.limit_price
           ? this.formatDecimal(o.price || o.limit_price)
