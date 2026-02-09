@@ -68,29 +68,19 @@ interface AssetsTableProps {
 }
 
 const formatCurrency = (value: number) => {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  } else if (value >= 1000) {
-    return `$${(value / 1000).toFixed(2)}K`;
-  } else if (value >= 1) {
-    return `$${value.toFixed(2)}`;
-  } else if (value >= 0.0001) {
-    return `$${value.toFixed(4)}`;
-  }
-  return `$${value.toFixed(8)}`;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  }).format(value);
 };
 
 const formatNumber = (value: number) => {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(2)}M`;
-  } else if (value >= 1000) {
-    return `${(value / 1000).toFixed(2)}K`;
-  } else if (value >= 1) {
-    return value.toFixed(4);
-  } else if (value >= 0.0001) {
-    return value.toFixed(6);
-  }
-  return value.toFixed(8);
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  }).format(value);
 };
 
 const getAssetValue = (asset: AssetData) => {

@@ -99,29 +99,23 @@ const formatCurrency = (value: string | number | undefined) => {
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '-';
 
-  if (Math.abs(num) >= 1000000) {
-    return `$${(num / 1000000).toFixed(2)}M`;
-  } else if (Math.abs(num) >= 1000) {
-    return `$${(num / 1000).toFixed(2)}K`;
-  } else if (Math.abs(num) >= 1) {
-    return `$${num.toFixed(2)}`;
-  } else if (Math.abs(num) >= 0.0001) {
-    return `$${num.toFixed(4)}`;
-  }
-  return `$${num.toFixed(8)}`;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  }).format(num);
 };
 
-const formatNumber = (value: string | number | undefined, decimals: number = 4) => {
+const formatNumber = (value: string | number | undefined, decimals: number = 8) => {
   if (value === undefined || value === null) return '-';
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '-';
 
-  if (Math.abs(num) >= 1000000) {
-    return `${(num / 1000000).toFixed(2)}M`;
-  } else if (Math.abs(num) >= 1000) {
-    return `${(num / 1000).toFixed(2)}K`;
-  }
-  return num.toFixed(decimals);
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  }).format(num);
 };
 
 const getStatusIcon = (status: string) => {
