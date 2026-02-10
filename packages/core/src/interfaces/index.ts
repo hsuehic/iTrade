@@ -289,6 +289,17 @@ export interface IDataManager {
 
   // 🆕 Performance Persistence
   updateStrategyPerformance?(id: number, performance: StrategyPerformance): Promise<void>;
+
+  /**
+   * 🆕 Rebuild full Strategy Performance object from historical orders
+   */
+  rebuildStrategyPerformance?(
+    strategyId: number,
+    symbol: string,
+    exchange: string,
+    strategyName?: string,
+    currentPrice?: number,
+  ): Promise<StrategyPerformance>;
 }
 
 // Backtesting Engine Interface

@@ -29,7 +29,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Include user for ownership check
     const strategy = await dataManager.getStrategy(id, {
       includeUser: true,
-      includePerformance: true,
     });
 
     if (!strategy) {
@@ -41,7 +40,26 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json({ strategy });
+    // Rebuild performance from orders for comparison
+    let rebuiltPerformance = null;
+    try {
+      if (
+        dataManager.rebuildStrategyPerformance &&
+        strategy.symbol &&
+        strategy.exchange
+      ) {
+        rebuiltPerformance = await dataManager.rebuildStrategyPerformance(
+          strategy.id,
+          strategy.symbol,
+          strategy.exchange,
+          strategy.name,
+        );
+      }
+    } catch (e) {
+      console.warn(`Failed to rebuild performance for strategy ${id}`, e);
+    }
+
+    return NextResponse.json({ strategy, rebuiltPerformance });
   } catch (error) {
     console.error('Error fetching strategy:', error);
     return NextResponse.json({ error: 'Failed to fetch strategy' }, { status: 500 });

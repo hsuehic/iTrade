@@ -12,6 +12,7 @@ import {
   IconEdit,
 } from '@tabler/icons-react';
 import type { StrategyEntity } from '@itrade/data-manager';
+import type { StrategyPerformance } from '@itrade/core';
 
 const StrategyStatus = {
   ACTIVE: 'active',
@@ -52,6 +53,8 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const router = useRouter();
 
   const [strategy, setStrategy] = useState<StrategyEntity | null>(null);
+  const [rebuiltPerformance, setRebuiltPerformance] =
+    useState<StrategyPerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
@@ -62,6 +65,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
       if (!res.ok) throw new Error('Failed to fetch strategy');
       const data = await res.json();
       setStrategy(data.strategy);
+      setRebuiltPerformance(data.rebuiltPerformance);
     } catch (error) {
       console.error(error);
       toast.error(t('errors.loadStrategies'));
@@ -227,7 +231,29 @@ export default function StrategyDetailPage(props: { params: Params }) {
         </div>
 
         {/* Performance Metrics */}
-        <StrategyPerformanceMetrics performance={strategy.performance} />
+        <Tabs defaultValue="realtime" className="w-full">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold tracking-tight">Performance</h2>
+            <TabsList>
+              <TabsTrigger value="realtime">{t('tabs.realtime')}</TabsTrigger>
+              <TabsTrigger value="rebuilt">{t('tabs.orderBased')}</TabsTrigger>
+            </TabsList>
+          </div>
+          <TabsContent value="realtime" className="mt-0">
+            <StrategyPerformanceMetrics performance={strategy.performance} />
+          </TabsContent>
+          <TabsContent value="rebuilt" className="mt-0">
+            {rebuiltPerformance ? (
+              <StrategyPerformanceMetrics performance={rebuiltPerformance} />
+            ) : (
+              <div className="p-8 text-center border rounded-md bg-muted/20">
+                <p className="text-muted-foreground">
+                  {t('messages.rebuiltPerformanceUnavailable')}
+                </p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
 
         {/* Tabs for Details */}
         <Tabs defaultValue="orders" className="space-y-4">

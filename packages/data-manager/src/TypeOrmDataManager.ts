@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import type { DataSource, Repository } from 'typeorm';
 import { Decimal } from 'decimal.js';
-import { IDataManager, Kline, KlineInterval } from '@itrade/core';
+import { IDataManager, Kline, KlineInterval, StrategyPerformance } from '@itrade/core';
 
 import { KlineEntity } from './entities/Kline';
 import { SymbolEntity } from './entities/Symbol';
@@ -1202,5 +1202,22 @@ export class TypeOrmDataManager implements IDataManager {
   async getAccountBalances(accountInfoId: number): Promise<BalanceEntity[]> {
     this.ensureInitialized();
     return await this.balanceRepository.getBalances(accountInfoId);
+  }
+
+  async rebuildStrategyPerformance(
+    strategyId: number,
+    symbol: string,
+    exchange: string,
+    strategyName?: string,
+    currentPrice?: number,
+  ): Promise<StrategyPerformance> {
+    this.ensureInitialized();
+    return await this.pnlRepository.rebuildStrategyPerformance(
+      strategyId,
+      symbol,
+      exchange,
+      strategyName,
+      currentPrice,
+    );
   }
 }

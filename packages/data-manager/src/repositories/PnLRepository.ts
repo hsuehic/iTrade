@@ -1,4 +1,6 @@
 import { DataSource, Repository } from 'typeorm';
+import { StrategyPerformance, createEmptyPerformance } from '@itrade/core';
+import { Decimal } from 'decimal.js';
 
 import { OrderEntity } from '../entities/Order';
 
@@ -253,5 +255,222 @@ export class PnLRepository {
       totalOrders,
       strategies,
     };
+  }
+
+  /**
+   * 🆕 Rebuild full Strategy Performance object from historical orders
+   * This provides a reliable source of truth by replaying all orders
+   */
+  async rebuildStrategyPerformance(
+    strategyId: number,
+    symbol: string,
+    exchange: string,
+    strategyName?: string,
+    currentPrice?: number,
+  ): Promise<StrategyPerformance> {
+    // Get all orders for this strategy
+    const orders = await this.repository.find({
+      where: { strategyId },
+      order: { timestamp: 'ASC' },
+    });
+
+    // Initialize empty performance
+    const perf = createEmptyPerformance(
+      symbol,
+      exchange,
+      strategyId,
+      strategyName || `Strategy ${strategyId}`,
+    );
+
+    // Initialize calculation state
+    let currentPosition = new Decimal(0);
+    let avgEntryPrice = new Decimal(0);
+    let realizedPnl = new Decimal(0);
+    let totalFees = new Decimal(0);
+    let winningTrades = 0;
+    let losingTrades = 0;
+    let totalVolume = new Decimal(0);
+    let largestWin = new Decimal(0);
+    let largestLoss = new Decimal(0);
+
+    // Track time
+    if (orders.length > 0) {
+      perf.time.startTime = orders[0].timestamp;
+      perf.time.lastOrderTime = orders[orders.length - 1].timestamp;
+    }
+
+    // Replay orders
+    for (const order of orders) {
+      const isLong = order.side === 'BUY';
+      const isFilled = order.status === 'FILLED';
+      const isPartiallyFilled = order.status === 'PARTIALLY_FILLED';
+      const isCancelled = order.status === 'CANCELED';
+      const isRejected = order.status === 'REJECTED';
+
+      // Update basic counts
+      if (isLong) {
+        perf.orders.long.total.count++;
+        if (isFilled) perf.orders.long.filled.count++;
+        if (order.status === 'NEW' || isPartiallyFilled) perf.orders.long.pending.count++;
+      } else {
+        perf.orders.short.total.count++;
+        if (isFilled) perf.orders.short.filled.count++;
+        if (order.status === 'NEW' || isPartiallyFilled)
+          perf.orders.short.pending.count++;
+      }
+
+      if (isCancelled) perf.orders.cancelled.count++;
+      if (isRejected) perf.orders.rejected.count++;
+
+      // Process Fills (Volume & PnL)
+      const quantity = new Decimal(order.executedQuantity || 0);
+      const price = new Decimal(order.averagePrice || order.price || 0); // Use averagePrice if available
+      const value = quantity.times(price);
+      // Determine fee
+      const fee = new Decimal(0);
+
+      if (quantity.gt(0)) {
+        totalVolume = totalVolume.plus(value);
+        totalFees = totalFees.plus(fee);
+
+        // Update Volume Stats
+        if (isLong) {
+          perf.orders.long.filled.totalQuantity =
+            perf.orders.long.filled.totalQuantity.plus(quantity);
+          perf.orders.long.filled.totalValue =
+            perf.orders.long.filled.totalValue.plus(value);
+        } else {
+          perf.orders.short.filled.totalQuantity =
+            perf.orders.short.filled.totalQuantity.plus(quantity);
+          perf.orders.short.filled.totalValue =
+            perf.orders.short.filled.totalValue.plus(value);
+        }
+
+        // PnL Logic (FIFO/AvgCost)
+        if (isLong) {
+          // BUY
+          if (currentPosition.gte(0)) {
+            // Increasing Long
+            if (currentPosition.plus(quantity).gt(0)) {
+              avgEntryPrice = currentPosition
+                .times(avgEntryPrice)
+                .plus(value)
+                .div(currentPosition.plus(quantity));
+            }
+            currentPosition = currentPosition.plus(quantity);
+          } else {
+            // Closing Short
+            const closeQty = Decimal.min(quantity, currentPosition.abs());
+            const remainQty = quantity.minus(closeQty);
+
+            // Calc PnL on closed portion: (Entry - Exit) * Qty for Short
+            const tradePnl = avgEntryPrice.minus(price).times(closeQty);
+            realizedPnl = realizedPnl.plus(tradePnl);
+
+            // Update Win/Loss stats
+            if (tradePnl.gt(0)) {
+              winningTrades++;
+              if (tradePnl.gt(largestWin)) largestWin = tradePnl;
+            } else if (tradePnl.lt(0)) {
+              losingTrades++;
+              if (tradePnl.lt(largestLoss)) largestLoss = tradePnl;
+            }
+
+            currentPosition = currentPosition.plus(closeQty); // Move towards 0
+
+            // If flipped to Long
+            if (remainQty.gt(0)) {
+              currentPosition = currentPosition.plus(remainQty);
+              avgEntryPrice = price; // Reset avg price for new long leg
+            }
+          }
+        } else {
+          // SELL
+          if (currentPosition.lte(0)) {
+            // Increasing Short
+            if (currentPosition.minus(quantity).lt(0)) {
+              avgEntryPrice = currentPosition
+                .abs()
+                .times(avgEntryPrice)
+                .plus(value)
+                .div(currentPosition.abs().plus(quantity));
+            }
+            currentPosition = currentPosition.minus(quantity);
+          } else {
+            // Closing Long
+            const closeQty = Decimal.min(quantity, currentPosition);
+            const remainQty = quantity.minus(closeQty);
+
+            // Calc PnL on closed portion: (Exit - Entry) * Qty for Long
+            const tradePnl = price.minus(avgEntryPrice).times(closeQty);
+            realizedPnl = realizedPnl.plus(tradePnl);
+
+            // Update Win/Loss stats
+            if (tradePnl.gt(0)) {
+              winningTrades++;
+              if (tradePnl.gt(largestWin)) largestWin = tradePnl;
+            } else if (tradePnl.lt(0)) {
+              losingTrades++;
+              if (tradePnl.lt(largestLoss)) largestLoss = tradePnl;
+            }
+
+            currentPosition = currentPosition.minus(closeQty); // Move towards 0
+
+            // If flipped to Short
+            if (remainQty.gt(0)) {
+              // Remaining becomes new short
+              currentPosition = currentPosition.minus(remainQty);
+              avgEntryPrice = price;
+            }
+          }
+        }
+      }
+    }
+
+    // Set calculated values to performance object
+    perf.position.currentPosition = currentPosition;
+    perf.position.avgEntryPrice = avgEntryPrice;
+    perf.pnl.realizedPnL = realizedPnl;
+    perf.pnl.totalFees = totalFees;
+    perf.activity.totalVolume = totalVolume;
+    perf.activity.winningTrades = winningTrades;
+    perf.activity.losingTrades = losingTrades;
+    perf.activity.totalTrades = winningTrades + losingTrades;
+    perf.activity.largestWin = largestWin;
+    perf.activity.largestLoss = largestLoss;
+
+    // Derived Metrics
+    // Unrealized PnL
+    if (currentPrice && !currentPosition.isZero()) {
+      const priceDec = new Decimal(currentPrice);
+      perf.position.currentPrice = priceDec;
+      if (currentPosition.gt(0)) {
+        perf.pnl.unrealizedPnL = currentPosition.times(priceDec.minus(avgEntryPrice));
+      } else {
+        perf.pnl.unrealizedPnL = currentPosition
+          .abs()
+          .times(avgEntryPrice.minus(priceDec));
+      }
+    }
+
+    perf.pnl.totalPnL = perf.pnl.realizedPnL.plus(perf.pnl.unrealizedPnL);
+    perf.pnl.netPnL = perf.pnl.totalPnL.minus(perf.pnl.totalFees);
+
+    if (perf.activity.totalTrades > 0) {
+      perf.pnl.winRate = new Decimal(winningTrades)
+        .div(perf.activity.totalTrades)
+        .times(100);
+    }
+
+    // Symbol Stats (Simplified for single symbol strategy)
+    if (perf.symbols.length > 0) {
+      perf.symbols[0].netPosition = currentPosition;
+      perf.symbols[0].boughtQuantity = perf.orders.long.filled.totalQuantity;
+      perf.symbols[0].soldQuantity = perf.orders.short.filled.totalQuantity;
+      perf.symbols[0].boughtValue = perf.orders.long.filled.totalValue;
+      perf.symbols[0].soldValue = perf.orders.short.filled.totalValue;
+    }
+
+    return perf;
   }
 }

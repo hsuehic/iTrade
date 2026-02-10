@@ -1,25 +1,23 @@
-'use client';
-
 import { useTranslations } from 'next-intl';
 import { StrategyPerformanceEntity } from '@itrade/data-manager';
+import type { StrategyPerformance } from '@itrade/core';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import {
   IconTrendingUp,
   IconTrendingDown,
   IconChartBar,
   IconActivity,
-  IconClock,
   IconTarget,
 } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import { Decimal } from 'decimal.js';
 
 interface StrategyPerformanceMetricsProps {
-  performance?: StrategyPerformanceEntity;
+  performance?: StrategyPerformanceEntity | StrategyPerformance | null;
 }
 
-const formatCurrency = (value: number | string | Decimal) => {
+const formatCurrency = (value: number | string | Decimal | undefined) => {
+  if (value === undefined || value === null) return '$0.00';
   const num =
     typeof value === 'object' && 'toNumber' in value ? value.toNumber() : Number(value);
   return new Intl.NumberFormat('en-US', {
@@ -30,13 +28,15 @@ const formatCurrency = (value: number | string | Decimal) => {
   }).format(num);
 };
 
-const formatPercent = (value: number | string | Decimal) => {
+const formatPercent = (value: number | string | Decimal | undefined) => {
+  if (value === undefined || value === null) return '0.00%';
   const num =
     typeof value === 'object' && 'toNumber' in value ? value.toNumber() : Number(value);
   return `${num.toFixed(2)}%`;
 };
 
-const formatNumber = (value: number | string | Decimal, decimals = 2) => {
+const formatNumber = (value: number | string | Decimal | undefined, decimals = 2) => {
+  if (value === undefined || value === null) return '0';
   const num =
     typeof value === 'object' && 'toNumber' in value ? value.toNumber() : Number(value);
   return num.toLocaleString('en-US', { maximumFractionDigits: decimals });
@@ -60,7 +60,44 @@ export function StrategyPerformanceMetrics({
     );
   }
 
-  const isProfitable = Number(performance.totalPnL) >= 0;
+  // Normalize data
+  let data;
+  if ('totalPnL' in performance) {
+    // StrategyPerformanceEntity (Flat)
+    const p = performance as StrategyPerformanceEntity;
+    data = {
+      totalPnL: p.totalPnL,
+      roi: p.roi,
+      winRate: p.winRate,
+      winningTrades: p.winningTrades,
+      losingTrades: p.losingTrades,
+      totalOrders: p.totalOrders,
+      filledOrders: p.longOrdersFilledCount + p.shortOrdersFilledCount,
+      maxDrawdown: p.maxDrawdown,
+      sharpeRatio: p.sharpeRatio,
+    };
+  } else {
+    // StrategyPerformance Interface (Nested)
+    const p = performance as StrategyPerformance;
+    data = {
+      totalPnL: p.pnl?.totalPnL || 0,
+      roi: p.pnl?.roi || 0,
+      winRate: p.pnl?.winRate || 0,
+      winningTrades: p.activity?.winningTrades || 0,
+      losingTrades: p.activity?.losingTrades || 0,
+      totalOrders:
+        (p.orders?.long?.total?.count || 0) + (p.orders?.short?.total?.count || 0),
+      filledOrders:
+        (p.orders?.long?.filled?.count || 0) + (p.orders?.short?.filled?.count || 0),
+      maxDrawdown: (p.pnl as any).maxDrawdown || 0,
+      sharpeRatio: (p.pnl as any).sharpeRatio || 0,
+    };
+  }
+
+  const isProfitable =
+    (typeof data.totalPnL === 'object' && 'toNumber' in data.totalPnL
+      ? data.totalPnL.toNumber()
+      : Number(data.totalPnL)) >= 0;
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -81,10 +118,10 @@ export function StrategyPerformanceMetrics({
               isProfitable ? 'text-green-500' : 'text-red-500',
             )}
           >
-            {formatCurrency(performance.totalPnL)}
+            {formatCurrency(data.totalPnL)}
           </div>
           <p className="text-xs text-muted-foreground">
-            {t('roi')}: {formatPercent(performance.roi)}
+            {t('roi')}: {formatPercent(data.roi)}
           </p>
         </CardContent>
       </Card>
@@ -96,10 +133,9 @@ export function StrategyPerformanceMetrics({
           <IconTarget className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{formatPercent(performance.winRate)}</div>
+          <div className="text-2xl font-bold">{formatPercent(data.winRate)}</div>
           <p className="text-xs text-muted-foreground">
-            {formatNumber(performance.winningTrades)} W /{' '}
-            {formatNumber(performance.losingTrades)} L
+            {formatNumber(data.winningTrades)} W / {formatNumber(data.losingTrades)} L
           </p>
         </CardContent>
       </Card>
@@ -111,15 +147,9 @@ export function StrategyPerformanceMetrics({
           <IconActivity className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">
-            {formatNumber(performance.totalOrders, 0)}
-          </div>
+          <div className="text-2xl font-bold">{formatNumber(data.totalOrders, 0)}</div>
           <p className="text-xs text-muted-foreground">
-            Filled:{' '}
-            {formatNumber(
-              performance.longOrdersFilledCount + performance.shortOrdersFilledCount,
-              0,
-            )}
+            Filled: {formatNumber(data.filledOrders, 0)}
           </p>
         </CardContent>
       </Card>
@@ -132,10 +162,10 @@ export function StrategyPerformanceMetrics({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-red-500">
-            {formatPercent(performance.maxDrawdown)}
+            {formatPercent(data.maxDrawdown)}
           </div>
           <p className="text-xs text-muted-foreground">
-            Sharpe: {formatNumber(performance.sharpeRatio)}
+            Sharpe: {formatNumber(data.sharpeRatio)}
           </p>
         </CardContent>
       </Card>
