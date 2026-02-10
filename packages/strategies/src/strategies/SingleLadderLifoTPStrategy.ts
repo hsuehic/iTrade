@@ -257,7 +257,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private processedQuantityMap: Map<string, Decimal> = new Map();
   private tpRefreshTracker: Map<string, { qty: Decimal; time: number }> = new Map();
   private lastOrderBookPrice: Decimal | null = null;
-  private initialDataProcessed = false;
 
   constructor(config: StrategyConfig<SingleLadderLifoTPParameters>) {
     super(config);
@@ -273,12 +272,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.checkMarketPrice = parameters.checkMarketPrice ?? true;
     this.tpRefreshMinIntervalMs = Math.max(parameters.tpRefreshMinIntervalMs ?? 0, 0);
 
-    if (this.takeProfitPercent < this.stepPercent / 2) {
-      throw new Error(
-        `Invalid Take Profit: takeProfitPercent (${this.takeProfitPercent * 100}%) must be >= stepPercent/2 (${(this.stepPercent / 2) * 100}%)`,
-      );
-    }
-
     this.referencePrice = new Decimal(this.basePrice);
 
     if (this.minSize > this.maxSize) {
@@ -286,19 +279,10 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         `Invalid size limits: minSize (${this.minSize}) > maxSize (${this.maxSize})`,
       );
     }
-
-    this._logger.info(`🪜 [SingleLadderLifoTP] Strategy initialized.`);
   }
 
   private getOrderTime(order: Order): number {
     return (order.updateTime ?? order.timestamp).getTime();
-  }
-
-  private pickLatestOrder(orders: Order[]): Order | null {
-    if (orders.length === 0) return null;
-    return orders.reduce((latest, current) =>
-      this.getOrderTime(current) > this.getOrderTime(latest) ? current : latest,
-    );
   }
 
   private isActiveEntryOrder(order: Order): boolean {
@@ -432,21 +416,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   public override async processInitialData(
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
-    this._logger.info(`📊 [SingleLadderLifoTP] Processing initial data...`);
     const signals: StrategyResult[] = [];
     const performanceSummary = this.getPerformanceSummary?.();
     const performance = this.getPerformance?.();
-    if (performanceSummary) {
-      this._logger.info(
-        `📈 [SingleLadderLifoTP] Performance summary on start: totalOrders=${performanceSummary.totalOrders}, pendingOrders=${performanceSummary.pendingOrders}, currentPosition=${performanceSummary.currentPosition}`,
-      );
-    }
-    if (performance) {
-      this._logger.info(
-        `📈 [SingleLadderLifoTP] Performance snapshot: currentPosition=${performance.position.currentPosition.toFixed(8)}, avgEntryPrice=${performance.position.avgEntryPrice.toFixed(8)}, filledQty=${performance.orders.long.filled.totalQuantity.plus(performance.orders.short.filled.totalQuantity).toFixed(8)}`,
-      );
-    }
-
     if (initialData.openOrders) {
       const ownedOrders = initialData.openOrders.filter((order) => {
         if (order.symbol !== this._context.symbol) return false;
@@ -475,19 +447,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         }
         this.orders.set(order.clientOrderId, order);
 
-        if (metadata?.signalType === SignalType.TakeProfit) {
-          this._logger.info(
-            `🗑️ Found existing TP order on start, cancelling per requirement: ${order.clientOrderId}`,
-          );
-          signals.push({
-            action: 'cancel',
-            clientOrderId: order.clientOrderId,
-            symbol: this._symbol,
-            reason: 'no_tp_on_start',
-          });
-          return;
-        }
-
         if (order.side === OrderSide.BUY) {
           entryBuys.push(order);
         } else {
@@ -512,85 +471,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
         }
       });
-
-      const keepBuy = this.pickLatestOrder(entryBuys);
-      const keepSell = this.pickLatestOrder(entrySells);
-
-      if (entryBuys.length > 1) {
-        this._logger.warn(
-          `⚠️ Found multiple BUY orders on start. Keeping ${keepBuy?.clientOrderId ?? 'none'} and cancelling ${entryBuys.length - 1} extra order(s).`,
-        );
-      }
-      if (entrySells.length > 1) {
-        this._logger.warn(
-          `⚠️ Found multiple SELL orders on start. Keeping ${keepSell?.clientOrderId ?? 'none'} and cancelling ${entrySells.length - 1} extra order(s).`,
-        );
-      }
-
-      entryBuys.forEach((order) => {
-        if (keepBuy && order.clientOrderId === keepBuy.clientOrderId) return;
-        if (!order.clientOrderId) return;
-        signals.push({
-          action: 'cancel',
-          clientOrderId: order.clientOrderId,
-          symbol: this._symbol,
-          reason: 'single_buy_order_enforced',
-        });
-      });
-
-      entrySells.forEach((order) => {
-        if (keepSell && order.clientOrderId === keepSell.clientOrderId) return;
-        if (!order.clientOrderId) return;
-        signals.push({
-          action: 'cancel',
-          clientOrderId: order.clientOrderId,
-          symbol: this._symbol,
-          reason: 'single_sell_order_enforced',
-        });
-      });
-
-      if (keepBuy?.clientOrderId) {
-        this.openLowerOrder = keepBuy;
-        this._logger.info(
-          `🔍 Found existing Lower Entry order: ${keepBuy.clientOrderId}`,
-        );
-      }
-      if (keepSell?.clientOrderId) {
-        this.openUpperOrder = keepSell;
-        this._logger.info(
-          `🔍 Found existing Upper Entry order: ${keepSell.clientOrderId}`,
-        );
-      }
-
-      if (filledSnapshots.length > 0) {
-        filledSnapshots.sort((a, b) => a.timestamp - b.timestamp);
-        this.filledEntries = filledSnapshots.map((snapshot) => ({
-          side: snapshot.side,
-          price: snapshot.price,
-          amount: snapshot.amount,
-          clientOrderId: snapshot.clientOrderId,
-          timestamp: snapshot.timestamp,
-          referencePriceBefore: snapshot.referencePriceBefore,
-        }));
-        this.tradedSize = filledSnapshots.reduce((total, snapshot) => {
-          return total.plus(
-            snapshot.side === 'LONG' ? snapshot.amount : snapshot.amount.neg(),
-          );
-        }, new Decimal(0));
-        this._logger.info(
-          `🧩 Restored ${filledSnapshots.length} filled entries from open orders. Size=${this.tradedSize.toFixed(8)}`,
-        );
-      }
-    }
-
-    if (initialData.orderBook) {
-      this.updateOrderBookPrice(initialData.orderBook);
-    }
-
-    if (initialData.positions && initialData.positions.length > 0) {
-      this._logger.info(
-        `ℹ️ Initial positions loaded (${initialData.positions.length}) but not applied to tradedSize per strategy rule.`,
-      );
     }
 
     const performancePosition = performance?.position.currentPosition ?? null;
@@ -601,9 +481,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       this.filledEntries.length === 0
     ) {
       this.tradedSize = performancePosition;
-      this._logger.info(
-        `📌 Restored position from performance: size=${this.tradedSize.toFixed(8)} avgPrice=${this.referencePrice.toFixed(8)}`,
-      );
       const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
       const amount = this.tradedSize.abs();
       const entryPrice =
@@ -618,9 +495,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         timestamp: Date.now(),
         referencePriceBefore: this.referencePrice,
       });
-      this._logger.info(
-        `🧩 Seeded LIFO entry from performance position: ${side} ${amount.toFixed(8)} @ ${this.referencePrice.toFixed(8)}`,
-      );
     } else if (
       performanceSummary &&
       this.tradedSize.isZero() &&
@@ -629,9 +503,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       const summaryPosition = new Decimal(performanceSummary.currentPosition);
       if (!summaryPosition.isZero()) {
         this.tradedSize = summaryPosition;
-        this._logger.info(
-          `📌 Restored position from performance summary: size=${this.tradedSize.toFixed(8)} avgPrice=${this.referencePrice.toFixed(8)}`,
-        );
         const side: EntrySide = this.tradedSize.gt(0) ? 'LONG' : 'SHORT';
         const amount = this.tradedSize.abs();
         const entryPrice =
@@ -646,30 +517,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           timestamp: Date.now(),
           referencePriceBefore: this.referencePrice,
         });
-        this._logger.info(
-          `🧩 Seeded LIFO entry from performance summary: ${side} ${amount.toFixed(8)} @ ${this.referencePrice.toFixed(8)}`,
-        );
       }
     }
 
-    this.initialDataProcessed = true;
     const newSignals = this.updateLadderOrders(false);
     signals.push(...newSignals);
 
-    this._logger.info(
-      `🚀 [SingleLadderLifoTP] Initialization complete. Found ${signals.length} initial signals.`,
-    );
     return signals;
-  }
-
-  private isBuySignal(clientOrderId: string): boolean {
-    const metadata = this.orderMetadataMap.get(clientOrderId);
-    return metadata?.side === OrderSide.BUY;
-  }
-
-  private isSellSignal(clientOrderId: string): boolean {
-    const metadata = this.orderMetadataMap.get(clientOrderId);
-    return metadata?.side === OrderSide.SELL;
   }
 
   private generateLongEntrySignal(price: Decimal): StrategyOrderResult {
@@ -933,10 +787,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         if (tpPlan) {
           if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.SELL)) {
             signals.push(this.createTakeProfitSignal(tpPlan));
-          } else {
-            this._logger.warn(
-              `⏳ Skip TP signal above range: price=${tpPlan.tpPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
-            );
           }
         }
       }
@@ -945,10 +795,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         const sellPrice = this.referencePrice.mul(1 + this.stepPercent);
         if (this.isSignalPriceWithinOrderBookRange(sellPrice, OrderSide.SELL)) {
           signals.push(this.generateShortEntrySignal(sellPrice));
-        } else {
-          this._logger.warn(
-            `⏳ Skip SELL entry outside range: price=${sellPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
-          );
         }
       }
     }
@@ -1055,9 +901,9 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     metadata: ExtendedSignalMetaData,
   ): StrategyResult[] {
     if (order.status !== OrderStatus.FILLED) return [];
-    if (order.status === OrderStatus.FILLED) {
-      this.pendingClientOrderIds.delete(order.clientOrderId!);
-    }
+
+    this.pendingClientOrderIds.delete(order.clientOrderId!);
+
     if (metadata.signalType === SignalType.Entry) return this.handleEntryFilled(order);
     if (metadata.signalType === SignalType.TakeProfit)
       return this.handleTpFilled(order, metadata);
@@ -1265,13 +1111,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     return this.updateLadderOrders();
   }
 
-  public override async onOrderCreated(order: Order): Promise<void> {
-    if (order.side === OrderSide.BUY) this.openLowerOrder = order;
-    else this.openUpperOrder = order;
-    if (order.clientOrderId) this.pendingClientOrderIds.delete(order.clientOrderId);
-    this.orders.set(order.clientOrderId || order.id, order);
-  }
-
   protected async onCleanup(): Promise<void> {
     this.orders.clear();
     this.orderMetadataMap.clear();
@@ -1280,7 +1119,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     this.pendingClientOrderIds.clear();
     this.filledEntries = [];
     this.tradedSize = new Decimal(0);
-    this.initialDataProcessed = false;
 
     this.processedQuantityMap.clear();
     this.tpRefreshTracker.clear();
@@ -1318,9 +1156,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
   public override getSubscriptionConfig() {
     return {
-      orderbook: this.checkMarketPrice
-        ? { enabled: true, depth: 20 }
-        : { enabled: false },
+      orderbook: this.checkMarketPrice ? { enabled: true, depth: 5 } : { enabled: false },
       method: 'websocket' as const,
       exchange: this._context.exchange,
     };

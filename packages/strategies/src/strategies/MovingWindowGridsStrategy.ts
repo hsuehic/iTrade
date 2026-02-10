@@ -36,13 +36,11 @@ export const MovingWindowGridsStrategyRegistryConfig: StrategyRegistryConfig<Mov
     implemented: true,
     category: 'volatility',
     defaultParameters: {
-      windowSize: 20,
-      gridSize: 0.005,
-      gridCount: 5,
       minVolatility: 0.5,
       takeProfitRatio: 1,
       baseSize: 1000,
       maxSize: 10000,
+      leverage: 10,
     },
     parameterDefinitions: [
       {
@@ -253,7 +251,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.orderMetadataMap.set(clientOrderId, metadata);
 
     this._logger.info(`🎯 [Entry Signal Generated] clientOrderId: ${clientOrderId}`);
-    this._logger.info(`   Price: ${price.toString()}, Quantity: ${quantity.toString()}`);
+    this._logger.info(
+      ` Token: ${this._symbol},  Price: ${price.toString()}, Quantity: ${quantity.toString()}`,
+    );
 
     return {
       action: 'buy',
@@ -293,7 +293,9 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this._logger.info(
       `🎯 [Take Profit Signal Generated] clientOrderId: ${clientOrderId}`,
     );
-    this._logger.info(`   Price: ${price.toString()}, Quantity: ${quantity.toString()}`);
+    this._logger.info(
+      ` Token: ${this._symbol},  Price: ${price.toString()}, Quantity: ${quantity.toString()}`,
+    );
 
     return {
       action: 'sell',

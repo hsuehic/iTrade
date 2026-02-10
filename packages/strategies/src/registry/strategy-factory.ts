@@ -28,6 +28,11 @@ import {
 } from '../strategies/SingleLadderLifoTPStrategy';
 import { StrategyRegistryConfig } from '../type';
 
+import {
+  SpreadGridStrategy,
+  SpreadGridStrategyRegistryConfig,
+} from '../strategies/SpreadGridStrategy';
+
 // ============================================================================
 // 策略参数接口定义
 // ============================================================================
@@ -43,7 +48,8 @@ export type StrategyTypeKey =
   | 'MovingAverageStrategy'
   | 'MovingWindowGridsStrategy'
   | 'HammerChannelStrategy'
-  | 'SingleLadderLifoTPStrategy';
+  | 'SingleLadderLifoTPStrategy'
+  | 'SpreadGridStrategy';
 
 /**
  * 策略构造函数类型
@@ -142,6 +148,11 @@ registry.register(
   'SingleLadderLifoTPStrategy',
   SingleLadderLifoTPStrategy,
   SingleLadderLifoTPStrategyRegistryConfig,
+);
+registry.register(
+  'SpreadGridStrategy',
+  SpreadGridStrategy,
+  SpreadGridStrategyRegistryConfig,
 );
 
 // ============================================================================

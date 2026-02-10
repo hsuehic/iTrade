@@ -165,7 +165,6 @@ export abstract class BaseStrategy<
     this._logger.debug(
       `[${this.strategyType}:${this._strategyId}] Order created: ${order.clientOrderId} (${order.side} ${order.quantity.toString()} @ ${order.price?.toString() || 'MARKET'})`,
     );
-    // Subclasses can override this to track their orders
   }
 
   public async onOrderFilled(order: Order): Promise<void> {
