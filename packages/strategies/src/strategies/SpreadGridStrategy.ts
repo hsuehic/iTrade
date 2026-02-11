@@ -217,6 +217,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private openLowerOrder: Order | null = null; // Always BUY (Entry or TP)
   private openUpperOrder: Order | null = null; // Always SELL (Entry or TP)
   private pendingClientOrderIds: Set<string> = new Set();
+  private processedFillIds: Set<string> = new Set();
   private orders: Map<string, Order> = new Map();
   private orderMetadataMap: Map<string, ExtendedSignalMetaData> = new Map();
   private processedQuantityMap: Map<string, Decimal> = new Map();
@@ -348,12 +349,21 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const performance = this.getPerformance?.();
     if (initialData.openOrders) {
       const ownedOrders = initialData.openOrders.filter((order) => {
-        if (order.symbol !== this._context.symbol) return false;
-        return (
-          (order.strategyId && order.strategyId === this.getStrategyId()) ||
-          (order.clientOrderId && this.isStrategyOrderId(order.clientOrderId))
-        );
+        // Prioritize Strategy ID / Client Order ID match over Symbol match
+        // This handles cases where symbols might differ slightly (e.g. BTC-USDT vs BTC/USDT)
+        const isIdMatch =
+          order.strategyId && String(order.strategyId) === String(this.getStrategyId());
+        const isClientOIdMatch =
+          order.clientOrderId && this.isStrategyOrderId(order.clientOrderId);
+
+        if (isIdMatch || isClientOIdMatch) return true;
+
+        return false;
       });
+
+      this._logger.info(
+        `[SpreadGrid] Found ${ownedOrders.length} owned open orders from initial data`,
+      );
 
       ownedOrders.forEach((order) => {
         if (!order.clientOrderId) return;
@@ -421,6 +431,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const signals: StrategyResult[] = [];
     for (const order of orders) {
       if (!order.clientOrderId) continue;
+      if (this.processedFillIds.has(order.clientOrderId)) continue;
 
       let metadata = this.orderMetadataMap.get(order.clientOrderId);
       if (!metadata) metadata = this.ensureRecoveredMetadata(order);
@@ -430,9 +441,13 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       if (
         existingOrder?.updateTime &&
         order.updateTime &&
-        existingOrder.updateTime.getTime() >= order.updateTime.getTime()
-      )
+        existingOrder.updateTime.getTime() > order.updateTime.getTime()
+      ) {
+        this._logger.warn(
+          `[SpreadGrid] Ignoring stale order update for ${order.clientOrderId}. Existing: ${existingOrder.updateTime.toISOString()}, New: ${order.updateTime.toISOString()}`,
+        );
         continue;
+      }
 
       this.orders.set(order.clientOrderId, order);
       if (metadata.signalType === SignalType.Entry) {
@@ -440,12 +455,18 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
           order.status === OrderStatus.NEW ||
           order.status === OrderStatus.PARTIALLY_FILLED
         ) {
+          if (order.status === OrderStatus.NEW) {
+            this._logger.info(`[SpreadGrid] Order ${order.clientOrderId} is NEW`);
+          }
           if (order.side === OrderSide.BUY) {
             this.openLowerOrder = order;
           } else {
             this.openUpperOrder = order;
           }
         } else if (order.status === OrderStatus.FILLED) {
+          this._logger.info(
+            `[SpreadGrid] Order ${order.clientOrderId} FILLED. Processing fill...`,
+          );
           return this.handleOrderFilled(order);
         }
       }
@@ -456,6 +477,11 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private handleOrderFilled(order: Order): StrategyResult[] {
     const signals: StrategyResult[] = [];
     const filledQty = order.executedQuantity || order.quantity || new Decimal(0);
+
+    this._logger.info(
+      `[SpreadGrid] Handle Fill: ${order.clientOrderId} ${order.side} ${filledQty} @ ${order.averagePrice || order.price}`,
+    );
+
     if (order.side === OrderSide.BUY) {
       this.positionSize = this.positionSize.add(filledQty);
     } else {
@@ -466,6 +492,25 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     if (fillPrice) {
       this.referencePrice = fillPrice;
     }
+
+    this._logger.info(
+      `[SpreadGrid] New Position Size: ${this.positionSize}, Ref Price: ${this.referencePrice}`,
+    );
+
+    // Record filled entry
+    if (order.clientOrderId) {
+      this.processedFillIds.add(order.clientOrderId);
+      const entry: FilledEntry = {
+        side: order.side === OrderSide.BUY ? 'LONG' : 'SHORT',
+        price: this.referencePrice, // Using updated reference price
+        amount: filledQty,
+        clientOrderId: order.clientOrderId,
+        timestamp: Date.now(),
+        referencePriceBefore: this.referencePrice, // Note: this is actually post-update
+      };
+      this.filledEntries.push(entry);
+    }
+
     // cancel all existing orders
     this.orders.forEach((o) => {
       if (o.clientOrderId && o.clientOrderId !== order.clientOrderId) {
@@ -483,11 +528,23 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     if (this.canAddLong()) {
       const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
       signals.push(this.generatePlaceOrderSignal(price, OrderSide.BUY));
+      this._logger.info(`[SpreadGrid] Generated BUY signal @ ${price}`);
+    } else {
+      this._logger.info(
+        `[SpreadGrid] Skipping BUY: canAddLong=false (Pos: ${this.positionSize}, Max: ${this.maxSize})`,
+      );
     }
+
     if (this.canAddShort()) {
       const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
       signals.push(this.generatePlaceOrderSignal(price, OrderSide.SELL));
+      this._logger.info(`[SpreadGrid] Generated SELL signal @ ${price}`);
+    } else {
+      this._logger.info(
+        `[SpreadGrid] Skipping SELL: canAddShort=false (Pos: ${this.positionSize}, Min: ${this.minSize})`,
+      );
     }
+
     return signals;
   }
 
@@ -509,8 +566,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
   private isStrategyOrderId(clientOrderId: string): boolean {
     const strategyId = this.getStrategyId();
+    if (!strategyId) return false;
     const match = /^(E|T)(\d+)D/.exec(clientOrderId);
-    return !!match && match[2] === String(strategyId);
+    return !!match && String(match[2]) === String(strategyId);
   }
 
   protected async onCleanup(): Promise<void> {
@@ -519,6 +577,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     this.openLowerOrder = null;
     this.openUpperOrder = null;
     this.pendingClientOrderIds.clear();
+    this.processedFillIds.clear();
     this.filledEntries = [];
     this.positionSize = new Decimal(0);
 
