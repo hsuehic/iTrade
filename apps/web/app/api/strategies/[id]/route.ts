@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { StrategyStatus } from '@itrade/data-manager';
+import { TypeOrmDataManager, type StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
@@ -26,6 +26,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const dataManager = await getDataManager();
+    const dataManagerWithRebuild = dataManager as TypeOrmDataManager & {
+      rebuildStrategyPerformance?: (
+        strategyId: number,
+        symbol: string,
+        exchange: string,
+        strategyName?: string,
+      ) => Promise<unknown>;
+    };
     // Include user for ownership check
     const strategy = await dataManager.getStrategy(id, {
       includeUser: true,
@@ -44,11 +52,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     let rebuiltPerformance = null;
     try {
       if (
-        dataManager.rebuildStrategyPerformance &&
+        dataManagerWithRebuild.rebuildStrategyPerformance &&
         strategy.symbol &&
         strategy.exchange
       ) {
-        rebuiltPerformance = await dataManager.rebuildStrategyPerformance(
+        rebuiltPerformance = await dataManagerWithRebuild.rebuildStrategyPerformance(
           strategy.id,
           strategy.symbol,
           strategy.exchange,

@@ -1382,6 +1382,8 @@
       "maxDrawdown": "Max Drawdown"
     },
     "tabs": {
+      "realtime": "Realtime",
+      "orderBased": "Order-based",
       "orders": "Orders",
       "configuration": "Configuration"
     },

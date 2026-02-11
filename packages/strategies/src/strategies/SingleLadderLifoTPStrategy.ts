@@ -263,6 +263,11 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     const { parameters } = config;
 
     this.basePrice = parameters.basePrice;
+    if (parameters.takeProfitPercent < parameters.stepPercent / 2) {
+      throw new Error(
+        `Invalid Take Profit: takeProfitPercent (${parameters.takeProfitPercent}) must be >= stepPercent / 2 (${parameters.stepPercent / 2})`,
+      );
+    }
     this.stepPercent = parameters.stepPercent / 100;
     this.takeProfitPercent = parameters.takeProfitPercent / 100;
     this.orderAmount = parameters.orderAmount;
@@ -381,7 +386,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
   private isSignalPriceWithinOrderBookRange(price: Decimal, side: OrderSide): boolean {
     if (!this.checkMarketPrice) return true;
     const range = this.getOrderBookRange();
-    if (!range) return false;
+    if (!range) return true;
     const { minBid, maxAsk } = range;
     if (side === OrderSide.BUY) {
       return price.gte(minBid) && price.lte(maxAsk);
@@ -445,6 +450,18 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         if (!metadata) {
           metadata = this.ensureRecoveredMetadata(order);
         }
+
+        if (metadata?.signalType === SignalType.TakeProfit) {
+          signals.push({
+            action: 'cancel',
+            clientOrderId: order.clientOrderId,
+            symbol: this._symbol,
+            reason: 'cancel_existing_tp_on_start',
+          });
+          this.orderMetadataMap.delete(order.clientOrderId);
+          return;
+        }
+
         this.orders.set(order.clientOrderId, order);
 
         if (order.side === OrderSide.BUY) {

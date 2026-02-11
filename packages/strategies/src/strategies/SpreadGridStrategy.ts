@@ -14,6 +14,7 @@ import {
   InitialDataResult,
   OrderSide,
   OrderBook,
+  StrategyCancelOrderResult,
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
@@ -331,10 +332,10 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     };
   }
 
-  private generateCancelOrderSignal(clientOrderId: string): StrategyResult {
+  private generateCancelOrderSignal(order: Order): StrategyCancelOrderResult {
     return {
       action: 'cancel',
-      clientOrderId,
+      orderId: order.id,
       symbol: this._symbol,
       reason: 'cancel',
     };
@@ -454,21 +455,29 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
   private handleOrderFilled(order: Order): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    const filledQty = order.executedQuantity || order.quantity || new Decimal(0);
     if (order.side === OrderSide.BUY) {
-      this.positionSize = this.positionSize.add(this.orderAmount);
+      this.positionSize = this.positionSize.add(filledQty);
     } else {
-      this.positionSize = this.positionSize.sub(this.orderAmount);
+      this.positionSize = this.positionSize.sub(filledQty);
     }
-    this.referencePrice = order.price!;
+
+    const fillPrice = order.averagePrice || order.price;
+    if (fillPrice) {
+      this.referencePrice = fillPrice;
+    }
     // cancel all existing orders
     this.orders.forEach((o) => {
       if (o.clientOrderId && o.clientOrderId !== order.clientOrderId) {
-        signals.push(this.generateCancelOrderSignal(o.clientOrderId));
+        signals.push(this.generateCancelOrderSignal(o));
       }
     });
 
     this.orders.clear();
     this.orderMetadataMap.clear();
+    this.pendingClientOrderIds.clear();
+    this.openLowerOrder = null;
+    this.openUpperOrder = null;
 
     // place new orders
     if (this.canAddLong()) {

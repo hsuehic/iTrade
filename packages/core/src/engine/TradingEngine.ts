@@ -836,14 +836,32 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
+      const resolvedOrder =
+        !signal.orderId && signal.clientOrderId
+          ? this.findOrderByClientOrderId(
+              signal.clientOrderId,
+              exchangeName,
+              targetSymbol,
+            )
+          : undefined;
+
+      const orderId = signal.orderId || resolvedOrder?.id || '';
+
+      if (!orderId && !signal.clientOrderId) {
+        this.logger.warn(
+          `Cancel skipped: Missing orderId/clientOrderId for ${strategyName} (${targetSymbol})`,
+        );
+        return;
+      }
+
       this.logger.info(
         `🚫 Cancelling order: ${signal.orderId || signal.clientOrderId} (reason: ${signal.reason})`,
       );
 
       const cancelledOrder = await exchange.cancelOrder(
         targetSymbol,
-        signal.orderId || '',
-        signal.clientOrderId,
+        orderId,
+        signal.clientOrderId || resolvedOrder?.clientOrderId,
       );
 
       this.logger.logStrategy('Order cancelled', {
@@ -890,9 +908,15 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
+      const resolvedOrder = this.findOrderByClientOrderId(
+        signal.clientOrderId,
+        exchangeName,
+        targetSymbol,
+      );
+
       const existingOrder = await exchange.getOrder(
         targetSymbol,
-        '',
+        resolvedOrder?.id || '',
         signal.clientOrderId,
       );
 
@@ -910,7 +934,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         `🛠️ Updating order (cancel+replace): ${signal.clientOrderId} -> ${signal.newClientOrderId}`,
       );
 
-      await exchange.cancelOrder(targetSymbol, '', signal.clientOrderId);
+      await exchange.cancelOrder(
+        targetSymbol,
+        resolvedOrder?.id || '',
+        signal.clientOrderId,
+      );
 
       const orderType = nextPrice ? OrderType.LIMIT : OrderType.MARKET;
       const side = existingOrder.side;
@@ -1378,6 +1406,28 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Notify strategies of specific position update
       this.onAccountUpdate({ positions, exchangeName });
     });
+  }
+
+  private findOrderByClientOrderId(
+    clientOrderId: string,
+    exchangeName?: string,
+    symbol?: string,
+  ): Order | undefined {
+    const exchangesToSearch = exchangeName
+      ? [exchangeName]
+      : Array.from(this._orders.keys());
+
+    for (const exchangeKey of exchangesToSearch) {
+      const orders = this._orders.get(exchangeKey) || [];
+      const match = orders.find((order) => {
+        if (order.clientOrderId !== clientOrderId) return false;
+        if (symbol && order.symbol !== symbol) return false;
+        return true;
+      });
+      if (match) return match;
+    }
+
+    return undefined;
   }
 
   /**

@@ -1361,6 +1361,12 @@
       "symbol": "交易对：",
       "exchange": "交易所：",
       "warning": "此操作不可撤销，将永久删除该策略及其所有关联数据。"
+    },
+    "tabs": {
+      "realtime": "实时",
+      "orderBased": "按订单",
+      "orders": "订单",
+      "configuration": "配置"
     }
   },
   "orders": {
