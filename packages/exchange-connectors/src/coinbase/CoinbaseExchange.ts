@@ -1368,10 +1368,40 @@ export class CoinbaseExchange extends BaseExchange {
         ),
       );
     }
-    const orderType =
-      orderData.order_type ||
-      orderData.type ||
-      (limitConfig ? 'LIMIT' : marketConfig ? 'MARKET' : 'LIMIT');
+    // Determine order type with stronger checks
+    // If we have limit configuration or a limit price, it's definitely a LIMIT order
+    // This prevents partial updates (fills) from being misclassified as MARKET if they lack type info
+    const hasLimitConfig = !!(limitConfig?.limit_price || limitConfig?.stop_price);
+    const hasLimitPrice = !!(orderData.limit_price || orderData.price);
+
+    let orderTypeStr = orderData.order_type || orderData.type;
+
+    if (!orderTypeStr) {
+      if (hasLimitConfig || hasLimitPrice) {
+        orderTypeStr = 'LIMIT';
+      } else if (marketConfig) {
+        orderTypeStr = 'MARKET';
+      } else {
+        orderTypeStr = 'LIMIT'; // Default fallback
+      }
+    } else {
+      // If type is explicitly MARKET but we have limit price/config, it might be a mistake in the update payload
+      // or a specific fill event structure. Trust the presence of limit price.
+      const isMarketType = orderTypeStr.toUpperCase() === 'MARKET';
+      if (isMarketType && (hasLimitConfig || hasLimitPrice)) {
+        // It's possible for a MARKET order to have a price (execution price), but usually not limit_price
+        // specific fields check:
+        if (orderData.limit_price || limitConfig) {
+          console.warn(
+            `[Coinbase] Order has MARKET type but contains limit_price/config. Forcing LIMIT type.`,
+          );
+          orderTypeStr = 'LIMIT';
+        }
+      }
+    }
+
+    const orderType = orderTypeStr;
+
     const priceValue =
       orderData.price || orderData.limit_price || limitConfig?.limit_price;
 
@@ -1954,8 +1984,8 @@ export class CoinbaseExchange extends BaseExchange {
       type: this.transformOrderType(o.order_type || o.type || 'LIMIT'),
       quantity: this.formatDecimal(quantityStr),
       price:
-        o.price || o.limit_price
-          ? this.formatDecimal(o.price || o.limit_price)
+        o.price || o.limit_price || limitConfig?.limit_price
+          ? this.formatDecimal(o.price || o.limit_price || limitConfig?.limit_price)
           : undefined,
       status,
       timeInForce: this.transformTimeInForce(o.time_in_force),

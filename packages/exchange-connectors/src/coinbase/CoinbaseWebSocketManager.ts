@@ -284,18 +284,27 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     this.stopHeartbeat();
 
     this.state.heartbeatInterval = setInterval(() => {
-      if (this.state.ws?.readyState === WebSocket.OPEN) {
-        // Coinbase uses heartbeat subscriptions instead of ping/pong
-        // The heartbeat channel keeps the connection alive
-        // We don't need to send explicit pings
+      if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
+        return;
       }
 
       const lastActivityAt = this.state.lastActivityAt ?? 0;
       const now = Date.now();
+      const idleTime = now - lastActivityAt;
+
+      // If idle for more than `heartbeatInterval` (15s), send a ping to check connection
+      if (idleTime > this.heartbeatInterval) {
+        this.logger.info(`[Coinbase] Connection idle for ${idleTime}ms, sending ping...`);
+        this.state.ws.ping();
+      }
+
+      // If idle for more than `staleThreshold` (60s), consider it dead
       const staleThreshold = this.heartbeatInterval * 4;
-      if (lastActivityAt && now - lastActivityAt > staleThreshold) {
-        this.logger.warn('[Coinbase] Connection stale, terminating to trigger reconnect');
-        this.state.ws?.terminate();
+      if (idleTime > staleThreshold) {
+        this.logger.warn(
+          `[Coinbase] Connection stale (idle ${idleTime}ms), terminating to trigger reconnect`,
+        );
+        this.state.ws.terminate();
       }
     }, this.heartbeatInterval);
   }
