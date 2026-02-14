@@ -28,7 +28,9 @@
       "@itrade/risk-manager": ["../../packages/risk-manager/src"],
       "@itrade/risk-manager/*": ["../../packages/risk-manager/src/*"],
       "@itrade/portfolio-manager": ["../../packages/portfolio-manager/src"],
-      "@itrade/portfolio-manager/*": ["../../packages/portfolio-manager/src/*"]
+      "@itrade/portfolio-manager/*": ["../../packages/portfolio-manager/src/*"],
+      "@itrade/push-notification": ["../../packages/push-notification/src"],
+      "@itrade/push-notification/*": ["../../packages/push-notification/src/*"]
     }
   },
   "include": ["src/**/*"],
