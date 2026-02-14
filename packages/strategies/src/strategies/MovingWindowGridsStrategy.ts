@@ -472,10 +472,18 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           `✨ [New Order] Client Order ID: ${order.clientOrderId}, Type: ${signalType}, Status: ${order.status}`,
         );
 
-        if (signalType === 'entry') {
+        if (signalType === SignalType.Entry) {
           this.size += this.baseSize;
           this.orders.set(order.clientOrderId, order);
-        } else if (signalType === 'take_profit') {
+
+          // 🆕 FIX: Handle immediate fill for new orders
+          if (order.status === OrderStatus.FILLED) {
+            this._logger.info(
+              `✅ [Entry Order FULLY FILLED] (new order) Generating TP signal immediately for: ${order.clientOrderId}`,
+            );
+            return this.generateTakeProfitSignal(order);
+          }
+        } else if (signalType === SignalType.TakeProfit) {
           // Check if TP order is already FILLED when first seen
           if (order.status === OrderStatus.FILLED) {
             // TP filled immediately - Reduce size and clean up
@@ -577,7 +585,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         if (order.status === OrderStatus.FILLED) {
           const metadata = this.orderMetadataMap.get(order.clientOrderId);
 
-          if (metadata && metadata.signalType === 'entry') {
+          if (metadata && metadata.signalType === SignalType.Entry) {
             // Entry order filled - Generate TP signal
             this._logger.info(
               `✅ [Entry Order FULLY FILLED] Generating TP signal immediately for: ${order.clientOrderId}`,
@@ -586,7 +594,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             this.orders.set(order.clientOrderId, order);
             // Generate and return TP signal immediately
             return this.generateTakeProfitSignal(order);
-          } else if (metadata && metadata.signalType === 'take_profit') {
+          } else if (metadata && metadata.signalType === SignalType.TakeProfit) {
             // TP order filled - Reduce size and clean up
             this._logger.info(
               `✅ [TP Order FULLY FILLED] Reducing size for: ${order.clientOrderId}`,
@@ -666,7 +674,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       `   Signal Type: ${signalType} | Executed: ${executedQty.toString()}/${totalQty.toString()}`,
     );
 
-    if (signalType === 'entry') {
+    if (signalType === SignalType.Entry) {
       const hasGeneratedTP = this.findTakeProfitOrderByParentId(order.clientOrderId);
 
       if (hasGeneratedTP) {
@@ -718,7 +726,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         this.orderMetadataMap.delete(order.clientOrderId);
         this._logger.debug(`   🧹 Cleaned up unfilled entry order metadata`);
       }
-    } else if (signalType === 'take_profit') {
+    } else if (signalType === SignalType.TakeProfit) {
       const parentOrderId = metadata.parentOrderId;
 
       if (executedQty.gt(0) && executedQty.lt(totalQty)) {
