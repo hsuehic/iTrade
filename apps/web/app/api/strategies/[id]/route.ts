@@ -37,6 +37,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // Include user for ownership check
     const strategy = await dataManager.getStrategy(id, {
       includeUser: true,
+      includePerformance: true,
     });
 
     if (!strategy) {

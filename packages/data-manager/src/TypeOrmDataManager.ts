@@ -829,7 +829,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async getStrategy(
     id: number,
-    options?: { includeUser?: boolean },
+    options?: { includeUser?: boolean; includePerformance?: boolean },
   ): Promise<StrategyEntity | null> {
     this.ensureInitialized();
     return await this.strategyRepository.findById(id, options);
