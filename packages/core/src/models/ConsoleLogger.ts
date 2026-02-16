@@ -2,7 +2,7 @@ import { ILogger } from '../interfaces';
 import { LogLevel } from '../types';
 
 export class ConsoleLogger implements ILogger {
-  private level: LogLevel;
+  private level: LogLevel | undefined;
   private colors: { [key in LogLevel]: string } = {
     debug: '\x1b[36m', // Cyan
     info: '\x1b[32m', // Green
@@ -11,8 +11,14 @@ export class ConsoleLogger implements ILogger {
   };
   private reset = '\x1b[0m';
 
-  constructor(level: LogLevel = LogLevel.INFO) {
+  private static globalLevel: LogLevel = LogLevel.INFO;
+
+  constructor(level?: LogLevel) {
     this.level = level;
+  }
+
+  static setGlobalLevel(level: LogLevel): void {
+    ConsoleLogger.globalLevel = level;
   }
 
   private shouldLog(level: LogLevel): boolean {
@@ -22,7 +28,9 @@ export class ConsoleLogger implements ILogger {
       [LogLevel.WARN]: 2,
       [LogLevel.ERROR]: 3,
     };
-    return levels[level] >= levels[this.level];
+    const effectiveLevel =
+      this.level !== undefined ? this.level : ConsoleLogger.globalLevel;
+    return levels[level] >= levels[effectiveLevel];
   }
 
   private formatMessage(

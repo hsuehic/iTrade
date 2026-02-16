@@ -19,6 +19,7 @@ import {
   ExchangeInfo,
   SymbolInfo,
   TradeMode,
+  ConsoleLogger,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -39,6 +40,7 @@ export class CoinbaseExchange extends BaseExchange {
   private subscribedGranularities = new Map<string, string>(); // productId -> granularity (in seconds)
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private balancePollingInterval: NodeJS.Timeout | null = null; // Periodic balance polling
+  private logger = new ConsoleLogger();
 
   // 🆕 Initial snapshot tracking for user channel
   private isReceivingInitialSnapshot = true; // true until we receive first batch < 50 orders
@@ -76,13 +78,14 @@ export class CoinbaseExchange extends BaseExchange {
    */
   private setupWebSocketManagerListeners(): void {
     this.wsManager.on('connected', () => {
-      console.log('[Coinbase] WebSocket Manager connected');
+      this.logger.debug('[Coinbase] WebSocket Manager connected');
       // 🆕 Reset initial snapshot state on new connection
       this.resetInitialSnapshotState();
     });
 
     this.wsManager.on('disconnected', (code: number) => {
-      console.log(`[Coinbase] WebSocket Manager disconnected: ${code}`);
+      this.logger.debug(`[Coinbase] WebSocket Manager disconnected: ${code}`);
+      this.resetInitialSnapshotState();
     });
 
     this.wsManager.on('error', (error: Error) => {
@@ -100,7 +103,7 @@ export class CoinbaseExchange extends BaseExchange {
   private resetInitialSnapshotState(): void {
     this.isReceivingInitialSnapshot = true;
     this.initialSnapshotOrderCount = 0;
-    console.log(
+    this.logger.debug(
       '[Coinbase] 🔄 Initial snapshot state reset - will suppress events for existing orders',
     );
   }
@@ -329,15 +332,13 @@ export class CoinbaseExchange extends BaseExchange {
 
     // Add leverage for perpetual futures (up to 10x)
     if (isPerpetual && options?.leverage) {
-      console.log(
-        `[Coinbase] Setting leverage ${options.leverage}x for perpetual ${productId}`,
-      );
+      // Leverage setting log removed
     }
 
     const body = buildBody();
     const marginType = isPerpetual ? 'ISOLATED' : null;
 
-    console.log('[Coinbase] Creating order:', {
+    this.logger.info('[Coinbase] Creating order:', {
       product_id: productId,
       side,
       type,
@@ -352,7 +353,7 @@ export class CoinbaseExchange extends BaseExchange {
 
     const resp = await this.httpClient.post('/api/v3/brokerage/orders', body);
 
-    console.log('[Coinbase] Order response:', {
+    this.logger.debug('[Coinbase] Order response:', {
       status: resp.status,
       data: resp.data,
       hasOrder: !!(
@@ -401,7 +402,9 @@ export class CoinbaseExchange extends BaseExchange {
       );
     }
 
-    console.log('[Coinbase] Order created successfully:', orderData.order_id);
+    this.logger.info('[Coinbase] Order created successfully:', {
+      orderId: orderData.order_id,
+    });
 
     const order = this.transformOrder(normalizedOrderData);
     if (!order.quantity || order.quantity.isZero()) {
@@ -480,11 +483,9 @@ export class CoinbaseExchange extends BaseExchange {
 
     if (accountType === 'intx') {
       // Return only INTX perpetual balances (USDC)
-      console.log('[Coinbase] COINBASE_ACCOUNT_TYPE=intx, returning INTX balances only');
       return await this.getIntxBalances();
     } else if (accountType === 'spot') {
       // Return only spot balances
-      console.log('[Coinbase] COINBASE_ACCOUNT_TYPE=spot, returning spot balances only');
       const info = await this.getAccountInfo();
       return info.balances;
     } else {
@@ -494,7 +495,6 @@ export class CoinbaseExchange extends BaseExchange {
         return intxBalances;
       }
       // Fallback to spot if no INTX
-      console.log('[Coinbase] No INTX account, returning spot balances');
       const info = await this.getAccountInfo();
       return info.balances;
     }
@@ -799,7 +799,6 @@ export class CoinbaseExchange extends BaseExchange {
    * Build WebSocket URL (for compatibility)
    */
   protected buildWebSocketUrl(): string {
-    console.log('[Coinbase] Using WebSocket Manager for connections');
     return this.wsBaseUrl;
   }
 
@@ -807,7 +806,7 @@ export class CoinbaseExchange extends BaseExchange {
    * Legacy method - now handled by WebSocket Manager
    */
   protected async sendWebSocketSubscription(_type: string, _key: string): Promise<void> {
-    console.log('[Coinbase] WebSocket subscriptions managed by CoinbaseWebSocketManager');
+    // WebSocket subscriptions managed by CoinbaseWebSocketManager
   }
 
   protected handleWebSocketMessage(msg: any): void {
@@ -878,10 +877,8 @@ export class CoinbaseExchange extends BaseExchange {
       case 'candles':
         if (msg.events) {
           for (const e of msg.events) {
-            console.log(
-              '[Coinbase] Received candles message:',
-              JSON.stringify(e, null, 2),
-            );
+            // Candles log removed
+
             for (const c of e.candles || []) {
               const originalSymbol = this.symbolMap.get(c.product_id) || c.product_id;
               const openTime = new Date(c.start * 1000);
@@ -920,12 +917,10 @@ export class CoinbaseExchange extends BaseExchange {
         if (msg.events) {
           for (const e of msg.events) {
             // Log full event structure for debugging
-            console.log(
-              '[Coinbase] User event keys:',
-              Object.keys(e),
-              'event type:',
-              e.type,
-            );
+            this.logger.debug('[Coinbase] User event keys:', {
+              keys: Object.keys(e),
+              eventType: e.type,
+            });
 
             // 🆕 Handle case where orders array exists but is empty (no open orders)
             if (e.orders !== undefined) {
@@ -941,22 +936,15 @@ export class CoinbaseExchange extends BaseExchange {
 
                 if (snapshotComplete) {
                   this.isReceivingInitialSnapshot = false;
-                  console.log(
-                    `[Coinbase] ✅ Initial snapshot complete - received ${this.initialSnapshotOrderCount} existing orders (events suppressed)`,
-                  );
                 } else {
-                  console.log(
-                    `[Coinbase] 📸 Initial snapshot batch: ${batchSize} orders (total so far: ${this.initialSnapshotOrderCount}, events suppressed)`,
-                  );
+                  // processing snapshot batch
                 }
 
                 // 🔇 Skip event emission for snapshot orders
                 // But continue to next event (don't skip processing balances/positions in this same message)
                 // If batchSize is 0, there's nothing to skip anyway
                 if (batchSize > 0) {
-                  console.log(
-                    `[Coinbase] 🔇 Suppressing events for ${batchSize} snapshot orders`,
-                  );
+                  // Suppressing events for snapshot orders
                 }
 
                 // Continue to next event (skip order processing for this batch)
@@ -965,7 +953,7 @@ export class CoinbaseExchange extends BaseExchange {
 
               // 🆕 Normal operation: process and emit events for real-time order updates
               if (batchSize > 0) {
-                console.log(`[Coinbase] Processing ${batchSize} order updates`);
+                // Processing order updates
                 for (const orderData of e.orders) {
                   // Check if critical fields are missing (size or price for limit orders)
                   const hasSizeInfo =
@@ -1016,7 +1004,7 @@ export class CoinbaseExchange extends BaseExchange {
                   } else {
                     // WebSocket has complete data - emit directly
                     const order = this.transformCoinbaseUserOrder(orderData);
-                    console.log(
+                    this.logger.info(
                       `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
                     );
                     this.emit('orderUpdate', order.symbol, order);
@@ -1027,17 +1015,15 @@ export class CoinbaseExchange extends BaseExchange {
 
             // Handle balances (if pushed via WebSocket)
             if (e.balances && e.balances.length > 0) {
-              console.log(`[Coinbase] Processing ${e.balances.length} balance updates`);
               const balances = this.transformBalances(e.balances);
               if (balances.length > 0) {
-                console.log(`[Coinbase] 💰 Balance Update: ${balances.length} balances`);
                 this.emit('accountUpdate', 'coinbase', balances);
               }
             }
 
             // Handle positions (if pushed via WebSocket)
             if (e.positions) {
-              console.log(`[Coinbase] Processing position updates`);
+              this.logger.debug(`[Coinbase] Processing position updates`);
               const allPositions: any[] = [];
 
               // Coinbase positions structure:
@@ -1052,35 +1038,29 @@ export class CoinbaseExchange extends BaseExchange {
               if (allPositions.length > 0) {
                 const positions = this.transformCoinbasePositions(allPositions);
                 if (positions.length > 0) {
-                  console.log(
+                  this.logger.debug(
                     `[Coinbase] 📊 Position Update: ${positions.length} positions`,
                   );
                   this.emit('positionUpdate', 'coinbase', positions);
                 }
               } else {
-                console.log(`[Coinbase] No open positions`);
+                this.logger.debug(`[Coinbase] No open positions`);
               }
             }
 
             // Handle account snapshot (if available)
             if (e.account) {
-              console.log('[Coinbase] Processing account snapshot');
+              // Processing account snapshot
               // Account snapshot may contain balances and positions
               if (e.account.balances) {
                 const balances = this.transformBalances(e.account.balances);
                 if (balances.length > 0) {
-                  console.log(
-                    `[Coinbase] 💰 Account Snapshot Balances: ${balances.length}`,
-                  );
                   this.emit('accountUpdate', 'coinbase', balances);
                 }
               }
               if (e.account.positions) {
                 const positions = this.transformPositions(e.account.positions);
                 if (positions.length > 0) {
-                  console.log(
-                    `[Coinbase] 📊 Account Snapshot Positions: ${positions.length}`,
-                  );
                   this.emit('positionUpdate', 'coinbase', positions);
                 }
               }
@@ -1093,9 +1073,6 @@ export class CoinbaseExchange extends BaseExchange {
               const now = Date.now();
               if (now - this.lastUserDataSyncAt > 1000) {
                 this.lastUserDataSyncAt = now;
-                console.log(
-                  '[Coinbase] No balance/position in WebSocket, fetching via REST API',
-                );
                 // Fire and forget; errors are logged but don't crash handler
                 this.refreshBalancesAndPositions().catch((err) =>
                   console.warn(
@@ -1119,7 +1096,7 @@ export class CoinbaseExchange extends BaseExchange {
   public async subscribeToTicker(symbol: string): Promise<void> {
     const productId = this.normalizeSymbol(symbol);
     this.symbolMap.set(productId, symbol); // Store mapping
-    console.log(`[Coinbase] Subscribing to ticker: ${productId}`);
+    // Subscribing to ticker
     this.wsManager.subscribe('ticker', [productId]);
   }
 
@@ -1132,9 +1109,7 @@ export class CoinbaseExchange extends BaseExchange {
   public async subscribeToOrderBook(symbol: string, depth?: number): Promise<void> {
     const productId = this.normalizeSymbol(symbol);
     this.symbolMap.set(productId, symbol); // Store mapping
-    console.log(
-      `[Coinbase] Subscribing to orderbook: ${productId}${depth ? ` (depth=${depth} - not configurable, using full book)` : ''}`,
-    );
+    // Subscribing to orderbook
     this.wsManager.subscribe('level2', [productId]);
   }
 
@@ -1144,7 +1119,7 @@ export class CoinbaseExchange extends BaseExchange {
   public async subscribeToTrades(symbol: string): Promise<void> {
     const productId = this.normalizeSymbol(symbol);
     this.symbolMap.set(productId, symbol); // Store mapping
-    console.log(`[Coinbase] Subscribing to trades: ${productId}`);
+    // Subscribing to trades
     this.wsManager.subscribe('market_trades', [productId]);
   }
 
@@ -1158,14 +1133,9 @@ export class CoinbaseExchange extends BaseExchange {
     // Coinbase WebSocket candles channel ONLY supports 5-minute intervals
     // For other intervals, SubscriptionCoordinator will automatically use REST API
     // Store the requested interval for labeling purposes
+    // Store the requested interval for labeling purposes
     this.subscribedGranularities.set(productId, interval);
 
-    console.log(
-      `[Coinbase] Subscribing to klines via WebSocket: ${productId} @ ${interval}`,
-    );
-    console.log(
-      `[Coinbase] WARNING: WebSocket only provides 5m candles. For other intervals, use REST API.`,
-    );
     this.wsManager.subscribe('candles', [productId]);
   }
 
@@ -1184,7 +1154,7 @@ export class CoinbaseExchange extends BaseExchange {
       klines: 'candles',
     };
     const channel = channelMap[type];
-    console.log(`[Coinbase] Unsubscribing from ${type}: ${productId}`);
+    // Unsubscribing
     this.wsManager.unsubscribe(channel, [productId]);
   }
 
@@ -1196,29 +1166,17 @@ export class CoinbaseExchange extends BaseExchange {
       throw new Error('Coinbase credentials required for user data subscription');
     }
 
-    console.log('[Coinbase] Subscribing to user data streams...');
-
-    // Set JWT generator callback
-    this.wsManager.setJWTGenerator(() => this.generateJWT());
-
     // Subscribe to user channel
     // Coinbase Advanced Trade API: user channel provides order updates for INTX perpetuals
-    console.log('[Coinbase] Subscribing to user channel (INTX orders)...');
+    // Subscribing to user channel (INTX orders)...
     this.wsManager.subscribe('user', []);
 
     // NOTE: futures_balance_summary is for FCM futures (USD), NOT INTX perpetuals (USDC)
     // INTX perpetuals do NOT have a dedicated WebSocket channel for balance updates
     // We use REST API polling instead (see refreshBalancesAndPositions)
-    console.log(
-      '[Coinbase] Note: INTX perpetuals do not have WebSocket balance updates, using REST API polling',
-    );
-
-    console.log('[Coinbase] User data subscription requests sent');
 
     // Fetch initial INTX data via REST API
-    console.log('[Coinbase] Fetching initial INTX balance and position data...');
     await this.refreshBalancesAndPositions();
-    console.log('[Coinbase] ✅ Initial account data loaded');
 
     // Start periodic polling for INTX balances and positions
     this.startBalancePolling();
@@ -1227,10 +1185,6 @@ export class CoinbaseExchange extends BaseExchange {
   private startBalancePolling(): void {
     // Clear any existing interval
     this.stopBalancePolling();
-
-    console.log(
-      `[Coinbase] Starting balance polling (every ${CoinbaseExchange.BALANCE_POLL_INTERVAL / 1000}s)`,
-    );
 
     this.balancePollingInterval = setInterval(() => {
       this.refreshBalancesAndPositions().catch((err) =>
@@ -1243,7 +1197,6 @@ export class CoinbaseExchange extends BaseExchange {
     if (this.balancePollingInterval) {
       clearInterval(this.balancePollingInterval);
       this.balancePollingInterval = null;
-      console.log('[Coinbase] Stopped balance polling');
     }
   }
 
@@ -1251,7 +1204,6 @@ export class CoinbaseExchange extends BaseExchange {
    * Disconnect and cleanup
    */
   public async disconnect(): Promise<void> {
-    console.log('[Coinbase] Disconnecting...');
     this.stopBalancePolling();
     this.wsManager.closeConnection();
     await super.disconnect();
@@ -1284,7 +1236,7 @@ export class CoinbaseExchange extends BaseExchange {
       const productIdToUse = orderData.product_id || productId || order.symbol;
       order.symbol = this.denormalizeSymbol(productIdToUse);
 
-      console.log(
+      this.logger.info(
         `[Coinbase] ✅ Fetched complete order: ${order.symbol} - ${order.status} - Qty: ${order.quantity.toString()}`,
       );
 
@@ -1548,13 +1500,13 @@ export class CoinbaseExchange extends BaseExchange {
               const mapped = this.positionSymbolMap.get(positionId);
               if (mapped) {
                 productSymbol = mapped;
-                console.log(
+                this.logger.debug(
                   `[Coinbase] Resolved position_id ${positionId} -> symbol ${productSymbol}`,
                 );
               } else {
                 // Try using product_id as fallback
                 productSymbol = p.product_id || p.symbol;
-                console.warn(
+                this.logger.debug(
                   `[Coinbase] No mapping for position ${positionId}, using fallback: ${productSymbol}`,
                 );
               }

@@ -325,25 +325,27 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
   public override async processInitialData(
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
-    this._logger.info(
+    this._logger.debug(
       `📊 [${this.strategyType}] Processing initial data for ${initialData.symbol}`,
     );
-    this._logger.info(JSON.stringify(initialData, null, 2));
+    this._logger.debug(JSON.stringify(initialData, null, 2));
 
     // Load historical klines into strategy buffer
     if (initialData.klines) {
-      this._logger.info(
+      this._logger.debug(
         `Initial data config: ${JSON.stringify(this._context.initialDataConfig, null, 2)}`,
       );
       Object.entries(initialData.klines).forEach(([interval, klines]) => {
-        this._logger.info(`  📈 Loaded ${klines.length} klines for interval ${interval}`);
+        this._logger.debug(
+          `  📈 Loaded ${klines.length} klines for interval ${interval}`,
+        );
         // Store last N klines for analysis
         // Check if this interval was requested in initialDataConfig
         if (this._context.initialDataConfig?.klines?.[interval as KlineInterval]) {
           klines.forEach((kline) => {
             this.klines.push(kline);
           });
-          this._logger.info(
+          this._logger.debug(
             `  ✅ Loaded ${klines.length} klines for interval ${interval} into strategy buffer`,
           );
         }
@@ -353,7 +355,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     // Load current positions
     if (initialData.positions && initialData.positions.length > 0) {
       this.positions = initialData.positions;
-      this._logger.info(`  💼 Loaded ${initialData.positions.length} position(s): `);
+      this._logger.debug(`  💼 Loaded ${initialData.positions.length} position(s): `);
       this.positions.forEach((position) => {
         if (position.symbol === this._context.symbol) {
           this.position = position;
@@ -363,7 +365,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
 
     // Load open orders
     if (initialData.openOrders && initialData.openOrders.length > 0) {
-      this._logger.info(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
+      this._logger.debug(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
       initialData.openOrders.forEach((order) => {
         if (order.symbol === this._context.symbol) {
           this.openOrders.set(order.id, order);
@@ -374,10 +376,10 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     // Load current ticker
     if (initialData.ticker) {
       this.tickers.push(initialData.ticker);
-      this._logger.info(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
+      this._logger.debug(`  🎯 Current price: ${initialData.ticker.price.toString()}`);
     }
 
-    this._logger.info(`✅ [${this.strategyType}] Initial data processed successfully`);
+    this._logger.debug(`✅ [${this.strategyType}] Initial data processed successfully`);
     return { action: 'hold' };
   }
 
@@ -483,7 +485,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
       return { action: 'hold', reason: 'No hammer pattern detected' };
     }
 
-    console.log('🔨 [HammerChannel] Hammer pattern detected!');
+    this._logger.debug('🔨 [HammerChannel] Hammer pattern detected!');
 
     // Determine if bullish or bearish kline
     const isBullish = latestKline.close.gt(latestKline.open);
@@ -498,7 +500,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
     const currentClose = latestKline.close.toNumber();
     const positionRatio = (currentClose - minClose) / range; // 0=lowest, 1=highest
 
-    console.log(
+    this._logger.debug(
       `🔨 [HammerChannel] Channel position: ${(positionRatio * 100).toFixed(2)}%`,
       {
         close: currentClose,
@@ -515,7 +517,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
       const price = latestKline.close.add(latestKline.low).div(2);
       const quantity = new Decimal(this.baseQuantity); // Base quantity
 
-      console.log(
+      this._logger.debug(
         `✅ [HammerChannel] BUY signal: Bearish hammer at low position (${(positionRatio * 100).toFixed(1)}%)`,
       );
       if (this.checkPositionSizeForSignal('buy')) {
@@ -535,7 +537,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
       const price = latestKline.close.add(latestKline.high).div(2);
       const quantity = new Decimal(this.baseQuantity); // Base quantity
 
-      console.log(
+      this._logger.debug(
         `✅ [HammerChannel] SELL signal: Bullish hammer at high position (${(positionRatio * 100).toFixed(1)}%)`,
       );
       if (this.checkPositionSizeForSignal('sell')) {
@@ -584,7 +586,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    */
   public override async onOrderFilled(order: Order): Promise<void> {
     if (this.orders.has(order.clientOrderId || '')) {
-      console.log('🔨 [HammerChannel] Order filled:', {
+      this._logger.debug('🔨 [HammerChannel] Order filled:', {
         orderId: order.id,
         side: order.side,
         price: order.price?.toString(),
@@ -597,7 +599,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
    * Cleanup strategy state
    */
   protected async onCleanup(): Promise<void> {
-    console.log('🔨 [HammerChannel] Strategy cleaned up');
+    this._logger.debug('🔨 [HammerChannel] Strategy cleaned up');
   }
 
   /**

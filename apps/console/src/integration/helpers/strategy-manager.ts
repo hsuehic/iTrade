@@ -57,11 +57,11 @@ export class StrategyManager {
   }
 
   async start(): Promise<void> {
-    this.logger.info('Starting Strategy Manager...');
+    this.logger.debug('Starting Strategy Manager...');
 
     // 🆕 Log user context
     if (this.userId) {
-      this.logger.info(`👤 Loading strategies for user: ${this.userId}`);
+      this.logger.debug(`👤 Loading strategies for user: ${this.userId}`);
     } else {
       this.logger.warn(
         '⚠️  No userId provided - loading ALL strategies (not recommended for production)',
@@ -70,7 +70,7 @@ export class StrategyManager {
 
     // 📊 显示策略实现统计信息
     const implementedStrategies = getImplementedStrategies();
-    this.logger.info(
+    this.logger.debug(
       `📈 Available strategy implementations: ${implementedStrategies.length}`,
     );
     implementedStrategies.forEach((strategy: StrategyImplementationInfo) => {
@@ -85,7 +85,7 @@ export class StrategyManager {
 
     // Start periodic database sync
     this.syncInterval = setInterval(() => {
-      this.logger.info('Syncing strategies with database...');
+      this.logger.debug('Syncing strategies with database...');
       this.syncStrategiesWithDatabase().catch((error) => {
         this.logger.error('Error during strategy sync', error as Error);
       });
@@ -96,7 +96,7 @@ export class StrategyManager {
       this.reportStrategyMetrics();
     }, this.REPORT_INTERVAL_MS);
 
-    this.logger.info(
+    this.logger.debug(
       `Strategy Manager started (sync every ${this.SYNC_INTERVAL_MS / 1000}s, report every ${this.REPORT_INTERVAL_MS / 1000}s)`,
     );
   }
@@ -120,7 +120,7 @@ export class StrategyManager {
       await this.removeStrategy(strategyId);
     }
 
-    this.logger.info('Strategy Manager stopped');
+    this.logger.debug('Strategy Manager stopped');
   }
 
   private async loadActiveStrategies(): Promise<void> {
@@ -132,7 +132,7 @@ export class StrategyManager {
         includePerformance: true, // 🆕 Load performance metrics
       });
 
-      this.logger.info(`Loading ${dbStrategies.length} active strategies...`);
+      this.logger.debug(`Loading ${dbStrategies.length} active strategies...`);
 
       for (const dbStrategy of dbStrategies) {
         try {
@@ -160,7 +160,7 @@ export class StrategyManager {
    */
   private async syncStrategiesWithDatabase(): Promise<void> {
     try {
-      this.logger.info(`🔄 [SYNC] ━━━━━━━━━━━━ Starting Strategy Sync ━━━━━━━━━━━━`);
+      this.logger.debug(`🔄 [SYNC] ━━━━━━━━━━━━ Starting Strategy Sync ━━━━━━━━━━━━`);
 
       // Only fetch ACTIVE strategies from database (performance optimization)
       // 🆕 Filter by userId if provided
@@ -171,10 +171,10 @@ export class StrategyManager {
       });
       const activeStrategyIds = new Set(activeStrategies.map((s) => s.id));
 
-      this.logger.info(
+      this.logger.debug(
         `🔄 [SYNC] Active strategies in DB: ${activeStrategies.length} (IDs: ${Array.from(activeStrategyIds).join(', ')})`,
       );
-      this.logger.info(
+      this.logger.debug(
         `🔄 [SYNC] Strategies in TradeEngine: ${this.strategies.size} (IDs: ${Array.from(this.strategies.keys()).join(', ')})`,
       );
 
@@ -182,16 +182,16 @@ export class StrategyManager {
       let removedCount = 0;
 
       // Step 1: Add new ACTIVE strategies to TradeEngine
-      this.logger.info(`🔄 [SYNC] Step 1: Checking for new strategies to add...`);
+      this.logger.debug(`🔄 [SYNC] Step 1: Checking for new strategies to add...`);
       for (const dbStrategy of activeStrategies) {
         if (!this.strategies.has(dbStrategy.id)) {
-          this.logger.info(
+          this.logger.debug(
             `🔄 [SYNC] Found new strategy to add: ${dbStrategy.name} (ID: ${dbStrategy.id}, Type: ${dbStrategy.type}, Symbol: ${dbStrategy.symbol})`,
           );
           try {
             await this.addStrategy(dbStrategy);
             addedCount++;
-            this.logger.info(`✅ [SYNC] Successfully added strategy ${dbStrategy.id}`);
+            this.logger.debug(`✅ [SYNC] Successfully added strategy ${dbStrategy.id}`);
           } catch (error) {
             this.logger.error(
               `❌ [SYNC] Failed to add strategy ${dbStrategy.id} during sync`,
@@ -200,32 +200,32 @@ export class StrategyManager {
           }
         }
       }
-      this.logger.info(`🔄 [SYNC] Step 1 complete: ${addedCount} strategies added`);
+      this.logger.debug(`🔄 [SYNC] Step 1 complete: ${addedCount} strategies added`);
 
       // Step 2: Remove strategies from TradeEngine if they're no longer ACTIVE
       // A strategy should be removed if it's not in the active list (status changed or deleted)
-      this.logger.info(`🔄 [SYNC] Step 2: Checking for strategies to remove...`);
+      this.logger.debug(`🔄 [SYNC] Step 2: Checking for strategies to remove...`);
       for (const [id] of this.strategies) {
         if (!activeStrategyIds.has(id)) {
           const strategyName = this.strategies.get(id)?.name;
-          this.logger.info(
+          this.logger.debug(
             `🔄 [SYNC] Found strategy to remove: ${strategyName} (ID: ${id}, Reason: Not ACTIVE or deleted)`,
           );
           await this.removeStrategy(id);
           removedCount++;
-          this.logger.info(`✅ [SYNC] Successfully removed strategy ${id}`);
+          this.logger.debug(`✅ [SYNC] Successfully removed strategy ${id}`);
         }
       }
-      this.logger.info(`🔄 [SYNC] Step 2 complete: ${removedCount} strategies removed`);
+      this.logger.debug(`🔄 [SYNC] Step 2 complete: ${removedCount} strategies removed`);
 
       // Log sync summary
-      this.logger.info(`🔄 [SYNC] ━━━━━━━━━━━━ Sync Complete ━━━━━━━━━━━━`);
-      this.logger.info(
+      this.logger.debug(`🔄 [SYNC] ━━━━━━━━━━━━ Sync Complete ━━━━━━━━━━━━`);
+      this.logger.debug(
         `🔄 [SYNC] Summary: +${addedCount} added, -${removedCount} removed. Active in TradeEngine: ${this.strategies.size}`,
       );
 
       if (addedCount === 0 && removedCount === 0) {
-        this.logger.info(`🔄 [SYNC] No changes needed - all strategies in sync`);
+        this.logger.debug(`🔄 [SYNC] No changes needed - all strategies in sync`);
       }
     } catch (error) {
       this.logger.error(
@@ -240,7 +240,7 @@ export class StrategyManager {
       const strategyId = dbStrategy.id;
       //const dbStrategy = await this.dataManager.getStrategy(strategyId);
 
-      this.logger.info(
+      this.logger.debug(
         `🔧 [ADD_STRATEGY] Creating strategy instance: ${dbStrategy.name} (ID: ${strategyId})`,
       );
 
@@ -251,11 +251,11 @@ export class StrategyManager {
       const engineName = `strategy_${strategyId}`;
 
       // Add to engine
-      this.logger.info(
+      this.logger.debug(
         `🔧 [ADD_STRATEGY] Adding to TradingEngine: ${engineName} (engine running: ${this.engine.isRunning})`,
       );
       await this.engine.addStrategy(engineName, strategy);
-      this.logger.info(
+      this.logger.debug(
         `✅ [ADD_STRATEGY] Successfully added to TradingEngine: ${engineName}`,
       );
 
@@ -273,10 +273,10 @@ export class StrategyManager {
         errors: 0,
       });
 
-      this.logger.info(`✅ Added strategy: ${dbStrategy.name} (ID: ${strategyId})`);
+      this.logger.debug(`✅ Added strategy: ${dbStrategy.name} (ID: ${strategyId})`);
       // Use normalizedSymbol from database (auto-computed)
       const displaySymbol = dbStrategy.normalizedSymbol || dbStrategy.symbol || 'N/A';
-      this.logger.info(
+      this.logger.debug(
         `   Type: ${dbStrategy.type}, Symbol: ${displaySymbol}, Exchange: ${dbStrategy.exchange || 'default'}`,
       );
     } catch (error) {
@@ -295,7 +295,7 @@ export class StrategyManager {
       if (metrics) {
         const runTime = Date.now() - metrics.startTime.getTime();
         const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
-        this.logger.info(
+        this.logger.debug(
           `📊 Final metrics for ${strategy.name}: ${metrics.totalSignals} signals, ${metrics.totalOrders} orders in ${hours}h`,
         );
       }
@@ -307,7 +307,7 @@ export class StrategyManager {
       this.strategies.delete(strategyId);
       this.strategyMetrics.delete(strategyId);
 
-      this.logger.info(`❌ Removed strategy: ${strategy.name} (ID: ${strategyId})`);
+      this.logger.debug(`❌ Removed strategy: ${strategy.name} (ID: ${strategyId})`);
     } catch (error) {
       this.logger.error(`Failed to remove strategy ${strategyId}`, error as Error);
     }
@@ -509,9 +509,9 @@ export class StrategyManager {
       return;
     }
 
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.info('📊 Strategy Performance Report');
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    this.logger.debug('📊 Strategy Performance Report');
+    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     for (const [strategyId, strategy] of this.strategies) {
       const metrics = this.strategyMetrics.get(strategyId);
@@ -521,23 +521,23 @@ export class StrategyManager {
       const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
       const minutes = (runTime / (1000 * 60)).toFixed(0);
 
-      this.logger.info(`\\n📈 ${strategy.name}:`);
-      this.logger.info(`   Running for: ${hours}h (${minutes}m)`);
-      this.logger.info(`   Signals generated: ${metrics.totalSignals}`);
-      this.logger.info(`   Orders executed: ${metrics.totalOrders}`);
+      this.logger.debug(`\n📈 ${strategy.name}:`);
+      this.logger.debug(`   Running for: ${hours}h (${minutes}m)`);
+      this.logger.debug(`   Signals generated: ${metrics.totalSignals}`);
+      this.logger.debug(`   Orders executed: ${metrics.totalOrders}`);
 
       // 🆕 Get performance summary from strategy instance
       try {
         const perfSummary = strategy.instance.getPerformanceSummary?.();
         if (perfSummary) {
-          this.logger.info(`   📊 Performance Summary:`);
-          this.logger.info(`      Total Orders: ${perfSummary.totalOrders}`);
-          this.logger.info(`      Filled Orders: ${perfSummary.filledOrders}`);
-          this.logger.info(`      Pending Orders: ${perfSummary.pendingOrders}`);
-          this.logger.info(`      Total PnL: ${perfSummary.totalPnL}`);
-          this.logger.info(`      Win Rate: ${perfSummary.winRate}`);
-          this.logger.info(`      Total Volume: ${perfSummary.totalVolume}`);
-          this.logger.info(`      Current Position: ${perfSummary.currentPosition}`);
+          this.logger.debug(`   📊 Performance Summary:`);
+          this.logger.debug(`      Total Orders: ${perfSummary.totalOrders}`);
+          this.logger.debug(`      Filled Orders: ${perfSummary.filledOrders}`);
+          this.logger.debug(`      Pending Orders: ${perfSummary.pendingOrders}`);
+          this.logger.debug(`      Total PnL: ${perfSummary.totalPnL}`);
+          this.logger.debug(`      Win Rate: ${perfSummary.winRate}`);
+          this.logger.debug(`      Total Volume: ${perfSummary.totalVolume}`);
+          this.logger.debug(`      Current Position: ${perfSummary.currentPosition}`);
         }
       } catch (error) {
         this.logger.debug(`   Could not get performance summary: ${error}`);
@@ -547,22 +547,22 @@ export class StrategyManager {
         const lastSignalAgo = Math.round(
           (Date.now() - metrics.lastSignalTime.getTime()) / 1000,
         );
-        this.logger.info(`   Last signal: ${lastSignalAgo}s ago`);
+        this.logger.debug(`   Last signal: ${lastSignalAgo}s ago`);
       } else {
-        this.logger.info(`   Last signal: None yet`);
+        this.logger.debug(`   Last signal: None yet`);
       }
 
       if (metrics.lastOrderTime) {
         const lastOrderAgo = Math.round(
           (Date.now() - metrics.lastOrderTime.getTime()) / 1000,
         );
-        this.logger.info(`   Last order: ${lastOrderAgo}s ago`);
+        this.logger.debug(`   Last order: ${lastOrderAgo}s ago`);
       } else {
-        this.logger.info(`   Last order: None yet`);
+        this.logger.debug(`   Last order: None yet`);
       }
 
       if (metrics.errors > 0) {
-        this.logger.info(`   ⚠️  Errors: ${metrics.errors}`);
+        this.logger.debug(`   ⚠️  Errors: ${metrics.errors}`);
       }
 
       // Get PnL data from database
@@ -571,15 +571,15 @@ export class StrategyManager {
       );
     }
 
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
   }
 
   private async getPnLForStrategy(strategyId: number): Promise<void> {
     try {
       const pnl = await this.dataManager.getStrategyPnL(strategyId);
-      this.logger.info(`   💰 Total PnL: ${pnl.totalPnl.toFixed(2)}`);
-      this.logger.info(`   💵 Realized PnL: ${pnl.realizedPnl.toFixed(2)}`);
-      this.logger.info(
+      this.logger.debug(`   💰 Total PnL: ${pnl.totalPnl.toFixed(2)}`);
+      this.logger.debug(`   💵 Realized PnL: ${pnl.realizedPnl.toFixed(2)}`);
+      this.logger.debug(
         `   📊 Total Orders: ${pnl.totalOrders} (${pnl.filledOrders} filled)`,
       );
     } catch {

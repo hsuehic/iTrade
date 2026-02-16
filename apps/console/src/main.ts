@@ -4,6 +4,7 @@ import { ConsoleLogger, LogLevel } from '@itrade/core';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import { OrderTracker } from './integration/helpers/order-tracker';
 import { BotManager } from './BotManager';
+import * as readline from 'readline';
 
 /**
  * iTrade Console Application - Main Entry Point
@@ -109,6 +110,38 @@ async function main() {
   setTimeout(() => {
     displayGlobalOrderStats(botManager);
   }, 30000);
+
+  // ============================================================
+  // Interactive Mode: Key Listener
+  // ============================================================
+  if (process.stdin.isTTY) {
+    readline.emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode(true);
+
+    process.stdin.on('keypress', (str, key) => {
+      if (key.ctrl && key.name === 'c') {
+        // Allow Ctrl+C to trigger standard SIGINT
+        process.emit('SIGINT');
+      } else if (key.name === 'd') {
+        ConsoleLogger.setGlobalLevel(LogLevel.DEBUG);
+        logger.info('🔍 Global Log Level switched to: DEBUG');
+        logger.debug('Debug logging enabled - you will see verbose output.');
+      } else if (key.name === 'i') {
+        ConsoleLogger.setGlobalLevel(LogLevel.INFO);
+        logger.info('ℹ️  Global Log Level switched to: INFO');
+      } else if (key.name === 's') {
+        displayGlobalOrderStats(botManager);
+      }
+    });
+
+    logger.info('');
+    logger.info('⌨️  Interactive Controls:');
+    logger.info('   [d] Switch to DEBUG level');
+    logger.info('   [i] Switch to INFO level');
+    logger.info('   [s] Show Order Stats');
+    logger.info('   [Ctrl+C] Exit');
+    logger.info('');
+  }
 
   // ============================================================
   // Graceful Shutdown Handler

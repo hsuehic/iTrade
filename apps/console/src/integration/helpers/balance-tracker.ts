@@ -41,7 +41,7 @@ export class BalanceTracker {
   }
 
   async start(): Promise<void> {
-    this.logger.info('Starting Balance Tracker...');
+    this.logger.debug('Starting Balance Tracker...');
 
     // Listen for balance updates using the correct event name
     this.eventBus.onBalanceUpdate((data) => {
@@ -61,7 +61,7 @@ export class BalanceTracker {
       this.handleBalanceUpdate(data.exchange, accountInfo);
     });
 
-    this.logger.info(
+    this.logger.debug(
       `✅ Balance Tracker started (debounce: ${this.DEBOUNCE_MS}ms per exchange)`,
     );
   }
@@ -70,19 +70,19 @@ export class BalanceTracker {
     // Flush all pending updates
     await this.flushAllPendingUpdates();
 
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.info('📊 Balance Tracker Final Report');
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.info(`   Total Updates Received: ${this.totalUpdates}`);
-    this.logger.info(`   Total Saved to Database: ${this.totalSaved}`);
-    this.logger.info(
+    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    this.logger.debug('📊 Balance Tracker Final Report');
+    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    this.logger.debug(`   Total Updates Received: ${this.totalUpdates}`);
+    this.logger.debug(`   Total Saved to Database: ${this.totalSaved}`);
+    this.logger.debug(
       `   Debounce Efficiency: ${((1 - this.totalSaved / Math.max(this.totalUpdates, 1)) * 100).toFixed(1)}% reduction`,
     );
 
-    const runTime = Date.now() - this.startTime.getTime();
+    const runTime = Date.now() - this.startTime.getTime(); // Replaced with same line to keep context
     const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
-    this.logger.info(`   Running time: ${hours} hours`);
-    this.logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    this.logger.debug(`   Running time: ${hours} hours`);
+    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
   private handleBalanceUpdate(exchange: string, accountInfo: AccountInfo): void {
@@ -227,7 +227,7 @@ export class BalanceTracker {
   private async flushAllPendingUpdates(): Promise<void> {
     if (this.pendingUpdates.size === 0) return;
 
-    this.logger.info(
+    this.logger.debug(
       `🔄 Flushing ${this.pendingUpdates.size} pending balance updates...`,
     );
     // Cancel all timers and save immediately
@@ -240,7 +240,7 @@ export class BalanceTracker {
     }
 
     await Promise.allSettled(promises);
-    this.logger.info('✅ All pending balance updates flushed');
+    this.logger.debug('✅ All pending balance updates flushed');
   }
 
   /**

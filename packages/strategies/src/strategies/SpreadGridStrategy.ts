@@ -361,7 +361,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         return false;
       });
 
-      this._logger.info(
+      this._logger.debug(
         `[SpreadGrid] Found ${ownedOrders.length} owned open orders from initial data`,
       );
 
@@ -456,7 +456,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
           order.status === OrderStatus.PARTIALLY_FILLED
         ) {
           if (order.status === OrderStatus.NEW) {
-            this._logger.info(`[SpreadGrid] Order ${order.clientOrderId} is NEW`);
+            this._logger.debug(`[SpreadGrid] Order ${order.clientOrderId} is NEW`);
           }
           if (order.side === OrderSide.BUY) {
             this.openLowerOrder = order;
@@ -464,7 +464,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
             this.openUpperOrder = order;
           }
         } else if (order.status === OrderStatus.FILLED) {
-          this._logger.info(
+          this._logger.debug(
             `[SpreadGrid] Order ${order.clientOrderId} FILLED. Processing fill...`,
           );
           return this.handleOrderFilled(order);
@@ -478,7 +478,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const signals: StrategyResult[] = [];
     const filledQty = order.executedQuantity || order.quantity || new Decimal(0);
 
-    this._logger.info(
+    this._logger.debug(
       `[SpreadGrid] Handle Fill: ${order.clientOrderId} ${order.side} ${filledQty} @ ${order.averagePrice || order.price}`,
     );
 
@@ -493,7 +493,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       this.referencePrice = fillPrice;
     }
 
-    this._logger.info(
+    this._logger.debug(
       `[SpreadGrid] New Position Size: ${this.positionSize}, Ref Price: ${this.referencePrice}`,
     );
 
@@ -528,9 +528,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     if (this.canAddLong()) {
       const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
       signals.push(this.generatePlaceOrderSignal(price, OrderSide.BUY));
-      this._logger.info(`[SpreadGrid] Generated BUY signal @ ${price}`);
+      this._logger.debug(`[SpreadGrid] Generated BUY signal @ ${price}`);
     } else {
-      this._logger.info(
+      this._logger.debug(
         `[SpreadGrid] Skipping BUY: canAddLong=false (Pos: ${this.positionSize}, Max: ${this.maxSize})`,
       );
     }
@@ -538,9 +538,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     if (this.canAddShort()) {
       const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
       signals.push(this.generatePlaceOrderSignal(price, OrderSide.SELL));
-      this._logger.info(`[SpreadGrid] Generated SELL signal @ ${price}`);
+      this._logger.debug(`[SpreadGrid] Generated SELL signal @ ${price}`);
     } else {
-      this._logger.info(
+      this._logger.debug(
         `[SpreadGrid] Skipping SELL: canAddShort=false (Pos: ${this.positionSize}, Min: ${this.minSize})`,
       );
     }
@@ -583,7 +583,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
     this.processedQuantityMap.clear();
     this.tpRefreshTracker.clear();
-    this._logger.info(`🧹 Strategy cleaned up`);
+    this._logger.debug(`🧹 Strategy cleaned up`);
   }
 
   public getStrategyState() {

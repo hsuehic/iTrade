@@ -824,7 +824,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     let shouldRefresh = false;
     for (const order of orders) {
       if (order.status === OrderStatus.PARTIALLY_FILLED) {
-        this._logger.info(
+        this._logger.debug(
           `🔄 Partially filled: ${order.side} ${order.symbol} ${order.price} ${order.executedQuantity}/${order.quantity} ${order.status}`,
         );
       }
@@ -862,7 +862,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       const hasNewFill = totalFilled.gt(lastProcessed);
 
       if (!existingOrder || existingOrder.status !== order.status) {
-        this._logger.info(
+        this._logger.debug(
           `🔄 Order status: ${order.clientOrderId.substring(0, 12)}... ${order.status}`,
         );
       }
@@ -1049,7 +1049,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       }
     }
 
-    this._logger.info(
+    this._logger.debug(
       `✅ Entry FILLED: ${side} ${delta.toString()} @ ${filledPrice.toString()}. Size: ${this.tradedSize.toFixed(4)}`,
     );
 
@@ -1095,7 +1095,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
       if (metadata.parentOrderId) this.orderMetadataMap.delete(metadata.parentOrderId);
     }
 
-    this._logger.info(
+    this._logger.debug(
       `✅ TP FILLED: ${order.side} ${delta.toString()}. Size: ${this.tradedSize.toFixed(4)}`,
     );
 
@@ -1117,7 +1117,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
         metadata?.signalType === SignalType.TakeProfit &&
         metadata.side === order.side
       ) {
-        this._logger.info(
+        this._logger.debug(
           `🧹 Clearing zombie pending TP ${clientOrderId} after fill of ${order.clientOrderId}`,
         );
         this.pendingClientOrderIds.delete(clientOrderId);
@@ -1139,7 +1139,7 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     this.processedQuantityMap.clear();
     this.tpRefreshTracker.clear();
-    this._logger.info(`🧹 Strategy cleaned up`);
+    this._logger.debug(`🧹 Strategy cleaned up`);
   }
 
   public getStrategyState() {

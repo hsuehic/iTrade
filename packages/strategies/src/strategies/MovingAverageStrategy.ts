@@ -139,7 +139,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
         if (klines && klines.length > 0) {
           // Clear history and populate with initial data
           this.priceHistory = klines.map((k) => k.close);
-          this._logger.info(
+          this._logger.debug(
             `📈 [MovingAverageStrategy] Populated price history with ${this.priceHistory.length} klines`,
           );
         }

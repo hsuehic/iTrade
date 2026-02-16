@@ -36,10 +36,10 @@ export async function run(strategies: Map<string, IStrategy>) {
   // Track balance updates
   logger.info('🔧 Setting up Balance Update listener...');
   eventBus.onBalanceUpdate((data) => {
-    logger.info(`💰 BALANCE UPDATE: ${data.balances.length} balances received`);
+    logger.debug(`💰 BALANCE UPDATE: ${data.balances.length} balances received`);
     data.balances.forEach((balance) => {
       if (balance.total.greaterThan(0)) {
-        logger.info(
+        logger.debug(
           `   ${balance.asset}: Total=${balance.total}, Free=${balance.free}, Locked=${balance.locked}`,
         );
       }
@@ -49,9 +49,9 @@ export async function run(strategies: Map<string, IStrategy>) {
   // Track position updates
   logger.info('🔧 Setting up Position Update listener...');
   eventBus.onPositionUpdate((data) => {
-    logger.info(`📊 POSITION UPDATE: ${data.positions.length} positions received`);
+    logger.debug(`📊 POSITION UPDATE: ${data.positions.length} positions received`);
     data.positions.forEach((position) => {
-      logger.info(
+      logger.debug(
         `   ${position.symbol}: ${position.side} ${position.quantity} @ ${position.avgPrice}, PnL=${position.unrealizedPnl}`,
       );
     });
@@ -127,36 +127,36 @@ export async function run(strategies: Map<string, IStrategy>) {
 
   // Track strategy signals with enhanced logging
   eventBus.onStrategySignal((signal) => {
-    logger.info(
+    logger.debug(
       `🎯 SIGNAL: ${signal.strategyName} - ${signal.action} ${signal.symbol} @ ${signal.price}`,
     );
-    logger.info(`   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`);
-    logger.info(`   💭 Reason: ${signal.reason}`);
+    logger.debug(`   📊 Confidence: ${((signal.confidence || 0) * 100).toFixed(1)}%`);
+    logger.debug(`   💭 Reason: ${signal.reason}`);
   });
 
   // Track order lifecycle
   eventBus.onOrderCreated((data) => {
-    logger.info(
+    logger.debug(
       `📝 ORDER CREATED: ${data.order.side} ${data.order.quantity} ${data.order.symbol} @ ${data.order.price || 'MARKET'}`,
     );
-    logger.info(`   Order ID: ${data.order.id}`);
+    logger.debug(`   Order ID: ${data.order.id}`);
   });
 
   eventBus.onOrderFilled((data) => {
-    logger.info(`✅ ORDER FILLED: ${data.order.id}`);
-    logger.info(
+    logger.debug(`✅ ORDER FILLED: ${data.order.id}`);
+    logger.debug(
       `   Executed: ${data.order.executedQuantity} @ avg ${data.order.cummulativeQuoteQuantity?.div(data.order.executedQuantity || 1)}`,
     );
   });
 
   eventBus.onOrderPartiallyFilled((data) => {
-    logger.info(
+    logger.debug(
       `⏳ ORDER PARTIAL FILL: ${data.order.id} - ${data.order.executedQuantity}/${data.order.quantity}`,
     );
   });
 
   eventBus.onOrderCancelled((data) => {
-    logger.info(`❌ ORDER CANCELLED: ${data.order.id}`);
+    logger.debug(`❌ ORDER CANCELLED: ${data.order.id}`);
   });
 
   eventBus.onOrderRejected((data) => {
@@ -208,21 +208,21 @@ export async function run(strategies: Map<string, IStrategy>) {
     logger.error('Unhandled rejection:', reason as Error);
   });
   eventBus.onTickerUpdate((data) => {
-    logger.info(`🔍 TICKER: ${data.symbol} - ${data.ticker.price.toString()}`);
+    logger.debug(`🔍 TICKER: ${data.symbol} - ${data.ticker.price.toString()}`);
   });
 
   eventBus.onOrderBookUpdate((data) => {
-    logger.info(
+    logger.debug(
       `🔍 ORDER BOOK: ${data.symbol} - ${data.orderbook.asks[0][0].toString()}`,
     );
   });
 
   eventBus.onTradeUpdate((data) => {
-    logger.info(`🔍 TRADE: ${data.symbol} - ${data.trade.price}`);
+    logger.debug(`🔍 TRADE: ${data.symbol} - ${data.trade.price}`);
   });
 
   eventBus.onKlineUpdate((data) => {
-    logger.info(`🔍 KLINE: ${data.symbol} - ${data.kline.close}`);
+    logger.debug(`🔍 KLINE: ${data.symbol} - ${data.kline.close}`);
   });
 
   // Start trading engine AFTER EventBus listeners are set up

@@ -189,7 +189,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       if (position) {
         this.position = position;
         this.size = position.quantity.abs().toNumber();
-        this._logger.info(
+        this._logger.debug(
           `  💼 Loaded position: ${position.quantity.toString()} @ ${position.avgPrice?.toString() || 'N/A'}`,
         );
       }
@@ -197,7 +197,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
     // Load open orders to track entry and take-profit orders
     if (initialData.openOrders && initialData.openOrders.length > 0) {
-      this._logger.info(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
+      this._logger.debug(`  📝 Loaded ${initialData.openOrders.length} open order(s)`);
       initialData.openOrders.forEach((order) => {
         if (order.symbol === this._context.symbol) {
           this.orders.set(order.id, order);
@@ -213,7 +213,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
     // Load balance information (for logging only)
     if (initialData.balance) {
-      this._logger.info(`  💰 Loaded balance information`);
+      this._logger.debug(`  💰 Loaded balance information`);
     }
 
     // Real-time klines will be analyzed via analyze() method
@@ -231,7 +231,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       });
     }
 
-    this._logger.info(
+    this._logger.debug(
       `✅ Initial data loaded. Strategy ready for real-time analysis. Current size: ${this.size}/${this.maxSize}`,
     );
     return { action: 'hold' };
@@ -250,8 +250,8 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     // 保存 metadata 映射
     this.orderMetadataMap.set(clientOrderId, metadata);
 
-    this._logger.info(`🎯 [Entry Signal Generated] clientOrderId: ${clientOrderId}`);
-    this._logger.info(
+    this._logger.debug(`🎯 [Entry Signal Generated] clientOrderId: ${clientOrderId}`);
+    this._logger.debug(
       ` Token: ${this._symbol},  Price: ${price.toString()}, Quantity: ${quantity.toString()}`,
     );
 
@@ -290,10 +290,10 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     this.orderMetadataMap.set(clientOrderId, metadata);
     const price = takeProfitPrice;
     const quantity = parentOrder.executedQuantity || parentOrder.quantity;
-    this._logger.info(
+    this._logger.debug(
       `🎯 [Take Profit Signal Generated] clientOrderId: ${clientOrderId}`,
     );
-    this._logger.info(
+    this._logger.debug(
       ` Token: ${this._symbol},  Price: ${price.toString()}, Quantity: ${quantity.toString()}`,
     );
 
@@ -459,7 +459,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             order.status === OrderStatus.REJECTED ||
             order.status === OrderStatus.EXPIRED
           ) {
-            this._logger.info(
+            this._logger.debug(
               `   📊 Order already in terminal state: ${order.status}, no action needed`,
             );
           }
@@ -468,7 +468,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         }
 
         const signalType = metadata.signalType;
-        this._logger.info(
+        this._logger.debug(
           `✨ [New Order] Client Order ID: ${order.clientOrderId}, Type: ${signalType}, Status: ${order.status}`,
         );
 
@@ -478,7 +478,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
           // 🆕 FIX: Handle immediate fill for new orders
           if (order.status === OrderStatus.FILLED) {
-            this._logger.info(
+            this._logger.debug(
               `✅ [Entry Order FULLY FILLED] (new order) Generating TP signal immediately for: ${order.clientOrderId}`,
             );
             return this.generateTakeProfitSignal(order);
@@ -487,7 +487,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
           // Check if TP order is already FILLED when first seen
           if (order.status === OrderStatus.FILLED) {
             // TP filled immediately - Reduce size and clean up
-            this._logger.info(
+            this._logger.debug(
               `✅ [TP Order FULLY FILLED] (new order) Reducing size for: ${order.clientOrderId}`,
             );
 
@@ -502,18 +502,18 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             if (metadata.parentOrderId) {
               this.orders.delete(metadata.parentOrderId);
               this.orderMetadataMap.delete(metadata.parentOrderId);
-              this._logger.info(
+              this._logger.debug(
                 `   🧹 Cleaned up parent entry order: ${metadata.parentOrderId}`,
               );
             }
 
-            this._logger.info(`   📊 New size: ${this.size}`);
+            this._logger.debug(`   📊 New size: ${this.size}`);
             continue; // Don't add to orders map
           } else {
             // TP order not filled yet - track it
             this.takeProfitOrders.set(order.clientOrderId, order);
             this.orders.set(order.clientOrderId, order);
-            this._logger.info(`   📊 TP order tracked`);
+            this._logger.debug(`   📊 TP order tracked`);
           }
         } else {
           this.orders.set(order.clientOrderId, order);
@@ -547,7 +547,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
       // 🔥 ORDER STATUS CHANGED
       if (storedOrder.status !== order.status) {
-        this._logger.info(
+        this._logger.debug(
           `🔄 [Order Status Changed] ${order.clientOrderId.substring(0, 8)}... | ` +
             `${storedOrder.status} → ${order.status}`,
         );
@@ -587,7 +587,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
 
           if (metadata && metadata.signalType === SignalType.Entry) {
             // Entry order filled - Generate TP signal
-            this._logger.info(
+            this._logger.debug(
               `✅ [Entry Order FULLY FILLED] Generating TP signal immediately for: ${order.clientOrderId}`,
             );
             // Update stored order first
@@ -596,7 +596,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             return this.generateTakeProfitSignal(order);
           } else if (metadata && metadata.signalType === SignalType.TakeProfit) {
             // TP order filled - Reduce size and clean up
-            this._logger.info(
+            this._logger.debug(
               `✅ [TP Order FULLY FILLED] Reducing size for: ${order.clientOrderId}`,
             );
 
@@ -613,12 +613,12 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
             if (metadata.parentOrderId) {
               this.orders.delete(metadata.parentOrderId);
               this.orderMetadataMap.delete(metadata.parentOrderId);
-              this._logger.info(
+              this._logger.debug(
                 `   🧹 Cleaned up parent entry order: ${metadata.parentOrderId}`,
               );
             }
 
-            this._logger.info(`   📊 New size: ${this.size}`);
+            this._logger.debug(`   📊 New size: ${this.size}`);
             // Don't return signal, just update stored order
             this.orders.set(order.clientOrderId, order);
             continue;
@@ -650,7 +650,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       return null;
     }
 
-    this._logger.info(
+    this._logger.debug(
       `🗑️ [Order Cancellation] Processing ${order.status} order: ${order.clientOrderId.substring(0, 8)}...`,
     );
 
@@ -670,7 +670,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
     const executedQty = order.executedQuantity || new Decimal(0);
     const totalQty = order.quantity;
 
-    this._logger.info(
+    this._logger.debug(
       `   Signal Type: ${signalType} | Executed: ${executedQty.toString()}/${totalQty.toString()}`,
     );
 
@@ -680,7 +680,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
       if (hasGeneratedTP) {
         // 订单已完全成交，止盈订单已存在
         // 不调整 size，因为止盈订单成交时会处理
-        this._logger.info(
+        this._logger.debug(
           `   ℹ️ Entry was FULLY FILLED, TP order exists, size will be adjusted when TP fills`,
         );
       } else if (executedQty.gt(0)) {
@@ -690,27 +690,27 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         const oldSize = this.size;
         this.size -= unfilledAmount;
 
-        this._logger.info(
+        this._logger.debug(
           `   📊 Entry partially filled and ${order.status.toLowerCase()}:`,
         );
-        this._logger.info(
+        this._logger.debug(
           `      Filled: ${executedQty.toString()}/${totalQty.toString()} ` +
             `(${executedQty.div(totalQty).mul(100).toFixed(2)}%)`,
         );
-        this._logger.info(
+        this._logger.debug(
           `      Released unfilled size: ${unfilledAmount.toFixed(2)} ` +
             `(${oldSize.toFixed(2)} → ${this.size.toFixed(2)})`,
         );
 
         // Generate and return TP signal immediately for the filled portion
-        this._logger.info(`      Generating TP signal for filled portion...`);
+        this._logger.debug(`      Generating TP signal for filled portion...`);
         return this.generateTakeProfitSignal(order);
       } else {
         const oldSize = this.size;
         this.size -= this.baseSize;
 
-        this._logger.info(`   📊 Entry ${order.status.toLowerCase()} with NO fills:`);
-        this._logger.info(
+        this._logger.debug(`   📊 Entry ${order.status.toLowerCase()} with NO fills:`);
+        this._logger.debug(
           `      Released full size: ${this.baseSize} ` +
             `(${oldSize.toFixed(2)} → ${this.size.toFixed(2)})`,
         );
@@ -735,17 +735,19 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
         const oldSize = this.size;
         this.size -= sizeToRelease;
 
-        this._logger.info(`   📊 TP partially filled and ${order.status.toLowerCase()}:`);
-        this._logger.info(
+        this._logger.debug(
+          `   📊 TP partially filled and ${order.status.toLowerCase()}:`,
+        );
+        this._logger.debug(
           `      Filled: ${executedQty.toString()}/${totalQty.toString()} ` +
             `(${executedQty.div(totalQty).mul(100).toFixed(2)}%)`,
         );
-        this._logger.info(
+        this._logger.debug(
           `      Released filled size: ${sizeToRelease.toFixed(2)} ` +
             `(${oldSize.toFixed(2)} → ${this.size.toFixed(2)})`,
         );
       } else if (executedQty.isZero()) {
-        this._logger.info(
+        this._logger.debug(
           `   📊 TP ${order.status.toLowerCase()} with NO fills - no size adjustment needed`,
         );
       }
