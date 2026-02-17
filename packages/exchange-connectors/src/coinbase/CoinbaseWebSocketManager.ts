@@ -34,7 +34,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
   private readonly wsUrl: string;
   private readonly maxReconnectAttempts = 0;
   private readonly baseReconnectDelay = 1000;
-  private readonly heartbeatInterval = 15000; // 30 seconds
+  private readonly heartbeatInterval = 10000; // 10 seconds checking
   private isConnecting: boolean = false; // Track if connection is in progress
   private logger: ConsoleLogger;
   // JWT generation callback (provided by CoinbaseExchange)
@@ -153,6 +153,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     });
 
     this.state.ws.on('pong', () => {
+      this.logger.debug('[Coinbase] Pong received');
       this.state.lastActivityAt = Date.now();
     });
 
@@ -351,19 +352,21 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       const now = Date.now();
       const idleTime = now - lastActivityAt;
 
-      // If idle for more than `heartbeatInterval` (15s), send a ping to check connection
+      // Stale threshold: 30 seconds (3 missed checks)
+      const staleThreshold = 30000;
+
+      if (idleTime > staleThreshold) {
+        this.logger.warn(
+          `[Coinbase] Connection stale (idle ${idleTime}ms > ${staleThreshold}ms limit). forcing reconnect...`,
+        );
+        this.state.ws.terminate(); // Trigger 'close' -> reconnect
+        return;
+      }
+
+      // If idle for more than `heartbeatInterval` (10s), send a ping to check connection
       if (idleTime > this.heartbeatInterval) {
         this.logger.info(`[Coinbase] Connection idle for ${idleTime}ms, sending ping...`);
         this.state.ws.ping();
-      }
-
-      // If idle for more than `staleThreshold` (60s), consider it dead
-      const staleThreshold = this.heartbeatInterval * 4;
-      if (idleTime > staleThreshold) {
-        this.logger.warn(
-          `[Coinbase] Connection stale (idle ${idleTime}ms), terminating to trigger reconnect`,
-        );
-        this.state.ws.terminate();
       }
     }, this.heartbeatInterval);
   }
