@@ -16,6 +16,7 @@ interface WebSocketState {
   authenticated: boolean;
   jwtToken: string | null;
   lastActivityAt: number | null;
+  connectionTimer: NodeJS.Timeout | null;
 }
 
 /**
@@ -52,6 +53,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       authenticated: false,
       jwtToken: null,
       lastActivityAt: null,
+      connectionTimer: null,
     };
   }
 
@@ -86,11 +88,46 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       }
     }
 
-    this.state.ws = new WebSocket(this.wsUrl);
+    // Set a connection timeout to prevent hanging in "connecting" state
+    this.state.connectionTimer = setTimeout(() => {
+      if (this.isConnecting) {
+        this.logger.error('[Coinbase] Connection timed out, terminating...');
+        this.isConnecting = false;
+        if (this.state.ws) {
+          this.state.ws.terminate(); // This should trigger 'close' event
+        } else {
+          // If no ws instance, we must manually schedule reconnect
+          this.scheduleReconnect();
+        }
+      }
+    }, 15000); // 15 seconds timeout
+
+    try {
+      this.state.ws = new WebSocket(this.wsUrl);
+    } catch (error) {
+      this.isConnecting = false;
+      this.logger.error('[Coinbase] Failed to create WebSocket instance', error as Error);
+      if (this.state.connectionTimer) clearTimeout(this.state.connectionTimer);
+      this.scheduleReconnect();
+      return;
+    }
 
     this.state.ws.on('open', () => {
       this.logger.info('[Coinbase] WebSocket connected');
-      this.state.reconnectAttempts = 0;
+      // Clear connection timeout
+      if (this.state.connectionTimer) {
+        clearTimeout(this.state.connectionTimer);
+        this.state.connectionTimer = null;
+      }
+
+      // Delay resetting reconnect attempts to prevent flapping
+      // Only reset if connection stays stable for 5 seconds
+      setTimeout(() => {
+        if (this.state.ws?.readyState === WebSocket.OPEN) {
+          this.state.reconnectAttempts = 0;
+        }
+      }, 5000);
+
       this.state.lastActivityAt = Date.now();
       this.isConnecting = false;
       this.emit('connected');
@@ -126,6 +163,10 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
     this.state.ws.on('close', (code: number, reason: Buffer) => {
       console.log(`[Coinbase] WebSocket closed: ${code} - ${reason.toString()}`);
+      if (this.state.connectionTimer) {
+        clearTimeout(this.state.connectionTimer);
+        this.state.connectionTimer = null;
+      }
       this.isConnecting = false;
       this.stopHeartbeat();
       this.state.authenticated = false;
@@ -136,8 +177,24 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
     this.state.ws.on('error', (error: Error) => {
       console.error('[Coinbase] WebSocket error:', error.message);
+      if (this.state.connectionTimer) {
+        clearTimeout(this.state.connectionTimer);
+        this.state.connectionTimer = null;
+      }
       this.isConnecting = false;
       this.emit('error', error);
+
+      // Ensure we trigger a close event if it hasn't happened yet
+      // This is crucial for the reconnection logic to kick in
+      if (this.state.ws && this.state.ws.readyState !== WebSocket.CLOSED) {
+        try {
+          this.state.ws.terminate();
+        } catch (e) {
+          console.error('[Coinbase] Failed to terminate socket on error:', e);
+          // If terminate fails, forcefully schedule reconnect as a fallback
+          this.scheduleReconnect();
+        }
+      }
     });
   }
 
@@ -216,18 +273,20 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    * Unsubscribe from a channel
    */
   public unsubscribe(channel: string, productIds: string[]): void {
-    if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
-      this.logger.warn('[Coinbase] WebSocket not connected, cannot unsubscribe');
-      return;
-    }
-
-    // Remove from tracking
+    // Remove from tracking first
     const channelSub = this.state.subscriptions.get(channel);
     if (channelSub) {
       productIds.forEach((pid) => channelSub.productIds.delete(pid));
       if (channelSub.productIds.size === 0) {
         this.state.subscriptions.delete(channel);
       }
+    }
+
+    if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
+      this.logger.warn(
+        '[Coinbase] WebSocket not connected, subscription removed from local state but unsubscribe message not sent',
+      );
+      return;
     }
 
     // Send unsubscribe message
