@@ -63,3 +63,5 @@ api-keys/
 
 *firebase-admin.json
 apps/web/firebase-service-account.json
+apps/mobile/macos/Flutter/ephemeral/Flutter-Generated.xcconfig
+apps/mobile/macos/Flutter/ephemeral/flutter_export_environment.sh
