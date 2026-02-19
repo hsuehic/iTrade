@@ -19,11 +19,10 @@ export interface ManualOrderInput {
   type: OrderType;
   quantity: string | number | Decimal;
   price?: string | number | Decimal;
+  stopPrice?: string | number | Decimal;
   tradeMode?: TradeMode;
   leverage?: number;
-  leverage?: number;
   positionAction?: 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE_LONG' | 'CLOSE_SHORT';
-  stopPrice?: string | number | Decimal;
 }
 
 export interface OrderUpdateInput {
@@ -452,6 +451,7 @@ export async function modifyUserOrder(
     throw new Error('Stop price is required for this order type');
   }
 
+  // Basic validation
   if (!nextQuantity.isFinite() || nextQuantity.lte(0)) {
     throw new Error('Quantity must be a positive number');
   }
@@ -464,8 +464,10 @@ export async function modifyUserOrder(
     throw new Error('Stop Price must be a positive number');
   }
 
+  // Cancel the existing order
   await cancelUserOrder(userId, orderId);
 
+  // Place new order
   try {
     const updatedOrder = await executeManualOrder(userId, {
       exchange: order.exchange,

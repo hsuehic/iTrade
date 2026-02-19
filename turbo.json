@@ -8,23 +8,32 @@
       "persistent": true,
       "dependsOn": ["^build"]
     },
-
     // ---------- Build ----------
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "lib/**", "build/**", ".next/**"],
-      "inputs": ["src/**", "package.json", "tsconfig.json"]
+      "inputs": [
+        "src/**",
+        "app/**",
+        "lib/**",
+        "components/**",
+        "hooks/**",
+        "messages/**",
+        "middlewares/**",
+        "public/**",
+        "scripts/**",
+        "next.config.ts",
+        "package.json",
+        "tsconfig.json"
+      ]
     },
-
     "typecheck": {
       "dependsOn": ["^typecheck"],
       "outputs": []
     },
-
     "lint": {
       "outputs": []
     },
-
     "lint:fix": {
       "outputs": []
     }
