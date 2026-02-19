@@ -13,6 +13,7 @@ import 'delete_account.dart';
 import 'edit_profile.dart';
 import 'email_preferences.dart';
 import 'push_notification_history.dart';
+import 'satistics.dart';
 import '../widgets/user_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -484,6 +485,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
           isDark: isDark,
           children: [
             _buildSettingTile(
+              icon: Icons.analytics_outlined,
+              title: 'Statistics',
+              subtitle: 'View strategy statistics',
+              trailing: Icons.chevron_right,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const StatisticsScreen(),
+                  ),
+                );
+              },
+              isDark: isDark,
+            ),
+            _buildDivider(isDark),
+            _buildSettingTile(
               icon: Icons.currency_bitcoin,
               title: 'Default Exchange',
               subtitle: 'OKX',
@@ -838,6 +855,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _buildSettingsGroup(
                 isDark: isDark,
                 children: [
+                  _buildSettingTile(
+                    icon: Icons.analytics_outlined,
+                    title: 'Statistics',
+                    subtitle: 'View strategy statistics',
+                    trailing: Icons.chevron_right,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const StatisticsScreen(),
+                        ),
+                      );
+                    },
+                    isDark: isDark,
+                  ),
+                  _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.currency_bitcoin,
                     title: 'Default Exchange',

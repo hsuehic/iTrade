@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import {
   IconSearch,
   IconSortAscending,
@@ -35,7 +36,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -92,6 +102,7 @@ interface OrdersTableProps {
   refreshInterval?: number;
   initialStatusFilter?: string;
   refreshToken?: number;
+  initialEditOrderId?: string;
 }
 
 const formatCurrency = (value: string | number | undefined) => {
@@ -185,12 +196,61 @@ const TYPE_OPTIONS = [
 // Date range presets
 const DATE_PRESETS = [1, 7, 30, 90, 0];
 
+const editOrderSchema = z
+  .object({
+    quantity: z.string().min(1, 'Quantity is required'),
+    price: z.string().min(1, 'Price is required'),
+  })
+  .superRefine((data, ctx) => {
+    const quantity = Number(data.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Quantity must be a positive number',
+        path: ['quantity'],
+      });
+    }
+    const price = Number(data.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Price must be a positive number',
+        path: ['price'],
+      });
+    }
+  });
+
+const validateEditOrder = (values: { quantity: string; price: string }) => {
+  const parsed = editOrderSchema.safeParse(values);
+  if (parsed.success) return {};
+
+  return parsed.error.issues.reduce<Record<string, string>>((acc, issue) => {
+    const key = issue.path[0];
+    if (typeof key === 'string' && !acc[key]) {
+      acc[key] = issue.message;
+    }
+    return acc;
+  }, {});
+};
+
+const useDebouncedValue = <T,>(value: T, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = React.useState(value);
+
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timeoutId);
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 export function OrdersTable({
   selectedExchange = 'all',
   selectedStrategy,
   refreshInterval = 30000,
   initialStatusFilter,
   refreshToken,
+  initialEditOrderId,
 }: OrdersTableProps) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -211,6 +271,13 @@ export function OrdersTable({
   const [datePreset, setDatePreset] = React.useState(0); // Default to all time
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
   const [cancelingOrderId, setCancelingOrderId] = React.useState<string | null>(null);
+  const [editingOrder, setEditingOrder] = React.useState<OrderData | null>(null);
+  const [hasOpenedInitialEdit, setHasOpenedInitialEdit] = React.useState(false);
+  const [editForm, setEditForm] = React.useState({ quantity: '', price: '' });
+  const [editErrors, setEditErrors] = React.useState<Record<string, string>>({});
+  const [editTouched, setEditTouched] = React.useState<Record<string, boolean>>({});
+  const [editSubmitAttempted, setEditSubmitAttempted] = React.useState(false);
+  const [isEditing, setIsEditing] = React.useState(false);
 
   const getStatusLabel = React.useCallback(
     (status: string) => {
@@ -315,6 +382,101 @@ export function OrdersTable({
       setLoading(false);
     }
   }, [datePreset, selectedExchange, selectedStrategy, t]);
+
+  const debouncedEditForm = useDebouncedValue(editForm, 500);
+
+  const openEditDialog = React.useCallback((order: OrderData) => {
+    setEditingOrder(order);
+    setEditForm({
+      quantity: order.quantity || '',
+      price: order.price || '',
+    });
+    setEditErrors({});
+    setEditTouched({});
+    setEditSubmitAttempted(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!initialEditOrderId || hasOpenedInitialEdit) return;
+    if (orders.length === 0) return;
+
+    const target = orders.find((item) => item.id === initialEditOrderId);
+    if (target) {
+      openEditDialog(target);
+      setHasOpenedInitialEdit(true);
+    }
+  }, [hasOpenedInitialEdit, initialEditOrderId, openEditDialog, orders]);
+
+  React.useEffect(() => {
+    if (!editingOrder) return;
+
+    setEditForm({
+      quantity: editingOrder.quantity || '',
+      price: editingOrder.price || '',
+    });
+    setEditErrors({});
+    setEditTouched({});
+    setEditSubmitAttempted(false);
+  }, [editingOrder]);
+
+  React.useEffect(() => {
+    if (!editingOrder) return;
+    const shouldValidate =
+      editSubmitAttempted || Object.values(editTouched).some(Boolean);
+    if (!shouldValidate) return;
+
+    setEditErrors(validateEditOrder(debouncedEditForm));
+  }, [debouncedEditForm, editSubmitAttempted, editTouched, editingOrder]);
+
+  const handleEditBlur = (field: 'quantity' | 'price') => {
+    setEditTouched((prev) => ({ ...prev, [field]: true }));
+  };
+
+  const hasEditChanges = editingOrder
+    ? editForm.quantity.trim() !== (editingOrder.quantity || '') ||
+      editForm.price.trim() !== (editingOrder.price || '')
+    : false;
+
+  const handleEditSubmit = React.useCallback(async () => {
+    if (!editingOrder) return;
+
+    setEditSubmitAttempted(true);
+    const errors = validateEditOrder(editForm);
+    setEditErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    if (!hasEditChanges) {
+      toast.error(t('edit.errors.noChanges'));
+      return;
+    }
+
+    try {
+      setIsEditing(true);
+      const response = await fetch(`/api/orders/${editingOrder.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity: editForm.quantity.trim(),
+          price: editForm.price.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || t('edit.errors.updateFailed'));
+      }
+
+      toast.success(t('edit.messages.updated'));
+      setEditingOrder(null);
+      await fetchData();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t('edit.errors.updateFailed');
+      toast.error(message);
+    } finally {
+      setIsEditing(false);
+    }
+  }, [editForm, editingOrder, fetchData, hasEditChanges, t]);
 
   const handleCancelOrder = React.useCallback(
     async (order: OrderData) => {
@@ -665,23 +827,38 @@ export function OrdersTable({
         cell: ({ row }) => {
           const order = row.original;
           const canCancel = Boolean(order.exchange) && isCancelableStatus(order.status);
+          const canEdit = canCancel && order.type && order.type.toUpperCase() === 'LIMIT';
 
-          if (!canCancel) {
+          if (!canCancel && !canEdit) {
             return <span className="text-muted-foreground">-</span>;
           }
 
           const isCanceling = cancelingOrderId === order.id;
 
           return (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isCanceling}
-              onClick={() => handleCancelOrder(order)}
-              aria-label={t('actions.cancel')}
-            >
-              {isCanceling ? t('actions.canceling') : t('actions.cancel')}
-            </Button>
+            <div className="flex items-center gap-2">
+              {canEdit && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEditDialog(order)}
+                  aria-label={t('actions.edit')}
+                >
+                  {t('actions.edit')}
+                </Button>
+              )}
+              {canCancel && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isCanceling}
+                  onClick={() => handleCancelOrder(order)}
+                  aria-label={t('actions.cancel')}
+                >
+                  {isCanceling ? t('actions.canceling') : t('actions.cancel')}
+                </Button>
+              )}
+            </div>
           );
         },
       },
@@ -693,6 +870,7 @@ export function OrdersTable({
       getTypeLabel,
       handleCancelOrder,
       locale,
+      openEditDialog,
       t,
     ],
   );
@@ -838,6 +1016,74 @@ export function OrdersTable({
 
   return (
     <Card>
+      <Dialog
+        open={Boolean(editingOrder)}
+        onOpenChange={(open) => !open && setEditingOrder(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('edit.title')}</DialogTitle>
+            <DialogDescription>
+              {editingOrder
+                ? t('edit.description', {
+                    symbol: editingOrder.symbol,
+                    side: editingOrder.side,
+                  })
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-quantity">{t('edit.fields.quantity')}</Label>
+              <Input
+                id="edit-quantity"
+                inputMode="decimal"
+                value={editForm.quantity}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, quantity: event.target.value }))
+                }
+                onBlur={() => handleEditBlur('quantity')}
+              />
+              {(editSubmitAttempted || editTouched.quantity) && editErrors.quantity && (
+                <p className="text-sm text-rose-500">{editErrors.quantity}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-price">{t('edit.fields.price')}</Label>
+              <Input
+                id="edit-price"
+                inputMode="decimal"
+                value={editForm.price}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, price: event.target.value }))
+                }
+                onBlur={() => handleEditBlur('price')}
+              />
+              {(editSubmitAttempted || editTouched.price) && editErrors.price && (
+                <p className="text-sm text-rose-500">{editErrors.price}</p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{t('edit.helper')}</p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingOrder(null)}
+              disabled={isEditing}
+            >
+              {t('edit.actions.cancel')}
+            </Button>
+            <Button
+              onClick={handleEditSubmit}
+              disabled={
+                isEditing || !hasEditChanges || Object.keys(editErrors).length > 0
+              }
+            >
+              {isEditing ? t('edit.actions.saving') : t('edit.actions.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <div className="flex flex-col gap-1">
           <CardTitle>{t('transactionHistory')}</CardTitle>

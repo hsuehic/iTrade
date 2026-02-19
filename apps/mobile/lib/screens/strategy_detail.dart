@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/strategy.dart'; // Ensure this model has the updated fields (performance)
 import '../models/order.dart';
 import '../services/strategy_service.dart';
 import '../services/order_service.dart';
-import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
 
 class StrategyDetailScreen extends StatefulWidget {
@@ -26,7 +26,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   bool _isUpdating = false;
   List<Order> _orders = [];
   bool _isLoadingOrders = true;
-  int _displayedOrdersCount = 20;
+  final Set<String> _processingOrders = {};
 
   @override
   void initState() {
@@ -68,6 +68,199 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
         setState(() => _isLoadingOrders = false);
       }
     }
+  }
+
+  bool _isOrderOpen(Order order) => order.isNew || order.isPartiallyFilled;
+
+  bool _canEditOrder(Order order) {
+    return _isOrderOpen(order) && order.type.toUpperCase() == 'LIMIT';
+  }
+
+  Future<void> _confirmCancelOrder(Order order) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel Order'),
+        content: Text('Cancel ${order.symbol} ${order.side} order?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _handleCancelOrder(order);
+    }
+  }
+
+  Future<void> _handleCancelOrder(Order order) async {
+    if (_processingOrders.contains(order.id)) return;
+    setState(() => _processingOrders.add(order.id));
+
+    try {
+      final updated = await _orderService.cancelOrder(order.id);
+      if (updated == null) {
+        throw Exception('Cancel failed');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Order cancelled'), backgroundColor: Colors.green),
+        );
+      }
+      await _loadOrders();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cancel failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _processingOrders.remove(order.id));
+      }
+    }
+  }
+
+  Future<void> _showEditOrderDialog(Order order) async {
+    final quantityController = TextEditingController(
+      text: order.quantity.toString(),
+    );
+    final priceController = TextEditingController(
+      text: order.price?.toString() ?? '',
+    );
+    Timer? debounce;
+    String? quantityError;
+    String? priceError;
+    bool submitting = false;
+
+    void validateNow(void Function(void Function()) setDialogState) {
+      final quantityText = quantityController.text.trim();
+      final priceText = priceController.text.trim();
+      final quantity = double.tryParse(quantityText);
+      final price = double.tryParse(priceText);
+
+      setDialogState(() {
+        quantityError = (quantity == null || quantity <= 0)
+            ? 'Quantity must be a positive number'
+            : null;
+        priceError =
+            (price == null || price <= 0) ? 'Price must be a positive number' : null;
+      });
+    }
+
+    void scheduleValidation(void Function(void Function()) setDialogState) {
+      debounce?.cancel();
+      debounce = Timer(const Duration(milliseconds: 500), () {
+        validateNow(setDialogState);
+      });
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final hasErrors = quantityError != null || priceError != null;
+          final canSubmit = !submitting && !hasErrors;
+
+          return AlertDialog(
+            title: const Text('Edit Order'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: quantityController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Quantity',
+                    errorText: quantityError,
+                  ),
+                  onChanged: (_) => scheduleValidation(setDialogState),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: priceController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Price',
+                    errorText: priceError,
+                  ),
+                  onChanged: (_) => scheduleValidation(setDialogState),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: submitting ? null : () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: canSubmit
+                    ? () async {
+                        validateNow(setDialogState);
+                        if (quantityError != null || priceError != null) return;
+                        setDialogState(() => submitting = true);
+
+                        final quantity = double.parse(quantityController.text.trim());
+                        final price = double.parse(priceController.text.trim());
+
+                        try {
+                          final updated = await _orderService.updateOrder(
+                            order.id,
+                            quantity: quantity,
+                            price: price,
+                          );
+                          if (updated == null) {
+                            throw Exception('Update failed');
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Order updated'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                          await _loadOrders();
+                          if (!mounted) return;
+                          Navigator.of(context).pop();
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Update failed: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                          setDialogState(() => submitting = false);
+                        }
+                      }
+                    : null,
+                child: submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    debounce?.cancel();
+    quantityController.dispose();
+    priceController.dispose();
   }
 
   Future<void> _toggleStatus() async {
@@ -162,8 +355,6 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   
   String _formatPnL(double val) => '${val >= 0 ? '+' : ''}${val.toStringAsFixed(2)}';
   
-  String _formatMsg(String s) => s.split('_').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ');
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -305,8 +496,59 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _orders.length,
-      separatorBuilder: (_, __) => const Divider(),
-      itemBuilder: (ctx, idx) => _OrderItem(order: _orders[idx]),
+      separatorBuilder: (context, index) => const Divider(),
+      itemBuilder: (ctx, idx) {
+        final order = _orders[idx];
+        final isProcessing = _processingOrders.contains(order.id);
+        final canCancel = _isOrderOpen(order);
+        final canEdit = _canEditOrder(order);
+        final hasActions = canCancel || canEdit;
+        final orderItem = _OrderItem(
+          order: order,
+          isProcessing: isProcessing,
+          canCancel: canCancel,
+          canEdit: canEdit,
+          onCancel: () => _confirmCancelOrder(order),
+          onEdit: () => _showEditOrderDialog(order),
+        );
+
+        if (!hasActions) {
+          return orderItem;
+        }
+
+        return Slidable(
+          key: ValueKey(order.id),
+          endActionPane: ActionPane(
+            motion: const ScrollMotion(),
+            extentRatio: canEdit && canCancel ? 0.5 : 0.25,
+            children: [
+              if (canEdit)
+                SlidableAction(
+                  onPressed:
+                      isProcessing ? null : (_) => _showEditOrderDialog(order),
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  icon: Icons.edit,
+                  label: 'Edit',
+                ),
+              if (canCancel)
+                SlidableAction(
+                  onPressed:
+                      isProcessing ? null : (_) => _confirmCancelOrder(order),
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest,
+                  foregroundColor: Colors.red,
+                  icon: Icons.close,
+                  label: 'Cancel',
+                ),
+            ],
+          ),
+          child: orderItem,
+        );
+      },
     );
   }
 
@@ -348,7 +590,19 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
 class _OrderItem extends StatelessWidget {
   final Order order;
-  const _OrderItem({required this.order});
+  final bool canCancel;
+  final bool canEdit;
+  final bool isProcessing;
+  final VoidCallback onCancel;
+  final VoidCallback onEdit;
+  const _OrderItem({
+    required this.order,
+    required this.canCancel,
+    required this.canEdit,
+    required this.isProcessing,
+    required this.onCancel,
+    required this.onEdit,
+  });
 
   Color _getStatusColor(String status) {
      switch(status.toUpperCase()) {
@@ -362,50 +616,63 @@ class _OrderItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dateStr = '${order.timestamp.hour}:${order.timestamp.minute.toString().padLeft(2, '0')} ${order.timestamp.month}/${order.timestamp.day}';
-    return Row(
-      children: [
-        // Side Badge
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: (order.side == 'BUY' ? Colors.green : Colors.red).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            order.side,
-            style: TextStyle(
-              fontSize: 10, 
-              fontWeight: FontWeight.bold,
-              color: order.side == 'BUY' ? Colors.green : Colors.red
+    return SizedBox(
+      height: 72,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Side Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: (order.side == 'BUY' ? Colors.green : Colors.red).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              order.side,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: order.side == 'BUY' ? Colors.green : Colors.red,
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        // Main Info
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: 12),
+          // Main Info
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${order.symbol} (${order.type})',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  dateStr,
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
+                ),
+              ],
+            ),
+          ),
+          // Amounts + Actions
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text('${order.symbol} (${order.type})', style: const TextStyle(fontWeight: FontWeight.w500)),
-              Text(dateStr, style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor)),
+              Text(
+                order.quantity.toString(),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                order.status,
+                style: TextStyle(fontSize: 10, color: _getStatusColor(order.status)),
+              ),
             ],
           ),
-        ),
-        // Amounts
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              order.quantity.toString(), 
-              style: const TextStyle(fontWeight: FontWeight.bold)
-            ),
-            Text(
-              order.status,
-              style: TextStyle(fontSize: 10, color: _getStatusColor(order.status)),
-            ),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+

@@ -8,7 +8,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
-import 'package:ihsueh_itrade/screens/satistics.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:ihsueh_itrade/services/api_client.dart';
 import 'package:ihsueh_itrade/utils/responsive_layout.dart';
@@ -21,6 +20,7 @@ import 'screens/login.dart';
 import 'screens/forgot_password.dart';
 import 'screens/strategy.dart';
 import 'screens/product.dart';
+import 'screens/transactions.dart';
 import 'screens/profile.dart';
 import 'screens/exchange_accounts.dart';
 import 'screens/push_notification_history.dart';
@@ -362,9 +362,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _pages = [
       const PortfolioScreen(),
       const StrategyScreen(),
+      const TransactionsScreen(),
       const ProductScreen(),
-      const StatisticsScreen(),
-      const ProfileScreen(),
     ];
 
     // Check for pending notification tap (e.g., after login)
@@ -380,9 +379,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _navItems = [
       _NavItem(icon: Icons.pie_chart, label: 'Portfolio'),
       _NavItem(icon: Icons.calculate, label: 'Strategy'),
+      _NavItem(icon: Icons.receipt_long, label: 'Orders'),
       _NavItem(icon: Icons.widgets, label: 'Product'),
-      _NavItem(icon: Icons.analytics, label: 'Statistic'),
-      _NavItem(icon: Icons.manage_accounts, label: 'Profile'),
     ];
 
     // Debug: Print device info after first frame

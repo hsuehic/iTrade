@@ -129,5 +129,33 @@ class OrderService {
       return null;
     }
   }
+
+  /// Update an open order by ID (price/quantity)
+  Future<Order?> updateOrder(
+    String id, {
+    double? quantity,
+    double? price,
+  }) async {
+    try {
+      final Map<String, dynamic> payload = {};
+      if (quantity != null) payload['quantity'] = quantity.toString();
+      if (price != null) payload['price'] = price.toString();
+
+      final Response response = await _apiClient.putJson(
+        '/api/orders/$id',
+        data: payload,
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final orderData = response.data['order'];
+        if (orderData is Map<String, dynamic>) {
+          return Order.fromJson(orderData);
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
 }
 

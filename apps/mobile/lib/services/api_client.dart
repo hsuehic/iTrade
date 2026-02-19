@@ -135,6 +135,23 @@ class ApiClient {
     );
   }
 
+  Future<Response<T>> putJson<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
+  }) async {
+    _ensureInitialized();
+    return _dio.put<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+    );
+  }
+
   Future<Response<T>> delete<T>(
     String path, {
     Map<String, dynamic>? queryParameters,

@@ -7,12 +7,14 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
   final bool showMenuButton;
+  final bool showScanner;
 
   const CustomAppBar({
     super.key,
     required this.title,
     this.actions,
     this.showMenuButton = true,
+    this.showScanner = true,
   });
 
   @override
@@ -46,15 +48,16 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       // Auto-imply leading: false when no leading widget on tablet
       automaticallyImplyLeading: !isTablet,
       actions: [
-        IconButton(
-          icon: Icon(
-            Icons.qr_code_scanner,
-            color: isDark ? Colors.white : Colors.black87,
+        if (showScanner)
+          IconButton(
+            icon: Icon(
+              Icons.qr_code_scanner,
+              color: isDark ? Colors.white : Colors.black87,
+            ),
+            onPressed: () {
+              Navigator.pushNamed(context, '/scan-qr');
+            },
           ),
-          onPressed: () {
-            Navigator.pushNamed(context, '/scan-qr');
-          },
-        ),
         if (actions != null) ...actions!,
       ],
     );

@@ -1452,7 +1452,8 @@
     },
     "actions": {
       "cancel": "撤单",
-      "canceling": "撤单中..."
+      "canceling": "撤单中...",
+      "edit": "修改"
     },
     "messages": {
       "cancelled": "订单已撤销"
@@ -1460,6 +1461,27 @@
     "errors": {
       "fetchOrders": "获取订单失败",
       "cancelFailed": "撤单失败"
+    },
+    "edit": {
+      "title": "修改订单",
+      "description": "修改 {symbol} {side} 限价订单。",
+      "fields": {
+        "quantity": "数量",
+        "price": "价格"
+      },
+      "helper": "修改会撤销原订单并创建新订单。",
+      "actions": {
+        "cancel": "取消",
+        "save": "保存",
+        "saving": "保存中..."
+      },
+      "messages": {
+        "updated": "订单已更新"
+      },
+      "errors": {
+        "updateFailed": "修改订单失败",
+        "noChanges": "没有需要保存的修改"
+      }
     }
   },
   "positions": {

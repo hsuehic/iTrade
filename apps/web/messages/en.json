@@ -1472,7 +1472,8 @@
     },
     "actions": {
       "cancel": "Cancel",
-      "canceling": "Canceling..."
+      "canceling": "Canceling...",
+      "edit": "Edit"
     },
     "messages": {
       "cancelled": "Order cancelled"
@@ -1480,6 +1481,27 @@
     "errors": {
       "fetchOrders": "Failed to fetch orders",
       "cancelFailed": "Failed to cancel order"
+    },
+    "edit": {
+      "title": "Edit Order",
+      "description": "Update {symbol} {side} limit order.",
+      "fields": {
+        "quantity": "Quantity",
+        "price": "Price"
+      },
+      "helper": "Updating will cancel and replace the order.",
+      "actions": {
+        "cancel": "Cancel",
+        "save": "Save",
+        "saving": "Saving..."
+      },
+      "messages": {
+        "updated": "Order updated"
+      },
+      "errors": {
+        "updateFailed": "Failed to update order",
+        "noChanges": "No changes to save"
+      }
     }
   },
   "positions": {

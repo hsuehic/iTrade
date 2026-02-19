@@ -24,6 +24,11 @@ export interface ManualOrderInput {
   positionAction?: 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE_LONG' | 'CLOSE_SHORT';
 }
 
+export interface OrderUpdateInput {
+  quantity?: string | number | Decimal;
+  price?: string | number | Decimal;
+}
+
 const OPEN_STATUSES = new Set<OrderStatus>([
   OrderStatus.NEW,
   OrderStatus.PARTIALLY_FILLED,
@@ -384,4 +389,69 @@ export async function cancelUserOrder(userId: string, orderId: string) {
   } finally {
     await connection.exchange.disconnect();
   }
+}
+
+export async function modifyUserOrder(
+  userId: string,
+  orderId: string,
+  updates: OrderUpdateInput,
+) {
+  const dataManager = await getDataManager();
+  const order = await dataManager.getOrder(orderId);
+
+  if (!order) {
+    throw new Error('Order not found');
+  }
+
+  if (order.userId !== userId) {
+    throw new Error('Unauthorized');
+  }
+
+  if (!order.exchange) {
+    throw new Error('Order exchange is missing');
+  }
+
+  if (!OPEN_STATUSES.has(order.status as OrderStatus)) {
+    throw new Error('Order is not open');
+  }
+
+  if (order.type !== OrderType.LIMIT) {
+    throw new Error('Only LIMIT orders can be modified');
+  }
+
+  const nextQuantity =
+    updates.quantity !== undefined
+      ? toDecimal(updates.quantity)
+      : new Decimal(order.quantity.toString());
+  const nextPrice =
+    updates.price !== undefined
+      ? toDecimal(updates.price)
+      : order.price
+        ? new Decimal(order.price.toString())
+        : undefined;
+
+  if (!nextPrice) {
+    throw new Error('Order price is missing');
+  }
+
+  if (!nextQuantity.isFinite() || nextQuantity.lte(0)) {
+    throw new Error('Quantity must be a positive number');
+  }
+
+  if (!nextPrice.isFinite() || nextPrice.lte(0)) {
+    throw new Error('Price must be a positive number');
+  }
+
+  await cancelUserOrder(userId, orderId);
+
+  const updatedOrder = await executeManualOrder(userId, {
+    exchange: order.exchange,
+    symbol: order.symbol,
+    side: order.side,
+    type: order.type,
+    quantity: nextQuantity,
+    price: nextPrice,
+  });
+
+  return updatedOrder;
 }
