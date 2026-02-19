@@ -94,6 +94,8 @@ interface OrderData {
   realizedPnl?: string;
   commission?: string;
   commissionAsset?: string;
+  stopLoss?: string;
+  takeProfit?: string;
 }
 
 interface OrdersTableProps {
@@ -200,6 +202,7 @@ const editOrderSchema = z
   .object({
     quantity: z.string().min(1, 'Quantity is required'),
     price: z.string().min(1, 'Price is required'),
+    stopPrice: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     const quantity = Number(data.quantity);
@@ -218,9 +221,23 @@ const editOrderSchema = z
         path: ['price'],
       });
     }
+    if (data.stopPrice) {
+      const stopPrice = Number(data.stopPrice);
+      if (!Number.isFinite(stopPrice) || stopPrice <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Stop Price must be a positive number',
+          path: ['stopPrice'],
+        });
+      }
+    }
   });
 
-const validateEditOrder = (values: { quantity: string; price: string }) => {
+const validateEditOrder = (values: {
+  quantity: string;
+  price: string;
+  stopPrice?: string;
+}) => {
   const parsed = editOrderSchema.safeParse(values);
   if (parsed.success) return {};
 
@@ -273,7 +290,11 @@ export function OrdersTable({
   const [cancelingOrderId, setCancelingOrderId] = React.useState<string | null>(null);
   const [editingOrder, setEditingOrder] = React.useState<OrderData | null>(null);
   const [hasOpenedInitialEdit, setHasOpenedInitialEdit] = React.useState(false);
-  const [editForm, setEditForm] = React.useState({ quantity: '', price: '' });
+  const [editForm, setEditForm] = React.useState({
+    quantity: '',
+    price: '',
+    stopPrice: '',
+  });
   const [editErrors, setEditErrors] = React.useState<Record<string, string>>({});
   const [editTouched, setEditTouched] = React.useState<Record<string, boolean>>({});
   const [editSubmitAttempted, setEditSubmitAttempted] = React.useState(false);
@@ -366,6 +387,8 @@ export function OrdersTable({
           averagePrice: order.averagePrice?.toString(),
           realizedPnl: order.realizedPnl?.toString(),
           commission: order.commission?.toString(),
+          stopLoss: order.stopLoss?.toString(),
+          takeProfit: order.takeProfit?.toString(),
         }));
         setOrders(ordersData);
 
@@ -390,6 +413,7 @@ export function OrdersTable({
     setEditForm({
       quantity: order.quantity || '',
       price: order.price || '',
+      stopPrice: order.stopLoss || order.takeProfit || '',
     });
     setEditErrors({});
     setEditTouched({});
@@ -413,6 +437,7 @@ export function OrdersTable({
     setEditForm({
       quantity: editingOrder.quantity || '',
       price: editingOrder.price || '',
+      stopPrice: editingOrder.stopLoss || editingOrder.takeProfit || '',
     });
     setEditErrors({});
     setEditTouched({});
@@ -428,13 +453,15 @@ export function OrdersTable({
     setEditErrors(validateEditOrder(debouncedEditForm));
   }, [debouncedEditForm, editSubmitAttempted, editTouched, editingOrder]);
 
-  const handleEditBlur = (field: 'quantity' | 'price') => {
+  const handleEditBlur = (field: 'quantity' | 'price' | 'stopPrice') => {
     setEditTouched((prev) => ({ ...prev, [field]: true }));
   };
 
   const hasEditChanges = editingOrder
     ? editForm.quantity.trim() !== (editingOrder.quantity || '') ||
-      editForm.price.trim() !== (editingOrder.price || '')
+      editForm.price.trim() !== (editingOrder.price || '') ||
+      editForm.stopPrice.trim() !==
+        (editingOrder.stopLoss || editingOrder.takeProfit || '')
     : false;
 
   const handleEditSubmit = React.useCallback(async () => {
@@ -458,6 +485,7 @@ export function OrdersTable({
         body: JSON.stringify({
           quantity: editForm.quantity.trim(),
           price: editForm.price.trim(),
+          stopPrice: editForm.stopPrice.trim() || undefined,
         }),
       });
 
@@ -827,7 +855,12 @@ export function OrdersTable({
         cell: ({ row }) => {
           const order = row.original;
           const canCancel = Boolean(order.exchange) && isCancelableStatus(order.status);
-          const canEdit = canCancel && order.type && order.type.toUpperCase() === 'LIMIT';
+          const canEdit =
+            canCancel &&
+            order.type &&
+            (order.type.toUpperCase() === 'LIMIT' ||
+              order.type.toUpperCase() === 'STOP_LOSS_LIMIT' ||
+              order.type.toUpperCase() === 'TAKE_PROFIT_LIMIT');
 
           if (!canCancel && !canEdit) {
             return <span className="text-muted-foreground">-</span>;
@@ -1063,6 +1096,28 @@ export function OrdersTable({
                 <p className="text-sm text-rose-500">{editErrors.price}</p>
               )}
             </div>
+            {(editingOrder?.type?.toUpperCase() === 'STOP_LOSS_LIMIT' ||
+              editingOrder?.type?.toUpperCase() === 'TAKE_PROFIT_LIMIT') && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-stopPrice">{t('edit.fields.stopPrice')}</Label>
+                <Input
+                  id="edit-stopPrice"
+                  inputMode="decimal"
+                  value={editForm.stopPrice}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      stopPrice: event.target.value,
+                    }))
+                  }
+                  onBlur={() => handleEditBlur('stopPrice')}
+                />
+                {(editSubmitAttempted || editTouched.stopPrice) &&
+                  editErrors.stopPrice && (
+                    <p className="text-sm text-rose-500">{editErrors.stopPrice}</p>
+                  )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">{t('edit.helper')}</p>
           </div>
           <DialogFooter>

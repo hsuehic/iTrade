@@ -21,12 +21,15 @@ export interface ManualOrderInput {
   price?: string | number | Decimal;
   tradeMode?: TradeMode;
   leverage?: number;
+  leverage?: number;
   positionAction?: 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE_LONG' | 'CLOSE_SHORT';
+  stopPrice?: string | number | Decimal;
 }
 
 export interface OrderUpdateInput {
   quantity?: string | number | Decimal;
   price?: string | number | Decimal;
+  stopPrice?: string | number | Decimal;
 }
 
 const OPEN_STATUSES = new Set<OrderStatus>([
@@ -214,6 +217,7 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
             isBinance && isPerpetual && positionAction
               ? reduceOnlyActions.has(positionAction)
               : undefined,
+          stopPrice: input.stopPrice ? toDecimal(input.stopPrice) : undefined,
         },
       );
     };
@@ -415,8 +419,12 @@ export async function modifyUserOrder(
     throw new Error('Order is not open');
   }
 
-  if (order.type !== OrderType.LIMIT) {
-    throw new Error('Only LIMIT orders can be modified');
+  if (
+    ![OrderType.LIMIT, OrderType.STOP_LOSS_LIMIT, OrderType.TAKE_PROFIT_LIMIT].includes(
+      order.type as OrderType,
+    )
+  ) {
+    throw new Error('Only LIMIT and STOP/TP LIMIT orders can be modified');
   }
 
   const nextQuantity =
@@ -429,9 +437,19 @@ export async function modifyUserOrder(
       : order.price
         ? new Decimal(order.price.toString())
         : undefined;
+  const nextStopPrice =
+    updates.stopPrice !== undefined ? toDecimal(updates.stopPrice) : undefined;
 
   if (!nextPrice) {
     throw new Error('Order price is missing');
+  }
+
+  if (
+    (order.type === OrderType.STOP_LOSS_LIMIT ||
+      order.type === OrderType.TAKE_PROFIT_LIMIT) &&
+    !nextStopPrice
+  ) {
+    throw new Error('Stop price is required for this order type');
   }
 
   if (!nextQuantity.isFinite() || nextQuantity.lte(0)) {
@@ -442,16 +460,26 @@ export async function modifyUserOrder(
     throw new Error('Price must be a positive number');
   }
 
+  if (nextStopPrice && (!nextStopPrice.isFinite() || nextStopPrice.lte(0))) {
+    throw new Error('Stop Price must be a positive number');
+  }
+
   await cancelUserOrder(userId, orderId);
 
-  const updatedOrder = await executeManualOrder(userId, {
-    exchange: order.exchange,
-    symbol: order.symbol,
-    side: order.side,
-    type: order.type,
-    quantity: nextQuantity,
-    price: nextPrice,
-  });
-
-  return updatedOrder;
+  try {
+    const updatedOrder = await executeManualOrder(userId, {
+      exchange: order.exchange,
+      symbol: order.symbol,
+      side: order.side,
+      type: order.type,
+      quantity: nextQuantity,
+      price: nextPrice,
+      stopPrice: nextStopPrice,
+    });
+    return updatedOrder;
+  } catch (error) {
+    // If placement fails, we should probably warn the user that the original order was cancelled
+    console.error('Failed to place replacement order', error);
+    throw error;
+  }
 }

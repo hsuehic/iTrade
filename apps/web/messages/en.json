@@ -1487,7 +1487,8 @@
       "description": "Update {symbol} {side} limit order.",
       "fields": {
         "quantity": "Quantity",
-        "price": "Price"
+        "price": "Price",
+        "stopPrice": "Stop Price"
       },
       "helper": "Updating will cancel and replace the order.",
       "actions": {

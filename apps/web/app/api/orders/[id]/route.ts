@@ -13,12 +13,17 @@ const updateOrderSchema = z
   .object({
     quantity: z.union([z.string(), z.number()]).optional(),
     price: z.union([z.string(), z.number()]).optional(),
+    stopPrice: z.union([z.string(), z.number()]).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.quantity === undefined && data.price === undefined) {
+    if (
+      data.quantity === undefined &&
+      data.price === undefined &&
+      data.stopPrice === undefined
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Quantity or price is required',
+        message: 'Quantity, price, or stopPrice is required',
         path: ['quantity'],
       });
     }

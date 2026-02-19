@@ -251,6 +251,7 @@ export class BinanceExchange extends BaseExchange {
       leverage?: number;
       positionSide?: 'LONG' | 'SHORT';
       reduceOnly?: boolean;
+      stopPrice?: Decimal;
     },
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
@@ -289,6 +290,7 @@ export class BinanceExchange extends BaseExchange {
     }
 
     if (price) params.price = price.toString();
+    if (options?.stopPrice) params.stopPrice = options.stopPrice.toString();
     if (type === OrderType.LIMIT) {
       params.timeInForce = timeInForce;
     } else if (timeInForce !== 'GTC') {

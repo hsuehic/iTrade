@@ -97,6 +97,7 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
     options?: {
       tradeMode?: TradeMode;
       leverage?: number;
+      stopPrice?: Decimal;
     },
   ): Promise<Order>;
 
