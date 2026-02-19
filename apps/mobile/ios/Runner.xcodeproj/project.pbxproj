@@ -203,6 +203,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				D3A0B0C1D2E3F4A5B6C7D8E9 /* Strip Objective-C Simulator Slice */,
 				A1B2C3D4E5F60718293A4B5C /* Re-sign native frameworks */,
 				B9A0C0D8F1A64F5BAE7D0123 /* Generate objective_c dSYM */,
 				5F0171FF4458B397D9066B25 /* [CP] Copy Pods Resources */,
@@ -400,6 +401,22 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/objective_c.framework/objective_c\"\nDSYM_PATH=\"${DWARF_DSYM_FOLDER_PATH}/objective_c.framework.dSYM\"\n\nif [ -f \"${FRAMEWORK_PATH}\" ]; then\n  /usr/bin/dsymutil \"${FRAMEWORK_PATH}\" -o \"${DSYM_PATH}\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		D3A0B0C1D2E3F4A5B6C7D8E9 /* Strip Objective-C Simulator Slice */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Strip Objective-C Simulator Slice";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\nif [ \"${PLATFORM_NAME}\" != \"iphoneos\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_BINARY=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/objective_c.framework/objective_c\"\n\nif [ ! -f \"${FRAMEWORK_BINARY}\" ]; then\n  exit 0\nfi\n\nDEVICE_ARCHS=()\nSIM_ARCHS=()\n\nfor ARCH in $(/usr/bin/lipo -archs \"${FRAMEWORK_BINARY}\"); do\n  PLATFORM=$(/usr/bin/xcrun vtool -show-build -arch \"${ARCH}\" \"${FRAMEWORK_BINARY}\" 2>/dev/null | /usr/bin/awk '/platform/ {print $2; exit}')\n  if [ \"${PLATFORM}\" = \"iOS\" ]; then\n    DEVICE_ARCHS+=(\"${ARCH}\")\n  elif [ \"${PLATFORM}\" = \"iOS Simulator\" ]; then\n    SIM_ARCHS+=(\"${ARCH}\")\n  fi\n done\n\nif [ ${#SIM_ARCHS[@]} -eq 0 ]; then\n  exit 0\nfi\n\nif [ ${#DEVICE_ARCHS[@]} -eq 0 ]; then\n  echo \"error: objective_c.framework only contains iOS Simulator slices; cannot upload to App Store.\" >&2\n  exit 1\nfi\n\nfor ARCH in \"${SIM_ARCHS[@]}\"; do\n  /usr/bin/lipo -remove \"${ARCH}\" -output \"${FRAMEWORK_BINARY}\" \"${FRAMEWORK_BINARY}\"\ndone\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
