@@ -28,13 +28,14 @@ class PositionsList extends StatelessWidget {
     // Filter by exchange if selected
     final normalizedSelectedExchange = selectedExchange?.toLowerCase();
     final filteredPositions =
-        normalizedSelectedExchange != null && normalizedSelectedExchange != 'all'
-            ? positions
-                .where(
-                  (p) => p.exchange.toLowerCase() == normalizedSelectedExchange,
-                )
-                .toList()
-            : positions;
+        normalizedSelectedExchange != null &&
+            normalizedSelectedExchange != 'all'
+        ? positions
+              .where(
+                (p) => p.exchange.toLowerCase() == normalizedSelectedExchange,
+              )
+              .toList()
+        : positions;
 
     // Calculate total unrealized PnL
     final totalPnl = filteredPositions.fold(
@@ -81,7 +82,10 @@ class PositionsList extends StatelessWidget {
                     ),
                     SizedBox(width: 8.w),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -222,10 +226,7 @@ class _PositionItem extends StatelessWidget {
   final Position position;
   final VoidCallback? onTap;
 
-  const _PositionItem({
-    required this.position,
-    this.onTap,
-  });
+  const _PositionItem({required this.position, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -251,7 +252,9 @@ class _PositionItem extends StatelessWidget {
                     width: 40.w,
                     height: 40.w,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                      color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.05),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -259,7 +262,9 @@ class _PositionItem extends StatelessWidget {
                     width: 40.w,
                     height: 40.w,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                      color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.05),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -281,9 +286,7 @@ class _PositionItem extends StatelessWidget {
                           : const Color(0xFFEF4444),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isDark
-                            ? const Color(0xFF1A1F2E)
-                            : Colors.white,
+                        color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
                         width: 2,
                       ),
                     ),
