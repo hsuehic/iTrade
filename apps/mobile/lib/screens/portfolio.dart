@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models/portfolio.dart';
 import '../services/portfolio_service.dart';
 import '../services/api_client.dart';
-import '../widgets/custom_app_bar.dart';
+import '../services/auth_service.dart';
+import '../services/preference.dart';
+import '../utils/responsive_layout.dart';
+import '../widgets/quick_menu_drawer.dart';
 import '../widgets/portfolio/portfolio_summary_card.dart';
 import '../widgets/portfolio/asset_allocation_chart.dart';
 import '../widgets/portfolio/positions_list.dart';
@@ -36,10 +40,14 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   bool _isRefreshing = false;
   bool _isInitialLoad = true;
   bool _isUpdatingExchange = false;
+  bool _signingOut = false;
+  bool _headerElevated = false;
   String? _error;
   String _selectedExchange = 'all';
   String? _selectedAsset;
   int _selectedTab = 0; // 0: Holdings, 1: Positions
+  final AuthService _authService = AuthService.instance;
+  late final ScrollController _scrollController;
 
   // Store all available exchanges (not affected by filtering)
   List<String> _allExchanges = [];
@@ -92,10 +100,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final Map<String, _AggregatedTotals> aggregatedMap = {};
     for (final asset in assets) {
       final key = asset.asset;
-      final totals = aggregatedMap.putIfAbsent(
-        key,
-        () => _AggregatedTotals(),
-      );
+      final totals = aggregatedMap.putIfAbsent(key, () => _AggregatedTotals());
       totals.free += asset.free;
       totals.locked += asset.locked;
       totals.quantity += asset.total;
@@ -104,8 +109,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
     final aggregatedAssets = aggregatedMap.entries.map((entry) {
       final totals = entry.value;
-      final percentage =
-          totalValue > 0 ? (totals.value / totalValue) * 100 : 0.0;
+      final percentage = totalValue > 0
+          ? (totals.value / totalValue) * 100
+          : 0.0;
       return AggregatedAsset(
         asset: entry.key,
         free: totals.free,
@@ -132,6 +138,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()..addListener(_handleScroll);
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -146,6 +153,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _tabController.dispose();
     _portfolioSubscription?.cancel();
     _positionsSubscription?.cancel();
@@ -264,6 +272,36 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     }
   }
 
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final pixels = _scrollController.position.pixels;
+    _setHeaderElevated(pixels > 4);
+  }
+
+  void _setHeaderElevated(bool elevated) {
+    if (_headerElevated == elevated) return;
+    setState(() => _headerElevated = elevated);
+  }
+
+  Future<void> _signOut() async {
+    if (_signingOut) return;
+    setState(() => _signingOut = true);
+    try {
+      try {
+        await _authService.signOut();
+        await ApiClient.instance.clearCookies();
+        await Preference.remove(Preference.keySavedEmail);
+        await Preference.remove(Preference.keySavedPassword);
+      } catch (err) {
+        // Ignore logout errors
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    } finally {
+      if (mounted) setState(() => _signingOut = false);
+    }
+  }
+
   void _onExchangeSelected(String exchange) {
     final normalizedExchange = _normalizeExchange(exchange);
     PortfolioService.instance.stopAutoRefresh();
@@ -280,20 +318,31 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     super.build(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF0D1117)
+        : const Color(0xFFF5F7FA);
+    final statusBarColor = _headerElevated ? Colors.white : backgroundColor;
+    final statusBarBrightness = _headerElevated
+        ? Brightness.light
+        : (isDark ? Brightness.dark : Brightness.light);
+    final statusBarIconBrightness = _headerElevated
+        ? Brightness.dark
+        : (isDark ? Brightness.light : Brightness.dark);
 
-    return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF0D1117)
-          : const Color(0xFFF5F7FA),
-      appBar: CustomAppBar(
-        title: 'Portfolio',
-        // No refresh icon - data updates automatically via PortfolioService
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: statusBarColor,
+        statusBarBrightness: statusBarBrightness,
+        statusBarIconBrightness: statusBarIconBrightness,
       ),
-      body: _buildBody(context),
+      child: Scaffold(
+        backgroundColor: backgroundColor,
+        body: _buildBody(context, backgroundColor),
+      ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(BuildContext context, Color backgroundColor) {
     if (_isLoading && _isInitialLoad) {
       return _buildLoadingState(context);
     }
@@ -306,93 +355,111 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final displayPortfolio = _selectedExchange == 'all'
         ? _portfolioData
         : _buildPortfolioViewData(displayAssets);
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return Stack(
       children: [
         RefreshIndicator(
           onRefresh: _refreshData,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
-              SliverToBoxAdapter(
-                child: PortfolioSummaryCard(
-                  portfolio: displayPortfolio,
-                  pnl: _pnlData,
-                ),
-              ),
-
-          // Exchange Filter - always use _allExchanges to keep all options visible
-          if (_allExchanges.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.only(top: 16, bottom: 8),
-                child: ExchangeFilter(
-                  exchanges: _allExchanges,
-                  selectedExchange: _selectedExchange,
-                  onExchangeSelected: _onExchangeSelected,
-                ),
-              ),
-            ),
-
-          // Asset Allocation Chart
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(top: 16),
-              child: ValueListenableBuilder<List<AggregatedAsset>>(
-                valueListenable: _chartAssetsNotifier,
-                builder: (context, assets, child) {
-                  final chartAssets = assets.isNotEmpty
-                      ? assets
-                      : displayPortfolio.aggregatedAssets;
-                  return AssetAllocationChart(
-                    assets: chartAssets,
-                    selectedAsset: _selectedAsset,
-                    onAssetSelected: (asset) {
-                      setState(() {
-                        _selectedAsset = asset;
-                      });
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // Tab Bar
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(top: 20, left: 16.w, right: 16.w),
-              child: _buildTabBar(context),
-            ),
-          ),
-
-          // Tab Content
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: _selectedTab == 0
-                  ? AssetsList(
-                      assets: displayAssets,
-                      selectedAsset: _selectedAsset,
-                      onAssetTap: (asset) {
-                        setState(() {
-                          _selectedAsset = _selectedAsset == asset.asset
-                              ? null
-                              : asset.asset;
-                        });
-                      },
-                    )
-                  : PositionsList(
-                      positions: _positionsData.positions,
-                      selectedExchange: _selectedExchange,
+          child: SafeArea(
+            top: false,
+            bottom: false,
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _FixedHeaderDelegate(
+                    height: topPadding + 56,
+                    child: _buildPinnedHeader(
+                      context,
+                      topPadding,
+                      backgroundColor,
                     ),
-            ),
-          ),
+                  ),
+                ),
 
-              // Bottom padding
-              SliverToBoxAdapter(child: SizedBox(height: 24)),
-            ],
+                // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
+                SliverToBoxAdapter(
+                  child: PortfolioSummaryCard(
+                    portfolio: displayPortfolio,
+                    pnl: _pnlData,
+                  ),
+                ),
+
+                // Exchange Filter - always use _allExchanges to keep all options visible
+                if (_allExchanges.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: 16, bottom: 8),
+                      child: ExchangeFilter(
+                        exchanges: _allExchanges,
+                        selectedExchange: _selectedExchange,
+                        onExchangeSelected: _onExchangeSelected,
+                      ),
+                    ),
+                  ),
+
+                // Asset Allocation Chart
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: ValueListenableBuilder<List<AggregatedAsset>>(
+                      valueListenable: _chartAssetsNotifier,
+                      builder: (context, assets, child) {
+                        final chartAssets = assets.isNotEmpty
+                            ? assets
+                            : displayPortfolio.aggregatedAssets;
+                        return AssetAllocationChart(
+                          assets: chartAssets,
+                          selectedAsset: _selectedAsset,
+                          onAssetSelected: (asset) {
+                            setState(() {
+                              _selectedAsset = asset;
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
+                // Tab Bar
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 20, left: 16.w, right: 16.w),
+                    child: _buildTabBar(context),
+                  ),
+                ),
+
+                // Tab Content
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: _selectedTab == 0
+                        ? AssetsList(
+                            assets: displayAssets,
+                            selectedAsset: _selectedAsset,
+                            onAssetTap: (asset) {
+                              setState(() {
+                                _selectedAsset = _selectedAsset == asset.asset
+                                    ? null
+                                    : asset.asset;
+                              });
+                            },
+                          )
+                        : PositionsList(
+                            positions: _positionsData.positions,
+                            selectedExchange: _selectedExchange,
+                          ),
+                  ),
+                ),
+
+                // Bottom padding
+                SliverToBoxAdapter(child: SizedBox(height: 24)),
+              ],
+            ),
           ),
         ),
         if (_isUpdatingExchange || _isRefreshing)
@@ -404,10 +471,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               borderRadius: BorderRadius.circular(999),
               child: LinearProgressIndicator(
                 minHeight: 3,
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .primary
-                    .withValues(alpha: 0.15),
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.15),
               ),
             ),
           ),
@@ -468,6 +534,116 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPinnedHeader(
+    BuildContext context,
+    double topPadding,
+    Color backgroundColor,
+  ) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isTablet = ResponsiveLayout.isTablet(context);
+    final headerColor = _headerElevated ? Colors.white : backgroundColor;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: EdgeInsets.only(left: 12.w, right: 12.w, top: topPadding),
+      decoration: BoxDecoration(
+        color: headerColor,
+        border: _headerElevated
+            ? Border(
+                bottom: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.08),
+                  width: 1,
+                ),
+              )
+            : null,
+        boxShadow: _headerElevated
+            ? (isDark
+                  ? []
+                  : const [
+                      BoxShadow(
+                        color: Color(0x14000000),
+                        blurRadius: 10,
+                        offset: Offset(0, 1),
+                      ),
+                    ])
+            : null,
+      ),
+      height: topPadding + 56,
+      child: _buildHeaderContent(context, isDark, isTablet),
+    );
+  }
+
+  Widget _buildHeaderContent(BuildContext context, bool isDark, bool isTablet) {
+    return SizedBox(
+      height: 56,
+      child: Row(
+        children: [
+          if (!isTablet)
+            _buildHeaderIcon(
+              icon: Icons.menu,
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => const QuickMenuDrawer(),
+                );
+              },
+              isDark: isDark,
+              tooltip: 'Menu',
+            ),
+          const Spacer(),
+          _buildHeaderIcon(
+            icon: Icons.notifications_none,
+            onTap: () {
+              Navigator.pushNamed(context, '/push-history');
+            },
+            isDark: isDark,
+            tooltip: 'Notifications',
+          ),
+          SizedBox(width: 4.w),
+          _buildHeaderIcon(
+            icon: Icons.qr_code_scanner,
+            onTap: () {
+              Navigator.pushNamed(context, '/scan-qr');
+            },
+            isDark: isDark,
+            tooltip: 'Scan',
+          ),
+          SizedBox(width: 4.w),
+          _buildHeaderIcon(
+            icon: _signingOut ? Icons.hourglass_top : Icons.logout,
+            onTap: _signingOut ? null : _signOut,
+            isDark: isDark,
+            highlight: true,
+            tooltip: 'Logout',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeaderIcon({
+    required IconData icon,
+    required VoidCallback? onTap,
+    required bool isDark,
+    required String tooltip,
+    bool highlight = false,
+  }) {
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      icon: Icon(
+        icon,
+        size: 20.w,
+        color: highlight
+            ? Theme.of(context).colorScheme.primary
+            : (isDark ? Colors.white : Colors.black87),
       ),
     );
   }
@@ -566,4 +742,31 @@ class _AggregatedTotals {
   double locked = 0;
   double quantity = 0;
   double value = 0;
+}
+
+class _FixedHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Widget child;
+
+  _FixedHeaderDelegate({required this.height, required this.child});
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(covariant _FixedHeaderDelegate oldDelegate) {
+    return height != oldDelegate.height || child != oldDelegate.child;
+  }
 }

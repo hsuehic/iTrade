@@ -181,6 +181,8 @@ class _AssetsListState extends State<AssetsList> {
 
           // Assets list
           ListView.separated(
+            padding: EdgeInsets.zero,
+            primary: false,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: sortedAssets.length,
