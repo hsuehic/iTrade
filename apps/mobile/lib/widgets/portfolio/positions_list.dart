@@ -147,6 +147,8 @@ class PositionsList extends StatelessWidget {
 
           // Positions list
           ListView.separated(
+            padding: EdgeInsets.zero,
+            primary: false,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: filteredPositions.length,
