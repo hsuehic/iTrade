@@ -13,6 +13,7 @@ class OrderService {
   Future<List<Order>> getOrders({
     int? strategyId,
     String? symbol,
+    String? exchange,
     String? status,
     DateTime? startDate,
     DateTime? endDate,
@@ -21,6 +22,7 @@ class OrderService {
       final Map<String, dynamic> queryParams = {};
       if (strategyId != null) queryParams['strategyId'] = strategyId;
       if (symbol != null) queryParams['symbol'] = symbol;
+      if (exchange != null && exchange != 'all') queryParams['exchange'] = exchange;
       if (status != null) queryParams['status'] = status;
       if (startDate != null) {
         queryParams['startDate'] = startDate.toIso8601String();

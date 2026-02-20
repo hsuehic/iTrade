@@ -4,9 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models/portfolio.dart';
 import '../services/portfolio_service.dart';
+import '../services/notification.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/preference.dart';
+import '../services/order_service.dart';
 import '../utils/responsive_layout.dart';
 import '../widgets/quick_menu_drawer.dart';
 import '../widgets/portfolio/portfolio_summary_card.dart';
@@ -34,16 +36,20 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       ValueNotifier<List<AggregatedAsset>>([]);
   PositionsData _positionsData = PositionsData.empty();
   PnLData _pnlData = PnLData.empty();
+  AccountSummary _accountSummary = AccountSummary.empty();
+  int _orderCount = 0;
 
   // State
-  bool _isLoading = true;
   bool _isRefreshing = false;
   bool _isInitialLoad = true;
+  bool _isInitialLoading = false;
   bool _isUpdatingExchange = false;
+  bool _isUpdatingBalancePeriod = false;
   bool _signingOut = false;
   bool _headerElevated = false;
   String? _error;
   String _selectedExchange = 'all';
+  String _balanceChangePeriod = '1d';
   String? _selectedAsset;
   int _selectedTab = 0; // 0: Holdings, 1: Positions
   final AuthService _authService = AuthService.instance;
@@ -193,7 +199,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   Future<void> _loadData() async {
     if (!ApiClient.instance.isInitialized) {
       setState(() {
-        _isLoading = false;
         _error = 'API client not initialized. Please login first.';
         _isUpdatingExchange = false;
       });
@@ -201,7 +206,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     }
 
     setState(() {
-      _isLoading = _isInitialLoad;
+      _isInitialLoading = _isInitialLoad;
       _error = null;
     });
 
@@ -227,6 +232,13 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           exchange: _selectedExchange == 'all' ? null : _selectedExchange,
         ),
         PortfolioService.instance.fetchPnL(),
+        PortfolioService.instance.fetchAccountSummary(
+          exchange: _selectedExchange,
+          period: _balanceChangePeriod,
+        ),
+        OrderService.instance.getOrders(
+          exchange: _selectedExchange == 'all' ? null : _selectedExchange,
+        ),
       ]);
 
       if (mounted) {
@@ -234,8 +246,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           _portfolioData = results[0] as PortfolioData;
           _positionsData = results[1] as PositionsData;
           _pnlData = results[2] as PnLData;
-          _isLoading = false;
+          _accountSummary = results[3] as AccountSummary;
+          _orderCount = (results[4] as List).length;
           _isInitialLoad = false;
+          _isInitialLoading = false;
           _isUpdatingExchange = false;
         });
         _chartAssetsNotifier.value = _portfolioData.aggregatedAssets;
@@ -246,10 +260,40 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
           _error = e.toString();
+          _isInitialLoading = false;
           _isUpdatingExchange = false;
         });
+      }
+    }
+  }
+
+  Future<void> _updateBalancePeriod(String period) async {
+    if (_isUpdatingBalancePeriod || _balanceChangePeriod == period) return;
+
+    final previousPeriod = _balanceChangePeriod;
+    setState(() {
+      _isUpdatingBalancePeriod = true;
+      _balanceChangePeriod = period;
+    });
+
+    try {
+      final summary = await PortfolioService.instance.fetchAccountSummary(
+        exchange: _selectedExchange,
+        period: _balanceChangePeriod,
+      );
+      if (!mounted) return;
+      setState(() {
+        _accountSummary = summary;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _balanceChangePeriod = previousPeriod;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdatingBalancePeriod = false);
       }
     }
   }
@@ -343,11 +387,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   }
 
   Widget _buildBody(BuildContext context, Color backgroundColor) {
-    if (_isLoading && _isInitialLoad) {
-      return _buildLoadingState(context);
-    }
-
-    if (_error != null) {
+    if (_error != null &&
+        _portfolioData.assets.isEmpty &&
+        _positionsData.positions.isEmpty) {
       return _buildErrorState(context);
     }
 
@@ -355,6 +397,15 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final displayPortfolio = _selectedExchange == 'all'
         ? _portfolioData
         : _buildPortfolioViewData(displayAssets);
+    final balanceChangePercent = _accountSummary.balanceChange;
+    final balanceBase = _accountSummary.totalBalance > 0
+        ? _accountSummary.totalBalance
+        : displayPortfolio.summary.totalValue;
+    var balanceChangeValue = 0.0;
+    if (balanceChangePercent != 0 && balanceBase > 0) {
+      final previousBalance = balanceBase / (1 + balanceChangePercent / 100);
+      balanceChangeValue = balanceBase - previousBalance;
+    }
     final topPadding = MediaQuery.of(context).padding.top;
 
     return Stack(
@@ -385,6 +436,11 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                   child: PortfolioSummaryCard(
                     portfolio: displayPortfolio,
                     pnl: _pnlData,
+                    balanceChangePercent: balanceChangePercent,
+                    balanceChangeValue: balanceChangeValue,
+                    orderCount: _orderCount,
+                    selectedBalancePeriod: _balanceChangePeriod,
+                    onBalancePeriodSelected: _updateBalancePeriod,
                   ),
                 ),
 
@@ -462,7 +518,10 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             ),
           ),
         ),
-        if (_isUpdatingExchange || _isRefreshing)
+        if (_isUpdatingExchange ||
+            _isRefreshing ||
+            _isUpdatingBalancePeriod ||
+            _isInitialLoading)
           Positioned(
             left: 16.w,
             right: 16.w,
@@ -598,13 +657,14 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               tooltip: 'Menu',
             ),
           const Spacer(),
-          _buildHeaderIcon(
-            icon: Icons.notifications_none,
-            onTap: () {
-              Navigator.pushNamed(context, '/push-history');
+          ValueListenableBuilder<int>(
+            valueListenable: NotificationService.instance.unreadCountNotifier,
+            builder: (context, unreadCount, child) {
+              return _buildNotificationIcon(
+                unreadCount: unreadCount,
+                isDark: isDark,
+              );
             },
-            isDark: isDark,
-            tooltip: 'Notifications',
           ),
           SizedBox(width: 4.w),
           _buildHeaderIcon(
@@ -648,35 +708,50 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     );
   }
 
-  Widget _buildLoadingState(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 48.w,
-            height: 48.w,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                theme.colorScheme.primary,
+  Widget _buildNotificationIcon({
+    required int unreadCount,
+    required bool isDark,
+  }) {
+    final normalized = unreadCount < 0 ? 0 : unreadCount;
+    final badgeText = normalized > 99 ? '99+' : normalized.toString();
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        _buildHeaderIcon(
+          icon: Icons.notifications_none,
+          onTap: () {
+            Navigator.pushNamed(context, '/push-history');
+          },
+          isDark: isDark,
+          tooltip: 'Notifications',
+        ),
+        if (normalized > 0)
+          Positioned(
+            right: 4,
+            top: 4,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF0D1117) : Colors.white,
+                  width: 1,
+                ),
+              ),
+              constraints: BoxConstraints(minWidth: 18, minHeight: 16),
+              child: Text(
+                badgeText,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10.sp,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
-          SizedBox(height: 16),
-          Text(
-            'Loading portfolio...',
-            style: TextStyle(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white60 : Colors.black54,
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 

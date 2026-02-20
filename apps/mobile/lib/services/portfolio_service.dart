@@ -121,6 +121,37 @@ class PortfolioService {
     }
   }
 
+  /// Fetch account analytics summary (balance change, equity, positions)
+  Future<AccountSummary> fetchAccountSummary({
+    String exchange = 'all',
+    String period = '30d',
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'period': period,
+        if (exchange != 'all') 'exchange': exchange.trim().toLowerCase(),
+      };
+
+      final response = await ApiClient.instance.getJson<Map<String, dynamic>>(
+        '/api/analytics/account',
+        queryParameters: queryParams,
+      );
+
+      if (response.data == null) {
+        throw Exception('No data received from account analytics API');
+      }
+
+      return AccountSummary.fromJson(response.data!['summary'] ?? {});
+    } catch (e, stackTrace) {
+      _logger.e(
+        'Failed to fetch account analytics summary',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      rethrow;
+    }
+  }
+
   /// Fetch complete portfolio overview (assets, positions, PnL)
   Future<PortfolioOverview> fetchPortfolioOverview({
     String exchange = 'all',

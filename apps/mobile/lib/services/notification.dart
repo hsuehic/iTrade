@@ -18,6 +18,7 @@ class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
+  final ValueNotifier<int> _unreadCountNotifier = ValueNotifier<int>(0);
 
   bool _initialized = false;
   String? _cachedAppVersion;
@@ -36,8 +37,11 @@ class NotificationService {
     return 'push_$category';
   }
 
+  ValueNotifier<int> get unreadCountNotifier => _unreadCountNotifier;
+
   Future<void> initialize() async {
     if (_initialized) return;
+    _unreadCountNotifier.value = await Preference.getPushUnreadCount();
 
     const AndroidInitializationSettings androidInit =
         AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -373,6 +377,7 @@ class NotificationService {
   Future<void> updateBadgeCount(int count) async {
     final normalized = count < 0 ? 0 : count;
     await Preference.setPushUnreadCount(normalized);
+    _unreadCountNotifier.value = normalized;
 
     try {
       final supported = await FlutterAppBadger.isAppBadgeSupported();

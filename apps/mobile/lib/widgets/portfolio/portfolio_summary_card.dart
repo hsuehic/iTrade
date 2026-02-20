@@ -9,11 +9,21 @@ import '../../design/tokens/color.dart';
 class PortfolioSummaryCard extends StatefulWidget {
   final PortfolioData portfolio;
   final PnLData pnl;
+  final double balanceChangePercent;
+  final double balanceChangeValue;
+  final int orderCount;
+  final String selectedBalancePeriod;
+  final ValueChanged<String> onBalancePeriodSelected;
 
   const PortfolioSummaryCard({
     super.key,
     required this.portfolio,
     required this.pnl,
+    required this.balanceChangePercent,
+    required this.balanceChangeValue,
+    required this.orderCount,
+    required this.selectedBalancePeriod,
+    required this.onBalancePeriodSelected,
   });
 
   @override
@@ -51,9 +61,19 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final totalValue = widget.portfolio.summary.totalValue;
-    final totalPnl = widget.pnl.totalPnl;
-    final pnlPercentage = totalValue > 0 ? (totalPnl / totalValue) * 100 : 0;
-    final isProfitable = totalPnl >= 0;
+    final balanceChangePercent = widget.balanceChangePercent;
+    final balanceChangeValue = widget.balanceChangeValue;
+    final isProfitable = balanceChangeValue >= 0;
+    final orderCount = widget.orderCount;
+    final changePercentage = balanceChangePercent.isFinite
+        ? balanceChangePercent
+        : 0;
+    final periodOptions = const [
+      _BalancePeriodOption(id: '1h', label: '1H'),
+      _BalancePeriodOption(id: '1d', label: '1D'),
+      _BalancePeriodOption(id: '1w', label: '1W'),
+      _BalancePeriodOption(id: '1m', label: '1M'),
+    ];
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -64,10 +84,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [
-                    ColorTokens.gradientStartDark,
-                    ColorTokens.gradientEndDark,
-                  ]
+                ? [ColorTokens.gradientStartDark, ColorTokens.gradientEndDark]
                 : [
                     ColorTokens.gradientStart, // Teal
                     ColorTokens.gradientEnd, // Deep Ocean
@@ -186,7 +203,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                             Text(
                               _isBalanceHidden
                                   ? '••••%'
-                                  : '${isProfitable ? '+' : ''}${pnlPercentage.toStringAsFixed(2)}%',
+                                  : '${isProfitable ? '+' : ''}${changePercentage.toStringAsFixed(2)}%',
                               style: TextStyle(
                                 fontSize: 12.sp,
                                 fontWeight: FontWeight.w600,
@@ -194,7 +211,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                                     ? const Color(0xFF4ADE80)
                                     : const Color(0xFFF87171),
                                 fontFeatures: const [
-                                  FontFeature.tabularFigures()
+                                  FontFeature.tabularFigures(),
                                 ],
                               ),
                             ),
@@ -205,13 +222,20 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                       Text(
                         _isBalanceHidden
                             ? '••••'
-                            : '${isProfitable ? '+' : ''}\$${_formatNumber(totalPnl.abs())}',
+                            : '${isProfitable ? '+' : ''}\$${_formatNumber(balanceChangeValue.abs())}',
                         style: TextStyle(
                           fontSize: 13.sp,
                           fontWeight: FontWeight.w500,
                           color: Colors.white.withValues(alpha: 0.7),
                           fontFeatures: const [FontFeature.tabularFigures()],
                         ),
+                      ),
+                      const Spacer(),
+                      _buildBalancePeriodMenu(
+                        context,
+                        periodOptions,
+                        widget.selectedBalancePeriod,
+                        widget.onBalancePeriodSelected,
                       ),
                     ],
                   ),
@@ -237,7 +261,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                       _buildMetricItem(
                         context,
                         'Orders',
-                        widget.pnl.filledOrders.toString(),
+                        orderCount.toString(),
                         Icons.receipt_long_outlined,
                       ),
                     ],
@@ -308,6 +332,83 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
     );
   }
 
+  Widget _buildBalancePeriodMenu(
+    BuildContext context,
+    List<_BalancePeriodOption> options,
+    String selectedPeriod,
+    ValueChanged<String> onSelected,
+  ) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final selectedOption = options.firstWhere(
+      (option) => option.id == selectedPeriod,
+      orElse: () => options.first,
+    );
+
+    return PopupMenuButton<String>(
+      tooltip: 'Balance change period',
+      onSelected: onSelected,
+      color: isDark ? const Color(0xFF1A2231) : const Color(0xFFF7F9FB),
+      elevation: 3,
+      offset: Offset(0, 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      constraints: BoxConstraints(minWidth: 72.w, maxWidth: 96.w),
+      itemBuilder: (context) {
+        return options
+            .map(
+              (option) => PopupMenuItem<String>(
+                value: option.id,
+                height: 34,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 6.w,
+                      color: option.id == selectedPeriod
+                          ? ColorTokens.chartTeal
+                          : Colors.transparent,
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      option.label,
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: option.id == selectedPeriod
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: isDark ? Colors.white : Colors.black87,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .toList();
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            selectedOption.label,
+            style: TextStyle(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.7),
+              letterSpacing: 0.4,
+            ),
+          ),
+          SizedBox(width: 4.w),
+          Icon(
+            Icons.expand_more,
+            size: 14.w,
+            color: Colors.white.withValues(alpha: 0.55),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatNumber(double value) {
     if (value >= 1000000) {
       return '${(value / 1000000).toStringAsFixed(2)}M';
@@ -317,4 +418,11 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
       return value.toStringAsFixed(2);
     }
   }
+}
+
+class _BalancePeriodOption {
+  final String id;
+  final String label;
+
+  const _BalancePeriodOption({required this.id, required this.label});
 }

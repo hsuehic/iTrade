@@ -397,12 +397,55 @@ class PnLData {
   });
 
   factory PnLData.fromJson(Map<String, dynamic> json) {
+    double parseDouble(dynamic value) {
+      if (value is num) {
+        return value.toDouble();
+      }
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    int parseInt(dynamic value) {
+      if (value is num) {
+        return value.toInt();
+      }
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    final strategies = json['strategies'];
+    var strategiesTotalOrders = 0;
+    var strategiesFilledOrders = 0;
+    var strategiesTotalPnl = 0.0;
+
+    if (strategies is List) {
+      for (final strategy in strategies) {
+        if (strategy is Map<String, dynamic>) {
+          strategiesTotalOrders += parseInt(strategy['totalOrders']);
+          strategiesFilledOrders += parseInt(strategy['filledOrders']);
+          strategiesTotalPnl +=
+              parseDouble(strategy['pnl'] ?? strategy['totalPnl']);
+        }
+      }
+    }
+
+    final hasTotalPnl = json.containsKey('pnl') || json.containsKey('totalPnl');
+    final hasTotalOrders = json.containsKey('totalOrders');
+    final hasFilledOrders = json.containsKey('filledOrders');
+
+    final totalPnl = hasTotalPnl
+        ? parseDouble(json['pnl'] ?? json['totalPnl'])
+        : strategiesTotalPnl;
+    final totalOrders =
+        hasTotalOrders ? parseInt(json['totalOrders']) : strategiesTotalOrders;
+    final filledOrders = hasFilledOrders
+        ? parseInt(json['filledOrders'])
+        : strategiesFilledOrders;
+
     return PnLData(
-      totalPnl: (json['pnl'] ?? json['totalPnl'] ?? 0).toDouble(),
-      realizedPnl: (json['realizedPnl'] ?? 0).toDouble(),
-      unrealizedPnl: (json['unrealizedPnl'] ?? 0).toDouble(),
-      totalOrders: json['totalOrders'] ?? 0,
-      filledOrders: json['filledOrders'] ?? 0,
+      totalPnl: totalPnl,
+      realizedPnl: parseDouble(json['realizedPnl']),
+      unrealizedPnl: parseDouble(json['unrealizedPnl']),
+      totalOrders: totalOrders,
+      filledOrders: filledOrders,
       strategyId: json['strategyId'],
       strategyName: json['strategyName'],
     );
@@ -420,6 +463,71 @@ class PnLData {
 
   bool get isProfitable => totalPnl > 0;
   double get winRate => totalOrders > 0 ? (filledOrders / totalOrders) * 100 : 0;
+}
+
+/// Account analytics summary
+class AccountSummary {
+  final double totalBalance;
+  final double totalPositionValue;
+  final double totalEquity;
+  final double totalUnrealizedPnl;
+  final double? totalRealizedPnl;
+  final int totalPositions;
+  final double balanceChange;
+  final String? period;
+
+  AccountSummary({
+    required this.totalBalance,
+    required this.totalPositionValue,
+    required this.totalEquity,
+    required this.totalUnrealizedPnl,
+    required this.totalRealizedPnl,
+    required this.totalPositions,
+    required this.balanceChange,
+    required this.period,
+  });
+
+  factory AccountSummary.fromJson(Map<String, dynamic> json) {
+    double parseDouble(dynamic value) {
+      if (value is num) {
+        return value.toDouble();
+      }
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    int parseInt(dynamic value) {
+      if (value is num) {
+        return value.toInt();
+      }
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return AccountSummary(
+      totalBalance: parseDouble(json['totalBalance']),
+      totalPositionValue: parseDouble(json['totalPositionValue']),
+      totalEquity: parseDouble(json['totalEquity']),
+      totalUnrealizedPnl: parseDouble(json['totalUnrealizedPnl']),
+      totalRealizedPnl: json.containsKey('totalRealizedPnl')
+          ? parseDouble(json['totalRealizedPnl'])
+          : null,
+      totalPositions: parseInt(json['totalPositions']),
+      balanceChange: parseDouble(json['balanceChange']),
+      period: json['period']?.toString(),
+    );
+  }
+
+  factory AccountSummary.empty() {
+    return AccountSummary(
+      totalBalance: 0,
+      totalPositionValue: 0,
+      totalEquity: 0,
+      totalUnrealizedPnl: 0,
+      totalRealizedPnl: null,
+      totalPositions: 0,
+      balanceChange: 0,
+      period: null,
+    );
+  }
 }
 
 /// Complete portfolio overview
