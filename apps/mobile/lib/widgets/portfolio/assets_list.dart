@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/portfolio.dart';
 
 /// Professional assets list with sorting and filtering.
@@ -358,23 +357,31 @@ class _AssetItem extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                CachedNetworkImage(
-                  imageUrl: asset.iconUrl,
+                Image.network(
+                  asset.iconUrl,
                   width: 36.w,
                   height: 36.w,
-                  placeholder: (context, url) => Container(
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      width: 36.w,
+                      height: 36.w,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white10
+                            : Colors.black.withValues(alpha: 0.05),
+                        shape: BoxShape.circle,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => Container(
                     width: 36.w,
                     height: 36.w,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    width: 36.w,
-                    height: 36.w,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                      color: isDark
+                          ? Colors.white10
+                          : Colors.black.withValues(alpha: 0.05),
                       shape: BoxShape.circle,
                     ),
                     child: Center(

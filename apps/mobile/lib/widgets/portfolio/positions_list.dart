@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/portfolio.dart';
 
 /// Professional positions list widget with expandable details.
@@ -244,21 +243,25 @@ class _PositionItem extends StatelessWidget {
             Stack(
               clipBehavior: Clip.none,
               children: [
-                CachedNetworkImage(
-                  imageUrl: position.iconUrl,
+                Image.network(
+                  position.iconUrl,
                   width: 40.w,
                   height: 40.w,
-                  placeholder: (context, url) => Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white10
-                          : Colors.black.withValues(alpha: 0.05),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  errorWidget: (context, url, error) => Container(
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      width: 40.w,
+                      height: 40.w,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white10
+                            : Colors.black.withValues(alpha: 0.05),
+                        shape: BoxShape.circle,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => Container(
                     width: 40.w,
                     height: 40.w,
                     decoration: BoxDecoration(
