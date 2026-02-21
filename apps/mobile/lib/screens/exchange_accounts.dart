@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../design/tokens/color.dart';
 import '../services/account_service.dart';
 import 'account_form.dart';
 
@@ -113,192 +114,356 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.red),
-                      SizedBox(height: 16),
-                      Text('Error: $_error'),
-                      SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadAccounts,
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                )
-              : _accounts.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.account_balance_wallet_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 16),
-                          Text(
-                            'No accounts yet',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Add an exchange account to start trading',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Colors.grey,
-                                ),
-                          ),
-                          SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            onPressed: () => _showAccountForm(),
-                            icon: const Icon(Icons.add),
-                            label: const Text('Add Account'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadAccounts,
-                      child: ListView.builder(
-                        padding: EdgeInsets.all(16.w),
-                        itemCount: _accounts.length,
-                        itemBuilder: (context, index) {
-                          final account = _accounts[index];
-                          return _buildAccountCard(account, isDark);
-                        },
-                      ),
-                    ),
+          ? _buildErrorState(context)
+          : _accounts.isEmpty
+          ? _buildEmptyState(context)
+          : RefreshIndicator(
+              onRefresh: _loadAccounts,
+              child: ListView.separated(
+                padding: EdgeInsets.all(16.w),
+                itemCount: _accounts.length + 1,
+                separatorBuilder: (context, index) => SizedBox(height: 12.h),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return _buildHeaderCard(context, isDark);
+                  }
+                  final account = _accounts[index - 1];
+                  return _buildAccountCard(account, isDark);
+                },
+              ),
+            ),
       floatingActionButton: _accounts.isNotEmpty
-          ? FloatingActionButton(
+          ? FloatingActionButton.extended(
               onPressed: () => _showAccountForm(),
-              child: const Icon(Icons.add),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Account'),
             )
           : null,
     );
   }
 
-  Widget _buildAccountCard(ExchangeAccount account, bool isDark) {
-    final exchangeColor = _getExchangeColor(account.exchange);
-    final exchangeIcon = _getExchangeIcon(account.exchange);
+  Widget _buildHeaderCard(BuildContext context, bool isDark) {
+    final surface = Theme.of(context).colorScheme.surface;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final gradientColors = isDark
+        ? [ColorTokens.gradientStartDark, ColorTokens.gradientEndDark]
+        : [ColorTokens.gradientStart, ColorTokens.gradientEnd];
 
-    return Card(
-      margin: EdgeInsets.only(bottom: 12.h),
-      elevation: isDark ? 2 : 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12.r),
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16.r),
+        boxShadow: [
+          BoxShadow(
+            color: _withAlpha(Colors.black, isDark ? 0.35 : 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
+      child: Row(
+        children: [
+          Container(
+            width: 48.w,
+            height: 48.w,
+            decoration: BoxDecoration(
+              color: _withAlpha(surface, isDark ? 0.3 : 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.account_balance_wallet_outlined,
+              color: onSurface,
+              size: 24.sp,
+            ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connected Exchanges',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'Manage API keys and permissions safely',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: _withAlpha(Colors.white, 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.shield_outlined,
+            color: _withAlpha(Colors.white, 0.9),
+            size: 22.sp,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(24.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64.sp,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'Something went wrong',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              _error ?? 'Unknown error',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            ),
+            SizedBox(height: 20.h),
+            ElevatedButton.icon(
+              onPressed: _loadAccounts,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(24.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72.w,
+              height: 72.w,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _withAlpha(Theme.of(context).colorScheme.primary, 0.12),
+              ),
+              child: Icon(
+                Icons.link_outlined,
+                size: 36.sp,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'No connected exchanges',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8.h),
+            Text(
+              'Link your exchange API keys to start trading with iTrade.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+            SizedBox(height: 24.h),
+            ElevatedButton.icon(
+              onPressed: () => _showAccountForm(),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Account'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAccountCard(ExchangeAccount account, bool isDark) {
+    final exchangeColor = _getExchangeColor(account.exchange, context);
+    final surface = Theme.of(context).colorScheme.surface;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final borderColor = isDark
+        ? _withAlpha(Colors.white, 0.08)
+        : _withAlpha(Colors.black, 0.05);
+    final statusColor = account.isActive
+        ? ColorTokens.profitGreen
+        : Colors.grey;
+
+    return Material(
+      color: surface,
+      borderRadius: BorderRadius.circular(16.r),
+      elevation: isDark ? 1 : 0,
       child: InkWell(
         onTap: () => _showAccountForm(account),
-        borderRadius: BorderRadius.circular(12.r),
-        child: Padding(
-          padding: EdgeInsets.all(16.w),
+        borderRadius: BorderRadius.circular(16.r),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(color: borderColor),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(8.w),
-                    decoration: BoxDecoration(
-                      color: exchangeColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8.r),
-                    ),
-                    child: Icon(
-                      exchangeIcon,
-                      color: exchangeColor,
-                      size: 24.sp,
-                    ),
+              Container(
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      _withAlpha(exchangeColor, isDark ? 0.2 : 0.12),
+                      _withAlpha(surface, 0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          account.exchange.toUpperCase(),
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          account.accountId,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey,
-                              ),
-                        ),
-                      ],
-                    ),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16.r),
+                    topRight: Radius.circular(16.r),
                   ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                    decoration: BoxDecoration(
-                      color: account.isActive ? Colors.green.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Row(
+                  children: [
+                    _buildExchangeLogo(
+                      exchange: account.exchange,
+                      accentColor: exchangeColor,
+                      isDark: isDark,
                     ),
-                    child: Text(
-                      account.isActive ? 'Active' : 'Inactive',
-                      style: TextStyle(
-                        color: account.isActive ? Colors.green : Colors.grey,
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            account.exchange.toUpperCase(),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            'Account ID',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          ),
+                          Text(
+                            _maskKey(account.accountId),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: _withAlpha(onSurface, 0.7),
+                                  fontFamily: 'monospace',
+                                ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 12.h),
-              Divider(height: 1),
-              SizedBox(height: 12.h),
-              Row(
-                children: [
-                  Icon(Icons.vpn_key_outlined, size: 16.sp, color: Colors.grey),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: Text(
-                      account.apiKey ?? '****',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontFamily: 'monospace',
-                            color: Colors.grey,
-                          ),
-                    ),
-                  ),
-                ],
-              ),
-              if (account.updatedTime != null) ...[
-                SizedBox(height: 8.h),
-                Row(
-                  children: [
-                    Icon(Icons.update, size: 16.sp, color: Colors.grey),
-                    SizedBox(width: 8.w),
-                    Text(
-                      'Updated ${_formatDate(account.updatedTime!)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey,
-                          ),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 6.h,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _withAlpha(statusColor, 0.12),
+                        borderRadius: BorderRadius.circular(20.r),
+                      ),
+                      child: Text(
+                        account.isActive ? 'Active' : 'Inactive',
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ],
-              SizedBox(height: 12.h),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: () => _showAccountForm(account),
-                    icon: Icon(Icons.edit_outlined, size: 16.sp),
-                    label: const Text('Edit'),
-                  ),
-                  SizedBox(width: 8.w),
-                  TextButton.icon(
-                    onPressed: () => _deleteAccount(account),
-                    icon: Icon(Icons.delete_outline, size: 16.sp),
-                    label: const Text('Delete'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  ),
-                ],
+              ),
+              Padding(
+                padding: EdgeInsets.all(16.w),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.vpn_key_outlined,
+                          size: 16.sp,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'API Key',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6.h),
+                    Text(
+                      _maskKey(account.apiKey),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        color: _withAlpha(onSurface, 0.8),
+                      ),
+                    ),
+                    if (account.updatedTime != null) ...[
+                      SizedBox(height: 12.h),
+                      Row(
+                        children: [
+                          Icon(Icons.update, size: 16.sp, color: Colors.grey),
+                          SizedBox(width: 8.w),
+                          Text(
+                            'Updated ${_formatDate(account.updatedTime!)}',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                    SizedBox(height: 16.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _showAccountForm(account),
+                          icon: Icon(Icons.edit_outlined, size: 16.sp),
+                          label: const Text('Edit'),
+                        ),
+                        SizedBox(width: 8.w),
+                        TextButton.icon(
+                          onPressed: () => _deleteAccount(account),
+                          icon: Icon(Icons.delete_outline, size: 16.sp),
+                          label: const Text('Delete'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -307,27 +472,29 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
     );
   }
 
-  Color _getExchangeColor(String exchange) {
+  Color _getExchangeColor(String exchange, BuildContext context) {
     switch (exchange.toLowerCase()) {
       case 'binance':
-        return const Color(0xFFF3BA2F);
+        return ColorTokens.exchangeBinance;
       case 'okx':
-        return const Color(0xFF000000);
+        return ColorTokens.exchangeOkx;
       case 'coinbase':
-        return const Color(0xFF0052FF);
+        return ColorTokens.exchangeCoinbase;
       default:
-        return Colors.blue;
+        return Theme.of(context).colorScheme.primary;
     }
   }
 
-  IconData _getExchangeIcon(String exchange) {
+  String? _getExchangeLogoAsset(String exchange) {
     switch (exchange.toLowerCase()) {
       case 'binance':
-      case 'okx':
+        return 'assets/icons/exchanges/binance.png';
       case 'coinbase':
-        return Icons.currency_exchange;
+        return 'assets/icons/exchanges/coinbase.png';
+      case 'okx':
+        return 'assets/icons/exchanges/okx.png';
       default:
-        return Icons.account_balance;
+        return null;
     }
   }
 
@@ -346,5 +513,61 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
     } else {
       return 'Just now';
     }
+  }
+
+  Color _withAlpha(Color color, double opacity) {
+    final clamped = opacity.clamp(0.0, 1.0);
+    return color.withValues(alpha: clamped);
+  }
+
+  Widget _buildExchangeLogo({
+    required String exchange,
+    required Color accentColor,
+    required bool isDark,
+  }) {
+    final asset = _getExchangeLogoAsset(exchange);
+    final background = _withAlpha(accentColor, isDark ? 0.18 : 0.12);
+    final borderColor = _withAlpha(accentColor, isDark ? 0.35 : 0.2);
+
+    return Container(
+      width: 44.w,
+      height: 44.w,
+      decoration: BoxDecoration(
+        color: background,
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor),
+      ),
+      child: ClipOval(
+        child: asset == null
+            ? Icon(Icons.account_balance, color: accentColor, size: 22.sp)
+            : Padding(
+                padding: EdgeInsets.all(8.w),
+                child: Image.asset(
+                  asset,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      Icons.account_balance,
+                      color: accentColor,
+                      size: 22.sp,
+                    );
+                  },
+                ),
+              ),
+      ),
+    );
+  }
+
+  String _maskKey(String? key) {
+    if (key == null || key.trim().isEmpty) {
+      return 'Not set';
+    }
+    final normalized = key.replaceAll(RegExp(r'\s+'), '');
+    if (normalized.length <= 6) {
+      return '${normalized.substring(0, 2)}****';
+    }
+    final head = normalized.substring(0, 4);
+    final tail = normalized.substring(normalized.length - 4);
+    return '$head****$tail';
   }
 }
