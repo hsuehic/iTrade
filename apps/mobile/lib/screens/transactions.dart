@@ -107,7 +107,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cancel failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Cancel failed: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -139,8 +142,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         quantityError = (quantity == null || quantity <= 0)
             ? 'Quantity must be a positive number'
             : null;
-        priceError =
-            (price == null || price <= 0) ? 'Price must be a positive number' : null;
+        priceError = (price == null || price <= 0)
+            ? 'Price must be a positive number'
+            : null;
       });
     }
 
@@ -165,7 +169,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               children: [
                 TextField(
                   controller: quantityController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Quantity',
                     errorText: quantityError,
@@ -175,7 +181,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: priceController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'Price',
                     errorText: priceError,
@@ -196,7 +204,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         if (quantityError != null || priceError != null) return;
                         setDialogState(() => submitting = true);
 
-                        final quantity = double.parse(quantityController.text.trim());
+                        final quantity = double.parse(
+                          quantityController.text.trim(),
+                        );
                         final price = double.parse(priceController.text.trim());
 
                         try {
@@ -302,8 +312,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           comparison = a.timestamp.compareTo(b.timestamp);
           break;
         case _SortField.status:
-          comparison = _statusSortWeight(a.status)
-              .compareTo(_statusSortWeight(b.status));
+          comparison = _statusSortWeight(
+            a.status,
+          ).compareTo(_statusSortWeight(b.status));
           break;
         case _SortField.quantity:
           comparison = a.quantity.compareTo(b.quantity);
@@ -320,7 +331,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   List<Order> _getFilteredOrders(List<Order> orders) {
     final query = _query.trim().toLowerCase();
     return orders.where((order) {
-      final matchesQuery = query.isEmpty ||
+      final matchesQuery =
+          query.isEmpty ||
           order.displaySymbol.toLowerCase().contains(query) ||
           order.symbol.toLowerCase().contains(query) ||
           order.side.toLowerCase().contains(query) ||
@@ -361,7 +373,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return PopupMenuButton<_SortMenuAction>(
       icon: Icon(
         Icons.sort,
-        color: theme.brightness == Brightness.dark ? Colors.white : Colors.black87,
+        color: theme.brightness == Brightness.dark
+            ? Colors.white
+            : Colors.black87,
       ),
       tooltip: 'Sort orders',
       onSelected: (action) {
@@ -448,25 +462,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final hasResults = sortedOrders.isNotEmpty;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: CustomAppBar(
         title: 'Orders',
         showScanner: false,
         actions: [
           _buildSortMenu(context),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadOrders,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadOrders),
         ],
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SimpleSearchBar(
-            onChanged: _handleQuery,
-            onSubmitted: _handleQuery,
-          ),
+          SimpleSearchBar(onChanged: _handleQuery, onSubmitted: _handleQuery),
           const SizedBox(height: 16),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.w),
@@ -487,115 +496,118 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : !hasResults
-                      ? ListView(
+                  ? ListView(
+                      children: [
+                        SizedBox(height: 120.h),
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            SizedBox(height: 120.h),
-                            Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  hasOrders ? Icons.search_off : Icons.receipt_long,
-                                  size: 48.w,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  hasOrders ? 'No matching orders' : 'No orders yet',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 14.sp,
-                                  ),
-                                ),
-                              ],
+                            Icon(
+                              hasOrders ? Icons.search_off : Icons.receipt_long,
+                              size: 48.w,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              hasOrders
+                                  ? 'No matching orders'
+                                  : 'No orders yet',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14.sp,
+                              ),
                             ),
                           ],
-                        )
-                      : ListView.builder(
-                          padding: EdgeInsets.symmetric(horizontal: 16.w),
-                          itemCount: sortedOrders.length,
-                          itemBuilder: (context, index) {
-                            final order = sortedOrders[index];
-                            final isProcessing =
-                                _processingOrders.contains(order.id);
-                            final canCancel = _isOrderOpen(order);
-                            final canEdit = _canEditOrder(order);
-                            final hasActions = canCancel || canEdit;
-                            final orderItem = _OrderItem(
-                              order: order,
-                              isProcessing: isProcessing,
-                              canCancel: canCancel,
-                              canEdit: canEdit,
-                              onCancel: () => _confirmCancelOrder(order),
-                              onEdit: () => _showEditOrderDialog(order),
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => OrderDetailScreen(
-                                      order: order,
-                                    ),
-                                  ),
-                                );
-                              },
-                              statusColor: _getStatusColor(order.status),
-                            );
-
-                            final actionPane = hasActions
-                                ? ActionPane(
-                                    motion: const ScrollMotion(),
-                                    extentRatio: canEdit && canCancel ? 0.5 : 0.25,
-                                    children: [
-                                      if (canEdit)
-                                        SlidableAction(
-                                          onPressed: isProcessing
-                                              ? null
-                                              : (_) => _showEditOrderDialog(order),
-                                          backgroundColor: theme
-                                              .colorScheme
-                                              .surfaceContainerHighest,
-                                          foregroundColor: theme.colorScheme.primary,
-                                          icon: Icons.edit,
-                                          label: 'Edit',
-                                        ),
-                                      if (canCancel)
-                                        SlidableAction(
-                                          onPressed: isProcessing
-                                              ? null
-                                              : (_) => _confirmCancelOrder(order),
-                                          backgroundColor: theme
-                                              .colorScheme
-                                              .surfaceContainerHighest,
-                                          foregroundColor: Colors.red,
-                                          icon: Icons.close,
-                                          label: 'Cancel',
-                                        ),
-                                    ],
-                                  )
-                                : null;
-
-                            return Column(
-                              children: [
-                                if (hasActions)
-                                  Slidable(
-                                    key: ValueKey(order.id),
-                                    endActionPane: actionPane,
-                                    child: orderItem,
-                                  )
-                                else
-                                  orderItem,
-                                if (index != sortedOrders.length - 1)
-                                  Divider(
-                                    height: 16.h,
-                                    thickness: 0.5,
-                                    indent: 40.w,
-                                    color: isDark
-                                        ? Colors.grey[850]
-                                        : Colors.grey.withValues(alpha: 0.15),
-                                  ),
-                              ],
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      padding: EdgeInsets.symmetric(horizontal: 16.w),
+                      itemCount: sortedOrders.length,
+                      itemBuilder: (context, index) {
+                        final order = sortedOrders[index];
+                        final isProcessing = _processingOrders.contains(
+                          order.id,
+                        );
+                        final canCancel = _isOrderOpen(order);
+                        final canEdit = _canEditOrder(order);
+                        final hasActions = canCancel || canEdit;
+                        final orderItem = _OrderItem(
+                          order: order,
+                          isProcessing: isProcessing,
+                          canCancel: canCancel,
+                          canEdit: canEdit,
+                          onCancel: () => _confirmCancelOrder(order),
+                          onEdit: () => _showEditOrderDialog(order),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    OrderDetailScreen(order: order),
+                              ),
                             );
                           },
-                        ),
+                          statusColor: _getStatusColor(order.status),
+                        );
+
+                        final actionPane = hasActions
+                            ? ActionPane(
+                                motion: const ScrollMotion(),
+                                extentRatio: canEdit && canCancel ? 0.5 : 0.25,
+                                children: [
+                                  if (canEdit)
+                                    SlidableAction(
+                                      onPressed: isProcessing
+                                          ? null
+                                          : (_) => _showEditOrderDialog(order),
+                                      backgroundColor: theme
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                      foregroundColor:
+                                          theme.colorScheme.primary,
+                                      icon: Icons.edit,
+                                      label: 'Edit',
+                                    ),
+                                  if (canCancel)
+                                    SlidableAction(
+                                      onPressed: isProcessing
+                                          ? null
+                                          : (_) => _confirmCancelOrder(order),
+                                      backgroundColor: theme
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                      foregroundColor: Colors.red,
+                                      icon: Icons.close,
+                                      label: 'Cancel',
+                                    ),
+                                ],
+                              )
+                            : null;
+
+                        return Column(
+                          children: [
+                            if (hasActions)
+                              Slidable(
+                                key: ValueKey(order.id),
+                                endActionPane: actionPane,
+                                child: orderItem,
+                              )
+                            else
+                              orderItem,
+                            if (index != sortedOrders.length - 1)
+                              Divider(
+                                height: 16.h,
+                                thickness: 0.5,
+                                indent: 40.w,
+                                color: isDark
+                                    ? Colors.grey[850]
+                                    : Colors.grey.withValues(alpha: 0.15),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
             ),
           ),
         ],
@@ -604,7 +616,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
-enum _SortMenuAction { createdTime, status, quantity, orderValue, toggleDirection }
+enum _SortMenuAction {
+  createdTime,
+  status,
+  quantity,
+  orderValue,
+  toggleDirection,
+}
 
 class _OrderItem extends StatelessWidget {
   final Order order;
@@ -653,8 +671,11 @@ class _OrderItem extends StatelessWidget {
         '${order.timestamp.hour}:${order.timestamp.minute.toString().padLeft(2, '0')} '
         '${order.timestamp.month}/${order.timestamp.day}';
 
-    final sideColor = order.side.toUpperCase() == 'BUY' ? Colors.green : Colors.red;
-    final orderValue = order.cummulativeQuoteQuantity != null &&
+    final sideColor = order.side.toUpperCase() == 'BUY'
+        ? Colors.green
+        : Colors.red;
+    final orderValue =
+        order.cummulativeQuoteQuantity != null &&
             order.cummulativeQuoteQuantity! > 0
         ? order.cummulativeQuoteQuantity!
         : (order.price ?? order.averagePrice ?? 0) * order.quantity;
@@ -695,7 +716,10 @@ class _OrderItem extends StatelessWidget {
                   Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 4.h,
+                        ),
                         decoration: BoxDecoration(
                           color: sideColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
@@ -735,7 +759,10 @@ class _OrderItem extends StatelessWidget {
                       ),
                       SizedBox(width: 6.w),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6.w,
+                          vertical: 2.h,
+                        ),
                         decoration: BoxDecoration(
                           color: Theme.of(context)
                               .colorScheme
@@ -758,7 +785,10 @@ class _OrderItem extends StatelessWidget {
                   Row(
                     children: [
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6.w,
+                          vertical: 2.h,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
@@ -775,7 +805,10 @@ class _OrderItem extends StatelessWidget {
                       SizedBox(width: 8.w),
                       Text(
                         order.type,
-                        style: TextStyle(fontSize: 11.sp, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Colors.grey[600],
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -799,7 +832,10 @@ class _OrderItem extends StatelessWidget {
               children: [
                 Text(
                   formatQuantity(order.quantity),
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.sp),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.sp,
+                  ),
                 ),
                 SizedBox(height: 2.h),
                 Text(
@@ -822,4 +858,3 @@ class _OrderItem extends StatelessWidget {
     );
   }
 }
-

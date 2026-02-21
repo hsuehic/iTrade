@@ -1086,61 +1086,66 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+    return AnimatedPadding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: MediaQuery.of(context).size.height * 0.9,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.85,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.title,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search...',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: isDark ? Colors.grey[850] : Colors.grey[100],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search symbol',
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    fillColor: isDark
-                        ? Colors.grey[850]
-                        : Colors.grey.withValues(alpha: 0.08),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+                    onChanged: (value) => setState(() => _query = value),
                   ),
-                  onChanged: (value) => setState(() => _query = value),
                 ),
-              ),
-              Expanded(
-                child: widget.loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _buildSymbolList(context),
-              ),
-            ],
+                Expanded(
+                  child: widget.loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildSymbolList(context),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1227,39 +1232,36 @@ class _SymbolListTile extends StatelessWidget {
     final base = ticker.symbol.split('/').first;
     final price = ticker.price;
     final change = ticker.change24h;
-    final changeColor =
-        (change ?? 0) >= 0 ? Colors.green : Colors.red;
+    final changeColor = (change ?? 0) >= 0 ? Colors.green : Colors.red;
+    final subtitle = ticker.exchange?.isNotEmpty == true
+        ? ticker.exchange!.toUpperCase()
+        : '24h';
 
     return Material(
-      color: Theme.of(context).brightness == Brightness.dark
-          ? Colors.grey[900]
-          : Colors.white,
-      borderRadius: BorderRadius.circular(12),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                  CryptoIcons.getIconUrl(base),
-                  width: 32,
-                  height: 32,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        base.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
+              Image.network(
+                CryptoIcons.getIconUrl(base),
+                width: 28,
+                height: 28,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      base.substring(0, 1).toUpperCase(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -1278,7 +1280,7 @@ class _SymbolListTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      price == null ? '--' : price.toStringAsFixed(4),
+                      subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).hintColor,
                           ),
@@ -1290,21 +1292,40 @@ class _SymbolListTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    change == null
-                        ? '--'
-                        : '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                    price == null ? '--' : price.toStringAsFixed(4),
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: change == null ? Colors.grey : changeColor,
                         ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '24h',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).hintColor,
+                  change == null
+                      ? Text(
+                          '--',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).hintColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              change >= 0
+                                  ? Icons.trending_up
+                                  : Icons.trending_down,
+                              size: 14,
+                              color: changeColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: changeColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                          ],
                         ),
-                  ),
                 ],
               ),
             ],

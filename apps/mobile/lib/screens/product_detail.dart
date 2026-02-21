@@ -584,120 +584,130 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     OKXTicker? ticker,
   ) {
     final isSelected = symbol == _currentSymbol;
-    final hasData = ticker != null;
-    final changePercent = hasData
-        ? ((ticker!.last - ticker.open24h) / ticker.open24h) * 100
+    final resolvedTicker = ticker;
+    final hasData = resolvedTicker != null;
+    final changePercent = hasData && resolvedTicker.open24h > 0
+        ? ((resolvedTicker.last - resolvedTicker.open24h) /
+                resolvedTicker.open24h) *
+            100
         : null;
-    final changeColor = hasData && changePercent! >= 0
+    final changeColor = changePercent != null && changePercent >= 0
         ? Colors.green
         : Colors.red;
+    final selectedColor =
+        isDarkMode ? Colors.blue.withValues(alpha: 0.12) : Colors.blue[50];
+    final borderColor = isSelected
+        ? (isDarkMode ? Colors.blue[300]! : Colors.blue[400]!)
+        : Colors.transparent;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? (isDarkMode
-                  ? Colors.blue.withValues(alpha: 0.1)
-                  : Colors.blue.withValues(alpha: 0.05))
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isSelected
-              ? (isDarkMode ? Colors.blue[300]! : Colors.blue[400]!)
-              : Colors.transparent,
-          width: 1,
-        ),
-      ),
-      child: ListTile(
+    return Material(
+      color: isSelected ? selectedColor : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
         key: ValueKey(symbol),
+        borderRadius: BorderRadius.circular(10),
         onTap: () {
           Navigator.pop(context);
           _changeSymbol(symbol);
         },
-        leading: hasData && ticker!.iconUrl.isNotEmpty
-            ? Image.network(
-                ticker.iconUrl,
-                width: 28,
-                height: 28,
-                errorBuilder: (context, error, stackTrace) =>
-                    Icon(Icons.monetization_on, size: 28),
-              )
-            : Icon(
-                Icons.currency_exchange,
-                size: 28,
-                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-              ),
-        title: Text(
-          symbol,
-          style: TextStyle(
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
-            color: isSelected
-                ? (isDarkMode ? Colors.blue[300] : Colors.blue[700])
-                : (isDarkMode ? Colors.white : Colors.black),
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor, width: 1),
           ),
-        ),
-        subtitle: hasData
-            ? Text(
-                'Vol: ${formatVolume(_calculateDisplayVolume(ticker!))}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                ),
-              )
-            : Text(
-                'Price unavailable',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDarkMode ? Colors.grey[500] : Colors.grey[400],
-                ),
-              ),
-        trailing: hasData
-            ? IntrinsicWidth(
+          child: Row(
+            children: [
+              hasData && resolvedTicker.iconUrl.isNotEmpty
+                  ? Image.network(
+                      resolvedTicker.iconUrl,
+                      width: 28,
+                      height: 28,
+                      errorBuilder: (context, error, stackTrace) =>
+                          Icon(Icons.monetization_on, size: 28),
+                    )
+                  : Icon(
+                      Icons.currency_exchange,
+                      size: 28,
+                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '\$${ticker!.last.toStringAsFixed(2)}',
+                      symbol,
                       style: TextStyle(
-                        fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: isDarkMode ? Colors.white : Colors.black,
+                        fontSize: 14,
+                        color: isDarkMode ? Colors.white : Colors.black87,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasData
+                          ? 'Vol: ${formatVolume(_calculateDisplayVolume(resolvedTicker))}'
+                          : 'Price unavailable',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    hasData
+                        ? '\$${formatPriceExact(resolvedTicker.last, precision: 4)}'
+                        : '--',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: isDarkMode ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  if (changePercent != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          changePercent! >= 0
+                          changePercent >= 0
                               ? Icons.trending_up
                               : Icons.trending_down,
-                          size: 16,
+                          size: 14,
                           color: changeColor,
                         ),
                         const SizedBox(width: 4),
                         Text(
                           '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             color: changeColor,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
+                    )
+                  else
+                    Text(
+                      '--',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ],
-                ),
-              )
-            : isSelected
-            ? Icon(
-                Icons.check_circle,
-                color: isDarkMode ? Colors.blue[300] : Colors.blue[700],
-              )
-            : null,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -718,156 +728,166 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               return symbol.toLowerCase().contains(searchQuery.toLowerCase());
             }).toList();
 
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.8,
-              decoration: BoxDecoration(
-                color: isDarkMode ? Colors.grey[900] : Colors.white,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
+            return AnimatedPadding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              child: Column(
-                children: [
-                  // Handle bar
-                  Container(
-                    margin: const EdgeInsets.only(top: 12, bottom: 8),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.8,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey[900] : Colors.white,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
                   ),
-
-                  // Title
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Select Symbol',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: isDarkMode ? Colors.white : Colors.black,
+                ),
+                child: Column(
+                  children: [
+                    // Handle bar
+                    Container(
+                      margin: const EdgeInsets.only(top: 12, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                  ),
-
-                  // Search field with clear button
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextField(
-                      controller: searchController,
-                      autofocus: false,
-                      style: TextStyle(
-                        color: isDarkMode ? Colors.white : Colors.black87,
-                        fontSize: 14,
-                      ),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 12,
-                          horizontal: 16,
-                        ),
-                        hintText: 'Search symbols...',
-                        hintStyle: TextStyle(
-                          color: isDarkMode
-                              ? Colors.grey[500]
-                              : Colors.grey[600],
-                          fontSize: 14,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          color: isDarkMode
-                              ? Colors.grey[400]
-                              : Colors.grey[600],
-                          size: 20,
-                        ),
-                        suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                          valueListenable: searchController,
-                          builder: (context, value, child) {
-                            if (value.text.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-                            return IconButton(
-                              icon: Icon(
-                                Icons.clear,
-                                color: isDarkMode
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
-                                size: 20,
-                              ),
-                              onPressed: () {
-                                searchController.clear();
-                                setModalState(() {
-                                  searchQuery = '';
-                                });
-                              },
-                              tooltip: 'Clear search',
-                            );
-                          },
-                        ),
-                        filled: true,
-                        fillColor: isDarkMode
-                            ? Colors.grey[850]
-                            : Colors.grey[100],
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: isDarkMode
-                                ? Colors.grey[700]!
-                                : Colors.grey[300]!,
-                            width: 1.0,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.5),
-                            width: 2.0,
-                          ),
-                        ),
-                      ),
-                      onChanged: (value) {
-                        setModalState(() {
-                          searchQuery = value;
-                        });
-                      },
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Symbol list
-                  Expanded(
-                    child: filteredSymbols.isEmpty
-                        ? Center(
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
                             child: Text(
-                              'No symbols found',
+                              'Select Symbol',
                               style: TextStyle(
-                                color: isDarkMode
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.white : Colors.black,
                               ),
                             ),
-                          )
-                        : ListView.builder(
-                            itemCount: filteredSymbols.length,
-                            itemBuilder: (context, index) {
-                              final symbol = filteredSymbols[index];
-                              final ticker = _symbolTickers[symbol];
-
-                              return _buildSymbolListItem(
-                                symbol,
-                                isDarkMode,
-                                ticker,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: searchController,
+                        autofocus: false,
+                        style: TextStyle(
+                          color: isDarkMode ? Colors.white : Colors.black87,
+                          fontSize: 14,
+                        ),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 16,
+                          ),
+                          hintText: 'Search...',
+                          hintStyle: TextStyle(
+                            color: isDarkMode
+                                ? Colors.grey[500]
+                                : Colors.grey[600],
+                            fontSize: 14,
+                          ),
+                          prefixIcon: Icon(
+                            Icons.search,
+                            color: isDarkMode
+                                ? Colors.grey[400]
+                                : Colors.grey[600],
+                            size: 20,
+                          ),
+                          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: searchController,
+                            builder: (context, value, child) {
+                              if (value.text.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              return IconButton(
+                                icon: Icon(
+                                  Icons.clear,
+                                  color: isDarkMode
+                                      ? Colors.grey[400]
+                                      : Colors.grey[600],
+                                  size: 20,
+                                ),
+                                onPressed: () {
+                                  searchController.clear();
+                                  setModalState(() {
+                                    searchQuery = '';
+                                  });
+                                },
+                                tooltip: 'Clear search',
                               );
                             },
                           ),
-                  ),
-                ],
+                          filled: true,
+                          fillColor:
+                              isDarkMode ? Colors.grey[850] : Colors.grey[100],
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(
+                              color: isDarkMode
+                                  ? Colors.grey[700]!
+                                  : Colors.grey[300]!,
+                              width: 1.0,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.5),
+                              width: 2.0,
+                            ),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          setModalState(() {
+                            searchQuery = value;
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: filteredSymbols.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No symbols found',
+                                style: TextStyle(
+                                  color: isDarkMode
+                                      ? Colors.grey[400]
+                                      : Colors.grey[600],
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: filteredSymbols.length,
+                              itemBuilder: (context, index) {
+                                final symbol = filteredSymbols[index];
+                                final ticker = _symbolTickers[symbol];
+
+                                return _buildSymbolListItem(
+                                  symbol,
+                                  isDarkMode,
+                                  ticker,
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
               ),
             );
           },
