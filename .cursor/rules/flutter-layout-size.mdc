@@ -1,0 +1,8 @@
+---
+description: Use .w for Flutter layout sizing in mobile
+globs: apps/mobile/**/*.dart
+---
+# Flutter layout sizing rule
+
+When defining layout sizes in Flutter (mobile), use `.w` only.  
+Do not use `.h`. This keeps vertical and horizontal scaling consistent.
