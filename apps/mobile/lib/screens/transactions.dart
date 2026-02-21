@@ -498,7 +498,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   : !hasResults
                   ? ListView(
                       children: [
-                        SizedBox(height: 120.h),
+                        SizedBox(height: 120.w),
                         Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -597,7 +597,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               orderItem,
                             if (index != sortedOrders.length - 1)
                               Divider(
-                                height: 16.h,
+                                height: 16.w,
                                 thickness: 0.5,
                                 indent: 40.w,
                                 color: isDark
@@ -692,7 +692,7 @@ class _OrderItem extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.h),
+        padding: EdgeInsets.symmetric(vertical: 8.w),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -718,7 +718,7 @@ class _OrderItem extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 8.w,
-                          vertical: 4.h,
+                          vertical: 4.w,
                         ),
                         decoration: BoxDecoration(
                           color: sideColor.withValues(alpha: 0.12),
@@ -761,7 +761,7 @@ class _OrderItem extends StatelessWidget {
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 6.w,
-                          vertical: 2.h,
+                          vertical: 2.w,
                         ),
                         decoration: BoxDecoration(
                           color: Theme.of(context)
@@ -781,13 +781,13 @@ class _OrderItem extends StatelessWidget {
                       ),
                     ],
                   ),
-                  SizedBox(height: 4.h),
+                  SizedBox(height: 4.w),
                   Row(
                     children: [
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 6.w,
-                          vertical: 2.h,
+                          vertical: 2.w,
                         ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.12),
@@ -837,7 +837,7 @@ class _OrderItem extends StatelessWidget {
                     fontSize: 12.sp,
                   ),
                 ),
-                SizedBox(height: 2.h),
+                SizedBox(height: 2.w),
                 Text(
                   formatCurrency(orderValue),
                   style: TextStyle(
@@ -845,7 +845,7 @@ class _OrderItem extends StatelessWidget {
                     color: Theme.of(context).textTheme.bodySmall?.color,
                   ),
                 ),
-                SizedBox(height: 2.h),
+                SizedBox(height: 2.w),
                 Text(
                   formatPriceExact(price),
                   style: TextStyle(fontSize: 10.sp, color: Colors.grey[600]),
