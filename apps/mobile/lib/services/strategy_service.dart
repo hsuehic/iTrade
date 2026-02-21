@@ -123,6 +123,60 @@ class StrategyService {
     }
   }
 
+  /// Fetch strategy type configurations
+  Future<List<Map<String, dynamic>>> getStrategyConfigs() async {
+    try {
+      final Response response = await _apiClient.getJson('/api/strategies/config');
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final strategies = data['strategies'] as List?;
+        if (strategies != null) {
+          return strategies
+              .whereType<Map<String, dynamic>>()
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Check if strategy name is available
+  Future<bool?> checkNameAvailable(String name, {int? excludeId}) async {
+    try {
+      final Response response = await _apiClient.getJson(
+        '/api/strategies/check-name',
+        queryParameters: {
+          'name': name,
+          if (excludeId != null) 'excludeId': excludeId,
+        },
+      );
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        return data['available'] as bool?;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Fetch market tickers for symbol picker
+  Future<List<Map<String, dynamic>>> getMarketTickers() async {
+    try {
+      final Response response = await _apiClient.getJson('/api/tickers');
+      if (response.statusCode == 200 && response.data is List) {
+        return (response.data as List)
+            .whereType<Map<String, dynamic>>()
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   /// Update strategy status
   Future<Strategy?> updateStrategyStatus(int id, String status) async {
     try {
@@ -139,6 +193,44 @@ class StrategyService {
       return null;
     } catch (e) {
             return null;
+    }
+  }
+
+  /// Create a new strategy
+  Future<Strategy?> createStrategy({
+    required String name,
+    required String type,
+    required String symbol,
+    String? description,
+    String? exchange,
+    Map<String, dynamic>? parameters,
+    Map<String, dynamic>? initialDataConfig,
+    Map<String, dynamic>? subscription,
+  }) async {
+    try {
+      final Response response = await _apiClient.postJson(
+        '/api/strategies',
+        data: {
+          'name': name,
+          'description': description,
+          'type': type,
+          'exchange': exchange,
+          'symbol': symbol,
+          'parameters': parameters,
+          'initialDataConfig': initialDataConfig,
+          'subscription': subscription,
+        },
+      );
+
+      if (response.statusCode == 201 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        if (data['strategy'] is Map<String, dynamic>) {
+          return Strategy.fromJson(data['strategy'] as Map<String, dynamic>);
+        }
+      }
+      return null;
+    } catch (e) {
+      rethrow;
     }
   }
 

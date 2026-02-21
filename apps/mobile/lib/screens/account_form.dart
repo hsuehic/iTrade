@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../design/tokens/color.dart';
 import '../services/account_service.dart';
+import '../widgets/exchange_picker_field.dart';
 
 class AccountFormScreen extends StatefulWidget {
   final ExchangeAccount? account;
@@ -14,7 +15,6 @@ class AccountFormScreen extends StatefulWidget {
 
 class _AccountFormScreenState extends State<AccountFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  final GlobalKey _exchangeFieldKey = GlobalKey();
   final _accountIdController = TextEditingController();
   final _apiKeyController = TextEditingController();
   final _secretKeyController = TextEditingController();
@@ -101,7 +101,6 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isEditing = widget.account != null;
 
     return Scaffold(
@@ -122,7 +121,11 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
               SizedBox(height: 20.w),
               _buildSectionTitle(context, 'Exchange'),
               SizedBox(height: 8.w),
-              _buildExchangeField(context, isDark, isEditing),
+              ExchangePickerField(
+                selectedExchange: _selectedExchange,
+                enabled: !isEditing,
+                onChanged: (value) => setState(() => _selectedExchange = value),
+              ),
               SizedBox(height: 20.w),
               _buildSectionTitle(context, 'Account Details'),
               SizedBox(height: 8.w),
@@ -388,29 +391,6 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
     );
   }
 
-  Widget _buildExchangeField(
-    BuildContext context,
-    bool isDark,
-    bool isEditing,
-  ) {
-    return InkWell(
-      key: _exchangeFieldKey,
-      onTap: isEditing ? null : () => _showExchangePicker(context, isDark),
-      child: InputDecorator(
-        decoration: _inputDecoration(
-          context,
-          hintText: 'Select exchange',
-          prefix: _buildExchangeLogo(_selectedExchange, isDark),
-          suffix: Icon(Icons.expand_more, color: Colors.grey[500]),
-        ),
-        child: Text(
-          _getExchangeName(_selectedExchange),
-          style: _inputTextStyle(context),
-        ),
-      ),
-    );
-  }
-
   Widget _buildTextField(
     BuildContext context, {
     required TextEditingController controller,
@@ -433,84 +413,6 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
       ),
       validator: validator,
     );
-  }
-
-  Future<void> _showExchangePicker(BuildContext context, bool isDark) async {
-    final renderBox =
-        _exchangeFieldKey.currentContext?.findRenderObject() as RenderBox?;
-    final fieldWidth = renderBox?.size.width ?? 300.w;
-    final selected = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        final surface = Theme.of(context).colorScheme.surface;
-        final screenWidth = MediaQuery.of(context).size.width;
-        final inset = (screenWidth - fieldWidth) / 2;
-        final insetPadding = EdgeInsets.symmetric(
-          horizontal: inset > 16 ? inset : 16.w,
-        );
-        return Dialog(
-          insetPadding: insetPadding,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14.r),
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints.tightFor(width: fieldWidth),
-            child: Container(
-              decoration: BoxDecoration(
-                color: surface,
-                borderRadius: BorderRadius.circular(14.r),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 12.w,
-                    ),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Select exchange',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Divider(height: 1, color: Colors.grey.withValues(alpha: 0.2)),
-                  ..._exchangeOptions.map(
-                    (exchange) => InkWell(
-                      onTap: () => Navigator.pop(context, exchange.id),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 16.w,
-                          vertical: 10.w,
-                        ),
-                        child: Row(
-                          children: [
-                            _buildExchangeLogo(exchange.id, isDark),
-                            SizedBox(width: 12.w),
-                            Text(
-                              exchange.name,
-                              style: _inputTextStyle(context),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (selected != null && mounted) {
-      setState(() => _selectedExchange = selected);
-    }
   }
 
   InputDecoration _inputDecoration(
@@ -589,87 +491,9 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
         );
   }
 
-  List<_ExchangeOption> get _exchangeOptions => const [
-    _ExchangeOption(id: 'binance', name: 'Binance'),
-    _ExchangeOption(id: 'okx', name: 'OKX'),
-    _ExchangeOption(id: 'coinbase', name: 'Coinbase'),
-  ];
-
-  String _getExchangeName(String id) {
-    for (final option in _exchangeOptions) {
-      if (option.id == id) return option.name;
-    }
-    return id;
-  }
-
-  String? _getExchangeLogoAsset(String exchange) {
-    switch (exchange.toLowerCase()) {
-      case 'binance':
-        return 'assets/icons/exchanges/binance.png';
-      case 'coinbase':
-        return 'assets/icons/exchanges/coinbase.png';
-      case 'okx':
-        return 'assets/icons/exchanges/okx.png';
-      default:
-        return null;
-    }
-  }
-
-  Widget _buildExchangeLogo(String exchange, bool isDark) {
-    final asset = _getExchangeLogoAsset(exchange);
-    final accentColor = _getExchangeColor(exchange);
-
-    return Container(
-      width: 36.w,
-      height: 36.w,
-      decoration: BoxDecoration(
-        color: _withAlpha(accentColor, isDark ? 0.16 : 0.12),
-        shape: BoxShape.circle,
-        border: Border.all(color: _withAlpha(accentColor, 0.25)),
-      ),
-      child: ClipOval(
-        child: asset == null
-            ? Icon(Icons.account_balance, color: accentColor, size: 18.sp)
-            : Padding(
-                padding: EdgeInsets.all(7.w),
-                child: Image.asset(
-                  asset,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Icon(
-                      Icons.account_balance,
-                      color: accentColor,
-                      size: 18.sp,
-                    );
-                  },
-                ),
-              ),
-      ),
-    );
-  }
-
-  Color _getExchangeColor(String exchange) {
-    switch (exchange.toLowerCase()) {
-      case 'binance':
-        return ColorTokens.exchangeBinance;
-      case 'okx':
-        return ColorTokens.exchangeOkx;
-      case 'coinbase':
-        return ColorTokens.exchangeCoinbase;
-      default:
-        return Theme.of(context).colorScheme.primary;
-    }
-  }
-
   Color _withAlpha(Color color, double opacity) {
     final clamped = opacity.clamp(0.0, 1.0);
     return color.withValues(alpha: clamped);
   }
 }
 
-class _ExchangeOption {
-  final String id;
-  final String name;
-
-  const _ExchangeOption({required this.id, required this.name});
-}

@@ -6,6 +6,7 @@ import '../models/strategy.dart'; // Ensure this model has the updated fields (p
 import '../models/order.dart';
 import '../services/strategy_service.dart';
 import '../services/order_service.dart';
+import '../design/tokens/color.dart';
 import '../utils/exchange_config.dart';
 
 class StrategyDetailScreen extends StatefulWidget {
@@ -345,11 +346,16 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'active': return Colors.green;
-      case 'stopped': return Colors.grey;
-      case 'paused': return Colors.orange;
-      case 'error': return Colors.red;
-      default: return Colors.grey;
+      case 'active':
+        return ColorTokens.profitGreen;
+      case 'stopped':
+        return Colors.grey;
+      case 'paused':
+        return ColorTokens.warningAmber;
+      case 'error':
+        return ColorTokens.lossRed;
+      default:
+        return Colors.grey;
     }
   }
   
@@ -361,7 +367,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_strategy.name),
+          title: Text(
+            _strategy.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          centerTitle: true,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           actions: [
             // Status Toggle Button in AppBar
              IconButton(
@@ -378,8 +392,11 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 onPressed: _isUpdating ? null : _deleteStrategy,
               ),
           ],
-          bottom: const TabBar(
-            tabs: [
+          bottom: TabBar(
+            labelColor: Theme.of(context).colorScheme.primary,
+            unselectedLabelColor: Theme.of(context).hintColor,
+            indicatorColor: Theme.of(context).colorScheme.primary,
+            tabs: const [
               Tab(text: 'Orders'),
               Tab(text: 'Configuration'),
             ],
@@ -388,7 +405,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
         body: Column(
           children: [
             // Top Section: Info & Performance
-            _buildHeaderSection(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: _buildHeaderSection(),
+            ),
             // Tab Content
             Expanded(
               child: TabBarView(
@@ -410,70 +430,180 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     final totalPnL = _strategy.performance?.totalPnL ?? _pnl?.totalPnl ?? 0.0;
     final roi = _strategy.performance?.roi ?? 0.0; // PnL object doesn't have ROI usually
     final winRate = _strategy.performance?.winRate ?? 0.0;
+    final drawdown = _strategy.performance?.maxDrawdown ?? 0.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = Theme.of(context).colorScheme.surface;
     
     // Format exchange/symbol
     final displaySymbol = _strategy.normalizedSymbol ?? _strategy.symbol ?? 'N/A';
     
     return Container(
       padding: const EdgeInsets.all(16),
-      color: Theme.of(context).cardColor,
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+        border: Border.all(
+          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.1),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Row 1: Badges & Basic Info
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  border: Border.all(color: statusColor.withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(4),
+          Text(
+            'Performance',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
                 ),
-                child: Text(
-                  _strategy.status.toUpperCase(),
-                  style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-              ),
-              const SizedBox(width: 12),
-              ExchangeChip(exchangeId: _strategy.exchange, showIcon: true, fontSize: 12),
-              const SizedBox(width: 8),
-              Text(displaySymbol, style: const TextStyle(fontWeight: FontWeight.w600)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Row 2: Performance Metrics Grid
-          Row(
-            children: [
-              Expanded(child: _buildMetricCard('Total PnL', _formatPnL(totalPnL), totalPnL >= 0 ? Colors.green : Colors.red)),
-              const SizedBox(width: 8),
-              Expanded(child: _buildMetricCard('ROI', '${roi.toStringAsFixed(2)}%', roi >= 0 ? Colors.green : Colors.red)),
-            ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _buildMetricCard('Win Rate', '${winRate.toStringAsFixed(2)}%', null)),
+              ExchangeChip(
+                exchangeId: _strategy.exchange,
+                showIcon: true,
+                fontSize: 12,
+              ),
               const SizedBox(width: 8),
-              Expanded(child: _buildMetricCard('Drawdown', '${_strategy.performance?.maxDrawdown.toStringAsFixed(2) ?? "0.00"}%', Colors.red)),
+              Expanded(
+                child: Text(
+                  displaySymbol,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _strategy.status.toUpperCase(),
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total PnL',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatPnL(totalPnL),
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: totalPnL >= 0
+                            ? ColorTokens.profitGreen
+                            : ColorTokens.lossRed,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'ROI',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).hintColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${roi.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      color: roi >= 0
+                          ? ColorTokens.profitGreen
+                          : ColorTokens.lossRed,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMetricCard(
+                  'Win Rate',
+                  '${winRate.toStringAsFixed(2)}%',
+                  null,
+                  isDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMetricCard(
+                  'Drawdown',
+                  '${drawdown.toStringAsFixed(2)}%',
+                  ColorTokens.lossRed,
+                  isDark,
+                ),
+              ),
             ],
           ),
           if (_strategy.errorMessage != null)
-             Padding(
-               padding: const EdgeInsets.only(top: 12),
-               child: Text('Error: ${_strategy.errorMessage}', style: const TextStyle(color: Colors.red)),
-             ),
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+              ),
+              child: Text(
+                'Error: ${_strategy.errorMessage}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildMetricCard(String label, String value, Color? valueColor) {
+  Widget _buildMetricCard(
+    String label,
+    String value,
+    Color? valueColor,
+    bool isDark,
+  ) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).dividerColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(8),
+        color: isDark ? Colors.grey[900] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,9 +624,9 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       return const Center(child: Text('No orders yet'));
     }
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       itemCount: _orders.length,
-      separatorBuilder: (context, index) => const Divider(),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (ctx, idx) {
         final order = _orders[idx];
         final isProcessing = _processingOrders.contains(order.id);
@@ -554,7 +684,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
   Widget _buildConfigTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -568,21 +698,37 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
   Widget _buildConfigSection(String title, Map<String, dynamic>? data) {
     if (data == null || data.isEmpty) return const SizedBox.shrink();
-    return Card(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const Divider(),
-            Text(
-               const JsonEncoder.withIndent('  ').convert(data),
-               style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: Theme.of(context).textTheme.bodySmall?.color),
-            ),
-          ],
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+          Divider(
+            height: 1,
+            thickness: 0.5,
+            color: isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.2),
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            const JsonEncoder.withIndent('  ').convert(data),
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              color: Theme.of(context).textTheme.bodySmall?.color,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -606,8 +752,11 @@ class _OrderItem extends StatelessWidget {
 
   Color _getStatusColor(String status) {
      switch(status.toUpperCase()) {
-       case 'FILLED': return Colors.green;
-       case 'CANCELED': return Colors.red;
+       case 'FILLED':
+         return ColorTokens.profitGreen;
+       case 'CANCELED':
+       case 'CANCELLED':
+         return ColorTokens.lossRed;
        case 'NEW': return Colors.blue;
        default: return Colors.grey;
      }
@@ -615,30 +764,41 @@ class _OrderItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = '${order.timestamp.hour}:${order.timestamp.minute.toString().padLeft(2, '0')} ${order.timestamp.month}/${order.timestamp.day}';
-    return SizedBox(
-      height: 72,
+    final dateStr =
+        '${order.timestamp.hour}:${order.timestamp.minute.toString().padLeft(2, '0')} '
+        '${order.timestamp.month}/${order.timestamp.day}';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final sideColor =
+        order.side == 'BUY' ? ColorTokens.profitGreen : ColorTokens.lossRed;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
+        ),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Side Badge
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: (order.side == 'BUY' ? Colors.green : Colors.red).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4),
+              color: sideColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
               order.side,
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.bold,
-                color: order.side == 'BUY' ? Colors.green : Colors.red,
+                color: sideColor,
               ),
             ),
           ),
           const SizedBox(width: 12),
-          // Main Info
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -646,8 +806,9 @@ class _OrderItem extends StatelessWidget {
               children: [
                 Text(
                   '${order.symbol} (${order.type})',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
+                const SizedBox(height: 4),
                 Text(
                   dateStr,
                   style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
@@ -655,18 +816,29 @@ class _OrderItem extends StatelessWidget {
               ],
             ),
           ),
-          // Amounts + Actions
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 order.quantity.toString(),
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
-              Text(
-                order.status,
-                style: TextStyle(fontSize: 10, color: _getStatusColor(order.status)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _getStatusColor(order.status).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  order.status,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: _getStatusColor(order.status),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),

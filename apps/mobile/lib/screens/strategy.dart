@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../design/tokens/color.dart';
 import '../models/strategy.dart';
 import '../services/strategy_service.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
@@ -8,6 +9,7 @@ import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
 import '../utils/responsive_layout.dart';
 import 'strategy_detail.dart';
+import 'strategy_create.dart';
 
 enum SortBy { name, pnl, createdAt }
 
@@ -136,27 +138,38 @@ class _StrategyScreenState extends State<StrategyScreen>
   Color _getStatusColor(String status) {
     switch (status) {
       case 'active':
-        return Colors.green;
+        return ColorTokens.profitGreen;
       case 'stopped':
         return Colors.grey;
       case 'paused':
-        return Colors.orange;
+        return ColorTokens.warningAmber;
       case 'error':
-        return Colors.red;
+        return ColorTokens.lossRed;
       default:
         return Colors.grey;
     }
   }
 
   Color _getPnLColor(double pnl) {
-    if (pnl > 0) return Colors.green;
-    if (pnl < 0) return Colors.red;
+    if (pnl > 0) return ColorTokens.profitGreen;
+    if (pnl < 0) return ColorTokens.lossRed;
     return Colors.grey;
   }
 
   String _formatPnL(double pnl) {
     final sign = pnl >= 0 ? '+' : '';
     return '$sign${pnl.toStringAsFixed(2)}';
+  }
+
+  int get _activeCount =>
+      _allStrategies.where((strategy) => strategy.status == 'active').length;
+
+  double get _totalPnl {
+    double total = 0;
+    for (final strategy in _allStrategies) {
+      total += _pnlMap[strategy.id]?.totalPnl ?? 0;
+    }
+    return total;
   }
 
   bool _shouldUseTabletLayout(BuildContext context) {
@@ -197,6 +210,16 @@ class _StrategyScreenState extends State<StrategyScreen>
       // Refresh when returning from detail screen
       _loadStrategies();
     });
+  }
+
+  Future<void> _openCreateStrategy() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const StrategyCreateScreen()),
+    );
+    if (created == true) {
+      _loadStrategies();
+    }
   }
 
   Widget _buildErrorView() {
@@ -242,6 +265,171 @@ class _StrategyScreenState extends State<StrategyScreen>
                 : 'Try a different search term',
             style: TextStyle(fontSize: 14.sp, color: Colors.grey[500]),
           ),
+          const SizedBox(height: 16),
+          if (_searchQuery.isEmpty)
+            ElevatedButton.icon(
+              onPressed: _openCreateStrategy,
+              icon: const Icon(Icons.add),
+              label: const Text('Add Strategy'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final total = _allStrategies.length;
+    final active = _activeCount;
+    final pnlColor = _getPnLColor(_totalPnl);
+    final titleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        );
+    final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Colors.white.withValues(alpha: 0.8),
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDark
+              ? [ColorTokens.gradientStartDark, ColorTokens.gradientEndDark]
+              : [ColorTokens.gradientStart, ColorTokens.gradientEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.insights, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Strategies Overview',
+                  style: titleStyle,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Track performance and status at a glance',
+            style: subtitleStyle,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _SummaryMetric(
+                icon: Icons.folder_open,
+                label: 'Total',
+                value: '$total',
+                valueColor: Colors.white,
+              ),
+              const SizedBox(width: 16),
+              _SummaryMetric(
+                icon: Icons.play_circle_fill,
+                label: 'Active',
+                value: '$active',
+                valueColor: Colors.white,
+              ),
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'Total PnL',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatPnL(_totalPnl),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: pnlColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildListHeader() {
+    final isSearching = _searchQuery.isNotEmpty;
+    final title = isSearching ? 'Results' : 'All Strategies';
+    final count = _filteredStrategies.length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          if (isSearching) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '"$_searchQuery"',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).hintColor,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -251,7 +439,7 @@ class _StrategyScreenState extends State<StrategyScreen>
     return RefreshIndicator(
       onRefresh: _loadStrategies,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
         itemCount: _filteredStrategies.length,
         itemBuilder: (context, index) {
           final strategy = _filteredStrategies[index];
@@ -282,7 +470,7 @@ class _StrategyScreenState extends State<StrategyScreen>
     return RefreshIndicator(
       onRefresh: _loadStrategies,
       child: GridView.builder(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 88),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           mainAxisSpacing: 16,
@@ -316,41 +504,58 @@ class _StrategyScreenState extends State<StrategyScreen>
       resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       // AppBar
-      appBar: const CustomAppBar(title: 'Strategies'),
+      appBar: CustomAppBar(
+        title: 'Strategies',
+        actions: [
+          IconButton(
+            tooltip: 'Add Strategy',
+            icon: const Icon(Icons.add),
+            onPressed: _openCreateStrategy,
+          ),
+        ],
+      ),
       body: Column(
         children: [
+          _buildSummaryCard(),
+          _buildListHeader(),
           // Search Bar
           SimpleSearchBar(onChanged: _handleSearch, onSubmitted: _handleSearch),
-          const SizedBox(height: 16),
-          // Sort Buttons
+          const SizedBox(height: 10),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: Row(
               children: [
-                  _SortChip(
-                    label: 'Name',
-                    isSelected: _sortBy == SortBy.name,
-                    isAscending: _sortAscending,
-                    onTap: () => _handleSortChange(SortBy.name),
-                  ),
-                  SizedBox(width: 8.w),
-                  _SortChip(
-                    label: 'PnL',
-                    isSelected: _sortBy == SortBy.pnl,
-                    isAscending: _sortAscending,
-                    onTap: () => _handleSortChange(SortBy.pnl),
-                  ),
-                  SizedBox(width: 8.w),
-                  _SortChip(
-                    label: 'Date',
-                    isSelected: _sortBy == SortBy.createdAt,
-                    isAscending: _sortAscending,
-                    onTap: () => _handleSortChange(SortBy.createdAt),
-                  ),
+                Text(
+                  'Sort by',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                _SortChip(
+                  label: 'Name',
+                  isSelected: _sortBy == SortBy.name,
+                  isAscending: _sortAscending,
+                  onTap: () => _handleSortChange(SortBy.name),
+                ),
+                SizedBox(width: 8.w),
+                _SortChip(
+                  label: 'PnL',
+                  isSelected: _sortBy == SortBy.pnl,
+                  isAscending: _sortAscending,
+                  onTap: () => _handleSortChange(SortBy.pnl),
+                ),
+                SizedBox(width: 8.w),
+                _SortChip(
+                  label: 'Date',
+                  isSelected: _sortBy == SortBy.createdAt,
+                  isAscending: _sortAscending,
+                  onTap: () => _handleSortChange(SortBy.createdAt),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           // Strategy List
           Expanded(
             child: _isLoading
@@ -364,6 +569,11 @@ class _StrategyScreenState extends State<StrategyScreen>
                             : _buildPhoneList(),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openCreateStrategy,
+        icon: const Icon(Icons.add),
+        label: const Text('New'),
       ),
     );
   }
@@ -384,15 +594,19 @@ class _SortChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
-              : Colors.grey[200],
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
+              : isDark
+                  ? Colors.grey[850]
+                  : Colors.grey[200],
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
@@ -449,14 +663,20 @@ class _StrategyCard extends StatelessWidget {
     required this.baseCurrency,
   });
 
-  String _getSymbolWithMarketType() {
-    final symbol = strategy.normalizedSymbol ?? strategy.symbol ?? 'N/A';
-    if (strategy.marketType == 'perpetual') {
-      return '$symbol ⚡'; // Lightning bolt for perpetual
-    } else if (strategy.marketType == 'futures') {
-      return '$symbol 📅'; // Calendar for futures
+  String _getSymbol() {
+    return strategy.normalizedSymbol ?? strategy.symbol ?? 'N/A';
+  }
+
+  String _getMarketTypeLabel() {
+    switch (strategy.marketType) {
+      case 'perpetual':
+        return 'PERP';
+      case 'futures':
+        return 'FUT';
+      case 'spot':
+      default:
+        return 'SPOT';
     }
-    return symbol;
   }
 
   String _formatDate(DateTime date) {
@@ -485,41 +705,45 @@ class _StrategyCard extends StatelessWidget {
     final pnlValue = pnl?.totalPnl ?? 0.0;
     final pnlColor = getPnLColor(pnlValue);
     final isDark = theme.brightness == Brightness.dark;
+    final secondaryText = isDark ? Colors.grey[400] : Colors.grey[600];
+    final surface = theme.colorScheme.surface;
 
     return Container(
-      margin: EdgeInsets.only(bottom: 8.w),
+      margin: EdgeInsets.only(bottom: 12.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
         border: Border.all(
-          color: isDark
-              ? Colors.grey[850]!
-              : Colors.grey.withValues(alpha: 0.08),
-          width: 1,
+          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.1),
         ),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: EdgeInsets.all(16.w),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row
               Row(
                 children: [
-                  // Crypto Icon
                   if (baseCurrency.isNotEmpty)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
                       child: Image.network(
                         CryptoIcons.getIconUrl(baseCurrency),
-                        width: 32.w,
-                        height: 32.w,
+                        width: 34.w,
+                        height: 34.w,
                         errorBuilder: (context, error, stackTrace) => Container(
-                          width: 32.w,
-                          height: 32.w,
+                          width: 34.w,
+                          height: 34.w,
                           decoration: BoxDecoration(
                             color: Colors.grey[300],
                             shape: BoxShape.circle,
@@ -539,8 +763,8 @@ class _StrategyCard extends StatelessWidget {
                     )
                   else
                     Container(
-                      width: 32.w,
-                      height: 32.w,
+                      width: 34.w,
+                      height: 34.w,
                       decoration: BoxDecoration(
                         color: Colors.grey[300],
                         shape: BoxShape.circle,
@@ -551,8 +775,7 @@ class _StrategyCard extends StatelessWidget {
                         color: Colors.grey,
                       ),
                     ),
-                  const SizedBox(width: 12),
-                  // Strategy name and symbol
+                  SizedBox(width: 12.w),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -560,7 +783,7 @@ class _StrategyCard extends StatelessWidget {
                         Text(
                           strategy.name,
                           style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w700,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -568,40 +791,64 @@ class _StrategyCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            // Symbol with market type indicator at the end
                             Flexible(
-                              child:                               Text(
-                                _getSymbolWithMarketType(),
+                              child: Text(
+                                _getSymbol(),
                                 style: TextStyle(
                                   fontSize: 12.sp,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.grey[700],
+                                  color: secondaryText,
                                   fontFamily: 'monospace',
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 6.w,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _getMarketTypeLabel(),
+                                style: TextStyle(
+                                  fontSize: 10.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: secondaryText,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
+                        if (strategy.exchange != null &&
+                            strategy.exchange!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              SupportedExchanges.getName(strategy.exchange),
+                              style: TextStyle(
+                                fontSize: 11.sp,
+                                color: secondaryText,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Exchange logo
                   if (strategy.exchange != null &&
                       strategy.exchange!.isNotEmpty)
                     _ExchangeLogo(exchangeId: strategy.exchange!),
-                  const SizedBox(width: 8),
-                  // Status badge
+                  SizedBox(width: 8.w),
                   Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 8.w,
-                      vertical: 4,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4),
                     decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
+                      color: statusColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       formatStatus(strategy.status),
@@ -612,62 +859,61 @@ class _StrategyCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  SizedBox(width: 6.w),
+                  Icon(
+                    Icons.chevron_right,
+                    size: 18.w,
+                    color: secondaryText,
+                  ),
                 ],
               ),
-
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
               Divider(
                 height: 1,
-                thickness: 0.5,
+                thickness: 0.6,
                 color: isDark
                     ? Colors.grey[850]
                     : Colors.grey.withValues(alpha: 0.15),
               ),
               const SizedBox(height: 12),
-
-              // PnL and Stats
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // PnL with arrow
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(
-                          pnlValue > 0
-                              ? Icons.arrow_upward
-                              : pnlValue < 0
-                              ? Icons.arrow_downward
-                              : Icons.remove,
-                          size: 20.w,
-                          color: pnlColor,
-                        ),
-                        const SizedBox(width: 4),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Total PnL',
-                              style: TextStyle(
-                                fontSize: 11.sp,
-                                color: Colors.grey[600],
-                              ),
+                  Row(
+                    children: [
+                      Icon(
+                        pnlValue > 0
+                            ? Icons.trending_up
+                            : pnlValue < 0
+                                ? Icons.trending_down
+                                : Icons.horizontal_rule,
+                        size: 18.w,
+                        color: pnlColor,
+                      ),
+                      const SizedBox(width: 6),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Total PnL',
+                            style: TextStyle(
+                              fontSize: 11.sp,
+                              color: secondaryText,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              formatPnL(pnlValue),
-                              style: TextStyle(
-                                fontSize: 18.sp,
-                                fontWeight: FontWeight.bold,
-                                color: pnlColor,
-                              ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            formatPnL(pnlValue),
+                            style: TextStyle(
+                              fontSize: 19.sp,
+                              fontWeight: FontWeight.w700,
+                              color: pnlColor,
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  // Orders
                   if (pnl != null)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
@@ -676,7 +922,7 @@ class _StrategyCard extends StatelessWidget {
                           'Orders',
                           style: TextStyle(
                             fontSize: 11.sp,
-                            color: Colors.grey[600],
+                            color: secondaryText,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -692,14 +938,13 @@ class _StrategyCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              // Created time
               Row(
                 children: [
-                  Icon(Icons.schedule, size: 12.w, color: Colors.grey[500]),
+                  Icon(Icons.schedule, size: 12.w, color: secondaryText),
                   SizedBox(width: 4.w),
                   Text(
                     'Created ${_formatDate(strategy.createdAt)}',
-                    style: TextStyle(fontSize: 11.sp, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 11.sp, color: secondaryText),
                   ),
                 ],
               ),
@@ -707,6 +952,59 @@ class _StrategyCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  const _SummaryMetric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: Colors.white, size: 16),
+        ),
+        const SizedBox(width: 8),
+        Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+        ),
+      ],
     );
   }
 }
