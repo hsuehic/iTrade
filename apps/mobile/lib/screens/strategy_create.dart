@@ -25,7 +25,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   final _initialDataController = TextEditingController();
   final _subscriptionController = TextEditingController();
 
-  String _selectedExchange = 'coinbase';
+  String _selectedExchange = '';
   String? _selectedType;
   List<_StrategyTypeOption> _strategyTypes = [];
   String? _nameError;
@@ -50,7 +50,6 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   @override
   void initState() {
     super.initState();
-    _symbolController.text = 'BTC/USDC:USDC';
     _loadStrategyConfigs();
   }
 
@@ -344,6 +343,9 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   }
 
   Future<void> _loadTickersForExchange() async {
+    if (_selectedExchange.trim().isEmpty) {
+      return;
+    }
     setState(() {
       _loadingTickers = true;
       _tickersError = null;
@@ -398,6 +400,17 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   }
 
   Future<void> _openSymbolPicker() async {
+    if (_selectedExchange.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select an exchange first'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
     if (_tickers.isEmpty && !_loadingTickers) {
       await _loadTickersForExchange();
     }
@@ -513,12 +526,20 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                         setState(() {
                           _selectedExchange = value;
                           _tickers = [];
+                          if (_symbolController.text.trim().isEmpty) {
+                            final defaults = _getDefaultSymbols();
+                            _symbolController.text =
+                                defaults.isNotEmpty ? defaults.first : '';
+                          }
                         });
                       },
+                      hintText: 'Select exchange',
                     ),
                     const SizedBox(height: 12),
                     InkWell(
-                      onTap: _openSymbolPicker,
+                      onTap: _selectedExchange.trim().isEmpty
+                          ? null
+                          : _openSymbolPicker,
                       child: InputDecorator(
                         decoration: _inputDecoration(
                           context,

@@ -26,6 +26,7 @@ class _ExchangePickerFieldState extends State<ExchangePickerField> {
 
   @override
   Widget build(BuildContext context) {
+    final hasSelection = widget.selectedExchange.trim().isNotEmpty;
     return InkWell(
       key: _fieldKey,
       onTap: widget.enabled ? () => _showExchangePicker(context) : null,
@@ -37,8 +38,12 @@ class _ExchangePickerFieldState extends State<ExchangePickerField> {
           suffix: Icon(Icons.expand_more, color: Colors.grey[500]),
         ),
         child: Text(
-          _getExchangeName(widget.selectedExchange),
-          style: _inputTextStyle(context),
+          hasSelection ? _getExchangeName(widget.selectedExchange) : widget.hintText,
+          style: hasSelection
+              ? _inputTextStyle(context)
+              : _inputTextStyle(context).copyWith(
+                  color: Theme.of(context).hintColor,
+                ),
         ),
       ),
     );

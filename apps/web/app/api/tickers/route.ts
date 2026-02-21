@@ -36,19 +36,6 @@ interface BinanceTicker {
   lowPrice: string;
 }
 
-interface OKXTicker {
-  instId: string;
-  last: string;
-  lastSz: string;
-  askPx: string;
-  bidPx: string;
-  open24h: string;
-  high24h: string;
-  low24h: string;
-  volCcy24h: string;
-  vol24h: string;
-}
-
 async function fetchBinanceTickers() {
   try {
     const symbols = BINANCE_COINS.map((c) => c.symbol).join(',');
@@ -163,6 +150,18 @@ async function fetchCoinbaseTickers() {
     console.error('Error fetching Coinbase tickers:', error);
     return [];
   }
+}
+interface OKXTicker {
+  instId: string;
+  last: string;
+  lastSz: string;
+  askPx: string;
+  bidPx: string;
+  open24h: string;
+  high24h: string;
+  low24h: string;
+  volCcy24h: string;
+  vol24h: string;
 }
 
 export async function GET() {
