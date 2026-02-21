@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../models/portfolio.dart';
 import '../services/portfolio_service.dart';
+import '../services/account_service.dart';
 import '../services/notification.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
@@ -53,6 +54,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   String? _selectedAsset;
   int _selectedTab = 0; // 0: Holdings, 1: Positions
   final AuthService _authService = AuthService.instance;
+  final AccountService _accountService = AccountService.instance;
   late final ScrollController _scrollController;
 
   // Store all available exchanges (not affected by filtering)
@@ -64,6 +66,9 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   // Subscriptions
   StreamSubscription<PortfolioData>? _portfolioSubscription;
   StreamSubscription<List<Position>>? _positionsSubscription;
+
+  bool _isAccountStatusLoading = false;
+  bool? _hasActiveAccount;
 
   String _normalizeExchange(String exchange) {
     return exchange.trim().toLowerCase();
@@ -154,6 +159,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       }
     });
     _loadData();
+    _loadAccountStatus();
     _setupStreams();
   }
 
@@ -268,6 +274,35 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     }
   }
 
+  Future<void> _loadAccountStatus() async {
+    if (_isAccountStatusLoading) return;
+    setState(() {
+      _isAccountStatusLoading = true;
+    });
+
+    try {
+      final accounts = await _accountService.getAccounts();
+      final hasActiveAccount = accounts.any((account) => account.isActive);
+      if (mounted) {
+        setState(() {
+          _hasActiveAccount = hasActiveAccount;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _hasActiveAccount = true;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAccountStatusLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _updateBalancePeriod(String period) async {
     if (_isUpdatingBalancePeriod || _balanceChangePeriod == period) return;
 
@@ -306,7 +341,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     });
 
     try {
-      await _loadData();
+      await Future.wait([_loadData(), _loadAccountStatus()]);
     } finally {
       if (mounted) {
         setState(() {
@@ -355,6 +390,14 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       _isUpdatingExchange = true;
     });
     _loadData();
+  }
+
+  Future<void> _openExchangeAccounts() async {
+    await Navigator.pushNamed(context, '/exchange-accounts');
+    if (mounted) {
+      _loadAccountStatus();
+      _loadData();
+    }
   }
 
   @override
@@ -407,6 +450,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       balanceChangeValue = balanceBase - previousBalance;
     }
     final topPadding = MediaQuery.of(context).padding.top;
+    final showAccountGuide =
+        _hasActiveAccount == false && !_isAccountStatusLoading;
 
     return Stack(
       children: [
@@ -443,6 +488,18 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                     onBalancePeriodSelected: _updateBalancePeriod,
                   ),
                 ),
+
+                if (showAccountGuide)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: 16,
+                        left: 16.w,
+                        right: 16.w,
+                      ),
+                      child: _buildNoActiveAccountCard(context),
+                    ),
+                  ),
 
                 // Exchange Filter - always use _allExchanges to keep all options visible
                 if (_allExchanges.isNotEmpty)
@@ -590,6 +647,82 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                 SizedBox(width: 6.w),
                 Text('Positions'),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoActiveAccountCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36.w,
+                height: 36.w,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.link,
+                  color: theme.colorScheme.primary,
+                  size: 18.sp,
+                ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Text(
+                  'No active exchange account',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.w),
+          Text(
+            'Connect an exchange account to sync balances and positions.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: isDark ? Colors.white70 : Colors.black54,
+              height: 1.45,
+            ),
+          ),
+          SizedBox(height: 12.w),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openExchangeAccounts,
+              icon: const Icon(Icons.add_link),
+              label: const Text('Connect Exchange'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
             ),
           ),
         ],

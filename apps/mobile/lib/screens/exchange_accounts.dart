@@ -273,14 +273,14 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
-            SizedBox(height: 16.h),
+            SizedBox(height: 16.w),
             Text(
               'No connected exchanges',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 8.h),
+            SizedBox(height: 8.w),
             Text(
               'Link your exchange API keys to start trading with iTrade.',
               textAlign: TextAlign.center,
@@ -288,11 +288,15 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                 color: isDark ? Colors.grey[400] : Colors.grey[600],
               ),
             ),
-            SizedBox(height: 24.h),
+            SizedBox(height: 24.w),
             ElevatedButton.icon(
               onPressed: () => _showAccountForm(),
               icon: const Icon(Icons.add),
               label: const Text('Add Account'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
+              ),
             ),
           ],
         ),
