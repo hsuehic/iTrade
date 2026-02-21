@@ -122,7 +122,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
               child: ListView.separated(
                 padding: EdgeInsets.all(16.w),
                 itemCount: _accounts.length + 1,
-                separatorBuilder: (context, index) => SizedBox(height: 12.h),
+                separatorBuilder: (context, index) => SizedBox(height: 12.w),
                 itemBuilder: (context, index) {
                   if (index == 0) {
                     return _buildHeaderCard(context, isDark);
@@ -193,7 +193,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                     color: Colors.white,
                   ),
                 ),
-                SizedBox(height: 4.h),
+                SizedBox(height: 4.w),
                 Text(
                   'Manage API keys and permissions safely',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -225,14 +225,14 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
               size: 64.sp,
               color: Theme.of(context).colorScheme.error,
             ),
-            SizedBox(height: 16.h),
+            SizedBox(height: 16.w),
             Text(
               'Something went wrong',
               style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 8.h),
+            SizedBox(height: 8.w),
             Text(
               _error ?? 'Unknown error',
               textAlign: TextAlign.center,
@@ -240,7 +240,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                 context,
               ).textTheme.bodySmall?.copyWith(color: Colors.grey),
             ),
-            SizedBox(height: 20.h),
+            SizedBox(height: 20.w),
             ElevatedButton.icon(
               onPressed: _loadAccounts,
               icon: const Icon(Icons.refresh),
@@ -363,7 +363,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                             style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
-                          SizedBox(height: 4.h),
+                          SizedBox(height: 4.w),
                           Text(
                             'Account ID',
                             style: Theme.of(
@@ -384,7 +384,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: 12.w,
-                        vertical: 6.h,
+                        vertical: 6.w,
                       ),
                       decoration: BoxDecoration(
                         color: _withAlpha(statusColor, 0.12),
@@ -423,7 +423,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 6.h),
+                    SizedBox(height: 6.w),
                     Text(
                       _maskKey(account.apiKey),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -432,7 +432,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                       ),
                     ),
                     if (account.updatedTime != null) ...[
-                      SizedBox(height: 12.h),
+                      SizedBox(height: 12.w),
                       Row(
                         children: [
                           Icon(Icons.update, size: 16.sp, color: Colors.grey),
@@ -446,7 +446,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                         ],
                       ),
                     ],
-                    SizedBox(height: 16.h),
+                    SizedBox(height: 16.w),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [

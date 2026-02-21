@@ -291,7 +291,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         : (order.price ?? order.averagePrice ?? 0) * order.quantity;
 
     final content = SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -333,7 +333,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      SizedBox(height: 4.h),
+                      SizedBox(height: 4.w),
                       Row(
                         children: [
                           _buildChip(
@@ -367,7 +367,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           ? Icons.arrow_upward
                           : Icons.arrow_downward,
                     ),
-                    SizedBox(height: 6.h),
+                    SizedBox(height: 6.w),
                     _buildChip(
                       label: _statusLabel(order.status),
                       color: statusColor.withValues(alpha: 0.12),
@@ -378,19 +378,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ],
             ),
           ),
-          SizedBox(height: 16.h),
+          SizedBox(height: 16.w),
           _buildSectionTitle('Summary'),
           _buildInfoRow('Quantity', _formatQuantity(order.quantity)),
           _buildInfoRow('Executed', _formatQuantity(order.executedQuantity)),
           _buildInfoRow('Price', _formatPrice(order.price)),
           _buildInfoRow('Avg Price', _formatPrice(order.averagePrice)),
           _buildInfoRow('Order Value', _formatCurrency(orderValue)),
-          SizedBox(height: 12.h),
+          SizedBox(height: 12.w),
           _buildSectionTitle('Timing'),
           _buildInfoRow('Created Time', _formatDateTime(order.timestamp)),
           _buildInfoRow('Update Time', _formatDateTime(order.updateTime)),
           _buildInfoRow('Time in Force', order.timeInForce ?? '-'),
-          SizedBox(height: 12.h),
+          SizedBox(height: 12.w),
           _buildSectionTitle('Fees & PnL'),
           _buildInfoRow('Commission', _formatCurrency(order.commission)),
           _buildInfoRow(
@@ -399,7 +399,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           ),
           _buildInfoRow('Realized PnL', _formatCurrency(order.realizedPnl)),
           _buildInfoRow('Unrealized PnL', _formatCurrency(order.unrealizedPnl)),
-          SizedBox(height: 12.h),
+          SizedBox(height: 12.w),
           _buildSectionTitle('Identifiers'),
           _buildInfoRow('Order ID', order.id),
           _buildInfoRow('Client Order ID', order.clientOrderId ?? '-'),
@@ -423,7 +423,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       bottomNavigationBar: hasActions
           ? SafeArea(
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.w),
                 child: Row(
                   children: [
                     if (canEdit)
@@ -458,7 +458,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 6.h),
+      padding: EdgeInsets.only(bottom: 6.w),
       child: Text(
         title,
         style: TextStyle(
@@ -471,7 +471,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   Widget _buildInfoRow(String label, String value) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: 4.h),
+      padding: EdgeInsets.symmetric(vertical: 4.w),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -507,7 +507,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     IconData? icon,
   }) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.w),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(6),

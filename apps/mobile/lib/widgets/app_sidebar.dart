@@ -112,7 +112,7 @@ class _AppSidebarState extends State<AppSidebar> {
   Widget _buildDefaultHeader(ThemeData theme) {
     return Container(
       padding: EdgeInsets.symmetric(
-        vertical: 24.h,
+        vertical: 24.w,
         horizontal: _isExpanded ? 16 : 0,
       ),
       child: Column(
@@ -144,7 +144,7 @@ class _AppSidebarState extends State<AppSidebar> {
 
           // App name (only when expanded)
           if (_isExpanded) ...[
-            SizedBox(height: 12.h),
+            SizedBox(height: 12.w),
             Text(
               'iTrade',
               style: theme.textTheme.titleLarge?.copyWith(
@@ -152,7 +152,7 @@ class _AppSidebarState extends State<AppSidebar> {
                 letterSpacing: 0.5,
               ),
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 4.w),
             Text(
               'Trading Platform',
               style: theme.textTheme.bodySmall?.copyWith(
