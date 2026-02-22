@@ -345,8 +345,14 @@ export class BinanceExchange extends BaseExchange {
     } catch (error: any) {
       // If error is "No need to change leverage" or similar, ignore it
       const code = error.response?.data?.code;
-      if (code === -4028 || code === -4046) {
-        // Leverage already set, no action needed
+      if (code === -4028 || code === -4046 || code === -4161) {
+        // -4028: Leverage already set
+        // -4046: No need to change margin type
+        // -4161: Leverage reduction is not supported in Isolated Margin Mode with open positions
+        console.warn(
+          `[Binance] Ignoring expected leverage error for ${symbol}:`,
+          error.response?.data?.msg || code,
+        );
       } else {
         console.error(
           `[Binance] Failed to set leverage for ${symbol}:`,
