@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../design/tokens/color.dart';
+import 'copy_text.dart';
 
 class ExchangePickerField extends StatefulWidget {
   final String selectedExchange;
@@ -83,9 +84,7 @@ class _ExchangePickerFieldState extends State<ExchangePickerField> {
                     ),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Select exchange',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      child: CopyText('widget.exchange_picker_field.select_exchange', fallback: "Select exchange", style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w600,
                             ),
                       ),

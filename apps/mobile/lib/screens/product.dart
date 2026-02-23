@@ -5,9 +5,11 @@ import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
 import '../widgets/custom_app_bar.dart';
 import '../services/okx_data_service.dart';
+import '../services/copy_service.dart';
 import '../utils/responsive_layout.dart';
 import '../utils/number_format_utils.dart';
 import 'product_detail.dart';
+import '../widgets/copy_text.dart';
 
 class ProductScreen extends StatefulWidget {
   const ProductScreen({super.key});
@@ -191,17 +193,37 @@ class _ProductScreenState extends State<ProductScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final copy = CopyService.instance;
     final List<Tag> tags = [
-      Tag(name: 'Spot', value: 'SPOT'),
-      Tag(name: 'Swap', value: 'SWAP'),
-      Tag(name: 'Futures', value: 'FUTURES'),
-      Tag(name: 'Option', value: 'OPTION'),
+      Tag(
+        name: copy.t('screen.product.filter.spot', fallback: 'Spot'),
+        value: 'SPOT',
+      ),
+      Tag(
+        name: copy.t('screen.product.filter.swap', fallback: 'Swap'),
+        value: 'SWAP',
+      ),
+      Tag(
+        name: copy.t('screen.product.filter.futures', fallback: 'Futures'),
+        value: 'FUTURES',
+      ),
+      Tag(
+        name: copy.t('screen.product.filter.option', fallback: 'Option'),
+        value: 'OPTION',
+      ),
     ];
+    final currentTag = tags.firstWhere(
+      (tag) => tag.value == _currentTag.value,
+      orElse: () => tags.first,
+    );
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: const CustomAppBar(title: 'Products'),
+      appBar: const CustomAppBar(
+        titleKey: 'screen.product.title',
+        titleFallback: 'Products',
+      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -218,7 +240,7 @@ class _ProductScreenState extends State<ProductScreen>
             padding: EdgeInsets.symmetric(horizontal: 16.w), // ✅ Width-adapted
             child: TagList(
               tags: tags,
-              currentTag: _currentTag,
+              currentTag: currentTag,
               onTap: (tag) async {
                 if (_currentTag.value != tag.value) {
                   setState(() {
@@ -256,9 +278,7 @@ class _ProductScreenState extends State<ProductScreen>
                   children: [
                     Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
                     const SizedBox(height: 16),
-                    Text(
-                      'No results found',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                    CopyText('screen.product.no_results_found', fallback: "No results found", style: TextStyle(color: Colors.grey[600], fontSize: 16),
                     ),
                   ],
                 ),
@@ -343,8 +363,14 @@ class _ProductScreenState extends State<ProductScreen>
           fontWeight: FontWeight.w600,
         ),
       ),
-      subtitle: Text(
-        'Vol: ${formatVolume(_calculateDisplayVolume(ticker, _currentTag.value))}',
+      subtitle: CopyText(
+        'common.volume',
+        params: {
+          'volume': formatVolume(
+            _calculateDisplayVolume(ticker, _currentTag.value),
+          ),
+        },
+        fallback: 'Vol: {{volume}}',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10.sp),
       ),
       trailing: IntrinsicWidth(
@@ -369,8 +395,10 @@ class _ProductScreenState extends State<ProductScreen>
                   color: changeColor,
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  '${changePercent.toStringAsFixed(2)}%',
+                CopyText(
+                  'common.percent',
+                  params: {'percent': changePercent.toStringAsFixed(2)},
+                  fallback: '{{percent}}%',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     fontSize: 10.sp,
                     color: changeColor,
@@ -443,8 +471,14 @@ class _ProductScreenState extends State<ProductScreen>
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    'Vol: ${formatVolume(_calculateDisplayVolume(ticker, _currentTag.value))}',
+                  CopyText(
+                    'common.volume',
+                    params: {
+                      'volume': formatVolume(
+                        _calculateDisplayVolume(ticker, _currentTag.value),
+                      ),
+                    },
+                    fallback: 'Vol: {{volume}}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ],
@@ -473,8 +507,10 @@ class _ProductScreenState extends State<ProductScreen>
                       color: changeColor,
                     ),
                     const SizedBox(width: 2),
-                    Text(
-                      '${changePercent.toStringAsFixed(2)}%',
+                    CopyText(
+                      'common.percent',
+                      params: {'percent': changePercent.toStringAsFixed(2)},
+                      fallback: '{{percent}}%',
                       style: TextStyle(
                         fontSize: 11,
                         color: changeColor,

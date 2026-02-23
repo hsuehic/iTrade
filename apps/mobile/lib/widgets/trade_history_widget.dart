@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import '../services/okx_data_service.dart';
+import 'copy_text.dart';
 
 class TradeHistoryWidget extends StatelessWidget {
   final List<OKXTrade> trades;
@@ -64,9 +65,7 @@ class TradeHistoryWidget extends StatelessWidget {
                   color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Recent Trades',
-                  style: TextStyle(
+                CopyText('widget.trade_history_widget.recent_trades', fallback: "Recent trades", style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
                     color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
@@ -105,9 +104,7 @@ class TradeHistoryWidget extends StatelessWidget {
               children: [
                 Expanded(
                   flex: 2,
-                  child: Text(
-                    'Time',
-                    style: TextStyle(
+                  child: CopyText('widget.trade_history_widget.time', fallback: "Time", style: TextStyle(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w500,
                       color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
@@ -116,9 +113,7 @@ class TradeHistoryWidget extends StatelessWidget {
                 ),
                 Expanded(
                   flex: 2,
-                  child: Text(
-                    'Price',
-                    style: TextStyle(
+                  child: CopyText('widget.order_book_widget.price', fallback: "Price", style: TextStyle(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w500,
                       color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
@@ -128,9 +123,7 @@ class TradeHistoryWidget extends StatelessWidget {
                 ),
                 Expanded(
                   flex: 2,
-                  child: Text(
-                    'Amount',
-                    style: TextStyle(
+                  child: CopyText('widget.trade_history_widget.amount', fallback: "Amount", style: TextStyle(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w500,
                       color: isDarkMode ? Colors.grey[400] : Colors.grey[600],

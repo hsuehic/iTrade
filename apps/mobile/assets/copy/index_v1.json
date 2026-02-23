@@ -1,0 +1,7 @@
+{
+  "defaultLocale": "en",
+  "locales": {
+    "en": "firestore:/configs_copy/en_v1",
+    "zh-Hans": "firestore:/configs_copy/zh_hans_v1"
+  }
+}

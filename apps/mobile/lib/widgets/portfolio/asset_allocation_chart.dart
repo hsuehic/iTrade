@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../models/portfolio.dart';
 import '../../design/tokens/color.dart';
+import '../copy_text.dart';
 
 /// A professional asset allocation donut chart with legend.
 class AssetAllocationChart extends StatefulWidget {
@@ -67,8 +68,8 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    const cardHeight = 268.0;
-    const chartRowHeight = 190.0;
+    final cardHeight = 280.w;
+    final chartRowHeight = 200.w;
 
     // Show top 6 assets, group rest as "Others"
     final displayAssets = _getDisplayAssets();
@@ -108,9 +109,7 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Asset Allocation',
-                    style: TextStyle(
+                  CopyText('widget.portfolio.asset_allocation_chart.asset_allocation', fallback: "Asset allocation", style: TextStyle(
                       fontSize: 16.sp,
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : Colors.black87,
@@ -122,8 +121,10 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                       color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      '${displayAssets.length} Assets',
+                    child: CopyText(
+                      'widget.portfolio.asset_allocation_chart.assets_count',
+                      params: {'count': displayAssets.length.toString()},
+                      fallback: '{{count}} Assets',
                       style: TextStyle(
                         fontSize: 11.sp,
                         fontWeight: FontWeight.w600,
@@ -133,7 +134,7 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                   ),
                 ],
               ),
-              SizedBox(height: 16),
+              SizedBox(height: 16.w),
 
               // Chart and legend row
               SizedBox(
@@ -181,9 +182,7 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                'Total',
-                                style: TextStyle(
+                              CopyText('widget.order_book_widget.total', fallback: "Total", style: TextStyle(
                                   fontSize: 11.sp,
                                   fontWeight: FontWeight.w500,
                                   color: isDark
@@ -191,12 +190,15 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                                       : Colors.black54,
                                 ),
                               ),
-                              Text(
-                                '\$${_formatValue(total)}',
+                              CopyText(
+                                'widget.portfolio.asset_allocation_chart.total_value',
+                                params: {'value': _formatValue(total)},
+                                fallback: '\${{value}}',
                                 style: TextStyle(
                                   fontSize: 14.sp,
                                   fontWeight: FontWeight.w700,
-                                  color: isDark ? Colors.white : Colors.black87,
+                                  color:
+                                      isDark ? Colors.white : Colors.black87,
                                 ),
                               ),
                             ],
@@ -355,8 +357,10 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Text(
-                    '${percentage.toStringAsFixed(1)}%',
+                  CopyText(
+                    'widget.portfolio.asset_allocation_chart.percentage',
+                    params: {'percent': percentage.toStringAsFixed(1)},
+                    fallback: '{{percent}}%',
                     style: TextStyle(
                       fontSize: 11.sp,
                       fontWeight: FontWeight.w600,
@@ -398,18 +402,14 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
               color: isDark ? Colors.white30 : Colors.black26,
             ),
             SizedBox(height: 12),
-            Text(
-              'No Assets Yet',
-              style: TextStyle(
+            CopyText('widget.portfolio.asset_allocation_chart.no_assets_yet', fallback: "No assets yet", style: TextStyle(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w600,
                 color: isDark ? Colors.white60 : Colors.black54,
               ),
             ),
             SizedBox(height: 4),
-            Text(
-              'Your portfolio allocation will appear here',
-              style: TextStyle(
+            CopyText('widget.portfolio.asset_allocation_chart.your_portfolio_allocation_will', fallback: "Your portfolio allocation will appear here", style: TextStyle(
                 fontSize: 12.sp,
                 color: isDark ? Colors.white38 : Colors.black38,
               ),

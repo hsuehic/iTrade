@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../widgets/app_switch.dart';
 
 import '../services/notification.dart';
 import '../services/preference.dart';
+import '../services/copy_service.dart';
 import 'push_notification_detail.dart';
+import '../widgets/copy_text.dart';
 
 class PushNotificationHistoryItem {
   final String id;
@@ -201,7 +204,7 @@ class _PushNotificationHistoryScreenState
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Push History'),
+            CopyText('screen.push_notification_history.push_history', fallback: "Push history"),
             const SizedBox(width: 8),
             if (_unreadCount > 0) _buildCountBadge(_unreadCount, theme),
           ],
@@ -210,7 +213,10 @@ class _PushNotificationHistoryScreenState
         actions: [
           if (_items.isNotEmpty && _unreadCount > 0)
             IconButton(
-              tooltip: 'Mark all as read',
+            tooltip: CopyService.instance.t(
+              'screen.push_notification_history.mark_all_read',
+              fallback: 'Mark all as read',
+            ),
               icon: const Icon(Icons.done_all),
               onPressed: _markAllRead,
             ),
@@ -243,7 +249,7 @@ class _PushNotificationHistoryScreenState
                             children: [
                               Icon(Icons.notifications_none, size: 48),
                               SizedBox(height: 12),
-                              Center(child: Text('No push messages yet.')),
+                              Center(child: CopyText('screen.push_notification_history.no_push_messages_yet', fallback: "No push messages yet.")),
                             ],
                           ),
                         );
@@ -292,10 +298,26 @@ class _PushNotificationHistoryScreenState
 
   Widget _buildSortChips(ThemeData theme) {
     final options = [
-      (label: 'Newest first', value: 'newest'),
-      (label: 'Oldest first', value: 'oldest'),
-      (label: 'Symbol (A-Z)', value: 'symbol'),
-      (label: 'Strategy (A-Z)', value: 'strategy'),
+      (
+        key: 'screen.push_notification_history.sort_newest',
+        fallback: 'Newest first',
+        value: 'newest'
+      ),
+      (
+        key: 'screen.push_notification_history.sort_oldest',
+        fallback: 'Oldest first',
+        value: 'oldest'
+      ),
+      (
+        key: 'screen.push_notification_history.sort_symbol',
+        fallback: 'Symbol (A-Z)',
+        value: 'symbol'
+      ),
+      (
+        key: 'screen.push_notification_history.sort_strategy',
+        fallback: 'Strategy (A-Z)',
+        value: 'strategy'
+      ),
     ];
 
     final current = options.firstWhere((opt) => opt.value == _sortKey);
@@ -304,10 +326,13 @@ class _PushNotificationHistoryScreenState
         ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(Icons.sort, color: theme.colorScheme.primary),
-          title: const Text('Sort'),
-          subtitle: Text(current.label),
+          title: CopyText('screen.push_notification_history.sort', fallback: "Sort"),
+          subtitle: CopyText(current.key, fallback: current.fallback),
           trailing: PopupMenuButton<String>(
-            tooltip: 'Sort',
+            tooltip: CopyService.instance.t(
+              'screen.push_notification_history.sort',
+              fallback: 'Sort',
+            ),
             onSelected: (value) {
               if (_sortKey == value) return;
               setState(() => _sortKey = value);
@@ -317,7 +342,7 @@ class _PushNotificationHistoryScreenState
                   .map(
                     (opt) => PopupMenuItem<String>(
                       value: opt.value,
-                      child: Text(opt.label),
+                      child: CopyText(opt.key, fallback: opt.fallback),
                     ),
                   )
                   .toList();
@@ -325,9 +350,7 @@ class _PushNotificationHistoryScreenState
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Change',
-                  style: theme.textTheme.labelLarge?.copyWith(
+                CopyText('screen.push_notification_history.change', fallback: "Change", style: theme.textTheme.labelLarge?.copyWith(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w600,
                   ),
@@ -365,9 +388,7 @@ class _PushNotificationHistoryScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Search',
-          style: theme.textTheme.labelMedium?.copyWith(
+        CopyText('screen.push_notification_history.search', fallback: "Search", style: theme.textTheme.labelMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w700,
           ),
@@ -376,7 +397,10 @@ class _PushNotificationHistoryScreenState
         TextField(
           onChanged: _onSearchChanged,
           decoration: InputDecoration(
-            hintText: 'Search by symbol, order ID, strategy',
+            hintText: CopyService.instance.t(
+              'screen.push_notification_history.search_hint',
+              fallback: 'Search by symbol, order ID, strategy',
+            ),
             prefixIcon: const Icon(Icons.search),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             isDense: true,
@@ -401,7 +425,7 @@ Widget _buildStatsList(
           Icons.history,
           color: theme.colorScheme.primary,
         ),
-        title: const Text('Total push messages'),
+        title: CopyText('screen.push_notification_history.total_push_messages', fallback: "Total push messages"),
         trailing: Text(
           total.toString(),
           style: theme.textTheme.titleLarge?.copyWith(
@@ -416,7 +440,7 @@ Widget _buildStatsList(
           Icons.mark_email_unread_outlined,
           color: theme.colorScheme.primary,
         ),
-        title: const Text('Unread push messages'),
+        title: CopyText('screen.push_notification_history.unread_push_messages', fallback: "Unread push messages"),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -457,15 +481,14 @@ Widget _buildFilterChips(
     children: [
       Row(
         children: [
-          Switch.adaptive(
+          AppSwitch(
             value: showUnreadOnly,
             onChanged: onUnreadChanged,
-            activeTrackColor: theme.colorScheme.primary.withValues(alpha: 0.3),
-            activeThumbColor: theme.colorScheme.primary,
           ),
           const SizedBox(width: 6),
-          Text(
-            'Unread only (messages not opened)',
+          CopyText(
+            'screen.push_notification_history.unread_only_messages_not_opene',
+            fallback: 'Unread only (messages not opened)',
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
               color: theme.colorScheme.onSurface,
@@ -474,8 +497,9 @@ Widget _buildFilterChips(
         ],
       ),
       const SizedBox(height: 8),
-      Text(
-        'Categories',
+      CopyText(
+        'screen.push_notification_history.categories',
+        fallback: 'Categories',
         style: theme.textTheme.labelMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
           fontWeight: FontWeight.w700,
@@ -491,7 +515,10 @@ Widget _buildFilterChips(
                 (category) => Padding(
                   padding: const EdgeInsets.only(right: 10),
                   child: ChoiceChip(
-                    label: Text(_capitalize(category)),
+                    label: CopyText(
+                      'screen.push_notification_history.category_$category',
+                      fallback: _capitalize(category),
+                    ),
                     selected: categoryFilter == category,
                     selectedColor: theme.colorScheme.primary.withValues(
                       alpha: 0.14,

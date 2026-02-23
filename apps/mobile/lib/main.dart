@@ -6,14 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
 import 'package:ihsueh_itrade/services/api_client.dart';
 import 'package:ihsueh_itrade/utils/responsive_layout.dart';
-import 'design/themes/theme.dart';
-
 import 'services/app_bootstrap.dart';
+import 'services/copy_service.dart';
 import 'services/theme_service.dart';
 import 'screens/splash.dart';
 import 'screens/login.dart';
@@ -25,8 +25,10 @@ import 'screens/profile.dart';
 import 'screens/exchange_accounts.dart';
 import 'screens/push_notification_history.dart';
 import 'screens/push_notification_detail.dart';
+import 'screens/theme_editor.dart';
 import 'widgets/design_bottom_nav.dart';
 import 'widgets/app_sidebar.dart';
+import 'widgets/copy_text.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 RemoteMessage? pendingNotificationTap;
@@ -78,6 +80,8 @@ Future<void> main() async {
 
     // Load environment variables based on build target.
     await _loadEnvFile();
+    await ThemeService.instance.init();
+    await CopyService.instance.initialize();
 
     runApp(const MyApp());
 
@@ -98,13 +102,13 @@ Future<void> main() async {
                 children: [
                   const Icon(Icons.error_outline, color: Colors.red, size: 64),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Failed to start iTrade',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  CopyText('app.main.failed_to_start_itrade', fallback: "Failed to start iTrade", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    'Error: ${e.toString()}',
+                  CopyText(
+                    'app.main.error',
+                    params: {'error': e.toString()},
+                    fallback: 'Error: {{error}}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 14, color: Colors.grey),
                   ),
@@ -116,7 +120,7 @@ Future<void> main() async {
                         'SystemNavigator.pop',
                       );
                     },
-                    child: const Text('Restart App'),
+                    child: CopyText('app.main.restart_app', fallback: "Restart app"),
                   ),
                 ],
               ),
@@ -203,9 +207,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     return ValueListenableBuilder<bool>(
       valueListenable: AppBootstrap.instance.firebaseReady,
       builder: (context, firebaseReady, child) {
-        return ValueListenableBuilder<ThemeMode>(
-          valueListenable: ThemeService.instance.themeMode,
-          builder: (context, themeMode, child) {
+        return AnimatedBuilder(
+          animation: Listenable.merge([
+            ThemeService.instance,
+            CopyService.instance,
+          ]),
+          builder: (context, child) {
+            final themeService = ThemeService.instance;
+            final copyService = CopyService.instance;
             // Initialize ScreenUtil with responsive design sizes
             // - Phone: 375x10000 (iPhone SE/8 as standard, height disabled)
             // - Tablet: 768x10000 (iPad as standard, height disabled)
@@ -227,12 +236,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   );
                 }
                 return MaterialApp(
-                  title: 'iTrade',
+                  title: copyService.t('app_title'),
                   navigatorObservers: observers,
-
-                  theme: AppTheme.brand,
-                  darkTheme: AppTheme.dark,
-                  themeMode: themeMode,
+                  theme: themeService.lightThemeData,
+                  darkTheme: themeService.darkThemeData,
+                  themeMode: themeService.themeMode,
+                  locale: copyService.locale,
+                  supportedLocales: copyService.supportedLocales,
+                  localizationsDelegates: const [
+                    GlobalMaterialLocalizations.delegate,
+                    GlobalWidgetsLocalizations.delegate,
+                    GlobalCupertinoLocalizations.delegate,
+                  ],
                   navigatorKey: appNavigatorKey,
                   // Only show splash on first cold start, not when resuming from background
                   home: _hasInitialized
@@ -241,7 +256,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                   routes: {
                     '/login': (_) => const LoginScreen(),
                     '/forgot-password': (_) => const ForgotPasswordScreen(),
-                    '/home': (_) => const MyHomePage(title: 'iTrade'),
+                    '/home': (_) =>
+                        MyHomePage(title: copyService.t('app_title')),
                     '/scan-qr': (_) => const QrScanScreen(),
                     '/profile': (_) => const ProfileScreen(),
                     '/exchange-accounts': (_) => const ExchangeAccountsScreen(),
@@ -249,6 +265,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                         const PushNotificationHistoryScreen(),
                     '/push-history/detail': (_) =>
                         const PushNotificationDetailScreen(),
+                    '/theme-editor': (_) => const ThemeEditorScreen(),
                   },
                   onGenerateRoute: (settings) {
                     // Handle deep links and external navigation
@@ -376,11 +393,11 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     // Navigation items for both bottom bar and rail
-    _navItems = [
-      _NavItem(icon: Icons.pie_chart, label: 'Portfolio'),
-      _NavItem(icon: Icons.calculate, label: 'Strategy'),
-      _NavItem(icon: Icons.receipt_long, label: 'Orders'),
-      _NavItem(icon: Icons.widgets, label: 'Product'),
+    _navItems = const [
+      _NavItem(icon: Icons.pie_chart, labelKey: 'nav_portfolio'),
+      _NavItem(icon: Icons.calculate, labelKey: 'nav_strategy'),
+      _NavItem(icon: Icons.receipt_long, labelKey: 'nav_orders'),
+      _NavItem(icon: Icons.widgets, labelKey: 'nav_product'),
     ];
 
     // Debug: Print device info after first frame
@@ -393,69 +410,75 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Use different layouts for phone vs tablet
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isTablet = ResponsiveLayout.isTablet(context);
+    return AnimatedBuilder(
+      animation: CopyService.instance,
+      builder: (context, child) {
+        // Use different layouts for phone vs tablet
+        final screenWidth = MediaQuery.of(context).size.width;
+        final screenHeight = MediaQuery.of(context).size.height;
+        final isTablet = ResponsiveLayout.isTablet(context);
 
-    // iPad detection: Use sidebar if screen is large enough OR if it's clearly iPad dimensions
-    // iPad Pro 13": 1024x1366 (portrait), 1366x1024 (landscape)
-    // iPad Pro 11": 834x1194 (portrait), 1194x834 (landscape)
-    final isLargeScreen =
-        screenWidth >= 600 ||
-        (screenWidth > 800 && screenHeight > 1000) ||
-        (screenWidth > 1000 && screenHeight > 800);
+        // iPad detection: Use sidebar if screen is large enough OR if it's clearly iPad dimensions
+        // iPad Pro 13": 1024x1366 (portrait), 1366x1024 (landscape)
+        // iPad Pro 11": 834x1194 (portrait), 1194x834 (landscape)
+        final isLargeScreen =
+            screenWidth >= 600 ||
+            (screenWidth > 800 && screenHeight > 1000) ||
+            (screenWidth > 1000 && screenHeight > 800);
 
-    final shouldUseSidebar = isTablet || isLargeScreen;
+        final shouldUseSidebar = isTablet || isLargeScreen;
 
-    // Debug: Print device info to understand layout detection
-
-    if (shouldUseSidebar) {
-      // Tablet layout: Modern sidebar navigation
-      return Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: null,
-        body: Row(
-          children: [
-            // Modern Sidebar
-            AppSidebar(
-              selectedIndex: _pageIndex,
-              onDestinationSelected: (index) {
-                setState(() => _pageIndex = index);
-              },
-              destinations: _navItems
-                  .map(
-                    (item) => SidebarDestination(
-                      icon: item.icon,
-                      selectedIcon: item.icon,
-                      label: item.label,
-                    ),
-                  )
-                  .toList(),
-              footer: _buildSidebarFooter(context),
+        final copy = CopyService.instance;
+        if (shouldUseSidebar) {
+          // Tablet layout: Modern sidebar navigation
+          return Scaffold(
+            resizeToAvoidBottomInset: false,
+            appBar: null,
+            body: Row(
+              children: [
+                // Modern Sidebar
+                AppSidebar(
+                  selectedIndex: _pageIndex,
+                  onDestinationSelected: (index) {
+                    setState(() => _pageIndex = index);
+                  },
+                  destinations: _navItems
+                      .map(
+                        (item) => SidebarDestination(
+                          icon: item.icon,
+                          selectedIcon: item.icon,
+                          label: copy.t(item.labelKey),
+                        ),
+                      )
+                      .toList(),
+                  footer: _buildSidebarFooter(context),
+                ),
+                // Content area
+                Expanded(
+                  child: IndexedStack(index: _pageIndex, children: _pages),
+                ),
+              ],
             ),
-            // Content area
-            Expanded(
-              child: IndexedStack(index: _pageIndex, children: _pages),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // Phone layout: Bottom navigation bar
-      return Scaffold(
-        resizeToAvoidBottomInset: false,
-        appBar: null,
-        body: IndexedStack(index: _pageIndex, children: _pages),
-        bottomNavigationBar: DesignBottomNavBar(
-          currentIndex: _pageIndex,
-          onTap: (index) => setState(() => _pageIndex = index),
-          items: _navItems
-              .map((item) => NavItemSpec(icon: item.icon, label: item.label))
-              .toList(),
-        ),
-      );
-    }
+          );
+        }
+        // Phone layout: Bottom navigation bar
+        return Scaffold(
+          resizeToAvoidBottomInset: false,
+          appBar: null,
+          body: IndexedStack(index: _pageIndex, children: _pages),
+          bottomNavigationBar: DesignBottomNavBar(
+            currentIndex: _pageIndex,
+            onTap: (index) => setState(() => _pageIndex = index),
+            items: _navItems
+                .map(
+                  (item) =>
+                      NavItemSpec(icon: item.icon, label: copy.t(item.labelKey)),
+                )
+                .toList(),
+          ),
+        );
+      },
+    );
   }
 
   /// Build footer for sidebar with theme toggle
@@ -463,10 +486,13 @@ class _MyHomePageState extends State<MyHomePage> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final copy = CopyService.instance;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Tooltip(
-        message: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+        message: isDark
+            ? copy.t('theme_switch_light')
+            : copy.t('theme_switch_dark'),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
@@ -506,7 +532,7 @@ class _MyHomePageState extends State<MyHomePage> {
 /// Navigation item data class
 class _NavItem {
   final IconData icon;
-  final String label;
+  final String labelKey;
 
-  const _NavItem({required this.icon, required this.label});
+  const _NavItem({required this.icon, required this.labelKey});
 }

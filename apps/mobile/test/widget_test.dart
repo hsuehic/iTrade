@@ -28,6 +28,6 @@ void main() {
     await tester.pump();
 
     expect(find.text('iTrade'), findsWidgets);
-    expect(find.text('Intelligent & Strategic'), findsWidgets);
+    expect(find.text('Intelligent & strategic'), findsWidgets);
   });
 }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/copy_text.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({super.key});
@@ -118,7 +119,7 @@ class _RportScreenState extends State<ReportScreen> {
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                               ),
-                              child: const Text('Header Title'),
+                              child: CopyText('screen.report.header_title', fallback: "Header title"),
                             ),
                           ),
                         ),
@@ -143,7 +144,13 @@ class _RportScreenState extends State<ReportScreen> {
                 ),
                 SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (c, index) => ListTile(title: Text('Item #$index')),
+                    (c, index) => ListTile(
+                      title: CopyText(
+                        'screen.report.item',
+                        params: {'index': index.toString()},
+                        fallback: 'Item #{{index}}',
+                      ),
+                    ),
                     childCount: 30,
                   ),
                 ),

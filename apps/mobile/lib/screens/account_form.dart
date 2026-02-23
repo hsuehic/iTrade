@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../design/tokens/color.dart';
 import '../services/account_service.dart';
+import '../widgets/app_switch.dart';
 import '../widgets/exchange_picker_field.dart';
+import '../widgets/copy_text.dart';
 
 class AccountFormScreen extends StatefulWidget {
   final ExchangeAccount? account;
@@ -54,8 +56,10 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
     if (widget.account != null && _apiKeyController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'To update API credentials, please delete and re-add the account',
+          content: CopyText(
+            'screen.account_form.to_update_api_credentials_plea',
+            fallback:
+                'To update API credentials, please delete and re-add the account',
           ),
           duration: Duration(seconds: 3),
         ),
@@ -80,7 +84,12 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
 
       if (success && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account saved successfully')),
+          const SnackBar(
+            content: CopyText(
+              'screen.account_form.account_saved_successfully',
+              fallback: "Account saved successfully",
+            ),
+          ),
         );
         Navigator.pop(context, true);
       } else {
@@ -88,9 +97,15 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: CopyText(
+              'common.error_with_detail',
+              params: {'error': e.toString()},
+              fallback: 'Error: {{error}}',
+            ),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -240,14 +255,17 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Active Status',
+                          CopyText(
+                            'screen.account_form.active_status',
+                            fallback: "Active status",
                             style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           SizedBox(height: 3.w),
-                          Text(
-                            'Enable or disable trading for this account',
+                          CopyText(
+                            'screen.account_form.enable_or_disable_trading_for_',
+                            fallback:
+                                "Enable or disable trading for this account",
                             style: Theme.of(
                               context,
                             ).textTheme.bodySmall?.copyWith(color: Colors.grey),
@@ -255,7 +273,7 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
                         ],
                       ),
                     ),
-                    Switch(
+                    AppSwitch(
                       value: _isActive,
                       onChanged: (value) => setState(() => _isActive = value),
                     ),
@@ -348,8 +366,10 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
                   ),
                 ),
                 SizedBox(height: 4.w),
-                Text(
-                  'Your API credentials are encrypted and stored securely.',
+                CopyText(
+                  'screen.account_form.your_api_credentials_are_encry',
+                  fallback:
+                      "Your API credentials are encrypted and stored securely.",
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: _withAlpha(Colors.white, 0.85),
                   ),
@@ -496,4 +516,3 @@ class _AccountFormScreenState extends State<AccountFormScreen> {
     return color.withValues(alpha: clamped);
   }
 }
-

@@ -4,9 +4,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../services/strategy_service.dart';
+import '../services/copy_service.dart';
 import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
 import '../widgets/exchange_picker_field.dart';
+import '../widgets/copy_text.dart';
 
 class StrategyCreateScreen extends StatefulWidget {
   const StrategyCreateScreen({super.key});
@@ -189,7 +191,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     if (_selectedType == null || _selectedType!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a strategy type'),
+          content: CopyText('screen.strategy_create.please_select_a_strategy_type', fallback: "Please select a strategy type"),
           backgroundColor: Colors.red,
         ),
       );
@@ -246,7 +248,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       if (strategy == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to create strategy'),
+            content: CopyText('screen.strategy_create.failed_to_create_strategy', fallback: "Failed to create strategy"),
             backgroundColor: Colors.red,
           ),
         );
@@ -256,7 +258,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Strategy created'),
+          content: CopyText('screen.strategy_create.strategy_created', fallback: "Strategy created"),
           backgroundColor: Colors.green,
         ),
       );
@@ -265,7 +267,11 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to create strategy: $e'),
+          content: CopyText(
+            'screen.strategy_create.failed_to_create_strategy_detail',
+            params: {'error': e.toString()},
+            fallback: 'Failed to create strategy: {{error}}',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -404,7 +410,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please select an exchange first'),
+            content: CopyText('screen.strategy_create.please_select_an_exchange_firs', fallback: "Please select an exchange first"),
             backgroundColor: Colors.red,
           ),
         );
@@ -449,7 +455,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Strategy'),
+        title: CopyText('screen.strategy_create.new_strategy', fallback: "New strategy"),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -467,7 +473,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                       textInputAction: TextInputAction.next,
                       decoration: _inputDecoration(
                         context,
-                        labelText: 'Strategy Name',
+                labelText: CopyService.instance.t(
+                  'screen.strategy_create.strategy_name',
+                  fallback: 'Strategy name',
+                ),
                         suffixIcon: _checkingName
                             ? const SizedBox(
                                 width: 16,
@@ -533,7 +542,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                           }
                         });
                       },
-                      hintText: 'Select exchange',
+                    hintText: CopyService.instance.t(
+                      'screen.strategy_create.select_exchange',
+                      fallback: 'Select exchange',
+                    ),
                     ),
                     const SizedBox(height: 12),
                     InkWell(
@@ -543,7 +555,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                       child: InputDecorator(
                         decoration: _inputDecoration(
                           context,
-                          labelText: 'Symbol',
+                          labelText: CopyService.instance.t(
+                            'screen.strategy_create.symbol',
+                            fallback: 'Symbol',
+                          ),
                           hintText: symbolHint,
                           errorText: _symbolError,
                           suffixIcon: const Icon(Icons.search),
@@ -567,7 +582,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                       maxLines: 2,
                       decoration: _inputDecoration(
                         context,
-                        labelText: 'Description (optional)',
+                        labelText: CopyService.instance.t(
+                          'screen.strategy_create.description_optional',
+                          fallback: 'Description (optional)',
+                        ),
                       ),
                     ),
                   ],
@@ -582,7 +600,11 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                   maxLines: 6,
                   decoration: _inputDecoration(
                     context,
-                    hintText: '{\n  "leverage": 10,\n  "orderAmount": 100\n}',
+                    hintText: CopyService.instance.t(
+                      'screen.strategy_create.initial_config_hint',
+                      fallback:
+                          '{\n  "leverage": 10,\n  "orderAmount": 100\n}',
+                    ),
                     errorText: _parametersError,
                   ),
                   onChanged: (_) => _scheduleParametersValidation(),
@@ -594,10 +616,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                 helperText: 'Optional initial data & subscription config',
                 child: Column(
                   children: [
-                    SwitchListTile.adaptive(
+                    SwitchListTile(
                       value: _showAdvanced,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Show advanced settings'),
+                      title: CopyText('screen.strategy_create.show_advanced_settings', fallback: "Show advanced settings"),
                       onChanged: (value) => setState(() => _showAdvanced = value),
                     ),
                     if (_showAdvanced) ...[
@@ -607,7 +629,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                         maxLines: 5,
                         decoration: _inputDecoration(
                           context,
-                          labelText: 'Initial Data Config (JSON)',
+                        labelText: CopyService.instance.t(
+                          'screen.strategy_create.initial_config',
+                          fallback: 'Initial data config (JSON)',
+                        ),
                           errorText: _initialDataError,
                         ),
                         onChanged: (_) => _scheduleInitialDataValidation(),
@@ -618,7 +643,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                         maxLines: 5,
                         decoration: _inputDecoration(
                           context,
-                          labelText: 'Subscription Config (JSON)',
+                        labelText: CopyService.instance.t(
+                          'screen.strategy_create.subscription_config',
+                          fallback: 'Subscription config (JSON)',
+                        ),
                           errorText: _subscriptionError,
                         ),
                         onChanged: (_) => _scheduleSubscriptionValidation(),
@@ -638,7 +666,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Create Strategy'),
+                      : CopyText('screen.strategy_create.create_strategy', fallback: "Create strategy"),
                 ),
               ),
             ],
@@ -818,7 +846,10 @@ class _StrategyTypePickerField extends StatelessWidget {
       onTap: () => _openTypePicker(context),
       child: InputDecorator(
         decoration: InputDecoration(
-          labelText: 'Strategy Type',
+          labelText: CopyService.instance.t(
+            'screen.strategy_create.strategy_type',
+            fallback: 'Strategy type',
+          ),
           filled: true,
           fillColor: Theme.of(context).brightness == Brightness.dark
               ? Colors.grey[900]
@@ -922,9 +953,7 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        'Select Strategy Type',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      child: CopyText('screen.strategy_create.select_strategy_type', fallback: "Select strategy type", style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
                       ),
@@ -941,7 +970,10 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
                 child: TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Search strategies',
+                    hintText: CopyService.instance.t(
+                      'screen.strategy_create.search_strategies',
+                      fallback: 'Search strategies',
+                    ),
                     prefixIcon: const Icon(Icons.search),
                     filled: true,
                     fillColor: isDark
@@ -958,9 +990,7 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
               Expanded(
                 child: _filteredOptions.isEmpty
                     ? Center(
-                        child: Text(
-                          'No strategies found',
-                          style:
+                        child: CopyText('screen.strategy_create.no_strategies_found', fallback: "No strategies found", style:
                               Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: Theme.of(context).hintColor,
                                   ),
@@ -1127,7 +1157,10 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search...',
+                      hintText: CopyService.instance.t(
+                        'common.search_placeholder',
+                        fallback: 'Search...',
+                      ),
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
                       fillColor: isDark ? Colors.grey[850] : Colors.grey[100],
@@ -1167,9 +1200,7 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
     final list = _filteredSymbols;
     if (list.isEmpty) {
       return Center(
-        child: Text(
-          'No symbols found',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        child: CopyText('screen.product_detail.no_symbols_found', fallback: "No symbols found", style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).hintColor,
               ),
         ),
@@ -1299,9 +1330,7 @@ class _SymbolListTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   change == null
-                      ? Text(
-                          '--',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      ? CopyText('screen.product_detail.text', fallback: "--", style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                 color: Theme.of(context).hintColor,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -1317,12 +1346,18 @@ class _SymbolListTile extends StatelessWidget {
                               color: changeColor,
                             ),
                             const SizedBox(width: 4),
-                            Text(
-                              '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}%',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: changeColor,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                            CopyText(
+                              'common.percent',
+                              params: {
+                                'percent':
+                                    '${change >= 0 ? '+' : ''}${change.toStringAsFixed(2)}',
+                              },
+                              fallback: '{{percent}}%',
+                              style:
+                                  Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: changeColor,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                             ),
                           ],
                         ),

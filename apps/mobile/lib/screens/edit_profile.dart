@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../widgets/user_avatar.dart';
+import '../widgets/copy_text.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -44,7 +45,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // For now, show a message that this feature is coming soon
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Image upload feature coming soon!'),
+        content: CopyText('screen.edit_profile.image_upload_feature_coming_so', fallback: "Image upload is coming soon."),
         backgroundColor: Theme.of(context).colorScheme.primary,
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
@@ -79,7 +80,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Profile updated successfully!'),
+            content: CopyText('screen.edit_profile.profile_updated_successfully', fallback: "Profile updated."),
             backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
@@ -113,7 +114,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${e.toString()}'),
+          content: CopyText(
+            'common.error_with_detail',
+            params: {'error': e.toString()},
+            fallback: 'Error: {{error}}',
+          ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
@@ -134,7 +139,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Profile'),
+        title: CopyText('screen.edit_profile.edit_profile', fallback: "Edit profile"),
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -192,9 +197,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: TextButton.icon(
                   onPressed: _pickImage,
                   icon: Icon(Icons.edit, size: 16.w, color: primaryColor),
-                  label: Text(
-                    'Change Profile Picture',
-                    style: TextStyle(color: primaryColor),
+                  label: CopyText('screen.edit_profile.change_profile_picture', fallback: "Change profile picture", style: TextStyle(color: primaryColor),
                   ),
                 ),
               ),
@@ -262,9 +265,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     Icon(Icons.info_outline, size: 20, color: primaryColor),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        'Email address cannot be changed for security reasons. Contact support if you need to update your email.',
-                        style: TextStyle(
+                      child: CopyText('screen.edit_profile.email_address_cannot_be_change', fallback: "Email address cannot be changed for security reasons. contact support if you need to update your email.", style: TextStyle(
                           fontSize: 13.sp,
                           color: isDark ? Colors.grey[400] : Colors.grey[700],
                         ),
@@ -299,9 +300,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ),
                           ),
                         )
-                      : Text(
-                          'Save Changes',
-                          style: TextStyle(
+                      : CopyText('screen.edit_profile.save_changes', fallback: "Save changes", style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
@@ -328,9 +327,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  child: CopyText('screen.login.cancel', fallback: "Cancel", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),

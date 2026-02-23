@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'copy_text.dart';
 
 /// Modern sidebar navigation widget for tablet/iPad layout
 ///
@@ -145,17 +146,13 @@ class _AppSidebarState extends State<AppSidebar> {
           // App name (only when expanded)
           if (_isExpanded) ...[
             SizedBox(height: 12.w),
-            Text(
-              'iTrade',
-              style: theme.textTheme.titleLarge?.copyWith(
+            CopyText('screen.login.itrade', fallback: "iTrade", style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
               ),
             ),
             SizedBox(height: 4.w),
-            Text(
-              'Trading Platform',
-              style: theme.textTheme.bodySmall?.copyWith(
+            CopyText('widget.app_sidebar.trading_platform', fallback: "Trading platform", style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
@@ -192,9 +189,7 @@ class _AppSidebarState extends State<AppSidebar> {
                   if (shouldShowLabel) ...[
                     Padding(
                       padding: const EdgeInsets.only(left: 12),
-                      child: Text(
-                        'Menu',
-                        style: theme.textTheme.bodyMedium?.copyWith(
+                      child: CopyText('widget.app_sidebar.menu', fallback: "Menu", style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w500,
                         ),
                         overflow: TextOverflow.clip,

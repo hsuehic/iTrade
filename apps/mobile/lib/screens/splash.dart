@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../main.dart' show MyHomePage;
 import '../services/app_bootstrap.dart';
 import './login.dart';
+import '../widgets/copy_text.dart';
 
 class SplashScreen extends StatefulWidget {
   final bool skipNavigation;
@@ -225,9 +226,7 @@ class _SplashScreenState extends State<SplashScreen>
 
                     const SizedBox(height: 32), // ✅ Fixed vertical spacing
                     // Title - Use .sp for font size
-                    Text(
-                      'iTrade',
-                      style: theme.textTheme.headlineLarge?.copyWith(
+                    CopyText('screen.login.itrade', fallback: "iTrade", style: theme.textTheme.headlineLarge?.copyWith(
                         fontSize: 32.sp, // ✅ Adaptive font size
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.2,
@@ -237,9 +236,7 @@ class _SplashScreenState extends State<SplashScreen>
 
                     const SizedBox(height: 8), // ✅ Fixed vertical spacing
                     // Subtitle
-                    Text(
-                      'Intelligent & Strategic',
-                      style: theme.textTheme.bodyLarge?.copyWith(
+                    CopyText('screen.splash.intelligent_strategic', fallback: "Intelligent & strategic", style: theme.textTheme.bodyLarge?.copyWith(
                         fontSize: 16.sp, // ✅ Adaptive font size
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
                         letterSpacing: 0.5,

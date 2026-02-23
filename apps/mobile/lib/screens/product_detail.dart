@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../services/okx_data_service.dart';
+import '../services/copy_service.dart';
 import '../widgets/order_book_widget.dart';
 import '../widgets/trade_history_widget.dart';
 import '../widgets/interactive_kline_chart.dart';
 import '../utils/number_format_utils.dart';
+import '../widgets/copy_text.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
@@ -133,7 +135,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load data: ${e.toString()}'),
+            content: CopyText(
+              'screen.product_detail.load_failed',
+              params: {'error': e.toString()},
+              fallback: 'Failed to load data: {{error}}',
+            ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),
@@ -419,9 +425,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text(
-                'WebSocket connection failed. Using polling.',
-              ),
+              content: CopyText('screen.product_detail.websocket_connection_failed_us', fallback: "Websocket connection failed. using polling.", ),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 2),
             ),
@@ -684,8 +688,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           color: changeColor,
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%',
+                        CopyText(
+                          'common.percent',
+                          params: {
+                            'percent':
+                                '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}',
+                          },
+                          fallback: '{{percent}}%',
                           style: TextStyle(
                             fontSize: 11,
                             color: changeColor,
@@ -695,9 +704,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ],
                     )
                   else
-                    Text(
-                      '--',
-                      style: TextStyle(
+                    CopyText('screen.product_detail.text', fallback: "--", style: TextStyle(
                         fontSize: 11,
                         color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
                         fontWeight: FontWeight.w600,
@@ -716,6 +723,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   void _showSymbolSearchDialog(bool isDarkMode) {
     String searchQuery = '';
     final TextEditingController searchController = TextEditingController();
+    final copy = CopyService.instance;
 
     showModalBottomSheet(
       context: context,
@@ -760,9 +768,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(
-                              'Select Symbol',
-                              style: TextStyle(
+                            child: CopyText('screen.product_detail.select_symbol', fallback: "Select symbol", style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: isDarkMode ? Colors.white : Colors.black,
@@ -792,7 +798,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             vertical: 12,
                             horizontal: 16,
                           ),
-                          hintText: 'Search...',
+                          hintText: copy.t(
+                            'common.search_placeholder',
+                            fallback: 'Search...',
+                          ),
                           hintStyle: TextStyle(
                             color: isDarkMode
                                 ? Colors.grey[500]
@@ -826,7 +835,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                                     searchQuery = '';
                                   });
                                 },
-                                tooltip: 'Clear search',
+                                tooltip: copy.t(
+                                  'common.clear_search',
+                                  fallback: 'Clear search',
+                                ),
                               );
                             },
                           ),
@@ -863,9 +875,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     Expanded(
                       child: filteredSymbols.isEmpty
                           ? Center(
-                              child: Text(
-                                'No symbols found',
-                                style: TextStyle(
+                              child: CopyText('screen.product_detail.no_symbols_found', fallback: "No symbols found", style: TextStyle(
                                   color: isDarkMode
                                       ? Colors.grey[400]
                                       : Colors.grey[600],
@@ -972,9 +982,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             color: Colors.grey[400],
                           ),
                           const SizedBox(height: 16),
-                          Text(
-                            'Loading chart data...',
-                            style: TextStyle(
+                          CopyText('screen.product_detail.loading_chart_data', fallback: "Loading chart data...", style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 14,
                             ),
@@ -1116,9 +1124,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    'Last Price',
-                    style: TextStyle(
+                  CopyText('screen.product_detail.last_price', fallback: "Last price", style: TextStyle(
                       color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                       fontSize: 12,
                     ),
@@ -1222,9 +1228,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Text(
-            'Interval',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          CopyText('screen.product_detail.interval', fallback: "Interval", style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontSize: 12,
               color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
               fontWeight: FontWeight.w600,

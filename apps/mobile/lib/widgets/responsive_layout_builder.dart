@@ -141,8 +141,8 @@ class ResponsiveGridView extends StatelessWidget {
 /// ```dart
 /// ResponsiveWrap(
 ///   children: [
-///     Chip(label: Text('Tag 1')),
-///     Chip(label: Text('Tag 2')),
+///     Chip(label: CopyText('widget.responsive_layout_builder.tag_1', fallback: "Tag 1")),
+///     Chip(label: CopyText('widget.responsive_layout_builder.tag_2', fallback: "Tag 2")),
 ///   ],
 /// )
 /// ```

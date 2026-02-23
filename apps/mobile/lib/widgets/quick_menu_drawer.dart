@@ -1,10 +1,17 @@
+import 'dart:async';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/auth_service.dart';
+import '../services/copy_service.dart';
+import '../services/dynamic_config_service.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
 import '../services/api_client.dart';
+import 'app_switch.dart';
 import 'user_avatar.dart';
+import 'copy_text.dart';
 
 class QuickMenuDrawer extends StatefulWidget {
   const QuickMenuDrawer({super.key});
@@ -16,7 +23,7 @@ class QuickMenuDrawer extends StatefulWidget {
 class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
   bool _signingOut = false;
   bool _notificationsEnabled = true;
-  bool _darkMode = false;
+  ThemeMode _themeMode = ThemeMode.system;
   final AuthService _authService = AuthService.instance;
 
   @override
@@ -27,10 +34,10 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
 
   Future<void> _loadSettings() async {
     final notificationsEnabled = await Preference.getNotificationsEnabled();
-    final darkMode = await Preference.getDarkMode();
+    final themeMode = ThemeService.instance.themeMode;
     setState(() {
       _notificationsEnabled = notificationsEnabled ?? false;
-      _darkMode = darkMode ?? false;
+      _themeMode = themeMode;
     });
   }
 
@@ -59,10 +66,9 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
       if (!_signingOut) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            Navigator.of(context).pushNamedAndRemoveUntil(
-              '/login',
-              (route) => false,
-            );
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil('/login', (route) => false);
           }
         });
       }
@@ -70,6 +76,15 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
     }
     final image = user.image;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final copy = CopyService.instance;
+    final selectedLocaleTag = copy.localeOverride == null
+        ? 'system'
+        : _formatLocale(copy.locale);
+    final languageSubtitleKey = _localeLabelKey(selectedLocaleTag);
+    final languageSubtitleFallback =
+        _localeLabelFallback(selectedLocaleTag, copy);
+    final themeSubtitleKey = _themeModeLabelKey(_themeMode);
+    final themeSubtitleFallback = _themeModeLabelFallback(_themeMode, copy);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
@@ -148,8 +163,9 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      'Quick Menu',
+                    CopyText(
+                      'widget.quick_menu_drawer.quick_menu',
+                      fallback: "Quick menu",
                       style: TextStyle(
                         fontSize: 20.sp,
                         fontWeight: FontWeight.bold,
@@ -183,15 +199,21 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                 const SizedBox(height: 24),
 
                 // Quick Settings
-                _buildSectionHeader('Quick Settings'),
+                _buildSectionHeader(
+                  titleKey: 'widget.quick_menu_drawer.quick_settings',
+                  fallback: 'Quick settings',
+                ),
                 const SizedBox(height: 8),
                 _buildSettingsGroup(
                   isDark: isDark,
                   children: [
                     _buildSwitchTile(
                       icon: Icons.notifications_outlined,
-                      title: 'Notifications',
-                      subtitle: 'Push notifications',
+                      titleKey: 'widget.quick_menu_drawer.notifications',
+                      titleFallback: 'Notifications',
+                      subtitleKey:
+                          'widget.quick_menu_drawer.push_notifications',
+                      subtitleFallback: 'Push notifications',
                       value: _notificationsEnabled,
                       onChanged: (v) async {
                         setState(() => _notificationsEnabled = v);
@@ -200,15 +222,23 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                       isDark: isDark,
                     ),
                     _buildDivider(isDark),
-                    _buildSwitchTile(
+                    _buildSettingTile(
                       icon: Icons.dark_mode_outlined,
-                      title: 'Dark Mode',
-                      subtitle: 'Switch theme',
-                      value: _darkMode,
-                      onChanged: (v) async {
-                        setState(() => _darkMode = v);
-                        await ThemeService.instance.setThemeMode(v);
-                      },
+                      titleKey: 'settings_theme',
+                      titleFallback: 'Theme',
+                      subtitleKey: themeSubtitleKey,
+                      subtitleFallback: themeSubtitleFallback,
+                      onTap: () => _showThemeSheet(context),
+                      isDark: isDark,
+                    ),
+                    _buildDivider(isDark),
+                    _buildSettingTile(
+                      icon: Icons.language_outlined,
+                      titleKey: 'settings_language',
+                      titleFallback: 'Language',
+                      subtitleKey: languageSubtitleKey,
+                      subtitleFallback: languageSubtitleFallback,
+                      onTap: () => _showLanguageSheet(context),
                       isDark: isDark,
                     ),
                   ],
@@ -217,15 +247,20 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                 const SizedBox(height: 24),
 
                 // Account Actions
-                _buildSectionHeader('Account'),
+                _buildSectionHeader(
+                  titleKey: 'widget.quick_menu_drawer.account',
+                  fallback: 'Account',
+                ),
                 const SizedBox(height: 8),
                 _buildSettingsGroup(
                   isDark: isDark,
                   children: [
                     _buildSettingTile(
                       icon: Icons.person_outline,
-                      title: 'Profile',
-                      subtitle: 'View full profile',
+                      titleKey: 'widget.quick_menu_drawer.profile',
+                      titleFallback: 'Profile',
+                      subtitleKey: 'widget.quick_menu_drawer.view_full_profile',
+                      subtitleFallback: 'View full profile',
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.pushNamed(context, '/profile');
@@ -235,8 +270,10 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                     _buildDivider(isDark),
                     _buildSettingTile(
                       icon: Icons.settings_outlined,
-                      title: 'Settings',
-                      subtitle: 'App preferences',
+                      titleKey: 'widget.quick_menu_drawer.settings',
+                      titleFallback: 'Settings',
+                      subtitleKey: 'widget.quick_menu_drawer.app_preferences',
+                      subtitleFallback: 'App preferences',
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.pushNamed(context, '/profile');
@@ -276,7 +313,7 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
         children: [
           UserAvatar(
             radius: 28,
-            backgroundColor: Colors.white.withOpacity(0.3),
+            backgroundColor: Colors.white.withValues(alpha: 0.3),
             icon: Icons.person,
             iconColor: Colors.white,
             iconSize: 32,
@@ -310,11 +347,15 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader({
+    required String titleKey,
+    required String fallback,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
-      child: Text(
-        title,
+      child: CopyText(
+        titleKey,
+        fallback: fallback,
         style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.bold,
@@ -344,8 +385,10 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
 
   Widget _buildSettingTile({
     required IconData icon,
-    required String title,
-    String? subtitle,
+    required String titleKey,
+    required String titleFallback,
+    String? subtitleKey,
+    String? subtitleFallback,
     required VoidCallback onTap,
     required bool isDark,
   }) {
@@ -376,18 +419,23 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
+                  CopyText(
+                    titleKey,
+                    fallback: titleFallback,
                     style: TextStyle(
                       fontSize: 15.sp,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (subtitle != null) ...[
+                  if (subtitleKey != null) ...[
                     const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
+                    CopyText(
+                      subtitleKey,
+                      fallback: subtitleFallback ?? '',
+                      style: TextStyle(
+                        fontSize: 13.sp,
+                        color: Colors.grey[600],
+                      ),
                     ),
                   ],
                 ],
@@ -402,8 +450,10 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
 
   Widget _buildSwitchTile({
     required IconData icon,
-    required String title,
-    String? subtitle,
+    required String titleKey,
+    required String titleFallback,
+    String? subtitleKey,
+    String? subtitleFallback,
     required bool value,
     required ValueChanged<bool> onChanged,
     required bool isDark,
@@ -428,24 +478,26 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
+                CopyText(
+                  titleKey,
+                  fallback: titleFallback,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (subtitle != null) ...[
+                if (subtitleKey != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    subtitle,
+                  CopyText(
+                    subtitleKey,
+                    fallback: subtitleFallback ?? '',
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ],
               ],
             ),
           ),
-          Switch(value: value, onChanged: onChanged),
+          AppSwitch(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -462,6 +514,189 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
     );
   }
 
+  Future<void> _showThemeSheet(BuildContext context) async {
+    final copy = CopyService.instance;
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const CopyText('settings_theme', fallback: 'Theme'),
+          actions: [
+            _buildActionSheetAction(
+              selected: _themeMode == ThemeMode.system,
+              titleKey: 'theme_mode_system',
+              fallback: copy.t('theme_mode_system', fallback: 'System'),
+              onPressed: () async {
+                await ThemeService.instance.setThemeMode(ThemeMode.system);
+                if (!mounted) return;
+                setState(() => _themeMode = ThemeMode.system);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            _buildActionSheetAction(
+              selected: _themeMode == ThemeMode.light,
+              titleKey: 'theme_mode_light',
+              fallback: copy.t('theme_mode_light', fallback: 'Light'),
+              onPressed: () async {
+                await ThemeService.instance.setThemeMode(ThemeMode.light);
+                if (!mounted) return;
+                setState(() => _themeMode = ThemeMode.light);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            _buildActionSheetAction(
+              selected: _themeMode == ThemeMode.dark,
+              titleKey: 'theme_mode_dark',
+              fallback: copy.t('theme_mode_dark', fallback: 'Dark'),
+              onPressed: () async {
+                await ThemeService.instance.setThemeMode(ThemeMode.dark);
+                if (!mounted) return;
+                setState(() => _themeMode = ThemeMode.dark);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const CopyText('common.cancel', fallback: 'Cancel'),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showLanguageSheet(BuildContext context) async {
+    final copy = CopyService.instance;
+    final selected = copy.localeOverride == null
+        ? 'system'
+        : _formatLocale(copy.locale);
+    final locales = copy.supportedLocales.map(_formatLocale).toSet().toList()
+      ..sort();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const CopyText('settings_language', fallback: 'Language'),
+          actions: [
+            _buildActionSheetAction(
+              selected: selected == 'system',
+              titleKey: 'language_system_default',
+              fallback: copy.t('language_system_default', fallback: 'System'),
+              onPressed: () async {
+                await CopyService.instance.setLocaleOverride(null);
+                unawaited(DynamicConfigService.instance.refresh(force: true));
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            for (final tag in locales)
+              _buildActionSheetAction(
+                selected: selected == tag,
+                titleKey: _localeLabelKey(tag),
+                fallback: _localeLabelFallback(tag, copy),
+                onPressed: () async {
+                  await CopyService.instance.setLocaleOverride(
+                    _parseLocale(tag),
+                  );
+                  unawaited(DynamicConfigService.instance.refresh(force: true));
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const CopyText('common.cancel', fallback: 'Cancel'),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatLocale(Locale locale) {
+    if (locale.countryCode == null || locale.countryCode!.isEmpty) {
+      return locale.languageCode;
+    }
+    return '${locale.languageCode}-${locale.countryCode}';
+  }
+
+  String _localeLabelKey(String tag) {
+    if (tag == 'system') {
+      return 'language_system_default';
+    }
+    if (tag.startsWith('en')) {
+      return 'language.name.en';
+    }
+    if (tag.startsWith('zh')) {
+      return 'language.name.zh_hans';
+    }
+    return 'language.name.$tag';
+  }
+
+  String _localeLabelFallback(String tag, CopyService copy) {
+    if (tag == 'system') {
+      return copy.t('language_system_default', fallback: 'System default');
+    }
+    if (tag.startsWith('en')) {
+      return copy.t('language.name.en', fallback: 'English');
+    }
+    if (tag.startsWith('zh')) {
+      return copy.t('language.name.zh_hans', fallback: '中文');
+    }
+    return tag;
+  }
+
+  String _themeModeLabelKey(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return 'theme_mode_system';
+      case ThemeMode.light:
+        return 'theme_mode_light';
+      case ThemeMode.dark:
+        return 'theme_mode_dark';
+    }
+  }
+
+  String _themeModeLabelFallback(ThemeMode mode, CopyService copy) {
+    switch (mode) {
+      case ThemeMode.system:
+        return copy.t('theme_mode_system', fallback: 'System');
+      case ThemeMode.light:
+        return copy.t('theme_mode_light', fallback: 'Light');
+      case ThemeMode.dark:
+        return copy.t('theme_mode_dark', fallback: 'Dark');
+    }
+  }
+
+  Widget _buildActionSheetAction({
+    required bool selected,
+    required String titleKey,
+    required String fallback,
+    required VoidCallback onPressed,
+  }) {
+    return CupertinoActionSheetAction(
+      onPressed: onPressed,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: CopyText(
+              titleKey,
+              fallback: fallback,
+            ),
+          ),
+          if (selected) Icon(CupertinoIcons.check_mark, size: 18.w),
+        ],
+      ),
+    );
+  }
+
+  Locale _parseLocale(String raw) {
+    final normalized = raw.replaceAll('_', '-');
+    final parts = normalized.split('-');
+    if (parts.isEmpty) return const Locale('en');
+    if (parts.length == 1) return Locale(parts[0]);
+    return Locale(parts[0], parts[1]);
+  }
+
   Widget _buildSignOutButton() {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w),
@@ -476,7 +711,12 @@ class _QuickMenuDrawerState extends State<QuickMenuDrawer> {
                   child: const CircularProgressIndicator(strokeWidth: 2),
                 )
               : Icon(Icons.logout, size: 24.w),
-          label: Text(_signingOut ? 'Signing out...' : 'Sign Out'),
+          label: CopyText(
+            _signingOut
+                ? 'widget.quick_menu_drawer.signing_out'
+                : 'widget.quick_menu_drawer.sign_out',
+            fallback: _signingOut ? 'Signing out...' : 'Sign out',
+          ),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.red,
             side: const BorderSide(color: Colors.red),

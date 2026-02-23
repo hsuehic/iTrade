@@ -6,11 +6,13 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 
 import '../models/order.dart';
 import '../services/order_service.dart';
+import '../services/copy_service.dart';
 import '../utils/number_format_utils.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
 import 'order_detail.dart';
+import '../widgets/copy_text.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
@@ -65,17 +67,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Order'),
-        content: Text('Cancel ${order.symbol} ${order.side} order?'),
+        title: CopyText(
+          'screen.strategy_detail.cancel_order',
+          fallback: "Cancel order",
+        ),
+        content: CopyText(
+          'screen.strategy_detail.cancel_order_confirm',
+          params: {'symbol': order.symbol, 'side': order.side},
+          fallback: 'Cancel {{symbol}} {{side}} order?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
+            child: CopyText('screen.strategy_detail.no', fallback: "No"),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Cancel'),
+            child: CopyText('screen.login.cancel', fallback: "Cancel"),
           ),
         ],
       ),
@@ -98,7 +107,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Order cancelled'),
+            content: CopyText(
+              'screen.strategy_detail.order_cancelled',
+              fallback: "Order cancelled",
+            ),
             backgroundColor: Colors.green,
           ),
         );
@@ -108,7 +120,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Cancel failed: $e'),
+            content: CopyText(
+              'screen.strategy_detail.cancel_failed',
+              params: {'error': e.toString()},
+              fallback: 'Cancel failed: {{error}}',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -163,7 +179,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           final canSubmit = !submitting && !hasErrors;
 
           return AlertDialog(
-            title: const Text('Edit Order'),
+            title: CopyText(
+              'screen.strategy_detail.edit_order',
+              fallback: "Edit order",
+            ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -173,7 +192,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Quantity',
+                    labelText: CopyService.instance.t(
+                      'common.quantity_label',
+                      fallback: 'Quantity',
+                    ),
                     errorText: quantityError,
                   ),
                   onChanged: (_) => scheduleValidation(setDialogState),
@@ -185,7 +207,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     decimal: true,
                   ),
                   decoration: InputDecoration(
-                    labelText: 'Price',
+                    labelText: CopyService.instance.t(
+                      'common.price_label',
+                      fallback: 'Price',
+                    ),
                     errorText: priceError,
                   ),
                   onChanged: (_) => scheduleValidation(setDialogState),
@@ -195,7 +220,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             actions: [
               TextButton(
                 onPressed: submitting ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
+                child: CopyText('screen.login.cancel', fallback: "Cancel"),
               ),
               TextButton(
                 onPressed: canSubmit
@@ -221,7 +246,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Order updated'),
+                                content: CopyText(
+                                  'screen.strategy_detail.order_updated',
+                                  fallback: "Order updated",
+                                ),
                                 backgroundColor: Colors.green,
                               ),
                             );
@@ -233,7 +261,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Update failed: $e'),
+                                content: CopyText(
+                                  'screen.strategy_detail.update_failed',
+                                  params: {'error': e.toString()},
+                                  fallback: 'Update failed: {{error}}',
+                                ),
                                 backgroundColor: Colors.red,
                               ),
                             );
@@ -248,7 +280,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save'),
+                    : CopyText('screen.login.save', fallback: "Save"),
               ),
             ],
           );
@@ -377,7 +409,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ? Colors.white
             : Colors.black87,
       ),
-      tooltip: 'Sort orders',
+      tooltip: CopyService.instance.t(
+        'screen.orders.sort_tooltip',
+        fallback: 'Sort orders',
+      ),
       onSelected: (action) {
         setState(() {
           if (action == _SortMenuAction.toggleDirection) {
@@ -449,13 +484,30 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final copy = CopyService.instance;
 
     final filterTags = [
-      Tag(name: 'All', value: 'all'),
-      Tag(name: 'Open', value: 'open'),
-      Tag(name: 'Filled', value: 'filled'),
-      Tag(name: 'Cancelled', value: 'cancelled'),
+      Tag(
+        name: copy.t('screen.orders.filter.all', fallback: 'All'),
+        value: 'all',
+      ),
+      Tag(
+        name: copy.t('screen.orders.filter.open', fallback: 'Open'),
+        value: 'open',
+      ),
+      Tag(
+        name: copy.t('screen.orders.filter.filled', fallback: 'Filled'),
+        value: 'filled',
+      ),
+      Tag(
+        name: copy.t('screen.orders.filter.cancelled', fallback: 'Cancelled'),
+        value: 'cancelled',
+      ),
     ];
+    final currentTag = filterTags.firstWhere(
+      (tag) => tag.value == _currentFilter.value,
+      orElse: () => filterTags.first,
+    );
 
     final sortedOrders = _getSortedOrders();
     final hasOrders = _orders.isNotEmpty;
@@ -465,7 +517,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       resizeToAvoidBottomInset: false,
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: CustomAppBar(
-        title: 'Orders',
+        titleKey: 'screen.orders.title',
+        titleFallback: 'Orders',
         showScanner: false,
         actions: [
           _buildSortMenu(context),
@@ -481,7 +534,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: TagList(
               tags: filterTags,
-              currentTag: _currentFilter,
+              currentTag: currentTag,
               onTap: (tag) {
                 if (_currentFilter.value != tag.value) {
                   setState(() => _currentFilter = tag);
@@ -646,23 +699,27 @@ class _OrderItem extends StatelessWidget {
   });
 
   String _statusLabel(String status) {
+    final copy = CopyService.instance;
     switch (status.toUpperCase()) {
       case 'NEW':
-        return 'New';
+        return copy.t('screen.orders.status.new', fallback: 'New');
       case 'PARTIALLY_FILLED':
-        return 'Partial';
+        return copy.t('screen.orders.status.partial', fallback: 'Partial');
       case 'FILLED':
-        return 'Filled';
+        return copy.t('screen.orders.status.filled', fallback: 'Filled');
       case 'CANCELED':
       case 'CANCELLED':
-        return 'Cancelled';
+        return copy.t('screen.orders.status.cancelled', fallback: 'Cancelled');
       default:
         return status;
     }
   }
 
   String _sideLabel(String side) {
-    return side.toUpperCase() == 'BUY' ? 'Buy' : 'Sell';
+    final copy = CopyService.instance;
+    return side.toUpperCase() == 'BUY'
+        ? copy.t('screen.orders.side.buy', fallback: 'Buy')
+        : copy.t('screen.orders.side.sell', fallback: 'Sell');
   }
 
   @override
@@ -681,7 +738,7 @@ class _OrderItem extends StatelessWidget {
         : (order.price ?? order.averagePrice ?? 0) * order.quantity;
     final price = order.price ?? order.averagePrice ?? 0;
     final exchangeLabel = (order.exchange ?? '').trim().isEmpty
-        ? 'Unknown'
+        ? CopyService.instance.t('common.unknown', fallback: 'Unknown')
         : order.exchange!.toUpperCase();
 
     final iconUrl =

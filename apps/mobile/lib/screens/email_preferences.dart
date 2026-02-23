@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_switch.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/api_client.dart';
+import '../widgets/copy_text.dart';
 
 class EmailPreferencesScreen extends StatefulWidget {
   const EmailPreferencesScreen({super.key});
@@ -88,7 +90,7 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Email preferences saved successfully!'),
+            content: CopyText('screen.email_preferences.email_preferences_saved_succes', fallback: "Email preferences saved."),
             backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
@@ -100,10 +102,15 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
           ),
         );
       } else {
-        final message = data['message'] ?? 'Failed to save preferences';
+        final message = data['message'];
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(message),
+            content: message == null
+                ? const CopyText(
+                    'screen.email_preferences.save_failed',
+                    fallback: 'Failed to save preferences',
+                  )
+                : Text(message),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
@@ -120,7 +127,11 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${e.toString()}'),
+          content: CopyText(
+            'common.error_with_detail',
+            params: {'error': e.toString()},
+            fallback: 'Error: {{error}}',
+          ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
@@ -141,7 +152,7 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Email Preferences'),
+        title: CopyText('screen.email_preferences.email_preferences', fallback: "Email preferences"),
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -182,18 +193,14 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              'Manage Notifications',
-                              style: Theme.of(context).textTheme.titleLarge
+                            CopyText('screen.email_preferences.manage_notifications', fallback: "Manage notifications", style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              'Choose which emails you want to receive',
-                              style: Theme.of(context).textTheme.bodyMedium
+                            CopyText('screen.email_preferences.choose_which_emails_you_want_t', fallback: "Choose which emails you want to receive", style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: Colors.white.withValues(alpha: 0.9),
                                   ),
@@ -207,15 +214,22 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                 const SizedBox(height: 24),
 
                 // Trading Notifications
-                _buildSectionHeader('Trading Notifications'),
+                _buildSectionHeader(
+                  'screen.email_preferences.section.trading',
+                  'Trading notifications',
+                ),
                 const SizedBox(height: 8),
                 _buildPreferencesGroup(
                   isDark: isDark,
                   children: [
                     _buildSwitchTile(
                       icon: Icons.trending_up,
-                      title: 'Trading Alerts',
-                      subtitle: 'Get notified about trading opportunities',
+                      titleKey: 'screen.email_preferences.trading_alerts',
+                      titleFallback: 'Trading alerts',
+                      subtitleKey:
+                          'screen.email_preferences.trading_alerts_subtitle',
+                      subtitleFallback:
+                          'Get notified about trading opportunities',
                       value: _tradingAlerts,
                       onChanged: (v) => setState(() => _tradingAlerts = v),
                       isDark: isDark,
@@ -223,8 +237,12 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                     _buildDivider(isDark),
                     _buildSwitchTile(
                       icon: Icons.price_change,
-                      title: 'Price Alerts',
-                      subtitle: 'Receive alerts when prices reach your targets',
+                      titleKey: 'screen.email_preferences.price_alerts',
+                      titleFallback: 'Price alerts',
+                      subtitleKey:
+                          'screen.email_preferences.price_alerts_subtitle',
+                      subtitleFallback:
+                          'Receive alerts when prices reach your targets',
                       value: _priceAlerts,
                       onChanged: (v) => setState(() => _priceAlerts = v),
                       isDark: isDark,
@@ -232,8 +250,11 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                     _buildDivider(isDark),
                     _buildSwitchTile(
                       icon: Icons.receipt_long,
-                      title: 'Order Updates',
-                      subtitle: 'Get updates on your order status',
+                      titleKey: 'screen.email_preferences.order_updates',
+                      titleFallback: 'Order updates',
+                      subtitleKey:
+                          'screen.email_preferences.order_updates_subtitle',
+                      subtitleFallback: 'Get updates on your order status',
                       value: _orderUpdates,
                       onChanged: (v) => setState(() => _orderUpdates = v),
                       isDark: isDark,
@@ -243,15 +264,22 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                 const SizedBox(height: 24),
 
                 // Account & Security
-                _buildSectionHeader('Account & Security'),
+                _buildSectionHeader(
+                  'screen.email_preferences.section.account_security',
+                  'Account & security',
+                ),
                 const SizedBox(height: 8),
                 _buildPreferencesGroup(
                   isDark: isDark,
                   children: [
                     _buildSwitchTile(
                       icon: Icons.security,
-                      title: 'Account Activity',
-                      subtitle: 'Important security and account notifications',
+                      titleKey: 'screen.email_preferences.account_activity',
+                      titleFallback: 'Account activity',
+                      subtitleKey:
+                          'screen.email_preferences.account_activity_subtitle',
+                      subtitleFallback:
+                          'Important security and account notifications',
                       value: _accountActivity,
                       onChanged: (v) => setState(() => _accountActivity = v),
                       isDark: isDark,
@@ -262,15 +290,22 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                 const SizedBox(height: 24),
 
                 // Reports & Updates
-                _buildSectionHeader('Reports & Updates'),
+                _buildSectionHeader(
+                  'screen.email_preferences.section.reports_updates',
+                  'Reports & updates',
+                ),
                 const SizedBox(height: 8),
                 _buildPreferencesGroup(
                   isDark: isDark,
                   children: [
                     _buildSwitchTile(
                       icon: Icons.analytics,
-                      title: 'Weekly Reports',
-                      subtitle: 'Receive weekly trading performance reports',
+                      titleKey: 'screen.email_preferences.weekly_reports',
+                      titleFallback: 'Weekly reports',
+                      subtitleKey:
+                          'screen.email_preferences.weekly_reports_subtitle',
+                      subtitleFallback:
+                          'Receive weekly trading performance reports',
                       value: _weeklyReports,
                       onChanged: (v) => setState(() => _weeklyReports = v),
                       isDark: isDark,
@@ -278,8 +313,12 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                     _buildDivider(isDark),
                     _buildSwitchTile(
                       icon: Icons.new_releases,
-                      title: 'Product Updates',
-                      subtitle: 'Learn about new features and improvements',
+                      titleKey: 'screen.email_preferences.product_updates',
+                      titleFallback: 'Product updates',
+                      subtitleKey:
+                          'screen.email_preferences.product_updates_subtitle',
+                      subtitleFallback:
+                          'Learn about new features and improvements',
                       value: _productUpdates,
                       onChanged: (v) => setState(() => _productUpdates = v),
                       isDark: isDark,
@@ -287,8 +326,11 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                     _buildDivider(isDark),
                     _buildSwitchTile(
                       icon: Icons.lightbulb_outline,
-                      title: 'News & Tips',
-                      subtitle: 'Market insights and trading tips',
+                      titleKey: 'screen.email_preferences.news_tips',
+                      titleFallback: 'News & tips',
+                      subtitleKey:
+                          'screen.email_preferences.news_tips_subtitle',
+                      subtitleFallback: 'Market insights and trading tips',
                       value: _newsAndTips,
                       onChanged: (v) => setState(() => _newsAndTips = v),
                       isDark: isDark,
@@ -298,15 +340,21 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                 const SizedBox(height: 24),
 
                 // Marketing
-                _buildSectionHeader('Marketing'),
+                _buildSectionHeader(
+                  'screen.email_preferences.section.marketing',
+                  'Marketing',
+                ),
                 const SizedBox(height: 8),
                 _buildPreferencesGroup(
                   isDark: isDark,
                   children: [
                     _buildSwitchTile(
                       icon: Icons.campaign,
-                      title: 'Marketing Emails',
-                      subtitle: 'Promotional offers and special deals',
+                      titleKey: 'screen.email_preferences.marketing_emails',
+                      titleFallback: 'Marketing emails',
+                      subtitleKey:
+                          'screen.email_preferences.marketing_emails_subtitle',
+                      subtitleFallback: 'Promotional offers and special deals',
                       value: _marketingEmails,
                       onChanged: (v) => setState(() => _marketingEmails = v),
                       isDark: isDark,
@@ -339,9 +387,7 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                               ),
                             ),
                           )
-                        : const Text(
-                            'Save Preferences',
-                            style: TextStyle(
+                        : CopyText('screen.email_preferences.save_preferences', fallback: "Save preferences", style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
@@ -354,11 +400,12 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(String titleKey, String titleFallback) {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
-      child: Text(
-        title,
+      child: CopyText(
+        titleKey,
+        fallback: titleFallback,
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
@@ -389,8 +436,10 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
 
   Widget _buildSwitchTile({
     required IconData icon,
-    required String title,
-    String? subtitle,
+    required String titleKey,
+    required String titleFallback,
+    String? subtitleKey,
+    String? subtitleFallback,
     required bool value,
     required ValueChanged<bool> onChanged,
     required bool isDark,
@@ -424,8 +473,9 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      title,
+                    CopyText(
+                      titleKey,
+                      fallback: titleFallback,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
@@ -437,17 +487,18 @@ class _EmailPreferencesScreenState extends State<EmailPreferencesScreen> {
                     ],
                   ],
                 ),
-                if (subtitle != null) ...[
+                if (subtitleKey != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    subtitle,
+                  CopyText(
+                    subtitleKey,
+                    fallback: subtitleFallback ?? '',
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ],
               ],
             ),
           ),
-          Switch(value: value, onChanged: onChanged),
+          AppSwitch(value: value, onChanged: onChanged),
         ],
       ),
     );

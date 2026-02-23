@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../services/copy_service.dart';
 
 class SimpleSearchBar extends StatefulWidget {
   final void Function(String)? onChanged;
@@ -27,6 +28,7 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
   Widget build(BuildContext context) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
+    final copy = CopyService.instance;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 0),  // ✅ Width-adapted
@@ -39,7 +41,10 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
         decoration: InputDecoration(
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-          hintText: 'Search...',
+          hintText: copy.t(
+            'common.search_placeholder',
+            fallback: 'Search...',
+          ),
           hintStyle: TextStyle(
             color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
             fontSize: 14,
@@ -62,7 +67,10 @@ class _SimpleSearchBarState extends State<SimpleSearchBar> {
                   size: 20,
                 ),
                 onPressed: _clearSearch,
-                tooltip: 'Clear search',
+                tooltip: copy.t(
+                  'common.clear_search',
+                  fallback: 'Clear search',
+                ),
               );
             },
           ),

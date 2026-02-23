@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/okx_data_service.dart';
+import 'copy_text.dart';
 
 class OrderBookWidget extends StatelessWidget {
   final OKXOrderBook? orderBook;
@@ -65,9 +66,7 @@ class OrderBookWidget extends StatelessWidget {
                   color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Order Book',
-                  style: TextStyle(
+                CopyText('widget.order_book_widget.order_book', fallback: "Order book", style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
                     color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
@@ -105,9 +104,7 @@ class OrderBookWidget extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      'Price',
-                      style: TextStyle(
+                    child: CopyText('widget.order_book_widget.price', fallback: "Price", style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                         color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
@@ -116,9 +113,7 @@ class OrderBookWidget extends StatelessWidget {
                     ),
                   ),
                   Expanded(
-                    child: Text(
-                      'Total',
-                      style: TextStyle(
+                    child: CopyText('widget.order_book_widget.total', fallback: "Total", style: TextStyle(
                         fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                         color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
@@ -163,8 +158,10 @@ class OrderBookWidget extends StatelessWidget {
                           color: Colors.amber.withValues(alpha: 0.5),
                         ),
                       ),
-                      child: Text(
-                        '\$${_formatPrice(currentPrice!)}',
+                      child: CopyText(
+                        'widget.order_book_widget.current_price',
+                        params: {'price': _formatPrice(currentPrice!)},
+                        fallback: '\${{price}}',
                         style: TextStyle(
                           color: Colors.amber[isDarkMode ? 300 : 700],
                           fontWeight: FontWeight.w700,

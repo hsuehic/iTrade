@@ -6,8 +6,10 @@ import '../models/strategy.dart'; // Ensure this model has the updated fields (p
 import '../models/order.dart';
 import '../services/strategy_service.dart';
 import '../services/order_service.dart';
+import '../services/copy_service.dart';
 import '../design/tokens/color.dart';
 import '../utils/exchange_config.dart';
+import '../widgets/copy_text.dart';
 
 class StrategyDetailScreen extends StatefulWidget {
   final Strategy strategy;
@@ -81,17 +83,21 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Order'),
-        content: Text('Cancel ${order.symbol} ${order.side} order?'),
+        title: CopyText('screen.strategy_detail.cancel_order', fallback: "Cancel order"),
+        content: CopyText(
+          'screen.strategy_detail.cancel_order_confirm',
+          params: {'symbol': order.symbol, 'side': order.side},
+          fallback: 'Cancel {{symbol}} {{side}} order?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
+            child: CopyText('screen.strategy_detail.no', fallback: "No"),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Cancel'),
+            child: CopyText('screen.login.cancel', fallback: "Cancel"),
           ),
         ],
       ),
@@ -113,14 +119,21 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order cancelled'), backgroundColor: Colors.green),
+          const SnackBar(content: CopyText('screen.strategy_detail.order_cancelled', fallback: "Order cancelled"), backgroundColor: Colors.green),
         );
       }
       await _loadOrders();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cancel failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: CopyText(
+              'screen.strategy_detail.cancel_failed',
+              params: {'error': e.toString()},
+              fallback: 'Cancel failed: {{error}}',
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -172,7 +185,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
           final canSubmit = !submitting && !hasErrors;
 
           return AlertDialog(
-            title: const Text('Edit Order'),
+            title: CopyText('screen.strategy_detail.edit_order', fallback: "Edit order"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -200,7 +213,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
             actions: [
               TextButton(
                 onPressed: submitting ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
+                child: CopyText('screen.login.cancel', fallback: "Cancel"),
               ),
               TextButton(
                 onPressed: canSubmit
@@ -224,7 +237,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Order updated'),
+                                content: CopyText('screen.strategy_detail.order_updated', fallback: "Order updated"),
                                 backgroundColor: Colors.green,
                               ),
                             );
@@ -236,7 +249,11 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Update failed: $e'),
+                                content: CopyText(
+                                  'screen.strategy_detail.update_failed',
+                                  params: {'error': e.toString()},
+                                  fallback: 'Update failed: {{error}}',
+                                ),
                                 backgroundColor: Colors.red,
                               ),
                             );
@@ -251,7 +268,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save'),
+                    : CopyText('screen.login.save', fallback: "Save"),
               ),
             ],
           );
@@ -282,8 +299,13 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                'Strategy ${_strategy.isActive ? 'started' : 'stopped'}'),
+            content: CopyText(
+              _strategy.isActive
+                  ? 'screen.strategy_detail.strategy_started'
+                  : 'screen.strategy_detail.strategy_stopped',
+              fallback:
+                  _strategy.isActive ? 'Strategy started' : 'Strategy stopped',
+            ),
             backgroundColor: _strategy.isActive ? Colors.green : Colors.grey,
           ),
         );
@@ -291,7 +313,14 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: CopyText(
+              'common.error_with_detail',
+              params: {'error': e.toString()},
+              fallback: 'Error: {{error}}',
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -302,7 +331,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   Future<void> _deleteStrategy() async {
     if (_strategy.isActive) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot delete active strategy')),
+        const SnackBar(content: CopyText('screen.strategy_detail.cannot_delete_active_strategy', fallback: "Cannot delete active strategy")),
       );
       return;
     }
@@ -313,14 +342,18 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Strategy'),
-        content: Text('Delete "${_strategy.name}"?'),
+        title: CopyText('screen.strategy_detail.delete_strategy', fallback: "Delete strategy"),
+        content: CopyText(
+          'screen.strategy_detail.delete_confirm',
+          params: {'name': _strategy.name},
+          fallback: 'Delete "{{name}}"?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: CopyText('screen.login.cancel', fallback: "Cancel")),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: CopyText('screen.strategy_detail.delete', fallback: "Delete"),
           ),
         ],
       ),
@@ -333,7 +366,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
         if (success && mounted) {
            Navigator.pop(context); // Return to list
            ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('Strategy deleted'), backgroundColor: Colors.green),
+             const SnackBar(content: CopyText('screen.strategy_detail.strategy_deleted', fallback: "Strategy deleted"), backgroundColor: Colors.green),
            );
         }
       } catch (e) {
@@ -383,7 +416,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
                 : Icon(_strategy.isActive ? Icons.stop_circle_outlined : Icons.play_circle_outline),
               color: _strategy.isActive ? Colors.red : Colors.green,
-              tooltip: _strategy.isActive ? 'Stop' : 'Start',
+              tooltip: _strategy.isActive
+                  ? CopyService.instance.t(
+                      'screen.strategy_detail.action.stop',
+                      fallback: 'Stop',
+                    )
+                  : CopyService.instance.t(
+                      'screen.strategy_detail.action.start',
+                      fallback: 'Start',
+                    ),
               onPressed: _isUpdating ? null : _toggleStatus,
             ),
             if (!_strategy.isActive)
@@ -397,7 +438,12 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
             unselectedLabelColor: Theme.of(context).hintColor,
             indicatorColor: Theme.of(context).colorScheme.primary,
             tabs: const [
-              Tab(text: 'Orders'),
+              Tab(
+                child: CopyText(
+                  'screen.strategy_detail.tabs.orders',
+                  fallback: 'Orders',
+                ),
+              ),
               Tab(text: 'Configuration'),
             ],
           ),
@@ -456,9 +502,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Performance',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          CopyText('screen.strategy_detail.performance', fallback: "Performance", style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
           ),
@@ -503,9 +547,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total PnL',
-                      style: TextStyle(
+                    CopyText('screen.strategy.total_pnl', fallback: "Total PnL", style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context).hintColor,
                       ),
@@ -527,16 +569,16 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    'ROI',
-                    style: TextStyle(
+                  CopyText('screen.strategy_detail.roi', fallback: "ROI", style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).hintColor,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    '${roi.toStringAsFixed(2)}%',
+                  CopyText(
+                    'common.percent',
+                    params: {'percent': roi.toStringAsFixed(2)},
+                    fallback: '{{percent}}%',
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w700,
@@ -580,8 +622,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
               ),
-              child: Text(
-                'Error: ${_strategy.errorMessage}',
+              child: CopyText(
+                'common.error_with_detail',
+                params: {'error': _strategy.errorMessage ?? ''},
+                fallback: 'Error: {{error}}',
                 style: const TextStyle(color: Colors.red),
               ),
             ),
@@ -621,7 +665,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_orders.isEmpty) {
-      return const Center(child: Text('No orders yet'));
+      return const Center(child: CopyText('screen.strategy_detail.no_orders_yet', fallback: "No orders yet"));
     }
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -804,8 +848,13 @@ class _OrderItem extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${order.symbol} (${order.type})',
+                CopyText(
+                  'screen.strategy_detail.order_label',
+                  params: {
+                    'symbol': order.symbol,
+                    'type': order.type,
+                  },
+                  fallback: '{{symbol}} ({{type}})',
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 4),

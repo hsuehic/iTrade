@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../models/portfolio.dart';
+import '../copy_text.dart';
 
 /// Professional assets list with sorting and filtering.
 class AssetsList extends StatefulWidget {
@@ -96,9 +97,7 @@ class _AssetsListState extends State<AssetsList> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Holdings',
-                  style: TextStyle(
+                CopyText('screen.portfolio.holdings', fallback: "Holdings", style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
                     color: isDark ? Colors.white : Colors.black87,
@@ -109,12 +108,14 @@ class _AssetsListState extends State<AssetsList> {
                   children: [
                     _buildSortChip(
                       context,
+                      'widget.portfolio.assets_list.sort_value',
                       'Value',
                       _SortField.value,
                     ),
                     SizedBox(width: 8.w),
                     _buildSortChip(
                       context,
+                      'widget.portfolio.assets_list.sort_name',
                       'Name',
                       _SortField.name,
                     ),
@@ -132,8 +133,16 @@ class _AssetsListState extends State<AssetsList> {
                 SizedBox(width: 48.w), // Icon space
                 Expanded(
                   flex: 3,
-                  child: Text(
-                    'Asset',
+                  child: CopyText('widget.portfolio.assets_list.asset', fallback: "Asset", style: TextStyle(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? Colors.white38 : Colors.black38,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: CopyText('widget.portfolio.assets_list.balance', fallback: "Balance", textAlign: TextAlign.right,
                     style: TextStyle(
                       fontSize: 11.sp,
                       fontWeight: FontWeight.w500,
@@ -143,21 +152,7 @@ class _AssetsListState extends State<AssetsList> {
                 ),
                 Expanded(
                   flex: 2,
-                  child: Text(
-                    'Balance',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.white38 : Colors.black38,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    'Value',
-                    textAlign: TextAlign.right,
+                  child: CopyText('widget.portfolio.assets_list.value', fallback: "Value", textAlign: TextAlign.right,
                     style: TextStyle(
                       fontSize: 11.sp,
                       fontWeight: FontWeight.w500,
@@ -210,7 +205,8 @@ class _AssetsListState extends State<AssetsList> {
 
   Widget _buildSortChip(
     BuildContext context,
-    String label,
+    String labelKey,
+    String labelFallback,
     _SortField field,
   ) {
     final theme = Theme.of(context);
@@ -249,8 +245,9 @@ class _AssetsListState extends State<AssetsList> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              label,
+            CopyText(
+              labelKey,
+              fallback: labelFallback,
               style: TextStyle(
                 fontSize: 11.sp,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -301,18 +298,14 @@ class _AssetsListState extends State<AssetsList> {
             color: isDark ? Colors.white30 : Colors.black26,
           ),
           SizedBox(height: 12),
-          Text(
-            'No Holdings',
-            style: TextStyle(
+          CopyText('widget.portfolio.assets_list.no_holdings', fallback: "No holdings", style: TextStyle(
               fontSize: 16.sp,
               fontWeight: FontWeight.w600,
               color: isDark ? Colors.white60 : Colors.black54,
             ),
           ),
           SizedBox(height: 4),
-          Text(
-            'Your assets will appear here',
-            style: TextStyle(
+          CopyText('widget.portfolio.assets_list.your_assets_will_appear_here', fallback: "Your assets will appear here", style: TextStyle(
               fontSize: 12.sp,
               color: isDark ? Colors.white38 : Colors.black38,
             ),
@@ -467,8 +460,10 @@ class _AssetItem extends StatelessWidget {
                     ),
                   ),
                   if (asset.locked > 0)
-                    Text(
-                      '🔒 ${_formatBalance(asset.locked)}',
+                    CopyText(
+                      'widget.portfolio.assets_list.locked_balance',
+                      params: {'amount': _formatBalance(asset.locked)},
+                      fallback: '🔒 {{amount}}',
                       style: TextStyle(
                         fontSize: 10.sp,
                         color: Colors.orange.withValues(alpha: 0.8),
@@ -485,8 +480,10 @@ class _AssetItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '\$${_formatValue(asset.estimatedValue ?? 0)}',
+                  CopyText(
+                    'widget.portfolio.assets_list.estimated_value',
+                    params: {'value': _formatValue(asset.estimatedValue ?? 0)},
+                    fallback: '\${{value}}',
                     style: TextStyle(
                       fontSize: 13.sp,
                       fontWeight: FontWeight.w600,
@@ -500,8 +497,12 @@ class _AssetItem extends StatelessWidget {
                       color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text(
-                      '${asset.percentage.toStringAsFixed(1)}%',
+                    child: CopyText(
+                      'widget.portfolio.assets_list.percentage',
+                      params: {
+                        'percent': asset.percentage.toStringAsFixed(1),
+                      },
+                      fallback: '{{percent}}%',
                       style: TextStyle(
                         fontSize: 10.sp,
                         fontWeight: FontWeight.w600,

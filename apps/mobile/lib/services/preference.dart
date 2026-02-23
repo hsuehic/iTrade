@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/material.dart';
 import 'package:logger/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,6 +22,7 @@ class Preference {
   static const String keyPushUnreadCount = 'push_unread_count';
   static const String keyPushHistoryMessages = 'push_history_messages';
   static const String keyPushInboxMessages = 'push_inbox_messages';
+  static const String keyThemeMode = 'theme_mode';
   static const int pushHistoryMax = 100;
 
   static SharedPreferences? _prefs;
@@ -170,6 +172,19 @@ class Preference {
 
   static Future<bool?> getDarkMode() async {
     return await getValue<bool>(keyDarkMode);
+  }
+
+  static Future<void> setThemeMode(ThemeMode mode) async {
+    await setValue(keyThemeMode, mode.name);
+  }
+
+  static Future<ThemeMode?> getThemeMode() async {
+    final raw = await getValue<String>(keyThemeMode);
+    if (raw == null || raw.isEmpty) return null;
+    return ThemeMode.values.firstWhere(
+      (mode) => mode.name == raw,
+      orElse: () => ThemeMode.system,
+    );
   }
 
   static Future<void> setApiBaseUrl(String value) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../services/copy_service.dart';
+import '../widgets/copy_text.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -13,9 +15,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: Text(
-          'Dashboard',
-          style: TextStyle(fontSize: 16.sp),  // ✅ Adaptive font
+        child: CopyText('screen.dashboard.dashboard', fallback: "Dashboard", style: TextStyle(fontSize: 16.sp),  // ✅ Adaptive font
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -33,16 +33,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Safe usage: using captured ScaffoldMessenger
           messenger.showSnackBar(
             SnackBar(
-              content: Text(
-                'QR Code: $result',
+              content: CopyText(
+                'screen.dashboard.qr_code_result',
+                params: {'code': result.toString()},
+                fallback: 'QR Code: {{code}}',
                 style: TextStyle(fontSize: 14.sp),  // ✅ Adaptive font
               ),
             ),
           );
         },
         icon: Icon(Icons.qr_code_scanner, size: 24.w),  // ✅ Uniform scaling
-        label: Text('Scan', style: TextStyle(fontSize: 14.sp)),  // ✅ Adaptive font
-        tooltip: 'Scan QR',
+        label: CopyText('screen.dashboard.scan', fallback: "Scan", style: TextStyle(fontSize: 14.sp)),  // ✅ Adaptive font
+        tooltip: CopyService.instance.t(
+          'screen.dashboard.scan_qr',
+          fallback: 'Scan QR',
+        ),
       ),
     );
   }

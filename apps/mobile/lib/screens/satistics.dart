@@ -4,6 +4,7 @@ import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
 import '../utils/responsive_layout.dart';
 import '../widgets/custom_app_bar.dart';
+import '../widgets/copy_text.dart';
 
 enum StatTab { topPerformers, byExchange, bySymbol }
 
@@ -141,7 +142,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: CustomAppBar(title: 'Statistic'),
+      appBar: const CustomAppBar(
+        titleKey: 'screen.satistics.title',
+        titleFallback: 'Statistic',
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -162,12 +166,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         children: [
           const Icon(Icons.error_outline, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
-          Text(
-            'Failed to load statistics',
-            style: TextStyle(color: Colors.grey[600]),
+          CopyText('screen.satistics.failed_to_load_statistics', fallback: "Failed to load statistics", style: TextStyle(color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),
-          ElevatedButton(onPressed: _loadAnalytics, child: const Text('Retry')),
+          ElevatedButton(onPressed: _loadAnalytics, child: CopyText('screen.strategy.retry', fallback: "Retry")),
         ],
       ),
     );
@@ -261,9 +263,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           children: [
             Icon(Icons.analytics_outlined, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text(
-              'No data available',
-              style: TextStyle(color: Colors.grey[600]),
+            CopyText('screen.satistics.no_data_available', fallback: "No data available", style: TextStyle(color: Colors.grey[600]),
             ),
           ],
         ),
@@ -346,6 +346,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
             flex: 3,
             child: _buildSortButton(
               _currentTab == StatTab.topPerformers
+                  ? 'screen.satistics.sort.name'
+                  : _currentTab == StatTab.byExchange
+                  ? 'screen.satistics.sort.exchange'
+                  : 'screen.satistics.sort.symbol',
+              _currentTab == StatTab.topPerformers
                   ? 'Name'
                   : _currentTab == StatTab.byExchange
                   ? 'Exchange'
@@ -358,23 +363,43 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           if (_currentTab == StatTab.topPerformers) ...[
             SizedBox(
               width: 100,
-              child: _buildSortButton('PnL', SortField.pnl, isDark),
+              child: _buildSortButton(
+                'screen.satistics.sort.pnl',
+                'PnL',
+                SortField.pnl,
+                isDark,
+              ),
             ),
             const SizedBox(width: 16),
             SizedBox(
               width: 80,
-              child: _buildSortButton('Orders', SortField.orders, isDark),
+              child: _buildSortButton(
+                'screen.satistics.sort.orders',
+                'Orders',
+                SortField.orders,
+                isDark,
+              ),
             ),
           ],
           if (_currentTab != StatTab.topPerformers) ...[
             SizedBox(
               width: 80,
-              child: _buildSortButton('Count', SortField.count, isDark),
+              child: _buildSortButton(
+                'screen.satistics.sort.count',
+                'Count',
+                SortField.count,
+                isDark,
+              ),
             ),
             const SizedBox(width: 16),
             SizedBox(
               width: 100,
-              child: _buildSortButton('Total PnL', SortField.pnl, isDark),
+              child: _buildSortButton(
+                'screen.satistics.sort.total_pnl',
+                'Total PnL',
+                SortField.pnl,
+                isDark,
+              ),
             ),
           ],
         ],
@@ -421,17 +446,32 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: Row(
                 children: [
                   Expanded(
-                    child: _buildSortButton('Name', SortField.name, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.name',
+                      'Name',
+                      SortField.name,
+                      isDark,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 90,
-                    child: _buildSortButton('PnL', SortField.pnl, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.pnl',
+                      'PnL',
+                      SortField.pnl,
+                      isDark,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 70,
-                    child: _buildSortButton('Orders', SortField.orders, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.orders',
+                      'Orders',
+                      SortField.orders,
+                      isDark,
+                    ),
                   ),
                 ],
               ),
@@ -523,8 +563,14 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          '$filledOrders/$totalOrders ($fillRate%)',
+                        CopyText(
+                          'screen.satistics.fill_rate',
+                          params: {
+                            'filled': filledOrders.toString(),
+                            'total': totalOrders.toString(),
+                            'rate': fillRate,
+                          },
+                          fallback: '{{filled}}/{{total}} ({{rate}}%)',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey[600],
@@ -574,17 +620,32 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: Row(
                 children: [
                   Expanded(
-                    child: _buildSortButton('Exchange', SortField.name, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.exchange',
+                      'Exchange',
+                      SortField.name,
+                      isDark,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 70,
-                    child: _buildSortButton('Count', SortField.count, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.count',
+                      'Count',
+                      SortField.count,
+                      isDark,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 90,
-                    child: _buildSortButton('Total PnL', SortField.pnl, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.total_pnl',
+                      'Total PnL',
+                      SortField.pnl,
+                      isDark,
+                    ),
                   ),
                 ],
               ),
@@ -606,8 +667,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '$activeCount active / $count total',
+                    CopyText(
+                      'screen.satistics.active_total',
+                      params: {
+                        'active': activeCount.toString(),
+                        'total': count.toString(),
+                      },
+                      fallback: '{{active}} active / {{total}} total',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
@@ -625,8 +691,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Avg: ${_formatCurrency(avgPnl)}',
+                  CopyText(
+                    'screen.satistics.avg_pnl',
+                    params: {'value': _formatCurrency(avgPnl)},
+                    fallback: 'Avg: {{value}}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ],
@@ -672,17 +740,32 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: Row(
                 children: [
                   Expanded(
-                    child: _buildSortButton('Symbol', SortField.name, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.symbol',
+                      'Symbol',
+                      SortField.name,
+                      isDark,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 70,
-                    child: _buildSortButton('Count', SortField.count, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.count',
+                      'Count',
+                      SortField.count,
+                      isDark,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   SizedBox(
                     width: 90,
-                    child: _buildSortButton('Total PnL', SortField.pnl, isDark),
+                    child: _buildSortButton(
+                      'screen.satistics.sort.total_pnl',
+                      'Total PnL',
+                      SortField.pnl,
+                      isDark,
+                    ),
                   ),
                 ],
               ),
@@ -727,8 +810,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      '$activeCount active / $count total',
+                    CopyText(
+                      'screen.satistics.active_total',
+                      params: {
+                        'active': activeCount.toString(),
+                        'total': count.toString(),
+                      },
+                      fallback: '{{active}} active / {{total}} total',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
@@ -746,8 +834,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Avg: ${_formatCurrency(avgPnl)}',
+                  CopyText(
+                    'screen.satistics.avg_pnl',
+                    params: {'value': _formatCurrency(avgPnl)},
+                    fallback: 'Avg: {{value}}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
                 ],
@@ -759,7 +849,12 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
   }
 
-  Widget _buildSortButton(String label, SortField field, bool isDark) {
+  Widget _buildSortButton(
+    String labelKey,
+    String labelFallback,
+    SortField field,
+    bool isDark,
+  ) {
     final isActive = _sortField == field;
     return InkWell(
       onTap: () => _changeSortField(field),
@@ -767,8 +862,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           Flexible(
-            child: Text(
-              label,
+            child: CopyText(
+              labelKey,
+              fallback: labelFallback,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,

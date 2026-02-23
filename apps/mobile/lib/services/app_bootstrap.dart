@@ -7,9 +7,9 @@ import 'package:flutter/foundation.dart';
 import '../constant/network.dart';
 import '../firebase_options.dart';
 import 'api_client.dart';
+import 'dynamic_config_service.dart';
 import 'notification.dart';
 import 'preference.dart';
-import 'theme_service.dart';
 
 class AppBootstrap {
   AppBootstrap._internal();
@@ -49,8 +49,8 @@ class AppBootstrap {
   Future<void> _run() async {
     await _initFirebaseAndNotifications();
     await _initApiClient();
+    await _initDynamicConfig();
     await _syncPushToken();
-    await _initTheme();
   }
 
   Future<void> _initFirebaseAndNotifications() async {
@@ -138,11 +138,17 @@ class AppBootstrap {
     }
   }
 
-  Future<void> _initTheme() async {
+  Future<void> _initDynamicConfig() async {
+    if (!_firebaseReady) return;
     try {
-      await ThemeService.instance.init().timeout(const Duration(seconds: 3));
+      await DynamicConfigService.instance
+          .initialize()
+          .timeout(const Duration(seconds: 3));
+      await DynamicConfigService.instance.refresh(force: true).timeout(
+            const Duration(seconds: 10),
+          );
     } catch (_) {
-      // Continue with default theme.
+      // Best-effort only.
     }
   }
 }

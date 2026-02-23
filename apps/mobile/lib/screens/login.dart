@@ -13,6 +13,7 @@ import '../services/api_client.dart';
 import '../services/app_bootstrap.dart';
 import '../services/preference.dart';
 import '../utils/responsive_layout.dart';
+import '../widgets/copy_text.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -214,16 +215,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'Server Settings',
-                    style: theme.textTheme.titleLarge?.copyWith(
+                  CopyText('screen.login.server_settings', fallback: "Server settings", style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   SizedBox(height: spacing.xs),
-                  Text(
-                    'Set API_BASE_URL for the backend server.',
-                    style: theme.textTheme.bodySmall?.copyWith(
+                  CopyText('screen.login.set_api_base_url_for_the_backe', fallback: "Set API base url for the backend server.", style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
@@ -257,17 +254,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       TextButton(
                         onPressed: resetToDefault,
-                        child: const Text('Reset'),
+                        child: CopyText('screen.login.reset', fallback: "Reset"),
                       ),
                       const Spacer(),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
+                        child: CopyText('screen.login.cancel', fallback: "Cancel"),
                       ),
                       SizedBox(width: spacing.sm),
                       FilledButton(
                         onPressed: () => saveValue(setSheetState),
-                        child: const Text('Save'),
+                        child: CopyText('screen.login.save', fallback: "Save"),
                       ),
                     ],
                   ),
@@ -477,18 +474,14 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
 
           SizedBox(height: spacing.lg),
-          Text(
-            'Welcome to iTrade',
-            style: theme.textTheme.headlineMedium?.copyWith(
+          CopyText('screen.login.welcome_to_itrade', fallback: "Welcome to iTrade", style: theme.textTheme.headlineMedium?.copyWith(
               fontSize: 24.sp, // ✅ Adaptive font size
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: spacing.sm),
-          Text(
-            'Please sign in to your account',
-            style: theme.textTheme.bodyLarge?.copyWith(
+          CopyText('screen.login.please_sign_in_to_your_account', fallback: "Please sign in to your account", style: theme.textTheme.bodyLarge?.copyWith(
               fontSize: 16.sp, // ✅ Adaptive font size
               color: isDark ? Colors.grey[400] : Colors.grey[600],
             ),
@@ -590,7 +583,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 context,
                               ).pushNamed('/forgot-password');
                             },
-                      child: const Text('Forgot Password?'),
+                      child: CopyText('screen.forgot_password.forgot_password', fallback: "Forgot password"),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -618,9 +611,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.w,
                         ), // ✅ Width-adapted
-                        child: Text(
-                          'or continue with',
-                          style: theme.textTheme.bodySmall?.copyWith(
+                        child: CopyText('screen.login.or_continue_with', fallback: "Or continue with", style: theme.textTheme.bodySmall?.copyWith(
                             fontSize: 12.sp, // ✅ Adaptive font size
                             color: isDark ? Colors.grey[500] : Colors.grey[600],
                           ),
@@ -662,9 +653,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 18.w, // ✅ Uniform scaling
                           height: 18.w, // ✅ Uniform scaling
                         ),
-                        label: Text(
-                          'Apple',
-                          style: TextStyle(fontSize: 14.sp),
+                        label: CopyText('screen.login.apple', fallback: "Apple", style: TextStyle(fontSize: 14.sp),
                         ), // ✅ Adaptive font
                       ),
                       SizedBox(width: 12.w), // ✅ Width-adapted
@@ -686,9 +675,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 18.w, // ✅ Uniform scaling
                           height: 18.w, // ✅ Uniform scaling
                         ),
-                        label: Text(
-                          'Google',
-                          style: TextStyle(fontSize: 14.sp),
+                        label: CopyText('screen.login.google', fallback: "Google", style: TextStyle(fontSize: 14.sp),
                         ), // ✅ Adaptive font
                       ),
                       SizedBox(width: 12.w), // ✅ Width-adapted
@@ -710,7 +697,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       //       width: 18,
                       //       height: 18,
                       //     ),
-                      //     label: const Text('Github'),
+                      //     label: CopyText('screen.login.github', fallback: "GitHub"),
                       //   ),
                       // ),
                     ],
@@ -797,17 +784,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  Text(
-                    'iTrade',
-                    style: theme.textTheme.displayMedium?.copyWith(
+                  CopyText('screen.login.itrade', fallback: "iTrade", style: theme.textTheme.displayMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    'Professional Strategy Platform',
-                    style: theme.textTheme.titleLarge?.copyWith(
+                  CopyText('screen.login.professional_strategy_platform', fallback: "Professional strategy platform", style: theme.textTheme.titleLarge?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       fontWeight: FontWeight.w300,
                     ),
@@ -891,16 +874,12 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Welcome Back',
-          style: theme.textTheme.headlineLarge?.copyWith(
+        CopyText('screen.login.welcome_back', fallback: "Welcome back", style: theme.textTheme.headlineLarge?.copyWith(
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          'Please sign in to your account',
-          style: theme.textTheme.bodyLarge?.copyWith(
+        CopyText('screen.login.please_sign_in_to_your_account', fallback: "Please sign in to your account", style: theme.textTheme.bodyLarge?.copyWith(
             color: isDark ? Colors.grey[400] : Colors.grey[600],
           ),
         ),
@@ -992,7 +971,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       : () {
                           Navigator.of(context).pushNamed('/forgot-password');
                         },
-                  child: const Text('Forgot Password?'),
+                  child: CopyText('screen.forgot_password.forgot_password', fallback: "Forgot password"),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1029,9 +1008,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'or continue with',
-                      style: theme.textTheme.bodySmall?.copyWith(
+                    child: CopyText('screen.login.or_continue_with', fallback: "Or continue with", style: theme.textTheme.bodySmall?.copyWith(
                         color: isDark ? Colors.grey[500] : Colors.grey[600],
                       ),
                     ),
@@ -1073,7 +1050,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: 20,
                         height: 20,
                       ),
-                      label: const Text('Apple'),
+                      label: CopyText('screen.login.apple', fallback: "Apple"),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -1099,7 +1076,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: 20,
                         height: 20,
                       ),
-                      label: const Text('Google'),
+                      label: CopyText('screen.login.google', fallback: "Google"),
                     ),
                   ),
                 ],

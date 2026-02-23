@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../models/portfolio.dart';
 import '../../design/tokens/color.dart';
+import '../copy_text.dart';
+import '../../services/copy_service.dart';
 
 /// A professional portfolio summary card showing total value, PnL, and key metrics.
 /// Data updates automatically via PortfolioService streams - no manual refresh needed.
@@ -127,9 +129,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                   // Header row
                   Row(
                     children: [
-                      Text(
-                        'Total Balance',
-                        style: TextStyle(
+                      CopyText('widget.portfolio.portfolio_summary_card.total_balance', fallback: "Total balance", style: TextStyle(
                           fontSize: 14.sp,
                           fontWeight: FontWeight.w500,
                           color: Colors.white.withValues(alpha: 0.8),
@@ -246,6 +246,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                     children: [
                       _buildMetricItem(
                         context,
+                        'widget.portfolio.portfolio_summary_card.assets',
                         'Assets',
                         widget.portfolio.filteredUniqueAssetCount.toString(),
                         Icons.account_balance_wallet_outlined,
@@ -253,6 +254,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                       _buildDivider(),
                       _buildMetricItem(
                         context,
+                        'widget.portfolio.portfolio_summary_card.exchanges',
                         'Exchanges',
                         widget.portfolio.summary.exchanges.length.toString(),
                         Icons.sync_alt_rounded,
@@ -260,6 +262,7 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                       _buildDivider(),
                       _buildMetricItem(
                         context,
+                        'widget.portfolio.portfolio_summary_card.orders',
                         'Orders',
                         orderCount.toString(),
                         Icons.receipt_long_outlined,
@@ -277,7 +280,8 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
 
   Widget _buildMetricItem(
     BuildContext context,
-    String label,
+    String labelKey,
+    String labelFallback,
     String value,
     IconData icon,
   ) {
@@ -309,8 +313,9 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
                   color: Colors.white,
                 ),
               ),
-              Text(
-                label,
+              CopyText(
+                labelKey,
+                fallback: labelFallback,
                 style: TextStyle(
                   fontSize: 10.sp,
                   fontWeight: FontWeight.w500,
@@ -340,13 +345,17 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
   ) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final copy = CopyService.instance;
     final selectedOption = options.firstWhere(
       (option) => option.id == selectedPeriod,
       orElse: () => options.first,
     );
 
     return PopupMenuButton<String>(
-      tooltip: 'Balance change period',
+      tooltip: copy.t(
+        'widget.portfolio.portfolio_summary_card.balance_period',
+        fallback: 'Balance change period',
+      ),
       onSelected: onSelected,
       color: isDark ? const Color(0xFF1A2231) : const Color(0xFFF7F9FB),
       elevation: 3,

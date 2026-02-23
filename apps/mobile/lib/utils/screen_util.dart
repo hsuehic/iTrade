@@ -20,7 +20,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 /// Container(width: 100.w)
 ///
 /// // ✅ Font size adaptation (use .sp, based on width)
-/// Text('Hello', style: TextStyle(fontSize: 16.sp))
+/// CopyText('util.screen_util.hello', fallback: "Hello", style: TextStyle(fontSize: 16.sp))
 ///
 /// // ✅ Radius adaptation (use .r for uniform scaling)
 /// BorderRadius.circular(8.r)

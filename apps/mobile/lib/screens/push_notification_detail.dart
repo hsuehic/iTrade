@@ -1,5 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import '../widgets/copy_text.dart';
 
 class PushNotificationDetailArgs {
   final String title;
@@ -111,7 +112,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
     if (args == null) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Push Message'),
+          title: CopyText('screen.push_notification_detail.push_message', fallback: "Push message"),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pushNamedAndRemoveUntil(
@@ -121,13 +122,13 @@ class PushNotificationDetailScreen extends StatelessWidget {
             ),
           ),
         ),
-        body: const Center(child: Text('No notification details available.')),
+        body: const Center(child: CopyText('screen.push_notification_detail.no_notification_details_availa', fallback: "No notification details available.")),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Push Message Detail'),
+        title: CopyText('screen.push_notification_detail.push_message_detail', fallback: "Push message detail"),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -241,9 +242,7 @@ class PushNotificationDetailScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Details',
-            style: theme.textTheme.titleMedium?.copyWith(
+          CopyText('screen.push_notification_detail.details', fallback: "Details", style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
             ),
           ),

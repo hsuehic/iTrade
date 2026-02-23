@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../design/tokens/color.dart';
 import '../services/account_service.dart';
 import 'account_form.dart';
+import '../widgets/copy_text.dart';
 
 class ExchangeAccountsScreen extends StatefulWidget {
   const ExchangeAccountsScreen({super.key});
@@ -51,17 +52,21 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Account'),
-        content: Text('Are you sure you want to delete ${account.accountId}?'),
+        title: CopyText('screen.exchange_accounts.delete_account', fallback: "Delete account"),
+        content: CopyText(
+          'screen.exchange_accounts.delete_account_confirm',
+          params: {'accountId': account.accountId},
+          fallback: 'Are you sure you want to delete {{accountId}}?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: CopyText('screen.login.cancel', fallback: "Cancel"),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: CopyText('screen.strategy_detail.delete', fallback: "Delete"),
           ),
         ],
       ),
@@ -72,14 +77,20 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
         await _accountService.deleteAccount(account.id!);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Account deleted successfully')),
+            const SnackBar(content: CopyText('screen.exchange_accounts.account_deleted_successfully', fallback: "Account deleted successfully")),
           );
           _loadAccounts();
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete account: $e')),
+            SnackBar(
+              content: CopyText(
+                'screen.exchange_accounts.delete_failed',
+                params: {'error': e.toString()},
+                fallback: 'Failed to delete account: {{error}}',
+              ),
+            ),
           );
         }
       }
@@ -105,7 +116,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Exchange Accounts'),
+        title: CopyText('screen.exchange_accounts.exchange_accounts', fallback: "Exchange accounts"),
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -136,7 +147,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
           ? FloatingActionButton.extended(
               onPressed: () => _showAccountForm(),
               icon: const Icon(Icons.add),
-              label: const Text('Add Account'),
+              label: CopyText('screen.exchange_accounts.add_account', fallback: "Add account"),
             )
           : null,
     );
@@ -186,17 +197,13 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Connected Exchanges',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                CopyText('screen.exchange_accounts.connected_exchanges', fallback: "Connected exchanges", style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
                 SizedBox(height: 4.w),
-                Text(
-                  'Manage API keys and permissions safely',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                CopyText('screen.exchange_accounts.manage_api_keys_and_permission', fallback: "Manage API keys and permissions safely", style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: _withAlpha(Colors.white, 0.85),
                   ),
                 ),
@@ -226,9 +233,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
               color: Theme.of(context).colorScheme.error,
             ),
             SizedBox(height: 16.w),
-            Text(
-              'Something went wrong',
-              style: Theme.of(
+            CopyText('screen.exchange_accounts.something_went_wrong', fallback: "Something went wrong", style: Theme.of(
                 context,
               ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
@@ -244,7 +249,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
             ElevatedButton.icon(
               onPressed: _loadAccounts,
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: CopyText('screen.strategy.retry', fallback: "Retry"),
             ),
           ],
         ),
@@ -274,16 +279,12 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
               ),
             ),
             SizedBox(height: 16.w),
-            Text(
-              'No connected exchanges',
-              style: Theme.of(
+            CopyText('screen.exchange_accounts.no_connected_exchanges', fallback: "No connected exchanges", style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8.w),
-            Text(
-              'Link your exchange API keys to start trading with iTrade.',
-              textAlign: TextAlign.center,
+            CopyText('screen.exchange_accounts.link_your_exchange_api_keys_to', fallback: "Link your exchange API keys to start trading with iTrade.", textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: isDark ? Colors.grey[400] : Colors.grey[600],
               ),
@@ -292,7 +293,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
             ElevatedButton.icon(
               onPressed: () => _showAccountForm(),
               icon: const Icon(Icons.add),
-              label: const Text('Add Account'),
+              label: CopyText('screen.exchange_accounts.add_account', fallback: "Add account"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 foregroundColor: Colors.white,
@@ -364,9 +365,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           SizedBox(height: 4.w),
-                          Text(
-                            'Account ID',
-                            style: Theme.of(
+                          CopyText('screen.exchange_accounts.account_id', fallback: "Account id", style: Theme.of(
                               context,
                             ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                           ),
@@ -390,8 +389,11 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                         color: _withAlpha(statusColor, 0.12),
                         borderRadius: BorderRadius.circular(20.r),
                       ),
-                      child: Text(
-                        account.isActive ? 'Active' : 'Inactive',
+                      child: CopyText(
+                        account.isActive
+                            ? 'screen.exchange_accounts.status.active'
+                            : 'screen.exchange_accounts.status.inactive',
+                        fallback: account.isActive ? 'Active' : 'Inactive',
                         style: TextStyle(
                           color: statusColor,
                           fontSize: 12.sp,
@@ -415,9 +417,7 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                           color: Colors.grey,
                         ),
                         SizedBox(width: 8.w),
-                        Text(
-                          'API Key',
-                          style: Theme.of(
+                        CopyText('screen.exchange_accounts.api_key', fallback: "API key", style: Theme.of(
                             context,
                           ).textTheme.bodySmall?.copyWith(color: Colors.grey),
                         ),
@@ -437,8 +437,12 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                         children: [
                           Icon(Icons.update, size: 16.sp, color: Colors.grey),
                           SizedBox(width: 8.w),
-                          Text(
-                            'Updated ${_formatDate(account.updatedTime!)}',
+                          CopyText(
+                            'screen.exchange_accounts.updated_at',
+                            params: {
+                              'date': _formatDate(account.updatedTime!),
+                            },
+                            fallback: 'Updated {{date}}',
                             style: Theme.of(
                               context,
                             ).textTheme.bodySmall?.copyWith(color: Colors.grey),
@@ -453,13 +457,13 @@ class _ExchangeAccountsScreenState extends State<ExchangeAccountsScreen> {
                         OutlinedButton.icon(
                           onPressed: () => _showAccountForm(account),
                           icon: Icon(Icons.edit_outlined, size: 16.sp),
-                          label: const Text('Edit'),
+                          label: CopyText('screen.exchange_accounts.edit', fallback: "Edit"),
                         ),
                         SizedBox(width: 8.w),
                         TextButton.icon(
                           onPressed: () => _deleteAccount(account),
                           icon: Icon(Icons.delete_outline, size: 16.sp),
-                          label: const Text('Delete'),
+                          label: CopyText('screen.strategy_detail.delete', fallback: "Delete"),
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.red,
                           ),

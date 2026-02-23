@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../services/api_client.dart';
+import '../services/copy_service.dart';
+import '../widgets/copy_text.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -53,7 +55,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Password changed successfully!'),
+            content: CopyText('screen.change_password.password_changed_successfully', fallback: "Password updated."),
             backgroundColor: Theme.of(context).colorScheme.primary,
             duration: const Duration(seconds: 3),
             behavior: SnackBarBehavior.floating,
@@ -89,7 +91,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error: ${e.toString()}'),
+          content: CopyText(
+            'common.error_with_detail',
+            params: {'error': e.toString()},
+            fallback: 'Error: {{error}}',
+          ),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
           behavior: SnackBarBehavior.floating,
@@ -107,10 +113,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
+    final copy = CopyService.instance;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Change Password'),
+        title: CopyText('screen.change_password.change_password', fallback: "Change password"),
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -146,17 +153,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                   children: [
                     Icon(Icons.lock_reset, size: 48, color: Colors.white),
                     const SizedBox(height: 12),
-                    Text(
-                      'Secure Your Account',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    CopyText('screen.change_password.secure_your_account', fallback: "Secure your account", style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'Choose a strong password to protect your account',
-                      textAlign: TextAlign.center,
+                    CopyText('screen.change_password.choose_a_strong_password_to_pr', fallback: "Choose a strong password to protect your account", textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withValues(alpha: 0.9),
                       ),
@@ -169,8 +172,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               // Current Password Field
               _buildPasswordField(
                 controller: _currentPasswordController,
-                label: 'Current Password',
-                hint: 'Enter your current password',
+                label: copy.t(
+                  'screen.change_password.current_password',
+                  fallback: 'Current password',
+                ),
+                hint: copy.t(
+                  'screen.change_password.current_password_hint',
+                  fallback: 'Enter your current password',
+                ),
                 obscureText: _obscureCurrentPassword,
                 onToggleVisibility: () {
                   setState(
@@ -179,7 +188,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter your current password';
+                    return copy.t(
+                      'screen.change_password.current_password_required',
+                      fallback: 'Please enter your current password',
+                    );
                   }
                   return null;
                 },
@@ -190,21 +202,37 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               // New Password Field
               _buildPasswordField(
                 controller: _newPasswordController,
-                label: 'New Password',
-                hint: 'Enter your new password',
+                label: copy.t(
+                  'screen.change_password.new_password',
+                  fallback: 'New password',
+                ),
+                hint: copy.t(
+                  'screen.change_password.new_password_hint',
+                  fallback: 'Enter your new password',
+                ),
                 obscureText: _obscureNewPassword,
                 onToggleVisibility: () {
                   setState(() => _obscureNewPassword = !_obscureNewPassword);
                 },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter a new password';
+                    return copy.t(
+                      'screen.change_password.new_password_required',
+                      fallback: 'Please enter a new password',
+                    );
                   }
                   if (value.length < 8) {
-                    return 'Password must be at least 8 characters';
+                    return copy.t(
+                      'screen.change_password.password_min_length',
+                      fallback: 'Password must be at least 8 characters',
+                    );
                   }
                   if (value == _currentPasswordController.text) {
-                    return 'New password must be different from current password';
+                    return copy.t(
+                      'screen.change_password.new_password_diff',
+                      fallback:
+                          'New password must be different from current password',
+                    );
                   }
                   return null;
                 },
@@ -215,8 +243,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               // Confirm Password Field
               _buildPasswordField(
                 controller: _confirmPasswordController,
-                label: 'Confirm New Password',
-                hint: 'Re-enter your new password',
+                label: copy.t(
+                  'screen.change_password.confirm_new_password',
+                  fallback: 'Confirm new password',
+                ),
+                hint: copy.t(
+                  'screen.change_password.confirm_new_password_hint',
+                  fallback: 'Re-enter your new password',
+                ),
                 obscureText: _obscureConfirmPassword,
                 onToggleVisibility: () {
                   setState(
@@ -225,10 +259,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please confirm your new password';
+                    return copy.t(
+                      'screen.change_password.confirm_password_required',
+                      fallback: 'Please confirm your new password',
+                    );
                   }
                   if (value != _newPasswordController.text) {
-                    return 'Passwords do not match';
+                    return copy.t(
+                      'screen.change_password.passwords_not_match',
+                      fallback: 'Passwords do not match',
+                    );
                   }
                   return null;
                 },
@@ -261,9 +301,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          'Password Requirements',
-                          style: TextStyle(
+                        CopyText('screen.change_password.password_requirements', fallback: "Password requirements", style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Theme.of(context).colorScheme.primary,
@@ -306,9 +344,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                             ),
                           ),
                         )
-                      : Text(
-                          'Change Password',
-                          style: TextStyle(
+                      : CopyText('screen.change_password.change_password', fallback: "Change password", style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
                           ),
@@ -335,9 +371,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                           borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                  child: CopyText('screen.login.cancel', fallback: "Cancel", style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
                   ),
                 ),
               ),

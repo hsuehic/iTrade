@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../models/portfolio.dart';
+import '../copy_text.dart';
 
 /// Professional positions list widget with expandable details.
 class PositionsList extends StatelessWidget {
@@ -71,9 +72,7 @@ class PositionsList extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'Open Positions',
-                      style: TextStyle(
+                    CopyText('widget.portfolio.positions_list.open_positions', fallback: "Open positions", style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
                         color: isDark ? Colors.white : Colors.black87,
@@ -89,8 +88,12 @@ class PositionsList extends StatelessWidget {
                         color: theme.colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(
-                        '${filteredPositions.length}',
+                      child: CopyText(
+                        'widget.portfolio.positions_list.positions_count',
+                        params: {
+                          'count': filteredPositions.length.toString(),
+                        },
+                        fallback: '{{count}}',
                         style: TextStyle(
                           fontSize: 12.sp,
                           fontWeight: FontWeight.w600,
@@ -122,8 +125,13 @@ class PositionsList extends StatelessWidget {
                             : const Color(0xFFEF4444),
                       ),
                       SizedBox(width: 4.w),
-                      Text(
-                        '${totalPnl >= 0 ? '+' : ''}\$${totalPnl.toStringAsFixed(2)}',
+                      CopyText(
+                        'widget.portfolio.positions_list.total_pnl_amount',
+                        params: {
+                          'amount':
+                              '${totalPnl >= 0 ? '+' : ''}\$${totalPnl.toStringAsFixed(2)}',
+                        },
+                        fallback: '{{amount}}',
                         style: TextStyle(
                           fontSize: 12.sp,
                           fontWeight: FontWeight.w600,
@@ -199,18 +207,14 @@ class PositionsList extends StatelessWidget {
             color: isDark ? Colors.white30 : Colors.black26,
           ),
           SizedBox(height: 12),
-          Text(
-            'No Open Positions',
-            style: TextStyle(
+          CopyText('widget.portfolio.positions_list.no_open_positions', fallback: "No open positions", style: TextStyle(
               fontSize: 16.sp,
               fontWeight: FontWeight.w600,
               color: isDark ? Colors.white60 : Colors.black54,
             ),
           ),
           SizedBox(height: 4),
-          Text(
-            'Your active trades will appear here',
-            style: TextStyle(
+          CopyText('widget.portfolio.positions_list.your_active_trades_will_appear', fallback: "Your active trades will appear here", style: TextStyle(
               fontSize: 12.sp,
               color: isDark ? Colors.white38 : Colors.black38,
             ),
@@ -336,8 +340,11 @@ class _PositionItem extends StatelessWidget {
                               : const Color(0xFFEF4444).withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(
-                          position.isLong ? 'LONG' : 'SHORT',
+                        child: CopyText(
+                          position.isLong
+                              ? 'widget.portfolio.positions_list.long'
+                              : 'widget.portfolio.positions_list.short',
+                          fallback: position.isLong ? 'LONG' : 'SHORT',
                           style: TextStyle(
                             fontSize: 9.sp,
                             fontWeight: FontWeight.w700,
@@ -358,8 +365,12 @@ class _PositionItem extends StatelessWidget {
                             color: Colors.orange.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text(
-                            '${position.leverage.toInt()}x',
+                          child: CopyText(
+                            'widget.portfolio.positions_list.leverage',
+                            params: {
+                              'leverage': position.leverage.toInt().toString(),
+                            },
+                            fallback: '{{leverage}}x',
                             style: TextStyle(
                               fontSize: 9.sp,
                               fontWeight: FontWeight.w700,
@@ -382,8 +393,12 @@ class _PositionItem extends StatelessWidget {
                         ),
                       ),
                       SizedBox(width: 8.w),
-                      Text(
-                        'Qty: ${_formatQuantity(position.quantity)}',
+                      CopyText(
+                        'widget.portfolio.positions_list.quantity',
+                        params: {
+                          'qty': _formatQuantity(position.quantity),
+                        },
+                        fallback: 'Qty: {{qty}}',
                         style: TextStyle(
                           fontSize: 10.sp,
                           color: isDark ? Colors.white54 : Colors.black54,
@@ -404,8 +419,13 @@ class _PositionItem extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      '${isProfitable ? '+' : ''}\$${position.unrealizedPnl.toStringAsFixed(2)}',
+                    CopyText(
+                      'widget.portfolio.positions_list.unrealized_pnl_amount',
+                      params: {
+                        'amount':
+                            '${isProfitable ? '+' : ''}\$${position.unrealizedPnl.toStringAsFixed(2)}',
+                      },
+                      fallback: '{{amount}}',
                       style: TextStyle(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w700,
@@ -419,8 +439,13 @@ class _PositionItem extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 // PnL percentage
-                Text(
-                  '${isProfitable ? '+' : ''}${position.pnlPercentage.toStringAsFixed(2)}%',
+                CopyText(
+                  'widget.portfolio.positions_list.pnl_percentage',
+                  params: {
+                    'percent':
+                        '${isProfitable ? '+' : ''}${position.pnlPercentage.toStringAsFixed(2)}',
+                  },
+                  fallback: '{{percent}}%',
                   style: TextStyle(
                     fontSize: 11.sp,
                     fontWeight: FontWeight.w500,
@@ -432,8 +457,13 @@ class _PositionItem extends StatelessWidget {
                 ),
                 SizedBox(height: 2),
                 // Entry vs Mark price
-                Text(
-                  '\$${position.avgPrice.toStringAsFixed(2)} → \$${position.markPrice.toStringAsFixed(2)}',
+                CopyText(
+                  'widget.portfolio.positions_list.price_range',
+                  params: {
+                    'avg': position.avgPrice.toStringAsFixed(2),
+                    'mark': position.markPrice.toStringAsFixed(2),
+                  },
+                  fallback: '\${{avg}} → \${{mark}}',
                   style: TextStyle(
                     fontSize: 9.sp,
                     color: isDark ? Colors.white38 : Colors.black38,

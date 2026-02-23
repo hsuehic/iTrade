@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:webview_flutter/webview_flutter.dart';
+import '../services/copy_service.dart';
 
 /// Interactive Kline Chart with Echarts and JavaScript communication
 /// Supports partial data updates without full chart recreation
@@ -109,10 +110,33 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
   }
 
   /// Generate HTML with Echarts and custom update logic
+  String _escapeJsString(String value) {
+    return value.replaceAll('\\', r'\\').replaceAll("'", r"\'");
+  }
+
   String _generateHtml() {
     final bgColor = widget.isDarkMode ? '#1a1a1a' : '#ffffff';
     final textColor = widget.isDarkMode ? '#e0e0e0' : '#333333';
     final gridLineColor = widget.isDarkMode ? '#333333' : '#e0e0e0';
+    final copy = CopyService.instance;
+    final labelOpen = _escapeJsString(
+      copy.t('widget.kline.tooltip.open', fallback: 'Open'),
+    );
+    final labelHigh = _escapeJsString(
+      copy.t('widget.kline.tooltip.high', fallback: 'High'),
+    );
+    final labelLow = _escapeJsString(
+      copy.t('widget.kline.tooltip.low', fallback: 'Low'),
+    );
+    final labelClose = _escapeJsString(
+      copy.t('widget.kline.tooltip.close', fallback: 'Close'),
+    );
+    final labelRange = _escapeJsString(
+      copy.t('widget.kline.tooltip.range', fallback: 'Range'),
+    );
+    final labelVolume = _escapeJsString(
+      copy.t('widget.kline.tooltip.volume', fallback: 'Vol'),
+    );
 
     // Use embedded Echarts bundle if available, otherwise fallback to CDN
     final echartsScript = _echartsBundle != null
@@ -561,12 +585,12 @@ class _InteractiveKlineChartState extends State<InteractiveKlineChart> {
                 '</div>';
             };
 
-            html += row('Open', formatNum(open));
-            html += row('High', formatNum(high));
-            html += row('Low', formatNum(low));
-            html += row('Close', formatNum(close), color);
-            html += row('Range', rangePercent.toFixed(2) + '%', isDark ? '#999' : '#666');
-            html += row('Vol', formatVol(volume), isDark ? '#999' : '#666');
+            html += row('$labelOpen', formatNum(open));
+            html += row('$labelHigh', formatNum(high));
+            html += row('$labelLow', formatNum(low));
+            html += row('$labelClose', formatNum(close), color);
+            html += row('$labelRange', rangePercent.toFixed(2) + '%', isDark ? '#999' : '#666');
+            html += row('$labelVolume', formatVol(volume), isDark ? '#999' : '#666');
 
             html += '</div>';
             return html;

@@ -22,6 +22,26 @@ final ThemeData lightTheme = ThemeData(
     headlineMedium: TypographyTokens.headline,
     bodyMedium: TypographyTokens.body,
   ),
+  switchTheme: SwitchThemeData(
+    thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return Colors.white;
+      }
+      return Colors.grey[400]!;
+    }),
+    trackColor: WidgetStateProperty.resolveWith<Color>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return ColorTokens.darkPrimary;
+      }
+      return Colors.grey[700]!;
+    }),
+    trackOutlineColor: WidgetStateProperty.resolveWith<Color?>((states) {
+      if (states.contains(WidgetState.selected)) {
+        return null;
+      }
+      return Colors.grey[600];
+    }),
+  ),
   extensions: [AppSpacing.fromTokens()],
   useMaterial3: false,
 );

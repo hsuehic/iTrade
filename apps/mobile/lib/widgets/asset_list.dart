@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../model/api.dart';
+import 'copy_text.dart';
 
 enum SortField { value, price, dailyChange }
 
@@ -110,9 +111,7 @@ class _PortfolioAssetListState extends State<PortfolioAssetList> {
           const SizedBox(width: 40), // icon column
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              'Symbol',
-              style: theme.textTheme.bodySmall?.copyWith(
+            child: CopyText('widget.asset_list.symbol', fallback: "Symbol", style: theme.textTheme.bodySmall?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w600,
               ),
@@ -231,15 +230,22 @@ class AssetListItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '\$${asset.price.toStringAsFixed(2)}',
+                  CopyText(
+                    'widget.asset_list.price',
+                    params: {'price': asset.price.toStringAsFixed(2)},
+                    fallback: '\${{price}}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w500,
                       fontSize: 12.sp,
                     ),
                   ),
-                  Text(
-                    '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}%',
+                  CopyText(
+                    'widget.asset_list.daily_change',
+                    params: {
+                      'change':
+                          '${asset.dailyChange >= 0 ? '+' : ''}${asset.dailyChange.toStringAsFixed(2)}',
+                    },
+                    fallback: '{{change}}%',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: changeColor,
                       fontWeight: FontWeight.w500,
@@ -257,8 +263,13 @@ class AssetListItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    '\$${(asset.price * asset.amount).toStringAsFixed(2)}',
+                  CopyText(
+                    'widget.asset_list.value',
+                    params: {
+                      'value':
+                          (asset.price * asset.amount).toStringAsFixed(2),
+                    },
+                    fallback: '\${{value}}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                       fontSize: 12.sp,

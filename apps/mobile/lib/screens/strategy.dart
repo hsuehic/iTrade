@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../design/tokens/color.dart';
 import '../models/strategy.dart';
 import '../services/strategy_service.dart';
+import '../services/copy_service.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/custom_app_bar.dart';
 import '../utils/crypto_icons.dart';
@@ -10,6 +11,7 @@ import '../utils/exchange_config.dart';
 import '../utils/responsive_layout.dart';
 import 'strategy_detail.dart';
 import 'strategy_create.dart';
+import '../widgets/copy_text.dart';
 
 enum SortBy { name, pnl, createdAt }
 
@@ -185,15 +187,16 @@ class _StrategyScreenState extends State<StrategyScreen>
   }
 
   String _formatStatus(String status) {
+    final copy = CopyService.instance;
     switch (status) {
       case 'active':
-        return 'Active';
+        return copy.t('screen.strategy.status.active', fallback: 'Active');
       case 'stopped':
-        return 'Stopped';
+        return copy.t('screen.strategy.status.stopped', fallback: 'Stopped');
       case 'paused':
-        return 'Paused';
+        return copy.t('screen.strategy.status.paused', fallback: 'Paused');
       case 'error':
-        return 'Error';
+        return copy.t('screen.strategy.status.error', fallback: 'Error');
       default:
         return status;
     }
@@ -238,7 +241,7 @@ class _StrategyScreenState extends State<StrategyScreen>
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _loadStrategies,
-            child: const Text('Retry'),
+            child: CopyText('screen.strategy.retry', fallback: "Retry"),
           ),
         ],
       ),
@@ -254,13 +257,21 @@ class _StrategyScreenState extends State<StrategyScreen>
           const SizedBox(height: 32),
           Icon(Icons.bar_chart, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
-          Text(
-            _searchQuery.isEmpty ? 'No strategies yet' : 'No strategies found',
+          CopyText(
+            _searchQuery.isEmpty
+                ? 'screen.strategy.empty.no_strategies'
+                : 'screen.strategy.empty.no_strategies_found',
+            fallback: _searchQuery.isEmpty
+                ? 'No strategies yet'
+                : 'No strategies found',
             style: TextStyle(fontSize: 18.sp, color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),
-          Text(
+          CopyText(
             _searchQuery.isEmpty
+                ? 'screen.strategy.empty.create_hint'
+                : 'screen.strategy.empty.search_hint',
+            fallback: _searchQuery.isEmpty
                 ? 'Create your first strategy using web manager to get started'
                 : 'Try a different search term',
             style: TextStyle(fontSize: 14.sp, color: Colors.grey[500]),
@@ -270,7 +281,7 @@ class _StrategyScreenState extends State<StrategyScreen>
             ElevatedButton.icon(
               onPressed: _openCreateStrategy,
               icon: const Icon(Icons.add),
-              label: const Text('Add Strategy'),
+              label: CopyText('screen.strategy.add_strategy', fallback: "Add strategy"),
             ),
         ],
       ),
@@ -326,31 +337,29 @@ class _StrategyScreenState extends State<StrategyScreen>
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  'Strategies Overview',
-                  style: titleStyle,
+                child: CopyText('screen.strategy.strategies_overview', fallback: "Strategies overview", style: titleStyle,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            'Track performance and status at a glance',
-            style: subtitleStyle,
+          CopyText('screen.strategy.track_performance_and_status_a', fallback: "Track performance and status at a glance", style: subtitleStyle,
           ),
           const SizedBox(height: 14),
           Row(
             children: [
               _SummaryMetric(
                 icon: Icons.folder_open,
-                label: 'Total',
+                labelKey: 'screen.strategy.summary.total',
+                labelFallback: 'Total',
                 value: '$total',
                 valueColor: Colors.white,
               ),
               const SizedBox(width: 16),
               _SummaryMetric(
                 icon: Icons.play_circle_fill,
-                label: 'Active',
+                labelKey: 'screen.strategy.summary.active',
+                labelFallback: 'Active',
                 value: '$active',
                 valueColor: Colors.white,
               ),
@@ -358,9 +367,7 @@ class _StrategyScreenState extends State<StrategyScreen>
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    'Total PnL',
-                    style: TextStyle(
+                  CopyText('screen.strategy.total_pnl', fallback: "Total PnL", style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 12,
                     ),
@@ -385,15 +392,19 @@ class _StrategyScreenState extends State<StrategyScreen>
 
   Widget _buildListHeader() {
     final isSearching = _searchQuery.isNotEmpty;
-    final title = isSearching ? 'Results' : 'All Strategies';
+    final titleKey = isSearching
+        ? 'screen.strategy.list.results'
+        : 'screen.strategy.list.all_strategies';
+    final titleFallback = isSearching ? 'Results' : 'All Strategies';
     final count = _filteredStrategies.length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: Row(
         children: [
-          Text(
-            title,
+          CopyText(
+            titleKey,
+            fallback: titleFallback,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -408,8 +419,10 @@ class _StrategyScreenState extends State<StrategyScreen>
                   .withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              '$count',
+            child: CopyText(
+              'screen.strategy.result_count',
+              params: {'count': count.toString()},
+              fallback: '{{count}}',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -420,8 +433,10 @@ class _StrategyScreenState extends State<StrategyScreen>
           if (isSearching) ...[
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                '"$_searchQuery"',
+              child: CopyText(
+                'screen.strategy.search_query',
+                params: {'query': _searchQuery},
+                fallback: '"{{query}}"',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).hintColor,
                     ),
@@ -500,15 +515,20 @@ class _StrategyScreenState extends State<StrategyScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final copy = CopyService.instance;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       // AppBar
       appBar: CustomAppBar(
-        title: 'Strategies',
+        titleKey: 'screen.strategy.title',
+        titleFallback: 'Strategies',
         actions: [
           IconButton(
-            tooltip: 'Add Strategy',
+            tooltip: copy.t(
+              'screen.strategy.add_strategy',
+              fallback: 'Add strategy',
+            ),
             icon: const Icon(Icons.add),
             onPressed: _openCreateStrategy,
           ),
@@ -525,29 +545,30 @@ class _StrategyScreenState extends State<StrategyScreen>
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: Row(
               children: [
-                Text(
-                  'Sort by',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                CopyText('screen.strategy.sort_by', fallback: "Sort by", style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.grey,
                       ),
                 ),
                 const SizedBox(width: 8),
                 _SortChip(
-                  label: 'Name',
+                  labelKey: 'screen.strategy.sort.name',
+                  labelFallback: 'Name',
                   isSelected: _sortBy == SortBy.name,
                   isAscending: _sortAscending,
                   onTap: () => _handleSortChange(SortBy.name),
                 ),
                 SizedBox(width: 8.w),
                 _SortChip(
-                  label: 'PnL',
+                  labelKey: 'screen.strategy.sort.pnl',
+                  labelFallback: 'PnL',
                   isSelected: _sortBy == SortBy.pnl,
                   isAscending: _sortAscending,
                   onTap: () => _handleSortChange(SortBy.pnl),
                 ),
                 SizedBox(width: 8.w),
                 _SortChip(
-                  label: 'Date',
+                  labelKey: 'screen.strategy.sort.date',
+                  labelFallback: 'Date',
                   isSelected: _sortBy == SortBy.createdAt,
                   isAscending: _sortAscending,
                   onTap: () => _handleSortChange(SortBy.createdAt),
@@ -573,20 +594,22 @@ class _StrategyScreenState extends State<StrategyScreen>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreateStrategy,
         icon: const Icon(Icons.add),
-        label: const Text('New'),
+        label: CopyText('screen.strategy.new', fallback: "New"),
       ),
     );
   }
 }
 
 class _SortChip extends StatelessWidget {
-  final String label;
+  final String labelKey;
+  final String labelFallback;
   final bool isSelected;
   final bool isAscending;
   final VoidCallback onTap;
 
   const _SortChip({
-    required this.label,
+    required this.labelKey,
+    required this.labelFallback,
     required this.isSelected,
     required this.isAscending,
     required this.onTap,
@@ -617,8 +640,9 @@ class _SortChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              label,
+            CopyText(
+              labelKey,
+              fallback: labelFallback,
               style: TextStyle(
                 fontSize: 12.sp,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
@@ -894,9 +918,7 @@ class _StrategyCard extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Total PnL',
-                            style: TextStyle(
+                          CopyText('screen.strategy.total_pnl', fallback: "Total PnL", style: TextStyle(
                               fontSize: 11.sp,
                               color: secondaryText,
                             ),
@@ -918,16 +940,19 @@ class _StrategyCard extends StatelessWidget {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          'Orders',
-                          style: TextStyle(
+                        CopyText('screen.strategy.orders', fallback: "Orders", style: TextStyle(
                             fontSize: 11.sp,
                             color: secondaryText,
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          '${pnl!.filledOrders} / ${pnl!.totalOrders}',
+                        CopyText(
+                          'screen.strategy.filled_total',
+                          params: {
+                            'filled': pnl!.filledOrders.toString(),
+                            'total': pnl!.totalOrders.toString(),
+                          },
+                          fallback: '{{filled}} / {{total}}',
                           style: TextStyle(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w600,
@@ -942,8 +967,10 @@ class _StrategyCard extends StatelessWidget {
                 children: [
                   Icon(Icons.schedule, size: 12.w, color: secondaryText),
                   SizedBox(width: 4.w),
-                  Text(
-                    'Created ${_formatDate(strategy.createdAt)}',
+                  CopyText(
+                    'screen.strategy.created_at',
+                    params: {'date': _formatDate(strategy.createdAt)},
+                    fallback: 'Created {{date}}',
                     style: TextStyle(fontSize: 11.sp, color: secondaryText),
                   ),
                 ],
@@ -958,13 +985,15 @@ class _StrategyCard extends StatelessWidget {
 
 class _SummaryMetric extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String labelKey;
+  final String labelFallback;
   final String value;
   final Color valueColor;
 
   const _SummaryMetric({
     required this.icon,
-    required this.label,
+    required this.labelKey,
+    required this.labelFallback,
     required this.value,
     required this.valueColor,
   });
@@ -986,8 +1015,9 @@ class _SummaryMetric extends StatelessWidget {
         Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
+        CopyText(
+          labelKey,
+          fallback: labelFallback,
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.8),
             fontSize: 12,

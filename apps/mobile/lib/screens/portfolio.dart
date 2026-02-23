@@ -17,6 +17,7 @@ import '../widgets/portfolio/asset_allocation_chart.dart';
 import '../widgets/portfolio/positions_list.dart';
 import '../widgets/portfolio/assets_list.dart';
 import '../widgets/portfolio/exchange_filter.dart';
+import '../widgets/copy_text.dart';
 
 /// Professional portfolio screen with real API data.
 class PortfolioScreen extends StatefulWidget {
@@ -408,13 +409,13 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final backgroundColor = isDark
         ? const Color(0xFF0D1117)
         : const Color(0xFFF5F7FA);
-    final statusBarColor = _headerElevated ? Colors.white : backgroundColor;
-    final statusBarBrightness = _headerElevated
-        ? Brightness.light
-        : (isDark ? Brightness.dark : Brightness.light);
-    final statusBarIconBrightness = _headerElevated
-        ? Brightness.dark
-        : (isDark ? Brightness.light : Brightness.dark);
+    final headerIsDark = isDark;
+    final statusBarColor =
+        _headerElevated && !headerIsDark ? Colors.white : backgroundColor;
+    final statusBarBrightness =
+        headerIsDark ? Brightness.dark : Brightness.light;
+    final statusBarIconBrightness =
+        headerIsDark ? Brightness.light : Brightness.dark;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
@@ -635,7 +636,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               children: [
                 Icon(Icons.account_balance_wallet_outlined, size: 16.w),
                 SizedBox(width: 6.w),
-                Text('Holdings'),
+                CopyText('screen.portfolio.holdings', fallback: "Holdings"),
               ],
             ),
           ),
@@ -645,7 +646,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               children: [
                 Icon(Icons.show_chart_rounded, size: 16.w),
                 SizedBox(width: 6.w),
-                Text('Positions'),
+                CopyText('screen.portfolio.positions', fallback: "Positions"),
               ],
             ),
           ),
@@ -695,9 +696,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               ),
               SizedBox(width: 12.w),
               Expanded(
-                child: Text(
-                  'No active exchange account',
-                  style: theme.textTheme.titleMedium?.copyWith(
+                child: CopyText('screen.portfolio.no_active_exchange_account', fallback: "No active exchange account", style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -705,9 +704,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             ],
           ),
           SizedBox(height: 8.w),
-          Text(
-            'Connect an exchange account to sync balances and positions.',
-            style: theme.textTheme.bodySmall?.copyWith(
+          CopyText('screen.portfolio.connect_an_exchange_account_to', fallback: "Connect an exchange account to sync balances and positions.", style: theme.textTheme.bodySmall?.copyWith(
               color: isDark ? Colors.white70 : Colors.black54,
               height: 1.45,
             ),
@@ -718,7 +715,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             child: ElevatedButton.icon(
               onPressed: _openExchangeAccounts,
               icon: const Icon(Icons.add_link),
-              label: const Text('Connect Exchange'),
+              label: CopyText('screen.portfolio.connect_exchange', fallback: "Connect exchange"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,
                 foregroundColor: Colors.white,
@@ -737,7 +734,8 @@ class _PortfolioScreenState extends State<PortfolioScreen>
   ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isTablet = ResponsiveLayout.isTablet(context);
-    final headerColor = _headerElevated ? Colors.white : backgroundColor;
+    final headerColor =
+        _headerElevated && !isDark ? Colors.white : backgroundColor;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       padding: EdgeInsets.only(left: 12.w, right: 12.w, top: topPadding),
@@ -904,9 +902,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
               color: theme.colorScheme.error.withValues(alpha: 0.7),
             ),
             SizedBox(height: 16),
-            Text(
-              'Failed to load portfolio',
-              style: TextStyle(
+            CopyText('screen.portfolio.failed_to_load_portfolio', fallback: "Failed to load portfolio", style: TextStyle(
                 fontSize: 18.sp,
                 fontWeight: FontWeight.w600,
                 color: isDark ? Colors.white : Colors.black87,
@@ -925,9 +921,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             ElevatedButton.icon(
               onPressed: _loadData,
               icon: Icon(Icons.refresh_rounded, size: 18.w),
-              label: Text(
-                'Try Again',
-                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+              label: CopyText('screen.portfolio.try_again', fallback: "Try again", style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: theme.colorScheme.primary,

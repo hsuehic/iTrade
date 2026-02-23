@@ -5,8 +5,10 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../models/order.dart';
 import '../services/order_service.dart';
+import '../services/copy_service.dart';
 import '../utils/number_format_utils.dart';
 import '../widgets/custom_app_bar.dart';
+import '../widgets/copy_text.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final Order order;
@@ -45,16 +47,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   String _statusLabel(String status) {
+    final copy = CopyService.instance;
     switch (status.toUpperCase()) {
       case 'NEW':
-        return 'New';
+        return copy.t('screen.orders.status.new', fallback: 'New');
       case 'PARTIALLY_FILLED':
-        return 'Partial';
+        return copy.t('screen.orders.status.partial', fallback: 'Partial');
       case 'FILLED':
-        return 'Filled';
+        return copy.t('screen.orders.status.filled', fallback: 'Filled');
       case 'CANCELED':
       case 'CANCELLED':
-        return 'Cancelled';
+        return copy.t('screen.orders.status.cancelled', fallback: 'Cancelled');
       default:
         return status;
     }
@@ -74,17 +77,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel Order'),
-        content: Text('Cancel ${order.symbol} ${order.side} order?'),
+        title: CopyText('screen.strategy_detail.cancel_order', fallback: "Cancel order"),
+        content: CopyText(
+          'screen.strategy_detail.cancel_order_confirm',
+          params: {
+            'symbol': order.symbol,
+            'side': order.side,
+          },
+          fallback: 'Cancel {{symbol}} {{side}} order?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
+            child: CopyText('screen.strategy_detail.no', fallback: "No"),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Cancel'),
+            child: CopyText('screen.login.cancel', fallback: "Cancel"),
           ),
         ],
       ),
@@ -108,14 +118,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       setState(() => _order = updated);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Order cancelled'),
+          content: CopyText('screen.strategy_detail.order_cancelled', fallback: "Order cancelled"),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Cancel failed: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: CopyText(
+            'screen.strategy_detail.cancel_failed',
+            params: {'error': e.toString()},
+            fallback: 'Cancel failed: {{error}}',
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
     } finally {
       if (mounted) {
@@ -166,7 +183,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final canSubmit = !submitting && !hasErrors;
 
           return AlertDialog(
-            title: const Text('Edit Order'),
+            title: CopyText('screen.strategy_detail.edit_order', fallback: "Edit order"),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -174,7 +191,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   controller: quantityController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Quantity',
+                    labelText: CopyService.instance.t(
+                      'common.quantity_label',
+                      fallback: 'Quantity',
+                    ),
                     errorText: quantityError,
                   ),
                   onChanged: (_) => scheduleValidation(setDialogState),
@@ -184,7 +204,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   controller: priceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Price',
+                    labelText: CopyService.instance.t(
+                      'common.price_label',
+                      fallback: 'Price',
+                    ),
                     errorText: priceError,
                   ),
                   onChanged: (_) => scheduleValidation(setDialogState),
@@ -194,7 +217,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             actions: [
               TextButton(
                 onPressed: submitting ? null : () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
+                child: CopyText('screen.login.cancel', fallback: "Cancel"),
               ),
               TextButton(
                 onPressed: canSubmit
@@ -219,7 +242,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           setState(() => _order = updated);
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('Order updated'),
+                              content: CopyText('screen.strategy_detail.order_updated', fallback: "Order updated"),
                               backgroundColor: Colors.green,
                             ),
                           );
@@ -228,7 +251,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Update failed: $e'),
+                              content: CopyText(
+                                'screen.strategy_detail.update_failed',
+                                params: {'error': e.toString()},
+                                fallback: 'Update failed: {{error}}',
+                              ),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -242,7 +269,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         width: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save'),
+                    : CopyText('screen.login.save', fallback: "Save"),
               ),
             ],
           );
@@ -415,7 +442,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: const CustomAppBar(
-        title: 'Order Detail',
+        titleKey: 'screen.order_detail.title',
+        titleFallback: 'Order detail',
         showMenuButton: false,
         showScanner: false,
       ),
@@ -432,7 +460,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           onPressed: _isProcessing
                               ? null
                               : () => _showEditOrderDialog(order),
-                          child: const Text('Edit Order'),
+                          child: CopyText('screen.strategy_detail.edit_order', fallback: "Edit order"),
                         ),
                       ),
                     if (canEdit && canCancel) SizedBox(width: 12.w),
@@ -445,7 +473,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           style: FilledButton.styleFrom(
                             backgroundColor: Colors.red,
                           ),
-                          child: const Text('Cancel Order'),
+                          child: CopyText('screen.strategy_detail.cancel_order', fallback: "Cancel order"),
                         ),
                       ),
                   ],

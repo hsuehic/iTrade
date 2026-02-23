@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:ihsueh_itrade/services/api_client.dart';
+import '../widgets/copy_text.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -59,7 +60,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final ThemeData theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Forgot Password'),
+        title: CopyText('screen.forgot_password.forgot_password', fallback: "Forgot password"),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -76,23 +77,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(height: 16),
-                    Text(
-                      'Check your email',
-                      style: theme.textTheme.headlineSmall?.copyWith(
+                    CopyText('screen.forgot_password.check_your_email', fallback: "Check your email", style: theme.textTheme.headlineSmall?.copyWith(
                         fontSize: 22.sp,  // ✅ Adaptive font
                         fontWeight: FontWeight.bold,
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'We sent a password reset link to ${_emailController.text.trim()}.',
+                    CopyText(
+                      'screen.forgot_password.reset_link_sent',
+                      params: {'email': _emailController.text.trim()},
+                      fallback: 'We sent a password reset link to {{email}}.',
                       textAlign: TextAlign.center,
                     ),
                     const Spacer(),
                     FilledButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Back to Sign In'),
+                      child: CopyText('screen.forgot_password.back_to_sign_in', fallback: "Back to sign in"),
                     ),
                   ],
                 )
@@ -102,18 +103,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       const SizedBox(height: 24),
-                      Text(
-                      'Forgot your password?',
-                      style: theme.textTheme.headlineSmall?.copyWith(
+                      CopyText('screen.forgot_password.forgot_your_password', fallback: "Forgot your password?", style: theme.textTheme.headlineSmall?.copyWith(
                         fontSize: 22.sp,  // ✅ Adaptive font
                         fontWeight: FontWeight.bold,
                       ),
                         textAlign: TextAlign.left,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                      'Enter your email address and we\'ll send you a reset link.',
-                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14.sp),  // ✅ Adaptive font
+                      CopyText('screen.forgot_password.enter_your_email_address_and_w', fallback: "Enter your email address and we\\'ll send you a reset link.", style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14.sp),  // ✅ Adaptive font
                       ),
                       const SizedBox(height: 16),
                       if (_error != null)

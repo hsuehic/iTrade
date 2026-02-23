@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../widgets/copy_text.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   final String userEmail;
@@ -30,7 +31,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Delete Account', style: TextStyle(fontSize: 18.sp, color: colorOnError)),
+        title: CopyText('screen.exchange_accounts.delete_account', fallback: "Delete account", style: TextStyle(fontSize: 18.sp, color: colorOnError)),
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -45,16 +46,14 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '⚠️ Deleting your account is permanent.',
-              style: TextStyle(
+            CopyText('screen.delete_account.deleting_your_account_is_perma', fallback: "\u26a0\ufe0f Deleting your account is permanent.", style: TextStyle(
                 fontSize: 14.sp,  // ✅ Adaptive font
                 color: Theme.of(context).colorScheme.error,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 16),
-            Text('Please type your email address to confirm:', style: TextStyle(fontSize: 14.sp)),
+            CopyText('screen.delete_account.please_type_your_email_address', fallback: "Please type your email address to confirm:", style: TextStyle(fontSize: 14.sp)),
             const SizedBox(height: 12),
             TextField(
               controller: _controller,
@@ -73,7 +72,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel', style: TextStyle(fontSize: 14.sp)),
+                    child: CopyText('screen.login.cancel', fallback: "Cancel", style: TextStyle(fontSize: 14.sp)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -90,7 +89,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                             Navigator.pop(context);
                           }
                         : null,
-                    child: Text('Delete', style: TextStyle(fontSize: 14.sp)),
+                    child: CopyText('screen.strategy_detail.delete', fallback: "Delete", style: TextStyle(fontSize: 14.sp)),
                   ),
                 ),
               ],

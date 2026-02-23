@@ -1,12 +1,20 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
+import '../services/copy_service.dart';
+import '../services/dynamic_config_service.dart';
 import '../services/notification.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
+import '../widgets/app_switch.dart';
+import '../widgets/copy_text.dart';
 import '../widgets/responsive_layout_builder.dart';
 import 'change_password.dart';
 import 'delete_account.dart';
@@ -27,7 +35,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _signingOut = false;
   bool _notificationsEnabled = true;
   bool _enableFaceId = true;
-  bool _darkMode = false;
+  ThemeMode _themeMode = ThemeMode.system;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
   bool _categoryGeneral = true;
@@ -42,7 +50,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadSetting() async {
     final notificationsEnabled = await Preference.getNotificationsEnabled();
     final biometricEnabled = await Preference.getBiometricEnabled();
-    final darkMode = await Preference.getDarkMode();
     final cGeneral = await Preference.getPushCategoryEnabled('general');
     final cMarketing = await Preference.getPushCategoryEnabled('marketing');
     final cTrading = await Preference.getPushCategoryEnabled('trading');
@@ -51,7 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _notificationsEnabled = notificationsEnabled ?? false;
       _enableFaceId = biometricEnabled ?? false;
-      _darkMode = darkMode ?? false;
+      _themeMode = ThemeService.instance.themeMode;
       _categoryGeneral = cGeneral;
       _categoryMarketing = cMarketing;
       _categoryTrading = cTrading;
@@ -100,6 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadSetting();
+    unawaited(DynamicConfigService.instance.refresh(force: true));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAppInfo();
     });
@@ -107,37 +115,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final copy = CopyService.instance;
     final user = _authService.user;
     if (user == null) {
       if (!_signingOut) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            Navigator.of(context).pushNamedAndRemoveUntil(
-              '/login',
-              (route) => false,
-            );
+            Navigator.of(
+              context,
+            ).pushNamedAndRemoveUntil('/login', (route) => false);
           }
         });
       }
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final image = user.image;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        centerTitle: true,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      ),
-      body: ResponsiveLayoutBuilder(
-        phone: (context) => _buildPhoneLayout(user, image, isDark),
-        tablet: (context) => _buildTabletLayout(user, image, isDark),
-      ),
+    return AnimatedBuilder(
+      animation: copy,
+      builder: (context, child) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(copy.t('profile_title')),
+            centerTitle: true,
+            elevation: 0,
+            surfaceTintColor: Colors.transparent,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+          ),
+          body: ResponsiveLayoutBuilder(
+            phone: (context) => _buildPhoneLayout(user, image, isDark),
+            tablet: (context) => _buildTabletLayout(user, image, isDark),
+          ),
+        );
+      },
     );
   }
 
@@ -150,15 +161,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 24),
 
         // Account Settings
-        _buildSectionHeader('Account'),
+        _buildSectionHeader('screen.profile.section.account', 'Account'),
         const SizedBox(height: 8),
         _buildSettingsGroup(
           isDark: isDark,
           children: [
             _buildSettingTile(
               icon: Icons.person_outline,
-              title: 'Edit Profile',
-              subtitle: 'Update your personal information',
+              titleKey: 'screen.profile.edit_profile',
+              titleFallback: 'Edit profile',
+              subtitleKey: 'screen.profile.edit_profile_subtitle',
+              subtitleFallback: 'Update your personal information',
               trailing: Icons.chevron_right,
               onTap: () async {
                 final updated = await Navigator.push(
@@ -176,8 +189,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.key_outlined,
-              title: 'Change Password',
-              subtitle: 'Update your password',
+              titleKey: 'screen.profile.change_password',
+              titleFallback: 'Change password',
+              subtitleKey: 'screen.profile.change_password_subtitle',
+              subtitleFallback: 'Update your password',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
@@ -192,8 +207,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.email_outlined,
-              title: 'Email Preferences',
-              subtitle: 'Manage email notifications',
+              titleKey: 'screen.profile.email_preferences',
+              titleFallback: 'Email preferences',
+              subtitleKey: 'screen.profile.email_preferences_subtitle',
+              subtitleFallback: 'Manage email notifications',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
@@ -208,8 +225,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.account_balance_wallet_outlined,
-              title: 'Exchange Accounts',
-              subtitle: 'Manage your trading accounts',
+              titleKey: 'screen.profile.exchange_accounts',
+              titleFallback: 'Exchange accounts',
+              subtitleKey: 'screen.profile.exchange_accounts_subtitle',
+              subtitleFallback: 'Manage your trading accounts',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.pushNamed(context, '/exchange-accounts');
@@ -219,8 +238,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.delete_forever,
-              title: 'Delete Account',
-              subtitle: 'Delete your account and all data',
+              titleKey: 'screen.profile.delete_account',
+              titleFallback: 'Delete account',
+              subtitleKey: 'screen.profile.delete_account_subtitle',
+              subtitleFallback: 'Delete your account and all data',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
@@ -235,9 +256,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         if (result != null && result.success) {
                           messenger.showSnackBar(
                             SnackBar(
-                              content: Text(
-                                'Delete account success! It\'s our honour to serve you. Hope to see you again.',
-                              ),
+                              content: CopyText('screen.profile.delete_account_success_it_s_ou', fallback: "Account deleted. It was an honor to serve you. Hope to see you again.", ),
                               backgroundColor: Theme.of(
                                 context,
                               ).colorScheme.primary,
@@ -259,8 +278,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           if (result != null && result.message != null) {
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  'Delete account failed: ${result.message}!',
+                                content: CopyText(
+                                  'screen.profile.delete_account_failed_with_reason',
+                                  params: {'error': result.message ?? ''},
+                                  fallback: 'Delete account failed: {{error}}',
                                 ),
                                 backgroundColor: Colors.red,
                                 duration: const Duration(seconds: 3),
@@ -269,7 +290,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           } else {
                             messenger.showSnackBar(
                               SnackBar(
-                                content: Text('Delete account failed!'),
+                                content: CopyText('screen.profile.delete_account_failed', fallback: "Account deletion failed."),
                                 backgroundColor: Colors.red,
                                 duration: const Duration(seconds: 3),
                               ),
@@ -288,27 +309,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 24),
 
         // App Settings
-        _buildSectionHeader('App Settings'),
+        _buildSectionHeader('settings_app', 'App settings'),
         const SizedBox(height: 8),
         _buildSettingsGroup(
           isDark: isDark,
           children: [
-            _buildSwitchTile(
-              icon: Icons.dark_mode_outlined,
-              title: 'Dark Mode',
-              subtitle: 'Switch between light and dark theme',
-              value: _darkMode,
-              onChanged: (v) async {
-                setState(() => _darkMode = v);
-                await ThemeService.instance.setThemeMode(v);
-              },
-              isDark: isDark,
-            ),
+            _buildThemeSettingTile(context, isDark),
+            _buildDivider(isDark),
+            _buildLanguageSettingTile(context, isDark),
+            _buildDivider(isDark),
+            _buildCopyAdminLoginTile(isDark),
+            _buildDivider(isDark),
+            _buildCopyKeyToggleTile(isDark),
+            _buildDivider(isDark),
+            _buildThemeAdminLoginTile(isDark),
+            _buildDivider(isDark),
+            _buildThemeEditorTile(isDark),
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.notifications_outlined,
-              title: 'Push Notifications',
-              subtitle: 'Receive alerts and updates',
+              titleKey: 'screen.profile.push_notifications',
+              titleFallback: 'Push notifications',
+              subtitleKey: 'screen.profile.push_notifications_subtitle',
+              subtitleFallback: 'Receive alerts and updates',
               value: _notificationsEnabled,
               onChanged: (v) {
                 setState(() => _notificationsEnabled = v);
@@ -317,12 +340,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               isDark: isDark,
             ),
             _buildDivider(isDark),
-            _buildSectionHeader('Push Categories'),
+            _buildSectionHeader(
+              'screen.profile.section.push_categories',
+              'Push categories',
+            ),
             const SizedBox(height: 8),
             _buildSwitchTile(
               icon: Icons.notifications_active_outlined,
-              title: 'General',
-              subtitle: 'General updates',
+              titleKey: 'screen.profile.push_categories.general',
+              titleFallback: 'General',
+              subtitleKey: 'screen.profile.push_categories.general_subtitle',
+              subtitleFallback: 'General updates',
               value: _categoryGeneral,
               onChanged: (v) async {
                 setState(() => _categoryGeneral = v);
@@ -336,8 +364,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.campaign_outlined,
-              title: 'Marketing',
-              subtitle: 'Promotions and announcements',
+              titleKey: 'screen.profile.push_categories.marketing',
+              titleFallback: 'Marketing',
+              subtitleKey: 'screen.profile.push_categories.marketing_subtitle',
+              subtitleFallback: 'Promotions and announcements',
               value: _categoryMarketing,
               onChanged: (v) async {
                 setState(() => _categoryMarketing = v);
@@ -351,8 +381,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.show_chart,
-              title: 'Trading',
-              subtitle: 'Trading alerts and signals',
+              titleKey: 'screen.profile.push_categories.trading',
+              titleFallback: 'Trading',
+              subtitleKey: 'screen.profile.push_categories.trading_subtitle',
+              subtitleFallback: 'Trading alerts and signals',
               value: _categoryTrading,
               onChanged: (v) async {
                 setState(() => _categoryTrading = v);
@@ -366,8 +398,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.security,
-              title: 'Security',
-              subtitle: 'Login and security alerts',
+              titleKey: 'screen.profile.push_categories.security',
+              titleFallback: 'Security',
+              subtitleKey: 'screen.profile.push_categories.security_subtitle',
+              subtitleFallback: 'Login and security alerts',
               value: _categorySecurity,
               onChanged: (v) async {
                 setState(() => _categorySecurity = v);
@@ -381,8 +415,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.settings,
-              title: 'System',
-              subtitle: 'System notices',
+              titleKey: 'screen.profile.push_categories.system',
+              titleFallback: 'System',
+              subtitleKey: 'screen.profile.push_categories.system_subtitle',
+              subtitleFallback: 'System notices',
               value: _categorySystem,
               onChanged: (v) async {
                 setState(() => _categorySystem = v);
@@ -396,8 +432,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.history,
-              title: 'Push History',
-              subtitle: 'View recent push messages',
+              titleKey: 'screen.profile.push_history',
+              titleFallback: 'Push history',
+              subtitleKey: 'screen.profile.push_history_subtitle',
+              subtitleFallback: 'View recent push messages',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
@@ -412,8 +450,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.volume_up_outlined,
-              title: 'Sound',
-              subtitle: 'Enable sound effects',
+              titleKey: 'screen.profile.sound',
+              titleFallback: 'Sound',
+              subtitleKey: 'screen.profile.sound_subtitle',
+              subtitleFallback: 'Enable sound effects',
               value: _soundEnabled,
               onChanged: (v) {
                 setState(() => _soundEnabled = v);
@@ -424,8 +464,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSwitchTile(
               icon: Icons.vibration,
-              title: 'Vibration',
-              subtitle: 'Enable haptic feedback',
+              titleKey: 'screen.profile.vibration',
+              titleFallback: 'Vibration',
+              subtitleKey: 'screen.profile.vibration_subtitle',
+              subtitleFallback: 'Enable haptic feedback',
               value: _vibrationEnabled,
               onChanged: (v) {
                 setState(() => _vibrationEnabled = v);
@@ -438,15 +480,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 24),
 
         // Security Settings
-        _buildSectionHeader('Security'),
+        _buildSectionHeader('screen.profile.section.security', 'Security'),
         const SizedBox(height: 8),
         _buildSettingsGroup(
           isDark: isDark,
           children: [
             _buildSwitchTile(
               icon: Icons.fingerprint,
-              title: 'Biometric Authentication',
-              subtitle: 'Use Face ID or Touch ID',
+              titleKey: 'screen.profile.biometric_auth',
+              titleFallback: 'Biometric authentication',
+              subtitleKey: 'screen.profile.biometric_auth_subtitle',
+              subtitleFallback: 'Use Face ID or Touch ID',
               value: _enableFaceId,
               onChanged: (v) {
                 setState(() => _enableFaceId = v);
@@ -457,8 +501,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.lock_outline,
-              title: 'Privacy Settings',
-              subtitle: 'Manage your data and privacy',
+              titleKey: 'screen.profile.privacy_settings',
+              titleFallback: 'Privacy settings',
+              subtitleKey: 'screen.profile.privacy_settings_subtitle',
+              subtitleFallback: 'Manage your data and privacy',
               onTap: () {
                 // TODO: Navigate to privacy settings
               },
@@ -467,8 +513,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.security,
-              title: 'Two-Factor Authentication',
-              subtitle: 'Add extra security to your account',
+              titleKey: 'screen.profile.two_factor_auth',
+              titleFallback: 'Two-factor authentication',
+              subtitleKey: 'screen.profile.two_factor_auth_subtitle',
+              subtitleFallback: 'Add extra security to your account',
               onTap: () {
                 // TODO: Navigate to 2FA setup
               },
@@ -479,15 +527,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 24),
 
         // Trading Preferences
-        _buildSectionHeader('Trading'),
+        _buildSectionHeader('screen.profile.section.trading', 'Trading'),
         const SizedBox(height: 8),
         _buildSettingsGroup(
           isDark: isDark,
           children: [
             _buildSettingTile(
               icon: Icons.analytics_outlined,
-              title: 'Statistics',
-              subtitle: 'View strategy statistics',
+              titleKey: 'screen.profile.statistics',
+              titleFallback: 'Statistics',
+              subtitleKey: 'screen.profile.statistics_subtitle',
+              subtitleFallback: 'View strategy statistics',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
@@ -502,8 +552,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.currency_bitcoin,
-              title: 'Default Exchange',
-              subtitle: 'OKX',
+              titleKey: 'screen.profile.default_exchange',
+              titleFallback: 'Default exchange',
+              subtitleKey: 'screen.profile.default_exchange_value',
+              subtitleFallback: 'OKX',
               trailing: Icons.chevron_right,
               onTap: () {
                 // TODO: Navigate to exchange selection
@@ -513,8 +565,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.attach_money,
-              title: 'Default Currency',
-              subtitle: 'USDT',
+              titleKey: 'screen.profile.default_currency',
+              titleFallback: 'Default currency',
+              subtitleKey: 'screen.profile.default_currency_value',
+              subtitleFallback: 'USDT',
               trailing: Icons.chevron_right,
               onTap: () {
                 // TODO: Navigate to currency selection
@@ -524,8 +578,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.speed,
-              title: 'Trading Mode',
-              subtitle: 'Conservative',
+              titleKey: 'screen.profile.trading_mode',
+              titleFallback: 'Trading mode',
+              subtitleKey: 'screen.profile.trading_mode_value',
+              subtitleFallback: 'Conservative',
               trailing: Icons.chevron_right,
               onTap: () {
                 // TODO: Navigate to trading mode selection
@@ -537,15 +593,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 24),
 
         // Support & About
-        _buildSectionHeader('Support'),
+        _buildSectionHeader('screen.profile.section.support', 'Support'),
         const SizedBox(height: 8),
         _buildSettingsGroup(
           isDark: isDark,
           children: [
             _buildSettingTile(
               icon: Icons.help_outline,
-              title: 'Help Center',
-              subtitle: 'Get help and support',
+              titleKey: 'screen.profile.help_center',
+              titleFallback: 'Help center',
+              subtitleKey: 'screen.profile.help_center_subtitle',
+              subtitleFallback: 'Get help and support',
               onTap: () {
                 // TODO: Navigate to help
               },
@@ -554,8 +612,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.bug_report_outlined,
-              title: 'Report a Problem',
-              subtitle: 'Let us know about issues',
+              titleKey: 'screen.profile.report_problem',
+              titleFallback: 'Report a problem',
+              subtitleKey: 'screen.profile.report_problem_subtitle',
+              subtitleFallback: 'Let us know about issues',
               onTap: () {
                 // TODO: Navigate to bug report
               },
@@ -564,8 +624,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.star_outline,
-              title: 'Rate App',
-              subtitle: 'Share your feedback',
+              titleKey: 'screen.profile.rate_app',
+              titleFallback: 'Rate app',
+              subtitleKey: 'screen.profile.rate_app_subtitle',
+              subtitleFallback: 'Share your feedback',
               onTap: () {
                 // TODO: Open app store
               },
@@ -574,8 +636,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildSettingTile(
               icon: Icons.info_outline,
-              title: 'About',
-              subtitle: _appVersionLabel,
+              titleKey: 'screen.profile.about',
+              titleFallback: 'About',
+              subtitleKey: 'screen.profile.about_subtitle',
+              subtitleFallback: _appVersionLabel,
               onTap: () async {
                 if (_appVersionDetail.isEmpty) {
                   await _loadAppInfo();
@@ -583,9 +647,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (!context.mounted) return;
                 showAboutDialog(
                   context: context,
-                  applicationName: 'iTrade',
+                  applicationName: CopyService.instance.t(
+                    'app_title',
+                    fallback: 'iTrade',
+                  ),
                   applicationVersion: _appVersionDetail,
-                  applicationLegalese: '© 2025 iTrade. All rights reserved.',
+                  applicationLegalese: CopyService.instance.t(
+                    'screen.profile.about_legalese',
+                    fallback: '© 2025 iTrade. All rights reserved.',
+                  ),
                 );
               },
               isDark: isDark,
@@ -617,15 +687,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Account Settings
-              _buildSectionHeader('Account'),
+              _buildSectionHeader('screen.profile.section.account', 'Account'),
               const SizedBox(height: 8),
               _buildSettingsGroup(
                 isDark: isDark,
                 children: [
                   _buildSettingTile(
                     icon: Icons.person_outline,
-                    title: 'Edit Profile',
-                    subtitle: 'Update your personal information',
+                    titleKey: 'screen.profile.edit_profile',
+                    titleFallback: 'Edit profile',
+                    subtitleKey: 'screen.profile.edit_profile_subtitle',
+                    subtitleFallback: 'Update your personal information',
                     trailing: Icons.chevron_right,
                     onTap: () async {
                       final updated = await Navigator.push(
@@ -643,8 +715,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.key_outlined,
-                    title: 'Change Password',
-                    subtitle: 'Update your password',
+                    titleKey: 'screen.profile.change_password',
+                    titleFallback: 'Change password',
+                    subtitleKey: 'screen.profile.change_password_subtitle',
+                    subtitleFallback: 'Update your password',
                     trailing: Icons.chevron_right,
                     onTap: () {
                       Navigator.push(
@@ -659,8 +733,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.email_outlined,
-                    title: 'Email Preferences',
-                    subtitle: 'Manage email notifications',
+                    titleKey: 'screen.profile.email_preferences',
+                    titleFallback: 'Email preferences',
+                    subtitleKey: 'screen.profile.email_preferences_subtitle',
+                    subtitleFallback: 'Manage email notifications',
                     trailing: Icons.chevron_right,
                     onTap: () {
                       Navigator.push(
@@ -675,8 +751,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.account_balance_wallet_outlined,
-                    title: 'Exchange Accounts',
-                    subtitle: 'Manage your trading accounts',
+                    titleKey: 'screen.profile.exchange_accounts',
+                    titleFallback: 'Exchange accounts',
+                    subtitleKey: 'screen.profile.exchange_accounts_subtitle',
+                    subtitleFallback: 'Manage your trading accounts',
                     trailing: Icons.chevron_right,
                     onTap: () {
                       Navigator.pushNamed(context, '/exchange-accounts');
@@ -686,8 +764,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.delete_forever,
-                    title: 'Delete Account',
-                    subtitle: 'Delete your account and all data',
+                    titleKey: 'screen.profile.delete_account',
+                    titleFallback: 'Delete account',
+                    subtitleKey: 'screen.profile.delete_account_subtitle',
+                    subtitleFallback: 'Delete your account and all data',
                     trailing: Icons.chevron_right,
                     onTap: () {
                       Navigator.push(
@@ -702,9 +782,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               if (result != null && result.success) {
                                 messenger.showSnackBar(
                                   SnackBar(
-                                    content: Text(
-                                      'Delete account success! It\'s our honour to serve you. Hope to see you again.',
-                                    ),
+                                    content: CopyText('screen.profile.delete_account_success_it_s_ou', fallback: "Account deleted. It was an honor to serve you. Hope to see you again.", ),
                                     backgroundColor: Theme.of(
                                       context,
                                     ).colorScheme.primary,
@@ -726,8 +804,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 if (result != null && result.message != null) {
                                   messenger.showSnackBar(
                                     SnackBar(
-                                      content: Text(
-                                        'Delete account failed: ${result.message}!',
+                                      content: CopyText(
+                                        'screen.profile.delete_account_failed_with_reason',
+                                        params: {
+                                          'error': result.message ?? '',
+                                        },
+                                        fallback:
+                                            'Delete account failed: {{error}}',
                                       ),
                                       backgroundColor: Colors.red,
                                       duration: const Duration(seconds: 3),
@@ -736,7 +819,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 } else {
                                   messenger.showSnackBar(
                                     SnackBar(
-                                      content: Text('Delete account failed!'),
+                                      content: CopyText('screen.profile.delete_account_failed', fallback: "Account deletion failed.", ),
                                       backgroundColor: Colors.red,
                                       duration: const Duration(seconds: 3),
                                     ),
@@ -755,27 +838,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 24),
 
               // App Settings
-              _buildSectionHeader('App Settings'),
+              _buildSectionHeader('settings_app', 'App settings'),
               const SizedBox(height: 8),
               _buildSettingsGroup(
                 isDark: isDark,
                 children: [
-                  _buildSwitchTile(
-                    icon: Icons.dark_mode_outlined,
-                    title: 'Dark Mode',
-                    subtitle: 'Switch between light and dark theme',
-                    value: _darkMode,
-                    onChanged: (v) async {
-                      setState(() => _darkMode = v);
-                      await ThemeService.instance.setThemeMode(v);
-                    },
-                    isDark: isDark,
-                  ),
+                  _buildThemeSettingTile(context, isDark),
+                  _buildDivider(isDark),
+                  _buildLanguageSettingTile(context, isDark),
+                  _buildDivider(isDark),
+                  _buildCopyAdminLoginTile(isDark),
+                  _buildDivider(isDark),
+                  _buildCopyKeyToggleTile(isDark),
+                  _buildDivider(isDark),
+                  _buildThemeAdminLoginTile(isDark),
+                  _buildDivider(isDark),
+                  _buildThemeEditorTile(isDark),
                   _buildDivider(isDark),
                   _buildSwitchTile(
                     icon: Icons.notifications_outlined,
-                    title: 'Push Notifications',
-                    subtitle: 'Receive alerts and updates',
+                    titleKey: 'screen.profile.push_notifications',
+                    titleFallback: 'Push notifications',
+                    subtitleKey: 'screen.profile.push_notifications_subtitle',
+                    subtitleFallback: 'Receive alerts and updates',
                     value: _notificationsEnabled,
                     onChanged: (v) {
                       setState(() => _notificationsEnabled = v);
@@ -786,8 +871,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSwitchTile(
                     icon: Icons.volume_up_outlined,
-                    title: 'Sound',
-                    subtitle: 'Enable sound effects',
+                    titleKey: 'screen.profile.sound',
+                    titleFallback: 'Sound',
+                    subtitleKey: 'screen.profile.sound_subtitle',
+                    subtitleFallback: 'Enable sound effects',
                     value: _soundEnabled,
                     onChanged: (v) {
                       setState(() => _soundEnabled = v);
@@ -797,8 +884,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSwitchTile(
                     icon: Icons.vibration,
-                    title: 'Vibration',
-                    subtitle: 'Enable haptic feedback',
+                    titleKey: 'screen.profile.vibration',
+                    titleFallback: 'Vibration',
+                    subtitleKey: 'screen.profile.vibration_subtitle',
+                    subtitleFallback: 'Enable haptic feedback',
                     value: _vibrationEnabled,
                     onChanged: (v) {
                       setState(() => _vibrationEnabled = v);
@@ -813,15 +902,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Security Settings
-              _buildSectionHeader('Security'),
+              _buildSectionHeader('screen.profile.section.security', 'Security'),
               const SizedBox(height: 8),
               _buildSettingsGroup(
                 isDark: isDark,
                 children: [
                   _buildSwitchTile(
                     icon: Icons.fingerprint,
-                    title: 'Biometric Authentication',
-                    subtitle: 'Use Face ID or Touch ID',
+                    titleKey: 'screen.profile.biometric_auth',
+                    titleFallback: 'Biometric authentication',
+                    subtitleKey: 'screen.profile.biometric_auth_subtitle',
+                    subtitleFallback: 'Use Face ID or Touch ID',
                     value: _enableFaceId,
                     onChanged: (v) {
                       setState(() => _enableFaceId = v);
@@ -832,16 +923,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.lock_outline,
-                    title: 'Privacy Settings',
-                    subtitle: 'Manage your data and privacy',
+                    titleKey: 'screen.profile.privacy_settings',
+                    titleFallback: 'Privacy settings',
+                    subtitleKey: 'screen.profile.privacy_settings_subtitle',
+                    subtitleFallback: 'Manage your data and privacy',
                     onTap: () {},
                     isDark: isDark,
                   ),
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.security,
-                    title: 'Two-Factor Authentication',
-                    subtitle: 'Add extra security to your account',
+                    titleKey: 'screen.profile.two_factor_auth',
+                    titleFallback: 'Two-factor authentication',
+                    subtitleKey: 'screen.profile.two_factor_auth_subtitle',
+                    subtitleFallback: 'Add extra security to your account',
                     onTap: () {},
                     isDark: isDark,
                   ),
@@ -850,15 +945,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 24),
 
               // Trading Preferences
-              _buildSectionHeader('Trading'),
+              _buildSectionHeader('screen.profile.section.trading', 'Trading'),
               const SizedBox(height: 8),
               _buildSettingsGroup(
                 isDark: isDark,
                 children: [
                   _buildSettingTile(
                     icon: Icons.analytics_outlined,
-                    title: 'Statistics',
-                    subtitle: 'View strategy statistics',
+                    titleKey: 'screen.profile.statistics',
+                    titleFallback: 'Statistics',
+                    subtitleKey: 'screen.profile.statistics_subtitle',
+                    subtitleFallback: 'View strategy statistics',
                     trailing: Icons.chevron_right,
                     onTap: () {
                       Navigator.push(
@@ -873,8 +970,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.currency_bitcoin,
-                    title: 'Default Exchange',
-                    subtitle: 'OKX',
+                    titleKey: 'screen.profile.default_exchange',
+                    titleFallback: 'Default exchange',
+                    subtitleKey: 'screen.profile.default_exchange_value',
+                    subtitleFallback: 'OKX',
                     trailing: Icons.chevron_right,
                     onTap: () {},
                     isDark: isDark,
@@ -882,8 +981,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.attach_money,
-                    title: 'Default Currency',
-                    subtitle: 'USDT',
+                    titleKey: 'screen.profile.default_currency',
+                    titleFallback: 'Default currency',
+                    subtitleKey: 'screen.profile.default_currency_value',
+                    subtitleFallback: 'USDT',
                     trailing: Icons.chevron_right,
                     onTap: () {},
                     isDark: isDark,
@@ -891,8 +992,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.speed,
-                    title: 'Trading Mode',
-                    subtitle: 'Conservative',
+                    titleKey: 'screen.profile.trading_mode',
+                    titleFallback: 'Trading mode',
+                    subtitleKey: 'screen.profile.trading_mode_value',
+                    subtitleFallback: 'Conservative',
                     trailing: Icons.chevron_right,
                     onTap: () {},
                     isDark: isDark,
@@ -902,39 +1005,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 24),
 
               // Support & About
-              _buildSectionHeader('Support'),
+              _buildSectionHeader('screen.profile.section.support', 'Support'),
               const SizedBox(height: 8),
               _buildSettingsGroup(
                 isDark: isDark,
                 children: [
                   _buildSettingTile(
                     icon: Icons.help_outline,
-                    title: 'Help Center',
-                    subtitle: 'Get help and support',
+                    titleKey: 'screen.profile.help_center',
+                    titleFallback: 'Help center',
+                    subtitleKey: 'screen.profile.help_center_subtitle',
+                    subtitleFallback: 'Get help and support',
                     onTap: () {},
                     isDark: isDark,
                   ),
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.bug_report_outlined,
-                    title: 'Report a Problem',
-                    subtitle: 'Let us know about issues',
+                    titleKey: 'screen.profile.report_problem',
+                    titleFallback: 'Report a problem',
+                    subtitleKey: 'screen.profile.report_problem_subtitle',
+                    subtitleFallback: 'Let us know about issues',
                     onTap: () {},
                     isDark: isDark,
                   ),
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.star_outline,
-                    title: 'Rate App',
-                    subtitle: 'Share your feedback',
+                    titleKey: 'screen.profile.rate_app',
+                    titleFallback: 'Rate app',
+                    subtitleKey: 'screen.profile.rate_app_subtitle',
+                    subtitleFallback: 'Share your feedback',
                     onTap: () {},
                     isDark: isDark,
                   ),
                   _buildDivider(isDark),
                   _buildSettingTile(
                     icon: Icons.info_outline,
-                    title: 'About',
-                    subtitle: _appVersionLabel,
+                    titleKey: 'screen.profile.about',
+                    titleFallback: 'About',
+                    subtitleKey: 'screen.profile.about_subtitle',
+                    subtitleFallback: _appVersionLabel,
                     onTap: () async {
                       if (_appVersionDetail.isEmpty) {
                         await _loadAppInfo();
@@ -942,10 +1053,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       if (!context.mounted) return;
                       showAboutDialog(
                         context: context,
-                        applicationName: 'iTrade',
+                        applicationName: CopyService.instance.t(
+                          'app_title',
+                          fallback: 'iTrade',
+                        ),
                         applicationVersion: _appVersionDetail,
-                        applicationLegalese:
-                            '© 2025 iTrade. All rights reserved.',
+                        applicationLegalese: CopyService.instance.t(
+                          'screen.profile.about_legalese',
+                          fallback: '© 2025 iTrade. All rights reserved.',
+                        ),
                       );
                     },
                     isDark: isDark,
@@ -1026,11 +1142,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(String titleKey, String titleFallback) {
     return Padding(
       padding: EdgeInsets.only(left: 4.w), // ✅ Width-adapted
-      child: Text(
-        title,
+      child: CopyText(
+        titleKey,
+        fallback: titleFallback,
         style: TextStyle(
           fontSize: 13.sp, // ✅ Adaptive font
           fontWeight: FontWeight.w600,
@@ -1057,10 +1174,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildThemeSettingTile(BuildContext context, bool isDark) {
+    final copy = CopyService.instance;
+    final subtitleKey = _themeModeLabelKey(_themeMode);
+    final subtitleFallback = _themeModeLabelFallback(_themeMode, copy);
+    return _buildSettingTile(
+      icon: Icons.dark_mode_outlined,
+      titleKey: 'settings_theme',
+      titleFallback: 'Theme',
+      subtitleKey: subtitleKey,
+      subtitleFallback: subtitleFallback,
+      trailing: Icons.chevron_right,
+      onTap: () => _showThemeSheet(context),
+      isDark: isDark,
+    );
+  }
+
+  Widget _buildLanguageSettingTile(BuildContext context, bool isDark) {
+    final copy = CopyService.instance;
+    final localeTag = _resolveLocaleTag(
+      copy.localeOverride,
+      copy.locale,
+    );
+    final subtitleKey = _localeLabelKey(localeTag);
+    final subtitleFallback = _localeLabelFallback(localeTag, copy);
+    return _buildSettingTile(
+      icon: Icons.language_outlined,
+      titleKey: 'settings_language',
+      titleFallback: 'Language',
+      subtitleKey: subtitleKey,
+      subtitleFallback: subtitleFallback,
+      trailing: Icons.chevron_right,
+      onTap: () => _showLanguageSheet(context),
+      isDark: isDark,
+    );
+  }
+
   Widget _buildSettingTile({
     required IconData icon,
-    required String title,
-    String? subtitle,
+    required String titleKey,
+    required String titleFallback,
+    String? subtitleKey,
+    String? subtitleFallback,
     IconData? trailing,
     VoidCallback? onTap,
     required bool isDark,
@@ -1092,17 +1247,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
+                  CopyText(
+                    titleKey,
+                    fallback: titleFallback,
                     style: TextStyle(
                       fontSize: 15.sp, // ✅ Adaptive font
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (subtitle != null) ...[
+                  if (subtitleKey != null) ...[
                     const SizedBox(height: 2),
-                    Text(
-                      subtitle,
+                    CopyText(
+                      subtitleKey,
+                      fallback: subtitleFallback ?? '',
                       style: TextStyle(
                         fontSize: 13.sp,
                         color: Colors.grey[600],
@@ -1126,8 +1283,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSwitchTile({
     required IconData icon,
-    required String title,
-    String? subtitle,
+    required String titleKey,
+    required String titleFallback,
+    String? subtitleKey,
+    String? subtitleFallback,
     required bool value,
     required ValueChanged<bool> onChanged,
     required bool isDark,
@@ -1157,17 +1316,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
+                CopyText(
+                  titleKey,
+                  fallback: titleFallback,
                   style: TextStyle(
                     fontSize: 15.sp, // ✅ Adaptive font
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (subtitle != null) ...[
+                if (subtitleKey != null) ...[
                   const SizedBox(height: 2),
-                  Text(
-                    subtitle,
+                  CopyText(
+                    subtitleKey,
+                    fallback: subtitleFallback ?? '',
                     style: TextStyle(
                       fontSize: 13.sp,
                       color: Colors.grey[600],
@@ -1177,9 +1338,342 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
-          Switch(value: value, onChanged: onChanged),
+          AppSwitch(value: value, onChanged: onChanged),
         ],
       ),
+    );
+  }
+
+  Widget _buildActionTile({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required String actionLabel,
+    required VoidCallback onAction,
+    required bool isDark,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.w),
+      child: Row(
+        children: [
+          Container(
+            width: 40.w,
+            height: 40.w,
+            decoration: BoxDecoration(
+              color: isDark ? Colors.grey[800] : Colors.grey.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 20.w,
+              color: Theme.of(context).primaryColor,
+            ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  SizedBox(height: 2.w),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 13.sp, color: Colors.grey[600]),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          TextButton(onPressed: onAction, child: Text(actionLabel)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCopyAdminLoginTile(bool isDark) {
+    final appEmail = AuthService.instance.user?.email;
+    if (!DynamicConfigService.instance.isCopyAdmin(appEmail)) {
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<firebase_auth.User?>(
+      stream: firebase_auth.FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        final isLoggedIn = user != null;
+        final resolvedEmail = user?.email;
+        final configService = DynamicConfigService.instance;
+        final isAdmin = configService.isCopyAdmin(resolvedEmail);
+        final subtitle = isLoggedIn
+            ? CopyService.instance.t(
+                isAdmin
+                    ? 'copy.admin.logged_in_as'
+                    : 'copy.admin.logged_in_no_access',
+                params: {'email': resolvedEmail ?? ''},
+              )
+            : CopyService.instance.t('copy.admin.login.subtitle');
+        return _buildActionTile(
+          icon: Icons.admin_panel_settings,
+          title: CopyService.instance.t('copy.admin.login.title'),
+          subtitle: subtitle,
+          actionLabel: CopyService.instance.t(
+            isLoggedIn ? 'common.logout' : 'common.login',
+          ),
+          onAction: () async {
+            if (isLoggedIn) {
+              await firebase_auth.FirebaseAuth.instance.signOut();
+              return;
+            }
+            await _showCopyAdminLoginDialog(context);
+          },
+          isDark: isDark,
+        );
+      },
+    );
+  }
+
+  Widget _buildCopyKeyToggleTile(bool isDark) {
+    final authUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (authUser == null) {
+      return const SizedBox.shrink();
+    }
+    final email = authUser.email ?? AuthService.instance.user?.email;
+    if (!DynamicConfigService.instance.isCopyAdmin(email)) {
+      return const SizedBox.shrink();
+    }
+    return AnimatedBuilder(
+      animation: CopyService.instance,
+      builder: (context, child) {
+        return _buildSwitchTile(
+          icon: Icons.copy,
+          titleKey: 'settings.copy_key.title',
+          titleFallback: CopyService.instance.t('settings.copy_key.title'),
+          subtitleKey: 'settings.copy_key.subtitle',
+          subtitleFallback: CopyService.instance.t('settings.copy_key.subtitle'),
+          value: CopyService.instance.copyKeyLongPressEnabled,
+          onChanged: (value) {
+            CopyService.instance.setCopyKeyLongPressEnabled(value);
+          },
+          isDark: isDark,
+        );
+      },
+    );
+  }
+
+  Widget _buildThemeAdminLoginTile(bool isDark) {
+    final appEmail = AuthService.instance.user?.email;
+    if (!DynamicConfigService.instance.isThemeAdmin(appEmail)) {
+      return const SizedBox.shrink();
+    }
+    return StreamBuilder<firebase_auth.User?>(
+      stream: firebase_auth.FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        final isLoggedIn = user != null;
+        final resolvedEmail = user?.email;
+        final configService = DynamicConfigService.instance;
+        final isAdmin = configService.isThemeAdmin(resolvedEmail);
+        final subtitle = isLoggedIn
+            ? CopyService.instance.t(
+                isAdmin
+                    ? 'theme.admin.logged_in_as'
+                    : 'theme.admin.logged_in_no_access',
+                params: {'email': resolvedEmail ?? ''},
+              )
+            : CopyService.instance.t('theme.admin.login.subtitle');
+        return _buildActionTile(
+          icon: Icons.color_lens_outlined,
+          title: CopyService.instance.t('theme.admin.login.title'),
+          subtitle: subtitle,
+          actionLabel: CopyService.instance.t(
+            isLoggedIn ? 'common.logout' : 'common.login',
+          ),
+          onAction: () async {
+            if (isLoggedIn) {
+              await firebase_auth.FirebaseAuth.instance.signOut();
+              return;
+            }
+            await _showThemeAdminLoginDialog(context);
+          },
+          isDark: isDark,
+        );
+      },
+    );
+  }
+
+  Widget _buildThemeEditorTile(bool isDark) {
+    final authUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (authUser == null) {
+      return const SizedBox.shrink();
+    }
+    final email = authUser.email ?? AuthService.instance.user?.email;
+    if (!DynamicConfigService.instance.isThemeAdmin(email)) {
+      return const SizedBox.shrink();
+    }
+    return _buildSettingTile(
+      icon: Icons.palette_outlined,
+      titleKey: 'page.theme_editor',
+      titleFallback: CopyService.instance.t('page.theme_editor'),
+      subtitleKey: 'theme.admin.edit_entry',
+      subtitleFallback: CopyService.instance.t('theme.admin.edit_entry'),
+      onTap: () {
+        Navigator.pushNamed(context, '/theme-editor');
+      },
+      isDark: isDark,
+    );
+  }
+
+  Future<void> _showCopyAdminLoginDialog(BuildContext context) async {
+    final emailController = TextEditingController(
+      text: AuthService.instance.user?.email ?? '',
+    );
+    final passwordController = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const CopyText('copy.admin.login_dialog.title', fallback: "Copy editor login", ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  label: CopyText('copy.admin.login_dialog.email', fallback: "Email", ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  label: CopyText('copy.admin.login_dialog.password', fallback: "Password", ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const CopyText('common.cancel', fallback: "Cancel"),
+            ),
+            TextButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                final password = passwordController.text.trim();
+                if (email.isEmpty || password.isEmpty) return;
+                try {
+                  await firebase_auth.FirebaseAuth.instance
+                      .signInWithEmailAndPassword(
+                        email: email,
+                        password: password,
+                      );
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: CopyText('copy.admin.login_success', fallback: "Logged in", ),
+                    ),
+                  );
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: CopyText('copy.admin.login_failed', fallback: "Login failed", ),
+                    ),
+                  );
+                }
+              },
+              child: const CopyText('common.login', fallback: "Login"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showThemeAdminLoginDialog(BuildContext context) async {
+    final emailController = TextEditingController(
+      text: AuthService.instance.user?.email ?? '',
+    );
+    final passwordController = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const CopyText('theme.admin.login_dialog.title', fallback: "Theme editor login", ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  label: CopyText('theme.admin.login_dialog.email', fallback: "Email", ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  label: CopyText('theme.admin.login_dialog.password', fallback: "Password", ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const CopyText('common.cancel', fallback: "Cancel"),
+            ),
+            TextButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                final password = passwordController.text.trim();
+                if (email.isEmpty || password.isEmpty) return;
+                try {
+                  await firebase_auth.FirebaseAuth.instance
+                      .signInWithEmailAndPassword(
+                        email: email,
+                        password: password,
+                      );
+                  if (!context.mounted) return;
+                  Navigator.of(context).pop();
+                } on firebase_auth.FirebaseAuthException catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: CopyText(
+                        'theme.admin.login_failed',
+                        params: {
+                          'error': e.message == null ? '' : ': ${e.message}',
+                        },
+                        fallback: 'Login failed{{error}}',
+                      ),
+                    ),
+                  );
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: CopyText('theme.admin.login_failed', fallback: "Login failed{{error}}", ),
+                    ),
+                  );
+                }
+              },
+              child: const CopyText('common.login', fallback: "Login"),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1220,5 +1714,192 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showThemeSheet(BuildContext context) async {
+    final copy = CopyService.instance;
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const CopyText('settings_theme', fallback: 'Theme'),
+          actions: [
+            _buildActionSheetAction(
+              selected: _themeMode == ThemeMode.system,
+              titleKey: 'theme_mode_system',
+              fallback: copy.t('theme_mode_system', fallback: 'System'),
+              onPressed: () async {
+                await ThemeService.instance.setThemeMode(ThemeMode.system);
+                if (!mounted) return;
+                setState(() => _themeMode = ThemeMode.system);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            _buildActionSheetAction(
+              selected: _themeMode == ThemeMode.light,
+              titleKey: 'theme_mode_light',
+              fallback: copy.t('theme_mode_light', fallback: 'Light'),
+              onPressed: () async {
+                await ThemeService.instance.setThemeMode(ThemeMode.light);
+                if (!mounted) return;
+                setState(() => _themeMode = ThemeMode.light);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            _buildActionSheetAction(
+              selected: _themeMode == ThemeMode.dark,
+              titleKey: 'theme_mode_dark',
+              fallback: copy.t('theme_mode_dark', fallback: 'Dark'),
+              onPressed: () async {
+                await ThemeService.instance.setThemeMode(ThemeMode.dark);
+                if (!mounted) return;
+                setState(() => _themeMode = ThemeMode.dark);
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const CopyText('common.cancel', fallback: 'Cancel'),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showLanguageSheet(BuildContext context) async {
+    final copy = CopyService.instance;
+    final selected = copy.localeOverride == null
+        ? 'system'
+        : _formatLocaleTag(copy.locale);
+    final tags = copy.supportedLocales.map(_formatLocaleTag).toSet().toList()
+      ..sort();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const CopyText('settings_language', fallback: 'Language'),
+          actions: [
+            _buildActionSheetAction(
+              selected: selected == 'system',
+              titleKey: 'language_system_default',
+              fallback: copy.t('language_system_default', fallback: 'System'),
+              onPressed: () async {
+                await CopyService.instance.setLocaleOverride(null);
+                unawaited(DynamicConfigService.instance.refresh(force: true));
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            for (final tag in tags)
+              _buildActionSheetAction(
+                selected: selected == tag,
+                titleKey: _localeLabelKey(tag),
+                fallback: _localeLabelFallback(tag, copy),
+                onPressed: () async {
+                  await CopyService.instance.setLocaleOverride(
+                    _parseLocaleTag(tag),
+                  );
+                  unawaited(DynamicConfigService.instance.refresh(force: true));
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const CopyText('common.cancel', fallback: 'Cancel'),
+          ),
+        );
+      },
+    );
+  }
+
+  String _localeLabelKey(String tag) {
+    if (tag == 'system') {
+      return 'language_system_default';
+    }
+    if (tag.startsWith('en')) {
+      return 'language.name.en';
+    }
+    if (tag.startsWith('zh')) {
+      return 'language.name.zh_hans';
+    }
+    return 'language.name.$tag';
+  }
+
+  String _localeLabelFallback(String tag, CopyService copy) {
+    if (tag == 'system') {
+      return copy.t('language_system_default', fallback: 'System');
+    }
+    if (tag.startsWith('en')) {
+      return copy.t('language.name.en', fallback: 'English');
+    }
+    if (tag.startsWith('zh')) {
+      return copy.t('language.name.zh_hans', fallback: '中文');
+    }
+    return tag;
+  }
+
+  String _themeModeLabelKey(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return 'theme_mode_system';
+      case ThemeMode.light:
+        return 'theme_mode_light';
+      case ThemeMode.dark:
+        return 'theme_mode_dark';
+    }
+  }
+
+  String _themeModeLabelFallback(ThemeMode mode, CopyService copy) {
+    switch (mode) {
+      case ThemeMode.system:
+        return copy.t('theme_mode_system', fallback: 'System');
+      case ThemeMode.light:
+        return copy.t('theme_mode_light', fallback: 'Light');
+      case ThemeMode.dark:
+        return copy.t('theme_mode_dark', fallback: 'Dark');
+    }
+  }
+
+  Widget _buildActionSheetAction({
+    required bool selected,
+    required String titleKey,
+    required String fallback,
+    required VoidCallback onPressed,
+  }) {
+    return CupertinoActionSheetAction(
+      onPressed: onPressed,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: CopyText(
+              titleKey,
+              fallback: fallback,
+            ),
+          ),
+          if (selected) Icon(CupertinoIcons.check_mark, size: 18.w),
+        ],
+      ),
+    );
+  }
+
+  String _resolveLocaleTag(Locale? override, Locale fallback) {
+    return override == null ? 'system' : _formatLocaleTag(override);
+  }
+
+  String _formatLocaleTag(Locale locale) {
+    if (locale.countryCode == null || locale.countryCode!.isEmpty) {
+      return locale.languageCode;
+    }
+    return '${locale.languageCode}-${locale.countryCode}';
+  }
+
+  Locale _parseLocaleTag(String raw) {
+    final normalized = raw.replaceAll('_', '-');
+    final parts = normalized.split('-');
+    if (parts.isEmpty) return const Locale('en');
+    if (parts.length == 1) return Locale(parts[0]);
+    return Locale(parts[0], parts[1]);
   }
 }
