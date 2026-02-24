@@ -231,12 +231,12 @@ export default function StrategyDetailPage(props: { params: Params }) {
         </div>
 
         {/* Performance Metrics */}
-        <Tabs defaultValue="realtime" className="w-full">
+        <Tabs defaultValue="rebuilt" className="w-full">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold tracking-tight">Performance</h2>
             <TabsList>
-              <TabsTrigger value="realtime">{t('tabs.realtime')}</TabsTrigger>
               <TabsTrigger value="rebuilt">{t('tabs.orderBased')}</TabsTrigger>
+              <TabsTrigger value="realtime">{t('tabs.realtime')}</TabsTrigger>
             </TabsList>
           </div>
           <TabsContent value="realtime" className="mt-0">

@@ -32,6 +32,7 @@ export class StrategyManager {
   private strategyMetrics = new Map<number, StrategyMetrics>();
   private syncInterval: NodeJS.Timeout | null = null;
   private reportInterval: NodeJS.Timeout | null = null;
+  private performanceSyncInterval: NodeJS.Timeout | null = null;
   private eventBus: EventBus;
 
   // Configuration
@@ -83,7 +84,6 @@ export class StrategyManager {
     // Setup event listeners for monitoring
     this.setupEventListeners();
 
-    // Start periodic database sync
     this.syncInterval = setInterval(() => {
       this.logger.debug('Syncing strategies with database...');
       this.syncStrategiesWithDatabase().catch((error) => {
@@ -95,6 +95,13 @@ export class StrategyManager {
     this.reportInterval = setInterval(() => {
       this.reportStrategyMetrics();
     }, this.REPORT_INTERVAL_MS);
+
+    // Start periodic performance sync (every 10 seconds for real-time dashboard)
+    this.performanceSyncInterval = setInterval(() => {
+      this.savePerformancesToDatabase().catch((error) => {
+        this.logger.error('Error during performance sync', error as Error);
+      });
+    }, 10000);
 
     this.logger.debug(
       `Strategy Manager started (sync every ${this.SYNC_INTERVAL_MS / 1000}s, report every ${this.REPORT_INTERVAL_MS / 1000}s)`,
@@ -112,8 +119,14 @@ export class StrategyManager {
       this.reportInterval = null;
     }
 
-    // Final report before stopping
+    if (this.performanceSyncInterval) {
+      clearInterval(this.performanceSyncInterval);
+      this.performanceSyncInterval = null;
+    }
+
+    // Final report and sync before stopping
     this.reportStrategyMetrics();
+    await this.savePerformancesToDatabase();
 
     // Remove all strategies from engine
     for (const [strategyId] of this.strategies) {
@@ -232,6 +245,35 @@ export class StrategyManager {
         '❌ [SYNC] Error syncing strategies with database',
         error as Error,
       );
+    }
+  }
+
+  /**
+   * 🆕 Save real-time performance metrics to database
+   */
+  private async savePerformancesToDatabase(): Promise<void> {
+    if (this.strategies.size === 0) return;
+
+    if (typeof (this.dataManager as any).updateStrategyPerformance !== 'function') {
+      return;
+    }
+
+    const promises: Promise<void>[] = [];
+    for (const [strategyId, strategy] of this.strategies) {
+      if (typeof strategy.instance.getPerformance === 'function') {
+        const performance = strategy.instance.getPerformance();
+        promises.push(
+          (this.dataManager as any).updateStrategyPerformance(strategyId, performance),
+        );
+      }
+    }
+
+    try {
+      if (promises.length > 0) {
+        await Promise.allSettled(promises);
+      }
+    } catch (error) {
+      this.logger.error('❌ Failed to save performances to database', error as Error);
     }
   }
 

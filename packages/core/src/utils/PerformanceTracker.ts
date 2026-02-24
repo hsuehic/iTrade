@@ -193,6 +193,67 @@ export class PerformanceTracker {
       }
     }
 
+    // Update position size and avgEntryPrice
+    if (currentPos.gt(0)) {
+      if (isLong) {
+        // Adding to Long
+        const totalValueOld = currentPos.times(avgEntryPrice);
+        const addedValue = quantity.times(price);
+        updated.position.currentPosition = currentPos.plus(quantity);
+        updated.position.avgEntryPrice = totalValueOld
+          .plus(addedValue)
+          .div(updated.position.currentPosition);
+      } else {
+        // Selling Long
+        updated.position.currentPosition = currentPos.minus(quantity);
+        if (updated.position.currentPosition.lt(0)) {
+          // Flipped to Short
+          updated.position.avgEntryPrice = price;
+        } else if (updated.position.currentPosition.eq(0)) {
+          updated.position.avgEntryPrice = new Decimal(0);
+        }
+      }
+    } else if (currentPos.lt(0)) {
+      if (!isLong) {
+        // Adding to Short
+        const absPos = currentPos.abs();
+        const totalValueOld = absPos.times(avgEntryPrice);
+        const addedValue = quantity.times(price);
+        updated.position.currentPosition = currentPos.minus(quantity);
+        updated.position.avgEntryPrice = totalValueOld
+          .plus(addedValue)
+          .div(updated.position.currentPosition.abs());
+      } else {
+        // Buying Short
+        updated.position.currentPosition = currentPos.plus(quantity);
+        if (updated.position.currentPosition.gt(0)) {
+          // Flipped to Long
+          updated.position.avgEntryPrice = price;
+        } else if (updated.position.currentPosition.eq(0)) {
+          updated.position.avgEntryPrice = new Decimal(0);
+        }
+      }
+    } else {
+      // Opening new position
+      updated.position.currentPosition = isLong ? quantity : quantity.negated();
+      updated.position.avgEntryPrice = price;
+    }
+
+    // Determine position side
+    if (updated.position.currentPosition.gt(0)) {
+      updated.position.side = 'long';
+    } else if (updated.position.currentPosition.lt(0)) {
+      updated.position.side = 'short';
+    } else {
+      updated.position.side = 'flat';
+    }
+
+    // Update max position size
+    const absPosition = updated.position.currentPosition.abs();
+    if (absPosition.gt(updated.risk.maxPositionSize)) {
+      updated.risk.maxPositionSize = absPosition;
+    }
+
     // Update activity metrics
     updated.activity.totalTrades++;
     updated.activity.totalVolume = updated.activity.totalVolume.plus(value);
