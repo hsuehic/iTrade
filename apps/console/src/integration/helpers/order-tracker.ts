@@ -60,11 +60,10 @@ export class OrderTracker {
     // Only open orders need to be tracked - closed orders are cleaned up automatically
     try {
       this.logger.debug(
-        `🔍 Loading existing open orders for user: ${this.userId || 'ALL'}...`,
+        `🔍 Loading existing orders for user: ${this.userId || 'ALL'}...`,
       );
       const existingOrders = await this.dataManager.getOrders({
         userId: this.userId,
-        status: 'OPEN', // 🎯 Only load open orders to minimize memory usage
       });
       for (const order of existingOrders) {
         this.orderManager.addOrder(order);
@@ -73,7 +72,7 @@ export class OrderTracker {
         this.notifiedOrderIds.add(order.id);
       }
       this.logger.debug(
-        `✅ Loaded ${existingOrders.length} open orders from database (marked as already notified)`,
+        `✅ Loaded ${existingOrders.length} orders from database (marked as already notified)`,
       );
     } catch (error) {
       this.logger.error(
@@ -153,6 +152,10 @@ export class OrderTracker {
       price: order.price ?? existingOrder.price,
       type: order.type ?? existingOrder.type,
       timeInForce: order.timeInForce ?? existingOrder.timeInForce,
+      exchange: order.exchange ?? existingOrder.exchange,
+      strategyId: order.strategyId ?? existingOrder.strategyId,
+      strategyType: order.strategyType ?? existingOrder.strategyType,
+      strategyName: order.strategyName ?? existingOrder.strategyName,
     };
   }
 
