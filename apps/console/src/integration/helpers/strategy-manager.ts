@@ -108,6 +108,10 @@ export class StrategyManager {
     );
   }
 
+  public getActiveStrategyIds(): Set<number> {
+    return new Set(this.strategies.keys());
+  }
+
   async stop(): Promise<void> {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
@@ -254,7 +258,7 @@ export class StrategyManager {
   private async savePerformancesToDatabase(): Promise<void> {
     if (this.strategies.size === 0) return;
 
-    if (typeof (this.dataManager as any).updateStrategyPerformance !== 'function') {
+    if (typeof this.dataManager.updateStrategyPerformance !== 'function') {
       return;
     }
 
@@ -263,7 +267,7 @@ export class StrategyManager {
       if (typeof strategy.instance.getPerformance === 'function') {
         const performance = strategy.instance.getPerformance();
         promises.push(
-          (this.dataManager as any).updateStrategyPerformance(strategyId, performance),
+          this.dataManager.updateStrategyPerformance(strategyId, performance),
         );
       }
     }

@@ -148,6 +148,7 @@ export class BotManager {
     return Array.from(this.bots.values()).map((bot) => ({
       userId: bot['userId'],
       trackers: bot.getOrderTrackers(),
+      activeStrategyIds: bot.getActiveStrategyIds(),
     }));
   }
 

@@ -2,7 +2,6 @@ import {
   AccountPollingService,
   ConsoleLogger,
   IExchange,
-  EventBus,
   OrderStatus,
   TradingEngine,
   type ExchangeCredentials,
@@ -303,6 +302,10 @@ export class BotInstance {
 
   public getOrderTrackers() {
     return this.orderTracker;
+  }
+
+  public getActiveStrategyIds(): Set<number> {
+    return this.strategyManager.getActiveStrategyIds();
   }
 
   private async connectExchangeForAccount(account: AccountInfoEntity): Promise<boolean> {

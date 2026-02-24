@@ -226,7 +226,11 @@ export class OrderManager extends EventEmitter {
     return cancelledOrders;
   }
 
-  public getOrderStats(filters?: { symbol?: string; exchange?: string }): {
+  public getOrderStats(filters?: {
+    symbol?: string;
+    exchange?: string;
+    activeStrategyIds?: Set<number>;
+  }): {
     total: number;
     open: number;
     filled: number;
@@ -243,6 +247,12 @@ export class OrderManager extends EventEmitter {
     }
     if (filters?.symbol) {
       orders = orders.filter((order) => order.symbol === filters.symbol);
+    }
+    if (filters?.activeStrategyIds) {
+      const activeIds = filters.activeStrategyIds;
+      orders = orders.filter(
+        (order) => order.strategyId && activeIds.has(order.strategyId),
+      );
     }
 
     let open = 0;
@@ -288,10 +298,19 @@ export class OrderManager extends EventEmitter {
     };
   }
 
-  public getOrdersGroupedByExchangeAndSymbol(): Map<string, Map<string, Order[]>> {
+  public getOrdersGroupedByExchangeAndSymbol(
+    activeStrategyIds?: Set<number>,
+  ): Map<string, Map<string, Order[]>> {
     const grouped = new Map<string, Map<string, Order[]>>();
 
     for (const order of this.orders.values()) {
+      if (
+        activeStrategyIds &&
+        (!order.strategyId || !activeStrategyIds.has(order.strategyId))
+      ) {
+        continue;
+      }
+
       const exchange = order.exchange || 'unknown';
 
       if (!grouped.has(exchange)) {

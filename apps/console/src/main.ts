@@ -34,35 +34,36 @@ function displayGlobalOrderStats(botManager: BotManager): void {
   logger.info(`📊 Global Order Statistics (${allStats.length} Users)`);
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-  for (const { userId, trackers } of allStats) {
+  for (const { userId, trackers, activeStrategyIds } of allStats) {
     logger.info(`\n👤 User: ${userId}`);
-    displayOrderStats(trackers, userId);
+    displayOrderStats(trackers, userId, activeStrategyIds);
   }
 }
 
 /**
  * Display order statistics for a single tracker
  */
-function displayOrderStats(orderTracker: OrderTracker, userId: string = 'Unknown'): void {
+function displayOrderStats(
+  orderTracker: OrderTracker,
+  userId: string = 'Unknown',
+  activeStrategyIds?: Set<number>,
+): void {
   const orderManager = orderTracker.getOrderManager();
-  const grouped = orderManager.getOrdersGroupedByExchangeAndSymbol();
+  const grouped = orderManager.getOrdersGroupedByExchangeAndSymbol(activeStrategyIds);
 
   if (grouped.size === 0) {
     logger.info(`   (No orders tracked for ${userId})`);
     return;
   }
 
-  let totalOrders = 0;
-
   for (const [exchange, symbolMap] of grouped) {
     logger.info(`   🏦 Exchange: ${exchange.toUpperCase()}`);
 
-    for (const [symbol, orders] of symbolMap) {
-      const stats = orderManager.getOrderStats({ exchange, symbol });
+    for (const [symbol] of symbolMap) {
+      const stats = orderManager.getOrderStats({ symbol, exchange, activeStrategyIds });
       logger.info(
         `      📈 ${symbol}: Total: ${stats.total} | Open: ${stats.open} | Filled: ${stats.filled}`,
       );
-      totalOrders += orders.length;
     }
   }
 }
