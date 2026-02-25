@@ -10,7 +10,6 @@ import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/copy_service.dart';
 import '../services/dynamic_config_service.dart';
-import '../services/notification.dart';
 import '../services/preference.dart';
 import '../services/theme_service.dart';
 import '../widgets/app_switch.dart';
@@ -20,7 +19,7 @@ import 'change_password.dart';
 import 'delete_account.dart';
 import 'edit_profile.dart';
 import 'email_preferences.dart';
-import 'push_notification_history.dart';
+import 'push_preferences.dart';
 import 'satistics.dart';
 import '../widgets/user_avatar.dart';
 
@@ -33,37 +32,17 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _signingOut = false;
-  bool _notificationsEnabled = true;
   bool _enableFaceId = true;
   ThemeMode _themeMode = ThemeMode.system;
-  bool _soundEnabled = true;
-  bool _vibrationEnabled = true;
-  bool _categoryGeneral = true;
-  bool _categoryMarketing = false;
-  bool _categoryTrading = true;
-  bool _categorySecurity = true;
-  bool _categorySystem = true;
   final AuthService _authService = AuthService.instance;
   String _appVersionLabel = 'iTrade';
   String _appVersionDetail = '';
 
   Future<void> _loadSetting() async {
-    final notificationsEnabled = await Preference.getNotificationsEnabled();
     final biometricEnabled = await Preference.getBiometricEnabled();
-    final cGeneral = await Preference.getPushCategoryEnabled('general');
-    final cMarketing = await Preference.getPushCategoryEnabled('marketing');
-    final cTrading = await Preference.getPushCategoryEnabled('trading');
-    final cSecurity = await Preference.getPushCategoryEnabled('security');
-    final cSystem = await Preference.getPushCategoryEnabled('system');
     setState(() {
-      _notificationsEnabled = notificationsEnabled ?? false;
       _enableFaceId = biometricEnabled ?? false;
       _themeMode = ThemeService.instance.themeMode;
-      _categoryGeneral = cGeneral;
-      _categoryMarketing = cMarketing;
-      _categoryTrading = cTrading;
-      _categorySecurity = cSecurity;
-      _categorySystem = cSystem;
     });
   }
 
@@ -326,152 +305,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildDivider(isDark),
             _buildThemeEditorTile(isDark),
             _buildDivider(isDark),
-            _buildSwitchTile(
+            _buildSettingTile(
               icon: Icons.notifications_outlined,
               titleKey: 'screen.profile.push_notifications',
               titleFallback: 'Push notifications',
               subtitleKey: 'screen.profile.push_notifications_subtitle',
               subtitleFallback: 'Receive alerts and updates',
-              value: _notificationsEnabled,
-              onChanged: (v) {
-                setState(() => _notificationsEnabled = v);
-                Preference.setNotificationsEnabled(v);
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSectionHeader(
-              'screen.profile.section.push_categories',
-              'Push categories',
-            ),
-            const SizedBox(height: 8),
-            _buildSwitchTile(
-              icon: Icons.notifications_active_outlined,
-              titleKey: 'screen.profile.push_categories.general',
-              titleFallback: 'General',
-              subtitleKey: 'screen.profile.push_categories.general_subtitle',
-              subtitleFallback: 'General updates',
-              value: _categoryGeneral,
-              onChanged: (v) async {
-                setState(() => _categoryGeneral = v);
-                await NotificationService.instance.setCategoryEnabled(
-                  'general',
-                  v,
-                );
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSwitchTile(
-              icon: Icons.campaign_outlined,
-              titleKey: 'screen.profile.push_categories.marketing',
-              titleFallback: 'Marketing',
-              subtitleKey: 'screen.profile.push_categories.marketing_subtitle',
-              subtitleFallback: 'Promotions and announcements',
-              value: _categoryMarketing,
-              onChanged: (v) async {
-                setState(() => _categoryMarketing = v);
-                await NotificationService.instance.setCategoryEnabled(
-                  'marketing',
-                  v,
-                );
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSwitchTile(
-              icon: Icons.show_chart,
-              titleKey: 'screen.profile.push_categories.trading',
-              titleFallback: 'Trading',
-              subtitleKey: 'screen.profile.push_categories.trading_subtitle',
-              subtitleFallback: 'Trading alerts and signals',
-              value: _categoryTrading,
-              onChanged: (v) async {
-                setState(() => _categoryTrading = v);
-                await NotificationService.instance.setCategoryEnabled(
-                  'trading',
-                  v,
-                );
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSwitchTile(
-              icon: Icons.security,
-              titleKey: 'screen.profile.push_categories.security',
-              titleFallback: 'Security',
-              subtitleKey: 'screen.profile.push_categories.security_subtitle',
-              subtitleFallback: 'Login and security alerts',
-              value: _categorySecurity,
-              onChanged: (v) async {
-                setState(() => _categorySecurity = v);
-                await NotificationService.instance.setCategoryEnabled(
-                  'security',
-                  v,
-                );
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSwitchTile(
-              icon: Icons.settings,
-              titleKey: 'screen.profile.push_categories.system',
-              titleFallback: 'System',
-              subtitleKey: 'screen.profile.push_categories.system_subtitle',
-              subtitleFallback: 'System notices',
-              value: _categorySystem,
-              onChanged: (v) async {
-                setState(() => _categorySystem = v);
-                await NotificationService.instance.setCategoryEnabled(
-                  'system',
-                  v,
-                );
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSettingTile(
-              icon: Icons.history,
-              titleKey: 'screen.profile.push_history',
-              titleFallback: 'Push history',
-              subtitleKey: 'screen.profile.push_history_subtitle',
-              subtitleFallback: 'View recent push messages',
               trailing: Icons.chevron_right,
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const PushNotificationHistoryScreen(),
+                    builder: (context) => const PushPreferencesScreen(),
                   ),
                 );
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSwitchTile(
-              icon: Icons.volume_up_outlined,
-              titleKey: 'screen.profile.sound',
-              titleFallback: 'Sound',
-              subtitleKey: 'screen.profile.sound_subtitle',
-              subtitleFallback: 'Enable sound effects',
-              value: _soundEnabled,
-              onChanged: (v) {
-                setState(() => _soundEnabled = v);
-                // TODO: Save preference
-              },
-              isDark: isDark,
-            ),
-            _buildDivider(isDark),
-            _buildSwitchTile(
-              icon: Icons.vibration,
-              titleKey: 'screen.profile.vibration',
-              titleFallback: 'Vibration',
-              subtitleKey: 'screen.profile.vibration_subtitle',
-              subtitleFallback: 'Enable haptic feedback',
-              value: _vibrationEnabled,
-              onChanged: (v) {
-                setState(() => _vibrationEnabled = v);
-                // TODO: Save preference
               },
               isDark: isDark,
             ),
@@ -855,42 +702,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildDivider(isDark),
                   _buildThemeEditorTile(isDark),
                   _buildDivider(isDark),
-                  _buildSwitchTile(
+                  _buildSettingTile(
                     icon: Icons.notifications_outlined,
                     titleKey: 'screen.profile.push_notifications',
                     titleFallback: 'Push notifications',
                     subtitleKey: 'screen.profile.push_notifications_subtitle',
                     subtitleFallback: 'Receive alerts and updates',
-                    value: _notificationsEnabled,
-                    onChanged: (v) {
-                      setState(() => _notificationsEnabled = v);
-                      Preference.setNotificationsEnabled(v);
-                    },
-                    isDark: isDark,
-                  ),
-                  _buildDivider(isDark),
-                  _buildSwitchTile(
-                    icon: Icons.volume_up_outlined,
-                    titleKey: 'screen.profile.sound',
-                    titleFallback: 'Sound',
-                    subtitleKey: 'screen.profile.sound_subtitle',
-                    subtitleFallback: 'Enable sound effects',
-                    value: _soundEnabled,
-                    onChanged: (v) {
-                      setState(() => _soundEnabled = v);
-                    },
-                    isDark: isDark,
-                  ),
-                  _buildDivider(isDark),
-                  _buildSwitchTile(
-                    icon: Icons.vibration,
-                    titleKey: 'screen.profile.vibration',
-                    titleFallback: 'Vibration',
-                    subtitleKey: 'screen.profile.vibration_subtitle',
-                    subtitleFallback: 'Enable haptic feedback',
-                    value: _vibrationEnabled,
-                    onChanged: (v) {
-                      setState(() => _vibrationEnabled = v);
+                    trailing: Icons.chevron_right,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PushPreferencesScreen(),
+                        ),
+                      );
                     },
                     isDark: isDark,
                   ),
@@ -1690,7 +1515,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w), // ✅ Width-adapted
       child: SizedBox(
-        height: 50,
+        height: 50.w,
         child: OutlinedButton.icon(
           onPressed: _signingOut ? null : _signOut,
           icon: _signingOut
@@ -1700,15 +1525,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: const CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.logout),
-          label: Text(
-            _signingOut ? 'Signing out...' : 'Sign Out',
-            style: TextStyle(fontSize: 14.sp), // ✅ Adaptive font
-          ),
+          label: _signingOut
+              ? const CopyText(
+                  'screen.profile.signing_out',
+                  fallback: 'Signing out...',
+                )
+              : const CopyText(
+                  'screen.profile.sign_out',
+                  fallback: 'Sign out',
+                ),
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.red,
             side: const BorderSide(color: Colors.red),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12), // ✅ Uniform radius
+              borderRadius: BorderRadius.circular(12.w), // ✅ Uniform radius
             ),
           ),
         ),

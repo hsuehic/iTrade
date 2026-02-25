@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../design/extensions/spacing_extension.dart';
+import 'copy_text.dart';
 
 class NavItemSpec {
   final IconData icon;
   final IconData? activeIcon;
-  final String label;
-  const NavItemSpec({required this.icon, this.activeIcon, required this.label});
+  final String? label;
+  final String? labelKey;
+  final String? labelFallback;
+  const NavItemSpec({
+    required this.icon,
+    this.activeIcon,
+    this.label,
+    this.labelKey,
+    this.labelFallback,
+  }) : assert(label != null || labelKey != null);
 }
 
 class DesignBottomNavBar extends StatelessWidget {
@@ -113,11 +122,37 @@ class _NavItem extends StatelessWidget {
     final Color color = selected
         ? theme.colorScheme.primary
         : theme.colorScheme.onSurface;
+    final labelStyle = TextStyle(
+      color: color,
+      fontSize: labelSize.sp,
+      fontWeight: labelWeight,
+      letterSpacing: -0.3,
+    );
+    final labelWidget = spec.labelKey != null
+        ? CopyText(
+            spec.labelKey!,
+            fallback: spec.labelFallback,
+            style: labelStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          )
+        : Text(
+            spec.label ?? '',
+            style: labelStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            textAlign: TextAlign.center,
+          );
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(spacing!.md),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 6),  // Reduced from 12.w to 4.w for more text space
+        padding: EdgeInsets.symmetric(
+          horizontal: 4.w,
+          vertical: 6.w,
+        ), // Reduced from 12.w to 4.w for more text space
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -126,20 +161,8 @@ class _NavItem extends StatelessWidget {
               size: iconSize,  // ✅ Fixed size for consistent icon display
               color: color,
             ),
-            const SizedBox(height: 4),
-            Text(
-              spec.label,
-              style: TextStyle(
-                color: color,
-                fontSize: labelSize.sp,  // ✅ Adaptive font (reduced to 10)
-                fontWeight: labelWeight,
-                letterSpacing: -0.3,  // Tighter letter spacing to fit more text
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-              textAlign: TextAlign.center,
-            ),
+            SizedBox(height: 4.w),
+            labelWidget,
           ],
         ),
       ),

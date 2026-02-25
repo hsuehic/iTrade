@@ -35,7 +35,7 @@ class Strategy {
 
   factory Strategy.fromJson(Map<String, dynamic> json) {
     return Strategy(
-      id: json['id'] as int,
+      id: _parseInt(json['id']),
       name: json['name'] as String,
       description: json['description'] as String?,
       type: json['type'] as String,
@@ -108,15 +108,15 @@ class StrategyPerformance {
 
   factory StrategyPerformance.fromJson(Map<String, dynamic> json) {
     return StrategyPerformance(
-      totalPnL: (json['totalPnL'] as num?)?.toDouble() ?? 0.0,
-      roi: (json['roi'] as num?)?.toDouble() ?? 0.0,
-      winRate: (json['winRate'] as num?)?.toDouble() ?? 0.0,
-      maxDrawdown: (json['maxDrawdown'] as num?)?.toDouble() ?? 0.0,
-      totalOrders: json['totalOrders'] as int? ?? 0,
-      winningTrades: json['winningTrades'] as int? ?? 0,
-      losingTrades: json['losingTrades'] as int? ?? 0,
-      longOrdersFilledCount: json['longOrdersFilledCount'] as int? ?? 0,
-      shortOrdersFilledCount: json['shortOrdersFilledCount'] as int? ?? 0,
+      totalPnL: _parseDouble(json['totalPnL']),
+      roi: _parseDouble(json['roi']),
+      winRate: _parseDouble(json['winRate']),
+      maxDrawdown: _parseDouble(json['maxDrawdown']),
+      totalOrders: _parseInt(json['totalOrders']),
+      winningTrades: _parseInt(json['winningTrades']),
+      losingTrades: _parseInt(json['losingTrades']),
+      longOrdersFilledCount: _parseInt(json['longOrdersFilledCount']),
+      shortOrdersFilledCount: _parseInt(json['shortOrdersFilledCount']),
     );
   }
 }
@@ -143,16 +143,52 @@ class StrategyPnL {
 
   factory StrategyPnL.fromJson(Map<String, dynamic> json) {
     return StrategyPnL(
-      strategyId: json['strategyId'] as int? ?? 0,
+      strategyId: _parseInt(json['strategyId']),
       strategyName: json['strategyName'] as String? ?? '',
-      totalPnl: (json['pnl'] as num?)?.toDouble() ?? 0.0,
-      realizedPnl: (json['realizedPnl'] as num?)?.toDouble() ?? 0.0,
-      unrealizedPnl: (json['unrealizedPnl'] as num?)?.toDouble() ?? 0.0,
-      totalOrders: json['totalOrders'] as int? ?? 0,
-      filledOrders: json['filledOrders'] as int? ?? 0,
+      totalPnl: _parseDouble(json['pnl']),
+      realizedPnl: _parseDouble(json['realizedPnl']),
+      unrealizedPnl: _parseDouble(json['unrealizedPnl']),
+      totalOrders: _parseInt(json['totalOrders']),
+      filledOrders: _parseInt(json['filledOrders']),
     );
   }
 
   bool get isProfitable => totalPnl > 0;
   bool get isLoss => totalPnl < 0;
+}
+
+double _parseDouble(dynamic value, {double fallback = 0.0}) {
+  if (value == null) {
+    return fallback;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  if (value is String) {
+    return double.tryParse(value) ?? fallback;
+  }
+  return fallback;
+}
+
+int _parseInt(dynamic value, {int fallback = 0}) {
+  if (value == null) {
+    return fallback;
+  }
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  if (value is String) {
+    final intValue = int.tryParse(value);
+    if (intValue != null) {
+      return intValue;
+    }
+    final doubleValue = double.tryParse(value);
+    if (doubleValue != null) {
+      return doubleValue.toInt();
+    }
+  }
+  return fallback;
 }

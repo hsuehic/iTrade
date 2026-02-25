@@ -381,6 +381,7 @@ class _MyHomePageState extends State<MyHomePage> {
       const StrategyScreen(),
       const TransactionsScreen(),
       const ProductScreen(),
+      const ProfileScreen(),
     ];
 
     // Check for pending notification tap (e.g., after login)
@@ -398,6 +399,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _NavItem(icon: Icons.calculate, labelKey: 'nav_strategy'),
       _NavItem(icon: Icons.receipt_long, labelKey: 'nav_orders'),
       _NavItem(icon: Icons.widgets, labelKey: 'nav_product'),
+      _NavItem(icon: Icons.person, labelKey: 'nav_profile'),
     ];
 
     // Debug: Print device info after first frame
@@ -472,7 +474,11 @@ class _MyHomePageState extends State<MyHomePage> {
             items: _navItems
                 .map(
                   (item) =>
-                      NavItemSpec(icon: item.icon, label: copy.t(item.labelKey)),
+                      NavItemSpec(
+                        icon: item.icon,
+                        labelKey: item.labelKey,
+                        labelFallback: copy.t(item.labelKey),
+                      ),
                 )
                 .toList(),
           ),

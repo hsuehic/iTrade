@@ -9,6 +9,8 @@ class Preference {
   static const String keySavedEmail = 'saved_email';
   static const String keySavedPassword = 'saved_password';
   static const String keyNotificationsEnabled = 'notifications_enabled';
+  static const String keySoundEnabled = 'sound_enabled';
+  static const String keyVibrationEnabled = 'vibration_enabled';
   static const String keyBiometricEnabled = 'biometric_enabled';
   static const String keyDarkMode = 'dark_mode';
   static const String keyPushDeviceId = 'push_device_id';
@@ -114,6 +116,22 @@ class Preference {
 
   static Future<bool?> getNotificationsEnabled() async {
     return await getValue<bool>(keyNotificationsEnabled);
+  }
+
+  static Future<void> setSoundEnabled(bool enabled) async {
+    await setValue(keySoundEnabled, enabled);
+  }
+
+  static Future<bool?> getSoundEnabled() async {
+    return await getValue<bool>(keySoundEnabled);
+  }
+
+  static Future<void> setVibrationEnabled(bool enabled) async {
+    await setValue(keyVibrationEnabled, enabled);
+  }
+
+  static Future<bool?> getVibrationEnabled() async {
+    return await getValue<bool>(keyVibrationEnabled);
   }
 
   static Future<bool> getPushCategoryEnabled(String category) async {

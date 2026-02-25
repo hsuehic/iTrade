@@ -6,6 +6,7 @@
     "nav_strategy": "Strategy",
     "nav_orders": "Orders",
     "nav_product": "Product",
+    "nav_profile": "Profile",
     "theme_switch_light": "Switch to light mode",
     "theme_switch_dark": "Switch to dark mode",
     "settings_app": "App settings",
@@ -167,6 +168,16 @@
     "screen.email_preferences.manage_notifications": "Manage notifications",
     "screen.email_preferences.choose_which_emails_you_want_t": "Choose which emails you want to receive",
     "screen.email_preferences.save_preferences": "Save preferences",
+    "screen.push_preferences.push_preferences_saved_success": "Push preferences saved.",
+    "screen.push_preferences.push_preferences": "Push preferences",
+    "screen.push_preferences.manage_notifications": "Manage notifications",
+    "screen.push_preferences.choose_which_push_you_want_t": "Choose which push notifications you want to receive",
+    "screen.push_preferences.save_preferences": "Save preferences",
+    "screen.push_preferences.save_failed": "Failed to save preferences",
+    "screen.push_preferences.section.delivery": "Delivery",
+    "screen.push_preferences.section.history": "History",
+    "screen.profile.sign_out": "Sign out",
+    "screen.profile.signing_out": "Signing out...",
     "screen.splash.intelligent_strategic": "Intelligent & strategic",
     "screen.dashboard.dashboard": "Dashboard",
     "screen.dashboard.scan": "Scan",
@@ -455,6 +466,6 @@
     "screen.profile.rate_app_subtitle": "Share your feedback",
     "screen.profile.about": "About",
     "screen.profile.about_subtitle": "Version info",
-    "screen.profile.about_legalese": "© 2025 iTrade. All rights reserved."
+    "screen.profile.about_legalese": "© 2026 iTrade. All rights reserved."
   }
 }

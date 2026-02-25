@@ -6,6 +6,7 @@
     "nav_strategy": "策略",
     "nav_orders": "订单",
     "nav_product": "产品",
+    "nav_profile": "我",
     "theme_switch_light": "切换到浅色模式",
     "theme_switch_dark": "切换到深色模式",
     "settings_app": "应用设置",
@@ -154,6 +155,16 @@
     "screen.email_preferences.manage_notifications": "管理通知",
     "screen.email_preferences.choose_which_emails_you_want_t": "选择要接收的邮件",
     "screen.email_preferences.save_preferences": "保存偏好",
+    "screen.push_preferences.push_preferences_saved_success": "推送偏好已保存。",
+    "screen.push_preferences.push_preferences": "推送偏好",
+    "screen.push_preferences.manage_notifications": "管理通知",
+    "screen.push_preferences.choose_which_push_you_want_t": "选择要接收的推送通知",
+    "screen.push_preferences.save_preferences": "保存偏好",
+    "screen.push_preferences.save_failed": "保存偏好失败",
+    "screen.push_preferences.section.delivery": "推送方式",
+    "screen.push_preferences.section.history": "历史记录",
+    "screen.profile.sign_out": "退出登录",
+    "screen.profile.signing_out": "退出中...",
     "screen.splash.intelligent_strategic": "智能与策略",
     "screen.dashboard.dashboard": "仪表盘",
     "screen.dashboard.scan": "扫描",
@@ -455,6 +466,6 @@
     "screen.profile.rate_app_subtitle": "分享你的反馈",
     "screen.profile.about": "关于",
     "screen.profile.about_subtitle": "版本信息",
-    "screen.profile.about_legalese": "© 2025 iTrade. 保留所有权利。"
+    "screen.profile.about_legalese": "© 2026 iTrade. 保留所有权利。"
   }
 }
