@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../models/strategy.dart'; // Ensure this model has the updated fields (performance)
 import '../models/order.dart';
@@ -9,7 +10,9 @@ import '../services/order_service.dart';
 import '../services/copy_service.dart';
 import '../design/tokens/color.dart';
 import '../utils/exchange_config.dart';
+import '../utils/number_format_utils.dart';
 import '../widgets/copy_text.dart';
+import 'order_detail.dart';
 
 class StrategyDetailScreen extends StatefulWidget {
   final Strategy strategy;
@@ -150,6 +153,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     final priceController = TextEditingController(
       text: order.price?.toString() ?? '',
     );
+    final copy = CopyService.instance;
     Timer? debounce;
     String? quantityError;
     String? priceError;
@@ -163,10 +167,18 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
       setDialogState(() {
         quantityError = (quantity == null || quantity <= 0)
-            ? 'Quantity must be a positive number'
+            ? copy.t(
+                'screen.strategy_detail.validation.quantity_positive',
+                fallback: 'Quantity must be a positive number',
+              )
             : null;
         priceError =
-            (price == null || price <= 0) ? 'Price must be a positive number' : null;
+            (price == null || price <= 0)
+                ? copy.t(
+                    'screen.strategy_detail.validation.price_positive',
+                    fallback: 'Price must be a positive number',
+                  )
+                : null;
       });
     }
 
@@ -193,7 +205,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                   controller: quantityController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Quantity',
+                    labelText: copy.t(
+                      'common.quantity_label',
+                      fallback: 'Quantity',
+                    ),
                     errorText: quantityError,
                   ),
                   onChanged: (_) => scheduleValidation(setDialogState),
@@ -203,7 +218,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                   controller: priceController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: 'Price',
+                    labelText: copy.t(
+                      'common.price_label',
+                      fallback: 'Price',
+                    ),
                     errorText: priceError,
                   ),
                   onChanged: (_) => scheduleValidation(setDialogState),
@@ -377,6 +395,37 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     }
   }
 
+  String? _getStrategyStatusCopyKey(String status) {
+    switch (status) {
+      case 'active':
+        return 'screen.strategy.status.active';
+      case 'stopped':
+        return 'screen.strategy.status.stopped';
+      case 'paused':
+        return 'screen.strategy.status.paused';
+      case 'error':
+        return 'screen.strategy.status.error';
+      default:
+        return null;
+    }
+  }
+
+  String _formatStrategyStatus(String status) {
+    final copy = CopyService.instance;
+    switch (status) {
+      case 'active':
+        return copy.t('screen.strategy.status.active', fallback: 'Active');
+      case 'stopped':
+        return copy.t('screen.strategy.status.stopped', fallback: 'Stopped');
+      case 'paused':
+        return copy.t('screen.strategy.status.paused', fallback: 'Paused');
+      case 'error':
+        return copy.t('screen.strategy.status.error', fallback: 'Error');
+      default:
+        return status;
+    }
+  }
+
   Color _getStatusColor(String status) {
     switch (status) {
       case 'active':
@@ -396,6 +445,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -437,6 +487,10 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
             labelColor: Theme.of(context).colorScheme.primary,
             unselectedLabelColor: Theme.of(context).hintColor,
             indicatorColor: Theme.of(context).colorScheme.primary,
+            dividerColor: isDark
+                ? Colors.grey[850]
+                : Colors.grey.withValues(alpha: 0.12),
+            dividerHeight: 1.w,
             tabs: const [
               Tab(
                 child: CopyText(
@@ -444,26 +498,19 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                   fallback: 'Orders',
                 ),
               ),
-              Tab(text: 'Configuration'),
+              Tab(
+                child: CopyText(
+                  'screen.strategy_detail.tabs.configuration',
+                  fallback: 'Configuration',
+                ),
+              ),
             ],
           ),
         ),
-        body: Column(
+        body: TabBarView(
           children: [
-            // Top Section: Info & Performance
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: _buildHeaderSection(),
-            ),
-            // Tab Content
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildOrdersTab(),
-                  _buildConfigTab(),
-                ],
-              ),
-            ),
+            _buildOrdersTab(),
+            _buildConfigTab(),
           ],
         ),
       ),
@@ -471,6 +518,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   }
 
   Widget _buildHeaderSection() {
+    final copy = CopyService.instance;
     final statusColor = _getStatusColor(_strategy.status);
     // Use performance data if available, else fallback to passed pnl
     final totalPnL = _strategy.performance?.totalPnL ?? _pnl?.totalPnl ?? 0.0;
@@ -481,18 +529,20 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     final surface = Theme.of(context).colorScheme.surface;
     
     // Format exchange/symbol
-    final displaySymbol = _strategy.normalizedSymbol ?? _strategy.symbol ?? 'N/A';
+    final displaySymbol = _strategy.normalizedSymbol ??
+        _strategy.symbol ??
+        copy.t('screen.strategy.symbol.na', fallback: 'N/A');
     
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16.w),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
+            blurRadius: 14.w,
+            offset: Offset(0, 6.w),
           ),
         ],
         border: Border.all(
@@ -502,11 +552,15 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CopyText('screen.strategy_detail.performance', fallback: "Performance", style: Theme.of(context).textTheme.titleSmall?.copyWith(
+          CopyText(
+            'screen.strategy_detail.performance',
+            fallback: 'Performance',
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
+                  fontSize: 14.sp,
                 ),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 10.w),
           Row(
             children: [
               ExchangeChip(
@@ -514,49 +568,65 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                 showIcon: true,
                 fontSize: 12,
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               Expanded(
                 child: Text(
                   displaySymbol,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14.sp,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.w),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(10.w),
                 ),
-                child: Text(
-                  _strategy.status.toUpperCase(),
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                  ),
-                ),
+                child: _getStrategyStatusCopyKey(_strategy.status) == null
+                    ? Text(
+                        _formatStrategyStatus(_strategy.status),
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11.sp,
+                        ),
+                      )
+                    : CopyText(
+                        _getStrategyStatusCopyKey(_strategy.status)!,
+                        fallback: _formatStrategyStatus(_strategy.status),
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11.sp,
+                        ),
+                      ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16.w),
           Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CopyText('screen.strategy.total_pnl', fallback: "Total PnL", style: TextStyle(
-                        fontSize: 12,
+                    CopyText(
+                      'screen.strategy.total_pnl',
+                      fallback: 'Total PnL',
+                      style: TextStyle(
+                        fontSize: 12.sp,
                         color: Theme.of(context).hintColor,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4.w),
                     Text(
                       _formatPnL(totalPnL),
                       style: TextStyle(
-                        fontSize: 26,
+                        fontSize: 24.sp,
                         fontWeight: FontWeight.w700,
                         color: totalPnL >= 0
                             ? ColorTokens.profitGreen
@@ -569,18 +639,21 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  CopyText('screen.strategy_detail.roi', fallback: "ROI", style: TextStyle(
-                      fontSize: 12,
+                  CopyText(
+                    'screen.strategy_detail.roi',
+                    fallback: 'ROI',
+                    style: TextStyle(
+                      fontSize: 12.sp,
                       color: Theme.of(context).hintColor,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4.w),
                   CopyText(
                     'common.percent',
                     params: {'percent': roi.toStringAsFixed(2)},
                     fallback: '{{percent}}%',
                     style: TextStyle(
-                      fontSize: 19,
+                      fontSize: 18.sp,
                       fontWeight: FontWeight.w700,
                       color: roi >= 0
                           ? ColorTokens.profitGreen
@@ -591,20 +664,22 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12.w),
           Row(
             children: [
               Expanded(
                 child: _buildMetricCard(
+                  'screen.strategy_detail.win_rate',
                   'Win Rate',
                   '${winRate.toStringAsFixed(2)}%',
                   null,
                   isDark,
                 ),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8.w),
               Expanded(
                 child: _buildMetricCard(
+                  'screen.strategy_detail.drawdown',
                   'Drawdown',
                   '${drawdown.toStringAsFixed(2)}%',
                   ColorTokens.lossRed,
@@ -615,11 +690,11 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
           ),
           if (_strategy.errorMessage != null)
             Container(
-              margin: const EdgeInsets.only(top: 12),
-              padding: const EdgeInsets.all(12),
+              margin: EdgeInsets.only(top: 12.w),
+              padding: EdgeInsets.all(12.w),
               decoration: BoxDecoration(
                 color: Colors.red.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(10.w),
                 border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
               ),
               child: CopyText(
@@ -635,16 +710,17 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   }
 
   Widget _buildMetricCard(
-    String label,
+    String labelKey,
+    String labelFallback,
     String value,
     Color? valueColor,
     bool isDark,
   ) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(12.w),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: isDark ? Colors.grey[900] : Colors.grey.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12.w),
         border: Border.all(
           color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
         ),
@@ -652,27 +728,71 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: valueColor)),
+          CopyText(
+            labelKey,
+            fallback: labelFallback,
+            style: TextStyle(
+              fontSize: 12.sp,
+              color: Theme.of(context).hintColor,
+            ),
+          ),
+          SizedBox(height: 4.w),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildOrdersTab() {
+    final copy = CopyService.instance;
+    final header = Padding(
+      padding: EdgeInsets.only(top: 12.w, bottom: 12.w),
+      child: _buildHeaderSection(),
+    );
     if (_isLoadingOrders) {
-      return const Center(child: CircularProgressIndicator());
+      return ListView(
+        padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 24.w),
+        children: [
+          header,
+          SizedBox(height: 12.w),
+          const Center(child: CircularProgressIndicator()),
+        ],
+      );
     }
     if (_orders.isEmpty) {
-      return const Center(child: CopyText('screen.strategy_detail.no_orders_yet', fallback: "No orders yet"));
+      return ListView(
+        padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 24.w),
+        children: [
+          header,
+          SizedBox(height: 12.w),
+          const Center(
+            child: CopyText(
+              'screen.strategy_detail.no_orders_yet',
+              fallback: 'No orders yet',
+            ),
+          ),
+        ],
+      );
     }
     return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      itemCount: _orders.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 24.w),
+      itemCount: _orders.length + 1,
+      separatorBuilder: (context, index) {
+        if (index == 0) return SizedBox(height: 12.w);
+        return SizedBox(height: 8.w);
+      },
       itemBuilder: (ctx, idx) {
-        final order = _orders[idx];
+        if (idx == 0) {
+          return header;
+        }
+        final order = _orders[idx - 1];
         final isProcessing = _processingOrders.contains(order.id);
         final canCancel = _isOrderOpen(order);
         final canEdit = _canEditOrder(order);
@@ -684,6 +804,13 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
           canEdit: canEdit,
           onCancel: () => _confirmCancelOrder(order),
           onEdit: () => _showEditOrderDialog(order),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => OrderDetailScreen(order: order),
+              ),
+            );
+          },
         );
 
         if (!hasActions) {
@@ -705,7 +832,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                       .surfaceContainerHighest,
                   foregroundColor: Theme.of(context).colorScheme.primary,
                   icon: Icons.edit,
-                  label: 'Edit',
+                  label: copy.t('common.edit', fallback: 'Edit'),
                 ),
               if (canCancel)
                 SlidableAction(
@@ -716,7 +843,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
                       .surfaceContainerHighest,
                   foregroundColor: Colors.red,
                   icon: Icons.close,
-                  label: 'Cancel',
+                  label: copy.t('common.cancel', fallback: 'Cancel'),
                 ),
             ],
           ),
@@ -728,11 +855,19 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
 
   Widget _buildConfigTab() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 24.w),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildConfigSection('Parameters', _strategy.parameters),
+          Padding(
+            padding: EdgeInsets.only(top: 12.w, bottom: 12.w),
+            child: _buildHeaderSection(),
+          ),
+          _buildConfigSection(
+            'screen.strategy_detail.parameters',
+            'Parameters',
+            _strategy.parameters,
+          ),
           // _buildConfigSection('Initial Data', _strategy.initialDataConfig), // If added to model
           // _buildConfigSection('Subscription', _strategy.subscription), // If added to model
         ],
@@ -740,15 +875,19 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     );
   }
 
-  Widget _buildConfigSection(String title, Map<String, dynamic>? data) {
+  Widget _buildConfigSection(
+    String titleKey,
+    String titleFallback,
+    Map<String, dynamic>? data,
+  ) {
     if (data == null || data.isEmpty) return const SizedBox.shrink();
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: 16.w),
+      padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12.w),
         border: Border.all(
           color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
         ),
@@ -756,19 +895,23 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          const SizedBox(height: 8),
+          CopyText(
+            titleKey,
+            fallback: titleFallback,
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16.sp),
+          ),
+          SizedBox(height: 8.w),
           Divider(
             height: 1,
             thickness: 0.5,
             color: isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.2),
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8.w),
           SelectableText(
             const JsonEncoder.withIndent('  ').convert(data),
             style: TextStyle(
               fontFamily: 'monospace',
-              fontSize: 13,
+              fontSize: 13.sp,
               color: Theme.of(context).textTheme.bodySmall?.color,
             ),
           ),
@@ -785,6 +928,7 @@ class _OrderItem extends StatelessWidget {
   final bool isProcessing;
   final VoidCallback onCancel;
   final VoidCallback onEdit;
+  final VoidCallback onTap;
   const _OrderItem({
     required this.order,
     required this.canCancel,
@@ -792,7 +936,64 @@ class _OrderItem extends StatelessWidget {
     required this.isProcessing,
     required this.onCancel,
     required this.onEdit,
+    required this.onTap,
   });
+
+  String? _getSideCopyKey(String side) {
+    switch (side.toUpperCase()) {
+      case 'BUY':
+        return 'screen.orders.side.buy';
+      case 'SELL':
+        return 'screen.orders.side.sell';
+      default:
+        return null;
+    }
+  }
+
+  String _formatSideLabel(CopyService copy, String side) {
+    switch (side.toUpperCase()) {
+      case 'BUY':
+        return copy.t('screen.orders.side.buy', fallback: 'Buy');
+      case 'SELL':
+        return copy.t('screen.orders.side.sell', fallback: 'Sell');
+      default:
+        return side;
+    }
+  }
+
+  String? _getStatusCopyKey(String status) {
+    switch (status.toUpperCase()) {
+      case 'NEW':
+        return 'screen.orders.status.new';
+      case 'PARTIALLY_FILLED':
+      case 'PARTIAL':
+        return 'screen.orders.status.partial';
+      case 'FILLED':
+        return 'screen.orders.status.filled';
+      case 'CANCELED':
+      case 'CANCELLED':
+        return 'screen.orders.status.cancelled';
+      default:
+        return null;
+    }
+  }
+
+  String _formatStatusLabel(CopyService copy, String status) {
+    switch (status.toUpperCase()) {
+      case 'NEW':
+        return copy.t('screen.orders.status.new', fallback: 'New');
+      case 'PARTIALLY_FILLED':
+      case 'PARTIAL':
+        return copy.t('screen.orders.status.partial', fallback: 'Partial');
+      case 'FILLED':
+        return copy.t('screen.orders.status.filled', fallback: 'Filled');
+      case 'CANCELED':
+      case 'CANCELLED':
+        return copy.t('screen.orders.status.cancelled', fallback: 'Cancelled');
+      default:
+        return status;
+    }
+  }
 
   Color _getStatusColor(String status) {
      switch(status.toUpperCase()) {
@@ -808,90 +1009,162 @@ class _OrderItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final copy = CopyService.instance;
     final dateStr =
         '${order.timestamp.hour}:${order.timestamp.minute.toString().padLeft(2, '0')} '
         '${order.timestamp.month}/${order.timestamp.day}';
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final sideColor =
         order.side == 'BUY' ? ColorTokens.profitGreen : ColorTokens.lossRed;
+    final price = order.price ?? order.averagePrice ?? 0;
+    final formattedPrice = formatPriceExact(price);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: sideColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isProcessing ? null : onTap,
+        borderRadius: BorderRadius.circular(14.w),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.w),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.grey[900] : Colors.white,
+            borderRadius: BorderRadius.circular(14.w),
+            border: Border.all(
+              color: isDark
+                  ? Colors.grey[850]!
+                  : Colors.grey.withValues(alpha: 0.12),
             ),
-            child: Text(
-              order.side,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                color: sideColor,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CopyText(
-                  'screen.strategy_detail.order_label',
-                  params: {
-                    'symbol': order.symbol,
-                    'type': order.type,
-                  },
-                  fallback: '{{symbol}} ({{type}})',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+            boxShadow: [
+              if (!isDark)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10.w,
+                  offset: Offset(0, 4.w),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  dateStr,
-                  style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
-                ),
-              ],
-            ),
+            ],
           ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                order.quantity.toString(),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.w),
                 decoration: BoxDecoration(
-                  color: _getStatusColor(order.status).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  color: sideColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8.w),
                 ),
-                child: Text(
-                  order.status,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: _getStatusColor(order.status),
-                    fontWeight: FontWeight.w600,
+                child: _getSideCopyKey(order.side) == null
+                    ? Text(
+                        _formatSideLabel(copy, order.side),
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                          color: sideColor,
+                        ),
+                      )
+                    : CopyText(
+                        _getSideCopyKey(order.side)!,
+                        fallback: _formatSideLabel(copy, order.side),
+                        style: TextStyle(
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                          color: sideColor,
+                        ),
+                      ),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CopyText(
+                      'screen.strategy_detail.order_label',
+                      params: {
+                        'symbol': order.symbol,
+                        'type': order.type,
+                      },
+                      fallback: '{{symbol}} ({{type}})',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13.sp,
+                      ),
+                    ),
+                    SizedBox(height: 4.w),
+                    Text(
+                      dateStr,
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                  SizedBox(height: 4.w),
+                  Row(
+                    children: [
+                      CopyText(
+                        'common.price_label',
+                        fallback: 'Price',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          color: Theme.of(context).hintColor,
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Text(
+                        formattedPrice,
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
                   ),
+                  ],
                 ),
+              ),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    order.quantity.toString(),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.sp,
+                    ),
+                  ),
+                  SizedBox(height: 4.w),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.w),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor(order.status)
+                          .withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8.w),
+                    ),
+                    child: _getStatusCopyKey(order.status) == null
+                        ? Text(
+                            _formatStatusLabel(copy, order.status),
+                            style: TextStyle(
+                              fontSize: 10.sp,
+                              color: _getStatusColor(order.status),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        : CopyText(
+                            _getStatusCopyKey(order.status)!,
+                            fallback: _formatStatusLabel(copy, order.status),
+                            style: TextStyle(
+                              fontSize: 10.sp,
+                              color: _getStatusColor(order.status),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }

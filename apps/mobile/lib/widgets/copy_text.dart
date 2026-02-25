@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -25,14 +26,14 @@ class CopyText extends StatelessWidget {
     int? maxLines,
     TextOverflow? overflow,
   }) : this(
-          text,
-          key: key,
-          style: style,
-          textAlign: textAlign,
-          maxLines: maxLines,
-          overflow: overflow,
-          fallback: text,
-        );
+         text,
+         key: key,
+         style: style,
+         textAlign: textAlign,
+         maxLines: maxLines,
+         overflow: overflow,
+         fallback: text,
+       );
 
   final String copyKey;
   final TextStyle? style;
@@ -57,8 +58,17 @@ class CopyText extends StatelessWidget {
     if (!service.copyKeyLongPressEnabled) {
       return base;
     }
-    final configService = DynamicConfigService.instance;
-    final editorUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    if (firebase_core.Firebase.apps.isEmpty) {
+      return base;
+    }
+    DynamicConfigService configService;
+    firebase_auth.User? editorUser;
+    try {
+      configService = DynamicConfigService.instance;
+      editorUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      return base;
+    }
     final editorEmail = editorUser?.email;
     final isAdmin = configService.isCopyAdmin(editorEmail);
     final hasEditorSession = editorUser != null;
@@ -82,7 +92,10 @@ class CopyText extends StatelessWidget {
         if (!hasEditorSession) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: CopyText('copy.admin.login_required', fallback: "Please login to edit copy", ),
+              content: CopyText(
+                'copy.admin.login_required',
+                fallback: "Please login to edit copy",
+              ),
             ),
           );
           return;
@@ -98,7 +111,10 @@ class CopyText extends StatelessWidget {
                 children: [
                   ListTile(
                     leading: const Icon(Icons.copy),
-                    title: const CopyText('copy.key.copy', fallback: "Copy key", ),
+                    title: const CopyText(
+                      'copy.key.copy',
+                      fallback: "Copy key",
+                    ),
                     onTap: () async {
                       await Clipboard.setData(ClipboardData(text: copyKey));
                       if (!context.mounted) return;
@@ -116,7 +132,10 @@ class CopyText extends StatelessWidget {
                   ),
                   ListTile(
                     leading: const Icon(Icons.edit),
-                    title: const CopyText('copy.admin.edit', fallback: "Edit text", ),
+                    title: const CopyText(
+                      'copy.admin.edit',
+                      fallback: "Edit text",
+                    ),
                     onTap: () async {
                       Navigator.of(context).pop();
                       await _showEditDialog(rootContext, copyKey);
@@ -132,10 +151,7 @@ class CopyText extends StatelessWidget {
     );
   }
 
-  Future<void> _showEditDialog(
-    BuildContext context,
-    String key,
-  ) async {
+  Future<void> _showEditDialog(BuildContext context, String key) async {
     final service = DynamicConfigService.instance;
     final copyService = CopyService.instance;
     final hintText = copyService.t(
@@ -158,7 +174,10 @@ class CopyText extends StatelessWidget {
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
                   return const AlertDialog(
-                    title: CopyText('copy.admin.edit_title', fallback: "Edit copy", ),
+                    title: CopyText(
+                      'copy.admin.edit_title',
+                      fallback: "Edit copy",
+                    ),
                     content: SizedBox(
                       height: 56,
                       child: Center(child: CircularProgressIndicator()),
@@ -168,12 +187,21 @@ class CopyText extends StatelessWidget {
                 final data = snapshot.data;
                 if (data == null) {
                   return AlertDialog(
-                    title: const CopyText('copy.admin.edit_title', fallback: "Edit copy", ),
-                    content: const CopyText('copy.admin.update_failed', fallback: "Update failed", ),
+                    title: const CopyText(
+                      'copy.admin.edit_title',
+                      fallback: "Edit copy",
+                    ),
+                    content: const CopyText(
+                      'copy.admin.update_failed',
+                      fallback: "Update failed",
+                    ),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const CopyText('copy.admin.cancel', fallback: "Cancel", ),
+                        child: const CopyText(
+                          'copy.admin.cancel',
+                          fallback: "Cancel",
+                        ),
                       ),
                     ],
                   );
@@ -197,7 +225,10 @@ class CopyText extends StatelessWidget {
                 }
                 final localeTags = controllers.keys.toList();
                 return AlertDialog(
-                  title: const CopyText('copy.admin.edit_title', fallback: "Edit copy", ),
+                  title: const CopyText(
+                    'copy.admin.edit_title',
+                    fallback: "Edit copy",
+                  ),
                   content: SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -230,7 +261,10 @@ class CopyText extends StatelessWidget {
                                             if (!context.mounted) return;
                                             rootMessenger.showSnackBar(
                                               SnackBar(
-                                                content: CopyText('copy.admin.edit_hint', fallback: "Enter new text", ),
+                                                content: CopyText(
+                                                  'copy.admin.edit_hint',
+                                                  fallback: "Enter new text",
+                                                ),
                                               ),
                                             );
                                             return;
@@ -238,13 +272,13 @@ class CopyText extends StatelessWidget {
                                           setState(() {
                                             saving[localeTag] = true;
                                           });
-                                          final ok =
-                                              await service.updateCopyValueForLocale(
-                                            key: key,
-                                            value: value,
-                                            localeTag: localeTag,
-                                            copyService: copyService,
-                                          );
+                                          final ok = await service
+                                              .updateCopyValueForLocale(
+                                                key: key,
+                                                value: value,
+                                                localeTag: localeTag,
+                                                copyService: copyService,
+                                              );
                                           if (!context.mounted) return;
                                           setState(() {
                                             saving[localeTag] = false;
@@ -252,13 +286,19 @@ class CopyText extends StatelessWidget {
                                           if (ok) {
                                             rootMessenger.showSnackBar(
                                               const SnackBar(
-                                                content: CopyText('copy.admin.updated', fallback: "Copy updated", ),
+                                                content: CopyText(
+                                                  'copy.admin.updated',
+                                                  fallback: "Copy updated",
+                                                ),
                                               ),
                                             );
                                           } else {
                                             rootMessenger.showSnackBar(
                                               const SnackBar(
-                                                content: CopyText('copy.admin.update_failed', fallback: "Update failed", ),
+                                                content: CopyText(
+                                                  'copy.admin.update_failed',
+                                                  fallback: "Update failed",
+                                                ),
                                               ),
                                             );
                                           }
@@ -282,7 +322,10 @@ class CopyText extends StatelessWidget {
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const CopyText('copy.admin.cancel', fallback: "Cancel", ),
+                      child: const CopyText(
+                        'copy.admin.cancel',
+                        fallback: "Cancel",
+                      ),
                     ),
                   ],
                 );

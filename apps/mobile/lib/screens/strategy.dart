@@ -450,66 +450,95 @@ class _StrategyScreenState extends State<StrategyScreen>
     );
   }
 
-  Widget _buildPhoneList() {
-    return RefreshIndicator(
-      onRefresh: _loadStrategies,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-        itemCount: _filteredStrategies.length,
-        itemBuilder: (context, index) {
-          final strategy = _filteredStrategies[index];
-          final pnl = _pnlMap[strategy.id];
-          final baseCurrency = _extractBaseCurrency(strategy.symbol);
-          return _StrategyCard(
-            strategy: strategy,
-            pnl: pnl,
-            onTap: () => _navigateToDetail(strategy),
-            getStatusColor: _getStatusColor,
-            getPnLColor: _getPnLColor,
-            formatPnL: _formatPnL,
-            formatStatus: _formatStatus,
-            baseCurrency: baseCurrency,
-          );
-        },
+  Widget _buildPhoneListSliver() {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final strategy = _filteredStrategies[index];
+            final pnl = _pnlMap[strategy.id];
+            final baseCurrency = _extractBaseCurrency(strategy.symbol);
+            return _StrategyCard(
+              strategy: strategy,
+              pnl: pnl,
+              onTap: () => _navigateToDetail(strategy),
+              getStatusColor: _getStatusColor,
+              getPnLColor: _getPnLColor,
+              formatPnL: _formatPnL,
+              formatStatus: _formatStatus,
+              baseCurrency: baseCurrency,
+            );
+          },
+          childCount: _filteredStrategies.length,
+        ),
       ),
     );
   }
 
-  Widget _buildTabletGrid() {
+  Widget _buildTabletGridSliver() {
     final screenWidth = MediaQuery.of(context).size.width;
     // Account for sidebar (~240px) when present in landscape
     final effectiveWidth = screenWidth - 240;
     // Use 2 columns for portrait/smaller screens, 3 for wider landscape
     final crossAxisCount = effectiveWidth > 900 ? 3 : 2;
-    
-    return RefreshIndicator(
-      onRefresh: _loadStrategies,
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 88),
+
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 88),
+      sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: crossAxisCount,
           mainAxisSpacing: 16,
           crossAxisSpacing: 16,
           childAspectRatio: 1.6,
         ),
-        itemCount: _filteredStrategies.length,
-        itemBuilder: (context, index) {
-          final strategy = _filteredStrategies[index];
-          final pnl = _pnlMap[strategy.id];
-          final baseCurrency = _extractBaseCurrency(strategy.symbol);
-          return _StrategyCard(
-            strategy: strategy,
-            pnl: pnl,
-            onTap: () => _navigateToDetail(strategy),
-            getStatusColor: _getStatusColor,
-            getPnLColor: _getPnLColor,
-            formatPnL: _formatPnL,
-            formatStatus: _formatStatus,
-            baseCurrency: baseCurrency,
-          );
-        },
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final strategy = _filteredStrategies[index];
+            final pnl = _pnlMap[strategy.id];
+            final baseCurrency = _extractBaseCurrency(strategy.symbol);
+            return _StrategyCard(
+              strategy: strategy,
+              pnl: pnl,
+              onTap: () => _navigateToDetail(strategy),
+              getStatusColor: _getStatusColor,
+              getPnLColor: _getPnLColor,
+              formatPnL: _formatPnL,
+              formatStatus: _formatStatus,
+              baseCurrency: baseCurrency,
+            );
+          },
+          childCount: _filteredStrategies.length,
+        ),
       ),
     );
+  }
+
+  Widget _buildContentSliver() {
+    if (_isLoading) {
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildErrorView(),
+      );
+    }
+
+    if (_filteredStrategies.isEmpty) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: _buildEmptyView(),
+      );
+    }
+
+    return _shouldUseTabletLayout(context)
+        ? _buildTabletGridSliver()
+        : _buildPhoneListSliver();
   }
 
   @override
@@ -534,67 +563,65 @@ class _StrategyScreenState extends State<StrategyScreen>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildSummaryCard(),
-          _buildListHeader(),
-          // Search Bar
-          SimpleSearchBar(onChanged: _handleSearch, onSubmitted: _handleSearch),
-          const SizedBox(height: 10),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Row(
-              children: [
-                CopyText('screen.strategy.sort_by', fallback: "Sort by", style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey,
-                      ),
-                ),
-                const SizedBox(width: 8),
-                _SortChip(
-                  labelKey: 'screen.strategy.sort.name',
-                  labelFallback: 'Name',
-                  isSelected: _sortBy == SortBy.name,
-                  isAscending: _sortAscending,
-                  onTap: () => _handleSortChange(SortBy.name),
-                ),
-                SizedBox(width: 8.w),
-                _SortChip(
-                  labelKey: 'screen.strategy.sort.pnl',
-                  labelFallback: 'PnL',
-                  isSelected: _sortBy == SortBy.pnl,
-                  isAscending: _sortAscending,
-                  onTap: () => _handleSortChange(SortBy.pnl),
-                ),
-                SizedBox(width: 8.w),
-                _SortChip(
-                  labelKey: 'screen.strategy.sort.date',
-                  labelFallback: 'Date',
-                  isSelected: _sortBy == SortBy.createdAt,
-                  isAscending: _sortAscending,
-                  onTap: () => _handleSortChange(SortBy.createdAt),
-                ),
-              ],
+      body: RefreshIndicator(
+        onRefresh: _loadStrategies,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _buildSummaryCard()),
+            SliverToBoxAdapter(child: _buildListHeader()),
+            // Search Bar
+            SliverToBoxAdapter(
+              child: SimpleSearchBar(
+                onChanged: _handleSearch,
+                onSubmitted: _handleSearch,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          // Strategy List
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _errorMessage != null
-                    ? _buildErrorView()
-                    : _filteredStrategies.isEmpty
-                        ? _buildEmptyView()
-                        : _shouldUseTabletLayout(context)
-                            ? _buildTabletGrid()
-                            : _buildPhoneList(),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreateStrategy,
-        icon: const Icon(Icons.add),
-        label: CopyText('screen.strategy.new', fallback: "New"),
+            const SliverToBoxAdapter(child: SizedBox(height: 10)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                child: Row(
+                  children: [
+                    CopyText(
+                      'screen.strategy.sort_by',
+                      fallback: "Sort by",
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey,
+                          ),
+                    ),
+                    const SizedBox(width: 8),
+                    _SortChip(
+                      labelKey: 'screen.strategy.sort.name',
+                      labelFallback: 'Name',
+                      isSelected: _sortBy == SortBy.name,
+                      isAscending: _sortAscending,
+                      onTap: () => _handleSortChange(SortBy.name),
+                    ),
+                    SizedBox(width: 8.w),
+                    _SortChip(
+                      labelKey: 'screen.strategy.sort.pnl',
+                      labelFallback: 'PnL',
+                      isSelected: _sortBy == SortBy.pnl,
+                      isAscending: _sortAscending,
+                      onTap: () => _handleSortChange(SortBy.pnl),
+                    ),
+                    SizedBox(width: 8.w),
+                    _SortChip(
+                      labelKey: 'screen.strategy.sort.date',
+                      labelFallback: 'Date',
+                      isSelected: _sortBy == SortBy.createdAt,
+                      isAscending: _sortAscending,
+                      onTap: () => _handleSortChange(SortBy.createdAt),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 4)),
+            // Strategy List
+            _buildContentSliver(),
+          ],
+        ),
       ),
     );
   }
@@ -687,43 +714,77 @@ class _StrategyCard extends StatelessWidget {
     required this.baseCurrency,
   });
 
-  String _getSymbol() {
-    return strategy.normalizedSymbol ?? strategy.symbol ?? 'N/A';
-  }
-
-  String _getMarketTypeLabel() {
-    switch (strategy.marketType) {
-      case 'perpetual':
-        return 'PERP';
-      case 'futures':
-        return 'FUT';
-      case 'spot':
+  String? _getStatusCopyKey(String status) {
+    switch (status) {
+      case 'active':
+        return 'screen.strategy.status.active';
+      case 'stopped':
+        return 'screen.strategy.status.stopped';
+      case 'paused':
+        return 'screen.strategy.status.paused';
+      case 'error':
+        return 'screen.strategy.status.error';
       default:
-        return 'SPOT';
+        return null;
     }
   }
 
-  String _formatDate(DateTime date) {
+  String _getSymbol(CopyService copy) {
+    return strategy.normalizedSymbol ??
+        strategy.symbol ??
+        copy.t('screen.strategy.symbol.na', fallback: 'N/A');
+  }
+
+  String _getMarketTypeLabel(CopyService copy) {
+    switch (strategy.marketType) {
+      case 'perpetual':
+        return copy.t('screen.strategy.market_type.perp', fallback: 'PERP');
+      case 'futures':
+        return copy.t('screen.strategy.market_type.futures', fallback: 'FUT');
+      case 'spot':
+      default:
+        return copy.t('screen.strategy.market_type.spot', fallback: 'SPOT');
+    }
+  }
+
+  String _formatDate(CopyService copy, DateTime date) {
     final now = DateTime.now();
     final difference = now.difference(date);
 
     if (difference.inDays == 0) {
-      return 'Today';
+      return copy.t('screen.strategy.date.today', fallback: 'Today');
     } else if (difference.inDays == 1) {
-      return 'Yesterday';
+      return copy.t('screen.strategy.date.yesterday', fallback: 'Yesterday');
     } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
+      return copy.t(
+        'screen.strategy.date.days_ago',
+        params: {'count': difference.inDays.toString()},
+        fallback: '{{count}}d ago',
+      );
     } else if (difference.inDays < 30) {
-      return '${(difference.inDays / 7).floor()}w ago';
+      return copy.t(
+        'screen.strategy.date.weeks_ago',
+        params: {'count': (difference.inDays / 7).floor().toString()},
+        fallback: '{{count}}w ago',
+      );
     } else if (difference.inDays < 365) {
-      return '${(difference.inDays / 30).floor()}mo ago';
+      return copy.t(
+        'screen.strategy.date.months_ago',
+        params: {'count': (difference.inDays / 30).floor().toString()},
+        fallback: '{{count}}mo ago',
+      );
     } else {
-      return '${(difference.inDays / 365).floor()}y ago';
+      return copy.t(
+        'screen.strategy.date.years_ago',
+        params: {'count': (difference.inDays / 365).floor().toString()},
+        fallback: '{{count}}y ago',
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final copy = CopyService.instance;
     final theme = Theme.of(context);
     final statusColor = getStatusColor(strategy.status);
     final pnlValue = pnl?.totalPnl ?? 0.0;
@@ -817,7 +878,7 @@ class _StrategyCard extends StatelessWidget {
                           children: [
                             Flexible(
                               child: Text(
-                                _getSymbol(),
+                                _getSymbol(copy),
                                 style: TextStyle(
                                   fontSize: 12.sp,
                                   fontWeight: FontWeight.w600,
@@ -839,7 +900,7 @@ class _StrategyCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                _getMarketTypeLabel(),
+                                _getMarketTypeLabel(copy),
                                 style: TextStyle(
                                   fontSize: 10.sp,
                                   fontWeight: FontWeight.w600,
@@ -874,14 +935,24 @@ class _StrategyCard extends StatelessWidget {
                       color: statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(
-                      formatStatus(strategy.status),
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: statusColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: _getStatusCopyKey(strategy.status) == null
+                        ? Text(
+                            formatStatus(strategy.status),
+                            style: TextStyle(
+                              fontSize: 11.sp,
+                              color: statusColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                        : CopyText(
+                            _getStatusCopyKey(strategy.status)!,
+                            fallback: formatStatus(strategy.status),
+                            style: TextStyle(
+                              fontSize: 11.sp,
+                              color: statusColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                   SizedBox(width: 6.w),
                   Icon(
@@ -969,7 +1040,7 @@ class _StrategyCard extends StatelessWidget {
                   SizedBox(width: 4.w),
                   CopyText(
                     'screen.strategy.created_at',
-                    params: {'date': _formatDate(strategy.createdAt)},
+                    params: {'date': _formatDate(copy, strategy.createdAt)},
                     fallback: 'Created {{date}}',
                     style: TextStyle(fontSize: 11.sp, color: secondaryText),
                   ),
