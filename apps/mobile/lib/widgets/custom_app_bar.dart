@@ -11,6 +11,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final List<Widget>? actions;
   final bool showMenuButton;
   final bool showScanner;
+  final bool showBackButton;
+  final VoidCallback? onBack;
 
   const CustomAppBar({
     super.key,
@@ -20,6 +22,8 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions,
     this.showMenuButton = true,
     this.showScanner = true,
+    this.showBackButton = false,
+    this.onBack,
   });
 
   @override
@@ -48,21 +52,26 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
       surfaceTintColor: Colors.transparent,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       // Hide hamburger menu on tablet (we have sidebar instead)
-      leading: (showMenuButton && !isTablet)
+      leading: showBackButton
           ? IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) => const QuickMenuDrawer(),
-                );
-              },
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onBack ?? () => Navigator.maybePop(context),
             )
-          : null,
+          : (showMenuButton && !isTablet)
+              ? IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => const QuickMenuDrawer(),
+                    );
+                  },
+                )
+              : null,
       // Auto-imply leading: false when no leading widget on tablet
-      automaticallyImplyLeading: !isTablet,
+      automaticallyImplyLeading: !isTablet && !showBackButton,
       actions: [
         if (showScanner)
           IconButton(

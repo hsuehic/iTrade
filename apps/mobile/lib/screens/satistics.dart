@@ -5,6 +5,7 @@ import '../utils/exchange_config.dart';
 import '../utils/responsive_layout.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/copy_text.dart';
+import 'portfolio.dart';
 
 enum StatTab { topPerformers, byExchange, bySymbol }
 
@@ -142,9 +143,21 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: const CustomAppBar(
+      appBar: CustomAppBar(
         titleKey: 'screen.satistics.title',
         titleFallback: 'Statistic',
+        showMenuButton: false,
+        showBackButton: true,
+        onBack: () {
+          final navigator = Navigator.of(context);
+          if (navigator.canPop()) {
+            navigator.pop();
+            return;
+          }
+          navigator.pushReplacement(
+            MaterialPageRoute(builder: (context) => const PortfolioScreen()),
+          );
+        },
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

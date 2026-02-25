@@ -135,6 +135,7 @@ class _PushPreferencesScreenState extends State<PushPreferencesScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).colorScheme.primary;
+    final canEditDetails = _notificationsEnabled;
 
     return Scaffold(
       appBar: AppBar(
@@ -232,29 +233,37 @@ class _PushPreferencesScreenState extends State<PushPreferencesScreen> {
                           setState(() => _notificationsEnabled = v),
                       isDark: isDark,
                     ),
-                    _buildDivider(isDark),
-                    _buildSwitchTile(
-                      icon: Icons.volume_up_outlined,
-                      titleKey: 'screen.profile.sound',
-                      titleFallback: 'Sound',
-                      subtitleKey: 'screen.profile.sound_subtitle',
-                      subtitleFallback: 'Enable sound effects',
-                      value: _soundEnabled,
-                      onChanged: (v) => setState(() => _soundEnabled = v),
-                      isDark: isDark,
-                    ),
-                    _buildDivider(isDark),
-                    _buildSwitchTile(
-                      icon: Icons.vibration,
-                      titleKey: 'screen.profile.vibration',
-                      titleFallback: 'Vibration',
-                      subtitleKey: 'screen.profile.vibration_subtitle',
-                      subtitleFallback: 'Enable haptic feedback',
-                      value: _vibrationEnabled,
-                      onChanged: (v) => setState(() => _vibrationEnabled = v),
-                      isDark: isDark,
-                    ),
                   ],
+                ),
+                SizedBox(height: 8.w),
+                _buildDisabledSection(
+                  enabled: canEditDetails,
+                  child: _buildPreferencesGroup(
+                    isDark: isDark,
+                    children: [
+                      _buildSwitchTile(
+                        icon: Icons.volume_up_outlined,
+                        titleKey: 'screen.profile.sound',
+                        titleFallback: 'Sound',
+                        subtitleKey: 'screen.profile.sound_subtitle',
+                        subtitleFallback: 'Enable sound effects',
+                        value: _soundEnabled,
+                        onChanged: (v) => setState(() => _soundEnabled = v),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.vibration,
+                        titleKey: 'screen.profile.vibration',
+                        titleFallback: 'Vibration',
+                        subtitleKey: 'screen.profile.vibration_subtitle',
+                        subtitleFallback: 'Enable haptic feedback',
+                        value: _vibrationEnabled,
+                        onChanged: (v) => setState(() => _vibrationEnabled = v),
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 24.w),
 
@@ -263,66 +272,72 @@ class _PushPreferencesScreenState extends State<PushPreferencesScreen> {
                   'Push categories',
                 ),
                 SizedBox(height: 8.w),
-                _buildPreferencesGroup(
-                  isDark: isDark,
-                  children: [
-                    _buildSwitchTile(
-                      icon: Icons.notifications_active_outlined,
-                      titleKey: 'screen.profile.push_categories.general',
-                      titleFallback: 'General',
-                      subtitleKey: 'screen.profile.push_categories.general_subtitle',
-                      subtitleFallback: 'General updates',
-                      value: _categoryGeneral,
-                      onChanged: (v) => setState(() => _categoryGeneral = v),
-                      isDark: isDark,
-                    ),
-                    _buildDivider(isDark),
-                    _buildSwitchTile(
-                      icon: Icons.campaign_outlined,
-                      titleKey: 'screen.profile.push_categories.marketing',
-                      titleFallback: 'Marketing',
-                      subtitleKey:
-                          'screen.profile.push_categories.marketing_subtitle',
-                      subtitleFallback: 'Promotions and announcements',
-                      value: _categoryMarketing,
-                      onChanged: (v) => setState(() => _categoryMarketing = v),
-                      isDark: isDark,
-                    ),
-                    _buildDivider(isDark),
-                    _buildSwitchTile(
-                      icon: Icons.show_chart,
-                      titleKey: 'screen.profile.push_categories.trading',
-                      titleFallback: 'Trading',
-                      subtitleKey: 'screen.profile.push_categories.trading_subtitle',
-                      subtitleFallback: 'Trading alerts and signals',
-                      value: _categoryTrading,
-                      onChanged: (v) => setState(() => _categoryTrading = v),
-                      isDark: isDark,
-                    ),
-                    _buildDivider(isDark),
-                    _buildSwitchTile(
-                      icon: Icons.security,
-                      titleKey: 'screen.profile.push_categories.security',
-                      titleFallback: 'Security',
-                      subtitleKey:
-                          'screen.profile.push_categories.security_subtitle',
-                      subtitleFallback: 'Login and security alerts',
-                      value: _categorySecurity,
-                      onChanged: (v) => setState(() => _categorySecurity = v),
-                      isDark: isDark,
-                    ),
-                    _buildDivider(isDark),
-                    _buildSwitchTile(
-                      icon: Icons.settings,
-                      titleKey: 'screen.profile.push_categories.system',
-                      titleFallback: 'System',
-                      subtitleKey: 'screen.profile.push_categories.system_subtitle',
-                      subtitleFallback: 'System notices',
-                      value: _categorySystem,
-                      onChanged: (v) => setState(() => _categorySystem = v),
-                      isDark: isDark,
-                    ),
-                  ],
+                _buildDisabledSection(
+                  enabled: canEditDetails,
+                  child: _buildPreferencesGroup(
+                    isDark: isDark,
+                    children: [
+                      _buildSwitchTile(
+                        icon: Icons.notifications_active_outlined,
+                        titleKey: 'screen.profile.push_categories.general',
+                        titleFallback: 'General',
+                        subtitleKey:
+                            'screen.profile.push_categories.general_subtitle',
+                        subtitleFallback: 'General updates',
+                        value: _categoryGeneral,
+                        onChanged: (v) => setState(() => _categoryGeneral = v),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.campaign_outlined,
+                        titleKey: 'screen.profile.push_categories.marketing',
+                        titleFallback: 'Marketing',
+                        subtitleKey:
+                            'screen.profile.push_categories.marketing_subtitle',
+                        subtitleFallback: 'Promotions and announcements',
+                        value: _categoryMarketing,
+                        onChanged: (v) => setState(() => _categoryMarketing = v),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.show_chart,
+                        titleKey: 'screen.profile.push_categories.trading',
+                        titleFallback: 'Trading',
+                        subtitleKey:
+                            'screen.profile.push_categories.trading_subtitle',
+                        subtitleFallback: 'Trading alerts and signals',
+                        value: _categoryTrading,
+                        onChanged: (v) => setState(() => _categoryTrading = v),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.security,
+                        titleKey: 'screen.profile.push_categories.security',
+                        titleFallback: 'Security',
+                        subtitleKey:
+                            'screen.profile.push_categories.security_subtitle',
+                        subtitleFallback: 'Login and security alerts',
+                        value: _categorySecurity,
+                        onChanged: (v) => setState(() => _categorySecurity = v),
+                        isDark: isDark,
+                      ),
+                      _buildDivider(isDark),
+                      _buildSwitchTile(
+                        icon: Icons.settings,
+                        titleKey: 'screen.profile.push_categories.system',
+                        titleFallback: 'System',
+                        subtitleKey:
+                            'screen.profile.push_categories.system_subtitle',
+                        subtitleFallback: 'System notices',
+                        value: _categorySystem,
+                        onChanged: (v) => setState(() => _categorySystem = v),
+                        isDark: isDark,
+                      ),
+                    ],
+                  ),
                 ),
                 SizedBox(height: 24.w),
 
@@ -555,6 +570,19 @@ class _PushPreferencesScreenState extends State<PushPreferencesScreen> {
       thickness: 0.5.w,
       indent: 68.w,
       color: isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.15),
+    );
+  }
+
+  Widget _buildDisabledSection({
+    required bool enabled,
+    required Widget child,
+  }) {
+    if (enabled) return child;
+    return IgnorePointer(
+      child: Opacity(
+        opacity: 0.5,
+        child: child,
+      ),
     );
   }
 }
