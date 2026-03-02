@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   IconPlus,
   IconTrash,
   IconRefresh,
+  IconSearch,
   IconChartLine,
   IconCalendar,
   IconTrendingUp,
@@ -128,6 +129,7 @@ export default function BacktestPage() {
   const [_equityPoints, setEquityPoints] = useState<EquityPoint[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
+  const [symbolSearch, setSymbolSearch] = useState('');
 
   const [formData, setFormData] = useState({
     startDate: '',
@@ -393,7 +395,15 @@ export default function BacktestPage() {
     (c) => c.bestResult && parseFloat(c.bestResult.totalReturn) > 0,
   ).length;
 
-  const availablePairs = getTradingPairsForExchange(formData.exchange);
+  const availablePairs = useMemo(() => {
+    const pairs = getTradingPairsForExchange(formData.exchange);
+    if (!symbolSearch) return pairs;
+    const search = symbolSearch.toLowerCase();
+    return pairs.filter(
+      (p) =>
+        p.name.toLowerCase().includes(search) || p.symbol.toLowerCase().includes(search),
+    );
+  }, [formData.exchange, symbolSearch]);
 
   return (
     <SidebarInset>
@@ -475,6 +485,17 @@ export default function BacktestPage() {
 
                       <div className="space-y-2">
                         <Label>{t('fields.tradingPairs')}</Label>
+                        <div className="relative">
+                          <IconSearch className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder={
+                              t('filters.searchPlaceholder') || 'Search symbols...'
+                            }
+                            value={symbolSearch}
+                            onChange={(e) => setSymbolSearch(e.target.value)}
+                            className="pl-8 h-9 mb-2"
+                          />
+                        </div>
                         <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
                           {availablePairs.map((pair) => (
                             <label
@@ -502,13 +523,6 @@ export default function BacktestPage() {
                                 className="rounded"
                               />
                               <span className="text-sm font-medium">{pair.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                (
-                                {pair.type === 'perpetual'
-                                  ? t('pairTypes.perp')
-                                  : t('pairTypes.spot')}
-                                )
-                              </span>
                             </label>
                           ))}
                         </div>

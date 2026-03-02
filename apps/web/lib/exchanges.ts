@@ -144,7 +144,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'BTC/USDT',
     base: 'BTC',
     quote: 'USDT',
-    name: 'Bitcoin',
+    name: 'BTC/USDT (Spot)',
     type: 'spot',
     exchange: 'binance,okx',
   },
@@ -152,7 +152,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'ETH/USDT',
     base: 'ETH',
     quote: 'USDT',
-    name: 'Ethereum',
+    name: 'ETH/USDT (Spot)',
     type: 'spot',
     exchange: 'binance,okx',
   },
@@ -160,7 +160,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'BNB/USDT',
     base: 'BNB',
     quote: 'USDT',
-    name: 'BNB',
+    name: 'BNB/USDT (Spot)',
     type: 'spot',
     exchange: 'binance,okx',
   },
@@ -168,7 +168,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'SOL/USDT',
     base: 'SOL',
     quote: 'USDT',
-    name: 'Solana',
+    name: 'SOL/USDT (Spot)',
     type: 'spot',
     exchange: 'binance,okx',
   },
@@ -178,7 +178,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'BTC/USDC',
     base: 'BTC',
     quote: 'USDC',
-    name: 'Bitcoin',
+    name: 'BTC/USDC (Spot)',
     type: 'spot',
     exchange: 'binance,coinbase,okx',
   },
@@ -186,7 +186,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'ETH/USDC',
     base: 'ETH',
     quote: 'USDC',
-    name: 'Ethereum',
+    name: 'ETH/USDC (Spot)',
     type: 'spot',
     exchange: 'binance,coinbase,okx',
   },
@@ -196,7 +196,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'BTC/USDT:USDT',
     base: 'BTC',
     quote: 'USDT',
-    name: 'Bitcoin Perp',
+    name: 'BTC/USDT (Futures)',
     type: 'perpetual',
     exchange: 'binance,okx',
   },
@@ -204,7 +204,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'ETH/USDT:USDT',
     base: 'ETH',
     quote: 'USDT',
-    name: 'Ethereum Perp',
+    name: 'ETH/USDT (Futures)',
     type: 'perpetual',
     exchange: 'binance,okx',
   },
@@ -212,7 +212,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'SOL/USDT:USDT',
     base: 'SOL',
     quote: 'USDT',
-    name: 'Solana Perp',
+    name: 'SOL/USDT (Futures)',
     type: 'perpetual',
     exchange: 'binance,okx',
   },
@@ -222,7 +222,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'BTC/USDC:USDC',
     base: 'BTC',
     quote: 'USDC',
-    name: 'Bitcoin Perp',
+    name: 'BTC/USDC (Futures)',
     type: 'perpetual',
     exchange: 'binance,coinbase,okx',
   },
@@ -230,7 +230,7 @@ export const COMMON_TRADING_PAIRS = [
     symbol: 'ETH/USDC:USDC',
     base: 'ETH',
     quote: 'USDC',
-    name: 'Ethereum Perp',
+    name: 'ETH/USDC (Futures)',
     type: 'perpetual',
     exchange: 'binance,coinbase,okx',
   },
@@ -262,11 +262,13 @@ export function getTradingPairsForExchange(exchangeId: ExchangeId): TradingPair[
     return [
       ...pre,
       ...SUPPORTED_BASE_CURRENCIES.map((base) => {
+        const symbol = `${base}/${quote}:${quote}`;
+        const displaySymbol = getDisplaySymbol(symbol, exchangeId);
         return {
           type: 'perpetual' as const,
           exchange: exchangeId,
-          symbol: `${base}/${quote}:${quote}`,
-          name: `${base} Perp`,
+          symbol,
+          name: displaySymbol,
           base,
           quote,
         };
@@ -277,11 +279,13 @@ export function getTradingPairsForExchange(exchangeId: ExchangeId): TradingPair[
     return [
       ...acc,
       ...SUPPORTED_BASE_CURRENCIES.map((base) => {
+        const symbol = `${base}/${quote}`;
+        const displaySymbol = getDisplaySymbol(symbol, exchangeId);
         return {
           type: 'spot' as const,
           exchange: exchangeId,
-          symbol: `${base}/${quote}`,
-          name: `${base}`,
+          symbol,
+          name: displaySymbol,
           base,
           quote,
         };
@@ -387,12 +391,10 @@ export function getDisplaySymbol(symbol: string, exchangeId: string): string {
 
   switch (exchange) {
     case 'binance': {
-      // Binance: BTCUSDT for both spot and perpetual
-      if (isPerpetual) {
-        const [pair] = upperSymbol.split(':');
-        return pair.replace('/', '').replace(/-/g, '');
-      }
-      return upperSymbol.replace('/', '').replace(/-/g, '');
+      // Binance: BTCUSDT for both spot and perpetual in API,
+      // but we add suffixes to differentiate in UI as requested.
+      const clean = upperSymbol.split(':')[0].replace('/', '').replace(/-/g, '');
+      return isPerpetual ? `${clean} (Perp)` : `${clean} (Spot)`;
     }
 
     case 'okx': {

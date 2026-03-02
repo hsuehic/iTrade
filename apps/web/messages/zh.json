@@ -605,10 +605,10 @@
     "title": "市场",
     "meta": {
       "title": "市场",
-      "description": "实时永续合约市场数据、资金费率与价格变化"
+      "description": "实时永续市场数据、资金费率和价格变动"
     },
     "dashboard": {
-      "title": "永续合约",
+      "title": "永续",
       "status": {
         "live": "实时",
         "connecting": "连接中..."
@@ -675,11 +675,11 @@
       }
     },
     "perpetuals": {
-      "title": "永续合约",
+      "title": "永续",
       "marketCount": "{count} 个市场",
       "searchPlaceholder": "搜索...",
       "filters": {
-        "all": "全部永续合约",
+        "all": "所有永续合约",
         "gainers": "仅涨幅",
         "losers": "仅跌幅",
         "volume": "高成交量 (>$100M)",
@@ -1062,7 +1062,7 @@
       "1d": "1 天"
     },
     "pairTypes": {
-      "perp": "永续",
+      "perp": "期货",
       "spot": "现货"
     },
     "stats": {
@@ -1294,7 +1294,7 @@
       "exchangeSingleHint": "选择你的交易平台",
       "tradingPair": "交易对",
       "tradingPairPlaceholder": "选择交易对",
-      "perpLabel": "⚡ 永续",
+      "perpLabel": "⚡ 期货",
       "spotLabel": "💼 现货",
       "symbolFormat": "格式：",
       "symbolNormalized": "后端会自动规范化",

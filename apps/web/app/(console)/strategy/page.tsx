@@ -56,6 +56,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { JsonEditor } from '@/components/json-editor';
+import { SymbolSelector } from '@/components/strategy/symbol-selector';
 import { StrategyParameterFormDynamic } from '@/components/strategy-parameter-form-dynamic';
 import { ExchangeLogo } from '@/components/exchange-logo';
 import { SymbolIcon } from '@/components/symbol-icon';
@@ -67,7 +68,6 @@ import { SubscriptionConfigForm } from '@/components/strategy/SubscriptionConfig
 import {
   SUPPORTED_EXCHANGES,
   getSymbolFormatHint,
-  getCryptoIconUrl,
   getTradingPairsForExchange,
   getDefaultTradingPair,
   ExchangeId,
@@ -948,50 +948,18 @@ export default function StrategyPage() {
                                   {t('fields.tradingPair')}{' '}
                                   <span className="text-red-500">*</span>
                                 </Label>
-                                <Select
+                                <SymbolSelector
                                   value={formData.symbol}
                                   onValueChange={(value) =>
                                     setFormData({ ...formData, symbol: value })
                                   }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue
-                                      placeholder={t('fields.tradingPairPlaceholder')}
-                                    />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {getTradingPairsForExchange(
-                                      (Array.isArray(formData.exchange)
-                                        ? formData.exchange[0]
-                                        : formData.exchange) as ExchangeId,
-                                    ).map((pair) => (
-                                      <SelectItem key={pair.symbol} value={pair.symbol}>
-                                        <div className="flex items-center gap-2">
-                                          <Image
-                                            src={getCryptoIconUrl(pair.base)}
-                                            alt={pair.base}
-                                            width={16}
-                                            height={16}
-                                            className="w-4 h-4 rounded-full"
-                                            onError={(e) => {
-                                              (
-                                                e.target as HTMLImageElement
-                                              ).style.display = 'none';
-                                            }}
-                                          />
-                                          <span className="font-medium">{pair.name}</span>
-                                          <span className="text-xs text-muted-foreground">
-                                            (
-                                            {pair.type === 'perpetual'
-                                              ? t('fields.perpLabel')
-                                              : t('fields.spotLabel')}
-                                            )
-                                          </span>
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  pairs={getTradingPairsForExchange(
+                                    (Array.isArray(formData.exchange)
+                                      ? formData.exchange[0]
+                                      : formData.exchange) as ExchangeId,
+                                  )}
+                                  placeholder={t('fields.tradingPairPlaceholder')}
+                                />
                                 <p className="text-xs text-muted-foreground">
                                   {t('fields.symbolFormat')}{' '}
                                   {getSymbolFormatHint(

@@ -605,10 +605,10 @@
     "title": "Market",
     "meta": {
       "title": "Market",
-      "description": "Real-time perpetual futures market data, funding rates, and price movements"
+      "description": "Real-time perp market data, funding rates, and price movements"
     },
     "dashboard": {
-      "title": "Perpetual Futures",
+      "title": "Perp",
       "status": {
         "live": "Live",
         "connecting": "Connecting..."
@@ -675,11 +675,11 @@
       }
     },
     "perpetuals": {
-      "title": "Perpetual Futures",
+      "title": "Perp",
       "marketCount": "{count} markets",
       "searchPlaceholder": "Search...",
       "filters": {
-        "all": "All Perpetuals",
+        "all": "All Perps",
         "gainers": "Gainers Only",
         "losers": "Losers Only",
         "volume": "High Volume (>$100M)",
@@ -1062,7 +1062,7 @@
       "1d": "1 Day"
     },
     "pairTypes": {
-      "perp": "Perp",
+      "perp": "Futures",
       "spot": "Spot"
     },
     "stats": {
@@ -1303,7 +1303,7 @@
       "exchangeSingleHint": "Select your trading platform",
       "tradingPair": "Trading Pair",
       "tradingPairPlaceholder": "Select trading pair",
-      "perpLabel": "⚡ Perp",
+      "perpLabel": "⚡ Futures",
       "spotLabel": "💼 Spot",
       "symbolFormat": "Format:",
       "symbolNormalized": "Backend normalizes automatically",
