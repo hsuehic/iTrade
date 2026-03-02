@@ -114,8 +114,8 @@ export const SUPPORTED_BASE_CURRENCIES = [
 ] as const;
 
 export const SUPPORTED_QUOTE_CURRENCIES = {
-  binance: ['USDT'],
-  okx: ['USDT'],
+  binance: ['USDT', 'USDC'],
+  okx: ['USDT', 'USDC'],
   coinbase: ['USDC'],
 } as const;
 
@@ -180,7 +180,7 @@ export const COMMON_TRADING_PAIRS = [
     quote: 'USDC',
     name: 'Bitcoin',
     type: 'spot',
-    exchange: 'coinbase',
+    exchange: 'binance,coinbase,okx',
   },
   {
     symbol: 'ETH/USDC',
@@ -188,7 +188,7 @@ export const COMMON_TRADING_PAIRS = [
     quote: 'USDC',
     name: 'Ethereum',
     type: 'spot',
-    exchange: 'coinbase',
+    exchange: 'binance,coinbase,okx',
   },
 
   // Perpetual contracts - USDT-based (Binance/OKX)
@@ -224,7 +224,7 @@ export const COMMON_TRADING_PAIRS = [
     quote: 'USDC',
     name: 'Bitcoin Perp',
     type: 'perpetual',
-    exchange: 'coinbase',
+    exchange: 'binance,coinbase,okx',
   },
   {
     symbol: 'ETH/USDC:USDC',
@@ -232,7 +232,7 @@ export const COMMON_TRADING_PAIRS = [
     quote: 'USDC',
     name: 'Ethereum Perp',
     type: 'perpetual',
-    exchange: 'coinbase',
+    exchange: 'binance,coinbase,okx',
   },
 ] as const;
 
