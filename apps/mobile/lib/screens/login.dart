@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_svg/svg.dart';
@@ -11,6 +12,8 @@ import '../constant/network.dart';
 import '../design/extensions/spacing_extension.dart';
 import '../services/api_client.dart';
 import '../services/app_bootstrap.dart';
+import '../services/copy_service.dart';
+import '../services/dynamic_config_service.dart';
 import '../services/preference.dart';
 import '../utils/responsive_layout.dart';
 import '../widgets/copy_text.dart';
@@ -417,9 +420,18 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: isTablet
-            ? _buildTabletLayout(theme, spacing, isDark)
-            : _buildPhoneLayout(theme, spacing, isDark),
+        child: Stack(
+          children: [
+            isTablet
+                ? _buildTabletLayout(theme, spacing, isDark)
+                : _buildPhoneLayout(theme, spacing, isDark),
+            Positioned(
+              top: 8.w,
+              right: 12.w,
+              child: _buildLanguageEntry(theme, isDark, isOverlay: true),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -591,7 +603,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 48,
                     child: FilledButton(
                       onPressed: _loading ? null : _handleCredentialLogin,
-                      child: Text(_loading ? 'Signing in...' : 'Sign In'),
+                      child: _loading
+                          ? const CopyText(
+                              'screen.login.signing_in',
+                              fallback: 'Signing in...',
+                            )
+                          : const CopyText(
+                              'screen.login.sign_in',
+                              fallback: 'Sign In',
+                            ),
                     ),
                   ),
 
@@ -984,13 +1004,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Text(
-                    _loading ? 'Signing in...' : 'Sign In',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: _loading
+                      ? const CopyText(
+                          'screen.login.signing_in',
+                          fallback: 'Signing in...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      : const CopyText(
+                          'screen.login.sign_in',
+                          fallback: 'Sign In',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                 ),
               ),
 
@@ -1086,5 +1116,173 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildLanguageEntry(
+    ThemeData theme,
+    bool isDark, {
+    bool isOverlay = false,
+  }) {
+    final copy = CopyService.instance;
+    final localeTag = _resolveLocaleTag(copy.localeOverride, copy.locale);
+    final subtitleKey = _localeLabelKey(localeTag);
+    final subtitleFallback = _localeLabelFallback(localeTag, copy);
+    return Material(
+      color: Colors.transparent,
+      child: TextButton(
+        onPressed: _loading ? null : () => _showLanguageSheet(context),
+        style: TextButton.styleFrom(
+          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.w),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.language_outlined,
+              size: 18.w,
+              color: theme.colorScheme.primary,
+            ),
+            SizedBox(width: 6.w),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CopyText(
+                  'settings_language',
+                  fallback: 'Language',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontSize: isOverlay ? 11.sp : 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                CopyText(
+                  subtitleKey,
+                  fallback: subtitleFallback,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontSize: isOverlay ? 10.sp : 11.sp,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showLanguageSheet(BuildContext context) async {
+    final copy = CopyService.instance;
+    final selected = copy.localeOverride == null
+        ? 'system'
+        : _formatLocaleTag(copy.locale);
+    final tags = copy.supportedLocales.map(_formatLocaleTag).toSet().toList()
+      ..sort();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) {
+        return CupertinoActionSheet(
+          title: const CopyText('settings_language', fallback: 'Language'),
+          actions: [
+            _buildActionSheetAction(
+              selected: selected == 'system',
+              titleKey: 'language_system_default',
+              fallback: copy.t('language_system_default', fallback: 'System'),
+              onPressed: () async {
+                await CopyService.instance.setLocaleOverride(null);
+                unawaited(DynamicConfigService.instance.refresh(force: true));
+                if (context.mounted) Navigator.of(context).pop();
+              },
+            ),
+            for (final tag in tags)
+              _buildActionSheetAction(
+                selected: selected == tag,
+                titleKey: _localeLabelKey(tag),
+                fallback: _localeLabelFallback(tag, copy),
+                onPressed: () async {
+                  await CopyService.instance.setLocaleOverride(
+                    _parseLocaleTag(tag),
+                  );
+                  unawaited(DynamicConfigService.instance.refresh(force: true));
+                  if (context.mounted) Navigator.of(context).pop();
+                },
+              ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const CopyText('common.cancel', fallback: 'Cancel'),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildActionSheetAction({
+    required bool selected,
+    required String titleKey,
+    required String fallback,
+    required VoidCallback onPressed,
+  }) {
+    return CupertinoActionSheetAction(
+      onPressed: onPressed,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: CopyText(
+              titleKey,
+              fallback: fallback,
+            ),
+          ),
+          if (selected) Icon(CupertinoIcons.check_mark, size: 18.w),
+        ],
+      ),
+    );
+  }
+
+  String _resolveLocaleTag(Locale? override, Locale fallback) {
+    return override == null ? 'system' : _formatLocaleTag(override);
+  }
+
+  String _localeLabelKey(String tag) {
+    if (tag == 'system') {
+      return 'language_system_default';
+    }
+    if (tag.startsWith('en')) {
+      return 'language.name.en';
+    }
+    if (tag.startsWith('zh')) {
+      return 'language.name.zh_hans';
+    }
+    return 'language.name.$tag';
+  }
+
+  String _localeLabelFallback(String tag, CopyService copy) {
+    if (tag == 'system') {
+      return copy.t('language_system_default', fallback: 'System');
+    }
+    if (tag.startsWith('en')) {
+      return copy.t('language.name.en', fallback: 'English');
+    }
+    if (tag.startsWith('zh')) {
+      return copy.t('language.name.zh_hans', fallback: '中文');
+    }
+    return tag;
+  }
+
+  String _formatLocaleTag(Locale locale) {
+    if (locale.countryCode == null || locale.countryCode!.isEmpty) {
+      return locale.languageCode;
+    }
+    return '${locale.languageCode}-${locale.countryCode}';
+  }
+
+  Locale _parseLocaleTag(String raw) {
+    final normalized = raw.replaceAll('_', '-');
+    final parts = normalized.split('-');
+    if (parts.isEmpty) return const Locale('en');
+    if (parts.length == 1) return Locale(parts[0]);
+    return Locale(parts[0], parts[1]);
   }
 }
