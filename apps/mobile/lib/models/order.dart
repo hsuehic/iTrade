@@ -73,7 +73,9 @@ class Order {
       timeInForce: json['timeInForce'] as String?,
       timestamp: DateTime.parse(json['timestamp'] as String),
       executedQuantity: _parseDouble(json['executedQuantity']),
-      cummulativeQuoteQuantity: _parseDoubleOrNull(json['cummulativeQuoteQuantity']),
+      cummulativeQuoteQuantity: _parseDoubleOrNull(
+        json['cummulativeQuoteQuantity'],
+      ),
       updateTime: json['updateTime'] != null
           ? DateTime.parse(json['updateTime'] as String)
           : null,
@@ -112,14 +114,14 @@ class Order {
     }
     return symbol;
   }
-  
+
   /// Check if this is a perpetual/swap contract
   bool get isPerpetual {
-    return symbol.contains('SWAP') || 
-           symbol.contains(':USDT') || 
-           symbol.contains('PERP');
+    return symbol.contains('SWAP') ||
+        symbol.contains(':USDT') ||
+        symbol.contains('PERP');
   }
-  
+
   /// Get a display-friendly symbol with contract type indicator
   String get displaySymbol {
     final base = baseCurrency;
@@ -130,3 +132,47 @@ class Order {
   }
 }
 
+/// Paginated result for orders
+class PaginatedOrders {
+  final List<Order> orders;
+  final int total;
+  final int page;
+  final int pageSize;
+
+  PaginatedOrders({
+    required this.orders,
+    required this.total,
+    required this.page,
+    required this.pageSize,
+  });
+
+  factory PaginatedOrders.fromJson(Map<String, dynamic> json) {
+    // API returns { orders: [...], pagination: { total, page, pageSize } }
+    final ordersData = json['orders'];
+    final List<Order> orders = [];
+    if (ordersData is List) {
+      for (final item in ordersData) {
+        if (item is Map<String, dynamic>) {
+          orders.add(Order.fromJson(item));
+        }
+      }
+    }
+
+    final pagination = json['pagination'];
+    if (pagination is Map<String, dynamic>) {
+      return PaginatedOrders(
+        orders: orders,
+        total: (pagination['total'] as num?)?.toInt() ?? 0,
+        page: (pagination['page'] as num?)?.toInt() ?? 1,
+        pageSize: (pagination['pageSize'] as num?)?.toInt() ?? orders.length,
+      );
+    }
+
+    return PaginatedOrders(
+      orders: orders,
+      total: orders.length,
+      page: 1,
+      pageSize: orders.length,
+    );
+  }
+}

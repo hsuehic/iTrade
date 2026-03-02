@@ -27,7 +27,6 @@ import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   SortingState,
   useReactTable,
@@ -299,6 +298,11 @@ export function OrdersTable({
   const [editTouched, setEditTouched] = React.useState<Record<string, boolean>>({});
   const [editSubmitAttempted, setEditSubmitAttempted] = React.useState(false);
   const [isEditing, setIsEditing] = React.useState(false);
+  const [{ pageIndex, pageSize }, setPagination] = React.useState({
+    pageIndex: 0,
+    pageSize: 20,
+  });
+  const [totalCount, setTotalCount] = React.useState(0);
 
   const getStatusLabel = React.useCallback(
     (status: string) => {
@@ -373,6 +377,13 @@ export function OrdersTable({
         params.set('startDate', startDate.toISOString());
       }
 
+      params.set('page', (pageIndex + 1).toString());
+      params.set('pageSize', pageSize.toString());
+
+      if (selectedStatus !== 'all') params.set('status', selectedStatus);
+      if (selectedSide !== 'all') params.set('side', selectedSide);
+      if (selectedType !== 'all') params.set('type', selectedType);
+
       const response = await fetch(`/api/orders?${params.toString()}`);
 
       if (response.ok) {
@@ -391,6 +402,7 @@ export function OrdersTable({
           takeProfit: order.takeProfit?.toString(),
         }));
         setOrders(ordersData);
+        setTotalCount(data.pagination?.total || ordersData.length);
 
         // Extract unique exchanges
         const uniqueExchanges = [
@@ -404,7 +416,17 @@ export function OrdersTable({
     } finally {
       setLoading(false);
     }
-  }, [datePreset, selectedExchange, selectedStrategy, t]);
+  }, [
+    datePreset,
+    selectedExchange,
+    selectedStrategy,
+    pageIndex,
+    pageSize,
+    selectedStatus,
+    selectedSide,
+    selectedType,
+    t,
+  ]);
 
   const debouncedEditForm = useDebouncedValue(editForm, 500);
 
@@ -918,23 +940,24 @@ export function OrdersTable({
   const table = useReactTable({
     data: orders,
     columns,
+    pageCount: Math.ceil(totalCount / pageSize),
     state: {
       sorting,
       columnFilters,
       globalFilter,
+      pagination: {
+        pageIndex,
+        pageSize,
+      },
     },
+    onPaginationChange: setPagination,
+    manualPagination: true,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    initialState: {
-      pagination: {
-        pageSize: 20,
-      },
-    },
   });
 
   // Apply column filters
@@ -1361,9 +1384,9 @@ export function OrdersTable({
                   end: Math.min(
                     (table.getState().pagination.pageIndex + 1) *
                       table.getState().pagination.pageSize,
-                    table.getFilteredRowModel().rows.length,
+                    totalCount,
                   ),
-                  total: table.getFilteredRowModel().rows.length,
+                  total: totalCount,
                 })}
               </div>
               <Select

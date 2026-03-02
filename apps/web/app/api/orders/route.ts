@@ -175,17 +175,25 @@ export async function GET(request: NextRequest) {
     const symbol = searchParams.get('symbol');
     const exchange = searchParams.get('exchange');
     const status = searchParams.get('status');
+    const side = searchParams.get('side');
+    const type = searchParams.get('type');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const page = searchParams.get('page');
+    const pageSize = searchParams.get('pageSize');
 
     interface OrderFilters {
       strategyId?: number;
       symbol?: string;
       exchange?: string;
       status?: string;
+      side?: string;
+      type?: string;
       startDate?: Date;
       endDate?: Date;
       userId?: string;
+      page?: number;
+      pageSize?: number;
     }
 
     const filters: OrderFilters = {};
@@ -199,14 +207,25 @@ export async function GET(request: NextRequest) {
     if (symbol) filters.symbol = symbol;
     if (exchange) filters.exchange = exchange;
     if (status) filters.status = status;
+    if (side) filters.side = side;
+    if (type) filters.type = type;
     if (startDate) filters.startDate = new Date(startDate);
     if (endDate) filters.endDate = new Date(endDate);
+    if (page) filters.page = parseInt(page);
+    if (pageSize) filters.pageSize = parseInt(pageSize);
     filters.userId = session.user.id;
 
     const dataManager = await getDataManager();
-    const orders = await dataManager.getOrders(filters);
+    const { orders, total } = await dataManager.getPaginatedOrders(filters);
 
-    return NextResponse.json({ orders });
+    return NextResponse.json({
+      orders,
+      pagination: {
+        total,
+        page: filters.page || 1,
+        pageSize: filters.pageSize || orders.length,
+      },
+    });
   } catch (error) {
     console.error('Failed to fetch orders:', error);
     return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });

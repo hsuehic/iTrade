@@ -15,21 +15,30 @@ class OrderService {
     String? symbol,
     String? exchange,
     String? status,
+    String? side,
+    String? type,
     DateTime? startDate,
     DateTime? endDate,
+    int? page,
+    int? pageSize,
   }) async {
     try {
       final Map<String, dynamic> queryParams = {};
       if (strategyId != null) queryParams['strategyId'] = strategyId;
       if (symbol != null) queryParams['symbol'] = symbol;
-      if (exchange != null && exchange != 'all') queryParams['exchange'] = exchange;
+      if (exchange != null && exchange != 'all')
+        queryParams['exchange'] = exchange;
       if (status != null) queryParams['status'] = status;
+      if (side != null) queryParams['side'] = side;
+      if (type != null) queryParams['type'] = type;
       if (startDate != null) {
         queryParams['startDate'] = startDate.toIso8601String();
       }
       if (endDate != null) {
         queryParams['endDate'] = endDate.toIso8601String();
       }
+      if (page != null) queryParams['page'] = page;
+      if (pageSize != null) queryParams['pageSize'] = pageSize;
 
       final Response response = await _apiClient.getJson(
         '/api/orders',
@@ -60,8 +69,53 @@ class OrderService {
       }
       return [];
     } catch (e) {
-            // Return empty list on error
+      // Return empty list on error
       return [];
+    }
+  }
+
+  /// Fetch paginated orders
+  Future<PaginatedOrders?> getPaginatedOrders({
+    int? strategyId,
+    String? symbol,
+    String? exchange,
+    String? status,
+    String? side,
+    String? type,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? page,
+    int? pageSize,
+  }) async {
+    try {
+      final Map<String, dynamic> queryParams = {};
+      if (strategyId != null) queryParams['strategyId'] = strategyId;
+      if (symbol != null) queryParams['symbol'] = symbol;
+      if (exchange != null && exchange != 'all')
+        queryParams['exchange'] = exchange;
+      if (status != null) queryParams['status'] = status;
+      if (side != null) queryParams['side'] = side;
+      if (type != null) queryParams['type'] = type;
+      if (startDate != null) {
+        queryParams['startDate'] = startDate.toIso8601String();
+      }
+      if (endDate != null) {
+        queryParams['endDate'] = endDate.toIso8601String();
+      }
+      if (page != null) queryParams['page'] = page;
+      if (pageSize != null) queryParams['pageSize'] = pageSize;
+
+      final Response response = await _apiClient.getJson(
+        '/api/orders',
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        return PaginatedOrders.fromJson(response.data as Map<String, dynamic>);
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -75,7 +129,7 @@ class OrderService {
       }
       return null;
     } catch (e) {
-            return null;
+      return null;
     }
   }
 
@@ -139,9 +193,7 @@ class OrderService {
   /// Cancel an open order by ID
   Future<Order?> cancelOrder(String id) async {
     try {
-      final Response response = await _apiClient.delete(
-        '/api/orders/$id',
-      );
+      final Response response = await _apiClient.delete('/api/orders/$id');
 
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final orderData = response.data['order'];
@@ -183,4 +235,3 @@ class OrderService {
     }
   }
 }
-

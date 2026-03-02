@@ -47,12 +47,16 @@ export class OrderRepository {
     symbol?: string;
     exchange?: string;
     status?: string;
+    side?: string;
+    type?: string;
     startDate?: Date;
     endDate?: Date;
     userId?: string;
     includeStrategy?: boolean;
     includeFills?: boolean;
-  }): Promise<OrderEntity[]> {
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ orders: OrderEntity[]; total: number }> {
     const query = this.repository.createQueryBuilder('order');
 
     // Only join if explicitly requested (performance optimization)
@@ -73,6 +77,12 @@ export class OrderRepository {
     }
     if (filters?.exchange) {
       query.andWhere('order.exchange = :exchange', { exchange: filters.exchange });
+    }
+    if (filters?.side) {
+      query.andWhere('order.side = :side', { side: filters.side });
+    }
+    if (filters?.type) {
+      query.andWhere('order.type = :type', { type: filters.type });
     }
     if (filters?.status) {
       if (filters.status === 'OPEN') {
@@ -109,7 +119,17 @@ export class OrderRepository {
       );
     }
 
+    const pageSize = filters?.pageSize || 0;
+    const page = filters?.page || 1;
+
+    if (pageSize > 0) {
+      query.skip((page - 1) * pageSize).take(pageSize);
+    }
+
     // Add cache for better performance
-    return await query.orderBy('order.timestamp', 'DESC').getMany();
+    const [orders, total] = await query
+      .orderBy('order.timestamp', 'DESC')
+      .getManyAndCount();
+    return { orders, total };
   }
 }

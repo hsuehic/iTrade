@@ -925,12 +925,36 @@ export class TypeOrmDataManager implements IDataManager {
     symbol?: string;
     exchange?: string;
     status?: string;
+    side?: string;
+    type?: string;
     startDate?: Date;
     endDate?: Date;
     userId?: string;
     includeStrategy?: boolean;
     includeFills?: boolean;
+    page?: number;
+    pageSize?: number;
   }): Promise<OrderEntity[]> {
+    this.ensureInitialized();
+    const { orders } = await this.orderRepository.findAll(filters);
+    return orders;
+  }
+
+  async getPaginatedOrders(filters?: {
+    strategyId?: number;
+    symbol?: string;
+    exchange?: string;
+    status?: string;
+    side?: string;
+    type?: string;
+    startDate?: Date;
+    endDate?: Date;
+    userId?: string;
+    includeStrategy?: boolean;
+    includeFills?: boolean;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ orders: OrderEntity[]; total: number }> {
     this.ensureInitialized();
     return await this.orderRepository.findAll(filters);
   }

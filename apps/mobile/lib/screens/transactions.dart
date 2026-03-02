@@ -29,33 +29,104 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   final Set<String> _processingOrders = {};
 
   List<Order> _orders = [];
-  bool _isLoading = true;
+  bool _isLoading = false;
   _SortField _sortField = _SortField.createdTime;
   bool _sortAscending = false;
   String _query = '';
   Tag _currentFilter = Tag(name: 'All', value: 'all');
 
+  // Pagination state
+  int _currentPage = 1;
+  static const int _pageSize = 20;
+  int _totalCount = 0;
+  bool _hasMore = false;
+  bool _isMoreLoading = false;
+  ScrollController? _scrollController;
+
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
+    _scrollController?.addListener(_onScroll);
     _loadOrders();
   }
 
-  Future<void> _loadOrders() async {
-    if (mounted) {
-      setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _scrollController?.removeListener(_onScroll);
+    _scrollController?.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final controller = _scrollController;
+    if (controller == null || !controller.hasClients) return;
+    final maxScroll = controller.position.maxScrollExtent;
+    final currentScroll = controller.position.pixels;
+    if (currentScroll >= maxScroll - 200) {
+      _loadMore();
     }
-    try {
-      final orders = await _orderService.getOrders();
-      if (!mounted) return;
+  }
+
+  Future<void> _loadOrders({bool refresh = true}) async {
+    if (!mounted) return;
+
+    if (refresh) {
       setState(() {
-        _orders = orders;
-        _isLoading = false;
+        _isLoading = true;
+        _currentPage = 1;
+        _orders = [];
+        _hasMore = false;
+        _isMoreLoading = false;
       });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
+    } else {
+      if (_isMoreLoading) return;
+      setState(() => _isMoreLoading = true);
     }
+
+    try {
+      String? statusFilter;
+      if (_currentFilter.value == 'cancelled') {
+        statusFilter = 'CANCELED';
+      } else if (_currentFilter.value != 'all') {
+        statusFilter = _currentFilter.value.toUpperCase();
+      }
+
+      final paginated = await _orderService.getPaginatedOrders(
+        page: _currentPage,
+        pageSize: _pageSize,
+        status: statusFilter,
+        symbol: _query.isNotEmpty ? _query : null,
+      );
+
+      if (!mounted) return;
+
+      if (paginated != null) {
+        setState(() {
+          if (refresh) {
+            _orders = paginated.orders;
+          } else {
+            _orders.addAll(paginated.orders);
+          }
+          _totalCount = paginated.total;
+          _hasMore = _orders.length < _totalCount;
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isMoreLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoading || _isMoreLoading || !_hasMore) return;
+    _currentPage++;
+    await _loadOrders(refresh: false);
   }
 
   bool _isOrderOpen(Order order) => order.isNew || order.isPartiallyFilled;
@@ -484,12 +555,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           child: CopyText(
                             'screen.orders.sort_tooltip',
                             fallback: 'Sort orders',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleSmall
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                         ),
                       ),
@@ -506,9 +573,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           alignment: Alignment.centerLeft,
                           child: Text(
                             'Sort field',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).hintColor,
-                                ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Theme.of(context).hintColor),
                           ),
                         ),
                       ),
@@ -523,7 +589,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             RadioListTile<_SortField>(
                               value: _SortField.createdTime,
                               dense: true,
-                              title: Text(_sortFieldLabel(_SortField.createdTime)),
+                              title: Text(
+                                _sortFieldLabel(_SortField.createdTime),
+                              ),
                             ),
                             RadioListTile<_SortField>(
                               value: _SortField.status,
@@ -538,7 +606,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             RadioListTile<_SortField>(
                               value: _SortField.orderValue,
                               dense: true,
-                              title: Text(_sortFieldLabel(_SortField.orderValue)),
+                              title: Text(
+                                _sortFieldLabel(_SortField.orderValue),
+                              ),
                             ),
                           ],
                         ),
@@ -556,9 +626,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           alignment: Alignment.centerLeft,
                           child: Text(
                             'Sort order',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).hintColor,
-                                ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Theme.of(context).hintColor),
                           ),
                         ),
                       ),
@@ -633,12 +702,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     });
   }
 
-  
-
   void _handleQuery(String query) {
     final lowerQuery = query.trim().toLowerCase();
     if (_query != lowerQuery) {
       setState(() => _query = lowerQuery);
+      _loadOrders();
     }
   }
 
@@ -709,6 +777,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     onTap: (tag) {
                       if (_currentFilter.value != tag.value) {
                         setState(() => _currentFilter = tag);
+                        _loadOrders();
                       }
                     },
                   ),
@@ -726,7 +795,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: _loadOrders,
-              child: _isLoading
+              child: (_isLoading && _orders.isEmpty)
                   ? const Center(child: CircularProgressIndicator())
                   : !hasResults
                   ? ListView(
@@ -756,9 +825,22 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       ],
                     )
                   : ListView.builder(
+                      controller: _scrollController,
                       padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      itemCount: sortedOrders.length,
+                      itemCount: sortedOrders.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index == sortedOrders.length) {
+                          return Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24.w),
+                            child: Center(
+                              child: _isMoreLoading
+                                  ? const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          );
+                        }
                         final order = sortedOrders[index];
                         final isProcessing = _processingOrders.contains(
                           order.id,
