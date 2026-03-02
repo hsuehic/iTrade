@@ -12,6 +12,7 @@ import '../widgets/custom_app_bar.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
 import 'order_detail.dart';
+import 'place_order_screen.dart';
 import '../widgets/copy_text.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -293,6 +294,31 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     priceController.dispose();
   }
 
+  Future<void> _showPlaceOrderDialog() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (ctx) => PlaceOrderScreen(
+          onSubmit: (payload) async {
+            final created = await _orderService.placeOrder(
+              exchange: payload.exchange,
+              symbol: payload.symbol,
+              side: payload.side,
+              type: payload.type,
+              quantity: payload.quantity,
+              price: payload.price,
+            );
+            if (created == null) {
+              throw Exception('Submit failed');
+            }
+            await _loadOrders();
+          },
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+  }
+
   Color _getStatusColor(String status) {
     switch (status.toUpperCase()) {
       case 'FILLED':
@@ -402,7 +428,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Widget _buildSortMenu(BuildContext context) {
     final theme = Theme.of(context);
-    return PopupMenuButton<_SortMenuAction>(
+    return IconButton(
       icon: Icon(
         Icons.sort,
         color: theme.brightness == Brightness.dark
@@ -413,65 +439,201 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         'screen.orders.sort_tooltip',
         fallback: 'Sort orders',
       ),
-      onSelected: (action) {
-        setState(() {
-          if (action == _SortMenuAction.toggleDirection) {
-            _sortAscending = !_sortAscending;
-            return;
-          }
-          switch (action) {
-            case _SortMenuAction.createdTime:
-              _sortField = _SortField.createdTime;
-              break;
-            case _SortMenuAction.status:
-              _sortField = _SortField.status;
-              break;
-            case _SortMenuAction.quantity:
-              _sortField = _SortField.quantity;
-              break;
-            case _SortMenuAction.orderValue:
-              _sortField = _SortField.orderValue;
-              break;
-            case _SortMenuAction.toggleDirection:
-              break;
-          }
-          _sortAscending = false;
-        });
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: _SortMenuAction.createdTime,
-          child: Text(_sortFieldLabel(_SortField.createdTime)),
-        ),
-        PopupMenuItem(
-          value: _SortMenuAction.status,
-          child: Text(_sortFieldLabel(_SortField.status)),
-        ),
-        PopupMenuItem(
-          value: _SortMenuAction.quantity,
-          child: Text(_sortFieldLabel(_SortField.quantity)),
-        ),
-        PopupMenuItem(
-          value: _SortMenuAction.orderValue,
-          child: Text(_sortFieldLabel(_SortField.orderValue)),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
-          value: _SortMenuAction.toggleDirection,
-          child: Row(
-            children: [
-              Icon(
-                _sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 16,
-              ),
-              SizedBox(width: 8.w),
-              Text(_sortAscending ? 'Ascending' : 'Descending'),
-            ],
-          ),
-        ),
-      ],
+      onPressed: () => _showSortActionSheet(context),
     );
   }
+
+  Future<void> _showSortActionSheet(BuildContext context) async {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    final fieldWidth = renderBox?.size.width ?? 320.w;
+    final result = await showDialog<_SortDialogResult>(
+      context: context,
+      builder: (context) {
+        _SortField tempField = _sortField;
+        bool tempAscending = _sortAscending;
+        final surface = Theme.of(context).colorScheme.surface;
+        final screenWidth = MediaQuery.of(context).size.width;
+        final inset = (screenWidth - fieldWidth) / 2;
+        final insetPadding = EdgeInsets.symmetric(
+          horizontal: inset > 16 ? inset : 16.w,
+        );
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              insetPadding: insetPadding,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14.r),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints.tightFor(width: fieldWidth),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(14.r),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.w,
+                          vertical: 12.w,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: CopyText(
+                            'screen.orders.sort_tooltip',
+                            fallback: 'Sort orders',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ),
+                      ),
+                      Divider(
+                        height: 1,
+                        color: Colors.grey.withValues(alpha: 0.2),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.w,
+                          vertical: 8.w,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Sort field',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).hintColor,
+                                ),
+                          ),
+                        ),
+                      ),
+                      RadioGroup<_SortField>(
+                        groupValue: tempField,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() => tempField = value);
+                        },
+                        child: Column(
+                          children: [
+                            RadioListTile<_SortField>(
+                              value: _SortField.createdTime,
+                              dense: true,
+                              title: Text(_sortFieldLabel(_SortField.createdTime)),
+                            ),
+                            RadioListTile<_SortField>(
+                              value: _SortField.status,
+                              dense: true,
+                              title: Text(_sortFieldLabel(_SortField.status)),
+                            ),
+                            RadioListTile<_SortField>(
+                              value: _SortField.quantity,
+                              dense: true,
+                              title: Text(_sortFieldLabel(_SortField.quantity)),
+                            ),
+                            RadioListTile<_SortField>(
+                              value: _SortField.orderValue,
+                              dense: true,
+                              title: Text(_sortFieldLabel(_SortField.orderValue)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Divider(
+                        height: 1,
+                        color: Colors.grey.withValues(alpha: 0.2),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.w,
+                          vertical: 8.w,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Sort order',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).hintColor,
+                                ),
+                          ),
+                        ),
+                      ),
+                      RadioGroup<bool>(
+                        groupValue: tempAscending,
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setDialogState(() => tempAscending = value);
+                        },
+                        child: Column(
+                          children: [
+                            RadioListTile<bool>(
+                              value: true,
+                              dense: true,
+                              title: const Text('Ascending'),
+                            ),
+                            RadioListTile<bool>(
+                              value: false,
+                              dense: true,
+                              title: const Text('Descending'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Divider(
+                        height: 1,
+                        color: Colors.grey.withValues(alpha: 0.2),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.w,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: () => Navigator.pop(
+                                  context,
+                                  _SortDialogResult(
+                                    field: tempField,
+                                    ascending: tempAscending,
+                                  ),
+                                ),
+                                child: const Text('Apply'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !mounted) return;
+    setState(() {
+      _sortField = result.field;
+      _sortAscending = result.ascending;
+    });
+  }
+
+  
 
   void _handleQuery(String query) {
     final lowerQuery = query.trim().toLowerCase();
@@ -521,8 +683,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         titleFallback: 'Orders',
         showScanner: false,
         actions: [
-          _buildSortMenu(context),
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadOrders),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: CopyService.instance.t(
+              'screen.orders.place_order.title',
+              fallback: 'Place order',
+            ),
+            onPressed: _showPlaceOrderDialog,
+          ),
         ],
       ),
       body: Column(
@@ -532,14 +700,26 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           const SizedBox(height: 16),
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: TagList(
-              tags: filterTags,
-              currentTag: currentTag,
-              onTap: (tag) {
-                if (_currentFilter.value != tag.value) {
-                  setState(() => _currentFilter = tag);
-                }
-              },
+            child: Row(
+              children: [
+                Expanded(
+                  child: TagList(
+                    tags: filterTags,
+                    currentTag: currentTag,
+                    onTap: (tag) {
+                      if (_currentFilter.value != tag.value) {
+                        setState(() => _currentFilter = tag);
+                      }
+                    },
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                _buildSortMenu(context),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loadOrders,
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -669,12 +849,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
-enum _SortMenuAction {
-  createdTime,
-  status,
-  quantity,
-  orderValue,
-  toggleDirection,
+class _SortDialogResult {
+  final _SortField field;
+  final bool ascending;
+
+  const _SortDialogResult({required this.field, required this.ascending});
 }
 
 class _OrderItem extends StatelessWidget {

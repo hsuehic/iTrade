@@ -87,17 +87,40 @@ class OrderService {
     required String type,
     required double quantity,
     double? price,
+    String? tradeMode,
+    int? leverage,
+    String? positionAction,
   }) async {
     try {
+      final trimmedSymbol = symbol.trim();
+      if (trimmedSymbol.isEmpty) {
+        throw Exception('Symbol is required');
+      }
+      if (quantity <= 0) {
+        throw Exception('Quantity must be a positive number');
+      }
+
+      final upperType = type.trim().toUpperCase();
+      final normalizedPrice = upperType == 'LIMIT' ? price : null;
+      if (upperType == 'LIMIT' &&
+          (normalizedPrice == null || normalizedPrice <= 0)) {
+        throw Exception('Price must be a positive number for limit orders');
+      }
+
       final Response response = await _apiClient.postJson(
         '/api/orders',
         data: {
-          'exchange': exchange,
-          'symbol': symbol,
-          'side': side,
-          'type': type,
+          'exchange': exchange.trim(),
+          'symbol': trimmedSymbol.toUpperCase(),
+          'side': side.trim().toUpperCase(),
+          'type': upperType,
           'quantity': quantity.toString(),
-          if (price != null) 'price': price.toString(),
+          if (normalizedPrice != null) 'price': normalizedPrice.toString(),
+          if (tradeMode != null && tradeMode.trim().isNotEmpty)
+            'tradeMode': tradeMode.trim(),
+          if (leverage != null) 'leverage': leverage,
+          if (positionAction != null && positionAction.trim().isNotEmpty)
+            'positionAction': positionAction.trim().toUpperCase(),
         },
       );
 
