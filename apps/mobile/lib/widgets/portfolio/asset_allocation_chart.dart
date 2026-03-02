@@ -109,7 +109,10 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CopyText('widget.portfolio.asset_allocation_chart.asset_allocation', fallback: "Asset allocation", style: TextStyle(
+                  CopyText(
+                    'widget.portfolio.asset_allocation_chart.asset_allocation',
+                    fallback: "Asset allocation",
+                    style: TextStyle(
                       fontSize: 16.sp,
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : Colors.black87,
@@ -121,10 +124,8 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                       color: theme.colorScheme.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: CopyText(
-                      'widget.portfolio.asset_allocation_chart.assets_count',
-                      params: {'count': displayAssets.length.toString()},
-                      fallback: '{{count}} Assets',
+                    child: Text(
+                      '\$${_formatValue(total)}',
                       style: TextStyle(
                         fontSize: 11.sp,
                         fontWeight: FontWeight.w600,
@@ -161,8 +162,9 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                                         .touchedSection!
                                         .touchedSectionIndex;
                                     setState(() {
-                                      _touchedIndex =
-                                          _touchedIndex == index ? -1 : index;
+                                      _touchedIndex = _touchedIndex == index
+                                          ? -1
+                                          : index;
                                     });
                                     if (index >= 0 &&
                                         index < displayAssets.length) {
@@ -175,14 +177,20 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                                   }
                                 },
                               ),
-                              sections: _buildChartSections(displayAssets, total),
+                              sections: _buildChartSections(
+                                displayAssets,
+                                total,
+                              ),
                             ),
                           ),
                           // Center info
                           Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              CopyText('widget.order_book_widget.total', fallback: "Total", style: TextStyle(
+                              CopyText(
+                                'widget.order_book_widget.total',
+                                fallback: "Total",
+                                style: TextStyle(
                                   fontSize: 11.sp,
                                   fontWeight: FontWeight.w500,
                                   color: isDark
@@ -197,8 +205,7 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                                 style: TextStyle(
                                   fontSize: 14.sp,
                                   fontWeight: FontWeight.w700,
-                                  color:
-                                      isDark ? Colors.white : Colors.black87,
+                                  color: isDark ? Colors.white : Colors.black87,
                                 ),
                               ),
                             ],
@@ -238,13 +245,15 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
     final totalPercentage = others.fold(0.0, (sum, a) => sum + a.percentage);
 
     if (othersTotal > 0) {
-      top6.add(AggregatedAsset(
-        asset: 'Others',
-        free: 0,
-        locked: 0,
-        total: othersTotal,
-        percentage: totalPercentage,
-      ));
+      top6.add(
+        AggregatedAsset(
+          asset: 'Others',
+          free: 0,
+          locked: 0,
+          total: othersTotal,
+          percentage: totalPercentage,
+        ),
+      );
     }
 
     return top6;
@@ -259,11 +268,12 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
       final asset = entry.value;
       final isTouched = _touchedIndex == index;
       final percentage = total > 0 ? (asset.total / total * 100) : 0;
+      final displayValue = _formatValue(asset.total);
 
       return PieChartSectionData(
         color: _chartColors[index % _chartColors.length],
         value: asset.total,
-        title: percentage >= 5 ? '${percentage.toStringAsFixed(1)}%' : '',
+        title: percentage >= 5 ? '\$$displayValue' : '',
         radius: isTouched ? 35 : 28,
         titleStyle: TextStyle(
           fontSize: 10.sp,
@@ -275,11 +285,7 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
     }).toList();
   }
 
-  Widget _buildLegend(
-    List<AggregatedAsset> assets,
-    double total,
-    bool isDark,
-  ) {
+  Widget _buildLegend(List<AggregatedAsset> assets, double total, bool isDark) {
     return SingleChildScrollView(
       physics: const ClampingScrollPhysics(),
       child: Column(
@@ -305,8 +311,9 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
               padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? _chartColors[index % _chartColors.length]
-                        .withValues(alpha: 0.15)
+                    ? _chartColors[index % _chartColors.length].withValues(
+                        alpha: 0.15,
+                      )
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -328,10 +335,8 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                       imageUrl: asset.iconUrl,
                       width: 18.w,
                       height: 18.w,
-                      placeholder: (context, url) => SizedBox(
-                        width: 18.w,
-                        height: 18.w,
-                      ),
+                      placeholder: (context, url) =>
+                          SizedBox(width: 18.w, height: 18.w),
                       errorWidget: (context, url, error) => Icon(
                         Icons.currency_bitcoin,
                         size: 18.w,
@@ -350,22 +355,38 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
                       asset.asset,
                       style: TextStyle(
                         fontSize: 11.sp,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  CopyText(
-                    'widget.portfolio.asset_allocation_chart.percentage',
-                    params: {'percent': percentage.toStringAsFixed(1)},
-                    fallback: '{{percent}}%',
-                    style: TextStyle(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                      color: _chartColors[index % _chartColors.length],
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      CopyText(
+                        'widget.portfolio.asset_allocation_chart.asset_value',
+                        params: {'value': _formatValue(asset.total)},
+                        fallback: '\${{value}}',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                      CopyText(
+                        'widget.portfolio.asset_allocation_chart.percentage',
+                        params: {'percent': percentage.toStringAsFixed(1)},
+                        fallback: '{{percent}}%',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: _chartColors[index % _chartColors.length],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -402,14 +423,20 @@ class _AssetAllocationChartState extends State<AssetAllocationChart>
               color: isDark ? Colors.white30 : Colors.black26,
             ),
             SizedBox(height: 12),
-            CopyText('widget.portfolio.asset_allocation_chart.no_assets_yet', fallback: "No assets yet", style: TextStyle(
+            CopyText(
+              'widget.portfolio.asset_allocation_chart.no_assets_yet',
+              fallback: "No assets yet",
+              style: TextStyle(
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w600,
                 color: isDark ? Colors.white60 : Colors.black54,
               ),
             ),
             SizedBox(height: 4),
-            CopyText('widget.portfolio.asset_allocation_chart.your_portfolio_allocation_will', fallback: "Your portfolio allocation will appear here", style: TextStyle(
+            CopyText(
+              'widget.portfolio.asset_allocation_chart.your_portfolio_allocation_will',
+              fallback: "Your portfolio allocation will appear here",
+              style: TextStyle(
                 fontSize: 12.sp,
                 color: isDark ? Colors.white38 : Colors.black38,
               ),

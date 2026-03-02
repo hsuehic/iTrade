@@ -34,8 +34,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
   // Data
   PortfolioData _portfolioData = PortfolioData.empty();
-  final ValueNotifier<List<AggregatedAsset>> _chartAssetsNotifier =
-      ValueNotifier<List<AggregatedAsset>>([]);
   PositionsData _positionsData = PositionsData.empty();
   PnLData _pnlData = PnLData.empty();
   AccountSummary _accountSummary = AccountSummary.empty();
@@ -97,6 +95,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
         .where((asset) => asset.exchange.toLowerCase() == _selectedExchange)
         .toList();
   }
+
 
   PortfolioData _buildPortfolioViewData(List<PortfolioAsset> assets) {
     final totalValue = assets.fold(
@@ -170,7 +169,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     _tabController.dispose();
     _portfolioSubscription?.cancel();
     _positionsSubscription?.cancel();
-    _chartAssetsNotifier.dispose();
     PortfolioService.instance.stopAutoRefresh();
     super.dispose();
   }
@@ -182,9 +180,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       if (mounted) {
         setState(() {
           _portfolioData = data;
-          if (!_isUpdatingExchange) {
-            _chartAssetsNotifier.value = data.aggregatedAssets;
-          }
         });
       }
     });
@@ -259,7 +254,6 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           _isInitialLoading = false;
           _isUpdatingExchange = false;
         });
-        _chartAssetsNotifier.value = _portfolioData.aggregatedAssets;
 
         // Start auto-refresh after initial load
         PortfolioService.instance.startAutoRefresh(exchange: _selectedExchange);
@@ -438,9 +432,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     }
 
     final displayAssets = _assetsForSelectedExchange();
-    final displayPortfolio = _selectedExchange == 'all'
-        ? _portfolioData
-        : _buildPortfolioViewData(displayAssets);
+    final displayPortfolio = _buildPortfolioViewData(displayAssets);
     final balanceChangePercent = _accountSummary.balanceChange;
     final balanceBase = _accountSummary.totalBalance > 0
         ? _accountSummary.totalBalance
@@ -519,21 +511,13 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.only(top: 16),
-                    child: ValueListenableBuilder<List<AggregatedAsset>>(
-                      valueListenable: _chartAssetsNotifier,
-                      builder: (context, assets, child) {
-                        final chartAssets = assets.isNotEmpty
-                            ? assets
-                            : displayPortfolio.aggregatedAssets;
-                        return AssetAllocationChart(
-                          assets: chartAssets,
-                          selectedAsset: _selectedAsset,
-                          onAssetSelected: (asset) {
-                            setState(() {
-                              _selectedAsset = asset;
-                            });
-                          },
-                        );
+                    child: AssetAllocationChart(
+                      assets: displayPortfolio.aggregatedAssets,
+                      selectedAsset: _selectedAsset,
+                      onAssetSelected: (asset) {
+                        setState(() {
+                          _selectedAsset = asset;
+                        });
                       },
                     ),
                   ),
