@@ -954,6 +954,8 @@ export class TypeOrmDataManager implements IDataManager {
     includeFills?: boolean;
     page?: number;
     pageSize?: number;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC';
   }): Promise<{ orders: OrderEntity[]; total: number }> {
     this.ensureInitialized();
     return await this.orderRepository.findAll(filters);

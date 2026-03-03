@@ -384,6 +384,13 @@ export function OrdersTable({
       if (selectedSide !== 'all') params.set('side', selectedSide);
       if (selectedType !== 'all') params.set('type', selectedType);
 
+      // Sorting
+      const sort = sorting[0];
+      if (sort) {
+        params.set('sortBy', sort.id);
+        params.set('sortOrder', sort.desc ? 'DESC' : 'ASC');
+      }
+
       const response = await fetch(`/api/orders?${params.toString()}`);
 
       if (response.ok) {
@@ -425,8 +432,17 @@ export function OrdersTable({
     selectedStatus,
     selectedSide,
     selectedType,
+    sorting,
     t,
   ]);
+
+  const handleSortingChange = React.useCallback(
+    (updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
+      setSorting(updaterOrValue);
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+    },
+    [],
+  );
 
   const debouncedEditForm = useDebouncedValue(editForm, 500);
 
@@ -952,7 +968,8 @@ export function OrdersTable({
     },
     onPaginationChange: setPagination,
     manualPagination: true,
-    onSortingChange: setSorting,
+    onSortingChange: handleSortingChange,
+    manualSorting: true,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),

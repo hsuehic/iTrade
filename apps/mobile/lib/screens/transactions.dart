@@ -92,11 +92,29 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         statusFilter = _currentFilter.value.toUpperCase();
       }
 
+      String sortBy = 'timestamp';
+      switch (_sortField) {
+        case _SortField.createdTime:
+          sortBy = 'timestamp';
+          break;
+        case _SortField.status:
+          sortBy = 'status';
+          break;
+        case _SortField.quantity:
+          sortBy = 'quantity';
+          break;
+        case _SortField.orderValue:
+          sortBy = 'cummulativeQuoteQuantity';
+          break;
+      }
+
       final paginated = await _orderService.getPaginatedOrders(
         page: _currentPage,
         pageSize: _pageSize,
         status: statusFilter,
         symbol: _query.isNotEmpty ? _query : null,
+        sortBy: sortBy,
+        sortOrder: _sortAscending ? 'ASC' : 'DESC',
       );
 
       if (!mounted) return;
@@ -406,55 +424,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
-  int _statusSortWeight(String status) {
-    switch (status.toUpperCase()) {
-      case 'NEW':
-        return 1;
-      case 'PARTIALLY_FILLED':
-        return 2;
-      case 'FILLED':
-        return 3;
-      case 'CANCELED':
-      case 'CANCELLED':
-        return 4;
-      default:
-        return 5;
-    }
-  }
-
-  double _getOrderValue(Order order) {
-    final valueFromQuote = order.cummulativeQuoteQuantity;
-    if (valueFromQuote != null && valueFromQuote > 0) {
-      return valueFromQuote;
-    }
-    final price = order.price ?? order.averagePrice ?? 0;
-    return price * order.quantity;
-  }
-
   List<Order> _getSortedOrders() {
-    final filtered = _getFilteredOrders(_orders);
-    final sorted = [...filtered];
-    sorted.sort((a, b) {
-      int comparison;
-      switch (_sortField) {
-        case _SortField.createdTime:
-          comparison = a.timestamp.compareTo(b.timestamp);
-          break;
-        case _SortField.status:
-          comparison = _statusSortWeight(
-            a.status,
-          ).compareTo(_statusSortWeight(b.status));
-          break;
-        case _SortField.quantity:
-          comparison = a.quantity.compareTo(b.quantity);
-          break;
-        case _SortField.orderValue:
-          comparison = _getOrderValue(a).compareTo(_getOrderValue(b));
-          break;
-      }
-      return _sortAscending ? comparison : -comparison;
-    });
-    return sorted;
+    return _getFilteredOrders(_orders);
   }
 
   List<Order> _getFilteredOrders(List<Order> orders) {
@@ -700,6 +671,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _sortField = result.field;
       _sortAscending = result.ascending;
     });
+    _loadOrders();
   }
 
   void _handleQuery(String query) {

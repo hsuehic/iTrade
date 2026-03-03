@@ -21,6 +21,8 @@ class OrderService {
     DateTime? endDate,
     int? page,
     int? pageSize,
+    String? sortBy,
+    String? sortOrder,
   }) async {
     try {
       final Map<String, dynamic> queryParams = {};
@@ -39,6 +41,8 @@ class OrderService {
       }
       if (page != null) queryParams['page'] = page;
       if (pageSize != null) queryParams['pageSize'] = pageSize;
+      if (sortBy != null) queryParams['sortBy'] = sortBy;
+      if (sortOrder != null) queryParams['sortOrder'] = sortOrder;
 
       final Response response = await _apiClient.getJson(
         '/api/orders',
@@ -86,6 +90,8 @@ class OrderService {
     DateTime? endDate,
     int? page,
     int? pageSize,
+    String? sortBy,
+    String? sortOrder,
   }) async {
     try {
       final Map<String, dynamic> queryParams = {};
@@ -104,6 +110,8 @@ class OrderService {
       }
       if (page != null) queryParams['page'] = page;
       if (pageSize != null) queryParams['pageSize'] = pageSize;
+      if (sortBy != null) queryParams['sortBy'] = sortBy;
+      if (sortOrder != null) queryParams['sortOrder'] = sortOrder;
 
       final Response response = await _apiClient.getJson(
         '/api/orders',

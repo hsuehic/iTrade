@@ -56,6 +56,8 @@ export class OrderRepository {
     includeFills?: boolean;
     page?: number;
     pageSize?: number;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC';
   }): Promise<{ orders: OrderEntity[]; total: number }> {
     const query = this.repository.createQueryBuilder('order');
 
@@ -126,10 +128,30 @@ export class OrderRepository {
       query.skip((page - 1) * pageSize).take(pageSize);
     }
 
+    // Sorting
+    const allowedSortColumns = [
+      'timestamp',
+      'symbol',
+      'side',
+      'type',
+      'quantity',
+      'price',
+      'status',
+      'exchange',
+      'realizedPnl',
+      'cummulativeQuoteQuantity',
+      'createdAt',
+      'updatedAt',
+    ];
+    const sortBy =
+      filters?.sortBy && allowedSortColumns.includes(filters.sortBy)
+        ? filters.sortBy
+        : 'timestamp';
+    const sortOrder = filters?.sortOrder || 'DESC';
+    query.orderBy(`order.${sortBy}`, sortOrder);
+
     // Add cache for better performance
-    const [orders, total] = await query
-      .orderBy('order.timestamp', 'DESC')
-      .getManyAndCount();
+    const [orders, total] = await query.getManyAndCount();
     return { orders, total };
   }
 }

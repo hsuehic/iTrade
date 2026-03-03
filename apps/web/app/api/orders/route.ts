@@ -181,6 +181,8 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const page = searchParams.get('page');
     const pageSize = searchParams.get('pageSize');
+    const sortBy = searchParams.get('sortBy');
+    const sortOrder = searchParams.get('sortOrder');
 
     interface OrderFilters {
       strategyId?: number;
@@ -194,6 +196,8 @@ export async function GET(request: NextRequest) {
       userId?: string;
       page?: number;
       pageSize?: number;
+      sortBy?: string;
+      sortOrder?: 'ASC' | 'DESC';
     }
 
     const filters: OrderFilters = {};
@@ -213,6 +217,8 @@ export async function GET(request: NextRequest) {
     if (endDate) filters.endDate = new Date(endDate);
     if (page) filters.page = parseInt(page);
     if (pageSize) filters.pageSize = parseInt(pageSize);
+    if (sortBy) filters.sortBy = sortBy;
+    if (sortOrder) filters.sortOrder = sortOrder as 'ASC' | 'DESC';
     filters.userId = session.user.id;
 
     const dataManager = await getDataManager();
@@ -224,6 +230,8 @@ export async function GET(request: NextRequest) {
         total,
         page: filters.page || 1,
         pageSize: filters.pageSize || orders.length,
+        sortBy: filters.sortBy || 'timestamp',
+        sortOrder: filters.sortOrder || 'DESC',
       },
     });
   } catch (error) {
