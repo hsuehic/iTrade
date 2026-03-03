@@ -342,7 +342,7 @@
     "screen.strategy_detail.tabs.orders": "Orders",
     "screen.product.title": "Products",
     "screen.product.filter.spot": "Spot",
-    "screen.product.filter.swap": "Swap",
+    "screen.product.filter.swap": "Perp",
     "screen.product.filter.futures": "Futures",
     "screen.product.filter.option": "Option",
     "screen.orders.title": "Orders",

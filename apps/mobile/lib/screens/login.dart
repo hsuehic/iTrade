@@ -1123,10 +1123,6 @@ class _LoginScreenState extends State<LoginScreen> {
     bool isDark, {
     bool isOverlay = false,
   }) {
-    final copy = CopyService.instance;
-    final localeTag = _resolveLocaleTag(copy.localeOverride, copy.locale);
-    final subtitleKey = _localeLabelKey(localeTag);
-    final subtitleFallback = _localeLabelFallback(localeTag, copy);
     return Material(
       color: Colors.transparent,
       child: TextButton(
@@ -1135,38 +1131,10 @@ class _LoginScreenState extends State<LoginScreen> {
           padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.w),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.language_outlined,
-              size: 18.w,
-              color: theme.colorScheme.primary,
-            ),
-            SizedBox(width: 6.w),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CopyText(
-                  'settings_language',
-                  fallback: 'Language',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontSize: isOverlay ? 11.sp : 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                CopyText(
-                  subtitleKey,
-                  fallback: subtitleFallback,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    fontSize: isOverlay ? 10.sp : 11.sp,
-                    color: isDark ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ],
+        child: Icon(
+          Icons.language_outlined,
+          size: 18.w,
+          color: theme.colorScheme.primary,
         ),
       ),
     );
@@ -1239,10 +1207,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
-  }
-
-  String _resolveLocaleTag(Locale? override, Locale fallback) {
-    return override == null ? 'system' : _formatLocaleTag(override);
   }
 
   String _localeLabelKey(String tag) {

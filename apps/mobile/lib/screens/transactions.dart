@@ -1153,20 +1153,26 @@ class _OrderItem extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 12.sp,
+                    height: 1,
                   ),
                 ),
-                SizedBox(height: 2.w),
+                SizedBox(height: 1.w),
                 Text(
                   formatCurrency(orderValue),
                   style: TextStyle(
                     fontSize: 11.sp,
                     color: Theme.of(context).textTheme.bodySmall?.color,
+                    height: 1,
                   ),
                 ),
-                SizedBox(height: 2.w),
+                SizedBox(height: 1.w),
                 Text(
                   formatPriceExact(price),
-                  style: TextStyle(fontSize: 10.sp, color: Colors.grey[600]),
+                  style: TextStyle(
+                    fontSize: 10.sp,
+                    color: Colors.grey[600],
+                    height: 1,
+                  ),
                 ),
               ],
             ),

@@ -127,6 +127,7 @@ class _NavItem extends StatelessWidget {
       fontSize: labelSize.sp,
       fontWeight: labelWeight,
       letterSpacing: -0.3,
+      height: 1,
     );
     final labelWidget = spec.labelKey != null
         ? CopyText(
@@ -151,17 +152,18 @@ class _NavItem extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: 4.w,
-          vertical: 6.w,
+          vertical: 4.w,
         ), // Reduced from 12.w to 4.w for more text space
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               selected && spec.activeIcon != null ? spec.activeIcon : spec.icon,
-              size: iconSize,  // ✅ Fixed size for consistent icon display
+              size: iconSize.w,  // ✅ Fixed size for consistent icon display
               color: color,
             ),
-            SizedBox(height: 4.w),
+            SizedBox(height: 2.w),
             labelWidget,
           ],
         ),
