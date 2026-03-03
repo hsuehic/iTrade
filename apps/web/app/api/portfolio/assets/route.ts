@@ -124,8 +124,12 @@ export async function GET(request: Request) {
 
     // Optimized: Get latest state from AccountInfo and Balance entities
     const accounts = await dm.getUserAccountsWithBalances(session.user.id);
+    const accountsToProcess =
+      exchangeFilter === 'all'
+        ? accounts
+        : accounts.filter((account) => account.exchange.toLowerCase() === exchangeFilter);
 
-    if (accounts.length === 0) {
+    if (accountsToProcess.length === 0) {
       return NextResponse.json({
         summary: { totalAssets: 0, uniqueAssets: 0, totalValue: 0, exchanges: [] },
         assets: [],
@@ -150,14 +154,18 @@ export async function GET(request: Request) {
     const exchanges: string[] = [];
     const assetsByExchangeMap = new Map<string, Set<string>>();
 
-    for (const account of accounts) {
-      const balances = await dm.getAccountBalances(account.id);
-      const exchange = account.exchange;
-      const exchangeLower = exchange.toLowerCase();
+    const accountIds = accountsToProcess.map((account) => account.id);
+    const balances = await dm.getBalancesForAccounts(accountIds);
+    const balancesByAccountId = new Map<number, typeof balances>();
+    for (const balance of balances) {
+      const existing = balancesByAccountId.get(balance.accountInfoId) || [];
+      existing.push(balance);
+      balancesByAccountId.set(balance.accountInfoId, existing);
+    }
 
-      if (exchangeFilter != 'all' && exchangeLower != exchangeFilter) {
-        continue;
-      }
+    for (const account of accountsToProcess) {
+      const balances = balancesByAccountId.get(account.id) || [];
+      const exchange = account.exchange;
 
       if (!exchanges.includes(exchange)) {
         exchanges.push(exchange);

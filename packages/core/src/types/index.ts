@@ -203,6 +203,9 @@ export interface Order {
   averagePrice?: Decimal;
   commission?: Decimal;
   commissionAsset?: string;
+
+  // Optional error message for rejected/failed order placement
+  errorMessage?: string;
 }
 
 export interface OrderFill {

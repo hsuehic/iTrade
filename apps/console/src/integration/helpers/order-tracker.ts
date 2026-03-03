@@ -43,7 +43,7 @@ export class OrderTracker {
     private pushNotificationService?: {
       notifyOrderUpdate(
         order: Order,
-        kind: 'created' | 'filled' | 'partial',
+        kind: 'created' | 'filled' | 'partial' | 'failed',
       ): Promise<void>;
     },
     private userId?: string,
@@ -502,6 +502,7 @@ export class OrderTracker {
 
       const existingOrder = this.orderManager.getOrder(order.id);
       const mergedOrder = this.mergeWithExistingOrder(order);
+      const shouldNotify = !existingOrder || existingOrder.status !== 'REJECTED';
       if (!existingOrder || existingOrder.status !== 'REJECTED') {
         this.totalRejected++;
       }
@@ -535,6 +536,10 @@ export class OrderTracker {
       }, 5000); // Wait 5s to allow queries to complete
 
       this.logger.error(`💾 Order rejected and updated: ${mergedOrder.id}`);
+
+      if (shouldNotify && mergedOrder.errorMessage) {
+        await this.pushNotificationService?.notifyOrderUpdate(mergedOrder, 'failed');
+      }
     } catch (error) {
       this.logger.error('❌ Failed to update rejected order', error as Error);
     }

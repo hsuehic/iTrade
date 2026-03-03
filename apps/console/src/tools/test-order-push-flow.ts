@@ -20,7 +20,10 @@ dotenv.config();
 const logger = new ConsoleLogger(LogLevel.INFO);
 
 type MockPushNotificationService = {
-  notifyOrderUpdate(order: Order, kind: 'created' | 'filled' | 'partial'): Promise<void>;
+  notifyOrderUpdate(
+    order: Order,
+    kind: 'created' | 'filled' | 'partial' | 'failed',
+  ): Promise<void>;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -29,7 +32,7 @@ function buildMockPushService(): MockPushNotificationService {
   return {
     async notifyOrderUpdate(
       order: Order,
-      kind: 'created' | 'filled' | 'partial',
+      kind: 'created' | 'filled' | 'partial' | 'failed',
     ): Promise<void> {
       logger.info(
         `✅ Mock push invoked (${kind}) for order ${order.id} (${order.symbol})`,
@@ -65,16 +68,22 @@ async function main(): Promise<void> {
   const includeUserId = process.env.ORDER_HAS_USER_ID === 'true';
 
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logger.info('🧪 Testing Order Filled Push Flow');
+  const testKind = (process.env.PUSH_TEST_KIND ?? 'filled').toLowerCase();
+  const isFailed = testKind === 'failed';
+
+  logger.info('🧪 Testing Order Push Flow');
   logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logger.info(`User scoped bot: ${userId}`);
   logger.info(`Order payload has userId: ${includeUserId}`);
   logger.info(`Use real push provider: ${useRealPush}`);
+  logger.info(`Test kind: ${isFailed ? 'failed' : 'filled'}`);
 
   const dataManager = useRealPush
     ? await createDataManager()
     : ({
         saveOrder: async () => {},
+        updateOrder: async () => {},
+        getOrders: async () => [],
         getStrategy: async () => null,
       } as unknown as TypeOrmDataManager);
 
@@ -92,17 +101,25 @@ async function main(): Promise<void> {
     type: OrderType.LIMIT,
     quantity: new Decimal('0.01'),
     price: new Decimal('50000'),
-    status: OrderStatus.FILLED,
+    status: isFailed ? OrderStatus.REJECTED : OrderStatus.FILLED,
     timeInForce: TimeInForce.GTC,
     timestamp: new Date(),
     executedQuantity: new Decimal('0.01'),
     updateTime: new Date(),
     exchange: process.env.PUSH_TEST_EXCHANGE ?? 'okx',
     userId: includeUserId ? userId : undefined,
+    ...(isFailed
+      ? { errorMessage: process.env.PUSH_TEST_ERROR ?? 'Mock order failure' }
+      : {}),
   };
 
-  logger.info(`Emitting OrderFilled event for ${order.id}`);
-  EventBus.getInstance().emitOrderFilled({ order, timestamp: new Date() });
+  if (isFailed) {
+    logger.info(`Emitting OrderRejected event for ${order.id}`);
+    EventBus.getInstance().emitOrderRejected({ order, timestamp: new Date() });
+  } else {
+    logger.info(`Emitting OrderFilled event for ${order.id}`);
+    EventBus.getInstance().emitOrderFilled({ order, timestamp: new Date() });
+  }
 
   await sleep(500);
   await tracker.stop();
@@ -111,7 +128,7 @@ async function main(): Promise<void> {
     await dataManager.close();
   }
 
-  logger.info('✅ Order filled push flow test completed');
+  logger.info('✅ Order push flow test completed');
 }
 
 main().catch((error) => {

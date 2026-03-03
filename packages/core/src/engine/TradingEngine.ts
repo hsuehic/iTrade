@@ -538,6 +538,33 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     );
   }
 
+  private formatOrderErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
+    const responseData =
+      error && typeof error === 'object' && 'response' in error
+        ? (
+            error as {
+              response?: { data?: { msg?: string; message?: string; code?: string } };
+            }
+          ).response?.data
+        : undefined;
+    const exchangeMessage =
+      responseData?.msg || responseData?.message || responseData?.code;
+    if (exchangeMessage) {
+      return exchangeMessage;
+    }
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown order error';
+    }
+  }
+
   public async executeOrder(params: ExecuteOrderParameters): Promise<Order> {
     const {
       strategyName,
@@ -587,6 +614,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           : `No exchange available for symbol ${symbol}`,
       );
     }
+
+    let orderForNotification: Order | null = null;
 
     try {
       // Fetch symbol info (cached) to get precision requirements
@@ -674,6 +703,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         strategyType: strategyType, // Strategy type/class (e.g., "MovingAverage")
         strategyName: userDefinedName, // User-defined name (e.g., "MA_1")
       };
+      orderForNotification = order;
 
       // Check risk limits
       const riskCheckPassed = await this.riskManager.checkOrderRisk(
@@ -729,6 +759,33 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
       return executedOrder;
     } catch (error) {
+      const errorMessage = this.formatOrderErrorMessage(error);
+      const rejectedOrder: Order = {
+        ...(orderForNotification ?? {
+          id: uuidv4(),
+          clientOrderId: providedClientOrderId,
+          userId: this._userId,
+          symbol,
+          side,
+          type,
+          quantity,
+          price,
+          status: OrderStatus.REJECTED,
+          timeInForce: 'GTC' as TimeInForce,
+          timestamp: new Date(),
+          exchange: exchangeName,
+          strategyId: strategyId,
+          strategyType: strategyType,
+          strategyName: userDefinedName,
+        }),
+        status: OrderStatus.REJECTED,
+        updateTime: new Date(),
+        errorMessage,
+      };
+      if (!rejectedOrder.userId) {
+        rejectedOrder.userId = this._userId;
+      }
+      this._eventBus.emitOrderRejected({ order: rejectedOrder, timestamp: new Date() });
       this.logger.error('Failed to execute order', error as Error, { params });
       throw error;
     }
@@ -820,6 +877,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     // Find the exchange for this strategy
     const strategy = this._strategies.get(strategyName);
     const exchangeConfig = strategy?.config?.exchange;
+    const strategyId = strategy?.getStrategyId?.() ?? strategy?.config?.strategyId;
+    const strategyType = strategy?.strategyType;
+    const userDefinedName = strategy?.strategyName || strategy?.config?.strategyName;
     const exchangeName = Array.isArray(exchangeConfig)
       ? exchangeConfig[0]
       : exchangeConfig;
@@ -829,14 +889,35 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       : this.findExchangeForSymbol(targetSymbol);
 
     if (!exchange) {
-      this.logger.error(
-        `Cannot cancel order: No exchange found for symbol ${targetSymbol}`,
-      );
+      const errorMessage = `No exchange found for symbol ${targetSymbol}`;
+      const rejectedOrder: Order = {
+        id: signal.orderId || signal.clientOrderId || uuidv4(),
+        clientOrderId: signal.clientOrderId,
+        userId: this._userId,
+        symbol: targetSymbol,
+        side: OrderSide.BUY,
+        type: OrderType.MARKET,
+        quantity: new Decimal(0),
+        status: OrderStatus.REJECTED,
+        timeInForce: TimeInForce.GTC,
+        timestamp: new Date(),
+        updateTime: new Date(),
+        exchange: exchangeName,
+        strategyId,
+        strategyType,
+        strategyName: userDefinedName,
+        errorMessage,
+      };
+      this._eventBus.emitOrderRejected({ order: rejectedOrder, timestamp: new Date() });
+      this.logger.error(`Cannot cancel order: ${errorMessage}`);
       return;
     }
 
+    let resolvedOrder: Order | undefined;
+    let orderId = signal.orderId || '';
+
     try {
-      const resolvedOrder =
+      resolvedOrder =
         !signal.orderId && signal.clientOrderId
           ? this.findOrderByClientOrderId(
               signal.clientOrderId,
@@ -845,7 +926,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             )
           : undefined;
 
-      const orderId = signal.orderId || resolvedOrder?.id || '';
+      orderId = signal.orderId || resolvedOrder?.id || '';
 
       if (!orderId && !signal.clientOrderId) {
         this.logger.warn(
@@ -872,6 +953,29 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         reason: signal.reason,
       });
     } catch (error) {
+      const errorMessage = this.formatOrderErrorMessage(error);
+      const rejectedOrder: Order = {
+        ...(resolvedOrder ?? {
+          id: orderId || signal.clientOrderId || uuidv4(),
+          clientOrderId: signal.clientOrderId,
+          userId: this._userId,
+          symbol: targetSymbol,
+          side: OrderSide.BUY,
+          type: OrderType.MARKET,
+          quantity: new Decimal(0),
+          status: OrderStatus.REJECTED,
+          timeInForce: TimeInForce.GTC,
+          timestamp: new Date(),
+          exchange: exchangeName,
+          strategyId,
+          strategyType,
+          strategyName: userDefinedName,
+        }),
+        status: OrderStatus.REJECTED,
+        updateTime: new Date(),
+        errorMessage,
+      };
+      this._eventBus.emitOrderRejected({ order: rejectedOrder, timestamp: new Date() });
       this.logger.error(`Failed to cancel order for ${strategyName}`, error as Error, {
         symbol: targetSymbol,
         orderId: signal.orderId,
@@ -892,6 +996,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     const strategy = this._strategies.get(strategyName);
     const exchangeConfig = strategy?.config?.exchange;
+    const strategyId = strategy?.getStrategyId?.() ?? strategy?.config?.strategyId;
+    const strategyType = strategy?.strategyType;
+    const userDefinedName = strategy?.strategyName || strategy?.config?.strategyName;
     const exchangeName = Array.isArray(exchangeConfig)
       ? exchangeConfig[0]
       : exchangeConfig;
@@ -901,20 +1008,41 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       : this.findExchangeForSymbol(targetSymbol);
 
     if (!exchange) {
-      this.logger.error(
-        `Cannot update order: No exchange found for symbol ${targetSymbol}`,
-      );
+      const errorMessage = `No exchange found for symbol ${targetSymbol}`;
+      const rejectedOrder: Order = {
+        id: signal.newClientOrderId || signal.clientOrderId || uuidv4(),
+        clientOrderId: signal.newClientOrderId || signal.clientOrderId,
+        userId: this._userId,
+        symbol: targetSymbol,
+        side: OrderSide.BUY,
+        type: OrderType.MARKET,
+        quantity: new Decimal(0),
+        status: OrderStatus.REJECTED,
+        timeInForce: TimeInForce.GTC,
+        timestamp: new Date(),
+        updateTime: new Date(),
+        exchange: exchangeName,
+        strategyId,
+        strategyType,
+        strategyName: userDefinedName,
+        errorMessage,
+      };
+      this._eventBus.emitOrderRejected({ order: rejectedOrder, timestamp: new Date() });
+      this.logger.error(`Cannot update order: ${errorMessage}`);
       return;
     }
 
+    let resolvedOrder: Order | undefined;
+    let existingOrder: Order | null = null;
+
     try {
-      const resolvedOrder = this.findOrderByClientOrderId(
+      resolvedOrder = this.findOrderByClientOrderId(
         signal.clientOrderId,
         exchangeName,
         targetSymbol,
       );
 
-      const existingOrder = await exchange.getOrder(
+      existingOrder = await exchange.getOrder(
         targetSymbol,
         resolvedOrder?.id || '',
         signal.clientOrderId,
@@ -968,6 +1096,30 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         await strategy.onOrderCreated(executedOrder);
       }
     } catch (error) {
+      const errorMessage = this.formatOrderErrorMessage(error);
+      const baseOrder = existingOrder ?? resolvedOrder;
+      const rejectedOrder: Order = {
+        ...(baseOrder ?? {
+          id: signal.newClientOrderId || signal.clientOrderId || uuidv4(),
+          clientOrderId: signal.newClientOrderId || signal.clientOrderId,
+          userId: this._userId,
+          symbol: targetSymbol,
+          side: OrderSide.BUY,
+          type: OrderType.MARKET,
+          quantity: new Decimal(0),
+          status: OrderStatus.REJECTED,
+          timeInForce: TimeInForce.GTC,
+          timestamp: new Date(),
+          exchange: exchangeName,
+          strategyId,
+          strategyType,
+          strategyName: userDefinedName,
+        }),
+        status: OrderStatus.REJECTED,
+        updateTime: new Date(),
+        errorMessage,
+      };
+      this._eventBus.emitOrderRejected({ order: rejectedOrder, timestamp: new Date() });
       this.logger.error(`Failed to update order for ${strategyName}`, error as Error, {
         symbol: targetSymbol,
         clientOrderId: signal.clientOrderId,

@@ -1,4 +1,4 @@
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { Decimal } from 'decimal.js';
 import { BalanceEntity } from '../entities/Balance';
 
@@ -58,6 +58,17 @@ export class BalanceRepository {
     return await this.repository.find({
       where: { accountInfoId },
       order: { asset: 'ASC' },
+    });
+  }
+
+  async getBalancesForAccounts(accountInfoIds: number[]): Promise<BalanceEntity[]> {
+    if (accountInfoIds.length === 0) {
+      return [];
+    }
+
+    return await this.repository.find({
+      where: { accountInfoId: In(accountInfoIds) },
+      order: { accountInfoId: 'ASC', asset: 'ASC' },
     });
   }
 }

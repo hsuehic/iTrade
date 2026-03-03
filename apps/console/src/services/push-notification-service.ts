@@ -14,7 +14,7 @@ import {
   sendToMultipleDevices,
 } from '@itrade/push-notification';
 
-type OrderNotificationKind = 'created' | 'filled' | 'partial';
+type OrderNotificationKind = 'created' | 'filled' | 'partial' | 'failed';
 
 type PushNotificationOptions = {
   defaultUserId?: string;
@@ -64,7 +64,11 @@ export class PushNotificationService {
     }
 
     // 🆕 Check if order status is 'CANCELED' or 'REJECTED' to suppress notification
-    if (order.status === 'CANCELED' || order.status === 'REJECTED') {
+    // Allow failed notifications for rejected orders so users see error details.
+    if (
+      kind !== 'failed' &&
+      (order.status === 'CANCELED' || order.status === 'REJECTED')
+    ) {
       this.logger.info(
         `📨 Push skipped: order ${order.id} is ${order.status}, suppressing notification`,
       );
@@ -236,12 +240,14 @@ function buildOrderNotification(order: Order, kind: OrderNotificationKind) {
   if (kind === 'created') status = 'Placed';
   else if (kind === 'filled') status = 'Filled';
   else if (kind === 'partial') status = 'Partially Filled';
+  else if (kind === 'failed') status = 'Failed';
   const executed = formatDecimal(order.executedQuantity) ?? '0';
   const quantity = formatDecimal(order.quantity) ?? '0';
   const price = formatDecimal(order.price);
   const averagePrice = formatDecimal(order.averagePrice);
   const commission = formatDecimal(order.commission);
   const strategyName = order.strategyName?.trim();
+  const errorMessage = order.errorMessage?.trim();
 
   const bodyParts = [
     `${order.symbol} ${order.side}`,
@@ -250,6 +256,7 @@ function buildOrderNotification(order: Order, kind: OrderNotificationKind) {
     commission
       ? `Fee ${commission}${order.commissionAsset ? ` ${order.commissionAsset}` : ''}`
       : undefined,
+    kind === 'failed' && errorMessage ? `Error: ${errorMessage}` : undefined,
   ].filter(Boolean);
 
   return {
@@ -268,7 +275,9 @@ function buildOrderData(
         ? 'order_created'
         : kind === 'filled'
           ? 'order_filled'
-          : 'order_partially_filled',
+          : kind === 'partial'
+            ? 'order_partially_filled'
+            : 'order_failed',
     orderId: order.id,
     symbol: order.symbol,
     side: order.side,
@@ -310,6 +319,9 @@ function buildOrderData(
   if (order.strategyId) data.strategyId = String(order.strategyId);
   if (order.strategyName) data.strategyName = order.strategyName;
   if (order.updateTime) data.updateTime = order.updateTime.toISOString();
+  if (kind === 'failed' && order.errorMessage) {
+    data.errorMessage = order.errorMessage;
+  }
 
   return data;
 }

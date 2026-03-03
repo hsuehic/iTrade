@@ -285,6 +285,7 @@ export class CoinbaseExchange extends BaseExchange {
       leverage?: number;
       positionSide?: 'LONG' | 'SHORT';
       reduceOnly?: boolean;
+      stopPrice?: Decimal;
     },
   ): Promise<Order> {
     const productId = this.normalizeSymbol(symbol);

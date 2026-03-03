@@ -1228,6 +1228,11 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.balanceRepository.getBalances(accountInfoId);
   }
 
+  async getBalancesForAccounts(accountInfoIds: number[]): Promise<BalanceEntity[]> {
+    this.ensureInitialized();
+    return await this.balanceRepository.getBalancesForAccounts(accountInfoIds);
+  }
+
   async rebuildStrategyPerformance(
     strategyId: number,
     symbol: string,
