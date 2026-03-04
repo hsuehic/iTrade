@@ -1,25 +1,14 @@
 /// Utility class for getting cryptocurrency icons
 class CryptoIcons {
-  /// Get icon URL for a cryptocurrency symbol
-  /// Defaults to CoinCap icons, with optional exchange-specific overrides.
+  /// Get icon URL for a cryptocurrency symbol.
+  /// Use a reliable, exchange-agnostic CDN to avoid broken exchange assets.
   static String getIconUrl(String symbol, {String? exchangeId}) {
     final baseCurrency = _extractBaseCurrency(symbol).toLowerCase();
-    final exchange = exchangeId?.toLowerCase();
-    if (exchange == 'okx') {
-      return _getOkxIconUrl(baseCurrency);
-    }
-    if (exchange == 'binance') {
-      return _getBinanceIconUrl(baseCurrency);
-    }
-    return 'https://assets.coincap.io/assets/icons/$baseCurrency@2x.png';
+    return _getDefaultIconUrl(baseCurrency);
   }
 
-  static String _getOkxIconUrl(String baseCurrency) {
-    return 'https://static.okx.com/cdn/assets/imgs/2210/$baseCurrency.png';
-  }
-
-  static String _getBinanceIconUrl(String baseCurrency) {
-    return 'https://www.binance.com/static/images/coins/64x64/$baseCurrency.png';
+  static String _getDefaultIconUrl(String baseCurrency) {
+    return 'https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/32/color/$baseCurrency.png';
   }
 
   /// Extract base currency from trading pair symbol

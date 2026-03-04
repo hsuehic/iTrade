@@ -13,15 +13,15 @@ class BinanceDataService {
   final Dio _spotDio = Dio(
     BaseOptions(
       baseUrl: _spotBaseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 20),
     ),
   );
   final Dio _futuresDio = Dio(
     BaseOptions(
       baseUrl: _futuresBaseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
+      connectTimeout: const Duration(seconds: 12),
+      receiveTimeout: const Duration(seconds: 20),
     ),
   );
   final Map<String, _CacheEntry> _cache = {};

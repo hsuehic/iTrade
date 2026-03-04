@@ -37,6 +37,7 @@ class _ProductScreenState extends State<ProductScreen>
   final Map<String, List<MarketTicker>> _allTickersByKey = {};
   final Map<String, List<MarketTicker>> _filteredTickersByKey = {};
   final Map<String, bool> _loadingByKey = {};
+  final Map<String, String?> _errorByKey = {};
 
   late Timer _timer;
   final ScrollController _scrollController = ScrollController();
@@ -85,6 +86,7 @@ class _ProductScreenState extends State<ProductScreen>
     if (mounted && !(isRefresh && hasCached)) {
       setState(() {
         _loadingByKey[key] = true;
+        _errorByKey[key] = null;
       });
     }
 
@@ -111,6 +113,7 @@ class _ProductScreenState extends State<ProductScreen>
       if (mounted) {
         setState(() {
           _loadingByKey[key] = false;
+          _errorByKey[key] = 'Failed to load market data.';
         });
       }
       return;
@@ -125,6 +128,7 @@ class _ProductScreenState extends State<ProductScreen>
         _filteredTickersByKey[key] = filtered;
         _sortTickersByTurnover(key, tagValue);
         _loadingByKey[key] = false;
+        _errorByKey[key] = null;
       });
     }
   }
@@ -480,10 +484,65 @@ class _ProductScreenState extends State<ProductScreen>
                   _buildCacheKey(_currentExchange, _currentTag.value)] ==
               true)
             const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_errorByKey[
+                  _buildCacheKey(_currentExchange, _currentTag.value)] !=
+              null)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 48.w,
+                      color: Colors.redAccent,
+                    ),
+                    SizedBox(height: 12.w),
+                    Text(
+                      _errorByKey[
+                              _buildCacheKey(
+                                _currentExchange,
+                                _currentTag.value,
+                              )] ??
+                          'Failed to load market data.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[700],
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 12.w),
+                    TextButton(
+                      onPressed: () => _loadData(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else if (_getCurrentFilteredTickers().isEmpty &&
               _getCurrentAllTickers().isEmpty)
-            // No data loaded yet for this tag (shouldn't happen with proper init)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.inbox_outlined, size: 48.w, color: Colors.grey),
+                    SizedBox(height: 12.w),
+                    Text(
+                      'No market data available.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                    SizedBox(height: 12.w),
+                    TextButton(
+                      onPressed: () => _loadData(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else if (_getCurrentFilteredTickers().isEmpty)
             // Search filtered everything out
             Expanded(
