@@ -267,16 +267,20 @@ class OKXDataService {
   }
 
   /// Get instrument information including tick size and precision
-  Future<OKXInstrument?> getInstrument(String symbol) async {
+  Future<OKXInstrument?> getInstrument(
+    String symbol, {
+    required String instType,
+  }) async {
+    final cacheKey = '$instType:$symbol';
     // Check cache first
-    if (_instrumentCache.containsKey(symbol)) {
-      return _instrumentCache[symbol];
+    if (_instrumentCache.containsKey(cacheKey)) {
+      return _instrumentCache[cacheKey];
     }
 
     try {
       final response = await _dio.get(
         '/public/instruments',
-        queryParameters: {'instType': 'SPOT', 'instId': symbol},
+        queryParameters: {'instType': instType, 'instId': symbol},
       );
 
       if (response.data['code'] == '0') {
@@ -284,7 +288,7 @@ class OKXDataService {
 
         if (data.isNotEmpty) {
           final instrument = OKXInstrument.fromJson(data[0]);
-          _instrumentCache[symbol] = instrument; // Cache it
+          _instrumentCache[cacheKey] = instrument; // Cache it
           return instrument;
         } else {}
       } else {}
@@ -294,8 +298,11 @@ class OKXDataService {
   }
 
   /// Get price precision for a symbol (returns number of decimal places)
-  Future<int> getPricePrecision(String symbol) async {
-    final instrument = await getInstrument(symbol);
+  Future<int> getPricePrecision(
+    String symbol, {
+    required String instType,
+  }) async {
+    final instrument = await getInstrument(symbol, instType: instType);
     final precision =
         instrument?.pricePrecision ?? 4; // Default to 4 for crypto
     return precision;

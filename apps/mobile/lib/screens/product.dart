@@ -51,7 +51,7 @@ class _ProductScreenState extends State<ProductScreen>
     _loadData();
 
     // Refresh current tag data periodically
-    _timer = Timer.periodic(const Duration(milliseconds: 600), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 10), (_) {
       _refreshData();
     });
   }
@@ -99,16 +99,24 @@ class _ProductScreenState extends State<ProductScreen>
       } else if (_currentExchange == 'binance') {
         final tickers = await _binanceService.getTickers(
           isSwap: _isPerpTag(tagValue),
-          forceRefresh: isRefresh,
+          forceRefresh: !isRefresh,
         );
         data = tickers.map(_withIcon).toList();
       } else if (_currentExchange == 'coinbase') {
         final tickers = await _coinbaseService.getTickers(
           isSwap: _isPerpTag(tagValue),
-          forceRefresh: isRefresh,
+          forceRefresh: !isRefresh,
         );
         data = tickers.map(_withIcon).toList();
       }
+    } on RateLimitException catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingByKey[key] = false;
+          _errorByKey[key] = e.toString();
+        });
+      }
+      return;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -148,30 +156,26 @@ class _ProductScreenState extends State<ProductScreen>
 
     tickers.sort((a, b) {
       // Use volCcy24h if populated, otherwise calculate from vol24h * price
-      final aTurnover = _calculateDisplayVolume(a, tagValue);
-      final bTurnover = _calculateDisplayVolume(b, tagValue);
+      final aTurnover = _calculateDisplayVolume(a);
+      final bTurnover = _calculateDisplayVolume(b);
 
       return bTurnover.compareTo(aTurnover); // Descending order (highest first)
     });
   }
 
-  /// Calculate display volume based on instrument type
-  /// For SPOT: volCcy24h is in quote currency (USD/USDT) - use directly
-  /// For derivatives: volCcy24h is in base currency (BTC/ETH) - multiply by price
-  double _calculateDisplayVolume(MarketTicker ticker, String tagValue) {
+  /// Calculate display volume using exchange-specific volume units.
+  /// Binance/OKX tickers already provide quote volume; Coinbase volume is base.
+  double _calculateDisplayVolume(MarketTicker ticker) {
     final volume = ticker.volume24h ?? 0;
     if (volume <= 0) {
       return 0; // No valid volume data
     }
 
-    // For SPOT: volCcy24h is already in quote currency (USD/USDT)
-    if (tagValue == 'SPOT') {
-      return volume;
+    if (_currentExchange == 'coinbase') {
+      return volume * (ticker.last ?? 0);
     }
 
-    // For derivatives (SWAP/FUTURES/OPTION): volCcy24h is in base currency
-    // Convert to quote currency by multiplying by price
-    return volume * (ticker.last ?? 0);
+    return volume;
   }
 
   MarketTicker _fromOkxTicker(OKXTicker ticker) {
@@ -644,9 +648,7 @@ class _ProductScreenState extends State<ProductScreen>
       subtitle: CopyText(
         'common.volume',
         params: {
-          'volume': formatVolume(
-            _calculateDisplayVolume(ticker, _currentTag.value),
-          ),
+          'volume': formatVolume(_calculateDisplayVolume(ticker)),
         },
         fallback: 'Vol: {{volume}}',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10.sp),
@@ -771,9 +773,7 @@ class _ProductScreenState extends State<ProductScreen>
                   CopyText(
                     'common.volume',
                     params: {
-                      'volume': formatVolume(
-                        _calculateDisplayVolume(ticker, _currentTag.value),
-                      ),
+                      'volume': formatVolume(_calculateDisplayVolume(ticker)),
                     },
                     fallback: 'Vol: {{volume}}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),

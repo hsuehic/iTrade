@@ -25,6 +25,7 @@ class BinanceDataService {
     ),
   );
   final Map<String, _CacheEntry> _cache = {};
+  final Map<String, _PrecisionCacheEntry> _precisionCache = {};
 
   Future<List<MarketTicker>> getTickers({
     required bool isSwap,
@@ -40,8 +41,25 @@ class BinanceDataService {
 
     final dio = isSwap ? _futuresDio : _spotDio;
     final path = isSwap ? '/fapi/v1/ticker/24hr' : '/api/v3/ticker/24hr';
-    final response = await dio.get<List<dynamic>>(path);
-    final data = response.data;
+    List<dynamic>? data;
+    try {
+      final response = await dio.get<List<dynamic>>(path);
+      data = response.data;
+    } on DioException catch (error) {
+      final status = error.response?.statusCode;
+      if (status == 418 || status == 429) {
+        if (cached != null) {
+          return cached.items;
+        }
+        final retryAfter =
+            int.tryParse(error.response?.headers.value('retry-after') ?? '');
+        throw RateLimitException(
+          retryAfterSeconds: retryAfter,
+          statusCode: status,
+        );
+      }
+      rethrow;
+    }
     if (data is! List) return [];
 
     final items =
@@ -78,6 +96,58 @@ class BinanceDataService {
       volume24h: volume,
       exchange: 'Binance',
     );
+  }
+
+  Future<int> getPricePrecision({
+    required String symbol,
+    required bool isSwap,
+  }) async {
+    final key = '${isSwap ? 'swap' : 'spot'}:${symbol.toUpperCase()}';
+    final cached = _precisionCache[key];
+    if (cached != null && DateTime.now().isBefore(cached.expiresAt)) {
+      return cached.precision;
+    }
+
+    final dio = isSwap ? _futuresDio : _spotDio;
+    final path = isSwap ? '/fapi/v1/exchangeInfo' : '/api/v3/exchangeInfo';
+    final response = await dio.get<Map<String, dynamic>>(
+      path,
+      queryParameters: {'symbol': symbol.toUpperCase()},
+    );
+    final data = response.data;
+    final symbols = data?['symbols'];
+    if (symbols is! List || symbols.isEmpty) {
+      return 4;
+    }
+
+    Map<String, dynamic>? symbolInfo;
+    for (final item in symbols) {
+      if (item is Map<String, dynamic>) {
+        symbolInfo = item;
+        break;
+      }
+    }
+    if (symbolInfo == null) {
+      return 4;
+    }
+
+    final precisionRaw = symbolInfo['pricePrecision'];
+    int precision;
+    if (precisionRaw is int) {
+      precision = precisionRaw;
+    } else if (precisionRaw is num) {
+      precision = precisionRaw.toInt();
+    } else {
+      final filters = symbolInfo['filters'];
+      final tickSize = _extractTickSize(filters);
+      precision = tickSize != null ? _precisionFromTickSize(tickSize) : 4;
+    }
+
+    _precisionCache[key] = _PrecisionCacheEntry(
+      precision: precision,
+      expiresAt: DateTime.now().add(_cacheTtl),
+    );
+    return precision;
   }
 
   double? _parseDouble(dynamic value) {
@@ -199,6 +269,25 @@ class BinanceDataService {
       );
     }).toList();
   }
+
+  String? _extractTickSize(dynamic filters) {
+    if (filters is! List) return null;
+    for (final filter in filters) {
+      if (filter is Map<String, dynamic> &&
+          filter['filterType'] == 'PRICE_FILTER') {
+        return filter['tickSize']?.toString();
+      }
+    }
+    return null;
+  }
+
+  int _precisionFromTickSize(String tickSize) {
+    if (!tickSize.contains('.')) return 0;
+    final parts = tickSize.split('.');
+    final decimals = parts.length > 1 ? parts[1] : '';
+    final trimmed = decimals.replaceAll(RegExp(r'0+$'), '');
+    return trimmed.isEmpty ? 0 : trimmed.length;
+  }
 }
 
 class _CacheEntry {
@@ -206,4 +295,26 @@ class _CacheEntry {
   final DateTime expiresAt;
 
   const _CacheEntry({required this.items, required this.expiresAt});
+}
+
+class _PrecisionCacheEntry {
+  final int precision;
+  final DateTime expiresAt;
+
+  _PrecisionCacheEntry({required this.precision, required this.expiresAt});
+}
+
+class RateLimitException implements Exception {
+  final int? retryAfterSeconds;
+  final int? statusCode;
+
+  RateLimitException({this.retryAfterSeconds, this.statusCode});
+
+  @override
+  String toString() {
+    final retryText = retryAfterSeconds != null
+        ? 'Retry after ${retryAfterSeconds}s.'
+        : 'Please retry later.';
+    return 'Rate limited (${statusCode ?? 'unknown'}). $retryText';
+  }
 }

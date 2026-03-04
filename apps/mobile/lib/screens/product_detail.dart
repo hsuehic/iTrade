@@ -297,35 +297,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     return (a - b).abs() > _priceChangeThreshold;
   }
 
-  /// Calculate display volume based on instrument type
-  /// For SPOT: volCcy24h is in quote currency (USD/USDT) - use directly
-  /// For derivatives: volCcy24h is in base currency (BTC/ETH/SATS/PEPE) - multiply by price
+  /// Calculate display volume using exchange-specific units.
+  /// OKX/Binance tickers already provide quote volume; Coinbase volume is base.
   double _calculateDisplayVolume(_ProductTicker ticker) {
     if (ticker.volume24h <= 0) {
-      return 0; // No valid volume data
+      return 0;
     }
 
-    // Detect instrument type from current selection
-    final isSpot = _productType == 'SPOT';
-
-    // For SPOT: volCcy24h is already in quote currency (USD/USDT)
-    if (isSpot) {
-      return ticker.volume24h;
+    if (_exchangeId == 'coinbase') {
+      if (ticker.last <= 0) return ticker.volume24h;
+      return ticker.volume24h * ticker.last;
     }
 
-    // For derivatives (SWAP/FUTURES/OPTION): volCcy24h is in base currency
-    // Convert to quote currency by multiplying by price
-    // Example: 280,000,000,000,000 SATS × 0.000000018779 USD = 5,266,765 USD
-    return ticker.volume24h * ticker.last;
+    return ticker.volume24h;
   }
 
   double _calculateMarketVolume(MarketTicker ticker) {
     final volume = ticker.volume24h ?? 0;
     if (volume <= 0) return 0;
-    if (_productType == 'SPOT') {
-      return volume;
+    if (_exchangeId == 'coinbase') {
+      return volume * (ticker.last ?? 0);
     }
-    return volume * (ticker.last ?? 0);
+    return volume;
   }
 
   double? _getMarketChangePercent(MarketTicker ticker) {
@@ -630,7 +623,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   Future<void> _loadOkxData() async {
     // Fetch price precision for this symbol from API
     final precisionF = _okxService
-        .getPricePrecision(_currentSymbol)
+        .getPricePrecision(_currentSymbol, instType: _okxInstType())
         .timeout(
           const Duration(seconds: 5),
           onTimeout: () {
@@ -735,6 +728,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
   Future<void> _loadBinanceData() async {
     final isSwap = _productType != 'SPOT';
+    final precisionF = _binanceService
+        .getPricePrecision(symbol: _currentSymbol, isSwap: isSwap)
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => _pricePrecision,
+        );
     final tickerF = _binanceService
         .getTickerDetails(symbol: _currentSymbol, isSwap: isSwap)
         .timeout(
@@ -774,16 +773,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         );
 
     final results = await Future.wait([
+      precisionF,
       tickerF,
       klinesF,
       tradesF,
       orderBookF,
     ], eagerError: true);
 
-    final ticker = results[0] as Map<String, dynamic>;
-    final klines = results[1] as List<OKXKline>;
-    final trades = results[2] as List<OKXTrade>;
-    final orderBook = results[3] as OKXOrderBook;
+    final precision = results[0] as int;
+    final ticker = results[1] as Map<String, dynamic>;
+    final klines = results[2] as List<OKXKline>;
+    final trades = results[3] as List<OKXTrade>;
+    final orderBook = results[4] as OKXOrderBook;
 
     final lastRaw = ticker['lastPrice'];
     final last = _parseDouble(lastRaw) ?? 0;
@@ -794,7 +795,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     if (mounted) {
       setState(() {
-        _pricePrecision = _inferPrecision(lastRaw, fallback: _pricePrecision);
+        _pricePrecision = precision;
         _klines = klines;
         _trades = trades;
         _orderBook = orderBook;
@@ -921,6 +922,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         return '1d';
       default:
         return '15m';
+    }
+  }
+
+  String _okxInstType() {
+    switch (_productType.toUpperCase()) {
+      case 'SWAP':
+        return 'SWAP';
+      case 'FUTURES':
+        return 'FUTURES';
+      case 'OPTION':
+        return 'OPTION';
+      default:
+        return 'SPOT';
     }
   }
 
@@ -1085,7 +1099,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 children: [
                   Text(
                     hasData
-                        ? '\$${formatPriceExact(resolvedTicker.last ?? 0, precision: 4)}'
+                        ? '\$${formatPriceExact(
+                            resolvedTicker.last ?? 0,
+                            precision: symbol == _currentSymbol
+                                ? _pricePrecision
+                                : 4,
+                          )}'
                         : '--',
                     style: TextStyle(
                       fontSize: 13,
@@ -1370,7 +1389,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 height: 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _exchangeId == 'okx'
+                  color: (_exchangeId == 'okx' || _exchangeId == 'binance')
                       ? (_isWebSocketConnected ? Colors.green : Colors.red)
                       : Colors.grey,
                 ),
