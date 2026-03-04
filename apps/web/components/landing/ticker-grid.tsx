@@ -15,15 +15,25 @@ const BINANCE_COINS = COMMON_COINS.map((base) => ({
   base,
 }));
 
-const OKX_COINS = COMMON_COINS.map((base) => ({
-  symbol: `${base}-USDT-SWAP`,
-  display: `${base}/USDT`,
-  base,
-}));
+const OKX_COINS = COMMON_COINS.map((base) => {
+  const display = `${base}/USDT`;
+  const swapSymbol = `${base}-USDT-SWAP`;
+  const spotSymbol = `${base}-USDT`;
+  const instIds =
+    base === 'APT' || base === 'WLD' ? [swapSymbol, spotSymbol] : [swapSymbol];
+
+  return {
+    display,
+    base,
+    instIds,
+  };
+});
 
 // Create lookup maps for precise matching between API symbols and Display symbols
 const BINANCE_SYMBOL_MAP = new Map(BINANCE_COINS.map((c) => [c.symbol, c.display]));
-const OKX_SYMBOL_MAP = new Map(OKX_COINS.map((c) => [c.symbol, c.display]));
+const OKX_SYMBOL_MAP = new Map(
+  OKX_COINS.flatMap((coin) => coin.instIds.map((instId) => [instId, coin.display])),
+);
 
 interface BinanceTickerData {
   e: string; // Event type
@@ -121,6 +131,16 @@ export function TickerGrid() {
   useEffect(() => {
     let binanceConnected = false;
     let okxConnected = false;
+    let okxUseDirect = false;
+    const okxProxyUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999';
+    const okxDirectUrl = 'wss://wspap.okx.com/ws/v5/public?brokerId=9999';
+
+    const updateConnectionState = () => {
+      if (binanceConnected || okxConnected) {
+        setConnectionStatus('websocket');
+        setLoading(false);
+      }
+    };
 
     const updateTicker = (
       tickerData: Partial<TickerData>,
@@ -226,16 +246,15 @@ export function TickerGrid() {
         (coin) => `${coin.symbol.toLowerCase()}@ticker`,
       ).join('/');
       // Use fstream.binance.com for Futures
-      const ws = new WebSocket(`wss://fstream.binance.com/stream?streams=${streams}`);
+      const ws = new WebSocket(
+        `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${streams}`,
+      );
       binanceWsRef.current = ws;
 
       ws.onopen = () => {
         console.log('✅ Binance Futures WebSocket connected directly');
         binanceConnected = true;
-        if (okxConnected) {
-          setConnectionStatus('websocket');
-          setLoading(false);
-        }
+        updateConnectionState();
       };
 
       ws.onmessage = (event) => {
@@ -282,28 +301,30 @@ export function TickerGrid() {
     };
 
     // Connect to OKX WebSocket
-    const connectOKX = () => {
-      const ws = new WebSocket('wss://ws.okx.com/ws/v5/public');
+    const connectOKX = (url?: string) => {
+      const targetUrl = url ?? (okxUseDirect ? okxDirectUrl : okxProxyUrl);
+      const ws = new WebSocket(targetUrl);
       okxWsRef.current = ws;
+      let opened = false;
 
       ws.onopen = () => {
         console.log('✅ OKX WebSocket connected directly');
+        opened = true;
 
         // Subscribe to ticker channels
         const subscribeMsg = {
           op: 'subscribe',
-          args: OKX_COINS.map((coin) => ({
-            channel: 'tickers',
-            instId: coin.symbol,
-          })),
+          args: OKX_COINS.flatMap((coin) =>
+            coin.instIds.map((instId) => ({
+              channel: 'tickers',
+              instId,
+            })),
+          ),
         };
 
         ws.send(JSON.stringify(subscribeMsg));
         okxConnected = true;
-        if (binanceConnected) {
-          setConnectionStatus('websocket');
-          setLoading(false);
-        }
+        updateConnectionState();
       };
 
       ws.onmessage = (event) => {
@@ -336,12 +357,23 @@ export function TickerGrid() {
 
       ws.onerror = (error) => {
         console.error('OKX WebSocket error:', error);
+        if (!opened && !okxUseDirect) {
+          okxUseDirect = true;
+          connectOKX(okxDirectUrl);
+          return;
+        }
         setConnectionStatus('error');
+        updateConnectionState();
       };
 
       ws.onclose = () => {
         console.log('OKX WebSocket disconnected');
         okxConnected = false;
+        if (!opened && !okxUseDirect) {
+          okxUseDirect = true;
+          connectOKX(okxDirectUrl);
+          return;
+        }
         // Reconnect after 3 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
           connectOKX();
@@ -395,7 +427,7 @@ export function TickerGrid() {
             <h3 className="mb-4 text-xl font-semibold">{t('okx')}</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {OKX_COINS.map((coin) => (
-                <div key={coin.symbol} className="space-y-3 rounded-lg border p-4">
+                <div key={coin.display} className="space-y-3 rounded-lg border p-4">
                   <Skeleton className="h-8 w-8 rounded-full" />
                   <Skeleton className="h-6 w-24" />
                   <Skeleton className="h-8 w-full" />
