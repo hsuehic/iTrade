@@ -205,15 +205,15 @@ location /rest/binance/perp {
 location ^~ /ws/okx/ {
     rewrite ^/ws/okx(.*)$ $1 break;
 
-    proxy_pass https://wspap.okx.com:8443;
+    proxy_pass https://ws.okx.com;
 
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
 
-    proxy_set_header Host wspap.okx.com;
+    proxy_set_header Host ws.okx.com;
     proxy_ssl_server_name on;
-    proxy_ssl_name wspap.okx.com;
+    proxy_ssl_name ws.okx.com;
 
     proxy_read_timeout 3600s;
     proxy_send_timeout 3600s;
