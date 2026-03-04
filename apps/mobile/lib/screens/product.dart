@@ -155,20 +155,33 @@ class _ProductScreenState extends State<ProductScreen>
     if (tickers == null) return;
 
     tickers.sort((a, b) {
-      // Use volCcy24h if populated, otherwise calculate from vol24h * price
-      final aTurnover = _calculateDisplayVolume(a);
-      final bTurnover = _calculateDisplayVolume(b);
+      // Prefer sorting by USDT/USDC quote volume for consistent ranking
+      final aTurnover = _calculateSortVolume(a);
+      final bTurnover = _calculateSortVolume(b);
 
       return bTurnover.compareTo(aTurnover); // Descending order (highest first)
     });
   }
 
   /// Calculate display volume using exchange-specific volume units.
-  /// Binance/OKX tickers already provide quote volume; Coinbase volume is base.
+  /// Binance/OKX provide quote volume; Coinbase volume is base.
   double _calculateDisplayVolume(MarketTicker ticker) {
     final volume = ticker.volume24h ?? 0;
     if (volume <= 0) {
       return 0; // No valid volume data
+    }
+
+    if (_currentExchange == 'okx') {
+      final quote = _getQuoteCurrency(ticker.symbol);
+      if (quote != 'USDT' && quote != 'USDC' && quote != 'USD') {
+        return 0;
+      }
+      if (_isPerpTag(_currentTag.value)) {
+        // OKX SWAP: volCcy24h is in contract value currency (base), convert to quote.
+        return volume * (ticker.last ?? 0);
+      }
+      // OKX SPOT: volCcy24h is already in quote currency.
+      return volume;
     }
 
     if (_currentExchange == 'coinbase') {
@@ -176,6 +189,32 @@ class _ProductScreenState extends State<ProductScreen>
     }
 
     return volume;
+  }
+
+  double _calculateSortVolume(MarketTicker ticker) {
+    if (!_isUsdtOrUsdcQuote(ticker.symbol)) {
+      return 0;
+    }
+    return _calculateDisplayVolume(ticker);
+  }
+
+  bool _isUsdtOrUsdcQuote(String symbol) {
+    final quote = _getQuoteCurrency(symbol);
+    return quote == 'USDT' || quote == 'USDC' || quote == 'USD';
+  }
+
+  String? _getQuoteCurrency(String symbol) {
+    final upper = symbol.toUpperCase();
+    if (upper.contains('-')) {
+      final parts = upper.split('-');
+      if (parts.length >= 2) {
+        return parts[1];
+      }
+      return null;
+    }
+    if (upper.endsWith('USDT')) return 'USDT';
+    if (upper.endsWith('USDC')) return 'USDC';
+    return null;
   }
 
   MarketTicker _fromOkxTicker(OKXTicker ticker) {

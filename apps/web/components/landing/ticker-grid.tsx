@@ -131,7 +131,7 @@ export function TickerGrid() {
   useEffect(() => {
     let binanceConnected = false;
     let okxConnected = false;
-    const okxProxyUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999';
+    const okxProxyUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public'; // 'wss://ws.okx.com/ws/v5/public'; //
 
     const updateConnectionState = () => {
       if (binanceConnected || okxConnected) {

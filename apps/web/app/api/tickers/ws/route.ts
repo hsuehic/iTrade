@@ -141,7 +141,7 @@ export async function GET() {
         try {
           const WebSocketClient = require('ws');
           // Use standard HTTPS port 443 for WebSocket
-          const wsUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999';
+          const wsUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public';
 
           okxWs = new WebSocketClient(wsUrl);
 

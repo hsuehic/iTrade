@@ -66,7 +66,11 @@ class BinanceDataService {
         data
             .whereType<Map<String, dynamic>>()
             .map(_parseTicker)
-            .where((ticker) => ticker.symbol.endsWith('USDT'))
+            .where(
+              (ticker) =>
+                  ticker.symbol.endsWith('USDT') ||
+                  ticker.symbol.endsWith('USDC'),
+            )
             .toList()
           ..sort((a, b) {
             final aVol = a.volume24h ?? 0;
