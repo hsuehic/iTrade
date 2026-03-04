@@ -151,7 +151,7 @@ export function MarketDashboard() {
         .map((s) => `${s.symbol.toLowerCase()}@ticker`)
         .join('/');
       const tickerWs = new WebSocket(
-        `wss://fstream.binance.com/stream?streams=${streams}`,
+        `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${streams}`,
       );
       binanceWsRef.current = tickerWs;
 
@@ -202,7 +202,7 @@ export function MarketDashboard() {
         .map((s) => `${s.symbol.toLowerCase()}@markPrice@1s`)
         .join('/');
       const markPriceWs = new WebSocket(
-        `wss://fstream.binance.com/stream?streams=${markPriceStreams}`,
+        `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${markPriceStreams}`,
       );
       binanceMarkPriceWsRef.current = markPriceWs;
 

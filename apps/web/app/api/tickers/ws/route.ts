@@ -89,7 +89,7 @@ export async function GET() {
           const streams = BINANCE_COINS.map(
             (coin) => `${coin.toLowerCase()}@ticker`,
           ).join('/');
-          const wsUrl = `wss://stream.binance.com/stream?streams=${streams}`;
+          const wsUrl = `wss://itrade.ihsueh.com/ws/binance/spot/stream?streams=${streams}`;
 
           binanceWs = new WebSocketClient(wsUrl);
 
@@ -141,7 +141,7 @@ export async function GET() {
         try {
           const WebSocketClient = require('ws');
           // Use standard HTTPS port 443 for WebSocket
-          const wsUrl = 'wss://wspap.okx.com/ws/v5/public?brokerId=9999';
+          const wsUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999';
 
           okxWs = new WebSocketClient(wsUrl);
 

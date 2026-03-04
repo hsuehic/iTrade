@@ -26,9 +26,9 @@ class OKXInstrument {
     if (tickSz.contains('.')) {
       final decimalPart = tickSz.split('.')[1];
       precision = decimalPart.length;
-          } else {
+    } else {
       precision = 0;
-          }
+    }
 
     return OKXInstrument(
       instId: json['instId'] as String,
@@ -200,12 +200,10 @@ class OKXTrade {
 class OKXDataService {
   static const String baseUrl = 'https://www.okx.com/api/v5';
   static const List<String> publicWsUrls = [
-    'wss://ws.okx.com/ws/v5/public',
-    'wss://wsaws.okx.com/ws/v5/public',
+    'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999',
   ];
   static const List<String> businessWsUrls = [
-    'wss://ws.okx.com/ws/v5/business',
-    'wss://wsaws.okx.com/ws/v5/business',
+    'wss://itrade.ihsueh.com/ws/okx/ws/v5/business?brokerId=9999',
   ];
 
   int _currentPublicWsUrlIndex = 0;
@@ -273,27 +271,23 @@ class OKXDataService {
     }
 
     try {
-            final response = await _dio.get(
+      final response = await _dio.get(
         '/public/instruments',
         queryParameters: {'instType': 'SPOT', 'instId': symbol},
       );
 
-      
       if (response.data['code'] == '0') {
         final List<dynamic> data = response.data['data'];
-        
+
         if (data.isNotEmpty) {
           final instrument = OKXInstrument.fromJson(data[0]);
           _instrumentCache[symbol] = instrument; // Cache it
-                    return instrument;
-        } else {
-                  }
-      } else {
-              }
-    } catch (e, stackTrace) {
-                }
+          return instrument;
+        } else {}
+      } else {}
+    } catch (e) {}
 
-        return null;
+    return null;
   }
 
   /// Get price precision for a symbol (returns number of decimal places)
@@ -301,7 +295,7 @@ class OKXDataService {
     final instrument = await getInstrument(symbol);
     final precision =
         instrument?.pricePrecision ?? 4; // Default to 4 for crypto
-        return precision;
+    return precision;
   }
 
   /// Get historical candlestick data
@@ -333,7 +327,7 @@ class OKXDataService {
         );
       }
     } catch (e) {
-            rethrow;
+      rethrow;
     }
   }
 
@@ -353,7 +347,7 @@ class OKXDataService {
       }
       throw Exception('Failed to get ticker: ${response.data['msg']}');
     } catch (e) {
-            rethrow;
+      rethrow;
     }
   }
 
@@ -374,9 +368,8 @@ class OKXDataService {
           return tickers;
         }
       }
-            throw Exception('Failed to get ticker: ${response.data['msg']}');
-    } catch (e) {
-          }
+      throw Exception('Failed to get ticker: ${response.data['msg']}');
+    } catch (e) {}
     return [];
   }
 
@@ -396,7 +389,7 @@ class OKXDataService {
       }
       throw Exception('Failed to get order book: ${response.data['msg']}');
     } catch (e) {
-            rethrow;
+      rethrow;
     }
   }
 
@@ -417,7 +410,7 @@ class OKXDataService {
       }
       throw Exception('Failed to get trades: ${response.data['msg']}');
     } catch (e) {
-            rethrow;
+      rethrow;
     }
   }
 
@@ -431,7 +424,7 @@ class OKXDataService {
       if (isConnected &&
           _currentSymbol != null &&
           (_currentSymbol != symbol || _currentTimeframe != timeframe)) {
-                await changeSymbol(symbol, timeframe: timeframe);
+        await changeSymbol(symbol, timeframe: timeframe);
         return;
       }
 
@@ -457,9 +450,8 @@ class OKXDataService {
         _connectBusinessWebSocket(symbol, timeframe),
         _connectPublicWebSocket(symbol),
       ]);
-
-          } catch (e) {
-            _scheduleReconnect();
+    } catch (e) {
+      _scheduleReconnect();
       // Don't rethrow to prevent app crashes
     }
   }
@@ -470,7 +462,7 @@ class OKXDataService {
     String timeframe = '15m',
   }) async {
     if (!isConnected) {
-            await connectWebSocket(newSymbol, timeframe: timeframe);
+      await connectWebSocket(newSymbol, timeframe: timeframe);
       return;
     }
 
@@ -478,7 +470,6 @@ class OKXDataService {
       final oldSymbol = _currentSymbol;
       final oldTimeframe = _currentTimeframe;
 
-      
       // Unsubscribe from old channels
       if (oldSymbol != null && oldTimeframe != null) {
         await _unsubscribeAll(oldSymbol, oldTimeframe);
@@ -493,9 +484,8 @@ class OKXDataService {
 
       // Subscribe to new channels
       await _subscribeAll(newSymbol, timeframe);
-
-          } catch (e) {
-            // If changing fails, try reconnecting
+    } catch (e) {
+      // If changing fails, try reconnecting
       await connectWebSocket(newSymbol, timeframe: timeframe);
     }
   }
@@ -514,7 +504,7 @@ class OKXDataService {
 
     if (_pendingBusinessUnsubscribes.isNotEmpty ||
         _pendingPublicUnsubscribes.isNotEmpty) {
-            // Clear pending sets to avoid blocking
+      // Clear pending sets to avoid blocking
       _pendingBusinessUnsubscribes.clear();
       _pendingPublicUnsubscribes.clear();
     }
@@ -547,7 +537,7 @@ class OKXDataService {
   ) async {
     try {
       final currentUrl = businessWsUrls[_currentBusinessWsUrlIndex];
-      
+
       // Create WebSocket connection
       _businessWsChannel = WebSocketChannel.connect(
         Uri.parse(currentUrl),
@@ -573,9 +563,8 @@ class OKXDataService {
 
       // Start heartbeat for business channel
       _startBusinessHeartbeat();
-
-          } catch (e) {
-            _isBusinessConnected = false;
+    } catch (e) {
+      _isBusinessConnected = false;
       rethrow;
     }
   }
@@ -584,7 +573,7 @@ class OKXDataService {
   Future<void> _connectPublicWebSocket(String symbol) async {
     try {
       final currentUrl = publicWsUrls[_currentPublicWsUrlIndex];
-      
+
       // Create WebSocket connection
       _publicWsChannel = WebSocketChannel.connect(
         Uri.parse(currentUrl),
@@ -614,9 +603,8 @@ class OKXDataService {
 
       // Start heartbeat for public channel
       _startPublicHeartbeat();
-
-          } catch (e) {
-            _isPublicConnected = false;
+    } catch (e) {
+      _isPublicConnected = false;
       rethrow;
     }
   }
@@ -632,7 +620,7 @@ class OKXDataService {
     };
 
     _businessWsChannel?.sink.add(jsonEncode(subscribeMessage));
-      }
+  }
 
   /// Unsubscribe from candlestick updates (Business WebSocket)
   Future<void> _unsubscribeFromCandlesticks(
@@ -652,7 +640,7 @@ class OKXDataService {
     _pendingBusinessUnsubscribes.add(key);
 
     _businessWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-      }
+  }
 
   /// Subscribe to ticker updates (Public WebSocket)
   Future<void> _subscribeToTicker(String symbol) async {
@@ -664,7 +652,7 @@ class OKXDataService {
     };
 
     _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
-      }
+  }
 
   /// Unsubscribe from ticker updates (Public WebSocket)
   Future<void> _unsubscribeFromTicker(String symbol) async {
@@ -680,7 +668,7 @@ class OKXDataService {
     _pendingPublicUnsubscribes.add(key);
 
     _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-      }
+  }
 
   /// Subscribe to order book updates (Public WebSocket)
   Future<void> _subscribeToOrderBook(String symbol) async {
@@ -692,7 +680,7 @@ class OKXDataService {
     };
 
     _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
-      }
+  }
 
   /// Unsubscribe from order book updates (Public WebSocket)
   Future<void> _unsubscribeFromOrderBook(String symbol) async {
@@ -708,7 +696,7 @@ class OKXDataService {
     _pendingPublicUnsubscribes.add(key);
 
     _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-      }
+  }
 
   /// Subscribe to trade updates (Public WebSocket)
   Future<void> _subscribeToTrades(String symbol) async {
@@ -720,7 +708,7 @@ class OKXDataService {
     };
 
     _publicWsChannel?.sink.add(jsonEncode(subscribeMessage));
-      }
+  }
 
   /// Unsubscribe from trade updates (Public WebSocket)
   Future<void> _unsubscribeFromTrades(String symbol) async {
@@ -736,7 +724,7 @@ class OKXDataService {
     _pendingPublicUnsubscribes.add(key);
 
     _publicWsChannel?.sink.add(jsonEncode(unsubscribeMessage));
-      }
+  }
 
   /// Handle incoming Business WebSocket messages (candlesticks)
   void _handleBusinessWebSocketMessage(dynamic message) {
@@ -745,11 +733,11 @@ class OKXDataService {
 
       // Handle error responses
       if (data['event'] == 'error') {
-                return;
+        return;
       }
 
       if (data['event'] == 'subscribe') {
-                return;
+        return;
       }
 
       if (data['event'] == 'unsubscribe') {
@@ -758,7 +746,7 @@ class OKXDataService {
         final instId = arg['instId'];
         final key = '$channel:$instId';
         _pendingBusinessUnsubscribes.remove(key);
-                return;
+        return;
       }
 
       if (data['data'] != null) {
@@ -770,12 +758,11 @@ class OKXDataService {
               .map((item) => OKXKline.fromList(item))
               .toList();
           _klineController.add(klines);
-                  }
+        }
       } else {
         // Log unexpected message format for debugging
-              }
-    } catch (e) {
-                }
+      }
+    } catch (e) {}
   }
 
   /// Handle incoming Public WebSocket messages (tickers, order book, trades)
@@ -785,11 +772,11 @@ class OKXDataService {
 
       // Handle error responses
       if (data['event'] == 'error') {
-                return;
+        return;
       }
 
       if (data['event'] == 'subscribe') {
-                return;
+        return;
       }
 
       if (data['event'] == 'unsubscribe') {
@@ -798,7 +785,7 @@ class OKXDataService {
         final instId = arg['instId'];
         final key = '$channel:$instId';
         _pendingPublicUnsubscribes.remove(key);
-                return;
+        return;
       }
 
       if (data['data'] != null) {
@@ -820,39 +807,38 @@ class OKXDataService {
         }
       } else {
         // Log unexpected message format for debugging
-              }
-    } catch (e) {
-                }
+      }
+    } catch (e) {}
   }
 
   /// Handle Business WebSocket errors
   void _handleBusinessWebSocketError(dynamic error) {
-        _isBusinessConnected = false;
+    _isBusinessConnected = false;
     _scheduleReconnect();
   }
 
   /// Handle Business WebSocket connection closed
   void _handleBusinessWebSocketDone() {
-        _isBusinessConnected = false;
+    _isBusinessConnected = false;
     _scheduleReconnect();
   }
 
   /// Handle Public WebSocket errors
   void _handlePublicWebSocketError(dynamic error) {
-        _isPublicConnected = false;
+    _isPublicConnected = false;
     _scheduleReconnect();
   }
 
   /// Handle Public WebSocket connection closed
   void _handlePublicWebSocketDone() {
-        _isPublicConnected = false;
+    _isPublicConnected = false;
     _scheduleReconnect();
   }
 
   /// Schedule reconnection with exponential backoff
   void _scheduleReconnect() {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
-            _startFallbackMode();
+      _startFallbackMode();
       return;
     }
 
@@ -865,16 +851,15 @@ class OKXDataService {
             (_currentPublicWsUrlIndex + 1) % publicWsUrls.length;
         _currentBusinessWsUrlIndex =
             (_currentBusinessWsUrlIndex + 1) % businessWsUrls.length;
-              }
+      }
 
       // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, max 60s
       final delaySeconds = (1 << _reconnectAttempts).clamp(1, 60);
       _reconnectAttempts++;
 
-      
       _reconnectTimer = Timer(Duration(seconds: delaySeconds), () {
         if (!isConnected) {
-                    connectWebSocket(_currentSymbol!, timeframe: _currentTimeframe!);
+          connectWebSocket(_currentSymbol!, timeframe: _currentTimeframe!);
         }
       });
     }
@@ -885,7 +870,7 @@ class OKXDataService {
     if (_useFallbackMode) return;
 
     _useFallbackMode = true;
-    
+
     _fallbackTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (_currentSymbol != null) {
         try {
@@ -909,8 +894,7 @@ class OKXDataService {
               _klineController.add(klines);
             }
           }
-        } catch (e) {
-                  }
+        } catch (e) {}
       }
     });
   }
@@ -963,8 +947,7 @@ class OKXDataService {
     try {
       await _publicWsChannel?.sink.close();
       await _businessWsChannel?.sink.close();
-    } catch (e) {
-          }
+    } catch (e) {}
     _publicWsChannel = null;
     _businessWsChannel = null;
   }

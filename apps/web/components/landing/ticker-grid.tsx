@@ -131,9 +131,7 @@ export function TickerGrid() {
   useEffect(() => {
     let binanceConnected = false;
     let okxConnected = false;
-    let okxUseDirect = false;
     const okxProxyUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999';
-    const okxDirectUrl = 'wss://wspap.okx.com/ws/v5/public?brokerId=9999';
 
     const updateConnectionState = () => {
       if (binanceConnected || okxConnected) {
@@ -252,7 +250,7 @@ export function TickerGrid() {
       binanceWsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('✅ Binance Futures WebSocket connected directly');
+        console.log('✅ Binance Futures WebSocket connected via proxy');
         binanceConnected = true;
         updateConnectionState();
       };
@@ -301,15 +299,12 @@ export function TickerGrid() {
     };
 
     // Connect to OKX WebSocket
-    const connectOKX = (url?: string) => {
-      const targetUrl = url ?? (okxUseDirect ? okxDirectUrl : okxProxyUrl);
-      const ws = new WebSocket(targetUrl);
+    const connectOKX = () => {
+      const ws = new WebSocket(okxProxyUrl);
       okxWsRef.current = ws;
-      let opened = false;
 
       ws.onopen = () => {
-        console.log('✅ OKX WebSocket connected directly');
-        opened = true;
+        console.log('✅ OKX WebSocket connected via proxy');
 
         // Subscribe to ticker channels
         const subscribeMsg = {
@@ -357,11 +352,6 @@ export function TickerGrid() {
 
       ws.onerror = (error) => {
         console.error('OKX WebSocket error:', error);
-        if (!opened && !okxUseDirect) {
-          okxUseDirect = true;
-          connectOKX(okxDirectUrl);
-          return;
-        }
         setConnectionStatus('error');
         updateConnectionState();
       };
@@ -369,11 +359,6 @@ export function TickerGrid() {
       ws.onclose = () => {
         console.log('OKX WebSocket disconnected');
         okxConnected = false;
-        if (!opened && !okxUseDirect) {
-          okxUseDirect = true;
-          connectOKX(okxDirectUrl);
-          return;
-        }
         // Reconnect after 3 seconds
         reconnectTimeoutRef.current = setTimeout(() => {
           connectOKX();
