@@ -1,3 +1,5 @@
+import '../utils/crypto_icons.dart';
+
 class OKXTicker {
   final String instId;
   final double last;
@@ -19,8 +21,7 @@ class OKXTicker {
       last: double.parse(json['last']),
       open24h: double.parse(json['open24h']),
       volume: double.parse(json['vol24h']),
-      iconUrl:
-          'https://static.okx.com/cdn/assets/imgs/2210/${json['instId'].split('-')[0].toLowerCase()}.png',
+      iconUrl: CryptoIcons.getIconUrl(json['instId'] ?? '', exchangeId: 'okx'),
     );
   }
 }

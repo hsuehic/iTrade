@@ -7,6 +7,7 @@ import '../models/order.dart';
 import '../services/order_service.dart';
 import '../services/copy_service.dart';
 import '../utils/number_format_utils.dart';
+import '../utils/crypto_icons.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/copy_text.dart';
 
@@ -339,9 +340,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(
-                    'https://www.okx.com/cdn/oksupport/asset/currency/icon/'
-                    '${order.baseCurrency.toLowerCase()}.png'
-                    '?x-oss-process=image/format,webp/ignore-error,1',
+                    CryptoIcons.getIconUrl(
+                      order.baseCurrency,
+                      exchangeId: order.exchange,
+                    ),
                     width: 36.w,
                     height: 36.w,
                     errorBuilder: (context, error, stackTrace) =>

@@ -1,3 +1,5 @@
+import '../utils/crypto_icons.dart';
+
 /// Summary of portfolio assets
 class AssetsSummary {
   final int totalAssets;
@@ -64,8 +66,10 @@ class PortfolioAsset {
   }
 
   /// Get icon URL for the asset
-  String get iconUrl =>
-      'https://www.okx.com/cdn/oksupport/asset/currency/icon/${asset.toLowerCase()}.png?x-oss-process=image/format,webp/ignore-error,1';
+  String get iconUrl => CryptoIcons.getIconUrl(
+        asset,
+        exchangeId: exchange,
+      );
 
   /// Check if this is a stablecoin
   bool get isStablecoin =>
@@ -98,8 +102,7 @@ class AggregatedAsset {
     );
   }
 
-  String get iconUrl =>
-      'https://www.okx.com/cdn/oksupport/asset/currency/icon/${asset.toLowerCase()}.png?x-oss-process=image/format,webp/ignore-error,1';
+  String get iconUrl => CryptoIcons.getIconUrl(asset);
 }
 
 /// Complete portfolio data
@@ -311,8 +314,10 @@ class Position {
     }
   }
 
-  String get iconUrl =>
-      'https://www.okx.com/cdn/oksupport/asset/currency/icon/${baseCurrency.toLowerCase()}.png?x-oss-process=image/format,webp/ignore-error,1';
+  String get iconUrl => CryptoIcons.getIconUrl(
+        baseCurrency,
+        exchangeId: exchange,
+      );
 }
 
 /// Positions summary

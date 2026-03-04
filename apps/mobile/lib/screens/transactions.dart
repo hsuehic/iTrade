@@ -8,6 +8,7 @@ import '../models/order.dart';
 import '../services/order_service.dart';
 import '../services/copy_service.dart';
 import '../utils/number_format_utils.dart';
+import '../utils/crypto_icons.dart';
 import '../widgets/custom_app_bar.dart';
 import '../widgets/search_input.dart' show SimpleSearchBar;
 import '../widgets/tag_list.dart';
@@ -974,9 +975,10 @@ class _OrderItem extends StatelessWidget {
         ? CopyService.instance.t('common.unknown', fallback: 'Unknown')
         : order.exchange!.toUpperCase();
 
-    final iconUrl =
-        'https://www.okx.com/cdn/oksupport/asset/currency/icon/'
-        '${order.baseCurrency.toLowerCase()}.png?x-oss-process=image/format,webp/ignore-error,1';
+    final iconUrl = CryptoIcons.getIconUrl(
+      order.baseCurrency,
+      exchangeId: order.exchange,
+    );
 
     return InkWell(
       onTap: onTap,

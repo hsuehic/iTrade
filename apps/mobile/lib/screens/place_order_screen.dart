@@ -187,7 +187,7 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
   String _buildBaseIconUrl(String symbol) {
     final base = _extractBaseSymbol(symbol);
     if (base.isEmpty) return '';
-    return CryptoIcons.getIconUrl(base);
+    return CryptoIcons.getIconUrl(base, exchangeId: _exchange);
   }
 
   double _calculateDisplayVolume(MarketTicker ticker) {

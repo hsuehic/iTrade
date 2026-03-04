@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../utils/crypto_icons.dart';
 class OKXInstrument {
   final String instId;
   final String tickSz; // Minimum price increment
@@ -123,8 +124,10 @@ class OKXTicker {
       volCcy24h: double.tryParse(json['volCcy24h'] ?? '0') ?? 0,
       vol24h: double.tryParse(json['vol24h'] ?? '0') ?? 0,
       timestamp: json['ts'] ?? '',
-      iconUrl:
-          'https://www.okx.com/cdn/oksupport/asset/currency/icon/${json['instId'].split('-')[0].toLowerCase()}.png?x-oss-process=image/format,webp/ignore-error,1',
+      iconUrl: CryptoIcons.getIconUrl(
+        json['instId'] ?? '',
+        exchangeId: 'okx',
+      ),
     );
   }
 }
@@ -198,7 +201,7 @@ class OKXTrade {
 }
 
 class OKXDataService {
-  static const String baseUrl = 'https://www.okx.com/api/v5';
+  static const String baseUrl = 'https://itrade.ihsueh.com/rest/okx/api/v5';
   static const List<String> publicWsUrls = [
     'wss://itrade.ihsueh.com/ws/okx/ws/v5/public?brokerId=9999',
   ];

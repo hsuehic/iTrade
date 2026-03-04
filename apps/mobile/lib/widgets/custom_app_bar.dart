@@ -8,6 +8,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final String? titleKey;
   final String? titleFallback;
+  final Widget? titleWidget;
   final List<Widget>? actions;
   final bool showMenuButton;
   final bool showScanner;
@@ -19,6 +20,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.title,
     this.titleKey,
     this.titleFallback,
+    this.titleWidget,
     this.actions,
     this.showMenuButton = true,
     this.showScanner = true,
@@ -34,19 +36,18 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isTablet = ResponsiveLayout.isTablet(context);
 
-    final titleWidget = titleKey != null
-        ? CopyText(
-            titleKey!,
-            fallback: titleFallback ?? title ?? '',
-            style: TextStyle(fontSize: 18.sp),
-          )
-        : Text(
-            title ?? '',
-            style: TextStyle(fontSize: 18.sp),
-          );
+    final resolvedTitleWidget =
+        titleWidget ??
+        (titleKey != null
+            ? CopyText(
+                titleKey!,
+                fallback: titleFallback ?? title ?? '',
+                style: TextStyle(fontSize: 18.sp),
+              )
+            : Text(title ?? '', style: TextStyle(fontSize: 18.sp)));
 
     return AppBar(
-      title: titleWidget,  // ✅ Adaptive font
+      title: resolvedTitleWidget, // ✅ Adaptive font
       centerTitle: true, // 统一在所有平台居中显示
       elevation: 0,
       surfaceTintColor: Colors.transparent,
@@ -58,18 +59,18 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               onPressed: onBack ?? () => Navigator.maybePop(context),
             )
           : (showMenuButton && !isTablet)
-              ? IconButton(
-                  icon: const Icon(Icons.menu),
-                  onPressed: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (context) => const QuickMenuDrawer(),
-                    );
-                  },
-                )
-              : null,
+          ? IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) => const QuickMenuDrawer(),
+                );
+              },
+            )
+          : null,
       // Auto-imply leading: false when no leading widget on tablet
       automaticallyImplyLeading: !isTablet && !showBackButton,
       actions: [

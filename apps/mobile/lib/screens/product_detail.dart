@@ -2,24 +2,54 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 
+import '../services/binance_data_service.dart';
+import '../services/coinbase_data_service.dart';
 import '../services/okx_data_service.dart';
 import '../services/copy_service.dart';
+import '../models/market_ticker.dart';
+import '../utils/exchange_config.dart';
 import '../widgets/order_book_widget.dart';
 import '../widgets/trade_history_widget.dart';
 import '../widgets/interactive_kline_chart.dart';
 import '../utils/number_format_utils.dart';
 import '../widgets/copy_text.dart';
+import '../services/binance_ws_service.dart';
+
+class _ProductTicker {
+  final String symbol;
+  final double last;
+  final double open24h;
+  final double high24h;
+  final double low24h;
+  final double volume24h;
+  final String? iconUrl;
+
+  const _ProductTicker({
+    required this.symbol,
+    required this.last,
+    required this.open24h,
+    required this.high24h,
+    required this.low24h,
+    required this.volume24h,
+    this.iconUrl,
+  });
+}
 
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
-  final Map<String, OKXTicker>?
+  final String exchangeId;
+  final String productType;
+  final Map<String, MarketTicker>?
   availableTickers; // Optional: ticker data for symbols
 
   const ProductDetailScreen({
     super.key,
     required this.productId,
+    required this.exchangeId,
+    required this.productType,
     this.availableTickers,
   });
 
@@ -30,8 +60,11 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen>
     with SingleTickerProviderStateMixin {
   late final OKXDataService _okxService;
+  late final BinanceDataService _binanceService;
+  late final CoinbaseDataService _coinbaseService;
+  late final BinanceWsService _binanceWsService;
   List<OKXKline> _klines = [];
-  OKXTicker? _ticker;
+  _ProductTicker? _ticker;
   OKXOrderBook? _orderBook;
   List<OKXTrade> _trades = [];
   late final Timer _timer;
@@ -40,12 +73,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   String _currentSymbol = '';
   String _selectedInterval = '15m';
   int _pricePrecision = 4; // Default precision, will be fetched from API
+  late final String _exchangeId;
+  late final String _productType;
 
   // Global key to access chart state for reinitializing
   final GlobalKey _chartKey = GlobalKey();
 
   // Stream subscriptions for cleanup
-  StreamSubscription<OKXTicker>? _tickerSubscription;
+  StreamSubscription<dynamic>? _tickerSubscription;
   StreamSubscription<OKXOrderBook>? _orderBookSubscription;
   StreamSubscription<List<OKXKline>>? _klineSubscription;
   StreamSubscription<OKXTrade>? _tradeSubscription;
@@ -54,7 +89,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   late final List<String> _symbols;
 
   // Ticker data for symbol list - passed from parent
-  late final Map<String, OKXTicker> _symbolTickers;
+  late final Map<String, MarketTicker> _symbolTickers;
 
   // Kline intervals
   final Map<String, String> _intervals = {
@@ -70,6 +105,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   void initState() {
     super.initState();
     _okxService = OKXDataService();
+    _binanceService = BinanceDataService();
+    _coinbaseService = CoinbaseDataService();
+    _binanceWsService = BinanceWsService();
+    _exchangeId = widget.exchangeId.toLowerCase();
+    _productType = widget.productType;
     _currentSymbol = widget.productId;
     _tabController = TabController(length: 2, vsync: this);
 
@@ -88,9 +128,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       });
     });
 
-    // Fallback polling timer (only used if WebSocket fails)
-    _timer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (!_isWebSocketConnected) {
+    // Polling timer (fallback for OKX, primary for Binance/Coinbase)
+    _timer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (_exchangeId == 'okx') {
+        if (!_isWebSocketConnected) {
+          _loadData();
+        }
+      } else if (_exchangeId == 'binance') {
+        if (!_isWebSocketConnected) {
+          _loadData();
+        }
+      } else {
         _loadData();
       }
     });
@@ -99,18 +147,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// Initialize symbol list with current symbol and available tickers
   List<String> _initializeSymbolList() {
     // Default popular trading pairs (fallback if no tickers provided)
-    final defaultSymbols = [
-      'BTC-USDT',
-      'ETH-USDT',
-      'BNB-USDT',
-      'SOL-USDT',
-      'XRP-USDT',
-      'ADA-USDT',
-      'DOGE-USDT',
-      'MATIC-USDT',
-      'DOT-USDT',
-      'AVAX-USDT',
-    ];
+    final defaultSymbols = _getDefaultSymbols();
 
     // Use symbols from tickers if available, otherwise use defaults
     final availableSymbols =
@@ -124,6 +161,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     // Return as list with current symbol first
     return symbolSet.toList();
+  }
+
+  List<String> _getDefaultSymbols() {
+    switch (_exchangeId) {
+      case 'binance':
+        return [
+          'BTCUSDT',
+          'ETHUSDT',
+          'BNBUSDT',
+          'SOLUSDT',
+          'XRPUSDT',
+          'ADAUSDT',
+          'DOGEUSDT',
+          'AVAXUSDT',
+        ];
+      case 'coinbase':
+        return [
+          'BTC-USD',
+          'ETH-USD',
+          'SOL-USD',
+          'XRP-USD',
+          'ADA-USD',
+          'DOGE-USD',
+        ];
+      default:
+        return [
+          'BTC-USDT',
+          'ETH-USDT',
+          'BNB-USDT',
+          'SOL-USDT',
+          'XRP-USDT',
+          'ADA-USDT',
+          'DOGE-USDT',
+          'MATIC-USDT',
+          'DOT-USDT',
+          'AVAX-USDT',
+        ];
+    }
   }
 
   /// Load data in background without blocking UI
@@ -148,10 +223,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
 
     // Stage 2: Connect WebSocket for real-time updates (optional)
-    try {
-      await _connectWebSocket();
-    } catch (e) {
-      // Don't show error - fallback mode will handle it
+    if (_exchangeId == 'okx') {
+      try {
+        await _connectWebSocket();
+      } catch (e) {
+        // Don't show error - fallback mode will handle it
+      }
+    } else if (_exchangeId == 'binance') {
+      try {
+        await _connectBinanceWebSocket();
+      } catch (e) {
+        // Don't show error - fallback mode will handle it
+      }
     }
   }
 
@@ -174,6 +257,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     _tabController.dispose();
     _cancelStreamSubscriptions(); // Cancel stream subscriptions
     _okxService.dispose();
+    _binanceWsService.dispose();
     super.dispose();
   }
 
@@ -216,29 +300,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   /// Calculate display volume based on instrument type
   /// For SPOT: volCcy24h is in quote currency (USD/USDT) - use directly
   /// For derivatives: volCcy24h is in base currency (BTC/ETH/SATS/PEPE) - multiply by price
-  double _calculateDisplayVolume(OKXTicker ticker) {
-    if (ticker.volCcy24h <= 0) {
+  double _calculateDisplayVolume(_ProductTicker ticker) {
+    if (ticker.volume24h <= 0) {
       return 0; // No valid volume data
     }
 
-    // Detect instrument type from symbol
-    final isSpot =
-        !ticker.instId.contains('-SWAP') &&
-        !ticker.instId.contains('-FUTURES') &&
-        !RegExp(r'-\d{6}').hasMatch(ticker.instId); // Option date pattern
+    // Detect instrument type from current selection
+    final isSpot = _productType == 'SPOT';
 
     // For SPOT: volCcy24h is already in quote currency (USD/USDT)
     if (isSpot) {
-      return ticker.volCcy24h;
+      return ticker.volume24h;
     }
 
     // For derivatives (SWAP/FUTURES/OPTION): volCcy24h is in base currency
     // Convert to quote currency by multiplying by price
     // Example: 280,000,000,000,000 SATS × 0.000000018779 USD = 5,266,765 USD
-    return ticker.volCcy24h * ticker.last;
+    return ticker.volume24h * ticker.last;
+  }
+
+  double _calculateMarketVolume(MarketTicker ticker) {
+    final volume = ticker.volume24h ?? 0;
+    if (volume <= 0) return 0;
+    if (_productType == 'SPOT') {
+      return volume;
+    }
+    return volume * (ticker.last ?? 0);
+  }
+
+  double? _getMarketChangePercent(MarketTicker ticker) {
+    if (ticker.changePercent != null) return ticker.changePercent;
+    final last = ticker.last;
+    final open = ticker.open24h;
+    if (last == null || open == null || open == 0) return null;
+    return ((last - open) / open) * 100;
   }
 
   Future<void> _connectWebSocket() async {
+    if (_exchangeId != 'okx') {
+      if (mounted) {
+        setState(() {
+          _isWebSocketConnected = false;
+        });
+      }
+      return;
+    }
     try {
       // Cancel existing subscriptions before creating new ones
       await _cancelStreamSubscriptions();
@@ -263,7 +369,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       _tickerSubscription = _okxService.tickerStream.listen((ticker) {
         if (mounted) {
           setState(() {
-            _ticker = ticker;
+            _ticker = _ProductTicker(
+              symbol: ticker.instId,
+              last: ticker.last,
+              open24h: ticker.open24h,
+              high24h: ticker.high24h,
+              low24h: ticker.low24h,
+              volume24h: ticker.volCcy24h,
+              iconUrl: ticker.iconUrl,
+            );
 
             // Update or generate candles based on ticker data
             if (_klines.isNotEmpty) {
@@ -435,107 +549,399 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
   }
 
-  Future<void> _loadData() async {
-    try {
-      // Fetch price precision for this symbol from API
-      final precisionF = _okxService
-          .getPricePrecision(_currentSymbol)
-          .timeout(
-            const Duration(seconds: 5),
-            onTimeout: () {
-              return 4; // Default to 4 decimals for crypto
-            },
-          );
-
-      // Load only 29 closed klines - wait for WebSocket to push the 30th (live) one
-      final klinesF = _okxService
-          .getHistoricalKlines(
-            _currentSymbol,
-            bar: _selectedInterval,
-            limit: 29, // Load 29 closed candlesticks
-          )
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => throw TimeoutException('Klines request timeout'),
-          );
-
-      final tradesF = _okxService
-          .getRecentTrades(_currentSymbol, limit: 50)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => throw TimeoutException('Trades request timeout'),
-          );
-
-      // Also fetch ticker and orderbook from REST API
-      final tickerF = _okxService
-          .getTicker(_currentSymbol)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () => throw TimeoutException('Ticker request timeout'),
-          );
-
-      final orderBookF = _okxService
-          .getOrderBook(_currentSymbol)
-          .timeout(
-            const Duration(seconds: 10),
-            onTimeout: () =>
-                throw TimeoutException('OrderBook request timeout'),
-          );
-
-      // Wait for all data
-      final results = await Future.wait([
-        precisionF,
-        klinesF,
-        tradesF,
-        tickerF,
-        orderBookF,
-      ], eagerError: true);
-
-      final precision = results[0] as int;
-      final klines = results[1] as List<OKXKline>;
-      final trades = results[2] as List<OKXTrade>;
-      final ticker = results[3] as OKXTicker;
-      final orderBook = results[4] as OKXOrderBook;
-
+  Future<void> _connectBinanceWebSocket() async {
+    if (_exchangeId != 'binance') {
       if (mounted) {
         setState(() {
-          _pricePrecision = precision; // Update precision
-          // Store 29 closed klines (oldest -> newest)
-          _klines = klines.reversed.toList();
-          
-          // Create placeholder 30th candlestick using 29th candle's close price
-          if (_klines.isNotEmpty) {
-            final lastClosedKline = _klines.last;
-            final placeholderPrice = lastClosedKline.close;
-            
-            // Calculate next candlestick timestamp
-            final intervalMs = _getIntervalMilliseconds(_selectedInterval);
-            final nextCandleTime = DateTime.fromMillisecondsSinceEpoch(
-              lastClosedKline.time.millisecondsSinceEpoch + intervalMs,
-            );
-            
-            // Create placeholder kline with OHLC = last close price
-            final placeholderKline = OKXKline(
-              timestamp: nextCandleTime.millisecondsSinceEpoch.toString(),
-              open: placeholderPrice,
-              high: placeholderPrice,
-              low: placeholderPrice,
-              close: placeholderPrice,
-              volume: 0, // Placeholder, no volume yet
-              time: nextCandleTime,
-            );
-            
-            _klines.add(placeholderKline);
-          }
-          
-          _trades = trades;
-          _ticker = ticker;
-          _orderBook = orderBook;
+          _isWebSocketConnected = false;
         });
+      }
+      return;
+    }
+
+    await _cancelStreamSubscriptions();
+    await _binanceWsService.connect(
+      symbol: _currentSymbol,
+      isSwap: _productType != 'SPOT',
+    );
+
+    if (mounted) {
+      setState(() {
+        _isWebSocketConnected = true;
+      });
+    }
+
+    _tickerSubscription = _binanceWsService.priceStream.listen((price) {
+      if (!mounted) return;
+      setState(() {
+        final current = _ticker;
+        if (current != null) {
+          _ticker = _ProductTicker(
+            symbol: current.symbol,
+            last: price,
+            open24h: current.open24h,
+            high24h: current.high24h,
+            low24h: current.low24h,
+            volume24h: current.volume24h,
+            iconUrl: current.iconUrl,
+          );
+        }
+      });
+    }, onError: (_) {});
+
+    _orderBookSubscription = _binanceWsService.orderBookStream.listen((book) {
+      if (!mounted) return;
+      setState(() {
+        _orderBook = book;
+      });
+    }, onError: (_) {});
+
+    _tradeSubscription = _binanceWsService.tradeStream.listen((trade) {
+      if (!mounted) return;
+      setState(() {
+        _trades.insert(0, trade);
+        if (_trades.length > 100) {
+          _trades = _trades.sublist(0, 100);
+        }
+      });
+    }, onError: (_) {});
+  }
+
+  Future<void> _loadData() async {
+    try {
+      if (_exchangeId == 'okx') {
+        await _loadOkxData();
+        return;
+      }
+      if (_exchangeId == 'binance') {
+        await _loadBinanceData();
+        return;
+      }
+      if (_exchangeId == 'coinbase') {
+        await _loadCoinbaseData();
+        return;
       }
     } catch (e) {
       // Don't show error UI - just log it
       // User can still interact with the app
+    }
+  }
+
+  Future<void> _loadOkxData() async {
+    // Fetch price precision for this symbol from API
+    final precisionF = _okxService
+        .getPricePrecision(_currentSymbol)
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            return 4; // Default to 4 decimals for crypto
+          },
+        );
+
+    // Load only 29 closed klines - wait for WebSocket to push the 30th (live) one
+    final klinesF = _okxService
+        .getHistoricalKlines(
+          _currentSymbol,
+          bar: _selectedInterval,
+          limit: 29, // Load 29 closed candlesticks
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Klines request timeout'),
+        );
+
+    final tradesF = _okxService
+        .getRecentTrades(_currentSymbol, limit: 50)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Trades request timeout'),
+        );
+
+    // Also fetch ticker and orderbook from REST API
+    final tickerF = _okxService
+        .getTicker(_currentSymbol)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Ticker request timeout'),
+        );
+
+    final orderBookF = _okxService
+        .getOrderBook(_currentSymbol)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('OrderBook request timeout'),
+        );
+
+    // Wait for all data
+    final results = await Future.wait([
+      precisionF,
+      klinesF,
+      tradesF,
+      tickerF,
+      orderBookF,
+    ], eagerError: true);
+
+    final precision = results[0] as int;
+    final klines = results[1] as List<OKXKline>;
+    final trades = results[2] as List<OKXTrade>;
+    final ticker = results[3] as OKXTicker;
+    final orderBook = results[4] as OKXOrderBook;
+
+    if (mounted) {
+      setState(() {
+        _pricePrecision = precision; // Update precision
+        // Store 29 closed klines (oldest -> newest)
+        _klines = klines.reversed.toList();
+
+        // Create placeholder 30th candlestick using 29th candle's close price
+        if (_klines.isNotEmpty) {
+          final lastClosedKline = _klines.last;
+          final placeholderPrice = lastClosedKline.close;
+
+          // Calculate next candlestick timestamp
+          final intervalMs = _getIntervalMilliseconds(_selectedInterval);
+          final nextCandleTime = DateTime.fromMillisecondsSinceEpoch(
+            lastClosedKline.time.millisecondsSinceEpoch + intervalMs,
+          );
+
+          // Create placeholder kline with OHLC = last close price
+          final placeholderKline = OKXKline(
+            timestamp: nextCandleTime.millisecondsSinceEpoch.toString(),
+            open: placeholderPrice,
+            high: placeholderPrice,
+            low: placeholderPrice,
+            close: placeholderPrice,
+            volume: 0, // Placeholder, no volume yet
+            time: nextCandleTime,
+          );
+
+          _klines.add(placeholderKline);
+        }
+
+        _trades = trades;
+        _ticker = _ProductTicker(
+          symbol: ticker.instId,
+          last: ticker.last,
+          open24h: ticker.open24h,
+          high24h: ticker.high24h,
+          low24h: ticker.low24h,
+          volume24h: ticker.volCcy24h,
+          iconUrl: ticker.iconUrl,
+        );
+        _orderBook = orderBook;
+      });
+    }
+  }
+
+  Future<void> _loadBinanceData() async {
+    final isSwap = _productType != 'SPOT';
+    final tickerF = _binanceService
+        .getTickerDetails(symbol: _currentSymbol, isSwap: isSwap)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Ticker request timeout'),
+        );
+    final klinesF = _binanceService
+        .getKlines(
+          symbol: _currentSymbol,
+          isSwap: isSwap,
+          interval: _binanceInterval(_selectedInterval),
+          limit: 30,
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Klines request timeout'),
+        );
+    final tradesF = _binanceService
+        .getRecentTrades(
+          symbol: _currentSymbol,
+          isSwap: isSwap,
+          limit: 50,
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Trades request timeout'),
+        );
+    final orderBookF = _binanceService
+        .getOrderBook(
+          symbol: _currentSymbol,
+          isSwap: isSwap,
+          limit: 5,
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('OrderBook request timeout'),
+        );
+
+    final results = await Future.wait([
+      tickerF,
+      klinesF,
+      tradesF,
+      orderBookF,
+    ], eagerError: true);
+
+    final ticker = results[0] as Map<String, dynamic>;
+    final klines = results[1] as List<OKXKline>;
+    final trades = results[2] as List<OKXTrade>;
+    final orderBook = results[3] as OKXOrderBook;
+
+    final lastRaw = ticker['lastPrice'];
+    final last = _parseDouble(lastRaw) ?? 0;
+    final open = _parseDouble(ticker['openPrice']) ?? last;
+    final high = _parseDouble(ticker['highPrice']) ?? last;
+    final low = _parseDouble(ticker['lowPrice']) ?? last;
+    final volume = _parseDouble(ticker['quoteVolume'] ?? ticker['volume']) ?? 0;
+
+    if (mounted) {
+      setState(() {
+        _pricePrecision = _inferPrecision(lastRaw, fallback: _pricePrecision);
+        _klines = klines;
+        _trades = trades;
+        _orderBook = orderBook;
+        _ticker = _ProductTicker(
+          symbol: _currentSymbol,
+          last: last,
+          open24h: open,
+          high24h: high,
+          low24h: low,
+          volume24h: volume,
+        );
+      });
+    }
+  }
+
+  Future<void> _loadCoinbaseData() async {
+    final tickerF = _coinbaseService
+        .getTickerDetails(_currentSymbol)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Ticker request timeout'),
+        );
+    final klinesF = _coinbaseService
+        .getKlines(
+          _currentSymbol,
+          granularity: _coinbaseGranularity(_selectedInterval),
+          limit: 30,
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Klines request timeout'),
+        );
+    final tradesF = _coinbaseService
+        .getRecentTrades(_currentSymbol, limit: 50)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('Trades request timeout'),
+        )
+        .catchError((_) => <OKXTrade>[]);
+    final orderBookF = _coinbaseService
+        .getOrderBook(_currentSymbol, level: 2)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException('OrderBook request timeout'),
+        )
+        .catchError(
+          (_) => OKXOrderBook(
+            bids: const [],
+            asks: const [],
+            timestamp: DateTime.now().millisecondsSinceEpoch.toString(),
+            symbol: _currentSymbol,
+          ),
+        );
+
+    final results = await Future.wait([
+      tickerF,
+      klinesF,
+      tradesF,
+      orderBookF,
+    ], eagerError: true);
+
+    final ticker = results[0] as Map<String, dynamic>;
+    final klines = results[1] as List<OKXKline>;
+    final trades = results[2] as List<OKXTrade>;
+    final orderBook = results[3] as OKXOrderBook;
+
+    final lastRaw =
+        ticker['price'] ?? ticker['last'] ?? ticker['trade_price'];
+    final last = _parseDouble(lastRaw) ?? 0;
+    final open =
+        _parseDouble(ticker['open_24h'] ?? ticker['open24h']) ?? last;
+    final high =
+        _parseDouble(ticker['high_24h'] ?? ticker['high24h']) ?? last;
+    final low = _parseDouble(ticker['low_24h'] ?? ticker['low24h']) ?? last;
+    final volume =
+        _parseDouble(ticker['volume_24h'] ?? ticker['volume24h']) ?? 0;
+
+    if (mounted) {
+      setState(() {
+        _pricePrecision = _inferPrecision(lastRaw, fallback: _pricePrecision);
+        _klines = klines.reversed.toList();
+        _trades = trades;
+        _orderBook = orderBook;
+        _ticker = _ProductTicker(
+          symbol: _currentSymbol,
+          last: last,
+          open24h: open,
+          high24h: high,
+          low24h: low,
+          volume24h: volume,
+        );
+      });
+    }
+  }
+
+  int _inferPrecision(dynamic value, {required int fallback}) {
+    if (value == null) return fallback;
+    final text = value.toString();
+    if (!text.contains('.')) return 0;
+    return text.split('.').last.length;
+  }
+
+  double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  String _binanceInterval(String interval) {
+    switch (interval.toUpperCase()) {
+      case '1M':
+        return '1m';
+      case '5M':
+        return '5m';
+      case '15M':
+        return '15m';
+      case '30M':
+        return '30m';
+      case '1H':
+        return '1h';
+      case '4H':
+        return '4h';
+      case '1D':
+        return '1d';
+      default:
+        return '15m';
+    }
+  }
+
+  int _coinbaseGranularity(String interval) {
+    switch (interval.toUpperCase()) {
+      case '1M':
+        return 60;
+      case '5M':
+        return 300;
+      case '15M':
+        return 900;
+      case '30M':
+        return 1800;
+      case '1H':
+        return 3600;
+      case '4H':
+        return 21600;
+      case '1D':
+        return 86400;
+      default:
+        return 900;
     }
   }
 
@@ -552,9 +958,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     // Load new data in background
     try {
-      await _okxService.disconnectWebSocket();
-      await _loadData(); // This will update UI when data arrives
-      await _connectWebSocket();
+      if (_exchangeId == 'okx') {
+        await _okxService.disconnectWebSocket();
+        await _loadData(); // This will update UI when data arrives
+        await _connectWebSocket();
+      } else if (_exchangeId == 'binance') {
+        await _binanceWsService.disconnect();
+        await _loadData();
+        await _connectBinanceWebSocket();
+      } else {
+        await _loadData();
+      }
     } catch (e) {
       // Error ignored
     }
@@ -573,9 +987,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     // Load new data in background
     try {
-      await _okxService.disconnectWebSocket();
-      await _loadData(); // This will update UI when data arrives
-      await _connectWebSocket();
+      if (_exchangeId == 'okx') {
+        await _okxService.disconnectWebSocket();
+        await _loadData(); // This will update UI when data arrives
+        await _connectWebSocket();
+      } else if (_exchangeId == 'binance') {
+        await _loadData();
+      } else {
+        await _loadData();
+      }
     } catch (e) {
       // Error ignored
     }
@@ -585,16 +1005,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   Widget _buildSymbolListItem(
     String symbol,
     bool isDarkMode,
-    OKXTicker? ticker,
+    MarketTicker? ticker,
   ) {
     final isSelected = symbol == _currentSymbol;
     final resolvedTicker = ticker;
     final hasData = resolvedTicker != null;
-    final changePercent = hasData && resolvedTicker.open24h > 0
-        ? ((resolvedTicker.last - resolvedTicker.open24h) /
-                resolvedTicker.open24h) *
-            100
-        : null;
+    final changePercent = hasData ? _getMarketChangePercent(resolvedTicker) : null;
     final changeColor = changePercent != null && changePercent >= 0
         ? Colors.green
         : Colors.red;
@@ -623,9 +1039,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           ),
           child: Row(
             children: [
-              hasData && resolvedTicker.iconUrl.isNotEmpty
+              hasData &&
+                      resolvedTicker.iconUrl != null &&
+                      resolvedTicker.iconUrl!.isNotEmpty
                   ? Image.network(
-                      resolvedTicker.iconUrl,
+                      resolvedTicker.iconUrl!,
                       width: 28,
                       height: 28,
                       errorBuilder: (context, error, stackTrace) =>
@@ -652,7 +1070,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                     const SizedBox(height: 4),
                     Text(
                       hasData
-                          ? 'Vol: ${formatVolume(_calculateDisplayVolume(resolvedTicker))}'
+                          ? 'Vol: ${formatVolume(_calculateMarketVolume(resolvedTicker))}'
                           : 'Price unavailable',
                       style: TextStyle(
                         fontSize: 11,
@@ -667,7 +1085,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 children: [
                   Text(
                     hasData
-                        ? '\$${formatPriceExact(resolvedTicker.last, precision: 4)}'
+                        ? '\$${formatPriceExact(resolvedTicker.last ?? 0, precision: 4)}'
                         : '--',
                     style: TextStyle(
                       fontSize: 13,
@@ -937,6 +1355,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         ),
         centerTitle: true,
         actions: [
+          Padding(
+            padding: EdgeInsets.only(right: 8.w),
+            child: Center(
+              child: ExchangeChip(exchangeId: _exchangeId),
+            ),
+          ),
           // WebSocket connection indicator
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -946,7 +1370,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                 height: 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _isWebSocketConnected ? Colors.green : Colors.red,
+                  color: _exchangeId == 'okx'
+                      ? (_isWebSocketConnected ? Colors.green : Colors.red)
+                      : Colors.grey,
                 ),
               ),
             ),
@@ -1049,12 +1475,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   Widget _buildTickerInfo(bool isDarkMode) {
     // Calculate values or use placeholders
     final bool hasData = _ticker != null;
-    final double? changePercent = hasData
+    final double? changePercent = hasData && _ticker!.open24h > 0
         ? ((_ticker!.last - _ticker!.open24h) / _ticker!.open24h) * 100
         : null;
-    final Color changeColor = hasData && changePercent! >= 0
-        ? Colors.green
-        : Colors.red;
+    final bool hasChange = changePercent != null;
+    final Color changeColor =
+        hasChange && changePercent >= 0 ? Colors.green : Colors.red;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -1086,11 +1512,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                               ? Colors.grey[800]
                               : Colors.grey[200],
                         ),
-                        child: hasData && _ticker!.iconUrl.isNotEmpty
+                        child: hasData &&
+                                _ticker!.iconUrl != null &&
+                                _ticker!.iconUrl!.isNotEmpty
                             ? ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
                                 child: Image.network(
-                                  _ticker!.iconUrl,
+                                  _ticker!.iconUrl!,
                                   width: 32,
                                   height: 32,
                                   fit: BoxFit.cover,
@@ -1144,19 +1572,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   Row(
                     children: [
                       Icon(
-                        hasData && changePercent! >= 0
+                        hasChange && changePercent >= 0
                             ? Icons.trending_up
                             : Icons.trending_down,
-                        color: hasData ? changeColor : Colors.grey,
+                        color: hasChange ? changeColor : Colors.grey,
                         size: 16,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        hasData
-                            ? '${changePercent! >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%'
-                            : '+0.00%',
+                        hasChange
+                            ? '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%'
+                            : '--',
                         style: TextStyle(
-                          color: hasData ? changeColor : Colors.grey,
+                          color: hasChange ? changeColor : Colors.grey,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
