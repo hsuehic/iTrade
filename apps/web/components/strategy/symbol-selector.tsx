@@ -70,7 +70,11 @@ export function SymbolSelector({
         >
           {selectedPair ? (
             <div className="flex items-center gap-2 overflow-hidden">
-              <SymbolIcon symbol={extractBaseCurrency(selectedPair.symbol)} size="sm" />
+              <SymbolIcon
+                symbol={extractBaseCurrency(selectedPair.symbol)}
+                exchangeId={selectedPair.exchange?.toLowerCase()}
+                size="sm"
+              />
               <span className="truncate">{selectedPair.name}</span>
             </div>
           ) : (
@@ -114,7 +118,11 @@ export function SymbolSelector({
               className="flex items-center justify-between gap-2 px-2 py-2 cursor-pointer"
             >
               <div className="flex items-center gap-2 overflow-hidden">
-                <SymbolIcon symbol={extractBaseCurrency(pair.symbol)} size="sm" />
+                <SymbolIcon
+                  symbol={extractBaseCurrency(pair.symbol)}
+                  exchangeId={pair.exchange?.toLowerCase()}
+                  size="sm"
+                />
                 <span className="font-medium truncate">{pair.name}</span>
               </div>
               {value === pair.symbol && (

@@ -88,7 +88,11 @@ export const PerpetualTickerRow = memo(function PerpetualTickerRow({
       {/* Symbol */}
       <div className="col-span-2 flex items-center gap-3">
         <div className="relative">
-          <SymbolIcon symbol={ticker.symbol} size="lg" />
+          <SymbolIcon
+            symbol={ticker.symbol}
+            exchangeId={ticker.exchange?.toLowerCase()}
+            size="lg"
+          />
           {/* Exchange badge */}
           <div
             className={cn(

@@ -636,7 +636,11 @@ export function OrdersTable({
           const baseCurrency = extractBaseCurrency(row.original.symbol);
           return (
             <div className="flex items-center gap-2">
-              <SymbolIcon symbol={baseCurrency} size="sm" />
+              <SymbolIcon
+                symbol={baseCurrency}
+                exchangeId={exchange.toLowerCase()}
+                size="sm"
+              />
               <span className="font-medium font-mono">{displaySymbol}</span>
             </div>
           );

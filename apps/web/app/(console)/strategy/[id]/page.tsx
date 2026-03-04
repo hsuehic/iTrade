@@ -182,6 +182,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
               <div className="flex items-center gap-1.5 font-mono">
                 <SymbolIcon
                   symbol={strategy.symbol?.split('/')[0] || ''}
+                  exchangeId={strategy.exchange?.toLowerCase()}
                   className="h-4 w-4"
                 />
                 {strategy.symbol}

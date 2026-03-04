@@ -151,7 +151,11 @@ export function PositionsTable({
           const baseCurrency = extractBaseCurrency(row.original.symbol);
           return (
             <div className="flex items-center gap-2">
-              <SymbolIcon symbol={baseCurrency} size="md" />
+              <SymbolIcon
+                symbol={baseCurrency}
+                exchangeId={row.original.exchange?.toLowerCase()}
+                size="md"
+              />
               <div className="flex flex-col">
                 <span className="font-medium font-mono">{displaySymbol}</span>
                 <span className="text-xs text-muted-foreground">

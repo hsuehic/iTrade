@@ -55,7 +55,11 @@ const MoverCard = memo(function MoverCard({
 
       {/* Symbol */}
       <div className="flex items-center gap-2">
-        <SymbolIcon symbol={ticker.symbol} size="lg" />
+        <SymbolIcon
+          symbol={ticker.symbol}
+          exchangeId={ticker.exchange?.toLowerCase()}
+          size="lg"
+        />
         <div>
           <div className="font-semibold">{ticker.base}</div>
           <div className="text-xs text-muted-foreground">{ticker.exchange}</div>

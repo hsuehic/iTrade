@@ -1241,7 +1241,11 @@ export default function StrategyPage() {
                               </span>
                               <div className="flex items-center gap-2">
                                 {strategy.symbol && (
-                                  <SymbolIcon symbol={strategy.symbol} size="sm" />
+                                  <SymbolIcon
+                                    symbol={strategy.symbol}
+                                    exchangeId={strategy.exchange?.toLowerCase()}
+                                    size="sm"
+                                  />
                                 )}
                                 <span className="font-mono font-medium">
                                   {strategy.normalizedSymbol ||

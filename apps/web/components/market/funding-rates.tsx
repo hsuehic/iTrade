@@ -83,7 +83,11 @@ const FundingBar = memo(function FundingBar({
       <div className="flex items-center gap-3">
         {/* Symbol */}
         <div className="flex items-center gap-2">
-          <SymbolIcon symbol={ticker.symbol} size="md" />
+          <SymbolIcon
+            symbol={ticker.symbol}
+            exchangeId={ticker.exchange?.toLowerCase()}
+            size="md"
+          />
           <div className="w-16">
             <div className="font-medium">{ticker.base}</div>
             <div className="text-xs text-muted-foreground">{ticker.exchange}</div>

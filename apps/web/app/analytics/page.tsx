@@ -297,7 +297,11 @@ export default function AnalyticsPage() {
                                 <TableCell>{order.strategy?.name || 'N/A'}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-2">
-                                    <SymbolIcon symbol={order.symbol} size="sm" />
+                                    <SymbolIcon
+                                      symbol={order.symbol}
+                                      exchangeId={order.exchange?.toLowerCase()}
+                                      size="sm"
+                                    />
                                     <div className="flex flex-col">
                                       <span className="font-mono text-sm">
                                         {order.symbol}

@@ -118,7 +118,11 @@ const columns: ColumnDef<AssetData>[] = [
     header: ({ column }) => renderSortableHeader('Asset', column),
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
-        <SymbolIcon symbol={row.original.asset} size="md" />
+        <SymbolIcon
+          symbol={row.original.asset}
+          exchangeId={row.original.exchange?.toLowerCase()}
+          size="md"
+        />
         <span className="font-medium">{row.original.asset}</span>
       </div>
     ),

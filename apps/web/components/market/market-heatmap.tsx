@@ -67,6 +67,7 @@ const HeatmapCell = memo(function HeatmapCell({ ticker, size, index }: HeatmapCe
               <div className="flex items-center gap-1.5">
                 <SymbolIcon
                   symbol={ticker.symbol}
+                  exchangeId={ticker.exchange?.toLowerCase()}
                   size={size === 'lg' ? 'lg' : size === 'md' ? 'md' : 'sm'}
                 />
                 <span className={cn('font-bold drop-shadow-sm', textSizes[size].symbol)}>
@@ -108,7 +109,11 @@ const HeatmapCell = memo(function HeatmapCell({ ticker, size, index }: HeatmapCe
         >
           <div className="space-y-1.5 p-1">
             <div className="flex items-center gap-2">
-              <SymbolIcon symbol={ticker.symbol} size="md" />
+              <SymbolIcon
+                symbol={ticker.symbol}
+                exchangeId={ticker.exchange?.toLowerCase()}
+                size="md"
+              />
               <span className="font-semibold">{ticker.base}/USDT</span>
               <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                 {ticker.exchange}
