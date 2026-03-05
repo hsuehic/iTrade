@@ -1317,6 +1317,10 @@
       "jsonMode": "JSON Mode",
       "parametersAdvancedHint": "Advanced mode: Edit parameters in JSON format. Switch to form mode for guided parameter configuration."
     },
+    "inbox": {
+      "searchPlaceholder": "Search...",
+      "empty": "No results found."
+    },
     "states": {
       "checkingName": "Checking name availability...",
       "nameAvailable": "✓ Name is available",

@@ -1308,6 +1308,10 @@
       "jsonMode": "JSON 模式",
       "parametersAdvancedHint": "高级模式：以 JSON 格式编辑参数。切换到表单模式可进行引导式配置。"
     },
+    "inbox": {
+      "searchPlaceholder": "搜索...",
+      "empty": "暂无结果。"
+    },
     "states": {
       "checkingName": "正在检查名称可用性...",
       "nameAvailable": "✓ 名称可用",

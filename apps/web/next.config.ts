@@ -33,7 +33,16 @@ const nextConfig: NextConfig = {
   },
 
   images: {
-    remotePatterns: [],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'static.okx.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.binance.com',
+      },
+    ],
   },
 
   experimental: {

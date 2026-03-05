@@ -49,6 +49,7 @@ type PnLData = {
 type Order = {
   id: string;
   symbol: string;
+  exchange?: string;
   side: string;
   type: string;
   quantity: string;

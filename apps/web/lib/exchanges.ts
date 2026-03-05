@@ -245,6 +245,17 @@ export const COMMON_TRADING_PAIRS = [
 export function getCryptoIconUrl(symbol: string, exchangeId?: string): string {
   const symbolLower = symbol.toLowerCase();
   const exchange = exchangeId?.toLowerCase();
+
+  const localSymbols = new Set<string>([
+    ...SUPPORTED_BASE_CURRENCIES.map((base) => base.toLowerCase()),
+    ...Array.from(new Set(Object.values(SUPPORTED_QUOTE_CURRENCIES).flat())).map(
+      (quote) => quote.toLowerCase(),
+    ),
+  ]);
+  if (localSymbols.has(symbolLower)) {
+    return `/crypto-icons/${symbolLower}@2x.png`;
+  }
+
   if (exchange === 'okx') {
     return `https://static.okx.com/cdn/assets/imgs/2210/${symbolLower}.png`;
   }
@@ -259,8 +270,36 @@ export function getCryptoIconUrl(symbol: string, exchangeId?: string): string {
  * Extract base currency from trading pair
  */
 export function extractBaseCurrency(symbol: string): string {
-  const parts = symbol.split('/');
-  return parts[0] || symbol;
+  if (!symbol) return '';
+  const upperSymbol = symbol.toUpperCase().trim();
+  if (!upperSymbol) return '';
+
+  const cleanedSymbol = upperSymbol
+    .replace(/\s*\(.*\)$/, '')
+    .replace(/-PERP-INTX$/, '')
+    .replace(/-PERP$/, '')
+    .replace(/-SWAP$/, '');
+
+  if (cleanedSymbol.includes('/')) {
+    const [base] = cleanedSymbol.split('/');
+    return base || cleanedSymbol;
+  }
+
+  if (cleanedSymbol.includes('-')) {
+    const [base] = cleanedSymbol.split('-');
+    return base || cleanedSymbol;
+  }
+
+  const quoteCurrencies = Array.from(
+    new Set(Object.values(SUPPORTED_QUOTE_CURRENCIES).flat()),
+  ).sort((a, b) => b.length - a.length);
+
+  const matchedQuote = quoteCurrencies.find((quote) => cleanedSymbol.endsWith(quote));
+  if (matchedQuote && cleanedSymbol.length > matchedQuote.length) {
+    return cleanedSymbol.slice(0, -matchedQuote.length);
+  }
+
+  return cleanedSymbol;
 }
 
 /**
