@@ -34,12 +34,13 @@ class AppBootstrap {
   }) async {
     start();
     try {
-      await _apiClientReady.future.timeout(timeout);
+      await _initApiClient().timeout(timeout);
     } catch (_) {}
     if (ApiClient.instance.isInitialized) return;
     try {
-      await _initApiClient().timeout(timeout);
+      await _apiClientReady.future.timeout(timeout);
     } catch (_) {}
+    if (ApiClient.instance.isInitialized) return;
   }
 
   void setNotificationTapHandler(void Function(RemoteMessage message)? handler) {
@@ -47,8 +48,10 @@ class AppBootstrap {
   }
 
   Future<void> _run() async {
-    await _initFirebaseAndNotifications();
-    await _initApiClient();
+    final firebaseInit = _initFirebaseAndNotifications();
+    final apiInit = _initApiClient();
+
+    await Future.wait([firebaseInit, apiInit]);
     await _initDynamicConfig();
     await _syncPushToken();
   }

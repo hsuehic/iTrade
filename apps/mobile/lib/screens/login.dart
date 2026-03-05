@@ -309,10 +309,9 @@ class _LoginScreenState extends State<LoginScreen> {
           _loading = false;
         });
       }
-
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'sign_in_with_google',
-        parameters: {'screen': 'login', 'action': 'login with google'},
+      _logAnalyticsEvent(
+        'sign_in_with_google',
+        {'screen': 'login', 'action': 'login with google'},
       );
     }
   }
@@ -343,9 +342,9 @@ class _LoginScreenState extends State<LoginScreen> {
           _loading = false;
         });
       }
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'sign_in_with_apple',
-        parameters: {'screen': 'login', 'action': 'login with apple'},
+      _logAnalyticsEvent(
+        'sign_in_with_apple',
+        {'screen': 'login', 'action': 'login with apple'},
       );
     }
   }
@@ -383,10 +382,24 @@ class _LoginScreenState extends State<LoginScreen> {
           _loading = false;
         });
       }
-      await FirebaseAnalytics.instance.logEvent(
-        name: 'sign_in_with_credentials',
-        parameters: {'screen': 'login', 'action': 'sign in with credentials'},
+      _logAnalyticsEvent(
+        'sign_in_with_credentials',
+        {'screen': 'login', 'action': 'sign in with credentials'},
       );
+    }
+  }
+
+  void _logAnalyticsEvent(String name, Map<String, Object> parameters) {
+    if (!AppBootstrap.instance.firebaseReady.value) return;
+    try {
+      unawaited(
+        FirebaseAnalytics.instance.logEvent(
+          name: name,
+          parameters: parameters,
+        ),
+      );
+    } catch (_) {
+      // Best-effort only; analytics should never block sign-in flow.
     }
   }
 

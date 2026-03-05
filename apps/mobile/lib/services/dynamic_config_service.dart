@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -45,6 +46,7 @@ class DynamicConfigService {
   String? get currentThemeDocPath => _currentThemeDocPath;
 
   Future<void> initialize() async {
+    if (!_isFirebaseAvailable()) return;
     try {
       await _remoteConfig.setConfigSettings(
         RemoteConfigSettings(
@@ -70,6 +72,10 @@ class DynamicConfigService {
     final themeService = ThemeService.instance;
     final overrideLocale = copyService.localeOverride;
     final deviceLocale = overrideLocale ?? PlatformDispatcher.instance.locale;
+    if (!_isFirebaseAvailable()) {
+      await _loadFromCache(themeService, copyService);
+      return;
+    }
 
     try {
       await _remoteConfig.fetchAndActivate();
@@ -146,6 +152,7 @@ class DynamicConfigService {
   }
 
   RemoteConfigRefs? _readRefsFromRemoteConfig() {
+    if (!_isFirebaseAvailable()) return null;
     final themeRefRaw = _readRemoteConfigValue(_themeRefKey);
     final copyIndexRaw = _readRemoteConfigValue(_copyIndexRefKey);
     final copyDefaultRaw = _readRemoteConfigValue(_copyDefaultRefKey);
@@ -242,6 +249,7 @@ class DynamicConfigService {
   }
 
   Future<Map<String, dynamic>?> fetchThemeDoc() async {
+    if (!_isFirebaseAvailable()) return null;
     final refs = _readRefsFromRemoteConfig();
     final docPath = _currentThemeDocPath ?? refs?.themeDocPath;
     if (docPath == null) return null;
@@ -255,6 +263,7 @@ class DynamicConfigService {
   Future<bool> updateThemeDoc({
     required Map<String, dynamic> themeDoc,
   }) async {
+    if (!_isFirebaseAvailable()) return false;
     if (FirebaseAuth.instance.currentUser == null) {
       return false;
     }
@@ -277,6 +286,7 @@ class DynamicConfigService {
   }
 
   Future<CopyEditSnapshot?> fetchCopyEditSnapshot(String key) async {
+    if (!_isFirebaseAvailable()) return null;
     final copyIndex = await _loadCopyIndexForEditing();
     if (copyIndex == null) return null;
     final localeTags = copyIndex.locales.keys.toList()..sort();
@@ -306,6 +316,7 @@ class DynamicConfigService {
     required String localeTag,
     required CopyService copyService,
   }) async {
+    if (!_isFirebaseAvailable()) return false;
     if (FirebaseAuth.instance.currentUser == null) {
       return false;
     }
@@ -407,11 +418,13 @@ class DynamicConfigService {
 
   Future<CopyIndex?> _loadCopyIndexForEditing() async {
     Map<String, dynamic>? indexDoc;
-    final refs = _readRefsFromRemoteConfig();
-    if (refs?.copyIndexInline != null) {
-      indexDoc = refs?.copyIndexInline;
-    } else if (refs?.copyIndexDocPath != null) {
-      indexDoc = await _fetchFirestoreDoc(refs!.copyIndexDocPath!);
+    if (_isFirebaseAvailable()) {
+      final refs = _readRefsFromRemoteConfig();
+      if (refs?.copyIndexInline != null) {
+        indexDoc = refs?.copyIndexInline;
+      } else if (refs?.copyIndexDocPath != null) {
+        indexDoc = await _fetchFirestoreDoc(refs!.copyIndexDocPath!);
+      }
     }
     if (indexDoc == null) {
       try {
@@ -511,6 +524,10 @@ class DynamicConfigService {
       default:
         return value.toLowerCase();
     }
+  }
+
+  bool _isFirebaseAvailable() {
+    return firebase_core.Firebase.apps.isNotEmpty;
   }
 }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -1223,6 +1224,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildCopyAdminLoginTile(bool isDark) {
+    if (firebase_core.Firebase.apps.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final appEmail = AuthService.instance.user?.email;
     if (!DynamicConfigService.instance.isCopyAdmin(appEmail)) {
       return const SizedBox.shrink();
@@ -1264,6 +1268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildCopyKeyToggleTile(bool isDark) {
+    if (firebase_core.Firebase.apps.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final authUser = firebase_auth.FirebaseAuth.instance.currentUser;
     if (authUser == null) {
       return const SizedBox.shrink();
@@ -1292,6 +1299,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildThemeAdminLoginTile(bool isDark) {
+    if (firebase_core.Firebase.apps.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final appEmail = AuthService.instance.user?.email;
     if (!DynamicConfigService.instance.isThemeAdmin(appEmail)) {
       return const SizedBox.shrink();
@@ -1333,6 +1343,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildThemeEditorTile(bool isDark) {
+    if (firebase_core.Firebase.apps.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final authUser = firebase_auth.FirebaseAuth.instance.currentUser;
     if (authUser == null) {
       return const SizedBox.shrink();

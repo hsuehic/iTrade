@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart' as firebase_core;
 
 import '../services/dynamic_config_models.dart';
 import '../services/dynamic_config_service.dart';
@@ -115,6 +116,17 @@ class _ThemeEditorScreenState extends State<ThemeEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final firebaseReady = firebase_core.Firebase.apps.isNotEmpty;
+    if (!firebaseReady) {
+      return const Scaffold(
+        body: Center(
+          child: CopyText(
+            'theme.admin.firebase_unavailable',
+            fallback: 'Firebase is unavailable.',
+          ),
+        ),
+      );
+    }
     final user = FirebaseAuth.instance.currentUser;
     final isAdmin = DynamicConfigService.instance.isThemeAdmin(user?.email);
     return Scaffold(
