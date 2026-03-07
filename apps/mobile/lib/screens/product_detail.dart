@@ -11,9 +11,10 @@ import '../services/okx_data_service.dart';
 import '../services/copy_service.dart';
 import '../models/market_ticker.dart';
 import '../utils/exchange_config.dart';
+import '../utils/crypto_icons.dart';
 import '../widgets/order_book_widget.dart';
 import '../widgets/trade_history_widget.dart';
-import '../widgets/interactive_kline_chart.dart';
+import '../widgets/fl_kline_chart.dart';
 import '../utils/number_format_utils.dart';
 import '../widgets/copy_text.dart';
 import '../services/binance_ws_service.dart';
@@ -310,6 +311,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
 
     return ticker.volume24h;
+  }
+
+  String _resolveSymbolIconUrl(String symbol, String? tickerIconUrl) {
+    final trimmed = tickerIconUrl?.trim() ?? '';
+    if (trimmed.isNotEmpty) {
+      return trimmed;
+    }
+    if (symbol.trim().isEmpty) {
+      return '';
+    }
+    return CryptoIcons.getIconUrl(symbol, exchangeId: _exchangeId);
   }
 
   double _calculateMarketVolume(MarketTicker ticker) {
@@ -1024,7 +1036,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final isSelected = symbol == _currentSymbol;
     final resolvedTicker = ticker;
     final hasData = resolvedTicker != null;
-    final changePercent = hasData ? _getMarketChangePercent(resolvedTicker) : null;
+    final changePercent =
+        hasData ? _getMarketChangePercent(resolvedTicker) : null;
     final changeColor = changePercent != null && changePercent >= 0
         ? Colors.green
         : Colors.red;
@@ -1033,42 +1046,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final borderColor = isSelected
         ? (isDarkMode ? Colors.blue[300]! : Colors.blue[400]!)
         : Colors.transparent;
+    final iconUrl =
+        _resolveSymbolIconUrl(symbol, resolvedTicker?.iconUrl ?? '');
 
     return Material(
       color: isSelected ? selectedColor : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(10.w),
       child: InkWell(
         key: ValueKey(symbol),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(10.w),
         onTap: () {
           Navigator.pop(context);
           _changeSymbol(symbol);
         },
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          margin: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.w),
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.w),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: borderColor, width: 1),
+            borderRadius: BorderRadius.circular(10.w),
+            border: Border.all(color: borderColor, width: 1.w),
           ),
           child: Row(
             children: [
-              hasData &&
-                      resolvedTicker.iconUrl != null &&
-                      resolvedTicker.iconUrl!.isNotEmpty
+              iconUrl.isNotEmpty
                   ? Image.network(
-                      resolvedTicker.iconUrl!,
-                      width: 28,
-                      height: 28,
+                      iconUrl,
+                      width: 28.w,
+                      height: 28.w,
                       errorBuilder: (context, error, stackTrace) =>
-                          Icon(Icons.monetization_on, size: 28),
+                          Icon(Icons.monetization_on, size: 28.w),
                     )
                   : Icon(
                       Icons.currency_exchange,
-                      size: 28,
+                      size: 28.w,
                       color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                     ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12.w),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1077,17 +1090,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       symbol,
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        fontSize: 14,
+                        fontSize: 14.sp,
                         color: isDarkMode ? Colors.white : Colors.black87,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4.w),
                     Text(
                       hasData
                           ? 'Vol: ${formatVolume(_calculateMarketVolume(resolvedTicker))}'
                           : 'Price unavailable',
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 11.sp,
                         color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
                       ),
                     ),
@@ -1107,12 +1120,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           )}'
                         : '--',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 13.sp,
                       fontWeight: FontWeight.w600,
                       color: isDarkMode ? Colors.white : Colors.black87,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: 2.w),
                   if (changePercent != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1121,10 +1134,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           changePercent >= 0
                               ? Icons.trending_up
                               : Icons.trending_down,
-                          size: 14,
+                          size: 14.w,
                           color: changeColor,
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4.w),
                         CopyText(
                           'common.percent',
                           params: {
@@ -1133,7 +1146,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                           },
                           fallback: '{{percent}}%',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 11.sp,
                             color: changeColor,
                             fontWeight: FontWeight.w600,
                           ),
@@ -1141,8 +1154,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       ],
                     )
                   else
-                    CopyText('screen.product_detail.text', fallback: "--", style: TextStyle(
-                        fontSize: 11,
+                    CopyText(
+                      'screen.product_detail.text',
+                      fallback: "--",
+                      style: TextStyle(
+                        fontSize: 11.sp,
                         color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
                         fontWeight: FontWeight.w600,
                       ),
@@ -1435,7 +1451,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ],
                       ),
                     )
-                  : InteractiveKlineChart(
+                  : FlKlineChart(
                       key: _chartKey,
                       klineData: (() {
                         return _klines.map((k) {
@@ -1501,12 +1517,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final Color changeColor =
         hasChange && changePercent >= 0 ? Colors.green : Colors.red;
 
+    final iconUrl =
+        _resolveSymbolIconUrl(_currentSymbol, _ticker?.iconUrl ?? '');
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.symmetric(horizontal: 16.w),
+      padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
         color: isDarkMode ? Colors.grey[850] : Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12.w),
         border: Border.all(
           color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
         ),
@@ -1523,28 +1542,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                   Row(
                     children: [
                       Container(
-                        width: 32,
-                        height: 32,
+                        width: 32.w,
+                        height: 32.w,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(16.w),
                           color: isDarkMode
                               ? Colors.grey[800]
                               : Colors.grey[200],
                         ),
-                        child: hasData &&
-                                _ticker!.iconUrl != null &&
-                                _ticker!.iconUrl!.isNotEmpty
+                        child: iconUrl.isNotEmpty
                             ? ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
+                                borderRadius: BorderRadius.circular(16.w),
                                 child: Image.network(
-                                  _ticker!.iconUrl!,
-                                  width: 32,
-                                  height: 32,
+                                  iconUrl,
+                                  width: 32.w,
+                                  height: 32.w,
                                   fit: BoxFit.cover,
                                   errorBuilder: (context, error, stackTrace) =>
                                       Icon(
                                         Icons.currency_exchange,
-                                        size: 20,
+                                        size: 20.w,
                                         color: isDarkMode
                                             ? Colors.grey[400]
                                             : Colors.grey[600],
@@ -1553,41 +1570,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                               )
                             : Icon(
                                 Icons.currency_exchange,
-                                size: 20,
+                                size: 20.w,
                                 color: isDarkMode
                                     ? Colors.grey[400]
                                     : Colors.grey[600],
                               ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8.w),
                       Text(
                         _currentSymbol,
                         style: TextStyle(
                           color: isDarkMode ? Colors.white : Colors.black,
-                          fontSize: 16,
+                          fontSize: 16.sp,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  CopyText('screen.product_detail.last_price', fallback: "Last price", style: TextStyle(
+                  SizedBox(height: 12.w),
+                  CopyText(
+                    'screen.product_detail.last_price',
+                    fallback: "Last price",
+                    style: TextStyle(
                       color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                      fontSize: 12,
+                      fontSize: 12.sp,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4.w),
                   Text(
                     hasData
                         ? '\$${formatPriceExact(_ticker!.last, precision: _pricePrecision)}'
                         : '\$--',
                     style: TextStyle(
                       color: isDarkMode ? Colors.white : Colors.black,
-                      fontSize: 24,
+                      fontSize: 24.sp,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4.w),
                   Row(
                     children: [
                       Icon(
@@ -1595,16 +1615,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                             ? Icons.trending_up
                             : Icons.trending_down,
                         color: hasChange ? changeColor : Colors.grey,
-                        size: 16,
+                        size: 16.w,
                       ),
-                      const SizedBox(width: 4),
+                      SizedBox(width: 4.w),
                       Text(
                         hasChange
                             ? '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}%'
                             : '--',
                         style: TextStyle(
                           color: hasChange ? changeColor : Colors.grey,
-                          fontSize: 14,
+                          fontSize: 14.sp,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1622,7 +1642,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         : '\$--',
                     isDarkMode,
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8.w),
                   _buildTickerStat(
                     '24h Low',
                     hasData
@@ -1630,7 +1650,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         : '\$--',
                     isDarkMode,
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8.w),
                   _buildTickerStat(
                     '24h Volume',
                     hasData
