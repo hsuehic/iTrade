@@ -6,8 +6,7 @@
       "cwd": "apps/mobile",
       "request": "launch",
       "type": "dart",
-      "flutterMode": "debug",
-      "args": ["-d", "00008120-001A4110017BC01E"]
+      "flutterMode": "debug"
     },
     {
       "name": "mobile (profile mode)",
@@ -30,9 +29,12 @@
       "cwd": "${workspaceFolder}/apps/console",
       "runtimeExecutable": "node",
       "runtimeArgs": [
-        "-r", "ts-node/register",
-        "-r", "tsconfig-paths/register",
-        "-r", "reflect-metadata"
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register",
+        "-r",
+        "reflect-metadata"
       ],
       "env": {
         "NODE_ENV": "development",
@@ -41,11 +43,15 @@
         "NODE_OPTIONS": "--conditions=source",
         "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
       },
-      "args": ["${file}"],
+      "args": [
+        "${file}"
+      ],
       "sourceMaps": true,
       "stopOnEntry": false,
       "smartStep": true,
-      "skipFiles": ["<node_internals>/**"],
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
       "resolveSourceMapLocations": [
         "${workspaceFolder}/**",
         "!**/node_modules/**"
@@ -57,7 +63,9 @@
       "request": "launch",
       "name": "Debug console with tsx",
       "runtimeExecutable": "tsx",
-      "args": ["${file}"],
+      "args": [
+        "${file}"
+      ],
       "cwd": "${workspaceFolder}/apps/console",
       "sourceMaps": true,
       "console": "integratedTerminal",
@@ -77,7 +85,9 @@
       "request": "launch",
       "name": "Debug web with tsx",
       "runtimeExecutable": "tsx",
-      "args": ["${file}"],
+      "args": [
+        "${file}"
+      ],
       "cwd": "${workspaceFolder}/apps/web",
       "sourceMaps": true,
       "console": "integratedTerminal",
@@ -85,16 +95,26 @@
         "NODE_ENV": "development",
         "PATH": "/Users/xiaowei.xue/.nvm/versions/node/v22.18.0/bin:${env:PATH}"
       },
-      "runtimeArgs": ["-r", "tsconfig-paths/register"]
+      "runtimeArgs": [
+        "-r",
+        "tsconfig-paths/register"
+      ]
     },
     {
       "type": "node",
       "request": "launch",
       "name": "Debug pnpm run dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["run", "dev", "--filter", "@itrade/console"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--filter",
+        "@itrade/console"
+      ],
       "console": "integratedTerminal",
-      "skipFiles": ["<node_internals>/**"]
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
     },
     {
       "type": "node-terminal",
