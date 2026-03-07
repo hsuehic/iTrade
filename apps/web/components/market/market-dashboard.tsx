@@ -142,99 +142,151 @@ export function MarketDashboard() {
 
   // Initialize WebSocket connections
   useEffect(() => {
-    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let tickerReconnectTimeout: NodeJS.Timeout | null = null;
+    let markPriceReconnectTimeout: NodeJS.Timeout | null = null;
     let isMounted = true;
+    const maxRetriesPerEndpoint = 2;
 
     const connect = () => {
       // 1. Connect to ticker stream for price data
       const streams = PERPETUAL_SYMBOLS.binance
         .map((s) => `${s.symbol.toLowerCase()}@ticker`)
         .join('/');
-      const tickerWs = new WebSocket(
+      const tickerEndpoints = [
+        `wss://fstream.binance.com/stream?streams=${streams}`,
         `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${streams}`,
-      );
-      binanceWsRef.current = tickerWs;
+      ];
+      const connectTicker = (endpointIndex = 0, retryCount = 0) => {
+        const tickerWs = new WebSocket(tickerEndpoints[endpointIndex]);
+        binanceWsRef.current = tickerWs;
+        let opened = false;
 
-      tickerWs.onopen = () => {
-        console.log('✅ Binance Futures ticker WebSocket connected');
-        if (isMounted) setIsLoading(false);
-      };
+        tickerWs.onopen = () => {
+          opened = true;
+          console.log(
+            `✅ Binance Futures ticker WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+          );
+          if (isMounted) setIsLoading(false);
+        };
 
-      tickerWs.onmessage = (event) => {
-        try {
-          const rawData = JSON.parse(event.data);
-          if (rawData.data) {
-            const ticker: BinancePerpTicker = rawData.data;
-            const symbol = ticker.s;
-            const price = parseFloat(ticker.c);
-            const openPrice = parseFloat(ticker.o);
-            const changePrice = price - openPrice;
-            const changePercent = parseFloat(ticker.P);
+        tickerWs.onmessage = (event) => {
+          try {
+            const rawData = JSON.parse(event.data);
+            if (rawData.data) {
+              const ticker: BinancePerpTicker = rawData.data;
+              const symbol = ticker.s;
+              const price = parseFloat(ticker.c);
+              const openPrice = parseFloat(ticker.o);
+              const changePrice = price - openPrice;
+              const changePercent = parseFloat(ticker.P);
 
-            updateTicker(symbol, {
-              price,
-              priceStr: formatPrice(price),
-              change24h: changePercent,
-              changePrice24h: changePrice,
-              volume24h: parseFloat(ticker.q),
-              high24h: parseFloat(ticker.h),
-              low24h: parseFloat(ticker.l),
-            });
+              updateTicker(symbol, {
+                price,
+                priceStr: formatPrice(price),
+                change24h: changePercent,
+                changePrice24h: changePrice,
+                volume24h: parseFloat(ticker.q),
+                high24h: parseFloat(ticker.h),
+                low24h: parseFloat(ticker.l),
+              });
+            }
+          } catch (error) {
+            console.error('Error parsing Binance ticker:', error);
           }
-        } catch (error) {
-          console.error('Error parsing Binance ticker:', error);
-        }
-      };
+        };
 
-      tickerWs.onerror = () => {
-        if (isMounted) setConnectionStatus('disconnected');
-      };
+        tickerWs.onerror = () => {
+          if (isMounted) setConnectionStatus('disconnected');
+        };
 
-      tickerWs.onclose = () => {
-        console.log('Binance ticker WebSocket disconnected');
-        if (isMounted) {
-          reconnectTimeout = setTimeout(connect, RECONNECT_DELAY);
-        }
+        tickerWs.onclose = () => {
+          console.log('Binance ticker WebSocket disconnected');
+          if (!isMounted) return;
+          if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
+            tickerReconnectTimeout = setTimeout(
+              () => connectTicker(endpointIndex, retryCount + 1),
+              RECONNECT_DELAY,
+            );
+            return;
+          }
+          if (endpointIndex < tickerEndpoints.length - 1) {
+            tickerReconnectTimeout = setTimeout(
+              () => connectTicker(endpointIndex + 1, 0),
+              RECONNECT_DELAY,
+            );
+            return;
+          }
+          tickerReconnectTimeout = setTimeout(() => connectTicker(0, 0), RECONNECT_DELAY);
+        };
       };
+      connectTicker();
 
       // 2. Connect to mark price stream for funding rates
       const markPriceStreams = PERPETUAL_SYMBOLS.binance
         .map((s) => `${s.symbol.toLowerCase()}@markPrice@1s`)
         .join('/');
-      const markPriceWs = new WebSocket(
+      const markPriceEndpoints = [
+        `wss://fstream.binance.com/stream?streams=${markPriceStreams}`,
         `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${markPriceStreams}`,
-      );
-      binanceMarkPriceWsRef.current = markPriceWs;
+      ];
+      const connectMarkPrice = (endpointIndex = 0, retryCount = 0) => {
+        const markPriceWs = new WebSocket(markPriceEndpoints[endpointIndex]);
+        binanceMarkPriceWsRef.current = markPriceWs;
+        let opened = false;
 
-      markPriceWs.onopen = () => {
-        console.log('✅ Binance mark price WebSocket connected');
-        if (isMounted) setConnectionStatus('connected');
-      };
+        markPriceWs.onopen = () => {
+          opened = true;
+          console.log(
+            `✅ Binance mark price WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+          );
+          if (isMounted) setConnectionStatus('connected');
+        };
 
-      markPriceWs.onmessage = (event) => {
-        try {
-          const rawData = JSON.parse(event.data);
-          if (rawData.data) {
-            const markPrice: BinanceMarkPrice = rawData.data;
-            updateTicker(markPrice.s, {
-              markPrice: parseFloat(markPrice.p),
-              indexPrice: parseFloat(markPrice.i),
-              fundingRate: parseFloat(markPrice.r),
-              fundingTime: markPrice.T,
-            });
+        markPriceWs.onmessage = (event) => {
+          try {
+            const rawData = JSON.parse(event.data);
+            if (rawData.data) {
+              const markPrice: BinanceMarkPrice = rawData.data;
+              updateTicker(markPrice.s, {
+                markPrice: parseFloat(markPrice.p),
+                indexPrice: parseFloat(markPrice.i),
+                fundingRate: parseFloat(markPrice.r),
+                fundingTime: markPrice.T,
+              });
+            }
+          } catch (error) {
+            console.error('Error parsing mark price:', error);
           }
-        } catch (error) {
-          console.error('Error parsing mark price:', error);
-        }
-      };
+        };
 
-      markPriceWs.onerror = () => {
-        if (isMounted) setConnectionStatus('disconnected');
-      };
+        markPriceWs.onerror = () => {
+          if (isMounted) setConnectionStatus('disconnected');
+        };
 
-      markPriceWs.onclose = () => {
-        console.log('Binance mark price WebSocket disconnected');
+        markPriceWs.onclose = () => {
+          console.log('Binance mark price WebSocket disconnected');
+          if (!isMounted) return;
+          if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
+            markPriceReconnectTimeout = setTimeout(
+              () => connectMarkPrice(endpointIndex, retryCount + 1),
+              RECONNECT_DELAY,
+            );
+            return;
+          }
+          if (endpointIndex < markPriceEndpoints.length - 1) {
+            markPriceReconnectTimeout = setTimeout(
+              () => connectMarkPrice(endpointIndex + 1, 0),
+              RECONNECT_DELAY,
+            );
+            return;
+          }
+          markPriceReconnectTimeout = setTimeout(
+            () => connectMarkPrice(0, 0),
+            RECONNECT_DELAY,
+          );
+        };
       };
+      connectMarkPrice();
     };
 
     connect();
@@ -243,8 +295,11 @@ export function MarketDashboard() {
       isMounted = false;
       binanceWsRef.current?.close();
       binanceMarkPriceWsRef.current?.close();
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
+      if (tickerReconnectTimeout) {
+        clearTimeout(tickerReconnectTimeout);
+      }
+      if (markPriceReconnectTimeout) {
+        clearTimeout(markPriceReconnectTimeout);
       }
     };
   }, [updateTicker, reconnectTrigger]);

@@ -199,18 +199,24 @@ class OKXTrade {
 }
 
 class OKXDataService {
-  static const String baseUrl = 'https://itrade.ihsueh.com/rest/okx/api/v5';
+  static const List<String> _restBaseUrls = [
+    'https://www.okx.com/api/v5',
+    'https://itrade.ihsueh.com/rest/okx/api/v5',
+  ];
   static const List<String> publicWsUrls = [
+    'wss://ws.okx.com:8443/ws/v5/public',
     'wss://itrade.ihsueh.com/ws/okx/ws/v5/public',
   ];
   static const List<String> businessWsUrls = [
+    'wss://ws.okx.com:8443/ws/v5/business',
     'wss://itrade.ihsueh.com/ws/okx/ws/v5/business',
   ];
+  static const int _maxRetriesPerBase = 2;
 
   int _currentPublicWsUrlIndex = 0;
   int _currentBusinessWsUrlIndex = 0;
 
-  late final Dio _dio;
+  late final List<Dio> _dioClients;
   WebSocketChannel? _publicWsChannel; // For tickers, order book, trades
   WebSocketChannel? _businessWsChannel; // For candlestick data
   final StreamController<List<OKXKline>> _klineController =
@@ -251,17 +257,7 @@ class OKXDataService {
   Stream<OKXTrade> get tradeStream => _tradeController.stream;
 
   OKXDataService() {
-    _dio = Dio(
-      BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 30),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      ),
-    );
+    _dioClients = _restBaseUrls.map(_buildDio).toList();
   }
 
   /// Get instrument information including tick size and precision
@@ -276,16 +272,22 @@ class OKXDataService {
     }
 
     try {
-      final response = await _dio.get(
-        '/public/instruments',
-        queryParameters: {'instType': instType, 'instId': symbol},
+      final response = await _requestWithFallback<Map<String, dynamic>>(
+        (dio) => dio.get(
+          '/public/instruments',
+          queryParameters: {'instType': instType, 'instId': symbol},
+        ),
       );
 
-      if (response.data['code'] == '0') {
-        final List<dynamic> data = response.data['data'];
+      final data = response.data;
+      if (data == null) {
+        throw Exception('OKX response is empty.');
+      }
+      if (data['code'] == '0') {
+        final List<dynamic> items = data['data'];
 
-        if (data.isNotEmpty) {
-          final instrument = OKXInstrument.fromJson(data[0]);
+        if (items.isNotEmpty) {
+          final instrument = OKXInstrument.fromJson(items[0]);
           _instrumentCache[cacheKey] = instrument; // Cache it
           return instrument;
         } else {}
@@ -315,23 +317,29 @@ class OKXDataService {
     String? before,
   }) async {
     try {
-      final response = await _dio.get(
-        '/market/history-candles',
-        queryParameters: {
-          'instId': symbol,
-          'bar': bar,
-          'limit': limit.toString(),
-          if (after != null) 'after': after,
-          if (before != null) 'before': before,
-        },
+      final response = await _requestWithFallback<Map<String, dynamic>>(
+        (dio) => dio.get(
+          '/market/history-candles',
+          queryParameters: {
+            'instId': symbol,
+            'bar': bar,
+            'limit': limit.toString(),
+            if (after != null) 'after': after,
+            if (before != null) 'before': before,
+          },
+        ),
       );
 
-      if (response.data['code'] == '0') {
-        final List<dynamic> data = response.data['data'];
-        return data.map((item) => OKXKline.fromList(item)).toList();
+      final data = response.data;
+      if (data == null) {
+        throw Exception('OKX response is empty.');
+      }
+      if (data['code'] == '0') {
+        final List<dynamic> items = data['data'];
+        return items.map((item) => OKXKline.fromList(item)).toList();
       } else {
         throw Exception(
-          'Failed to get historical data: ${response.data['msg']}',
+          'Failed to get historical data: ${data['msg']}',
         );
       }
     } catch (e) {
@@ -342,18 +350,24 @@ class OKXDataService {
   /// Get current ticker information
   Future<OKXTicker> getTicker(String symbol) async {
     try {
-      final response = await _dio.get(
-        '/market/ticker',
-        queryParameters: {'instId': symbol},
+      final response = await _requestWithFallback<Map<String, dynamic>>(
+        (dio) => dio.get(
+          '/market/ticker',
+          queryParameters: {'instId': symbol},
+        ),
       );
 
-      if (response.data['code'] == '0') {
-        final List<dynamic> data = response.data['data'];
-        if (data.isNotEmpty) {
-          return OKXTicker.fromJson(data[0]);
+      final data = response.data;
+      if (data == null) {
+        throw Exception('OKX response is empty.');
+      }
+      if (data['code'] == '0') {
+        final List<dynamic> items = data['data'];
+        if (items.isNotEmpty) {
+          return OKXTicker.fromJson(items[0]);
         }
       }
-      throw Exception('Failed to get ticker: ${response.data['msg']}');
+      throw Exception('Failed to get ticker: ${data['msg']}');
     } catch (e) {
       rethrow;
     }
@@ -361,22 +375,28 @@ class OKXDataService {
 
   Future<List<OKXTicker>> getTickers(String instType) async {
     try {
-      final response = await _dio.get(
-        '/market/tickers',
-        queryParameters: {'instType': instType},
+      final response = await _requestWithFallback<Map<String, dynamic>>(
+        (dio) => dio.get(
+          '/market/tickers',
+          queryParameters: {'instType': instType},
+        ),
       );
 
-      if (response.data['code'] == '0') {
-        final List<dynamic> data = response.data['data'];
-        if (data.isNotEmpty) {
-          final List<OKXTicker> tickers = data
+      final data = response.data;
+      if (data == null) {
+        throw Exception('OKX response is empty.');
+      }
+      if (data['code'] == '0') {
+        final List<dynamic> items = data['data'];
+        if (items.isNotEmpty) {
+          final List<OKXTicker> tickers = items
               .map((item) => OKXTicker.fromJson(item))
               .toList();
           tickers.sort((a, b) => b.volCcy24h.compareTo(a.volCcy24h));
           return tickers;
         }
       }
-      throw Exception('Failed to get ticker: ${response.data['msg']}');
+      throw Exception('Failed to get ticker: ${data['msg']}');
     } catch (e) {}
     return [];
   }
@@ -384,18 +404,24 @@ class OKXDataService {
   /// Get order book data
   Future<OKXOrderBook> getOrderBook(String symbol, {int sz = 5}) async {
     try {
-      final response = await _dio.get(
-        '/market/books',
-        queryParameters: {'instId': symbol, 'sz': sz.toString()},
+      final response = await _requestWithFallback<Map<String, dynamic>>(
+        (dio) => dio.get(
+          '/market/books',
+          queryParameters: {'instId': symbol, 'sz': sz.toString()},
+        ),
       );
 
-      if (response.data['code'] == '0') {
-        final List<dynamic> data = response.data['data'];
-        if (data.isNotEmpty) {
-          return OKXOrderBook.fromJson(data[0]);
+      final data = response.data;
+      if (data == null) {
+        throw Exception('OKX response is empty.');
+      }
+      if (data['code'] == '0') {
+        final List<dynamic> items = data['data'];
+        if (items.isNotEmpty) {
+          return OKXOrderBook.fromJson(items[0]);
         }
       }
-      throw Exception('Failed to get order book: ${response.data['msg']}');
+      throw Exception('Failed to get order book: ${data['msg']}');
     } catch (e) {
       rethrow;
     }
@@ -407,16 +433,22 @@ class OKXDataService {
     int limit = 100,
   }) async {
     try {
-      final response = await _dio.get(
-        '/market/trades',
-        queryParameters: {'instId': symbol, 'limit': limit.toString()},
+      final response = await _requestWithFallback<Map<String, dynamic>>(
+        (dio) => dio.get(
+          '/market/trades',
+          queryParameters: {'instId': symbol, 'limit': limit.toString()},
+        ),
       );
 
-      if (response.data['code'] == '0') {
-        final List<dynamic> data = response.data['data'];
-        return data.map((item) => OKXTrade.fromJson(item)).toList();
+      final data = response.data;
+      if (data == null) {
+        throw Exception('OKX response is empty.');
       }
-      throw Exception('Failed to get trades: ${response.data['msg']}');
+      if (data['code'] == '0') {
+        final List<dynamic> items = data['data'];
+        return items.map((item) => OKXTrade.fromJson(item)).toList();
+      }
+      throw Exception('Failed to get trades: ${data['msg']}');
     } catch (e) {
       rethrow;
     }
@@ -552,6 +584,8 @@ class OKXDataService {
         protocols: [],
       );
 
+      await _awaitWsReady(_businessWsChannel);
+
       // Start listening to WebSocket messages
       _businessWsChannel!.stream.listen(
         (message) => _handleBusinessWebSocketMessage(message),
@@ -587,6 +621,8 @@ class OKXDataService {
         Uri.parse(currentUrl),
         protocols: [],
       );
+
+      await _awaitWsReady(_publicWsChannel);
 
       // Start listening to WebSocket messages
       _publicWsChannel!.stream.listen(
@@ -986,5 +1022,74 @@ class OKXDataService {
     _currentPriceController.close();
     _orderBookController.close();
     _tradeController.close();
+  }
+
+  Dio _buildDio(String baseUrl) {
+    return Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ),
+    );
+  }
+
+  Future<Response<T>> _requestWithFallback<T>(
+    Future<Response<T>> Function(Dio dio) request,
+  ) async {
+    DioException? lastDioError;
+    Object? lastError;
+    for (final dio in _dioClients) {
+      for (var attempt = 0; attempt < _maxRetriesPerBase; attempt += 1) {
+        try {
+          return await request(dio);
+        } on DioException catch (error) {
+          if (!_shouldRetry(error)) {
+            rethrow;
+          }
+          lastDioError = error;
+          await _delayForRetry(attempt);
+        } catch (error) {
+          lastError = error;
+          break;
+        }
+      }
+    }
+    if (lastDioError != null) {
+      throw lastDioError;
+    }
+    if (lastError != null) {
+      throw lastError;
+    }
+    throw Exception('OKX request failed.');
+  }
+
+  bool _shouldRetry(DioException error) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.unknown) {
+      return true;
+    }
+    final status = error.response?.statusCode;
+    if (status != null && status >= 500) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _delayForRetry(int attempt) async {
+    final delayMs = (300 * (attempt + 1)).clamp(300, 1200);
+    await Future.delayed(Duration(milliseconds: delayMs));
+  }
+
+  Future<void> _awaitWsReady(WebSocketChannel? channel) async {
+    if (channel == null) return;
+    await channel.ready.timeout(const Duration(seconds: 5));
   }
 }

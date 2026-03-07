@@ -4,19 +4,21 @@ import '../models/market_ticker.dart';
 import 'okx_data_service.dart';
 
 class CoinbaseDataService {
-  static const String _baseUrl = 'https://itrade.ihsueh.com/rest/coinbase';
+  static const List<String> _baseUrls = [
+    'https://api.coinbase.com',
+    'https://itrade.ihsueh.com/rest/coinbase',
+  ];
   static const Duration _cacheTtl = Duration(seconds: 30);
   static const int _maxProducts = 80;
   static const int _batchSize = 10;
+  static const int _maxRetriesPerBase = 2;
 
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
-    ),
-  );
+  late final List<Dio> _dioClients;
   final Map<String, _CacheEntry> _cache = {};
+
+  CoinbaseDataService() {
+    _dioClients = _baseUrls.map(_buildDio).toList();
+  }
 
   Future<List<MarketTicker>> getTickers({
     required bool isSwap,
@@ -64,9 +66,11 @@ class CoinbaseDataService {
   }
 
   Future<List<_CoinbaseProduct>> _fetchProducts() async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v3/brokerage/products',
-      queryParameters: {'limit': _maxProducts.toString()},
+    final response = await _requestWithFallback<Map<String, dynamic>>(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/api/v3/brokerage/products',
+        queryParameters: {'limit': _maxProducts.toString()},
+      ),
     );
     final data = response.data;
     if (data == null) return [];
@@ -85,8 +89,10 @@ class CoinbaseDataService {
       final batch = productIds.skip(i).take(_batchSize).toList();
       final responses = await Future.wait(
         batch.map(
-          (id) => _dio.get<Map<String, dynamic>>(
-            '/api/v3/brokerage/products/$id/ticker',
+          (id) => _requestWithFallback<Map<String, dynamic>>(
+            (dio) => dio.get<Map<String, dynamic>>(
+              '/api/v3/brokerage/products/$id/ticker',
+            ),
           ),
         ),
       );
@@ -139,16 +145,20 @@ class CoinbaseDataService {
   }
 
   Future<Map<String, dynamic>> getTickerDetails(String productId) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v3/brokerage/products/$productId/ticker',
+    final response = await _requestWithFallback<Map<String, dynamic>>(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/api/v3/brokerage/products/$productId/ticker',
+      ),
     );
     return response.data ?? {};
   }
 
   Future<OKXOrderBook> getOrderBook(String productId, {int level = 2}) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v3/brokerage/product_book',
-      queryParameters: {'product_id': productId, 'level': level.toString()},
+    final response = await _requestWithFallback<Map<String, dynamic>>(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/api/v3/brokerage/product_book',
+        queryParameters: {'product_id': productId, 'level': level.toString()},
+      ),
     );
     final data = response.data ?? {};
     final book = data['pricebook'] as Map<String, dynamic>? ?? data;
@@ -188,9 +198,11 @@ class CoinbaseDataService {
     String productId, {
     int limit = 50,
   }) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v3/brokerage/products/$productId/trades',
-      queryParameters: {'limit': limit.toString()},
+    final response = await _requestWithFallback<Map<String, dynamic>>(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/api/v3/brokerage/products/$productId/trades',
+        queryParameters: {'limit': limit.toString()},
+      ),
     );
     final data = response.data;
     final tradesRaw = data?['trades'] ?? data?['data'] ?? data?['results'];
@@ -217,12 +229,14 @@ class CoinbaseDataService {
     required int granularity,
     int limit = 30,
   }) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v3/brokerage/products/$productId/candles',
-      queryParameters: {
-        'granularity': granularity.toString(),
-        'limit': limit.toString(),
-      },
+    final response = await _requestWithFallback<Map<String, dynamic>>(
+      (dio) => dio.get<Map<String, dynamic>>(
+        '/api/v3/brokerage/products/$productId/candles',
+        queryParameters: {
+          'granularity': granularity.toString(),
+          'limit': limit.toString(),
+        },
+      ),
     );
     final data = response.data;
     final raw = data?['candles'] ?? data?['data'] ?? data?['results'];
@@ -254,6 +268,66 @@ class CoinbaseDataService {
     final parsed = DateTime.tryParse(value.toString());
     if (parsed != null) return parsed.millisecondsSinceEpoch;
     return int.tryParse(value.toString()) ?? 0;
+  }
+
+  Dio _buildDio(String baseUrl) {
+    return Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+      ),
+    );
+  }
+
+  Future<Response<T>> _requestWithFallback<T>(
+    Future<Response<T>> Function(Dio dio) request,
+  ) async {
+    DioException? lastDioError;
+    Object? lastError;
+    for (final dio in _dioClients) {
+      for (var attempt = 0; attempt < _maxRetriesPerBase; attempt += 1) {
+        try {
+          return await request(dio);
+        } on DioException catch (error) {
+          if (!_shouldRetry(error)) {
+            rethrow;
+          }
+          lastDioError = error;
+          await _delayForRetry(attempt);
+        } catch (error) {
+          lastError = error;
+          break;
+        }
+      }
+    }
+    if (lastDioError != null) {
+      throw lastDioError;
+    }
+    if (lastError != null) {
+      throw lastError;
+    }
+    throw Exception('Coinbase request failed.');
+  }
+
+  bool _shouldRetry(DioException error) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.unknown) {
+      return true;
+    }
+    final status = error.response?.statusCode;
+    if (status != null && status >= 500) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _delayForRetry(int attempt) async {
+    final delayMs = (300 * (attempt + 1)).clamp(300, 1200);
+    await Future.delayed(Duration(milliseconds: delayMs));
   }
 }
 

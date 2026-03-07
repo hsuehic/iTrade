@@ -108,7 +108,8 @@ export function TickerGrid() {
   // WebSocket refs
   const binanceWsRef = useRef<WebSocket | null>(null);
   const okxWsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const binanceReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const okxReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Data buffers for throttling
   const latestBinanceDataRef = useRef<Map<string, TickerData>>(new Map());
@@ -131,7 +132,7 @@ export function TickerGrid() {
   useEffect(() => {
     let binanceConnected = false;
     let okxConnected = false;
-    const okxProxyUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public'; // 'wss://ws.okx.com/ws/v5/public'; //
+    const maxRetriesPerEndpoint = 2;
 
     const updateConnectionState = () => {
       if (binanceConnected || okxConnected) {
@@ -238,19 +239,23 @@ export function TickerGrid() {
     // Start the flush loop (every 1000ms = 1s)
     const intervalId = setInterval(flushUpdates, 1000);
 
-    // Connect to Binance WebSocket (Futures)
-    const connectBinance = () => {
+    const connectBinance = (endpointIndex = 0, retryCount = 0) => {
       const streams = BINANCE_COINS.map(
         (coin) => `${coin.symbol.toLowerCase()}@ticker`,
       ).join('/');
-      // Use fstream.binance.com for Futures
-      const ws = new WebSocket(
+      const endpoints = [
+        `wss://fstream.binance.com/stream?streams=${streams}`,
         `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${streams}`,
-      );
+      ];
+      const ws = new WebSocket(endpoints[endpointIndex]);
       binanceWsRef.current = ws;
+      let opened = false;
 
       ws.onopen = () => {
-        console.log('✅ Binance Futures WebSocket connected via proxy');
+        opened = true;
+        console.log(
+          `✅ Binance Futures WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+        );
         binanceConnected = true;
         updateConnectionState();
       };
@@ -291,20 +296,39 @@ export function TickerGrid() {
       ws.onclose = () => {
         console.log('Binance WebSocket disconnected');
         binanceConnected = false;
-        // Reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectBinance();
+        if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
+          binanceReconnectTimeoutRef.current = setTimeout(() => {
+            connectBinance(endpointIndex, retryCount + 1);
+          }, 3000);
+          return;
+        }
+        if (endpointIndex < endpoints.length - 1) {
+          binanceReconnectTimeoutRef.current = setTimeout(() => {
+            connectBinance(endpointIndex + 1, 0);
+          }, 3000);
+          return;
+        }
+        binanceReconnectTimeoutRef.current = setTimeout(() => {
+          connectBinance(0, 0);
         }, 3000);
       };
     };
 
     // Connect to OKX WebSocket
-    const connectOKX = () => {
-      const ws = new WebSocket(okxProxyUrl);
+    const connectOKX = (endpointIndex = 0, retryCount = 0) => {
+      const endpoints = [
+        'wss://ws.okx.com:8443/ws/v5/public',
+        'wss://itrade.ihsueh.com/ws/okx/ws/v5/public',
+      ];
+      const ws = new WebSocket(endpoints[endpointIndex]);
       okxWsRef.current = ws;
+      let opened = false;
 
       ws.onopen = () => {
-        console.log('✅ OKX WebSocket connected via proxy');
+        opened = true;
+        console.log(
+          `✅ OKX WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+        );
 
         // Subscribe to ticker channels
         const subscribeMsg = {
@@ -359,9 +383,20 @@ export function TickerGrid() {
       ws.onclose = () => {
         console.log('OKX WebSocket disconnected');
         okxConnected = false;
-        // Reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectOKX();
+        if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
+          okxReconnectTimeoutRef.current = setTimeout(() => {
+            connectOKX(endpointIndex, retryCount + 1);
+          }, 3000);
+          return;
+        }
+        if (endpointIndex < endpoints.length - 1) {
+          okxReconnectTimeoutRef.current = setTimeout(() => {
+            connectOKX(endpointIndex + 1, 0);
+          }, 3000);
+          return;
+        }
+        okxReconnectTimeoutRef.current = setTimeout(() => {
+          connectOKX(0, 0);
         }, 3000);
       };
     };
@@ -378,8 +413,11 @@ export function TickerGrid() {
       if (okxWsRef.current) {
         okxWsRef.current.close();
       }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      if (binanceReconnectTimeoutRef.current) {
+        clearTimeout(binanceReconnectTimeoutRef.current);
+      }
+      if (okxReconnectTimeoutRef.current) {
+        clearTimeout(okxReconnectTimeoutRef.current);
       }
       clearInterval(intervalId);
     };

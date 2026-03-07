@@ -63,7 +63,6 @@ export async function GET() {
       let binanceWs: any = null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let okxWs: any = null;
-      let reconnectTimeout: NodeJS.Timeout | null = null;
       let isAlive = true;
 
       const sendToClient = (data: object) => {
@@ -82,138 +81,186 @@ export async function GET() {
         }
       };
 
-      // Connect to Binance WebSocket
-      const connectBinance = () => {
-        try {
-          const WebSocketClient = require('ws');
-          const streams = BINANCE_COINS.map(
-            (coin) => `${coin.toLowerCase()}@ticker`,
-          ).join('/');
-          const wsUrl = `wss://itrade.ihsueh.com/ws/binance/spot/stream?streams=${streams}`;
+      const createWsConnection = ({
+        endpoints,
+        onOpen,
+        onMessage,
+        onError,
+        onClose,
+        label,
+      }: {
+        endpoints: string[];
+        onOpen: (endpointIndex: number) => void;
+        onMessage: (rawData: Buffer) => void;
+        onError: (error: Error) => void;
+        onClose: (endpointIndex: number) => void;
+        label: string;
+      }) => {
+        const WebSocketClient = require('ws');
+        const maxRetriesPerEndpoint = 2;
+        let endpointIndex = 0;
+        let retryCount = 0;
+        let reconnectTimeout: NodeJS.Timeout | null = null;
+        let opened = false;
 
-          binanceWs = new WebSocketClient(wsUrl);
+        const connect = () => {
+          if (!isAlive) return;
+          opened = false;
+          const wsUrl = endpoints[endpointIndex];
+          const wsClient = new WebSocketClient(wsUrl);
 
-          binanceWs.on('open', () => {
-            console.log('✅ Binance WebSocket connected');
-            sendToClient({ type: 'connected', exchange: 'Binance' });
+          wsClient.on('open', () => {
+            opened = true;
+            retryCount = 0;
+            onOpen(endpointIndex);
           });
 
-          binanceWs.on('message', (rawData: Buffer) => {
-            try {
-              const message = JSON.parse(rawData.toString());
-              if (message.data) {
-                const tickerData: BinanceTickerData = message.data;
-                const formattedData = {
-                  symbol: tickerData.s,
-                  price: parseFloat(tickerData.c),
-                  change24h: parseFloat(tickerData.P),
-                  volume24h: parseFloat(tickerData.q),
-                  high24h: parseFloat(tickerData.h),
-                  low24h: parseFloat(tickerData.l),
-                  exchange: 'Binance',
-                };
-                sendToClient({ type: 'ticker', data: formattedData });
-              }
-            } catch (error) {
-              console.error('Error parsing Binance message:', error);
+          wsClient.on('message', onMessage);
+
+          wsClient.on('error', (error: Error) => {
+            onError(error);
+          });
+
+          wsClient.on('close', () => {
+            onClose(endpointIndex);
+            if (!isAlive) return;
+            if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
+              retryCount += 1;
+              reconnectTimeout = setTimeout(connect, 3000);
+              return;
             }
-          });
-
-          binanceWs.on('error', (error: Error) => {
-            console.error('Binance WebSocket error:', error);
-          });
-
-          binanceWs.on('close', () => {
-            console.log('Binance WebSocket disconnected');
-            if (isAlive) {
-              setTimeout(() => {
-                if (isAlive) connectBinance();
-              }, 3000);
+            if (endpointIndex < endpoints.length - 1) {
+              endpointIndex += 1;
+              retryCount = 0;
+              reconnectTimeout = setTimeout(connect, 3000);
+              return;
             }
+            endpointIndex = 0;
+            retryCount = 0;
+            reconnectTimeout = setTimeout(connect, 3000);
           });
-        } catch (error) {
-          console.error('Failed to connect Binance WebSocket:', error);
-        }
+
+          if (label === 'binance') {
+            binanceWs = wsClient;
+          } else {
+            okxWs = wsClient;
+          }
+        };
+
+        connect();
+
+        return () => {
+          if (reconnectTimeout) clearTimeout(reconnectTimeout);
+          if (label === 'binance' && binanceWs) binanceWs.close();
+          if (label === 'okx' && okxWs) okxWs.close();
+        };
       };
 
-      // Connect to OKX WebSocket
-      const connectOKX = () => {
-        try {
-          const WebSocketClient = require('ws');
-          // Use standard HTTPS port 443 for WebSocket
-          const wsUrl = 'wss://itrade.ihsueh.com/ws/okx/ws/v5/public';
-
-          okxWs = new WebSocketClient(wsUrl);
-
-          okxWs.on('open', () => {
-            console.log('✅ OKX WebSocket connected');
-
-            // Subscribe to ticker channels
-            const subscribeMsg = {
-              op: 'subscribe',
-              args: OKX_COINS.map((coin) => ({
-                channel: 'tickers',
-                instId: coin,
-              })),
-            };
-
-            okxWs.send(JSON.stringify(subscribeMsg));
-            sendToClient({ type: 'connected', exchange: 'OKX' });
-          });
-
-          okxWs.on('message', (rawData: Buffer) => {
-            try {
-              const message: OKXTickerData = JSON.parse(rawData.toString());
-              if (message.data && message.data.length > 0) {
-                const tickerData = message.data[0];
-                const open24h = parseFloat(tickerData.open24h);
-                const last = parseFloat(tickerData.last);
-                const changePercent =
-                  open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
-
-                const formattedData = {
-                  symbol: tickerData.instId,
-                  price: last,
-                  change24h: changePercent,
-                  volume24h: parseFloat(tickerData.volCcy24h),
-                  high24h: parseFloat(tickerData.high24h),
-                  low24h: parseFloat(tickerData.low24h),
-                  exchange: 'OKX',
-                };
-                sendToClient({ type: 'ticker', data: formattedData });
-              }
-            } catch (error) {
-              console.error('Error parsing OKX message:', error);
+      const streams = BINANCE_COINS.map((coin) => `${coin.toLowerCase()}@ticker`).join(
+        '/',
+      );
+      const binanceEndpoints = [
+        `wss://stream.binance.com:9443/stream?streams=${streams}`,
+        `wss://itrade.ihsueh.com/ws/binance/spot/stream?streams=${streams}`,
+      ];
+      const binanceCleanup = createWsConnection({
+        endpoints: binanceEndpoints,
+        label: 'binance',
+        onOpen: (endpointIndex) => {
+          console.log(
+            `✅ Binance WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+          );
+          sendToClient({ type: 'connected', exchange: 'Binance' });
+        },
+        onMessage: (rawData: Buffer) => {
+          try {
+            const message = JSON.parse(rawData.toString());
+            if (message.data) {
+              const tickerData: BinanceTickerData = message.data;
+              const formattedData = {
+                symbol: tickerData.s,
+                price: parseFloat(tickerData.c),
+                change24h: parseFloat(tickerData.P),
+                volume24h: parseFloat(tickerData.q),
+                high24h: parseFloat(tickerData.h),
+                low24h: parseFloat(tickerData.l),
+                exchange: 'Binance',
+              };
+              sendToClient({ type: 'ticker', data: formattedData });
             }
-          });
+          } catch (error) {
+            console.error('Error parsing Binance message:', error);
+          }
+        },
+        onError: (error: Error) => {
+          console.error('Binance WebSocket error:', error);
+        },
+        onClose: () => {
+          console.log('Binance WebSocket disconnected');
+        },
+      });
 
-          okxWs.on('error', (error: Error) => {
-            console.error('OKX WebSocket error:', error);
-          });
+      const okxEndpoints = [
+        'wss://ws.okx.com:8443/ws/v5/public',
+        'wss://itrade.ihsueh.com/ws/okx/ws/v5/public',
+      ];
+      const okxCleanup = createWsConnection({
+        endpoints: okxEndpoints,
+        label: 'okx',
+        onOpen: (endpointIndex) => {
+          console.log(
+            `✅ OKX WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+          );
 
-          okxWs.on('close', () => {
-            console.log('OKX WebSocket disconnected');
-            if (isAlive) {
-              setTimeout(() => {
-                if (isAlive) connectOKX();
-              }, 3000);
+          // Subscribe to ticker channels
+          const subscribeMsg = {
+            op: 'subscribe',
+            args: OKX_COINS.map((coin) => ({
+              channel: 'tickers',
+              instId: coin,
+            })),
+          };
+
+          okxWs.send(JSON.stringify(subscribeMsg));
+          sendToClient({ type: 'connected', exchange: 'OKX' });
+        },
+        onMessage: (rawData: Buffer) => {
+          try {
+            const message: OKXTickerData = JSON.parse(rawData.toString());
+            if (message.data && message.data.length > 0) {
+              const tickerData = message.data[0];
+              const open24h = parseFloat(tickerData.open24h);
+              const last = parseFloat(tickerData.last);
+              const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
+
+              const formattedData = {
+                symbol: tickerData.instId,
+                price: last,
+                change24h: changePercent,
+                volume24h: parseFloat(tickerData.volCcy24h),
+                high24h: parseFloat(tickerData.high24h),
+                low24h: parseFloat(tickerData.low24h),
+                exchange: 'OKX',
+              };
+              sendToClient({ type: 'ticker', data: formattedData });
             }
-          });
-        } catch (error) {
-          console.error('Failed to connect OKX WebSocket:', error);
-        }
-      };
-
-      // Start connections
-      connectBinance();
-      connectOKX();
+          } catch (error) {
+            console.error('Error parsing OKX message:', error);
+          }
+        },
+        onError: (error: Error) => {
+          console.error('OKX WebSocket error:', error);
+        },
+        onClose: () => {
+          console.log('OKX WebSocket disconnected');
+        },
+      });
 
       // Cleanup on client disconnect
       return () => {
         isAlive = false;
-        if (binanceWs) binanceWs.close();
-        if (okxWs) okxWs.close();
-        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        if (binanceCleanup) binanceCleanup();
+        if (okxCleanup) okxCleanup();
       };
     },
   });
