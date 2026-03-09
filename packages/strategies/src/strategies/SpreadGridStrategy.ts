@@ -29,8 +29,6 @@ export interface SpreadGridParameters extends StrategyParameters {
   basePrice: number;
   /** Step percent for ladder (e.g., 0.02 = 2%) */
   stepPercent: number;
-  /** Take profit percent (e.g., 0.01 = 1%) */
-  takeProfitPercent: number;
   /** Order amount per entry (base size) */
   orderAmount: number;
   /** Minimum internal net size */
@@ -41,8 +39,6 @@ export interface SpreadGridParameters extends StrategyParameters {
   leverage?: number;
   /** Whether to gate signals based on market (orderbook) prices */
   checkMarketPrice?: boolean;
-  /** Refresh TP at most once per interval (ms); 0 disables time gating */
-  tpRefreshMinIntervalMs?: number;
 }
 
 export const SpreadGridStrategyRegistryConfig: StrategyRegistryConfig<SpreadGridParameters> =
@@ -57,13 +53,11 @@ export const SpreadGridStrategyRegistryConfig: StrategyRegistryConfig<SpreadGrid
     defaultParameters: {
       basePrice: 100,
       stepPercent: 2,
-      takeProfitPercent: 1,
       orderAmount: 100,
       minSize: 0,
       maxSize: 1000,
       leverage: 10,
       checkMarketPrice: true,
-      tpRefreshMinIntervalMs: 500,
     },
     parameterDefinitions: [
       {
