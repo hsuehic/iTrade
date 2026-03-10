@@ -18,13 +18,18 @@ export class PrecisionUtils {
    * Round a Decimal value to match a specific step size
    * @param value - The value to round
    * @param stepSize - The step size (e.g., 0.01, 0.001)
+   * @param roundingMode - Rounding mode to use (default: ROUND_DOWN)
    * @returns Rounded Decimal value that is a multiple of stepSize
    */
-  public static roundToStepSize(value: Decimal, stepSize: Decimal): Decimal {
+  public static roundToStepSize(
+    value: Decimal,
+    stepSize: Decimal,
+    roundingMode: Decimal.Rounding = Decimal.ROUND_DOWN,
+  ): Decimal {
     if (stepSize.isZero()) {
       return value;
     }
-    return value.dividedBy(stepSize).floor().times(stepSize);
+    return value.dividedBy(stepSize).toDecimalPlaces(0, roundingMode).times(stepSize);
   }
 
   /**
@@ -40,11 +45,11 @@ export class PrecisionUtils {
     precision?: number,
   ): Decimal {
     if (!tickSize.isZero()) {
-      // Prefer tick size to guarantee valid multiples
-      return this.roundToStepSize(price, tickSize);
+      // For prices, round to the nearest tick instead of flooring
+      return this.roundToStepSize(price, tickSize, Decimal.ROUND_HALF_UP);
     }
     if (precision !== undefined) {
-      return this.roundToPrecision(price, precision);
+      return price.toDecimalPlaces(precision, Decimal.ROUND_HALF_UP);
     }
     return price;
   }
@@ -62,8 +67,8 @@ export class PrecisionUtils {
     precision?: number,
   ): Decimal {
     if (!stepSize.isZero()) {
-      // Prefer step size to guarantee valid multiples
-      return this.roundToStepSize(quantity, stepSize);
+      // For quantities, always floor to avoid exceeding balance/limits
+      return this.roundToStepSize(quantity, stepSize, Decimal.ROUND_DOWN);
     }
     if (precision !== undefined) {
       return this.roundToPrecision(quantity, precision);
@@ -92,6 +97,9 @@ export class PrecisionUtils {
     }
 
     if (maxQuantity && quantity.greaterThan(maxQuantity)) {
+      console.log(
+        `[PrecisionUtils] 🚨 VALIDATION FAILED: Quantity ${quantity.toString()} exceeds maxQuantity ${maxQuantity.toString()}`,
+      );
       throw new Error(
         `Quantity ${quantity.toString()} exceeds maximum ${maxQuantity.toString()}`,
       );

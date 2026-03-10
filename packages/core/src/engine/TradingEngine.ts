@@ -629,6 +629,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       );
 
       // Validate quantity meets exchange requirements
+      this.logger.debug(
+        `[TradingEngine] Validating order for ${symbol}: quantity=${adjustedQuantity.toString()}, ` +
+          `maxQuantity=${symbolInfo.maxQuantity?.toString()}, minQuantity=${symbolInfo.minQuantity.toString()}`,
+      );
       PrecisionUtils.validateQuantity(
         adjustedQuantity,
         symbolInfo.minQuantity,

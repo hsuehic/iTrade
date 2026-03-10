@@ -714,15 +714,24 @@ export class BinanceExchange extends BaseExchange {
       params: { symbol: binanceSymbol },
     });
 
-    const symbolData = response.data.symbols?.[0];
+    // Find the symbol in the response (Binance usually returns only one if symbol param is used,
+    // but better to be safe and search for it)
+    const symbolData = response.data.symbols?.find(
+      (s: any) => s.symbol === binanceSymbol,
+    );
+
     if (!symbolData) {
-      throw new Error(`Symbol ${symbol} not found on Binance`);
+      throw new Error(`Symbol ${symbol} (${binanceSymbol}) not found on Binance`);
     }
 
     // Extract precision and filters (futures and spot use different precision fields)
     const quantityPrecision =
       symbolData.quantityPrecision ?? symbolData.baseAssetPrecision ?? 8;
-    const pricePrecision = symbolData.pricePrecision ?? symbolData.quotePrecision ?? 8;
+    const pricePrecision =
+      symbolData.pricePrecision ??
+      symbolData.quotePrecision ??
+      symbolData.quoteAssetPrecision ??
+      8;
 
     // Parse filters
     let minQuantity = new Decimal(0);
@@ -731,21 +740,45 @@ export class BinanceExchange extends BaseExchange {
     let stepSize = new Decimal(0);
     let tickSize = new Decimal(0);
 
-    for (const filter of symbolData.filters || []) {
+    for (const filter of (symbolData.filters as any[]) || []) {
       switch (filter.filterType) {
         case 'LOT_SIZE':
-          minQuantity = new Decimal(filter.minQty || 0);
-          maxQuantity = filter.maxQty ? new Decimal(filter.maxQty) : undefined;
-          stepSize = new Decimal(filter.stepSize || 0);
+        case 'MARKET_LOT_SIZE': {
+          const filterMinQty = new Decimal(filter.minQty || 0);
+          const filterMaxQty = filter.maxQty ? new Decimal(filter.maxQty) : undefined;
+          const filterStepSize = new Decimal(filter.stepSize || 0);
+
+          // Use the most restrictive limits
+          if (filterMinQty.gt(minQuantity)) {
+            minQuantity = filterMinQty;
+          }
+          if (filterMaxQty && (!maxQuantity || filterMaxQty.lt(maxQuantity))) {
+            maxQuantity = filterMaxQty;
+          }
+          if (filterStepSize.gt(stepSize)) {
+            stepSize = filterStepSize;
+          }
           break;
+        }
         case 'PRICE_FILTER':
           tickSize = new Decimal(filter.tickSize || 0);
           break;
         case 'MIN_NOTIONAL':
-        case 'NOTIONAL':
-          minNotional = new Decimal(filter.minNotional || filter.notional || 0);
+        case 'NOTIONAL': {
+          const filterNotional = new Decimal(filter.minNotional || filter.notional || 0);
+          if (filterNotional.gt(minNotional)) minNotional = filterNotional;
           break;
+        }
       }
+    }
+
+    // If tickSize is 0, infer it from pricePrecision
+    if (tickSize.isZero() && pricePrecision > 0) {
+      tickSize = new Decimal(1).dividedBy(new Decimal(10).pow(pricePrecision));
+    }
+    // If stepSize is 0, infer it from quantityPrecision
+    if (stepSize.isZero() && quantityPrecision > 0) {
+      stepSize = new Decimal(1).dividedBy(new Decimal(10).pow(quantityPrecision));
     }
 
     // Determine market type from the original symbol format
@@ -754,11 +787,11 @@ export class BinanceExchange extends BaseExchange {
     // Denormalize symbol back to unified format
     const unifiedSymbol = this.denormalizeSymbol(binanceSymbol, market);
 
-    return {
+    const symbolInfo: SymbolInfo = {
       symbol: unifiedSymbol,
       nativeSymbol: binanceSymbol,
       baseAsset: symbolData.baseAsset,
-      quoteAsset: symbolData.quoteAsset,
+      quoteAsset: (symbolData as any).quoteAsset,
       pricePrecision,
       quantityPrecision,
       minQuantity,
@@ -766,9 +799,17 @@ export class BinanceExchange extends BaseExchange {
       minNotional,
       stepSize,
       tickSize,
-      status: this.mapBinanceStatus(symbolData.status),
-      market,
+      status: symbolData.status === 'TRADING' ? 'active' : 'inactive',
+      market: isFuturesSymbol ? 'futures' : 'spot',
     };
+
+    console.debug(
+      `[BinanceExchange] Symbol info for ${symbol} (${binanceSymbol}): ` +
+        `maxQty=${maxQuantity?.toString()}, minQty=${minQuantity.toString()}, ` +
+        `stepSize=${stepSize.toString()}, tickSize=${tickSize.toString()}`,
+    );
+
+    return symbolInfo;
   }
 
   private mapBinanceStatus(
