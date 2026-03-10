@@ -247,10 +247,13 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     // Build subscription message
     const subscribeMessage: any = {
       type: 'subscribe',
-      product_ids: productIds,
       channel: channel,
       ...additionalParams,
     };
+
+    if (productIds.length > 0) {
+      subscribeMessage.product_ids = productIds;
+    }
 
     // Add JWT authentication for user channel
     if (channel === 'user' && this.generateJWT) {
@@ -318,10 +321,13 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
       const subscribeMessage: any = {
         type: 'subscribe',
-        product_ids: productIdsArray,
         channel: channel,
         ...subInfo.params, // ✅ Include stored params (granularity, etc.)
       };
+
+      if (productIdsArray.length > 0) {
+        subscribeMessage.product_ids = productIdsArray;
+      }
 
       // Add JWT for user channel
       if (channel === 'user' && this.generateJWT) {

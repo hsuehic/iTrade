@@ -70,6 +70,7 @@ export class CoinbaseExchange extends BaseExchange {
 
     // Initialize WebSocket Manager
     this.wsManager = new CoinbaseWebSocketManager(CoinbaseExchange.MAINNET_WS_URL);
+    this.wsManager.setJWTGenerator(this.generateJWT.bind(this));
     this.setupWebSocketManagerListeners();
   }
 
@@ -116,10 +117,13 @@ export class CoinbaseExchange extends BaseExchange {
       throw new Error('Coinbase credentials required for JWT generation');
     }
 
+    // Coinbase Advanced Trade WS auth expects GET /users/self/verify
+    const jwtPath = '/users/self/verify';
+
     // Generate JWT using the token utility
     const token = generateToken(
       'GET',
-      '/',
+      jwtPath,
       this.credentials.apiKey,
       this.credentials.secretKey,
     );
@@ -812,7 +816,15 @@ export class CoinbaseExchange extends BaseExchange {
 
   protected handleWebSocketMessage(msg: any): void {
     const channel = msg.channel || msg.type;
-    if (!channel) return;
+    if (!channel) {
+      this.logger.warn('[Coinbase] WebSocket message missing channel/type', msg);
+      return;
+    }
+
+    if (channel === 'error' || msg.type === 'error') {
+      this.logger.error('[Coinbase] WebSocket error message', msg);
+      return;
+    }
 
     switch (channel) {
       case 'ticker':
@@ -937,6 +949,9 @@ export class CoinbaseExchange extends BaseExchange {
 
                 if (snapshotComplete) {
                   this.isReceivingInitialSnapshot = false;
+                  console.log(
+                    `[Coinbase] Initial snapshot complete - received ${this.initialSnapshotOrderCount} existing orders`,
+                  );
                 } else {
                   // processing snapshot batch
                 }
