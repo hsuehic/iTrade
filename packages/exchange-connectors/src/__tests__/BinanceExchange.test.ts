@@ -88,3 +88,48 @@ describe('BinanceExchange Leverage & Margin', () => {
   });
   */
 });
+
+describe('BinanceExchange Symbol Info Precision', () => {
+  let exchange: BinanceExchange;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+  });
+
+  it('should fetch futures exchangeInfo for perpetual symbols and use futures tick size', async () => {
+    const spotGetSpy = vi.fn();
+    const futuresGetSpy = vi.fn().mockResolvedValue({
+      data: {
+        symbols: [
+          {
+            symbol: 'BTCUSDC',
+            baseAsset: 'BTC',
+            quoteAsset: 'USDC',
+            status: 'TRADING',
+            pricePrecision: 1,
+            quantityPrecision: 3,
+            filters: [
+              { filterType: 'PRICE_FILTER', tickSize: '0.1' },
+              { filterType: 'LOT_SIZE', minQty: '0.001', stepSize: '0.001' },
+              { filterType: 'MIN_NOTIONAL', notional: '5' },
+            ],
+          },
+        ],
+      },
+    });
+
+    (exchange as any).httpClient.get = spotGetSpy;
+    (exchange as any).futuresClient.get = futuresGetSpy;
+
+    const info = await exchange.getSymbolInfo('BTC/USDC:USDC');
+
+    expect(futuresGetSpy).toHaveBeenCalledWith('/fapi/v1/exchangeInfo', {
+      params: { symbol: 'BTCUSDC' },
+    });
+    expect(spotGetSpy).not.toHaveBeenCalled();
+    expect(info.market).toBe('futures');
+    expect(info.symbol).toBe('BTC/USDC:USDC');
+    expect(info.tickSize.toString()).toBe('0.1');
+    expect(info.pricePrecision).toBe(1);
+  });
+});

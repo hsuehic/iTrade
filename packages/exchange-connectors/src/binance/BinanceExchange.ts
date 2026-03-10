@@ -703,9 +703,14 @@ export class BinanceExchange extends BaseExchange {
   public async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
     // Normalize symbol to Binance format
     const binanceSymbol = this.normalizeSymbol(symbol);
+    const isFuturesSymbol = this._isFuturesSymbol(symbol);
+    const exchangeInfoPath = isFuturesSymbol
+      ? '/fapi/v1/exchangeInfo'
+      : '/api/v3/exchangeInfo';
+    const apiClient = isFuturesSymbol ? this.futuresClient : this.httpClient;
 
     // Fetch exchange info
-    const response = await this.httpClient.get('/api/v3/exchangeInfo', {
+    const response = await apiClient.get(exchangeInfoPath, {
       params: { symbol: binanceSymbol },
     });
 
@@ -714,9 +719,10 @@ export class BinanceExchange extends BaseExchange {
       throw new Error(`Symbol ${symbol} not found on Binance`);
     }
 
-    // Extract precision and filters
-    const baseAssetPrecision = symbolData.baseAssetPrecision || 8;
-    const quotePrecision = symbolData.quotePrecision || 8;
+    // Extract precision and filters (futures and spot use different precision fields)
+    const quantityPrecision =
+      symbolData.quantityPrecision ?? symbolData.baseAssetPrecision ?? 8;
+    const pricePrecision = symbolData.pricePrecision ?? symbolData.quotePrecision ?? 8;
 
     // Parse filters
     let minQuantity = new Decimal(0);
@@ -742,11 +748,8 @@ export class BinanceExchange extends BaseExchange {
       }
     }
 
-    // Determine market type (spot by default)
-    const market =
-      binanceSymbol.includes('_PERP') || binanceSymbol.includes('_SWAP')
-        ? 'futures'
-        : 'spot';
+    // Determine market type from the original symbol format
+    const market = isFuturesSymbol ? 'futures' : 'spot';
 
     // Denormalize symbol back to unified format
     const unifiedSymbol = this.denormalizeSymbol(binanceSymbol, market);
@@ -756,8 +759,8 @@ export class BinanceExchange extends BaseExchange {
       nativeSymbol: binanceSymbol,
       baseAsset: symbolData.baseAsset,
       quoteAsset: symbolData.quoteAsset,
-      pricePrecision: quotePrecision,
-      quantityPrecision: baseAssetPrecision,
+      pricePrecision,
+      quantityPrecision,
       minQuantity,
       maxQuantity,
       minNotional,
