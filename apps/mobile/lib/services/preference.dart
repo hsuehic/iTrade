@@ -26,6 +26,8 @@ class Preference {
   static const String keyPushInboxMessages = 'push_inbox_messages';
   static const String keyThemeMode = 'theme_mode';
   static const int pushHistoryMax = 100;
+  static List<Map<String, dynamic>>? _pushHistoryMemoryCache;
+  static Set<String>? _pushReadIdsMemoryCache;
 
   static SharedPreferences? _prefs;
   static final Logger _logger = Logger();
@@ -218,11 +220,16 @@ class Preference {
   }
 
   static Future<Set<String>> getPushReadIds() async {
+    final cached = _pushReadIdsMemoryCache;
+    if (cached != null) return <String>{...cached};
     final list = await getValue<List<String>>(keyPushReadIds);
-    return list == null ? <String>{} : list.toSet();
+    final ids = list == null ? <String>{} : list.toSet();
+    _pushReadIdsMemoryCache = ids;
+    return <String>{...ids};
   }
 
   static Future<void> setPushReadIds(Set<String> ids) async {
+    _pushReadIdsMemoryCache = <String>{...ids};
     await setValue<List<String>>(keyPushReadIds, ids.toList());
   }
 
@@ -244,6 +251,12 @@ class Preference {
   }
 
   static Future<List<Map<String, dynamic>>> getPushHistoryMessages() async {
+    final cached = _pushHistoryMemoryCache;
+    if (cached != null) {
+      return cached
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false);
+    }
     final raw = await getValue<String>(keyPushHistoryMessages);
     final legacyRaw = raw == null || raw.isEmpty
         ? await getValue<String>(keyPushInboxMessages)
@@ -261,6 +274,7 @@ class Preference {
         await setPushHistoryMessages(messages);
         await remove(keyPushInboxMessages);
       }
+      _pushHistoryMemoryCache = messages;
       return messages;
     } catch (_) {
       return <Map<String, dynamic>>[];
@@ -271,10 +285,15 @@ class Preference {
     List<Map<String, dynamic>> messages,
   ) async {
     final trimmed = messages.take(pushHistoryMax).toList();
+    _pushHistoryMemoryCache = trimmed
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
     await setValue<String>(keyPushHistoryMessages, jsonEncode(trimmed));
   }
 
-  static Future<void> addPushHistoryMessage(Map<String, dynamic> message) async {
+  static Future<void> addPushHistoryMessage(
+    Map<String, dynamic> message,
+  ) async {
     final id = message['id']?.toString();
     if (id == null || id.isEmpty) return;
     final existing = await getPushHistoryMessages();
@@ -284,7 +303,12 @@ class Preference {
   }
 
   static Future<void> clearPushHistoryMessages() async {
+    _pushHistoryMemoryCache = <Map<String, dynamic>>[];
     await remove(keyPushHistoryMessages);
+  }
+
+  static Future<void> warmPushHistoryCache() async {
+    await Future.wait<void>([getPushReadIds(), getPushHistoryMessages()]);
   }
 
   static String pushLastReportedTokenKey(String platform, String provider) {

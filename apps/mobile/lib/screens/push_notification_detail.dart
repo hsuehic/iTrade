@@ -1,5 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../widgets/copy_text.dart';
 
 class PushNotificationDetailArgs {
@@ -43,15 +45,16 @@ class PushNotificationDetailArgs {
   }) {
     final data = Map<String, dynamic>.from(message.data);
     final event = data['event']?.toString() ?? '';
-    final category = data['category']?.toString() ??
+    final category =
+        data['category']?.toString() ??
         (event.startsWith('order') ? 'trading' : 'general');
-    final title = message.notification?.title ??
+    final title =
+        message.notification?.title ??
         data['title']?.toString() ??
         'Push Message';
-    final body =
-        message.notification?.body ?? data['body']?.toString() ?? '';
-    final timestamp = _parseTimestamp(data['updateTime']?.toString()) ??
-        DateTime.now();
+    final body = message.notification?.body ?? data['body']?.toString() ?? '';
+    final timestamp =
+        _parseTimestamp(data['updateTime']?.toString()) ?? DateTime.now();
     return PushNotificationDetailArgs(
       title: title,
       body: body,
@@ -108,11 +111,15 @@ class PushNotificationDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final args =
-        ModalRoute.of(context)?.settings.arguments as PushNotificationDetailArgs?;
+        ModalRoute.of(context)?.settings.arguments
+            as PushNotificationDetailArgs?;
     if (args == null) {
       return Scaffold(
         appBar: AppBar(
-          title: CopyText('screen.push_notification_detail.push_message', fallback: "Push message"),
+          title: CopyText(
+            'screen.push_notification_detail.push_message',
+            fallback: 'Push message',
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pushNamedAndRemoveUntil(
@@ -122,101 +129,125 @@ class PushNotificationDetailScreen extends StatelessWidget {
             ),
           ),
         ),
-        body: const Center(child: CopyText('screen.push_notification_detail.no_notification_details_availa', fallback: "No notification details available.")),
+        body: const Center(
+          child: CopyText(
+            'screen.push_notification_detail.no_notification_details_availa',
+            fallback: 'No notification details available.',
+          ),
+        ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: CopyText('screen.push_notification_detail.push_message_detail', fallback: "Push message detail"),
+        title: CopyText(
+          'screen.push_notification_detail.push_message_detail',
+          fallback: 'Push message detail',
+        ),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => _handleBackNavigation(context, args.fromNotificationTap),
+          onPressed: () =>
+              _handleBackNavigation(context, args.fromNotificationTap),
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: EdgeInsets.fromLTRB(16.w, 12.w, 16.w, 24.w),
         children: [
-          _buildHeaderCard(theme, args),
-          const SizedBox(height: 16),
-          _buildBodyCard(theme, args),
-          const SizedBox(height: 16),
-          if (args.data != null) _buildDataCard(theme, args.data!),
+          _buildSectionBlock(
+            theme: theme,
+            child: _buildHeaderCard(theme, args),
+          ),
+          SizedBox(height: 14.w),
+          _buildSectionBlock(theme: theme, child: _buildBodyCard(theme, args)),
+          if (args.data != null) ...[
+            SizedBox(height: 14.w),
+            _buildSectionBlock(
+              theme: theme,
+              child: _buildDataCard(context, theme, args.data!),
+            ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildSectionBlock({required ThemeData theme, required Widget child}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.w),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12.w),
+      ),
+      child: child,
     );
   }
 
   Widget _buildHeaderCard(ThemeData theme, PushNotificationDetailArgs args) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
+    final chipColor = _categoryColor(args.category, theme);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 34.w,
+          height: 34.w,
+          decoration: BoxDecoration(
+            color: chipColor.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(10.w),
+          ),
+          child: Icon(
+            _categoryIcon(args.category),
+            color: chipColor,
+            size: 18.w,
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: _categoryColor(args.category, theme),
-            child: Icon(
-              _categoryIcon(args.category),
-              color: theme.colorScheme.onPrimary,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  args.title,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+        SizedBox(width: 10.w),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                args.title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildChip(theme, args.category),
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatTimestamp(args.timestamp),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+              ),
+              SizedBox(height: 6.w),
+              Row(
+                children: [
+                  _buildChip(theme, args.category),
+                  SizedBox(width: 8.w),
+                  Text(
+                    _formatTimestamp(args.timestamp),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildBodyCard(ThemeData theme, PushNotificationDetailArgs args) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Text(
-        args.body.isEmpty ? '(No message body)' : args.body,
-        style: theme.textTheme.bodyMedium,
+    return Text(
+      args.body.isEmpty ? '(No message body)' : args.body,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+        height: 1.35,
       ),
     );
   }
 
-  Widget _buildDataCard(ThemeData theme, Map<String, dynamic> data) {
+  Widget _buildDataCard(
+    BuildContext context,
+    ThemeData theme,
+    Map<String, dynamic> data,
+  ) {
     final entries = <MapEntry<String, dynamic>>[];
     final usedKeys = <String>{};
     for (final key in _orderedKeys) {
@@ -224,68 +255,126 @@ class PushNotificationDetailScreen extends StatelessWidget {
       entries.add(MapEntry<String, dynamic>(key, data[key]));
       usedKeys.add(key);
     }
-    final rest = data.entries
-        .where((entry) => !usedKeys.contains(entry.key))
-        .toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final rest =
+        data.entries.where((entry) => !usedKeys.contains(entry.key)).toList()
+          ..sort((a, b) => a.key.compareTo(b.key));
     entries.addAll(rest);
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          CopyText('screen.push_notification_detail.details', fallback: "Details", style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CopyText(
+          'screen.push_notification_detail.details',
+          fallback: 'Details',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
           ),
-          const SizedBox(height: 12),
-          ...entries.map(
-            (entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      _labelForKey(entry.key),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+        ),
+        SizedBox(height: 10.w),
+        ...List.generate(entries.length, (index) {
+          final entry = entries[index];
+          final valueText = _formatValue(entry.key, entry.value);
+          return Padding(
+            padding: EdgeInsets.only(bottom: 8.w),
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 116.w,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _labelForKey(entry.key),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 5,
-                    child: Text(
-                      _formatValue(entry.key, entry.value),
-                      style: theme.textTheme.bodyMedium,
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              valueText,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface,
+                                fontWeight: FontWeight.w500,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 4.w),
+                          IconButton(
+                            tooltip: 'Copy',
+                            onPressed: valueText.isEmpty
+                                ? null
+                                : () => _copyValue(context, valueText),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(
+                              minWidth: 20.w,
+                              minHeight: 20.w,
+                            ),
+                            icon: Icon(
+                              Icons.content_copy,
+                              size: 14.w,
+                              color: theme.colorScheme.outline,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+                if (index != entries.length - 1) ...[
+                  SizedBox(height: 8.w),
+                  _buildRowDivider(theme),
                 ],
-              ),
+              ],
             ),
-          ),
-        ],
+          );
+        }),
+      ],
+    );
+  }
+
+  Future<void> _copyValue(BuildContext context, String value) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Copied'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(milliseconds: 900),
+        margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.w),
       ),
+    );
+  }
+
+  Widget _buildRowDivider(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Divider(
+      height: 1.w,
+      thickness: 1.w,
+      indent: 10.w,
+      endIndent: 10.w,
+      color: isDark
+          ? Colors.white.withValues(alpha: 0.05)
+          : Colors.black.withValues(alpha: 0.03),
     );
   }
 
   Widget _buildChip(ThemeData theme, String label) {
     final color = _categoryColor(label, theme);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 3.w),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(999.w),
       ),
       child: Text(
         label,

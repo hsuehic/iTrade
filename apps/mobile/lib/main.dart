@@ -29,6 +29,7 @@ import 'screens/theme_editor.dart';
 import 'widgets/design_bottom_nav.dart';
 import 'widgets/app_sidebar.dart';
 import 'widgets/copy_text.dart';
+import 'services/preference.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 RemoteMessage? pendingNotificationTap;
@@ -102,7 +103,10 @@ Future<void> main() async {
                 children: [
                   const Icon(Icons.error_outline, color: Colors.red, size: 64),
                   const SizedBox(height: 24),
-                  CopyText('app.main.failed_to_start_itrade', fallback: "Failed to start iTrade", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  CopyText(
+                    'app.main.failed_to_start_itrade',
+                    fallback: "Failed to start iTrade",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
                   CopyText(
@@ -120,7 +124,10 @@ Future<void> main() async {
                         'SystemNavigator.pop',
                       );
                     },
-                    child: CopyText('app.main.restart_app', fallback: "Restart app"),
+                    child: CopyText(
+                      'app.main.restart_app',
+                      fallback: "Restart app",
+                    ),
                   ),
                 ],
               ),
@@ -408,6 +415,12 @@ class _MyHomePageState extends State<MyHomePage> {
         ResponsiveLayout.printDeviceInfo(context);
       }
     });
+
+    // Warm lightweight in-memory cache after entering Home to reduce
+    // push history open latency on first tap.
+    Future<void>.delayed(const Duration(milliseconds: 250), () async {
+      await Preference.warmPushHistoryCache();
+    });
   }
 
   @override
@@ -473,12 +486,11 @@ class _MyHomePageState extends State<MyHomePage> {
             onTap: (index) => setState(() => _pageIndex = index),
             items: _navItems
                 .map(
-                  (item) =>
-                      NavItemSpec(
-                        icon: item.icon,
-                        labelKey: item.labelKey,
-                        labelFallback: copy.t(item.labelKey),
-                      ),
+                  (item) => NavItemSpec(
+                    icon: item.icon,
+                    labelKey: item.labelKey,
+                    labelFallback: copy.t(item.labelKey),
+                  ),
                 )
                 .toList(),
           ),

@@ -70,7 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       bool didAuthenticate = await _localAuth.authenticate(
         localizedReason: 'Authenticate to login',
-        options: const AuthenticationOptions(biometricOnly: true),
+        biometricOnly: true,
       );
 
       if (didAuthenticate) {
@@ -97,7 +97,8 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     if (!mounted) return false;
     setState(() {
-      _error = 'Login failed: ApiClient not initialized. '
+      _error =
+          'Login failed: ApiClient not initialized. '
           'Long press the logo to check API_BASE_URL.';
     });
     return false;
@@ -134,8 +135,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return 'API base URL is required';
     }
 
-    final String valueWithScheme =
-        trimmed.startsWith('http') ? trimmed : 'https://$trimmed';
+    final String valueWithScheme = trimmed.startsWith('http')
+        ? trimmed
+        : 'https://$trimmed';
     final Uri? parsed = Uri.tryParse(valueWithScheme);
     if (parsed == null || parsed.host.isEmpty || !parsed.hasScheme) {
       return 'Enter a valid URL (e.g., https://itrade.ihsueh.com)';
@@ -211,19 +213,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 left: spacing.md,
                 right: spacing.md,
                 top: spacing.md,
-                bottom:
-                    MediaQuery.of(context).viewInsets.bottom + spacing.md,
+                bottom: MediaQuery.of(context).viewInsets.bottom + spacing.md,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  CopyText('screen.login.server_settings', fallback: "Server settings", style: theme.textTheme.titleLarge?.copyWith(
+                  CopyText(
+                    'screen.login.server_settings',
+                    fallback: "Server settings",
+                    style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   SizedBox(height: spacing.xs),
-                  CopyText('screen.login.set_api_base_url_for_the_backe', fallback: "Set API base url for the backend server.", style: theme.textTheme.bodySmall?.copyWith(
+                  CopyText(
+                    'screen.login.set_api_base_url_for_the_backe',
+                    fallback: "Set API base url for the backend server.",
+                    style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
@@ -243,8 +250,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       debounceTimer = Timer(
                         const Duration(milliseconds: 500),
                         () {
-                          final String? validationError =
-                              _validateBaseUrl(value);
+                          final String? validationError = _validateBaseUrl(
+                            value,
+                          );
                           setSheetState(() {
                             errorText = validationError;
                           });
@@ -257,12 +265,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       TextButton(
                         onPressed: resetToDefault,
-                        child: CopyText('screen.login.reset', fallback: "Reset"),
+                        child: CopyText(
+                          'screen.login.reset',
+                          fallback: "Reset",
+                        ),
                       ),
                       const Spacer(),
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: CopyText('screen.login.cancel', fallback: "Cancel"),
+                        child: CopyText(
+                          'screen.login.cancel',
+                          fallback: "Cancel",
+                        ),
                       ),
                       SizedBox(width: spacing.sm),
                       FilledButton(
@@ -309,10 +323,10 @@ class _LoginScreenState extends State<LoginScreen> {
           _loading = false;
         });
       }
-      _logAnalyticsEvent(
-        'sign_in_with_google',
-        {'screen': 'login', 'action': 'login with google'},
-      );
+      _logAnalyticsEvent('sign_in_with_google', {
+        'screen': 'login',
+        'action': 'login with google',
+      });
     }
   }
 
@@ -342,10 +356,10 @@ class _LoginScreenState extends State<LoginScreen> {
           _loading = false;
         });
       }
-      _logAnalyticsEvent(
-        'sign_in_with_apple',
-        {'screen': 'login', 'action': 'login with apple'},
-      );
+      _logAnalyticsEvent('sign_in_with_apple', {
+        'screen': 'login',
+        'action': 'login with apple',
+      });
     }
   }
 
@@ -382,10 +396,10 @@ class _LoginScreenState extends State<LoginScreen> {
           _loading = false;
         });
       }
-      _logAnalyticsEvent(
-        'sign_in_with_credentials',
-        {'screen': 'login', 'action': 'sign in with credentials'},
-      );
+      _logAnalyticsEvent('sign_in_with_credentials', {
+        'screen': 'login',
+        'action': 'sign in with credentials',
+      });
     }
   }
 
@@ -393,10 +407,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!AppBootstrap.instance.firebaseReady.value) return;
     try {
       unawaited(
-        FirebaseAnalytics.instance.logEvent(
-          name: name,
-          parameters: parameters,
-        ),
+        FirebaseAnalytics.instance.logEvent(name: name, parameters: parameters),
       );
     } catch (_) {
       // Best-effort only; analytics should never block sign-in flow.
@@ -499,14 +510,20 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
 
           SizedBox(height: spacing.lg),
-          CopyText('screen.login.welcome_to_itrade', fallback: "Welcome to iTrade", style: theme.textTheme.headlineMedium?.copyWith(
+          CopyText(
+            'screen.login.welcome_to_itrade',
+            fallback: "Welcome to iTrade",
+            style: theme.textTheme.headlineMedium?.copyWith(
               fontSize: 24.sp, // ✅ Adaptive font size
               fontWeight: FontWeight.bold,
             ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: spacing.sm),
-          CopyText('screen.login.please_sign_in_to_your_account', fallback: "Please sign in to your account", style: theme.textTheme.bodyLarge?.copyWith(
+          CopyText(
+            'screen.login.please_sign_in_to_your_account',
+            fallback: "Please sign in to your account",
+            style: theme.textTheme.bodyLarge?.copyWith(
               fontSize: 16.sp, // ✅ Adaptive font size
               color: isDark ? Colors.grey[400] : Colors.grey[600],
             ),
@@ -608,7 +625,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 context,
                               ).pushNamed('/forgot-password');
                             },
-                      child: CopyText('screen.forgot_password.forgot_password', fallback: "Forgot password"),
+                      child: CopyText(
+                        'screen.forgot_password.forgot_password',
+                        fallback: "Forgot password",
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -644,7 +664,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         padding: EdgeInsets.symmetric(
                           horizontal: 12.w,
                         ), // ✅ Width-adapted
-                        child: CopyText('screen.login.or_continue_with', fallback: "Or continue with", style: theme.textTheme.bodySmall?.copyWith(
+                        child: CopyText(
+                          'screen.login.or_continue_with',
+                          fallback: "Or continue with",
+                          style: theme.textTheme.bodySmall?.copyWith(
                             fontSize: 12.sp, // ✅ Adaptive font size
                             color: isDark ? Colors.grey[500] : Colors.grey[600],
                           ),
@@ -686,7 +709,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 18.w, // ✅ Uniform scaling
                           height: 18.w, // ✅ Uniform scaling
                         ),
-                        label: CopyText('screen.login.apple', fallback: "Apple", style: TextStyle(fontSize: 14.sp),
+                        label: CopyText(
+                          'screen.login.apple',
+                          fallback: "Apple",
+                          style: TextStyle(fontSize: 14.sp),
                         ), // ✅ Adaptive font
                       ),
                       SizedBox(width: 12.w), // ✅ Width-adapted
@@ -708,7 +734,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 18.w, // ✅ Uniform scaling
                           height: 18.w, // ✅ Uniform scaling
                         ),
-                        label: CopyText('screen.login.google', fallback: "Google", style: TextStyle(fontSize: 14.sp),
+                        label: CopyText(
+                          'screen.login.google',
+                          fallback: "Google",
+                          style: TextStyle(fontSize: 14.sp),
                         ), // ✅ Adaptive font
                       ),
                       SizedBox(width: 12.w), // ✅ Width-adapted
@@ -817,13 +846,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  CopyText('screen.login.itrade', fallback: "iTrade", style: theme.textTheme.displayMedium?.copyWith(
+                  CopyText(
+                    'screen.login.itrade',
+                    fallback: "iTrade",
+                    style: theme.textTheme.displayMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
                     ),
                   ),
                   const SizedBox(height: 12),
-                  CopyText('screen.login.professional_strategy_platform', fallback: "Professional strategy platform", style: theme.textTheme.titleLarge?.copyWith(
+                  CopyText(
+                    'screen.login.professional_strategy_platform',
+                    fallback: "Professional strategy platform",
+                    style: theme.textTheme.titleLarge?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                       fontWeight: FontWeight.w300,
                     ),
@@ -907,12 +942,18 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CopyText('screen.login.welcome_back', fallback: "Welcome back", style: theme.textTheme.headlineLarge?.copyWith(
+        CopyText(
+          'screen.login.welcome_back',
+          fallback: "Welcome back",
+          style: theme.textTheme.headlineLarge?.copyWith(
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 12),
-        CopyText('screen.login.please_sign_in_to_your_account', fallback: "Please sign in to your account", style: theme.textTheme.bodyLarge?.copyWith(
+        CopyText(
+          'screen.login.please_sign_in_to_your_account',
+          fallback: "Please sign in to your account",
+          style: theme.textTheme.bodyLarge?.copyWith(
             color: isDark ? Colors.grey[400] : Colors.grey[600],
           ),
         ),
@@ -1004,7 +1045,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       : () {
                           Navigator.of(context).pushNamed('/forgot-password');
                         },
-                  child: CopyText('screen.forgot_password.forgot_password', fallback: "Forgot password"),
+                  child: CopyText(
+                    'screen.forgot_password.forgot_password',
+                    fallback: "Forgot password",
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1051,7 +1095,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: CopyText('screen.login.or_continue_with', fallback: "Or continue with", style: theme.textTheme.bodySmall?.copyWith(
+                    child: CopyText(
+                      'screen.login.or_continue_with',
+                      fallback: "Or continue with",
+                      style: theme.textTheme.bodySmall?.copyWith(
                         color: isDark ? Colors.grey[500] : Colors.grey[600],
                       ),
                     ),
@@ -1119,7 +1166,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: 20,
                         height: 20,
                       ),
-                      label: CopyText('screen.login.google', fallback: "Google"),
+                      label: CopyText(
+                        'screen.login.google',
+                        fallback: "Google",
+                      ),
                     ),
                   ),
                 ],
@@ -1210,12 +1260,7 @@ class _LoginScreenState extends State<LoginScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: CopyText(
-              titleKey,
-              fallback: fallback,
-            ),
-          ),
+          Expanded(child: CopyText(titleKey, fallback: fallback)),
           if (selected) Icon(CupertinoIcons.check_mark, size: 18.w),
         ],
       ),

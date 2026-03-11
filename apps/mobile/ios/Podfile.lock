@@ -1654,7 +1654,7 @@ SPEC CHECKSUMS:
   FirebaseSharedSwift: 9d2fa84a46676302b89dbd5e6e62bce2fe376909
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_app_badger: 2aa8087dbc93638dafeddaa5816532da229dfbaf
-  flutter_local_notifications: a5a732f069baa862e728d839dd2ebb904737effb
+  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
   flutter_web_auth_2: 5c8d9dcd7848b5a9efb086d24e7a9adcae979c80
   google_sign_in_ios: 000870aa06da9b28d1d0bf7ef70ff0213059dd28
   GoogleAdsOnDeviceConversion: d68c69dd9581a0f5da02617b6f377e5be483970f

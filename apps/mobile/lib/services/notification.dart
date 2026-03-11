@@ -19,6 +19,7 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _local =
       FlutterLocalNotificationsPlugin();
   final ValueNotifier<int> _unreadCountNotifier = ValueNotifier<int>(0);
+  final ValueNotifier<int> _historyVersionNotifier = ValueNotifier<int>(0);
 
   bool _initialized = false;
   String? _cachedAppVersion;
@@ -38,6 +39,7 @@ class NotificationService {
   }
 
   ValueNotifier<int> get unreadCountNotifier => _unreadCountNotifier;
+  ValueNotifier<int> get historyVersionNotifier => _historyVersionNotifier;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -55,7 +57,7 @@ class NotificationService {
       iOS: iosInit,
     );
     await _local.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final payload = response.payload;
         if (payload == null || payload.isEmpty) return;
@@ -255,9 +257,9 @@ class NotificationService {
     if (_listening) return;
     _listening = true;
 
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      _storeHistoryMessage(message);
-      _showLocal(message);
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      await _storeHistoryMessage(message);
+      await _showLocal(message);
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
@@ -333,10 +335,10 @@ class NotificationService {
     );
 
     await _local.show(
-      notification.hashCode,
-      notification.title,
-      notification.body,
-      details,
+      id: notification.hashCode,
+      title: notification.title,
+      body: notification.body,
+      notificationDetails: details,
       payload: jsonEncode(message.data),
     );
   }
@@ -361,6 +363,7 @@ class NotificationService {
 
   Future<void> _storeHistoryMessage(RemoteMessage message) async {
     await Preference.addPushHistoryMessage(_buildHistoryMessage(message));
+    _historyVersionNotifier.value = _historyVersionNotifier.value + 1;
   }
 
   Future<int> _resolveUnreadCount(int? incomingCount) async {

@@ -125,16 +125,16 @@ class _FlKlineChartState extends State<FlKlineChart> {
                               interval: axisInterval,
                               reservedSize: 44.w,
                               getTitlesWidget: (value, meta) {
-                              final topLabel =
-                                  ((maxY / axisInterval).floorToDouble() *
-                                      axisInterval) +
-                                  axisInterval;
-                              if ((value - topLabel).abs() <
-                                  (axisInterval * 0.001)) {
+                                final topLabel =
+                                    ((maxY / axisInterval).floorToDouble() *
+                                        axisInterval) +
+                                    axisInterval;
+                                if ((value - topLabel).abs() <
+                                    (axisInterval * 0.001)) {
                                   return const SizedBox.shrink();
                                 }
                                 return SideTitleWidget(
-                                  axisSide: meta.axisSide,
+                                  meta: meta,
                                   child: Text(
                                     _formatAxisPrice(
                                       value.toDouble(),
@@ -167,7 +167,7 @@ class _FlKlineChartState extends State<FlKlineChart> {
                             });
                           },
                           touchTooltipData: BarTouchTooltipData(
-                            tooltipRoundedRadius: 6,
+                            tooltipBorderRadius: BorderRadius.circular(6.w),
                             tooltipPadding: EdgeInsets.symmetric(
                               horizontal: 10.w,
                               vertical: 6.w,
@@ -493,7 +493,7 @@ class _FlKlineChartState extends State<FlKlineChart> {
     }
 
     return SideTitleWidget(
-      axisSide: meta.axisSide,
+      meta: meta,
       child: Text(
         candles[index].label,
         style: TextStyle(color: textColor, fontSize: 9.sp),
