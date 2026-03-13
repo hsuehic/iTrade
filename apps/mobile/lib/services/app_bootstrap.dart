@@ -43,7 +43,9 @@ class AppBootstrap {
     if (ApiClient.instance.isInitialized) return;
   }
 
-  void setNotificationTapHandler(void Function(RemoteMessage message)? handler) {
+  void setNotificationTapHandler(
+    void Function(RemoteMessage message)? handler,
+  ) {
     _notificationTapHandler = handler;
   }
 
@@ -74,18 +76,34 @@ class AppBootstrap {
     }
 
     try {
-      FirebaseMessaging.onBackgroundMessage(
-        firebaseMessagingBackgroundHandler,
-      );
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       await NotificationService.instance.initialize().timeout(
         const Duration(seconds: 5),
       );
+    } catch (e) {
+      debugPrint('[AppBootstrap] notification init failed: $e');
+    }
+
+    // Request permissions separately so a failure / timeout here does NOT
+    // prevent listenToMessages from running.
+    try {
       await NotificationService.instance.requestPermissions().timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 15),
       );
+    } catch (e) {
+      debugPrint('[AppBootstrap] requestPermissions failed: $e');
+    }
+
+    // ALWAYS attach message listeners regardless of earlier errors.
+    try {
       NotificationService.instance.listenToMessages(
         onTap: _notificationTapHandler,
       );
+    } catch (e) {
+      debugPrint('[AppBootstrap] listenToMessages failed: $e');
+    }
+
+    try {
       await NotificationService.instance.getDeviceToken();
       await NotificationService.instance.ensureTopicSubscriptions();
     } catch (_) {
@@ -144,12 +162,12 @@ class AppBootstrap {
   Future<void> _initDynamicConfig() async {
     if (!_firebaseReady) return;
     try {
+      await DynamicConfigService.instance.initialize().timeout(
+        const Duration(seconds: 3),
+      );
       await DynamicConfigService.instance
-          .initialize()
-          .timeout(const Duration(seconds: 3));
-      await DynamicConfigService.instance.refresh(force: true).timeout(
-            const Duration(seconds: 10),
-          );
+          .refresh(force: true)
+          .timeout(const Duration(seconds: 10));
     } catch (_) {
       // Best-effort only.
     }

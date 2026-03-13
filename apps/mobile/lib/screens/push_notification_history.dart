@@ -208,8 +208,14 @@ class _PushNotificationHistoryScreenState
       setState(() => _loading = true);
     }
     try {
-      final readIdsFuture = Preference.getPushReadIds();
-      final historyFuture = Preference.getPushHistoryMessages();
+      // Use forceRefresh so we always read from SharedPreferences (disk)
+      // rather than a potentially stale in-memory cache – e.g. after the
+      // background-isolate handler stored new messages while the app was
+      // suspended.
+      final readIdsFuture = Preference.getPushReadIds(forceRefresh: true);
+      final historyFuture = Preference.getPushHistoryMessages(
+        forceRefresh: true,
+      );
       final readIds = await readIdsFuture;
       final stored = await historyFuture;
       final List<PushNotificationHistoryItem> items = stored

@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_app_badger/flutter_app_badger.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -8,10 +11,11 @@ import 'auth_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../firebase_options.dart';
 import 'api_client.dart';
 import 'preference.dart';
 
-class NotificationService {
+class NotificationService with WidgetsBindingObserver {
   NotificationService._internal();
   static final NotificationService instance = NotificationService._internal();
 
@@ -24,6 +28,8 @@ class NotificationService {
   bool _initialized = false;
   String? _cachedAppVersion;
   bool _listening = false;
+  bool _lifecycleObserving = false;
+  String _lastHistorySnapshot = '';
   void Function(RemoteMessage message)? _onTap;
   RemoteMessage? _pendingTapMessage;
   static const List<String> supportedCategories = <String>[
@@ -41,8 +47,21 @@ class NotificationService {
   ValueNotifier<int> get unreadCountNotifier => _unreadCountNotifier;
   ValueNotifier<int> get historyVersionNotifier => _historyVersionNotifier;
 
+  void _log(String message) {
+    final text = '[Push] $message';
+    // Use print() in addition to debugPrint() so the message always appears
+    // in the Cursor/IDE debug console regardless of log-level filtering.
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(text);
+    }
+    debugPrint(text);
+    unawaited(Preference.appendPushDebugLog(text));
+  }
+
   Future<void> initialize() async {
     if (_initialized) return;
+    _log('initialize start');
     _unreadCountNotifier.value = await Preference.getPushUnreadCount();
 
     const AndroidInitializationSettings androidInit =
@@ -79,8 +98,13 @@ class NotificationService {
 
     if (Platform.isIOS || Platform.isMacOS) {
       try {
+        // Disable system alert banner in foreground so we can show a local
+        // notification instead. This ensures onDidReceiveNotificationResponse
+        // fires when the user taps the notification (system banners shown via
+        // alert:true do NOT trigger onMessageOpenedApp while the app is in the
+        // foreground, leaving taps unhandled).
         await _messaging.setForegroundNotificationPresentationOptions(
-          alert: true,
+          alert: false,
           badge: true,
           sound: true,
         );
@@ -106,7 +130,18 @@ class NotificationService {
       await ensureTopicSubscriptions();
     } catch (_) {}
 
+    await syncPushStateFromStorage(forceRefresh: true);
+
+    // Register lifecycle observer to refresh push state when the app comes
+    // back from the background.  The background-isolate handler may have
+    // written new history to SharedPreferences while we were suspended.
+    if (!_lifecycleObserving) {
+      _lifecycleObserving = true;
+      WidgetsBinding.instance.addObserver(this);
+    }
+
     _initialized = true;
+    _log('initialize done unread=${_unreadCountNotifier.value}');
   }
 
   Future<NotificationSettings> requestPermissions() async {
@@ -256,29 +291,34 @@ class NotificationService {
 
     if (_listening) return;
     _listening = true;
+    _log('listenToMessages attached');
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      _log(
+        'onMessage id=${message.messageId ?? '-'} hasNotification=${message.notification != null} dataKeys=${message.data.keys.join(',')}',
+      );
       await _storeHistoryMessage(message);
       await _showLocal(message);
     });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      _handleTap(message);
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
+      _log('onMessageOpenedApp id=${message.messageId ?? '-'}');
+      await _handleTap(message);
     });
 
-    FirebaseMessaging.instance.getInitialMessage().then((message) {
-      if (message != null) _handleTap(message);
+    FirebaseMessaging.instance.getInitialMessage().then((message) async {
+      if (message != null) {
+        _log('getInitialMessage id=${message.messageId ?? '-'}');
+        await _handleTap(message);
+      }
     });
   }
 
   Future<void> _showLocal(RemoteMessage message) async {
-    // iOS already shows the notification payload when foreground presentation
-    // is enabled. Avoid triggering a second local notification for the same
-    // message to prevent duplicates.
-    if (Platform.isIOS && message.notification != null) {
-      return;
-    }
-
+    // We always show a local notification on all platforms (including iOS) so
+    // that onDidReceiveNotificationResponse fires when the user taps it. The
+    // system foreground banner is disabled via
+    // setForegroundNotificationPresentationOptions(alert: false).
     RemoteNotification? notification = message.notification;
 
     // Fallback for data-only messages (e.g., Android data pushes)
@@ -304,20 +344,6 @@ class NotificationService {
 
     if (notification == null) return;
 
-    // Extract badge from APNS-style payload or fallback data fields
-    int? badgeCount;
-    try {
-      final dynamic apsRaw = message.data['aps'];
-      if (apsRaw is Map) {
-        final dynamic badgeRaw = apsRaw['badge'];
-        badgeCount = int.tryParse(badgeRaw?.toString() ?? '');
-      }
-    } catch (_) {}
-    badgeCount ??= int.tryParse(message.data['badge']?.toString() ?? '');
-    badgeCount ??= int.tryParse(message.data['unreadCount']?.toString() ?? '');
-    final resolvedUnreadCount = await _resolveUnreadCount(badgeCount);
-    await updateBadgeCount(resolvedUnreadCount);
-
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
           'default_channel',
@@ -326,21 +352,34 @@ class NotificationService {
           priority: Priority.high,
           playSound: true,
         );
-    final DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
-      badgeNumber: badgeCount,
-    );
+    final DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
     final NotificationDetails details = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
 
-    await _local.show(
-      id: notification.hashCode,
-      title: notification.title,
-      body: notification.body,
-      notificationDetails: details,
-      payload: jsonEncode(message.data),
-    );
+    try {
+      // Include notification title/body in the payload so they survive the
+      // round-trip through onDidReceiveNotificationResponse → _handleTap.
+      final payloadData = Map<String, dynamic>.from(message.data);
+      if (notification.title != null) {
+        payloadData['title'] ??= notification.title;
+      }
+      if (notification.body != null) {
+        payloadData['body'] ??= notification.body;
+      }
+
+      await _local.show(
+        id: notification.hashCode,
+        title: notification.title,
+        body: notification.body,
+        notificationDetails: details,
+        payload: jsonEncode(payloadData),
+      );
+      _log('local notification shown id=${message.messageId ?? '-'}');
+    } catch (e) {
+      _log('local notification show failed: $e');
+    }
   }
 
   void setOnTapHandler(void Function(RemoteMessage message)? onTap) {
@@ -352,8 +391,9 @@ class NotificationService {
     }
   }
 
-  void _handleTap(RemoteMessage message) {
-    _storeHistoryMessage(message);
+  Future<void> _handleTap(RemoteMessage message) async {
+    _log('handleTap id=${message.messageId ?? '-'}');
+    await _storeHistoryMessage(message);
     if (_onTap != null) {
       _onTap?.call(message);
     } else {
@@ -362,46 +402,143 @@ class NotificationService {
   }
 
   Future<void> _storeHistoryMessage(RemoteMessage message) async {
-    await Preference.addPushHistoryMessage(_buildHistoryMessage(message));
-    _historyVersionNotifier.value = _historyVersionNotifier.value + 1;
-  }
-
-  Future<int> _resolveUnreadCount(int? incomingCount) async {
-    if (incomingCount != null && incomingCount >= 0) {
-      await Preference.setPushUnreadCount(incomingCount);
-      return incomingCount;
-    }
-    final current = await Preference.getPushUnreadCount();
-    final next = current + 1;
-    await Preference.setPushUnreadCount(next);
-    return next;
+    final built = _buildHistoryMessage(message);
+    _log(
+      'storeHistory id=${built['id']} category=${built['category']} createdAt=${built['createdAt']}',
+    );
+    await Preference.addPushHistoryMessage(built);
+    // Use forceRefresh so the just-written history is re-read and unread count
+    // (and therefore the badge) is recalculated accurately.
+    await syncPushStateFromStorage(forceRefresh: true);
   }
 
   Future<void> updateBadgeCount(int count) async {
     final normalized = count < 0 ? 0 : count;
+    _log('updateBadgeCount called count=$count normalized=$normalized');
     await Preference.setPushUnreadCount(normalized);
     _unreadCountNotifier.value = normalized;
 
     try {
       final supported = await FlutterAppBadger.isAppBadgeSupported();
+      _log('updateBadgeCount supported=$supported');
       if (!supported) return;
       if (normalized <= 0) {
+        _log('updateBadgeCount removing badge');
         await FlutterAppBadger.removeBadge();
       } else {
+        _log('updateBadgeCount setting badge to $normalized');
         await FlutterAppBadger.updateBadgeCount(normalized);
       }
-    } catch (_) {
-      // Best-effort only.
+    } catch (e) {
+      _log('updateBadgeCount error: $e');
+    }
+  }
+
+  Future<void> syncPushStateFromStorage({bool forceRefresh = false}) async {
+    final unread = await Preference.recalculatePushUnreadCount(
+      forceRefresh: forceRefresh,
+    );
+    await updateBadgeCount(unread);
+
+    final history = await Preference.getPushHistoryMessages(
+      forceRefresh: forceRefresh,
+    );
+    final topId = history.isNotEmpty
+        ? history.first['id']?.toString() ?? ''
+        : '';
+    final topCreatedAt = history.isNotEmpty
+        ? history.first['createdAt']?.toString() ?? ''
+        : '';
+    final snapshot = '${history.length}:$topId:$topCreatedAt';
+    _log('sync unread=$unread history=${history.length} topId=$topId');
+    if (snapshot != _lastHistorySnapshot) {
+      _lastHistorySnapshot = snapshot;
+      _historyVersionNotifier.value = _historyVersionNotifier.value + 1;
+      _log('historyVersion => ${_historyVersionNotifier.value}');
+    }
+  }
+
+  Future<void> dumpStoredDebugLogs({int maxLines = 40}) async {
+    final logs = await Preference.getPushDebugLogs();
+    if (logs.isEmpty) {
+      _log('[Stored] no logs');
+      return;
+    }
+    final start = logs.length > maxLines ? logs.length - maxLines : 0;
+    _log('[Stored] showing ${logs.length - start}/${logs.length}');
+    for (var i = start; i < logs.length; i++) {
+      _log('[Stored] ${logs[i]}');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle observer – refresh after returning from background
+  // ---------------------------------------------------------------------------
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _log('app resumed – refreshing push state from disk');
+      unawaited(_refreshOnResume());
+    }
+  }
+
+  /// Reload SharedPreferences from disk (to pick up writes made by the
+  /// background-isolate handler) and re-sync push history + badge count.
+  Future<void> _refreshOnResume() async {
+    try {
+      await Preference.reloadFromDisk();
+      // Dump stored logs so we can see background-handler activity.
+      await dumpStoredDebugLogs(maxLines: 10);
+      await syncPushStateFromStorage(forceRefresh: true);
+    } catch (e) {
+      _log('refreshOnResume error: $e');
     }
   }
 }
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Background handler; Firebase.initializeApp is automatically handled by FlutterFire if configured
+  // Ensure Firebase is initialized in background isolate.
   try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    // Firebase may already be initialized – that is fine.
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[Push] background handler Firebase.initializeApp error (may be ok): $e');
+    }
+  }
+
+  try {
+    final logPrefix =
+        '[Push] background handler id=${message.messageId ?? '-'} '
+        'dataKeys=${message.data.keys.join(',')}';
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(logPrefix);
+    }
+    await Preference.appendPushDebugLog(logPrefix);
     await Preference.addPushHistoryMessage(_buildHistoryMessage(message));
-  } catch (_) {}
+    await Preference.recalculatePushUnreadCount(forceRefresh: true);
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[Push] background handler completed successfully');
+    }
+    await Preference.appendPushDebugLog(
+      '[Push] background handler completed successfully',
+    );
+  } catch (e, st) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[Push] background handler ERROR: $e\n$st');
+    }
+    try {
+      await Preference.appendPushDebugLog('[Push] background handler ERROR: $e');
+    } catch (_) {}
+  }
 }
 
 Map<String, dynamic> _buildHistoryMessage(RemoteMessage message) {
@@ -417,10 +554,12 @@ Map<String, dynamic> _buildHistoryMessage(RemoteMessage message) {
   final body = message.notification?.body ?? data['body']?.toString() ?? '';
   final timestamp =
       _parseTimestamp(data['updateTime']?.toString()) ?? DateTime.now();
-  final id =
-      message.messageId ??
-      data['orderId']?.toString() ??
-      '${timestamp.millisecondsSinceEpoch}-${data['event'] ?? 'push'}';
+  final status = data['status']?.toString() ?? '';
+  final orderId = data['orderId']?.toString() ?? '';
+  final symbol = data['symbol']?.toString() ?? '';
+  final id = message.messageId?.trim().isNotEmpty == true
+      ? message.messageId!
+      : '${timestamp.microsecondsSinceEpoch}-$event-$orderId-$status-$symbol';
 
   return <String, dynamic>{
     'id': id,

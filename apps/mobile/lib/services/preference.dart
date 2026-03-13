@@ -24,8 +24,10 @@ class Preference {
   static const String keyPushUnreadCount = 'push_unread_count';
   static const String keyPushHistoryMessages = 'push_history_messages';
   static const String keyPushInboxMessages = 'push_inbox_messages';
+  static const String keyPushDebugLogs = 'push_debug_logs';
   static const String keyThemeMode = 'theme_mode';
   static const int pushHistoryMax = 100;
+  static const int pushDebugLogsMax = 200;
   static List<Map<String, dynamic>>? _pushHistoryMemoryCache;
   static Set<String>? _pushReadIdsMemoryCache;
 
@@ -219,9 +221,9 @@ class Preference {
     await remove(keyApiBaseUrl);
   }
 
-  static Future<Set<String>> getPushReadIds() async {
+  static Future<Set<String>> getPushReadIds({bool forceRefresh = false}) async {
     final cached = _pushReadIdsMemoryCache;
-    if (cached != null) return <String>{...cached};
+    if (!forceRefresh && cached != null) return <String>{...cached};
     final list = await getValue<List<String>>(keyPushReadIds);
     final ids = list == null ? <String>{} : list.toSet();
     _pushReadIdsMemoryCache = ids;
@@ -250,9 +252,11 @@ class Preference {
     await setValue<int>(keyPushUnreadCount, normalized);
   }
 
-  static Future<List<Map<String, dynamic>>> getPushHistoryMessages() async {
+  static Future<List<Map<String, dynamic>>> getPushHistoryMessages({
+    bool forceRefresh = false,
+  }) async {
     final cached = _pushHistoryMemoryCache;
-    if (cached != null) {
+    if (!forceRefresh && cached != null) {
       return cached
           .map((item) => Map<String, dynamic>.from(item))
           .toList(growable: false);
@@ -294,11 +298,45 @@ class Preference {
   static Future<void> addPushHistoryMessage(
     Map<String, dynamic> message,
   ) async {
-    final id = message['id']?.toString();
-    if (id == null || id.isEmpty) return;
-    final existing = await getPushHistoryMessages();
-    existing.removeWhere((item) => item['id']?.toString() == id);
-    existing.insert(0, message);
+    var id = message['id']?.toString() ?? '';
+    if (id.isEmpty) {
+      id = DateTime.now().microsecondsSinceEpoch.toString();
+      message = <String, dynamic>{...message, 'id': id};
+    }
+    final existing = (await getPushHistoryMessages()).toList(growable: true);
+
+    final index = existing.indexWhere((item) => item['id']?.toString() == id);
+    if (index >= 0) {
+      final previous = existing[index];
+      final prevNotification = previous['notification'];
+      final nextNotification = message['notification'];
+      final prevData = previous['data'];
+      final nextData = message['data'];
+
+      final samePayload =
+          previous['createdAt']?.toString() ==
+              message['createdAt']?.toString() &&
+          previous['category']?.toString() == message['category']?.toString() &&
+          (prevNotification is Map && nextNotification is Map
+              ? jsonEncode(prevNotification) == jsonEncode(nextNotification)
+              : prevNotification?.toString() == nextNotification?.toString()) &&
+          (prevData is Map && nextData is Map
+              ? jsonEncode(prevData) == jsonEncode(nextData)
+              : prevData?.toString() == nextData?.toString());
+
+      if (samePayload) {
+        existing.removeAt(index);
+        existing.insert(0, Map<String, dynamic>.from(previous));
+        await setPushHistoryMessages(existing);
+        return;
+      }
+
+      final uniqueId =
+          '$id-${DateTime.now().microsecondsSinceEpoch}-${existing.length}';
+      message = <String, dynamic>{...message, 'id': uniqueId};
+    }
+
+    existing.insert(0, Map<String, dynamic>.from(message));
     await setPushHistoryMessages(existing);
   }
 
@@ -309,6 +347,53 @@ class Preference {
 
   static Future<void> warmPushHistoryCache() async {
     await Future.wait<void>([getPushReadIds(), getPushHistoryMessages()]);
+  }
+
+  static void invalidatePushRuntimeCaches() {
+    _pushHistoryMemoryCache = null;
+    _pushReadIdsMemoryCache = null;
+  }
+
+  /// Reload SharedPreferences from disk (NSUserDefaults on iOS) and clear
+  /// in-memory caches.  This is essential after the background-isolate
+  /// `firebaseMessagingBackgroundHandler` writes new push history, because the
+  /// main-isolate [SharedPreferences] instance keeps its own in-memory copy
+  /// that is NOT automatically updated by writes from other isolates.
+  static Future<void> reloadFromDisk() async {
+    final prefs = await _getPrefs();
+    await prefs.reload();
+    invalidatePushRuntimeCaches();
+  }
+
+  static Future<int> recalculatePushUnreadCount({
+    bool forceRefresh = false,
+  }) async {
+    final readIds = await getPushReadIds(forceRefresh: forceRefresh);
+    final history = await getPushHistoryMessages(forceRefresh: forceRefresh);
+    final unread = history
+        .where((item) => !readIds.contains(item['id']?.toString() ?? ''))
+        .length;
+    await setPushUnreadCount(unread);
+    return unread;
+  }
+
+  static Future<void> appendPushDebugLog(String message) async {
+    final now = DateTime.now().toIso8601String();
+    final line = '$now $message';
+    final logs = (await getValue<List<String>>(keyPushDebugLogs)) ?? <String>[];
+    logs.add(line);
+    final trimmed = logs.length > pushDebugLogsMax
+        ? logs.sublist(logs.length - pushDebugLogsMax)
+        : logs;
+    await setValue<List<String>>(keyPushDebugLogs, trimmed);
+  }
+
+  static Future<List<String>> getPushDebugLogs() async {
+    return (await getValue<List<String>>(keyPushDebugLogs)) ?? <String>[];
+  }
+
+  static Future<void> clearPushDebugLogs() async {
+    await remove(keyPushDebugLogs);
   }
 
   static String pushLastReportedTokenKey(String platform, String provider) {

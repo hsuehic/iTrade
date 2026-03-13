@@ -15,6 +15,7 @@ import 'package:ihsueh_itrade/utils/responsive_layout.dart';
 import 'services/app_bootstrap.dart';
 import 'services/copy_service.dart';
 import 'services/theme_service.dart';
+import 'services/notification.dart';
 import 'screens/splash.dart';
 import 'screens/login.dart';
 import 'screens/forgot_password.dart';
@@ -46,30 +47,48 @@ Future<void> _handleNotificationTap(RemoteMessage message) async {
   }
   pendingNotificationTap = null;
 
-  await AppBootstrap.instance.ensureApiClientReady(
-    timeout: const Duration(seconds: 8),
-  );
-
-  // Check if user is authenticated
-  User? user = AuthService.instance.user;
-  if (user == null && ApiClient.instance.isInitialized) {
-    user = await AuthService.instance.getUser();
+  // Best-effort: wait for API client but don't block navigation on failure.
+  try {
+    await AppBootstrap.instance.ensureApiClientReady(
+      timeout: const Duration(seconds: 8),
+    );
+  } catch (e) {
+    debugPrint('[Push] ensureApiClientReady failed during notification tap: $e');
   }
-  if (user == null) {
-    // Not authenticated: store pending notification and let auth flow handle it
+
+  // Determine authentication status.
+  // `authConfirmed` tracks whether we could definitively verify auth.
+  User? user = AuthService.instance.user;
+  bool authConfirmed = user != null;
+
+  if (user == null && ApiClient.instance.isInitialized) {
+    try {
+      user = await AuthService.instance.getUser();
+      // getUser() completed (even if it returned null) → auth status is known.
+      authConfirmed = true;
+    } catch (e) {
+      debugPrint('[Push] getUser failed during notification tap: $e');
+    }
+  }
+
+  if (user == null && authConfirmed) {
+    // Definitively not authenticated → redirect to login.
     pendingNotificationTap = message;
     navigator.pushNamedAndRemoveUntil('/login', (route) => false);
     return;
   }
 
-  // Create args with flag indicating this was opened from notification tap
+  // Either authenticated (user != null) or auth status unknown due to network
+  // error (API client not initialized / getUser threw). In the latter case we
+  // still show the notification detail page because:
+  //   - The message data is available locally.
+  //   - The detail screen is read-only and doesn't require API access.
+  //   - Subsequent navigation will handle auth if needed.
   final args = PushNotificationDetailArgs.fromRemoteMessage(
     message,
     fromNotificationTap: true,
   );
 
-  // Navigate directly to detail screen (no intermediate screens loaded)
-  // The detail screen's back button will handle navigation to history → home
   navigator.pushNamedAndRemoveUntil('/home', (route) => false);
   navigator.pushNamed('/push-history/detail', arguments: args);
 }
@@ -78,6 +97,7 @@ Future<void> main() async {
   // Wrap entire initialization in try-catch to prevent white screen
   try {
     WidgetsFlutterBinding.ensureInitialized();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     // Load environment variables based on build target.
     await _loadEnvFile();
