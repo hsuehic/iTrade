@@ -63,6 +63,9 @@ export interface InitialDataConfig {
     enabled: boolean;
     depth?: number; // Order book depth (default: 20)
   };
+
+  // Strategy-specific data
+  fetchStrategyNetPosition?: boolean; // Fetch net position for the specific strategy and symbol
 }
 
 export interface InitialDataResult {
@@ -78,6 +81,9 @@ export interface InitialDataResult {
   // Market data
   ticker?: Ticker;
   orderBook?: OrderBook;
+
+  // Strategy-specific data
+  strategyNetPosition?: Decimal;
 
   // Metadata
   symbol: string;

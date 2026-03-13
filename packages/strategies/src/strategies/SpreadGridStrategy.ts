@@ -340,26 +340,33 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
     const signals: StrategyResult[] = [];
-    const performance = this.getPerformance?.();
+
+    // Prioritize SQL-level net position calculation for better performance
+    if (initialData.strategyNetPosition !== undefined) {
+      this.positionSize = initialData.strategyNetPosition;
+      this._logger.info(
+        `✅ [SpreadGrid] Initialized positionSize from SQL: ${this.positionSize.toString()}`,
+      );
+    } else {
+      this.positionSize = new Decimal(0);
+    }
+
     if (initialData.openOrders) {
       const ownedOrders = initialData.openOrders.filter((order) => {
         // Prioritize Strategy ID / Client Order ID match over Symbol match
-        // This handles cases where symbols might differ slightly (e.g. BTC-USDT vs BTC/USDT)
         const isIdMatch =
           order.strategyId && String(order.strategyId) === String(this.getStrategyId());
         const isClientOIdMatch =
           order.clientOrderId && this.isStrategyOrderId(order.clientOrderId);
 
-        if (isIdMatch || isClientOIdMatch) return true;
-
-        return false;
+        return isIdMatch || isClientOIdMatch;
       });
 
       this._logger.debug(
         `[SpreadGrid] Found ${ownedOrders.length} owned open orders from initial data`,
       );
 
-      ownedOrders.forEach((order) => {
+      ownedOrders.forEach((order: Order) => {
         if (!order.clientOrderId) return;
         let metadata = this.orderMetadataMap.get(order.clientOrderId);
         if (!metadata) {
@@ -367,14 +374,21 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         }
         this.orders.set(order.clientOrderId, order);
 
+        // Calculate strategy-owned position: consider executed amount and open order size
+        const executed = order.executedQuantity || new Decimal(0);
+        const remaining = order.quantity.sub(executed);
+        const totalOwnedForOrder = executed.add(remaining); // Effectively order.quantity
+
         if (order.side === OrderSide.BUY) {
           this.openLowerOrder = order;
+          this.positionSize = this.positionSize.add(totalOwnedForOrder);
         } else {
           this.openUpperOrder = order;
+          this.positionSize = this.positionSize.sub(totalOwnedForOrder);
         }
       });
     }
-    this.positionSize = performance?.position.currentPosition ?? new Decimal(0);
+
     if (this.openLowerOrder) {
       this.referencePrice = this.openLowerOrder
         .price!.div(100 - this.stepPercent)
@@ -411,13 +425,20 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
   public override async onOrderCreated(order: Order): Promise<void> {
     if (!order.clientOrderId) return;
+    if (this.orders.has(order.clientOrderId)) return; // Avoid double counting
+
     let metadata = this.orderMetadataMap.get(order.clientOrderId);
     if (!metadata) metadata = this.ensureRecoveredMetadata(order);
     if (!metadata) return;
+
     this.orders.set(order.clientOrderId, order);
-    if (metadata.signalType === SignalType.Entry) {
-      if (order.side === OrderSide.BUY) this.openLowerOrder = order;
-      else this.openUpperOrder = order;
+    // Update strategy-owned position size immediately upon order creation (Effective Position)
+    if (order.side === OrderSide.BUY) {
+      this.openLowerOrder = order;
+      this.positionSize = this.positionSize.add(order.quantity);
+    } else {
+      this.openUpperOrder = order;
+      this.positionSize = this.positionSize.sub(order.quantity);
     }
   }
 
@@ -462,6 +483,14 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
             `[SpreadGrid] Order ${order.clientOrderId} FILLED. Processing fill...`,
           );
           return this.handleOrderFilled(order);
+        } else if (this.isTerminalStatus(order.status)) {
+          // Revert the pending quantity from positionSize for canceled/rejected orders
+          const remaining = order.quantity.sub(order.executedQuantity || 0);
+          if (order.side === OrderSide.BUY) {
+            this.positionSize = this.positionSize.sub(remaining);
+          } else {
+            this.positionSize = this.positionSize.add(remaining);
+          }
         }
       }
     }
@@ -476,10 +505,15 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       `[SpreadGrid] Handle Fill: ${order.clientOrderId} ${order.side} ${filledQty} @ ${order.averagePrice || order.price}`,
     );
 
+    // Update position size adjustment for the transition from pending to filled
+    // We already added the full quantity when the order was created/initialized.
+    // Now we adjust for any difference between intended quantity and actual executed quantity (slippage).
+    const intendedQty = order.quantity || new Decimal(0);
+    const adjustment = filledQty.sub(intendedQty);
     if (order.side === OrderSide.BUY) {
-      this.positionSize = this.positionSize.add(filledQty);
+      this.positionSize = this.positionSize.add(adjustment);
     } else {
-      this.positionSize = this.positionSize.sub(filledQty);
+      this.positionSize = this.positionSize.sub(adjustment);
     }
 
     const fillPrice = order.averagePrice || order.price;
@@ -625,6 +659,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       fetchOrderBook: this.checkMarketPrice
         ? { enabled: true, depth: 5 }
         : { enabled: false },
+      fetchStrategyNetPosition: true,
     };
   }
 }

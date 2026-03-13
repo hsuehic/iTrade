@@ -1778,6 +1778,26 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         this.logger,
       );
 
+      // 🆕 Fetch strategy net position from database if requested to improve performance/accuracy
+      if (
+        context.initialDataConfig?.fetchStrategyNetPosition &&
+        this._dataManager?.getStrategyNetPosition
+      ) {
+        const strategyId = strategy.getStrategyId?.();
+        if (strategyId) {
+          this.logger.info(
+            `📊 [INITIAL_DATA] Fetching SQL net position for strategy ${name}`,
+          );
+          loadedData.strategyNetPosition = await this._dataManager.getStrategyNetPosition(
+            strategyId,
+            strategy.context.symbol,
+          );
+          this.logger.info(
+            `✅ [INITIAL_DATA] Strategy ${name} net position: ${loadedData.strategyNetPosition.toString()}`,
+          );
+        }
+      }
+
       // Store the loaded data in strategy's context for reference
       context.loadedInitialData = loadedData;
 

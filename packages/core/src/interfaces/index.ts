@@ -300,6 +300,11 @@ export interface IDataManager {
     strategyName?: string,
     currentPrice?: number,
   ): Promise<StrategyPerformance>;
+
+  /**
+   * 🆕 Calculates the net position size owned by a specific strategy at the SQL level.
+   */
+  getStrategyNetPosition?(strategyId: number, symbol: string): Promise<Decimal>;
 }
 
 // Backtesting Engine Interface
