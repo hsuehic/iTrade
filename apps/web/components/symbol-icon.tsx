@@ -37,7 +37,7 @@ function extractBaseAsset(symbol: string): string {
 }
 
 export const SymbolIcon = memo(
-  ({ symbol, exchangeId, size = 'md', className }: SymbolIconProps) => {
+  ({ symbol, exchangeId: _exchangeId, size = 'md', className }: SymbolIconProps) => {
     const baseAsset = extractBaseAsset(symbol);
     const [imageError, setImageError] = useState(false);
 
@@ -59,7 +59,7 @@ export const SymbolIcon = memo(
       lg: 24,
     };
 
-    const iconUrl = getCryptoIconUrl(baseAsset, exchangeId);
+    const iconUrl = getCryptoIconUrl(baseAsset);
 
     if (!iconUrl || imageError || !baseAsset) {
       // Fallback: show first letter in a colored circle

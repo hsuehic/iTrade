@@ -33,16 +33,9 @@ const nextConfig: NextConfig = {
   },
 
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'static.okx.com',
-      },
-      {
-        protocol: 'https',
-        hostname: 'www.binance.com',
-      },
-    ],
+    // All crypto icons are served locally from /public/crypto-icons/
+    // No external image domains required
+    remotePatterns: [],
   },
 
   experimental: {

@@ -237,32 +237,12 @@ export const COMMON_TRADING_PAIRS = [
 ] as const;
 
 /**
- * Get crypto icon URL
- * - OKX: official static icons
- * - Binance: official static icons
- * - fallback: local public directory
+ * Get crypto icon URL - always uses local icons served from /public/crypto-icons/
+ * Icons are stored as {symbol}@2x.png (128px, sourced from spothq & CoinGecko)
+ * The SymbolIcon component handles missing icons with a letter-based fallback.
  */
-export function getCryptoIconUrl(symbol: string, exchangeId?: string): string {
+export function getCryptoIconUrl(symbol: string): string {
   const symbolLower = symbol.toLowerCase();
-  const exchange = exchangeId?.toLowerCase();
-
-  const localSymbols = new Set<string>([
-    ...SUPPORTED_BASE_CURRENCIES.map((base) => base.toLowerCase()),
-    ...Array.from(new Set(Object.values(SUPPORTED_QUOTE_CURRENCIES).flat())).map(
-      (quote) => quote.toLowerCase(),
-    ),
-  ]);
-  if (localSymbols.has(symbolLower)) {
-    return `/crypto-icons/${symbolLower}@2x.png`;
-  }
-
-  if (exchange === 'okx') {
-    return `https://static.okx.com/cdn/assets/imgs/2210/${symbolLower}.png`;
-  }
-  if (exchange === 'binance') {
-    return `https://www.binance.com/static/images/coins/64x64/${symbolLower}.png`;
-  }
-  // Using local crypto icons stored in /public/crypto-icons/
   return `/crypto-icons/${symbolLower}@2x.png`;
 }
 
