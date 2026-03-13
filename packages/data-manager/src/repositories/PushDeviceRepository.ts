@@ -36,6 +36,8 @@ export class PushDeviceRepository {
    * - Keep token unique per (platform, provider, pushToken)
    * - Keep device unique per (platform, provider, deviceId, appId, environment)
    * - Deactivate older tokens for the same device+app+env when token rotates
+   * - Ensure at most ONE active token per user+platform+provider+appId+environment
+   *   (handles reinstalls where deviceId changes)
    */
   async register(input: RegisterPushDeviceInput): Promise<PushDeviceEntity> {
     const now = input.lastSeenAt ?? new Date();
@@ -47,6 +49,9 @@ export class PushDeviceRepository {
 
     try {
       const repo = queryRunner.manager.getRepository(PushDeviceEntity);
+      let result: PushDeviceEntity;
+
+      // ── Step 1: Upsert by token or device key ────────────────────────
 
       const existingByToken = await repo.findOne({
         where: {
@@ -57,11 +62,11 @@ export class PushDeviceRepository {
       });
 
       if (existingByToken) {
-        // Deactivate other rows for this device key (token rotated, etc.)
+        // Delete other rows for this device key (token rotated, etc.)
         await queryRunner.manager
           .createQueryBuilder()
-          .update(PushDeviceEntity)
-          .set({ isActive: false })
+          .delete()
+          .from(PushDeviceEntity)
           .where('id != :id', { id: existingByToken.id })
           .andWhere('platform = :platform', { platform: input.platform })
           .andWhere('provider = :provider', { provider: input.provider })
@@ -90,70 +95,88 @@ export class PushDeviceRepository {
           .where('id = :id', { id: existingByToken.id })
           .execute();
 
-        const result = await repo.findOneByOrFail({ id: existingByToken.id });
-        await queryRunner.commitTransaction();
-        return result;
-      }
-
-      const existingByDevice = await repo.findOne({
-        where: {
-          platform: input.platform,
-          provider: input.provider,
-          deviceId: input.deviceId,
-          appId: input.appId,
-          environment: input.environment == null ? IsNull() : input.environment,
-        },
-      });
-
-      if (existingByDevice) {
-        await queryRunner.manager
-          .createQueryBuilder()
-          .update(PushDeviceEntity)
-          .set({
-            userId: input.userId ?? null,
-            pushToken: input.pushToken,
-            appVersion: input.appVersion ?? null,
-            isActive: input.isActive ?? true,
-            lastSeenAt: now,
-          })
-          .where('id = :id', { id: existingByDevice.id })
-          .execute();
-
-        const result = await repo.findOneByOrFail({ id: existingByDevice.id });
-        await queryRunner.commitTransaction();
-        return result;
-      }
-
-      const insertResult = await queryRunner.manager
-        .createQueryBuilder()
-        .insert()
-        .into(PushDeviceEntity)
-        .values({
-          userId: input.userId ?? null,
-          deviceId: input.deviceId,
-          platform: input.platform,
-          provider: input.provider,
-          pushToken: input.pushToken,
-          appId: input.appId,
-          appVersion: input.appVersion ?? null,
-          environment: input.environment ?? null,
-          isActive: input.isActive ?? true,
-          lastSeenAt: now,
-        })
-        .execute();
-
-      const insertedId = insertResult.identifiers[0]?.id as string | undefined;
-      let result: PushDeviceEntity;
-      if (insertedId) {
-        result = await repo.findOneByOrFail({ id: insertedId });
+        result = await repo.findOneByOrFail({ id: existingByToken.id });
       } else {
-        result = await repo.findOneOrFail({
+        const existingByDevice = await repo.findOne({
           where: {
             platform: input.platform,
             provider: input.provider,
-            pushToken: input.pushToken,
+            deviceId: input.deviceId,
+            appId: input.appId,
+            environment: input.environment == null ? IsNull() : input.environment,
           },
         });
+
+        if (existingByDevice) {
+          await queryRunner.manager
+            .createQueryBuilder()
+            .update(PushDeviceEntity)
+            .set({
+              userId: input.userId ?? null,
+              pushToken: input.pushToken,
+              appVersion: input.appVersion ?? null,
+              isActive: input.isActive ?? true,
+              lastSeenAt: now,
+            })
+            .where('id = :id', { id: existingByDevice.id })
+            .execute();
+
+          result = await repo.findOneByOrFail({ id: existingByDevice.id });
+        } else {
+          const insertResult = await queryRunner.manager
+            .createQueryBuilder()
+            .insert()
+            .into(PushDeviceEntity)
+            .values({
+              userId: input.userId ?? null,
+              deviceId: input.deviceId,
+              platform: input.platform,
+              provider: input.provider,
+              pushToken: input.pushToken,
+              appId: input.appId,
+              appVersion: input.appVersion ?? null,
+              environment: input.environment ?? null,
+              isActive: input.isActive ?? true,
+              lastSeenAt: now,
+            })
+            .execute();
+
+          const insertedId = insertResult.identifiers[0]?.id as string | undefined;
+          if (insertedId) {
+            result = await repo.findOneByOrFail({ id: insertedId });
+          } else {
+            result = await repo.findOneOrFail({
+              where: {
+                platform: input.platform,
+                provider: input.provider,
+                pushToken: input.pushToken,
+              },
+            });
+          }
+        }
+      }
+
+      // ── Step 2: Delete stale tokens for the same user ─────────────────
+      // After reinstalls the deviceId changes, so old rows with the previous
+      // deviceId remain.  We keep only the current row per
+      // userId + platform + provider + appId + environment.
+      if (input.userId) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .delete()
+          .from(PushDeviceEntity)
+          .where('id != :currentId', { currentId: result.id })
+          .andWhere('"userId" = :userId', { userId: input.userId })
+          .andWhere('platform = :platform', { platform: input.platform })
+          .andWhere('provider = :provider', { provider: input.provider })
+          .andWhere('"appId" = :appId', { appId: input.appId })
+          .andWhere(
+            input.environment == null
+              ? 'environment IS NULL'
+              : 'environment = :environment',
+            input.environment == null ? {} : { environment: input.environment },
+          )
+          .execute();
       }
 
       await queryRunner.commitTransaction();
