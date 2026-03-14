@@ -68,7 +68,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
       console.warn(`Failed to rebuild performance for strategy ${id}`, e);
     }
 
-    return NextResponse.json({ strategy, rebuiltPerformance });
+    // Calculate net position size from executed orders
+    let netPosition: string | null = null;
+    try {
+      if (dataManager.getStrategyNetPosition && strategy.symbol) {
+        const netPositionDecimal = await dataManager.getStrategyNetPosition(
+          strategy.id,
+          strategy.symbol,
+        );
+        netPosition = netPositionDecimal.toString();
+      }
+    } catch (e) {
+      console.warn(`Failed to calculate net position for strategy ${id}`, e);
+    }
+
+    return NextResponse.json({ strategy, rebuiltPerformance, netPosition });
   } catch (error) {
     console.error('Error fetching strategy:', error);
     return NextResponse.json({ error: 'Failed to fetch strategy' }, { status: 500 });

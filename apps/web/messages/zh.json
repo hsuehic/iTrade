@@ -1336,7 +1336,8 @@
       "created": "策略创建成功",
       "started": "策略已启动",
       "stopped": "策略已停止",
-      "deleted": "策略删除成功"
+      "deleted": "策略删除成功",
+      "rebuiltPerformanceUnavailable": "暂无基于订单的绩效数据。"
     },
     "empty": {
       "title": "暂无策略",
@@ -1371,6 +1372,10 @@
       "orderBased": "按订单",
       "orders": "订单",
       "configuration": "配置"
+    },
+    "netPosition": {
+      "title": "净持仓",
+      "description": "策略订单的净已执行 {symbol} 持仓"
     }
   },
   "orders": {

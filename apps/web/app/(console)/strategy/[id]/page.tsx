@@ -23,13 +23,7 @@ const StrategyStatus = {
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SiteHeader } from '@/components/site-header';
@@ -55,6 +49,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const [strategy, setStrategy] = useState<StrategyEntity | null>(null);
   const [rebuiltPerformance, setRebuiltPerformance] =
     useState<StrategyPerformance | null>(null);
+  const [netPosition, setNetPosition] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
@@ -66,6 +61,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
       const data = await res.json();
       setStrategy(data.strategy);
       setRebuiltPerformance(data.rebuiltPerformance);
+      setNetPosition(data.netPosition ?? null);
     } catch (error) {
       console.error(error);
       toast.error(t('errors.loadStrategies'));
@@ -230,6 +226,38 @@ export default function StrategyDetailPage(props: { params: Params }) {
             </Button>
           </div>
         </div>
+
+        {/* Net Position Card */}
+        {netPosition !== null && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                {t('netPosition.title')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div
+                className={`text-2xl font-bold font-mono ${
+                  parseFloat(netPosition) > 0
+                    ? 'text-green-500'
+                    : parseFloat(netPosition) < 0
+                      ? 'text-red-500'
+                      : 'text-muted-foreground'
+                }`}
+              >
+                {parseFloat(netPosition) > 0 ? '+' : ''}
+                {parseFloat(netPosition)
+                  .toFixed(8)
+                  .replace(/\.?0+$/, '')}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('netPosition.description', {
+                  symbol: strategy.symbol?.split('/')[0] || '',
+                })}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Performance Metrics */}
         <Tabs defaultValue="rebuilt" className="w-full">

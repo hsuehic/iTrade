@@ -1346,7 +1346,8 @@
       "created": "Strategy created successfully",
       "started": "Strategy started",
       "stopped": "Strategy stopped",
-      "deleted": "Strategy deleted successfully"
+      "deleted": "Strategy deleted successfully",
+      "rebuiltPerformanceUnavailable": "No order-based performance data available yet."
     },
     "empty": {
       "title": "No strategies yet",
@@ -1390,6 +1391,10 @@
       "orderBased": "Order-based",
       "orders": "Orders",
       "configuration": "Configuration"
+    },
+    "netPosition": {
+      "title": "Net Position",
+      "description": "Net executed {symbol} position from strategy orders"
     },
     "backToList": "Back to Strategies List"
   },
