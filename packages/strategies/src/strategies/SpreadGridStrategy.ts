@@ -294,12 +294,48 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     return 'STANDARD';
   }
 
-  private canAddLong(): boolean {
-    return this.positionSize.plus(this.orderAmount).lte(this.maxSize);
+  /**
+   * Returns the unfilled (remaining) quantity of the current pending BUY order.
+   * Used for worst-case position estimation before placing new signals.
+   */
+  private getPendingLongRemaining(): Decimal {
+    if (!this.openLowerOrder) return new Decimal(0);
+    const executed = this.openLowerOrder.executedQuantity || new Decimal(0);
+    return this.openLowerOrder.quantity.sub(executed);
   }
 
+  /**
+   * Returns the unfilled (remaining) quantity of the current pending SELL order.
+   * Used for worst-case position estimation before placing new signals.
+   */
+  private getPendingShortRemaining(): Decimal {
+    if (!this.openUpperOrder) return new Decimal(0);
+    const executed = this.openUpperOrder.executedQuantity || new Decimal(0);
+    return this.openUpperOrder.quantity.sub(executed);
+  }
+
+  /**
+   * Checks whether placing a new BUY order is safe.
+   * Uses worst-case position: assumes all pending BUYs fill AND the new BUY fills.
+   * This guarantees maxSize is never breached even if all open orders fill simultaneously.
+   */
+  private canAddLong(): boolean {
+    const worstCaseLong = this.positionSize
+      .plus(this.getPendingLongRemaining())
+      .plus(this.orderAmount);
+    return worstCaseLong.lte(this.maxSize);
+  }
+
+  /**
+   * Checks whether placing a new SELL order is safe.
+   * Uses worst-case position: assumes all pending SELLs fill AND the new SELL fills.
+   * This guarantees minSize is never breached even if all open orders fill simultaneously.
+   */
   private canAddShort(): boolean {
-    return this.positionSize.minus(this.orderAmount).gte(this.minSize);
+    const worstCaseShort = this.positionSize
+      .minus(this.getPendingShortRemaining())
+      .minus(this.orderAmount);
+    return worstCaseShort.gte(this.minSize);
   }
 
   private generatePlaceOrderSignal(price: Decimal, side: OrderSide): StrategyOrderResult {
@@ -366,6 +402,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         `[SpreadGrid] Found ${ownedOrders.length} owned open orders from initial data`,
       );
 
+      // positionSize tracks FILLS ONLY.
+      // strategyNetPosition (from SQL) includes pending order quantities (NEW/PARTIALLY_FILLED).
+      // We subtract the unfilled (remaining) portion of each open order to convert to fills-only.
       ownedOrders.forEach((order: Order) => {
         if (!order.clientOrderId) return;
         let metadata = this.orderMetadataMap.get(order.clientOrderId);
@@ -374,17 +413,29 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         }
         this.orders.set(order.clientOrderId, order);
 
-        // Calculate strategy-owned position: consider executed amount and open order size
+        // Remove the unfilled (pending) portion from positionSize so it only reflects fills.
+        // For a BUY open order: SQL added +quantity, but only +executedQuantity was actually filled.
+        // For a SELL open order: SQL added -quantity, but only -executedQuantity was actually filled.
         const executed = order.executedQuantity || new Decimal(0);
         const remaining = order.quantity.sub(executed);
-        const totalOwnedForOrder = executed.add(remaining); // Effectively order.quantity
+        if (remaining.gt(0)) {
+          if (order.side === OrderSide.BUY) {
+            this.positionSize = this.positionSize.sub(remaining);
+          } else {
+            this.positionSize = this.positionSize.add(remaining);
+          }
+        }
 
+        // Track the already-processed (partially filled) quantity to avoid double-counting on fill.
+        if (executed.gt(0)) {
+          this.processedQuantityMap.set(order.clientOrderId, executed);
+        }
+
+        // Track open order references (for duplicate order prevention).
         if (order.side === OrderSide.BUY) {
           this.openLowerOrder = order;
-          this.positionSize = this.positionSize.add(totalOwnedForOrder);
         } else {
           this.openUpperOrder = order;
-          this.positionSize = this.positionSize.sub(totalOwnedForOrder);
         }
       });
     }
@@ -432,13 +483,12 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     if (!metadata) return;
 
     this.orders.set(order.clientOrderId, order);
-    // Update strategy-owned position size immediately upon order creation (Effective Position)
+    // Track open order references only.
+    // positionSize is updated ONLY when orders are FILLED, not when they are placed.
     if (order.side === OrderSide.BUY) {
       this.openLowerOrder = order;
-      this.positionSize = this.positionSize.add(order.quantity);
     } else {
       this.openUpperOrder = order;
-      this.positionSize = this.positionSize.sub(order.quantity);
     }
   }
 
@@ -466,12 +516,29 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
       this.orders.set(order.clientOrderId, order);
       if (metadata.signalType === SignalType.Entry) {
-        if (
-          order.status === OrderStatus.NEW ||
-          order.status === OrderStatus.PARTIALLY_FILLED
-        ) {
-          if (order.status === OrderStatus.NEW) {
-            this._logger.debug(`[SpreadGrid] Order ${order.clientOrderId} is NEW`);
+        if (order.status === OrderStatus.NEW) {
+          this._logger.debug(`[SpreadGrid] Order ${order.clientOrderId} is NEW`);
+          if (order.side === OrderSide.BUY) {
+            this.openLowerOrder = order;
+          } else {
+            this.openUpperOrder = order;
+          }
+        } else if (order.status === OrderStatus.PARTIALLY_FILLED) {
+          // Track incremental fills: positionSize only grows with actual filled qty.
+          const currentExecuted = order.executedQuantity || new Decimal(0);
+          const previousExecuted =
+            this.processedQuantityMap.get(order.clientOrderId) || new Decimal(0);
+          const incrementalFill = currentExecuted.sub(previousExecuted);
+          if (incrementalFill.gt(0)) {
+            if (order.side === OrderSide.BUY) {
+              this.positionSize = this.positionSize.add(incrementalFill);
+            } else {
+              this.positionSize = this.positionSize.sub(incrementalFill);
+            }
+            this.processedQuantityMap.set(order.clientOrderId, currentExecuted);
+            this._logger.debug(
+              `[SpreadGrid] PARTIALLY_FILLED ${order.clientOrderId}: +${incrementalFill} fill. positionSize=${this.positionSize}`,
+            );
           }
           if (order.side === OrderSide.BUY) {
             this.openLowerOrder = order;
@@ -484,13 +551,21 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
           );
           return this.handleOrderFilled(order);
         } else if (this.isTerminalStatus(order.status)) {
-          // Revert the pending quantity from positionSize for canceled/rejected orders
-          const remaining = order.quantity.sub(order.executedQuantity || 0);
+          // Fill-only tracking: we never added pending qty to positionSize, so no revert needed.
+          // Just clean up order references.
+          this.processedQuantityMap.delete(order.clientOrderId);
           if (order.side === OrderSide.BUY) {
-            this.positionSize = this.positionSize.sub(remaining);
+            if (this.openLowerOrder?.clientOrderId === order.clientOrderId) {
+              this.openLowerOrder = null;
+            }
           } else {
-            this.positionSize = this.positionSize.add(remaining);
+            if (this.openUpperOrder?.clientOrderId === order.clientOrderId) {
+              this.openUpperOrder = null;
+            }
           }
+          this._logger.debug(
+            `[SpreadGrid] Order ${order.clientOrderId} terminal (${order.status}). No positionSize adjustment needed.`,
+          );
         }
       }
     }
@@ -505,16 +580,20 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       `[SpreadGrid] Handle Fill: ${order.clientOrderId} ${order.side} ${filledQty} @ ${order.averagePrice || order.price}`,
     );
 
-    // Update position size adjustment for the transition from pending to filled
-    // We already added the full quantity when the order was created/initialized.
-    // Now we adjust for any difference between intended quantity and actual executed quantity (slippage).
-    const intendedQty = order.quantity || new Decimal(0);
-    const adjustment = filledQty.sub(intendedQty);
-    if (order.side === OrderSide.BUY) {
-      this.positionSize = this.positionSize.add(adjustment);
-    } else {
-      this.positionSize = this.positionSize.sub(adjustment);
+    // Fill-only tracking: add only the net-new fill quantity (accounting for partial fills
+    // that were already incremented in handleOrderUpdates via processedQuantityMap).
+    const previouslyProcessed =
+      this.processedQuantityMap.get(order.clientOrderId!) || new Decimal(0);
+    const newFillQty = filledQty.sub(previouslyProcessed);
+    if (newFillQty.gt(0)) {
+      if (order.side === OrderSide.BUY) {
+        this.positionSize = this.positionSize.add(newFillQty);
+      } else {
+        this.positionSize = this.positionSize.sub(newFillQty);
+      }
     }
+    // Clear the partial-fill tracking entry for this order.
+    this.processedQuantityMap.delete(order.clientOrderId!);
 
     const fillPrice = order.averagePrice || order.price;
     if (fillPrice) {
@@ -559,7 +638,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       this._logger.debug(`[SpreadGrid] Generated BUY signal @ ${price}`);
     } else {
       this._logger.debug(
-        `[SpreadGrid] Skipping BUY: canAddLong=false (Pos: ${this.positionSize}, Max: ${this.maxSize})`,
+        `[SpreadGrid] Skipping BUY: canAddLong=false (Fills: ${this.positionSize}, PendingBuy: ${this.getPendingLongRemaining()}, Max: ${this.maxSize})`,
       );
     }
 
@@ -569,7 +648,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       this._logger.debug(`[SpreadGrid] Generated SELL signal @ ${price}`);
     } else {
       this._logger.debug(
-        `[SpreadGrid] Skipping SELL: canAddShort=false (Pos: ${this.positionSize}, Min: ${this.minSize})`,
+        `[SpreadGrid] Skipping SELL: canAddShort=false (Fills: ${this.positionSize}, PendingSell: ${this.getPendingShortRemaining()}, Min: ${this.minSize})`,
       );
     }
 
@@ -634,6 +713,14 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         min: this.minSize,
         max: this.maxSize,
       },
+      pendingLongRemaining: this.getPendingLongRemaining().toString(),
+      pendingShortRemaining: this.getPendingShortRemaining().toString(),
+      worstCaseLongPosition: this.positionSize
+        .plus(this.getPendingLongRemaining())
+        .toString(),
+      worstCaseShortPosition: this.positionSize
+        .minus(this.getPendingShortRemaining())
+        .toString(),
       canAddLong: this.canAddLong(),
       canAddShort: this.canAddShort(),
       mode: this.getPositionMode(),
