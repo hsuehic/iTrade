@@ -49,7 +49,11 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const [strategy, setStrategy] = useState<StrategyEntity | null>(null);
   const [rebuiltPerformance, setRebuiltPerformance] =
     useState<StrategyPerformance | null>(null);
-  const [netPosition, setNetPosition] = useState<string | null>(null);
+  const [positionSummary, setPositionSummary] = useState<{
+    netExecutedPosition: string;
+    pendingBuySize: string;
+    pendingSellSize: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
@@ -61,7 +65,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
       const data = await res.json();
       setStrategy(data.strategy);
       setRebuiltPerformance(data.rebuiltPerformance);
-      setNetPosition(data.netPosition ?? null);
+      setPositionSummary(data.positionSummary ?? null);
     } catch (error) {
       console.error(error);
       toast.error(t('errors.loadStrategies'));
@@ -227,36 +231,93 @@ export default function StrategyDetailPage(props: { params: Params }) {
           </div>
         </div>
 
-        {/* Net Position Card */}
-        {netPosition !== null && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {t('netPosition.title')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div
-                className={`text-2xl font-bold font-mono ${
-                  parseFloat(netPosition) > 0
-                    ? 'text-green-500'
-                    : parseFloat(netPosition) < 0
+        {/* Position Summary Cards */}
+        {positionSummary !== null && (
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Net Executed Position */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('netPosition.title')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    parseFloat(positionSummary.netExecutedPosition) > 0
+                      ? 'text-green-500'
+                      : parseFloat(positionSummary.netExecutedPosition) < 0
+                        ? 'text-red-500'
+                        : 'text-muted-foreground'
+                  }`}
+                >
+                  {parseFloat(positionSummary.netExecutedPosition) > 0 ? '+' : ''}
+                  {parseFloat(positionSummary.netExecutedPosition)
+                    .toFixed(8)
+                    .replace(/\.?0+$/, '') || '0'}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('netPosition.description', {
+                    symbol: strategy.symbol?.split('/')[0] || '',
+                  })}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Pending Buy Size */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('netPosition.pendingBuy')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    parseFloat(positionSummary.pendingBuySize) > 0
+                      ? 'text-green-500'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {parseFloat(positionSummary.pendingBuySize)
+                    .toFixed(8)
+                    .replace(/\.?0+$/, '') || '0'}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('netPosition.pendingBuyDesc', {
+                    symbol: strategy.symbol?.split('/')[0] || '',
+                  })}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Pending Sell Size */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('netPosition.pendingSell')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    parseFloat(positionSummary.pendingSellSize) > 0
                       ? 'text-red-500'
                       : 'text-muted-foreground'
-                }`}
-              >
-                {parseFloat(netPosition) > 0 ? '+' : ''}
-                {parseFloat(netPosition)
-                  .toFixed(8)
-                  .replace(/\.?0+$/, '')}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {t('netPosition.description', {
-                  symbol: strategy.symbol?.split('/')[0] || '',
-                })}
-              </p>
-            </CardContent>
-          </Card>
+                  }`}
+                >
+                  {parseFloat(positionSummary.pendingSellSize)
+                    .toFixed(8)
+                    .replace(/\.?0+$/, '') || '0'}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('netPosition.pendingSellDesc', {
+                    symbol: strategy.symbol?.split('/')[0] || '',
+                  })}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* Performance Metrics */}

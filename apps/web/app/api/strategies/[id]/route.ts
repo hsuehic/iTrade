@@ -68,21 +68,39 @@ export async function GET(request: NextRequest, context: RouteContext) {
       console.warn(`Failed to rebuild performance for strategy ${id}`, e);
     }
 
-    // Calculate net position size from executed orders
-    let netPosition: string | null = null;
+    // Calculate position summary: executed net position + pending buy/sell sizes
+    let positionSummary: {
+      netExecutedPosition: string;
+      pendingBuySize: string;
+      pendingSellSize: string;
+    } | null = null;
     try {
-      if (dataManager.getStrategyNetPosition && strategy.symbol) {
-        const netPositionDecimal = await dataManager.getStrategyNetPosition(
+      const dataManagerWithPosition = dataManager as typeof dataManager & {
+        getStrategyPositionSummary?: (
+          strategyId: number,
+          symbol: string,
+        ) => Promise<{
+          netExecutedPosition: { toString(): string };
+          pendingBuySize: { toString(): string };
+          pendingSellSize: { toString(): string };
+        }>;
+      };
+      if (dataManagerWithPosition.getStrategyPositionSummary && strategy.symbol) {
+        const summary = await dataManagerWithPosition.getStrategyPositionSummary(
           strategy.id,
           strategy.symbol,
         );
-        netPosition = netPositionDecimal.toString();
+        positionSummary = {
+          netExecutedPosition: summary.netExecutedPosition.toString(),
+          pendingBuySize: summary.pendingBuySize.toString(),
+          pendingSellSize: summary.pendingSellSize.toString(),
+        };
       }
     } catch (e) {
-      console.warn(`Failed to calculate net position for strategy ${id}`, e);
+      console.warn(`Failed to calculate position summary for strategy ${id}`, e);
     }
 
-    return NextResponse.json({ strategy, rebuiltPerformance, netPosition });
+    return NextResponse.json({ strategy, rebuiltPerformance, positionSummary });
   } catch (error) {
     console.error('Error fetching strategy:', error);
     return NextResponse.json({ error: 'Failed to fetch strategy' }, { status: 500 });

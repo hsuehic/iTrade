@@ -305,6 +305,14 @@ export interface IDataManager {
    * 🆕 Calculates the net position size owned by a specific strategy at the SQL level.
    */
   getStrategyNetPosition?(strategyId: number, symbol: string): Promise<Decimal>;
+
+  /**
+   * 🆕 Returns executed net position + pending buy/sell sizes in a single query.
+   */
+  getStrategyPositionSummary?(
+    strategyId: number,
+    symbol: string,
+  ): Promise<{ netExecutedPosition: Decimal; pendingBuySize: Decimal; pendingSellSize: Decimal }>;
 }
 
 // Backtesting Engine Interface

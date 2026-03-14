@@ -667,6 +667,14 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.orderRepository.getStrategyNetPosition(strategyId, symbol);
   }
 
+  async getStrategyPositionSummary(
+    strategyId: number,
+    symbol: string,
+  ): Promise<{ netExecutedPosition: Decimal; pendingBuySize: Decimal; pendingSellSize: Decimal }> {
+    this.ensureInitialized();
+    return await this.orderRepository.getStrategyPositionSummary(strategyId, symbol);
+  }
+
   private ensureInitialized(): void {
     if (!this.isInitialized) {
       throw new Error('TypeOrmDataManager not initialized. Call initialize() first.');

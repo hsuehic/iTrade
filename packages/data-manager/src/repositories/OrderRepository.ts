@@ -189,4 +189,63 @@ export class OrderRepository {
 
     return new Decimal(result?.netPosition || 0);
   }
+
+  /**
+   * Returns a complete position summary for a strategy in a single SQL query:
+   * - netExecutedPosition: net of all BUY/SELL executedQuantity (filled amounts only)
+   * - pendingBuySize: remaining unfilled quantity of open BUY orders (quantity - executedQuantity)
+   * - pendingSellSize: remaining unfilled quantity of open SELL orders (quantity - executedQuantity)
+   */
+  async getStrategyPositionSummary(
+    strategyId: number,
+    symbol: string,
+  ): Promise<{ netExecutedPosition: Decimal; pendingBuySize: Decimal; pendingSellSize: Decimal }> {
+    const openStatuses = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED];
+
+    const result = await this.repository
+      .createQueryBuilder('order')
+      .select(
+        `SUM(
+          CASE
+            WHEN order.side = :buy THEN COALESCE(order.executedQuantity, 0)
+            ELSE -COALESCE(order.executedQuantity, 0)
+          END
+        )`,
+        'netExecutedPosition',
+      )
+      .addSelect(
+        `SUM(
+          CASE
+            WHEN order.side = :buy AND order.status IN (:...open)
+            THEN (order.quantity - COALESCE(order.executedQuantity, 0))
+            ELSE 0
+          END
+        )`,
+        'pendingBuySize',
+      )
+      .addSelect(
+        `SUM(
+          CASE
+            WHEN order.side = :sell AND order.status IN (:...open)
+            THEN (order.quantity - COALESCE(order.executedQuantity, 0))
+            ELSE 0
+          END
+        )`,
+        'pendingSellSize',
+      )
+      .where('order.strategyId = :strategyId', { strategyId })
+      .andWhere('order.symbol = :symbol', { symbol })
+      .setParameters({
+        buy: OrderSide.BUY,
+        sell: OrderSide.SELL,
+        open: openStatuses,
+      })
+      .getRawOne();
+
+    return {
+      netExecutedPosition: new Decimal(result?.netExecutedPosition || 0),
+      pendingBuySize: new Decimal(result?.pendingBuySize || 0),
+      pendingSellSize: new Decimal(result?.pendingSellSize || 0),
+    };
+  }
 }

@@ -1375,7 +1375,11 @@
     },
     "netPosition": {
       "title": "净持仓",
-      "description": "策略订单的净已执行 {symbol} 持仓"
+      "description": "策略订单已成交的净 {symbol} 持仓",
+      "pendingBuy": "挂单买入",
+      "pendingBuyDesc": "未成交的 {symbol} 买单数量",
+      "pendingSell": "挂单卖出",
+      "pendingSellDesc": "未成交的 {symbol} 卖单数量"
     }
   },
   "orders": {

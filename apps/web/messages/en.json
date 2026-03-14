@@ -1394,7 +1394,11 @@
     },
     "netPosition": {
       "title": "Net Position",
-      "description": "Net executed {symbol} position from strategy orders"
+      "description": "Net filled {symbol} from strategy orders",
+      "pendingBuy": "Pending Buy",
+      "pendingBuyDesc": "Unfilled {symbol} buy order size",
+      "pendingSell": "Pending Sell",
+      "pendingSellDesc": "Unfilled {symbol} sell order size"
     },
     "backToList": "Back to Strategies List"
   },
