@@ -121,6 +121,33 @@ class StrategyPerformance {
   }
 }
 
+/// Position summary for a strategy (calculated from orders)
+class StrategyPositionSummary {
+  final double netExecutedPosition;
+  final double pendingBuySize;
+  final double pendingSellSize;
+  final double totalBoughtSize;
+  final double totalSoldSize;
+
+  StrategyPositionSummary({
+    required this.netExecutedPosition,
+    required this.pendingBuySize,
+    required this.pendingSellSize,
+    required this.totalBoughtSize,
+    required this.totalSoldSize,
+  });
+
+  factory StrategyPositionSummary.fromJson(Map<String, dynamic> json) {
+    return StrategyPositionSummary(
+      netExecutedPosition: _parseDouble(json['netExecutedPosition']),
+      pendingBuySize: _parseDouble(json['pendingBuySize']),
+      pendingSellSize: _parseDouble(json['pendingSellSize']),
+      totalBoughtSize: _parseDouble(json['totalBoughtSize']),
+      totalSoldSize: _parseDouble(json['totalSoldSize']),
+    );
+  }
+}
+
 /// Strategy PnL data
 class StrategyPnL {
   final int strategyId;

@@ -195,11 +195,19 @@ export class OrderRepository {
    * - netExecutedPosition: net of all BUY/SELL executedQuantity (filled amounts only)
    * - pendingBuySize: remaining unfilled quantity of open BUY orders (quantity - executedQuantity)
    * - pendingSellSize: remaining unfilled quantity of open SELL orders (quantity - executedQuantity)
+   * - totalBoughtSize: total executedQuantity of all BUY orders (filled amount)
+   * - totalSoldSize: total executedQuantity of all SELL orders (filled amount)
    */
   async getStrategyPositionSummary(
     strategyId: number,
     symbol: string,
-  ): Promise<{ netExecutedPosition: Decimal; pendingBuySize: Decimal; pendingSellSize: Decimal }> {
+  ): Promise<{
+    netExecutedPosition: Decimal;
+    pendingBuySize: Decimal;
+    pendingSellSize: Decimal;
+    totalBoughtSize: Decimal;
+    totalSoldSize: Decimal;
+  }> {
     const openStatuses = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED];
 
     const result = await this.repository
@@ -233,6 +241,24 @@ export class OrderRepository {
         )`,
         'pendingSellSize',
       )
+      .addSelect(
+        `SUM(
+          CASE
+            WHEN order.side = :buy THEN COALESCE(order.executedQuantity, 0)
+            ELSE 0
+          END
+        )`,
+        'totalBoughtSize',
+      )
+      .addSelect(
+        `SUM(
+          CASE
+            WHEN order.side = :sell THEN COALESCE(order.executedQuantity, 0)
+            ELSE 0
+          END
+        )`,
+        'totalSoldSize',
+      )
       .where('order.strategyId = :strategyId', { strategyId })
       .andWhere('order.symbol = :symbol', { symbol })
       .setParameters({
@@ -246,6 +272,8 @@ export class OrderRepository {
       netExecutedPosition: new Decimal(result?.netExecutedPosition || 0),
       pendingBuySize: new Decimal(result?.pendingBuySize || 0),
       pendingSellSize: new Decimal(result?.pendingSellSize || 0),
+      totalBoughtSize: new Decimal(result?.totalBoughtSize || 0),
+      totalSoldSize: new Decimal(result?.totalSoldSize || 0),
     };
   }
 }

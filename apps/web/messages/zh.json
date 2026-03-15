@@ -1379,7 +1379,11 @@
       "pendingBuy": "挂单买入",
       "pendingBuyDesc": "未成交的 {symbol} 买单数量",
       "pendingSell": "挂单卖出",
-      "pendingSellDesc": "未成交的 {symbol} 卖单数量"
+      "pendingSellDesc": "未成交的 {symbol} 卖单数量",
+      "totalBought": "总买入量",
+      "totalBoughtDesc": "已成交的 {symbol} 买入总量",
+      "totalSold": "总卖出量",
+      "totalSoldDesc": "已成交的 {symbol} 卖出总量"
     }
   },
   "orders": {

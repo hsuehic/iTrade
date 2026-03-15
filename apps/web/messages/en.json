@@ -1398,7 +1398,11 @@
       "pendingBuy": "Pending Buy",
       "pendingBuyDesc": "Unfilled {symbol} buy order size",
       "pendingSell": "Pending Sell",
-      "pendingSellDesc": "Unfilled {symbol} sell order size"
+      "pendingSellDesc": "Unfilled {symbol} sell order size",
+      "totalBought": "Total Bought",
+      "totalBoughtDesc": "Total filled {symbol} buy size",
+      "totalSold": "Total Sold",
+      "totalSoldDesc": "Total filled {symbol} sell size"
     },
     "backToList": "Back to Strategies List"
   },

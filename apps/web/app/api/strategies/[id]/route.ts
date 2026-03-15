@@ -68,11 +68,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       console.warn(`Failed to rebuild performance for strategy ${id}`, e);
     }
 
-    // Calculate position summary: executed net position + pending buy/sell sizes
+    // Calculate position summary: executed net position + pending buy/sell sizes + total bought/sold
     let positionSummary: {
       netExecutedPosition: string;
       pendingBuySize: string;
       pendingSellSize: string;
+      totalBoughtSize: string;
+      totalSoldSize: string;
     } | null = null;
     try {
       const dataManagerWithPosition = dataManager as typeof dataManager & {
@@ -83,6 +85,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
           netExecutedPosition: { toString(): string };
           pendingBuySize: { toString(): string };
           pendingSellSize: { toString(): string };
+          totalBoughtSize: { toString(): string };
+          totalSoldSize: { toString(): string };
         }>;
       };
       if (dataManagerWithPosition.getStrategyPositionSummary && strategy.symbol) {
@@ -94,6 +98,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
           netExecutedPosition: summary.netExecutedPosition.toString(),
           pendingBuySize: summary.pendingBuySize.toString(),
           pendingSellSize: summary.pendingSellSize.toString(),
+          totalBoughtSize: summary.totalBoughtSize.toString(),
+          totalSoldSize: summary.totalSoldSize.toString(),
         };
       }
     } catch (e) {

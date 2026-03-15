@@ -28,7 +28,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   final StrategyService _strategyService = StrategyService.instance;
   final OrderService _orderService = OrderService.instance;
   late Strategy _strategy;
-  StrategyPnL? _pnl;
+  StrategyPositionSummary? _positionSummary;
   bool _isUpdating = false;
   List<Order> _orders = [];
   bool _isLoadingOrders = true;
@@ -38,17 +38,17 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   void initState() {
     super.initState();
     _strategy = widget.strategy;
-    _pnl = widget.pnl;
     _loadData();
   }
 
   Future<void> _loadData() async {
-    // Fetch refreshed strategy (with performance data if available)
+    // Fetch refreshed strategy with position summary
     try {
-      final updatedStrategy = await _strategyService.getStrategy(_strategy.id);
-      if (mounted && updatedStrategy != null) {
+      final detail = await _strategyService.getStrategyDetail(_strategy.id);
+      if (mounted) {
         setState(() {
-          _strategy = updatedStrategy;
+          if (detail.strategy != null) _strategy = detail.strategy!;
+          _positionSummary = detail.positionSummary;
         });
       }
     } catch (e) {
@@ -441,8 +441,6 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     }
   }
   
-  String _formatPnL(double val) => '${val >= 0 ? '+' : ''}${val.toStringAsFixed(2)}';
-  
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -520,19 +518,16 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
   Widget _buildHeaderSection() {
     final copy = CopyService.instance;
     final statusColor = _getStatusColor(_strategy.status);
-    // Use performance data if available, else fallback to passed pnl
-    final totalPnL = _strategy.performance?.totalPnL ?? _pnl?.totalPnl ?? 0.0;
-    final roi = _strategy.performance?.roi ?? 0.0; // PnL object doesn't have ROI usually
-    final winRate = _strategy.performance?.winRate ?? 0.0;
-    final drawdown = _strategy.performance?.maxDrawdown ?? 0.0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = Theme.of(context).colorScheme.surface;
-    
+
     // Format exchange/symbol
     final displaySymbol = _strategy.normalizedSymbol ??
         _strategy.symbol ??
         copy.t('screen.strategy.symbol.na', fallback: 'N/A');
-    
+    // Base asset (e.g. BTC from BTC/USDT)
+    final baseAsset = (displaySymbol.split('/').firstOrNull ?? displaySymbol).split('-').first;
+
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
@@ -552,15 +547,7 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CopyText(
-            'screen.strategy_detail.performance',
-            fallback: 'Performance',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14.sp,
-                ),
-          ),
-          SizedBox(height: 10.w),
+          // Exchange / Symbol / Status row
           Row(
             children: [
               ExchangeChip(
@@ -607,87 +594,81 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               ),
             ],
           ),
-          SizedBox(height: 16.w),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CopyText(
-                      'screen.strategy.total_pnl',
-                      fallback: 'Total PnL',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        color: Theme.of(context).hintColor,
-                      ),
-                    ),
-                    SizedBox(height: 4.w),
-                    Text(
-                      _formatPnL(totalPnL),
-                      style: TextStyle(
-                        fontSize: 24.sp,
-                        fontWeight: FontWeight.w700,
-                        color: totalPnL >= 0
-                            ? ColorTokens.profitGreen
-                            : ColorTokens.lossRed,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  CopyText(
-                    'screen.strategy_detail.roi',
-                    fallback: 'ROI',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: Theme.of(context).hintColor,
-                    ),
+
+          if (_positionSummary != null) ...[
+            SizedBox(height: 16.w),
+            // Net Position (full width highlight)
+            _buildPositionHighlight(
+              labelKey: 'screen.strategy_detail.net_position',
+              labelFallback: 'Net Position',
+              descKey: 'screen.strategy_detail.net_position_desc',
+              descFallback: 'Net filled $baseAsset from orders',
+              value: _positionSummary!.netExecutedPosition,
+              positiveColor: ColorTokens.profitGreen,
+              negativeColor: ColorTokens.lossRed,
+              showSign: true,
+              isDark: isDark,
+            ),
+            SizedBox(height: 8.w),
+            // Total Bought / Total Sold
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    'screen.strategy_detail.total_bought',
+                    'Total Bought',
+                    _formatSize(_positionSummary!.totalBoughtSize),
+                    ColorTokens.profitGreen,
+                    isDark,
+                    descKey: 'screen.strategy_detail.total_bought_desc',
+                    descFallback: 'Filled buy $baseAsset',
                   ),
-                  SizedBox(height: 4.w),
-                  CopyText(
-                    'common.percent',
-                    params: {'percent': roi.toStringAsFixed(2)},
-                    fallback: '{{percent}}%',
-                    style: TextStyle(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w700,
-                      color: roi >= 0
-                          ? ColorTokens.profitGreen
-                          : ColorTokens.lossRed,
-                    ),
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: _buildMetricCard(
+                    'screen.strategy_detail.total_sold',
+                    'Total Sold',
+                    _formatSize(_positionSummary!.totalSoldSize),
+                    ColorTokens.lossRed,
+                    isDark,
+                    descKey: 'screen.strategy_detail.total_sold_desc',
+                    descFallback: 'Filled sell $baseAsset',
                   ),
-                ],
-              ),
-            ],
-          ),
-          SizedBox(height: 12.w),
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricCard(
-                  'screen.strategy_detail.win_rate',
-                  'Win Rate',
-                  '${winRate.toStringAsFixed(2)}%',
-                  null,
-                  isDark,
                 ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: _buildMetricCard(
-                  'screen.strategy_detail.drawdown',
-                  'Drawdown',
-                  '${drawdown.toStringAsFixed(2)}%',
-                  ColorTokens.lossRed,
-                  isDark,
+              ],
+            ),
+            SizedBox(height: 8.w),
+            // Pending Buy / Pending Sell
+            Row(
+              children: [
+                Expanded(
+                  child: _buildMetricCard(
+                    'screen.strategy_detail.pending_buy',
+                    'Pending Buy',
+                    _formatSize(_positionSummary!.pendingBuySize),
+                    _positionSummary!.pendingBuySize > 0 ? ColorTokens.profitGreen : null,
+                    isDark,
+                    descKey: 'screen.strategy_detail.pending_buy_desc',
+                    descFallback: 'Unfilled buy $baseAsset',
+                  ),
                 ),
-              ),
-            ],
-          ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: _buildMetricCard(
+                    'screen.strategy_detail.pending_sell',
+                    'Pending Sell',
+                    _formatSize(_positionSummary!.pendingSellSize),
+                    _positionSummary!.pendingSellSize > 0 ? ColorTokens.lossRed : null,
+                    isDark,
+                    descKey: 'screen.strategy_detail.pending_sell_desc',
+                    descFallback: 'Unfilled sell $baseAsset',
+                  ),
+                ),
+              ],
+            ),
+          ],
+
           if (_strategy.errorMessage != null)
             Container(
               margin: EdgeInsets.only(top: 12.w),
@@ -709,13 +690,92 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
     );
   }
 
+  String _formatSize(double value) {
+    if (value == 0) return '0';
+    final str = value.toStringAsFixed(8);
+    // Remove trailing zeros after decimal point
+    return str.contains('.')
+        ? str.replaceAll(RegExp(r'\.?0+$'), '')
+        : str;
+  }
+
+  Widget _buildPositionHighlight({
+    required String labelKey,
+    required String labelFallback,
+    required String descKey,
+    required String descFallback,
+    required double value,
+    required Color positiveColor,
+    required Color negativeColor,
+    required bool showSign,
+    required bool isDark,
+  }) {
+    final valueColor = value > 0
+        ? positiveColor
+        : value < 0
+            ? negativeColor
+            : Theme.of(context).hintColor;
+    final displayValue =
+        '${showSign && value > 0 ? '+' : ''}${_formatSize(value)}';
+
+    return Container(
+      padding: EdgeInsets.all(12.w),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.grey[900] : Colors.grey.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12.w),
+        border: Border.all(
+          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CopyText(
+                labelKey,
+                fallback: labelFallback,
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
+              SizedBox(height: 2.w),
+              CopyText(
+                descKey,
+                fallback: descFallback,
+                style: TextStyle(
+                  fontSize: 10.sp,
+                  color: Theme.of(context).hintColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            displayValue,
+            style: TextStyle(
+              fontSize: 20.sp,
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMetricCard(
     String labelKey,
     String labelFallback,
     String value,
     Color? valueColor,
-    bool isDark,
-  ) {
+    bool isDark, {
+    String? descKey,
+    String? descFallback,
+  }) {
     return Container(
       padding: EdgeInsets.all(12.w),
       decoration: BoxDecoration(
@@ -745,6 +805,17 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen> {
               color: valueColor,
             ),
           ),
+          if (descKey != null && descFallback != null) ...[
+            SizedBox(height: 2.w),
+            CopyText(
+              descKey,
+              fallback: descFallback,
+              style: TextStyle(
+                fontSize: 10.sp,
+                color: Theme.of(context).hintColor.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -670,7 +670,13 @@ export class TypeOrmDataManager implements IDataManager {
   async getStrategyPositionSummary(
     strategyId: number,
     symbol: string,
-  ): Promise<{ netExecutedPosition: Decimal; pendingBuySize: Decimal; pendingSellSize: Decimal }> {
+  ): Promise<{
+    netExecutedPosition: Decimal;
+    pendingBuySize: Decimal;
+    pendingSellSize: Decimal;
+    totalBoughtSize: Decimal;
+    totalSoldSize: Decimal;
+  }> {
     this.ensureInitialized();
     return await this.orderRepository.getStrategyPositionSummary(strategyId, symbol);
   }

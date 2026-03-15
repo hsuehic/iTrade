@@ -7,12 +7,9 @@ import {
   IconArrowLeft,
   IconPlayerPlay,
   IconPlayerPause,
-  IconSettings,
-  IconTrash,
   IconEdit,
 } from '@tabler/icons-react';
 import type { StrategyEntity } from '@itrade/data-manager';
-import type { StrategyPerformance } from '@itrade/core';
 
 const StrategyStatus = {
   ACTIVE: 'active',
@@ -34,7 +31,6 @@ import { ExchangeLogo } from '@/components/exchange-logo';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { OrdersTable } from '@/components/orders-table';
 
-import { StrategyPerformanceMetrics } from '@/components/strategy/strategy-performance-metrics';
 import { StrategyConfigView } from '@/components/strategy/strategy-config-view';
 
 type Params = Promise<{ id: string }>;
@@ -47,12 +43,12 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const router = useRouter();
 
   const [strategy, setStrategy] = useState<StrategyEntity | null>(null);
-  const [rebuiltPerformance, setRebuiltPerformance] =
-    useState<StrategyPerformance | null>(null);
   const [positionSummary, setPositionSummary] = useState<{
     netExecutedPosition: string;
     pendingBuySize: string;
     pendingSellSize: string;
+    totalBoughtSize: string;
+    totalSoldSize: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
@@ -64,7 +60,6 @@ export default function StrategyDetailPage(props: { params: Params }) {
       if (!res.ok) throw new Error('Failed to fetch strategy');
       const data = await res.json();
       setStrategy(data.strategy);
-      setRebuiltPerformance(data.rebuiltPerformance);
       setPositionSummary(data.positionSummary ?? null);
     } catch (error) {
       console.error(error);
@@ -123,6 +118,9 @@ export default function StrategyDetailPage(props: { params: Params }) {
         return 'bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20';
     }
   };
+
+  const formatSize = (value: string) =>
+    parseFloat(value).toFixed(8).replace(/\.?0+$/, '') || '0';
 
   if (loading && !strategy) {
     return (
@@ -218,8 +216,6 @@ export default function StrategyDetailPage(props: { params: Params }) {
               )}
             </Button>
 
-            {/* Edit button placeholder - implementing full edit requires modal reuse which is complex, 
-                 users can edit from list view for now */}
             <Button
               size="sm"
               variant="outline"
@@ -233,7 +229,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
 
         {/* Position Summary Cards */}
         {positionSummary !== null && (
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             {/* Net Executed Position */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -252,12 +248,60 @@ export default function StrategyDetailPage(props: { params: Params }) {
                   }`}
                 >
                   {parseFloat(positionSummary.netExecutedPosition) > 0 ? '+' : ''}
-                  {parseFloat(positionSummary.netExecutedPosition)
-                    .toFixed(8)
-                    .replace(/\.?0+$/, '') || '0'}
+                  {formatSize(positionSummary.netExecutedPosition)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {t('netPosition.description', {
+                    symbol: strategy.symbol?.split('/')[0] || '',
+                  })}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Bought Size */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('netPosition.totalBought')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    parseFloat(positionSummary.totalBoughtSize) > 0
+                      ? 'text-green-500'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {formatSize(positionSummary.totalBoughtSize)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('netPosition.totalBoughtDesc', {
+                    symbol: strategy.symbol?.split('/')[0] || '',
+                  })}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Sold Size */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('netPosition.totalSold')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    parseFloat(positionSummary.totalSoldSize) > 0
+                      ? 'text-red-500'
+                      : 'text-muted-foreground'
+                  }`}
+                >
+                  {formatSize(positionSummary.totalSoldSize)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('netPosition.totalSoldDesc', {
                     symbol: strategy.symbol?.split('/')[0] || '',
                   })}
                 </p>
@@ -279,9 +323,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
                       : 'text-muted-foreground'
                   }`}
                 >
-                  {parseFloat(positionSummary.pendingBuySize)
-                    .toFixed(8)
-                    .replace(/\.?0+$/, '') || '0'}
+                  {formatSize(positionSummary.pendingBuySize)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {t('netPosition.pendingBuyDesc', {
@@ -306,9 +348,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
                       : 'text-muted-foreground'
                   }`}
                 >
-                  {parseFloat(positionSummary.pendingSellSize)
-                    .toFixed(8)
-                    .replace(/\.?0+$/, '') || '0'}
+                  {formatSize(positionSummary.pendingSellSize)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {t('netPosition.pendingSellDesc', {
@@ -319,31 +359,6 @@ export default function StrategyDetailPage(props: { params: Params }) {
             </Card>
           </div>
         )}
-
-        {/* Performance Metrics */}
-        <Tabs defaultValue="rebuilt" className="w-full">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold tracking-tight">Performance</h2>
-            <TabsList>
-              <TabsTrigger value="rebuilt">{t('tabs.orderBased')}</TabsTrigger>
-              <TabsTrigger value="realtime">{t('tabs.realtime')}</TabsTrigger>
-            </TabsList>
-          </div>
-          <TabsContent value="realtime" className="mt-0">
-            <StrategyPerformanceMetrics performance={strategy.performance} />
-          </TabsContent>
-          <TabsContent value="rebuilt" className="mt-0">
-            {rebuiltPerformance ? (
-              <StrategyPerformanceMetrics performance={rebuiltPerformance} />
-            ) : (
-              <div className="p-8 text-center border rounded-md bg-muted/20">
-                <p className="text-muted-foreground">
-                  {t('messages.rebuiltPerformanceUnavailable')}
-                </p>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
 
         {/* Tabs for Details */}
         <Tabs defaultValue="orders" className="space-y-4">

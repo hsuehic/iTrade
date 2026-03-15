@@ -70,6 +70,38 @@ class StrategyService {
     }
   }
 
+  /// Get a single strategy by ID along with its position summary
+  Future<({Strategy? strategy, StrategyPositionSummary? positionSummary})>
+      getStrategyDetail(int id) async {
+    try {
+      final Response response = await _apiClient.getJson('/api/strategies/$id');
+
+      if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        Strategy? strategy;
+        StrategyPositionSummary? positionSummary;
+
+        if (data.containsKey('strategy') && data['strategy'] is Map<String, dynamic>) {
+          strategy = Strategy.fromJson(data['strategy'] as Map<String, dynamic>);
+        } else {
+          strategy = Strategy.fromJson(data);
+        }
+
+        if (data.containsKey('positionSummary') &&
+            data['positionSummary'] is Map<String, dynamic>) {
+          positionSummary = StrategyPositionSummary.fromJson(
+            data['positionSummary'] as Map<String, dynamic>,
+          );
+        }
+
+        return (strategy: strategy, positionSummary: positionSummary);
+      }
+      return (strategy: null, positionSummary: null);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   /// Get PnL data for strategies
   Future<List<StrategyPnL>> getStrategiesPnL() async {
     try {
