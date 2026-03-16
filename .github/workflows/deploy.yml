@@ -62,7 +62,21 @@ jobs:
         run: |
           ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
 
-      # ── 4. Deploy ────────────────────────────────────────────
+      # ── 4. Debug SSH connection ──────────────────────────────
+      - name: Debug SSH connection (verbose)
+        env:
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+          GCE_USER: ${{ secrets.GCE_USER }}
+        run: |
+          echo "=== Attempting SSH with verbose output ==="
+          echo "GCE_USER length: ${#GCE_USER}"
+          echo "GCE_HOST length: ${#GCE_HOST}"
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          ssh-add -l || echo "No keys in agent"
+          ssh -vvv -o StrictHostKeyChecking=no -o BatchMode=yes \
+            "$GCE_USER@$GCE_HOST" echo "SSH_OK" 2>&1 || true
+
+      # ── 5. Deploy ────────────────────────────────────────────
       - name: Deploy on GCE
         env:
           GCE_HOST: ${{ secrets.GCE_HOST }}
