@@ -15,122 +15,122 @@
 name: Deploy to GCE
 
 on:
-    push:
-        branches:
-            - main
-    workflow_dispatch:
-        inputs:
-            force_rebuild:
-                description: "Force rebuild all Docker images (no cache)"
-                required: false
-                default: false
-                type: boolean
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Force rebuild all Docker images (no cache)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-    group: deploy-production
-    cancel-in-progress: false # Never cancel an in-progress deploy
+  group: deploy-production
+  cancel-in-progress: false # Never cancel an in-progress deploy
 
 jobs:
-    deploy:
-        name: 🚀 Deploy to GCE
-        runs-on: ubuntu-latest
-        timeout-minutes: 30
+  deploy:
+    name: 🚀 Deploy to GCE
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
-        steps:
-            # ── 1. Checkout (to get commit SHA for logging) ──────────
-            - name: Checkout code
-              uses: actions/checkout@v4
+    steps:
+      # ── 1. Checkout (to get commit SHA for logging) ──────────
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            # ── 2. Setup SSH agent ───────────────────────────────────
-            - name: Setup SSH agent
-              uses: webfactory/ssh-agent@v0.9.0
-              with:
-                  ssh-private-key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+      # ── 2. Setup SSH agent ───────────────────────────────────
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
 
-            # ── 3. Trust GCE host ────────────────────────────────────
-            - name: Add GCE host to known_hosts
-              run: |
-                  ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+      # ── 3. Trust GCE host ────────────────────────────────────
+      - name: Add GCE host to known_hosts
+        run: |
+          ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
 
-            # ── 4. Deploy ────────────────────────────────────────────
-            - name: Deploy on GCE
-              env:
-                  GCE_HOST: ${{ secrets.GCE_HOST }}
-                  GCE_USER: ${{ secrets.GCE_USER }}
-                  FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
-                  COMMIT_SHA: ${{ github.sha }}
-                  COMMIT_MSG: ${{ github.event.head_commit.message }}
-              run: |
-                  ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << ENDSSH
-                    set -euo pipefail
+      # ── 4. Deploy ────────────────────────────────────────────
+      - name: Deploy on GCE
+        env:
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+          GCE_USER: ${{ secrets.GCE_USER }}
+          FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << ENDSSH
+            set -euo pipefail
 
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "  Deploying commit: ${COMMIT_SHA:0:8}"
-                    echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  Deploying commit: ${COMMIT_SHA:0:8}"
+            echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    APP_DIR="/opt/itrade/app"
-                    COMPOSE_FILE="\$APP_DIR/docker-compose.prod.yml"
+            APP_DIR="/opt/itrade/app"
+            COMPOSE_FILE="\$APP_DIR/docker-compose.prod.yml"
 
-                    # ── Pull latest code ────────────────────────────────
-                    echo "▶ Pulling latest code..."
-                    cd "\$APP_DIR"
-                    git fetch origin main
-                    git reset --hard origin/main
+            # ── Pull latest code ────────────────────────────────
+            echo "▶ Pulling latest code..."
+            cd "\$APP_DIR"
+            git fetch origin main
+            git reset --hard origin/main
 
-                    # ── Build images (old containers still running during build!) ──
-                    BUILD_ARGS="--build"
-                    if [ "$FORCE_REBUILD" = "true" ]; then
-                      BUILD_ARGS="--build --no-cache"
-                      echo "▶ Force rebuild: no cache"
-                    fi
-                    echo "▶ Building Docker images (services remain live during this step)..."
-                    BUILD_START=\$(date +%s)
-                    docker compose -f "\$COMPOSE_FILE" build \$BUILD_ARGS
-                    BUILD_END=\$(date +%s)
-                    echo "▶ Build completed in \$((BUILD_END - BUILD_START))s"
+            # ── Build images (old containers still running during build!) ──
+            echo "▶ Building Docker images (services remain live during this step)..."
+            BUILD_START=\$(date +%s)
+            if [ "$FORCE_REBUILD" = "true" ]; then
+              echo "▶ Force rebuild: no cache"
+              docker compose -f "\$COMPOSE_FILE" build --no-cache
+            else
+              docker compose -f "\$COMPOSE_FILE" build
+            fi
+            BUILD_END=\$(date +%s)
+            echo "▶ Build completed in \$((BUILD_END - BUILD_START))s"
 
-                    # ── Swap containers (this is the actual downtime window) ─────
-                    echo "▶ Swapping containers — downtime window starts now..."
-                    SWAP_START=\$(date +%s)
-                    docker compose -f "\$COMPOSE_FILE" up -d
+            # ── Swap containers (this is the actual downtime window) ─────
+            echo "▶ Swapping containers — downtime window starts now..."
+            SWAP_START=\$(date +%s)
+            docker compose -f "\$COMPOSE_FILE" up -d
 
-                    # Wait for web healthcheck to pass (up to 90s)
-                    # This confirms the new container is actually serving before we report success.
-                    echo "▶ Waiting for web healthcheck to pass..."
-                    TIMEOUT=90
-                    ELAPSED=0
-                    until docker inspect --format='{{.State.Health.Status}}' itrade-web 2>/dev/null | grep -q "healthy"; do
-                      if [ \$ELAPSED -ge \$TIMEOUT ]; then
-                        echo "❌ Web healthcheck timed out after \${TIMEOUT}s"
-                        docker compose -f "\$COMPOSE_FILE" logs --tail=50 web
-                        exit 1
-                      fi
-                      sleep 3
-                      ELAPSED=\$((ELAPSED + 3))
-                    done
-                    SWAP_END=\$(date +%s)
-                    echo "▶ Web is healthy. Container swap took \$((SWAP_END - SWAP_START))s"
-                    echo "   (Actual user-visible downtime ≈ time for schema-migrator + web boot)"
+            # Wait for web healthcheck to pass (up to 90s)
+            # This confirms the new container is actually serving before we report success.
+            echo "▶ Waiting for web healthcheck to pass..."
+            TIMEOUT=90
+            ELAPSED=0
+            until docker inspect --format='{{.State.Health.Status}}' itrade-web 2>/dev/null | grep -q "healthy"; do
+              if [ \$ELAPSED -ge \$TIMEOUT ]; then
+                echo "❌ Web healthcheck timed out after \${TIMEOUT}s"
+                docker compose -f "\$COMPOSE_FILE" logs --tail=50 web
+                exit 1
+              fi
+              sleep 3
+              ELAPSED=\$((ELAPSED + 3))
+            done
+            SWAP_END=\$(date +%s)
+            echo "▶ Web is healthy. Container swap took \$((SWAP_END - SWAP_START))s"
+            echo "   (Actual user-visible downtime ≈ time for schema-migrator + web boot)"
 
-                    # ── Cleanup old images ──────────────────────────────
-                    echo "▶ Pruning unused images..."
-                    docker image prune -f
+            # ── Cleanup old images ──────────────────────────────
+            echo "▶ Pruning unused images..."
+            docker image prune -f
 
-                    # ── Final status ────────────────────────────────────
-                    docker compose -f "\$COMPOSE_FILE" ps
+            # ── Final status ────────────────────────────────────
+            docker compose -f "\$COMPOSE_FILE" ps
 
-                    echo ""
-                    echo "✅ Deployment complete!"
-                  ENDSSH
+            echo ""
+            echo "✅ Deployment complete!"
+          ENDSSH
 
-            # ── 5. Report status ─────────────────────────────────────
-            - name: Report deployment status
-              if: always()
-              run: |
-                  if [ "${{ job.status }}" = "success" ]; then
-                    echo "✅ Deployment succeeded: ${{ github.sha }}"
-                  else
-                    echo "❌ Deployment failed: ${{ github.sha }}"
-                    exit 1
-                  fi
+      # ── 5. Report status ─────────────────────────────────────
+      - name: Report deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Deployment succeeded: ${{ github.sha }}"
+          else
+            echo "❌ Deployment failed: ${{ github.sha }}"
+            exit 1
+          fi
