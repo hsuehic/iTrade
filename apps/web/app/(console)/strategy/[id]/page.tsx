@@ -120,7 +120,9 @@ export default function StrategyDetailPage(props: { params: Params }) {
   };
 
   const formatSize = (value: string) =>
-    parseFloat(value).toFixed(8).replace(/\.?0+$/, '') || '0';
+    parseFloat(value)
+      .toFixed(8)
+      .replace(/\.?0+$/, '') || '0';
 
   if (loading && !strategy) {
     return (

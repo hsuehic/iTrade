@@ -565,10 +565,12 @@ export class BinanceExchange extends BaseExchange {
     const spotParams = this.signRequest({ timestamp });
     const futuresParams = this.signRequest({ timestamp });
 
-    // Fetch Spot and Futures data in parallel
-    const [spotRes, futuresRes] = await Promise.allSettled([
+    // Fetch Spot, Futures, and BTC/USDT price in parallel
+    // BTC/USDT price is used to convert spot totalNetAssetOfBtc → USDT equity
+    const [spotRes, futuresRes, btcPriceRes] = await Promise.allSettled([
       this.httpClient.get('/api/v3/account', { params: spotParams }),
       this.futuresClient.get('/fapi/v2/account', { params: futuresParams }),
+      this.httpClient.get('/api/v3/ticker/price', { params: { symbol: 'BTCUSDT' } }),
     ]);
 
     let balances: Balance[] = [];
@@ -576,6 +578,7 @@ export class BinanceExchange extends BaseExchange {
     let canWithdraw = false;
     let canDeposit = false;
     let updateTime = new Date();
+    let totalNetAssetOfBtc = 0;
 
     // Process Spot Data
     if (spotRes.status === 'fulfilled') {
@@ -590,14 +593,19 @@ export class BinanceExchange extends BaseExchange {
       canWithdraw = data.canWithdraw;
       canDeposit = data.canDeposit;
       updateTime = this.formatTimestamp(data.updateTime);
+      // totalNetAssetOfBtc is the BTC-equivalent value of the entire spot wallet
+      totalNetAssetOfBtc = parseFloat(data.totalNetAssetOfBtc || '0');
     } else {
       console.warn('[Binance] Failed to fetch spot account info:', spotRes.reason);
     }
 
     // Process Futures Data
+    let futuresWalletBalance = 0;
     if (futuresRes.status === 'fulfilled') {
       const data = futuresRes.value.data;
       const futuresAssets = data.assets || [];
+      // totalWalletBalance is already denominated in USDT for USDⓈ-M futures
+      futuresWalletBalance = parseFloat(data.totalWalletBalance || '0');
 
       for (const asset of futuresAssets) {
         // Futures API returns 'walletBalance' (total) and 'availableBalance' (free)
@@ -625,12 +633,56 @@ export class BinanceExchange extends BaseExchange {
       console.warn('[Binance] Failed to fetch futures account info:', futuresRes.reason);
     }
 
+    // Calculate totalEquity in USDT.
+    // Strategy:
+    //   1. Try GET /sapi/v1/asset/wallet/balance which returns ALL wallets
+    //      (Spot, Margin, USD-Futures, COIN-Futures) as BTC equivalents in one call.
+    //      Multiply the summed BTC value by BTC/USDT price → total USDT.
+    //   2. Fallback: spot totalNetAssetOfBtc × BTC price + futures totalWalletBalance (USDT).
+    // NOTE: Binance has no single endpoint returning USDT/USD total for regular accounts
+    // (unlike OKX /api/v5/asset/asset-valuation). Portfolio Margin users have /papi/v1/account.
+    let totalEquity: Decimal | undefined;
+    const btcPrice =
+      btcPriceRes.status === 'fulfilled'
+        ? parseFloat(btcPriceRes.value.data.price || '0')
+        : 0;
+
+    if (btcPrice > 0) {
+      try {
+        // GET /sapi/v1/asset/wallet/balance covers ALL wallet types in BTC equivalent
+        const walletParams = this.signRequest({ timestamp: Date.now() });
+        const walletRes = await this.httpClient.get('/sapi/v1/asset/wallet/balance', {
+          params: walletParams,
+        });
+        if (Array.isArray(walletRes.data) && walletRes.data.length > 0) {
+          const totalBtc = walletRes.data
+            .filter((w: any) => w.activate)
+            .reduce((sum: number, w: any) => sum + parseFloat(w.balance || '0'), 0);
+          totalEquity = new Decimal(totalBtc * btcPrice);
+        }
+      } catch (err: any) {
+        // Endpoint may not be enabled for all API keys — fall through to fallback
+        console.warn('[Binance] /sapi/v1/asset/wallet/balance unavailable, using fallback:', err.message);
+      }
+    }
+
+    // Fallback: combine spot (BTC-converted) + futures (direct USDT)
+    if (!totalEquity) {
+      if (btcPrice > 0 || futuresWalletBalance > 0) {
+        const spotEquityUsdt = totalNetAssetOfBtc * btcPrice;
+        totalEquity = new Decimal(spotEquityUsdt + futuresWalletBalance);
+      } else {
+        console.warn('[Binance] Unable to calculate totalEquity: BTC price unavailable and no futures balance');
+      }
+    }
+
     return {
       balances,
       canTrade, // Mostly from spot
       canWithdraw,
       canDeposit,
       updateTime,
+      totalEquity,
     };
   }
 

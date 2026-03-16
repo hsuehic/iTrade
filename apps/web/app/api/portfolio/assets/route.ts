@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { STABLECOINS, computeLiveBalances } from '@/lib/live-balance';
 
 export interface AssetData {
   asset: string;
@@ -21,82 +22,6 @@ export interface AssetsSummary {
   totalValue: number;
   exchanges: string[];
 }
-
-const STABLECOINS = new Set(['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP']);
-
-const priceCache = new Map<string, { value: number; updatedAt: number }>();
-const PRICE_CACHE_TTL_MS = 30_000;
-
-const getCachedPrice = (key: string) => {
-  const cached = priceCache.get(key);
-  if (!cached) return null;
-  if (Date.now() - cached.updatedAt > PRICE_CACHE_TTL_MS) return null;
-  return cached.value;
-};
-
-const setCachedPrice = (key: string, value: number) => {
-  priceCache.set(key, { value, updatedAt: Date.now() });
-};
-
-const fetchBinancePrices = async (assets: string[]) => {
-  const symbols = assets.map((asset) => `${asset}USDT`);
-  const response = await fetch(
-    `https://api.binance.com/api/v3/ticker/price?symbols=${encodeURIComponent(
-      JSON.stringify(symbols),
-    )}`,
-    { next: { revalidate: 30 } },
-  );
-
-  if (!response.ok) {
-    return new Map<string, number>();
-  }
-
-  const data = (await response.json()) as Array<{ symbol: string; price: string }>;
-  const prices = new Map<string, number>();
-  for (const item of data) {
-    const asset = item.symbol.replace('USDT', '');
-    prices.set(asset, parseFloat(item.price));
-  }
-  return prices;
-};
-
-const fetchOkxPrices = async (assets: string[]) => {
-  const prices = new Map<string, number>();
-  await Promise.all(
-    assets.map(async (asset) => {
-      const response = await fetch(
-        `https://www.okx.com/api/v5/market/ticker?instId=${asset}-USDT`,
-        { next: { revalidate: 30 } },
-      );
-      if (!response.ok) return;
-      const result = await response.json();
-      const price = parseFloat(result?.data?.[0]?.last ?? '0');
-      if (price > 0) {
-        prices.set(asset, price);
-      }
-    }),
-  );
-  return prices;
-};
-
-const fetchCoinbasePrices = async (assets: string[]) => {
-  const prices = new Map<string, number>();
-  await Promise.all(
-    assets.map(async (asset) => {
-      const response = await fetch(
-        `https://api.exchange.coinbase.com/products/${asset}-USDC/ticker`,
-        { next: { revalidate: 30 } },
-      );
-      if (!response.ok) return;
-      const result = await response.json();
-      const price = parseFloat(result?.price ?? '0');
-      if (price > 0) {
-        prices.set(asset, price);
-      }
-    }),
-  );
-  return prices;
-};
 
 /**
  * GET /api/portfolio/assets - Get detailed asset breakdown
@@ -139,57 +64,47 @@ export async function GET(request: Request) {
       });
     }
 
-    // Process assets from all accounts
-    const allAssets: AssetData[] = [];
-    const assetsByExchange: Record<string, AssetData[]> = {};
-    const aggregatedAssetsMap = new Map<
-      string,
-      {
-        asset: string;
-        free: number;
-        locked: number;
-        total: number;
-      }
-    >();
-    const exchanges: string[] = [];
-    const assetsByExchangeMap = new Map<string, Set<string>>();
-
+    // Fetch balances for all accounts in one query
     const accountIds = accountsToProcess.map((account) => account.id);
     const balances = await dm.getBalancesForAccounts(accountIds);
+
+    // Map balances back to their account
     const balancesByAccountId = new Map<number, typeof balances>();
     for (const balance of balances) {
-      const existing = balancesByAccountId.get(balance.accountInfoId) || [];
+      const existing = balancesByAccountId.get(balance.accountInfoId) ?? [];
       existing.push(balance);
       balancesByAccountId.set(balance.accountInfoId, existing);
     }
 
+    // Build flat asset list and aggregated map
+    const allAssets: AssetData[] = [];
+    const assetsByExchange: Record<string, AssetData[]> = {};
+    const aggregatedAssetsMap = new Map<
+      string,
+      { asset: string; free: number; locked: number; total: number }
+    >();
+    const exchanges: string[] = [];
+
     for (const account of accountsToProcess) {
-      const balances = balancesByAccountId.get(account.id) || [];
+      const accountBalances = balancesByAccountId.get(account.id) ?? [];
       const exchange = account.exchange;
 
-      if (!exchanges.includes(exchange)) {
-        exchanges.push(exchange);
-      }
-
+      if (!exchanges.includes(exchange)) exchanges.push(exchange);
       assetsByExchange[exchange] = [];
-      const assetSet = assetsByExchangeMap.get(exchange) || new Set<string>();
 
-      for (const balance of balances) {
-        assetSet.add(balance.asset.toUpperCase());
-
+      for (const balance of accountBalances) {
         const free = parseFloat(balance.free.toString());
         const locked = parseFloat(balance.locked.toString());
         const total = parseFloat(balance.total.toString());
 
         const assetData: AssetData = {
           asset: balance.asset,
-          exchange: exchange,
+          exchange,
           free,
           locked,
           total,
           percentage: 0,
         };
-
         allAssets.push(assetData);
         assetsByExchange[exchange].push(assetData);
 
@@ -207,55 +122,17 @@ export async function GET(request: Request) {
           });
         }
       }
-      assetsByExchangeMap.set(exchange, assetSet);
     }
 
-    const priceByExchangeAsset = new Map<string, number>();
-    const priceByAsset = new Map<string, number>();
-    await Promise.all(
-      Array.from(assetsByExchangeMap.entries()).map(async ([exchange, assets]) => {
-        const upperExchange = exchange.toLowerCase();
-        const filteredAssets = Array.from(assets).filter(
-          (asset) => !STABLECOINS.has(asset),
-        );
-
-        const cacheKeyPrefix = `${upperExchange}:`;
-        const missingAssets: string[] = [];
-        for (const asset of filteredAssets) {
-          const cached = getCachedPrice(`${cacheKeyPrefix}${asset}`);
-          if (cached !== null) {
-            priceByExchangeAsset.set(`${cacheKeyPrefix}${asset}`, cached);
-            if (!priceByAsset.has(asset)) {
-              priceByAsset.set(asset, cached);
-            }
-          } else {
-            missingAssets.push(asset);
-          }
-        }
-
-        if (missingAssets.length === 0) return;
-
-        let fetchedPrices = new Map<string, number>();
-        if (upperExchange === 'binance') {
-          fetchedPrices = await fetchBinancePrices(missingAssets);
-        } else if (upperExchange === 'okx') {
-          fetchedPrices = await fetchOkxPrices(missingAssets);
-        } else if (upperExchange === 'coinbase') {
-          fetchedPrices = await fetchCoinbasePrices(missingAssets);
-        }
-
-        for (const [asset, price] of fetchedPrices.entries()) {
-          const key = `${cacheKeyPrefix}${asset}`;
-          priceByExchangeAsset.set(key, price);
-          if (!priceByAsset.has(asset)) {
-            priceByAsset.set(asset, price);
-          }
-          setCachedPrice(key, price);
-        }
-      }),
+    // Compute live USD values using the shared utility
+    const liveResult = await computeLiveBalances(
+      allAssets.map(({ asset, exchange, total }) => ({ asset, exchange, total })),
+      minValue,
     );
 
-    let totalValue = 0;
+    const { totalValue, priceByExchangeAsset, priceByAsset } = liveResult;
+
+    // Annotate asset entries with estimatedValue and filter by minValue
     const filteredAssets: AssetData[] = [];
     const filteredAssetsByExchange: Record<string, AssetData[]> = {};
 
@@ -268,22 +145,14 @@ export async function GET(request: Request) {
         const price = priceByExchangeAsset.get(
           `${assetData.exchange.toLowerCase()}:${assetUpper}`,
         );
-        if (price !== undefined) {
-          estimatedValue = assetData.total * price;
-        }
+        if (price !== undefined) estimatedValue = assetData.total * price;
       }
 
       assetData.estimatedValue = estimatedValue;
 
-      const valueForTotals = estimatedValue ?? 0;
-      if (valueForTotals < minValue) {
-        continue;
-      }
-
-      totalValue += valueForTotals;
+      if ((estimatedValue ?? 0) < minValue) continue;
 
       filteredAssets.push(assetData);
-
       if (!filteredAssetsByExchange[assetData.exchange]) {
         filteredAssetsByExchange[assetData.exchange] = [];
       }
@@ -293,12 +162,11 @@ export async function GET(request: Request) {
     // Calculate percentages
     if (totalValue > 0) {
       for (const asset of filteredAssets) {
-        const valueForTotals = asset.estimatedValue ?? 0;
-        asset.percentage = (valueForTotals / totalValue) * 100;
+        asset.percentage = ((asset.estimatedValue ?? 0) / totalValue) * 100;
       }
     }
 
-    // Convert aggregated map to array with percentages
+    // Build aggregated asset list with estimated values
     const aggregatedAssets = Array.from(aggregatedAssetsMap.values())
       .map((item) => {
         const assetUpper = item.asset.toUpperCase();
@@ -307,27 +175,21 @@ export async function GET(request: Request) {
           estimatedValue = item.total;
         } else {
           const price = priceByAsset.get(assetUpper);
-          if (price !== undefined) {
-            estimatedValue = item.total * price;
-          }
+          if (price !== undefined) estimatedValue = item.total * price;
         }
-
-        const valueForTotals = estimatedValue ?? 0;
         return {
           ...item,
           estimatedValue,
-          percentage: totalValue > 0 ? (valueForTotals / totalValue) * 100 : 0,
+          percentage: totalValue > 0 ? ((estimatedValue ?? 0) / totalValue) * 100 : 0,
         };
       })
       .filter((item) => (item.estimatedValue ?? 0) >= minValue)
       .sort((a, b) => (b.estimatedValue ?? b.total) - (a.estimatedValue ?? a.total));
 
-    // Sort all assets by total value descending
     filteredAssets.sort(
       (a, b) => (b.estimatedValue ?? b.total) - (a.estimatedValue ?? a.total),
     );
 
-    // Get unique asset count
     const uniqueAssets = new Set(filteredAssets.map((a) => a.asset)).size;
 
     return NextResponse.json({

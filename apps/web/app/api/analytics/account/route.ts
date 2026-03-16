@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { computeLiveBalances } from '@/lib/live-balance';
 
 // Transform historical data for chart
 export interface ChartDataPoint {
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
         startTime.setDate(startTime.getDate() - 30);
     }
 
-    // Optimized: Get latest state from AccountInfo aggregate fields
+    // Fetch accounts (and their aggregate fields for position/unrealizedPnl)
     let accounts = await dm.getUserAccountsWithBalances(userId);
     if (exchange !== 'all') {
       accounts = accounts.filter(
@@ -89,25 +90,51 @@ export async function GET(request: Request) {
       });
     }
 
-    // Calculate totals
-    let totalBalance = 0;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Compute live-price totalBalance using the SAME logic as /api/portfolio/assets
+    // This ensures web dashboard and mobile portfolio always show the same number.
+    // ─────────────────────────────────────────────────────────────────────────
+    const accountIds = latestSnapshots.map((a) => a.id);
+    const allBalances = await dm.getBalancesForAccounts(accountIds);
+
+    // Build account-id → exchange lookup
+    const accountExchangeMap = new Map(latestSnapshots.map((a) => [a.id, a.exchange]));
+
+    // Flat list of {asset, exchange, total} for the shared utility
+    const assetList = allBalances.map((b) => ({
+      asset: b.asset,
+      exchange: accountExchangeMap.get(b.accountInfoId) ?? '',
+      total: parseFloat(b.total.toString()),
+    }));
+
+    // computeLiveBalances fetches prices with a 30s cache (shared across routes)
+    const { totalValue: liveTotal, valueByExchange } =
+      await computeLiveBalances(assetList);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Position / PnL totals still come from AccountInfo aggregate fields
+    // (these are updated by AccountPollingService on each poll cycle)
+    // ─────────────────────────────────────────────────────────────────────────
     let totalPositionValue = 0;
     let totalUnrealizedPnl = 0;
     let totalPositions = 0;
 
     const exchangeData = latestSnapshots.map((account) => {
-      const balance = parseFloat(account.totalBalance.toString());
+      const exchangeLower = account.exchange.toLowerCase();
+      // Use live-price balance for this exchange; fall back to DB value if missing
+      const liveBalance =
+        valueByExchange.get(exchangeLower) ?? parseFloat(account.totalBalance.toString());
+
       const positionValue = parseFloat(account.totalPositionValue.toString());
       const unrealizedPnl = parseFloat(account.unrealizedPnl.toString());
 
-      totalBalance += balance;
       totalPositionValue += positionValue;
       totalUnrealizedPnl += unrealizedPnl;
       totalPositions += account.positionCount;
 
       return {
         exchange: account.exchange,
-        balance,
+        balance: liveBalance,
         positionValue,
         unrealizedPnl,
         positionCount: account.positionCount,
@@ -115,8 +142,11 @@ export async function GET(request: Request) {
       };
     });
 
+    // Use live total; fall back to summing DB values if live computation returned 0
+    const totalBalance =
+      liveTotal > 0 ? liveTotal : exchangeData.reduce((sum, e) => sum + e.balance, 0);
+
     // Get historical data for chart
-    // If specific exchange is selected, only get that exchange's data
     const exchangesToQuery =
       exchange === 'all' ? latestSnapshots.map((s) => s.exchange) : [exchange];
 
@@ -141,45 +171,32 @@ export async function GET(request: Request) {
 
     const historicalData = await Promise.all(historyPromises);
 
-    // Note: Chart data now exclusively uses balance_xxx tables
-    // No fallback to account_snapshots to ensure data consistency
-
     const chartData: { [key: string]: ChartDataPoint } = {};
 
-    historicalData.forEach(({ exchange, history }) => {
+    historicalData.forEach(({ exchange: exName, history }) => {
       history.forEach((point) => {
-        // For different periods, use different time precision
         let dateKey: string;
         if (period === '1h') {
-          // For 1 hour: precise to minute
           const roundedTime = new Date(point.timestamp);
-          roundedTime.setSeconds(0, 0); // Round to minute
+          roundedTime.setSeconds(0, 0);
           dateKey = roundedTime.toISOString();
         } else if (period === '1d') {
-          // For 1 day: use 5-minute intervals (matching balance_5min table)
           const roundedTime = new Date(point.timestamp);
           const minutes = roundedTime.getMinutes();
-          const roundedMinutes = Math.floor(minutes / 5) * 5; // Round to 5-minute intervals
-          roundedTime.setMinutes(roundedMinutes, 0, 0);
+          roundedTime.setMinutes(Math.floor(minutes / 5) * 5, 0, 0);
           dateKey = roundedTime.toISOString();
         } else if (period === '7d') {
-          // For 7 days: aggregate to hour
           const roundedTime = new Date(point.timestamp);
           roundedTime.setMinutes(0, 0, 0);
           dateKey = roundedTime.toISOString();
         } else {
-          // For longer periods, group by date only
           dateKey = point.timestamp.toISOString().split('T')[0];
         }
 
         if (!chartData[dateKey]) {
-          chartData[dateKey] = {
-            date:
-              period === '1h' || period === '1d' || period === '7d' ? dateKey : dateKey,
-          };
+          chartData[dateKey] = { date: dateKey };
         }
-        // Use the latest value if multiple points map to the same time slot
-        chartData[dateKey][exchange] = parseFloat(point.balance.toString());
+        chartData[dateKey][exName] = parseFloat(point.balance.toString());
       });
     });
 
@@ -188,41 +205,33 @@ export async function GET(request: Request) {
         new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
-    // Fill missing exchange data with previous values to ensure all exchanges appear on chart
+    // Fill missing exchange data with previous values
     const exchangeLastValues: { [exchange: string]: number } = {};
-    exchangesToQuery.forEach((exchange) => {
-      exchangeLastValues[exchange] = 0; // Initialize with 0
+    exchangesToQuery.forEach((ex) => {
+      exchangeLastValues[ex] = 0;
     });
 
     chartDataArray.forEach((item: ChartDataPoint) => {
-      exchangesToQuery.forEach((exchange) => {
-        if (item[exchange] !== undefined) {
-          // Update last known value
-          exchangeLastValues[exchange] = item[exchange] as number;
+      exchangesToQuery.forEach((ex) => {
+        if (item[ex] !== undefined) {
+          exchangeLastValues[ex] = item[ex] as number;
         } else {
-          // Fill with last known value
-          item[exchange] = exchangeLastValues[exchange];
+          item[ex] = exchangeLastValues[ex];
         }
       });
     });
 
-    // Calculate percentage changes
+    // Calculate percentage change vs. beginning of period
     const calculateChange = (current: number, history: typeof chartDataArray) => {
-      if (history.length === 0) return 0;
+      if (history.length < 2) return 0;
 
-      // For single data point, insufficient data for comparison
-      if (history.length === 1) return 0;
-
-      // Find the first meaningful (non-zero) balance entry
       let firstMeaningfulBalance = 0;
-
       for (let i = 0; i < history.length; i++) {
-        const totalBalance = Object.values(history[i])
+        const periodTotal = Object.values(history[i])
           .filter((v) => typeof v === 'number' && !isNaN(v))
           .reduce((sum: number, v) => sum + (v as number), 0);
-
-        if (totalBalance > 0) {
-          firstMeaningfulBalance = totalBalance;
+        if (periodTotal > 0) {
+          firstMeaningfulBalance = periodTotal;
           break;
         }
       }
@@ -231,20 +240,11 @@ export async function GET(request: Request) {
 
       const changePercent =
         ((current - firstMeaningfulBalance) / firstMeaningfulBalance) * 100;
-
-      // Sanity check: if change is over 50% in a day, likely data issue
-      if (period === '1d' && Math.abs(changePercent) > 50) {
-        return 0;
-      }
-
+      if (period === '1d' && Math.abs(changePercent) > 50) return 0;
       return changePercent;
     };
 
     const balanceChange = calculateChange(totalBalance, chartDataArray);
-
-    // Note: Removed expensive fallback query that was causing performance issues
-    // If historical data is insufficient, balanceChange will be 0
-
     const totalEquity = totalBalance + totalPositionValue;
 
     return NextResponse.json({
