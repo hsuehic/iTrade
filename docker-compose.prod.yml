@@ -1,0 +1,249 @@
+# =============================================================
+# iTrade Production Docker Compose
+# =============================================================
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required env files on the host (created from deploy/env.*.template):
+#   /opt/itrade/.env.db
+#   /opt/itrade/.env.console
+#   /opt/itrade/.env.web
+#   /opt/itrade/.env.certbot      ← for SSL (DOMAIN + CERTBOT_EMAIL)
+#
+# SSL first-time setup (run ONCE after DNS is pointed to this server):
+#   cd /opt/itrade/app && bash deploy/certbot-init.sh
+#
+# Startup order:
+#   db (healthy) → schema-migrator (completed) → console + web → nginx + certbot
+# =============================================================
+
+services:
+  # ----------------------------------------------------------
+  # PostgreSQL database
+  # ----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: itrade-db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - /opt/itrade/.env.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-itrade}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - itrade-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------
+  # Schema Migrator (init container — runs once and exits)
+  # ----------------------------------------------------------
+  # Runs TypeORM synchronize on every deploy to apply entity changes.
+  # console & web both wait for this to complete successfully.
+  # Safe to run on every deploy: TypeORM only ALTER TABLE for new columns,
+  # and is a no-op when schema is already up-to-date.
+  # ----------------------------------------------------------
+  schema-migrator:
+    build:
+      context: .
+      dockerfile: apps/console/Dockerfile
+    container_name: itrade-schema-migrator
+    working_dir: /app/packages/data-manager
+    command:
+      - "node"
+      - "-r"
+      - "ts-node/register"
+      - "-r"
+      - "tsconfig-paths/register"
+      - "-r"
+      - "reflect-metadata"
+      - "sync-schema-to-db.ts"
+    environment:
+      TS_NODE_PROJECT: tsconfig.build.json
+      TS_NODE_FILES: "true"
+      NODE_OPTIONS: "--conditions=source"
+    env_file:
+      - /opt/itrade/.env.console   # provides DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DB
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"                  # ← run ONCE and exit (init container pattern)
+    networks:
+      - itrade-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ----------------------------------------------------------
+  # Trading Engine (console app)
+  # ----------------------------------------------------------
+  console:
+    build:
+      context: .
+      dockerfile: apps/console/Dockerfile
+    container_name: itrade-console
+    env_file:
+      - /opt/itrade/.env.console
+    depends_on:
+      db:
+        condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully   # ← wait for schema to be ready
+    restart: unless-stopped
+    # Give trading engine time to gracefully close WebSocket connections & flush state
+    stop_grace_period: 30s
+    networks:
+      - itrade-net
+    logging:
+      # Logs stored locally on GCE. View with:
+      #   docker logs -f itrade-console          ← real-time stream
+      #   docker logs --tail 200 itrade-console  ← last 200 lines
+      #
+      # To forward logs to Google Cloud Logging instead, change driver to:
+      #   driver: "gcplogs"
+      #   options:
+      #     gcp-log-cmd: "true"
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ----------------------------------------------------------
+  # Web Application (Next.js)
+  # ----------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: itrade-web
+    env_file:
+      - /opt/itrade/.env.web
+    depends_on:
+      db:
+        condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully   # ← wait for schema to be ready
+    restart: unless-stopped
+    # Graceful shutdown: give Next.js time to finish in-flight requests
+    stop_grace_period: 15s
+    healthcheck:
+      # Hits Next.js built-in health endpoint (available in Next.js 13.4+)
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s   # Give Next.js time to boot before first check
+    networks:
+      - itrade-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------
+  # Nginx reverse proxy
+  # ----------------------------------------------------------
+  # nginx.conf is GENERATED by deploy/certbot-init.sh (from nginx.conf.template)
+  # and placed at /opt/itrade/nginx.conf with the real domain substituted.
+  # ----------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: itrade-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Generated config (produced by certbot-init.sh from nginx.conf.template)
+      - /opt/itrade/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Let's Encrypt certificates (managed by certbot service below)
+      - /opt/itrade/certbot/certs:/etc/letsencrypt:ro
+      # ACME webroot: certbot writes challenge files here; nginx serves them
+      - /opt/itrade/certbot/webroot:/var/www/certbot:ro
+    depends_on:
+      - web
+    restart: unless-stopped
+    networks:
+      - itrade-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ----------------------------------------------------------
+  # Certbot — automatic SSL certificate renewal
+  # ----------------------------------------------------------
+  # First-time certificate issuance: run deploy/certbot-init.sh (not this service).
+  # This service only handles RENEWAL after the initial cert is in place.
+  #
+  # Renewal schedule: every 12h (Let's Encrypt certs expire every 90 days;
+  # certbot renews at ~60 days → always at least 30 days ahead of expiry).
+  #
+  # After renewal, the system cron installed by certbot-init.sh reloads
+  # nginx to serve the new certificate:
+  #   0 */12 * * *  docker exec itrade-nginx nginx -s reload
+  # ----------------------------------------------------------
+  certbot:
+    image: certbot/certbot:latest
+    container_name: itrade-certbot
+    volumes:
+      # Shared with nginx: certbot reads/writes certs here
+      - /opt/itrade/certbot/certs:/etc/letsencrypt
+      # Shared with nginx: certbot writes ACME challenge files here
+      - /opt/itrade/certbot/webroot:/var/www/certbot
+    env_file:
+      - /opt/itrade/.env.certbot          # provides DOMAIN and CERTBOT_EMAIL
+    # Loop: attempt renewal every 12h; certbot --renew only acts if cert expires in <30 days
+    entrypoint: >
+      /bin/sh -c "
+        trap exit TERM;
+        echo '[certbot] Auto-renewal loop started (checks every 12h)';
+        while :; do
+          certbot renew
+            --webroot
+            --webroot-path=/var/www/certbot
+            --quiet
+            --non-interactive;
+          echo \"[certbot] Renewal check completed at $$(date)\";
+          sleep 12h & wait $${!};
+        done
+      "
+    restart: unless-stopped
+    networks:
+      - itrade-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+# ----------------------------------------------------------
+# Volumes
+# NOTE: postgres_data is a named volume — it PERSISTS across
+# container rebuilds and `docker compose up --build`.
+# Only `docker compose down -v` would delete it.
+#
+# certbot dirs use host bind-mounts (/opt/itrade/certbot/*)
+# so certs survive even if you recreate all named volumes.
+# ----------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+
+# ----------------------------------------------------------
+# Networks
+# ----------------------------------------------------------
+networks:
+  itrade-net:
+    driver: bridge

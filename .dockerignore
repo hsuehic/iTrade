@@ -1,0 +1,61 @@
+# =============================================================
+# .dockerignore — files excluded from Docker build context
+# =============================================================
+
+# Node modules (reinstalled inside container)
+**/node_modules
+
+# Next.js build outputs (rebuilt inside container)
+**/.next
+**/.next-dev
+**/.next-staging
+**/.next-prod
+
+# TypeScript compiled output
+**/dist
+**/build
+
+# Environment files (injected at runtime via docker-compose env_file)
+**/.env
+**/.env.*
+!**/.env.template
+!**/env.template
+
+# Development tools
+**/.turbo
+**/.eslintcache
+
+# Logs
+**/logs
+**/*.log
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/coverage
+
+# Mobile app (not deployed to GCE)
+apps/mobile
+
+# Git
+.git
+.gitignore
+
+# CI/CD config (not needed in image)
+.github
+
+# Docker files themselves (no nesting needed)
+docker-compose*.yml
+**/Dockerfile*
+
+# Editor & OS
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+
+# Documentation
+docs
+**/docs
+**/*.md
+!**/README.md

@@ -21,6 +21,9 @@ if (buildMode === 'dev' || isDevelopment) {
 const nextConfig: NextConfig = {
   distDir,
 
+  // Enable standalone output for production Docker builds (smaller image)
+  ...(buildMode === 'prod' && { output: 'standalone' }),
+
   typescript: {
     tsconfigPath,
     // ⛳ dev 时强烈建议
@@ -41,6 +44,7 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: [
+        'bot.ihsueh.com',
         'itrade.ihsueh.com',
         'appleid.apple.com',
         'accounts.google.com',
@@ -70,6 +74,7 @@ const nextConfig: NextConfig = {
     '@itrade/exchange-connectors',
   ],
   allowedDevOrigins: [
+    'bot.ihsueh.com',
     'itrade.ihsueh.com',
     'appleid.apple.com',
     'accounts.google.com',
