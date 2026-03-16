@@ -18,6 +18,9 @@ build/
 .env.test
 .env.gce
 
+# Local env files for GCE deployment (filled-in copies of deploy/env.*.template)
+deploy/envs/
+
 # Logs
 logs/
 *.log
