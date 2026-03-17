@@ -5,6 +5,12 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "CryptoUtils": ["dist/CryptoUtils.d.ts"],
+      "ConfigUtils": ["dist/ConfigUtils.d.ts"]
+    }
+  },
   "exports": {
     ".": {
       "source": "./src/index.ts",
