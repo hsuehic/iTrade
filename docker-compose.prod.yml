@@ -19,6 +19,25 @@
 
 services:
   # ----------------------------------------------------------
+  # Shared Dependencies Base Image
+  # ----------------------------------------------------------
+  # This service builds the shared dependencies image that web,
+  # console, and schema-migrator all use. Building it first ensures
+  # dependencies are only installed once, saving significant build time.
+  # ----------------------------------------------------------
+  deps:
+    build:
+      context: .
+      dockerfile: Dockerfile.deps
+    image: itrade-deps:latest
+    # This service is a build-only target - it's built explicitly in the deploy workflow
+    # and then used by web, console, and schema-migrator Dockerfiles
+    profiles:
+      - build-only
+    # Prevent this service from running (it's just a base image)
+    entrypoint: ["/bin/sh", "-c", "echo 'This is a build-only service' && exit 0"]
+
+  # ----------------------------------------------------------
   # PostgreSQL database
   # ----------------------------------------------------------
   db:
@@ -55,6 +74,7 @@ services:
     build:
       context: .
       dockerfile: apps/console/Dockerfile
+      # Note: itrade-deps:latest must be built first (handled in deploy workflow)
     container_name: itrade-schema-migrator
     working_dir: /app/packages/data-manager
     command:
@@ -91,6 +111,7 @@ services:
     build:
       context: .
       dockerfile: apps/console/Dockerfile
+      # Note: itrade-deps:latest must be built first (handled in deploy workflow)
     container_name: itrade-console
     env_file:
       - /opt/itrade/.env.console
@@ -125,6 +146,7 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      # Note: itrade-deps:latest must be built first (handled in deploy workflow)
     container_name: itrade-web
     env_file:
       - /opt/itrade/.env.web

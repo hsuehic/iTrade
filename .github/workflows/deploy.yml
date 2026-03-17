@@ -35,7 +35,7 @@ jobs:
   deploy:
     name: 🚀 Deploy to GCE
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60  # Increased from 30 to handle slow GCE builds
 
     steps:
       # ── 1. Checkout (to get commit SHA for logging) ──────────
@@ -101,18 +101,58 @@ jobs:
             cd "\$APP_DIR"
             git fetch origin main
             git reset --hard origin/main
+            
+            # ── Pre-build checks ────────────────────────────────
+            echo "▶ Checking Docker and disk space..."
+            docker system df
+            df -h / | tail -1
 
             # ── Build images (old containers still running during build!) ──
             echo "▶ Building Docker images (services remain live during this step)..."
+            echo "▶ Enabling Docker BuildKit for faster builds with cache..."
+            export DOCKER_BUILDKIT=1
+            export COMPOSE_DOCKER_CLI_BUILD=1
+            
             BUILD_START=\$(date +%s)
+            
+            # Step 1: Build shared dependencies image first
+            # This image contains all npm modules and is reused by web, console, and schema-migrator
+            echo "▶ Step 1/2: Building shared dependencies base image..."
+            echo "   This installs all npm modules once (saves ~10-15min on subsequent builds)"
+            DEPS_START=\$(date +%s)
+            if [ "$FORCE_REBUILD" = "true" ]; then
+              docker build -f "\$APP_DIR/Dockerfile.deps" -t itrade-deps:latest --no-cache --progress=plain "\$APP_DIR"
+            else
+              docker build -f "\$APP_DIR/Dockerfile.deps" -t itrade-deps:latest --progress=plain "\$APP_DIR"
+            fi
+            DEPS_END=\$(date +%s)
+            echo "▶ Dependencies image built in \$((DEPS_END - DEPS_START))s"
+            
+            # Step 2: Build application images (they reuse the deps image)
+            echo "▶ Step 2/2: Building application images (web, console, schema-migrator)..."
+            echo "   These will reuse the shared dependencies image (much faster)"
             if [ "$FORCE_REBUILD" = "true" ]; then
               echo "▶ Force rebuild: no cache"
-              docker compose -f "\$COMPOSE_FILE" build --no-cache
+              docker compose -f "\$COMPOSE_FILE" build --no-cache --progress=plain
             else
-              docker compose -f "\$COMPOSE_FILE" build
+              # Build with cache - BuildKit will reuse layers when possible
+              echo "▶ Building with cache (BuildKit enabled)..."
+              echo "   Expected time: 10-20min (first build), 3-8min (cached rebuild)"
+              echo "   Progress will be shown below..."
+              docker compose -f "\$COMPOSE_FILE" build --progress=plain
             fi
+            
             BUILD_END=\$(date +%s)
-            echo "▶ Build completed in \$((BUILD_END - BUILD_START))s"
+            BUILD_TIME=\$((BUILD_END - BUILD_START))
+            echo "▶ Build completed in \${BUILD_TIME}s (\$((BUILD_TIME / 60))m \$((BUILD_TIME % 60))s)"
+            
+            # Warn if build took too long
+            if [ \$BUILD_TIME -gt 1800 ]; then
+              echo "⚠️  Build took \${BUILD_TIME}s (>30min) - consider:"
+              echo "   - Using Docker layer caching (already enabled)"
+              echo "   - Building only changed services"
+              echo "   - Upgrading GCE instance resources"
+            fi
 
             # ── Swap containers (this is the actual downtime window) ─────
             echo "▶ Swapping containers — downtime window starts now..."

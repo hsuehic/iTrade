@@ -1,32 +1,10 @@
 # ============================================================
-# Stage 1: deps — install ALL workspace dependencies
+# Stage 1: deps — use shared dependencies base image
 # ============================================================
-FROM node:20-alpine AS deps
-
-RUN apk add --update --no-cache python3 build-base
-RUN npm install -g pnpm@10.18.0
-
-WORKDIR /app
-
-# Copy workspace manifests first (cache-friendly layer)
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
-
-# Copy all package.json files to satisfy pnpm workspace resolution
-COPY packages/core/package.json              ./packages/core/
-COPY packages/data-manager/package.json      ./packages/data-manager/
-COPY packages/exchange-connectors/package.json ./packages/exchange-connectors/
-COPY packages/strategies/package.json        ./packages/strategies/
-COPY packages/utils/package.json             ./packages/utils/
-COPY packages/logger/package.json            ./packages/logger/
-COPY packages/risk-manager/package.json      ./packages/risk-manager/
-COPY packages/portfolio-manager/package.json ./packages/portfolio-manager/
-COPY packages/push-notification/package.json ./packages/push-notification/
-COPY packages/backtesting/package.json       ./packages/backtesting/
-COPY packages/dry-run-engine/package.json    ./packages/dry-run-engine/
-COPY apps/console/package.json               ./apps/console/
-COPY apps/web/package.json                   ./apps/web/
-
-RUN pnpm install --frozen-lockfile
+# Uses the shared itrade-deps image built from Dockerfile.deps
+# This avoids installing dependencies multiple times across services
+# ============================================================
+FROM itrade-deps:latest AS deps
 
 # ============================================================
 # Stage 2: builder — pre-compile TypeScript
