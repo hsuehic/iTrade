@@ -80,7 +80,7 @@ jobs:
           docker pull "${PREFIX}/deps:latest" 2>/dev/null && \
             docker tag "${PREFIX}/deps:latest" itrade-deps:latest || true
           docker pull "${PREFIX}/console:latest" 2>/dev/null || true
-          docker pull "${PREFIX}/schema-migrator:latest" 2>/dev/null || true
+          # docker pull "${PREFIX}/schema-migrator:latest" 2>/dev/null || true
           docker pull "${PREFIX}/web:latest" 2>/dev/null || true
 
       # ── Build shared dependencies base image ────────────────
