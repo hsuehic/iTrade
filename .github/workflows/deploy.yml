@@ -198,7 +198,13 @@ jobs:
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
 
       - name: Add GCE host to known_hosts
-        run: ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+        run: |
+          echo "🔍 Adding GCE host to known_hosts..."
+
+          # Add host keys to known_hosts (now that SSH service is working)
+          ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+
+          echo "✅ Host keys added successfully"
 
       - name: Deploy on GCE
         env:
@@ -211,6 +217,8 @@ jobs:
         run: |
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
+
+          echo "🚀 Starting deployment to GCE..."
 
           ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << ENDSSH
             set -euo pipefail
