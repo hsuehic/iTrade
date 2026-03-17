@@ -38,6 +38,7 @@ RUN pnpm --filter=@itrade/core build
 RUN pnpm --filter=@itrade/logger build
 RUN pnpm --filter=@itrade/data-manager build
 RUN pnpm --filter=@itrade/strategies build
+RUN pnpm --filter=@itrade/exchange-connectors build
 RUN pnpm --filter=@itrade/push-notification build
 
 # Build Next.js with prod config (output: standalone -> .next-prod/standalone)
