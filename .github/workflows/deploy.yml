@@ -237,6 +237,19 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            # ── Ensure environment files have correct ownership ──
+            echo "▶ Checking environment file permissions..."
+            if [ -f "/opt/itrade/.env.console" ]; then
+              # Fix ownership if needed (files might be owned by different user)
+              sudo chown \$(whoami):\$(whoami) /opt/itrade/.env.* 2>/dev/null || true
+              chmod 600 /opt/itrade/.env.* 2>/dev/null || true
+              echo "✅ Environment file permissions verified"
+            else
+              echo "❌ Environment files not found at /opt/itrade/"
+              echo "Please ensure .env.console, .env.db, .env.web, .env.certbot exist"
+              exit 1
+            fi
+
             # ── Login to GHCR ─────────────────────────────────
             echo "▶ Logging in to GHCR..."
             echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GH_ACTOR}" --password-stdin

@@ -127,30 +127,46 @@ echo ""
 ZONE_FLAG=()
 [[ -n "$GCE_ZONE" ]] && ZONE_FLAG=(--zone "$GCE_ZONE")
 
-# ── Step 1: Create tmp dir on GCE ────────────────────────────
+# ── Step 1: Create tar archive and upload in single operation ──
+TAR_FILE="/tmp/itrade-envs-$$.tar.gz"
+log "Creating archive..."
+
+# Create list of files to include (only existing files)
+ENV_BASENAMES=()
+for f in "${ENV_FILES[@]}"; do
+  ENV_BASENAMES+=("$(basename "$f")")
+done
+
+# Create tar without macOS extended attributes to avoid warnings
+tar --no-xattrs -czf "$TAR_FILE" -C "$LOCAL_ENV_DIR" "${ENV_BASENAMES[@]}" 2>/dev/null || \
+tar -czf "$TAR_FILE" -C "$LOCAL_ENV_DIR" "${ENV_BASENAMES[@]}"
+
 if [[ "$USE_GCLOUD" == true ]]; then
+  # Single file upload - much faster than multiple files
+  gcloud compute scp "$TAR_FILE" \
+    "${GCE_INSTANCE}:${TMP_DIR}.tar.gz" \
+    --ssh-key-expire-after=1d \
+    "${ZONE_FLAG[@]}"
+  
+  # Extract on remote
   gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" \
-    --command="mkdir -p $TMP_DIR"
+    --command="mkdir -p $TMP_DIR && tar -xzf ${TMP_DIR}.tar.gz -C $TMP_DIR && rm ${TMP_DIR}.tar.gz"
 else
   ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "mkdir -p $TMP_DIR"
+  scp "${SSH_OPTS[@]}" "$TAR_FILE" "$GCE_USER@$GCE_HOST:${TMP_DIR}.tar.gz"
+  ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "tar -xzf ${TMP_DIR}.tar.gz -C $TMP_DIR && rm ${TMP_DIR}.tar.gz"
 fi
 
-# ── Step 2: Upload files to tmp dir ──────────────────────────
+# Clean up local tar file
+rm -f "$TAR_FILE"
+
 for local_file in "${ENV_FILES[@]}"; do
   filename="$(basename "$local_file")"
-  if [[ "$USE_GCLOUD" == true ]]; then
-    gcloud compute scp "$local_file" \
-      "${GCE_INSTANCE}:${TMP_DIR}/${filename}" \
-      --ssh-key-expire-after=1d \
-      "${ZONE_FLAG[@]}"
-  else
-    scp "${SSH_OPTS[@]}" "$local_file" "$GCE_USER@$GCE_HOST:$TMP_DIR/$filename"
-  fi
   log "  ⬆️   $filename → $TMP_DIR/"
 done
 
-# ── Step 3: Move files to final destination with sudo ─────────
-MOVE_CMD="sudo mkdir -p $REMOTE_ENV_DIR && sudo mv $TMP_DIR/.env.* $REMOTE_ENV_DIR/ && sudo chmod 600 $REMOTE_ENV_DIR/.env.* && rm -rf $TMP_DIR"
+# ── Step 3: Move files to final destination with correct ownership ──
+MOVE_CMD="sudo mkdir -p $REMOTE_ENV_DIR && sudo mv $TMP_DIR/.env.* $REMOTE_ENV_DIR/ && sudo chown $GCE_USER:$GCE_USER $REMOTE_ENV_DIR/.env.* && sudo chmod 600 $REMOTE_ENV_DIR/.env.* && rm -rf $TMP_DIR"
 
 if [[ "$USE_GCLOUD" == true ]]; then
   gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" --command="$MOVE_CMD"
