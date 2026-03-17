@@ -69,11 +69,16 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 USER consoleapp
 
-WORKDIR /app/packages/data-manager
+# Stay in the app root where node_modules is available
+WORKDIR /app
 
 ENV NODE_ENV=production
+ENV TS_NODE_PROJECT=packages/data-manager/tsconfig.json
+ENV TS_NODE_FILES=true
+ENV NODE_OPTIONS=--conditions=source
 
-CMD ["npx", "tsx", "sync-schema-to-db.ts"]
+# Run from app root where node_modules with ts-node is available
+CMD ["node", "-r", "ts-node/register", "-r", "tsconfig-paths/register", "-r", "reflect-metadata", "packages/data-manager/sync-schema-to-db.ts"]
 
 # ============================================================
 # Stage 3b: runner — lean production image (plain node, no ts-node)
