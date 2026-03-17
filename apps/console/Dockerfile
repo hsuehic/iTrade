@@ -56,6 +56,10 @@ RUN pnpm --filter=@itrade/exchange-connectors build
 WORKDIR /app/apps/console
 RUN npx tsc -p tsconfig.build.json
 
+# Step 3: Compile the schema sync script (outputs to packages/data-manager/dist/)
+WORKDIR /app/packages/data-manager
+RUN npx tsc sync-schema-to-db.ts --outDir dist --target es2020 --module commonjs --moduleResolution node --esModuleInterop --allowSyntheticDefaultImports --strict --skipLibCheck --resolveJsonModule
+
 # ============================================================
 # Stage 3a: schema-migrator — TypeORM schema sync (init container)
 # ============================================================
@@ -72,11 +76,8 @@ USER consoleapp
 WORKDIR /app/packages/data-manager
 
 ENV NODE_ENV=production
-ENV TS_NODE_PROJECT=tsconfig.build.json
-ENV TS_NODE_FILES=true
-ENV NODE_OPTIONS=--conditions=source
 
-CMD ["node", "-r", "ts-node/register", "-r", "tsconfig-paths/register", "-r", "reflect-metadata", "sync-schema-to-db.ts"]
+CMD ["node", "-r", "reflect-metadata", "dist/sync-schema-to-db.js"]
 
 # ============================================================
 # Stage 3b: runner — lean production image (plain node, no ts-node)
