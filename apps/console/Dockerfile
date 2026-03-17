@@ -57,7 +57,29 @@ WORKDIR /app/apps/console
 RUN npx tsc -p tsconfig.build.json
 
 # ============================================================
-# Stage 3: runner — lean production image (plain node, no ts-node)
+# Stage 3a: schema-migrator — TypeORM schema sync (init container)
+# ============================================================
+# Based on builder stage which has all TypeScript source files.
+# Runs once per deployment, then exits.
+# ============================================================
+FROM builder AS schema-migrator
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 consoleapp
+
+USER consoleapp
+
+WORKDIR /app/packages/data-manager
+
+ENV NODE_ENV=production
+ENV TS_NODE_PROJECT=tsconfig.build.json
+ENV TS_NODE_FILES=true
+ENV NODE_OPTIONS=--conditions=source
+
+CMD ["node", "-r", "ts-node/register", "-r", "tsconfig-paths/register", "-r", "reflect-metadata", "sync-schema-to-db.ts"]
+
+# ============================================================
+# Stage 3b: runner — lean production image (plain node, no ts-node)
 # ============================================================
 FROM node:20-alpine AS runner
 

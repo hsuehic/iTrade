@@ -4,13 +4,22 @@
 #
 # Triggers: push to 'main' branch, or manual dispatch
 #
+# Strategy:
+#   Job 1 — Build Docker images on CI runner → push to GHCR
+#   Job 2 — SSH to GCE → pull images → docker compose up
+#
+# This is MUCH faster than building on GCE because:
+#   - GitHub runners have 2 vCPU + 7GB RAM (vs small GCE instance)
+#   - Registry-level layer caching across builds
+#   - GCE only needs to pull ~200MB of compressed layers
+#
 # Required GitHub Secrets:
 #   GCE_HOST            → GCE instance external IP or domain
 #   GCE_USER            → SSH username (e.g. your_gce_username)
 #   GCE_SSH_PRIVATE_KEY → base64-encoded private key
-#                         Generate: base64 -w 0 ~/.ssh/id_ed25519_gce_deploy
 #
-# Strategy: SSH into GCE → git pull → docker compose build & up
+# Required GitHub Permissions:
+#   packages: write     → push images to GHCR (auto-granted via GITHUB_TOKEN)
 # =============================================================
 
 name: Deploy to GCE
@@ -22,29 +31,162 @@ on:
   workflow_dispatch:
     inputs:
       force_rebuild:
-        description: "Force rebuild all Docker images (no cache)"
+        description: 'Force rebuild all Docker images (no cache)'
         required: false
         default: false
         type: boolean
 
 concurrency:
   group: deploy-production
-  cancel-in-progress: false # Never cancel an in-progress deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
-  deploy:
-    name: 🚀 Deploy to GCE
+  # ════════════════════════════════════════════════════════════
+  # Job 1: Build Docker images on CI runner and push to GHCR
+  # ════════════════════════════════════════════════════════════
+  build-and-push:
+    name: 🔨 Build & Push Images
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # Increased from 30 to handle slow GCE builds
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      # ── 1. Checkout (to get commit SHA for logging) ──────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── 2. Setup SSH agent ───────────────────────────────────
-      # GCE_SSH_PRIVATE_KEY is stored as base64 to avoid newline corruption.
-      # Generate on GCE with: base64 -w 0 ~/.ssh/id_ed25519_gce_deploy
+      - name: Compute image metadata
+        id: meta
+        run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
+          SHA="${{ github.sha }}"
+          echo "prefix=${PREFIX}" >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Image prefix: ${PREFIX}"
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      # ── Pull previous images for layer cache ────────────────
+      - name: Pull previous images for cache
+        if: github.event.inputs.force_rebuild != 'true'
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          docker pull "${PREFIX}/deps:latest" 2>/dev/null && \
+            docker tag "${PREFIX}/deps:latest" itrade-deps:latest || true
+          docker pull "${PREFIX}/console:latest" 2>/dev/null || true
+          docker pull "${PREFIX}/schema-migrator:latest" 2>/dev/null || true
+          docker pull "${PREFIX}/web:latest" 2>/dev/null || true
+
+      # ── Build shared dependencies base image ────────────────
+      - name: Build deps image
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          CACHE_FLAG=""
+          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            CACHE_FLAG="--no-cache"
+          else
+            CACHE_FLAG="--cache-from itrade-deps:latest"
+          fi
+
+          DOCKER_BUILDKIT=1 docker build \
+            -f Dockerfile.deps \
+            -t itrade-deps:latest \
+            -t "${PREFIX}/deps:latest" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            ${CACHE_FLAG} \
+            .
+
+          docker push "${PREFIX}/deps:latest"
+
+      # ── Build and push console image ────────────────────────
+      - name: Build and push console image
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          SHA="${{ steps.meta.outputs.sha }}"
+          CACHE_FLAG=""
+          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            CACHE_FLAG="--no-cache"
+          else
+            CACHE_FLAG="--cache-from ${PREFIX}/console:latest"
+          fi
+
+          DOCKER_BUILDKIT=1 docker build \
+            -f apps/console/Dockerfile \
+            -t "${PREFIX}/console:latest" \
+            -t "${PREFIX}/console:${SHA}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            ${CACHE_FLAG} \
+            .
+
+          docker push "${PREFIX}/console:latest"
+          docker push "${PREFIX}/console:${SHA}"
+
+      # ── Build and push schema-migrator image ────────────────
+      - name: Build and push schema-migrator image
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          SHA="${{ steps.meta.outputs.sha }}"
+          CACHE_FLAG=""
+          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            CACHE_FLAG="--no-cache"
+          else
+            CACHE_FLAG="--cache-from ${PREFIX}/schema-migrator:latest"
+          fi
+
+          DOCKER_BUILDKIT=1 docker build \
+            -f apps/console/Dockerfile \
+            --target schema-migrator \
+            -t "${PREFIX}/schema-migrator:latest" \
+            -t "${PREFIX}/schema-migrator:${SHA}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            ${CACHE_FLAG} \
+            .
+
+          docker push "${PREFIX}/schema-migrator:latest"
+          docker push "${PREFIX}/schema-migrator:${SHA}"
+
+      # ── Build and push web image ────────────────────────────
+      - name: Build and push web image
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          SHA="${{ steps.meta.outputs.sha }}"
+          CACHE_FLAG=""
+          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            CACHE_FLAG="--no-cache"
+          else
+            CACHE_FLAG="--cache-from ${PREFIX}/web:latest"
+          fi
+
+          DOCKER_BUILDKIT=1 docker build \
+            -f apps/web/Dockerfile \
+            -t "${PREFIX}/web:latest" \
+            -t "${PREFIX}/web:${SHA}" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            ${CACHE_FLAG} \
+            .
+
+          docker push "${PREFIX}/web:latest"
+          docker push "${PREFIX}/web:${SHA}"
+
+  # ════════════════════════════════════════════════════════════
+  # Job 2: Pull pre-built images on GCE and restart services
+  # ════════════════════════════════════════════════════════════
+  deploy:
+    name: 🚀 Deploy to GCE
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup SSH agent
         run: |
           mkdir -p ~/.ssh
@@ -54,37 +196,22 @@ jobs:
           ssh-add ~/.ssh/gce_deploy_key
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
-          echo "=== Loaded key fingerprint ==="
-          ssh-add -l
 
-      # ── 3. Trust GCE host ────────────────────────────────────
       - name: Add GCE host to known_hosts
-        run: |
-          ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+        run: ssh-keyscan -H "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
 
-      # ── 4. Debug SSH connection ──────────────────────────────
-      - name: Debug SSH connection (verbose)
-        env:
-          GCE_HOST: ${{ secrets.GCE_HOST }}
-          GCE_USER: ${{ secrets.GCE_USER }}
-        run: |
-          echo "=== Attempting SSH with verbose output ==="
-          echo "GCE_USER length: ${#GCE_USER}"
-          echo "GCE_HOST length: ${#GCE_HOST}"
-          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
-          ssh-add -l || echo "No keys in agent"
-          ssh -vvv -o StrictHostKeyChecking=no -o BatchMode=yes \
-            "$GCE_USER@$GCE_HOST" echo "SSH_OK" 2>&1 || true
-
-      # ── 5. Deploy ────────────────────────────────────────────
       - name: Deploy on GCE
         env:
           GCE_HOST: ${{ secrets.GCE_HOST }}
           GCE_USER: ${{ secrets.GCE_USER }}
-          FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
+
           ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << ENDSSH
             set -euo pipefail
 
@@ -96,75 +223,34 @@ jobs:
             APP_DIR="/opt/itrade/app"
             COMPOSE_FILE="\$APP_DIR/docker-compose.prod.yml"
 
-            # ── Pull latest code ────────────────────────────────
+            # ── Pull latest code (for compose file, env templates, etc.) ──
             echo "▶ Pulling latest code..."
             cd "\$APP_DIR"
             git fetch origin main
             git reset --hard origin/main
-            
-            # ── Pre-build cleanup & disk space recovery ─────────
-            echo "▶ Checking disk space before cleanup..."
-            df -h / | tail -1
-            docker system df
-            
-            echo "▶ Aggressively pruning Docker to free disk space..."
-            docker container prune -f
-            docker image prune -f
-            docker builder prune -f --keep-storage=2gb
-            
-            echo "▶ Disk space after cleanup:"
-            df -h / | tail -1
 
-            # ── Build images (old containers still running during build!) ──
-            echo "▶ Building Docker images (services remain live during this step)..."
-            export DOCKER_BUILDKIT=1
-            export COMPOSE_DOCKER_CLI_BUILD=1
-            
-            BUILD_START=\$(date +%s)
-            
-            # Step 1: Build shared dependencies image first
-            echo "▶ Step 1/4: Building shared dependencies base image..."
-            DEPS_START=\$(date +%s)
-            if [ "$FORCE_REBUILD" = "true" ]; then
-              docker build -f "\$APP_DIR/Dockerfile.deps" -t itrade-deps:latest --no-cache --progress=plain "\$APP_DIR"
-            else
-              docker build -f "\$APP_DIR/Dockerfile.deps" -t itrade-deps:latest --progress=plain "\$APP_DIR"
-            fi
-            DEPS_END=\$(date +%s)
-            echo "▶ Dependencies image built in \$((DEPS_END - DEPS_START))s"
-            
-            # Step 2-4: Build application images SEQUENTIALLY to reduce peak disk usage.
-            # Parallel builds (docker compose build) require ~3x the intermediate storage,
-            # which causes "no space left on device" on disk-constrained GCE instances.
-            CACHE_FLAG=""
-            if [ "$FORCE_REBUILD" = "true" ]; then
-              CACHE_FLAG="--no-cache"
-            fi
-            
-            echo "▶ Step 2/4: Building console image..."
-            docker compose -f "\$COMPOSE_FILE" build \$CACHE_FLAG --progress=plain console
-            docker builder prune -f --keep-storage=1gb 2>/dev/null || true
-            
-            echo "▶ Step 3/4: Building web image..."
-            docker compose -f "\$COMPOSE_FILE" build \$CACHE_FLAG --progress=plain web
-            docker builder prune -f --keep-storage=1gb 2>/dev/null || true
-            
-            echo "▶ Step 4/4: Building schema-migrator image..."
-            docker compose -f "\$COMPOSE_FILE" build \$CACHE_FLAG --progress=plain schema-migrator
-            docker builder prune -f --keep-storage=1gb 2>/dev/null || true
-            
-            BUILD_END=\$(date +%s)
-            BUILD_TIME=\$((BUILD_END - BUILD_START))
-            echo "▶ Build completed in \${BUILD_TIME}s (\$((BUILD_TIME / 60))m \$((BUILD_TIME % 60))s)"
-            echo "▶ Disk space after build:"
-            df -h / | tail -1
+            # ── Login to GHCR ─────────────────────────────────
+            echo "▶ Logging in to GHCR..."
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GH_ACTOR}" --password-stdin
 
-            # ── Swap containers (this is the actual downtime window) ─────
+            # ── Set image references for docker compose ───────
+            export CONSOLE_IMAGE="${IMAGE_PREFIX}/console:${COMMIT_SHA}"
+            export SCHEMA_MIGRATOR_IMAGE="${IMAGE_PREFIX}/schema-migrator:${COMMIT_SHA}"
+            export WEB_IMAGE="${IMAGE_PREFIX}/web:${COMMIT_SHA}"
+
+            # ── Pull pre-built images ─────────────────────────
+            echo "▶ Pulling pre-built images..."
+            PULL_START=\$(date +%s)
+            docker compose -f "\$COMPOSE_FILE" pull console schema-migrator web
+            PULL_END=\$(date +%s)
+            echo "▶ Images pulled in \$((PULL_END - PULL_START))s"
+
+            # ── Swap containers ───────────────────────────────
             echo "▶ Swapping containers — downtime window starts now..."
             SWAP_START=\$(date +%s)
             docker compose -f "\$COMPOSE_FILE" up -d
 
-            # Wait for web healthcheck to pass (up to 90s)
+            # ── Wait for web healthcheck ──────────────────────
             echo "▶ Waiting for web healthcheck to pass..."
             TIMEOUT=90
             ELAPSED=0
@@ -179,20 +265,19 @@ jobs:
             done
             SWAP_END=\$(date +%s)
             echo "▶ Web is healthy. Container swap took \$((SWAP_END - SWAP_START))s"
-            echo "   (Actual user-visible downtime ≈ time for schema-migrator + web boot)"
 
-            # ── Cleanup old images ──────────────────────────────
+            # ── Cleanup ───────────────────────────────────────
             echo "▶ Pruning unused images..."
             docker image prune -f
+            docker logout ghcr.io
 
-            # ── Final status ────────────────────────────────────
+            # ── Final status ──────────────────────────────────
             docker compose -f "\$COMPOSE_FILE" ps
 
             echo ""
             echo "✅ Deployment complete!"
           ENDSSH
 
-      # ── 5. Report status ─────────────────────────────────────
       - name: Report deployment status
         if: always()
         run: |
