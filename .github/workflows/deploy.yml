@@ -102,23 +102,28 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             
-            # ── Pre-build checks ────────────────────────────────
-            echo "▶ Checking Docker and disk space..."
+            # ── Pre-build cleanup & disk space recovery ─────────
+            echo "▶ Checking disk space before cleanup..."
+            df -h / | tail -1
             docker system df
+            
+            echo "▶ Aggressively pruning Docker to free disk space..."
+            docker container prune -f
+            docker image prune -f
+            docker builder prune -f --keep-storage=2gb
+            
+            echo "▶ Disk space after cleanup:"
             df -h / | tail -1
 
             # ── Build images (old containers still running during build!) ──
             echo "▶ Building Docker images (services remain live during this step)..."
-            echo "▶ Enabling Docker BuildKit for faster builds with cache..."
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
             
             BUILD_START=\$(date +%s)
             
             # Step 1: Build shared dependencies image first
-            # This image contains all npm modules and is reused by web, console, and schema-migrator
-            echo "▶ Step 1/2: Building shared dependencies base image..."
-            echo "   This installs all npm modules once (saves ~10-15min on subsequent builds)"
+            echo "▶ Step 1/4: Building shared dependencies base image..."
             DEPS_START=\$(date +%s)
             if [ "$FORCE_REBUILD" = "true" ]; then
               docker build -f "\$APP_DIR/Dockerfile.deps" -t itrade-deps:latest --no-cache --progress=plain "\$APP_DIR"
@@ -128,31 +133,31 @@ jobs:
             DEPS_END=\$(date +%s)
             echo "▶ Dependencies image built in \$((DEPS_END - DEPS_START))s"
             
-            # Step 2: Build application images (they reuse the deps image)
-            echo "▶ Step 2/2: Building application images (web, console, schema-migrator)..."
-            echo "   These will reuse the shared dependencies image (much faster)"
+            # Step 2-4: Build application images SEQUENTIALLY to reduce peak disk usage.
+            # Parallel builds (docker compose build) require ~3x the intermediate storage,
+            # which causes "no space left on device" on disk-constrained GCE instances.
+            CACHE_FLAG=""
             if [ "$FORCE_REBUILD" = "true" ]; then
-              echo "▶ Force rebuild: no cache"
-              docker compose -f "\$COMPOSE_FILE" build --no-cache --progress=plain
-            else
-              # Build with cache - BuildKit will reuse layers when possible
-              echo "▶ Building with cache (BuildKit enabled)..."
-              echo "   Expected time: 10-20min (first build), 3-8min (cached rebuild)"
-              echo "   Progress will be shown below..."
-              docker compose -f "\$COMPOSE_FILE" build --progress=plain
+              CACHE_FLAG="--no-cache"
             fi
+            
+            echo "▶ Step 2/4: Building console image..."
+            docker compose -f "\$COMPOSE_FILE" build \$CACHE_FLAG --progress=plain console
+            docker builder prune -f --keep-storage=1gb 2>/dev/null || true
+            
+            echo "▶ Step 3/4: Building web image..."
+            docker compose -f "\$COMPOSE_FILE" build \$CACHE_FLAG --progress=plain web
+            docker builder prune -f --keep-storage=1gb 2>/dev/null || true
+            
+            echo "▶ Step 4/4: Building schema-migrator image..."
+            docker compose -f "\$COMPOSE_FILE" build \$CACHE_FLAG --progress=plain schema-migrator
+            docker builder prune -f --keep-storage=1gb 2>/dev/null || true
             
             BUILD_END=\$(date +%s)
             BUILD_TIME=\$((BUILD_END - BUILD_START))
             echo "▶ Build completed in \${BUILD_TIME}s (\$((BUILD_TIME / 60))m \$((BUILD_TIME % 60))s)"
-            
-            # Warn if build took too long
-            if [ \$BUILD_TIME -gt 1800 ]; then
-              echo "⚠️  Build took \${BUILD_TIME}s (>30min) - consider:"
-              echo "   - Using Docker layer caching (already enabled)"
-              echo "   - Building only changed services"
-              echo "   - Upgrading GCE instance resources"
-            fi
+            echo "▶ Disk space after build:"
+            df -h / | tail -1
 
             # ── Swap containers (this is the actual downtime window) ─────
             echo "▶ Swapping containers — downtime window starts now..."
