@@ -59,23 +59,31 @@ RUN npx tsc -p tsconfig.build.json
 # ============================================================
 # Stage 3a: schema-migrator — TypeORM schema sync (init container)
 # ============================================================
-# Based on builder stage which has all TypeScript source files.
-# Runs once per deployment, then exits.
+# Use the deps stage which has all node_modules including ts-node
 # ============================================================
-FROM builder AS schema-migrator
+FROM deps AS schema-migrator
+
+# Install ts-node globally to ensure it's available
+RUN npm install -g ts-node@10.9.2
+
+# Copy source files needed for schema sync
+COPY packages/data-manager/ ./packages/data-manager/
+COPY packages/core/ ./packages/core/
+COPY packages/utils/ ./packages/utils/
+COPY tsconfig.base.json ./
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser  --system --uid 1001 consoleapp
 
 USER consoleapp
 
-# Change to data-manager directory where the compiled dist and JS script are
 WORKDIR /app/packages/data-manager
 
 ENV NODE_ENV=production
+ENV TS_NODE_PROJECT=tsconfig.json
 
-# Run the JavaScript version which requires the compiled dist/TypeOrmDataManager.js
-CMD ["node", "sync-schema-to-db.js"]
+# Use the TypeScript version with globally installed ts-node
+CMD ["node", "-r", "ts-node/register", "-r", "reflect-metadata", "sync-schema-to-db.ts"]
 
 # ============================================================
 # Stage 3b: runner — lean production image (plain node, no ts-node)
