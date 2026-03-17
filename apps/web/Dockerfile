@@ -3,7 +3,7 @@
 # ============================================================
 FROM node:20-alpine AS deps
 
-RUN apk add --no-cache libc6-compat python3 make g++
+RUN apk add --update --no-cache python3 build-base
 RUN npm install -g pnpm@10.18.0
 
 WORKDIR /app
@@ -33,7 +33,7 @@ RUN pnpm install --frozen-lockfile
 # ============================================================
 FROM node:20-alpine AS builder
 
-RUN apk add --no-cache libc6-compat python3 make g++
+RUN apk add --update --no-cache python3 build-base
 RUN npm install -g pnpm@10.18.0
 
 WORKDIR /app
@@ -74,7 +74,7 @@ RUN pnpm --filter=@itrade/web-manager build:prod
 # ============================================================
 FROM node:20-alpine AS runner
 
-RUN apk add --no-cache libc6-compat
+# No additional packages needed for runner stage
 
 WORKDIR /app
 

@@ -632,6 +632,32 @@ docker exec itrade-db psql -U itrade_user itrade -c \
 
 ---
 
+## 本地测试部署步骤（推荐）
+
+在推送到 GitHub Actions 之前，建议先在本地测试部署步骤，这样可以提前发现并修复问题。
+
+### 快速开始
+
+运行所有测试：
+
+```bash
+bash deploy/test-local.sh
+```
+
+### 测试内容
+
+1. **Web Docker 镜像构建** - 测试 web 应用的 Docker 构建过程
+2. **Console Docker 镜像构建** - 测试 console 应用的 Docker 构建过程
+3. **Certbot 脚本验证** - 验证 SSL 证书初始化脚本
+4. **环境同步脚本验证** - 验证环境变量同步脚本
+5. **Docker Compose 配置验证** - 验证生产环境 docker-compose 配置
+
+### 详细文档
+
+完整的本地测试指南请参考：[本地部署测试指南](../guides/LOCAL_DEPLOYMENT_TESTING.md)
+
+---
+
 ## 故障排查
 
 ### 容器无法启动
