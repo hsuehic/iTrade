@@ -69,16 +69,13 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 USER consoleapp
 
-# Stay in the app root where node_modules is available
-WORKDIR /app
+# Change to data-manager directory where the compiled dist and JS script are
+WORKDIR /app/packages/data-manager
 
 ENV NODE_ENV=production
-ENV TS_NODE_PROJECT=packages/data-manager/tsconfig.json
-ENV TS_NODE_FILES=true
-ENV NODE_OPTIONS=--conditions=source
 
-# Run from app root where node_modules with ts-node is available
-CMD ["node", "-r", "ts-node/register", "-r", "tsconfig-paths/register", "-r", "reflect-metadata", "packages/data-manager/sync-schema-to-db.ts"]
+# Run the JavaScript version which requires the compiled dist/TypeOrmDataManager.js
+CMD ["node", "sync-schema-to-db.js"]
 
 # ============================================================
 # Stage 3b: runner — lean production image (plain node, no ts-node)
