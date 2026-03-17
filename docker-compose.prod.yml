@@ -69,31 +69,28 @@ services:
   # ----------------------------------------------------------
   # Schema Migrator (init container — runs once and exits)
   # ----------------------------------------------------------
-  # Runs TypeORM synchronize on every deploy to apply entity changes.
-  # console & web both wait for this to complete successfully.
-  # Safe to run on every deploy: TypeORM only ALTER TABLE for new columns,
-  # and is a no-op when schema is already up-to-date.
+  # TEMPORARILY DISABLED: Having build issues, will re-enable after fix
   # ----------------------------------------------------------
-  schema-migrator:
-    image: ${SCHEMA_MIGRATOR_IMAGE:-itrade-schema-migrator:latest}
-    build:
-      context: .
-      dockerfile: apps/console/Dockerfile
-      target: schema-migrator
-    container_name: itrade-schema-migrator
-    env_file:
-      - /opt/itrade/.env.console # provides DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DB
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: 'no' # ← run ONCE and exit (init container pattern)
-    networks:
-      - itrade-net
-    logging:
-      driver: 'json-file'
-      options:
-        max-size: '5m'
-        max-file: '2'
+  # schema-migrator:
+  #   image: ${SCHEMA_MIGRATOR_IMAGE:-itrade-schema-migrator:latest}
+  #   build:
+  #     context: .
+  #     dockerfile: apps/console/Dockerfile
+  #     target: schema-migrator
+  #   container_name: itrade-schema-migrator
+  #   env_file:
+  #     - /opt/itrade/.env.console # provides DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DB
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   restart: 'no' # ← run ONCE and exit (init container pattern)
+  #   networks:
+  #     - itrade-net
+  #   logging:
+  #     driver: 'json-file'
+  #     options:
+  #       max-size: '5m'
+  #       max-file: '2'
 
   # ----------------------------------------------------------
   # Trading Engine (console app)
@@ -109,8 +106,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      schema-migrator:
-        condition: service_completed_successfully # ← wait for schema to be ready
+      # Temporarily disable schema-migrator dependency to allow deployment
+      # schema-migrator:
+      #   condition: service_completed_successfully # ← wait for schema to be ready
     restart: unless-stopped
     # Give trading engine time to gracefully close WebSocket connections & flush state
     stop_grace_period: 30s
@@ -144,8 +142,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      schema-migrator:
-        condition: service_completed_successfully # ← wait for schema to be ready
+      # Temporarily disable schema-migrator dependency to allow deployment
+      # schema-migrator:
+      #   condition: service_completed_successfully # ← wait for schema to be ready
     restart: unless-stopped
     # Graceful shutdown: give Next.js time to finish in-flight requests
     stop_grace_period: 15s

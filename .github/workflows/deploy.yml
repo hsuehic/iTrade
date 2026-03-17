@@ -128,28 +128,29 @@ jobs:
           docker push "${PREFIX}/console:${SHA}"
 
       # ── Build and push schema-migrator image ────────────────
-      - name: Build and push schema-migrator image
-        run: |
-          PREFIX="${{ steps.meta.outputs.prefix }}"
-          SHA="${{ steps.meta.outputs.sha }}"
-          CACHE_FLAG=""
-          if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-            CACHE_FLAG="--no-cache"
-          else
-            CACHE_FLAG="--cache-from ${PREFIX}/schema-migrator:latest"
-          fi
+      # TEMPORARILY DISABLED: Having build issues, will re-enable after fix
+      # - name: Build and push schema-migrator image
+      #   run: |
+      #     PREFIX="${{ steps.meta.outputs.prefix }}"
+      #     SHA="${{ steps.meta.outputs.sha }}"
+      #     CACHE_FLAG=""
+      #     if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+      #       CACHE_FLAG="--no-cache"
+      #     else
+      #       CACHE_FLAG="--cache-from ${PREFIX}/schema-migrator:latest"
+      #     fi
 
-          DOCKER_BUILDKIT=1 docker build \
-            -f apps/console/Dockerfile \
-            --target schema-migrator \
-            -t "${PREFIX}/schema-migrator:latest" \
-            -t "${PREFIX}/schema-migrator:${SHA}" \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            ${CACHE_FLAG} \
-            .
+      #     DOCKER_BUILDKIT=1 docker build \
+      #       -f apps/console/Dockerfile \
+      #       --target schema-migrator \
+      #       -t "${PREFIX}/schema-migrator:latest" \
+      #       -t "${PREFIX}/schema-migrator:${SHA}" \
+      #       --build-arg BUILDKIT_INLINE_CACHE=1 \
+      #       ${CACHE_FLAG} \
+      #       .
 
-          docker push "${PREFIX}/schema-migrator:latest"
-          docker push "${PREFIX}/schema-migrator:${SHA}"
+      #     docker push "${PREFIX}/schema-migrator:latest"
+      #     docker push "${PREFIX}/schema-migrator:${SHA}"
 
       # ── Build and push web image ────────────────────────────
       - name: Build and push web image
@@ -256,13 +257,13 @@ jobs:
 
             # ── Set image references for docker compose ───────
             export CONSOLE_IMAGE="${IMAGE_PREFIX}/console:${COMMIT_SHA}"
-            export SCHEMA_MIGRATOR_IMAGE="${IMAGE_PREFIX}/schema-migrator:${COMMIT_SHA}"
+            # export SCHEMA_MIGRATOR_IMAGE="${IMAGE_PREFIX}/schema-migrator:${COMMIT_SHA}"
             export WEB_IMAGE="${IMAGE_PREFIX}/web:${COMMIT_SHA}"
 
             # ── Pull pre-built images ─────────────────────────
             echo "▶ Pulling pre-built images..."
             PULL_START=\$(date +%s)
-            docker compose -f "\$COMPOSE_FILE" pull console schema-migrator web
+            docker compose -f "\$COMPOSE_FILE" pull console web
             PULL_END=\$(date +%s)
             echo "▶ Images pulled in \$((PULL_END - PULL_START))s"
 
