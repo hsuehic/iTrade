@@ -62,9 +62,10 @@ COPY --from=deps /app/packages/push-notification/node_modules ./packages/push-no
 COPY --from=deps /app/apps/console/node_modules               ./apps/console/node_modules
 
 # Step 1: Build all workspace packages (produces packages/*/dist/)
+# Build in dependency order: dependencies first, then dependents
 RUN pnpm --filter=@itrade/utils build
-RUN pnpm --filter=@itrade/logger build
 RUN pnpm --filter=@itrade/core build
+RUN pnpm --filter=@itrade/logger build
 RUN pnpm --filter=@itrade/data-manager build
 RUN pnpm --filter=@itrade/strategies build
 RUN pnpm --filter=@itrade/risk-manager build

@@ -54,10 +54,10 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 # Copy all source code
 COPY . .
 
-# Build workspace packages that web depends on
+# Build workspace packages that web depends on (in dependency order)
 RUN pnpm --filter=@itrade/utils build
-RUN pnpm --filter=@itrade/logger build
 RUN pnpm --filter=@itrade/core build
+RUN pnpm --filter=@itrade/logger build
 RUN pnpm --filter=@itrade/data-manager build
 RUN pnpm --filter=@itrade/strategies build
 RUN pnpm --filter=@itrade/push-notification build
