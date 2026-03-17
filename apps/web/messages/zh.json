@@ -1351,7 +1351,11 @@
       "notAvailable": "N/A",
       "perpetual": "永续",
       "futures": "期货",
-      "lastRun": "上次运行：{time}"
+      "lastRun": "上次运行：{time}",
+      "totalPnl": "总盈亏",
+      "realizedPnl": "已实现",
+      "unrealizedPnl": "未实现",
+      "noPnlData": "暂无盈亏数据"
     },
     "status": {
       "active": "运行中",
@@ -1367,11 +1371,27 @@
       "exchange": "交易所：",
       "warning": "此操作不可撤销，将永久删除该策略及其所有关联数据。"
     },
+    "performance": {
+      "title": "策略绩效",
+      "noData": "暂无绩效数据。启动策略以生成指标。",
+      "totalPnL": "总盈亏",
+      "realizedPnl": "已实现盈亏",
+      "unrealizedPnl": "未实现盈亏",
+      "roi": "收益率",
+      "winRate": "胜率",
+      "orders": "订单",
+      "maxDrawdown": "最大回撤",
+      "netPnl": "净盈亏",
+      "totalFees": "总手续费",
+      "profitFactor": "盈利因子",
+      "filledOrders": "已成交"
+    },
     "tabs": {
       "realtime": "实时",
       "orderBased": "按订单",
       "orders": "订单",
-      "configuration": "配置"
+      "configuration": "配置",
+      "performance": "绩效"
     },
     "netPosition": {
       "title": "净持仓",

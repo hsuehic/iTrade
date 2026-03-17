@@ -8,6 +8,12 @@ import {
   IconPlayerPlay,
   IconPlayerPause,
   IconEdit,
+  IconTrendingUp,
+  IconTrendingDown,
+  IconCash,
+  IconReceipt,
+  IconTarget,
+  IconChartBar,
 } from '@tabler/icons-react';
 import type { StrategyEntity } from '@itrade/data-manager';
 
@@ -42,7 +48,37 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const t = useTranslations('strategy');
   const router = useRouter();
 
+  interface PnLData {
+    realizedPnL: string | number;
+    unrealizedPnL: string | number;
+    totalPnL: string | number;
+    totalFees: string | number;
+    netPnL: string | number;
+    roi: string | number;
+    winRate: string | number;
+    profitFactor: string | number;
+  }
+
+  interface RebuiltPerformance {
+    pnl: PnLData;
+    orders: {
+      long: { filled: { count: number }; total: { count: number } };
+      short: { filled: { count: number }; total: { count: number } };
+    };
+    activity: {
+      winningTrades: number;
+      losingTrades: number;
+    };
+    risk: {
+      maxDrawdown: string | number;
+      sharpeRatio: string | number;
+    };
+  }
+
   const [strategy, setStrategy] = useState<StrategyEntity | null>(null);
+  const [rebuiltPerformance, setRebuiltPerformance] = useState<RebuiltPerformance | null>(
+    null,
+  );
   const [positionSummary, setPositionSummary] = useState<{
     netExecutedPosition: string;
     pendingBuySize: string;
@@ -60,6 +96,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
       if (!res.ok) throw new Error('Failed to fetch strategy');
       const data = await res.json();
       setStrategy(data.strategy);
+      setRebuiltPerformance(data.rebuiltPerformance ?? null);
       setPositionSummary(data.positionSummary ?? null);
     } catch (error) {
       console.error(error);
@@ -123,6 +160,39 @@ export default function StrategyDetailPage(props: { params: Params }) {
     parseFloat(value)
       .toFixed(8)
       .replace(/\.?0+$/, '') || '0';
+
+  const toNum = (v: string | number) => (typeof v === 'string' ? parseFloat(v) : v);
+
+  const formatCurrency = (value: string | number) => {
+    const num = toNum(value);
+    if (isNaN(num)) return '$0.00';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num);
+  };
+
+  const formatSignedCurrency = (value: string | number) => {
+    const num = toNum(value);
+    if (isNaN(num)) return '$0.00';
+    const abs = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.abs(num));
+    if (num > 0) return `+${abs}`;
+    if (num < 0) return `-${abs}`;
+    return abs;
+  };
+
+  const formatPercent = (value: string | number) => {
+    const num = toNum(value);
+    if (isNaN(num)) return '0.00%';
+    return `${num.toFixed(2)}%`;
+  };
 
   if (loading && !strategy) {
     return (
@@ -228,6 +298,108 @@ export default function StrategyDetailPage(props: { params: Params }) {
             </Button>
           </div>
         </div>
+
+        {/* PnL Performance Cards */}
+        {rebuiltPerformance?.pnl && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Total PnL */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('performance.totalPnL')}
+                </CardTitle>
+                {toNum(rebuiltPerformance.pnl.totalPnL) >= 0 ? (
+                  <IconTrendingUp className="h-4 w-4 text-green-500" />
+                ) : (
+                  <IconTrendingDown className="h-4 w-4 text-red-500" />
+                )}
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    toNum(rebuiltPerformance.pnl.totalPnL) >= 0
+                      ? 'text-green-500'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {formatSignedCurrency(rebuiltPerformance.pnl.totalPnL)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('performance.roi')}: {formatPercent(rebuiltPerformance.pnl.roi)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Realized PnL */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('performance.realizedPnl')}
+                </CardTitle>
+                <IconCash className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    toNum(rebuiltPerformance.pnl.realizedPnL) >= 0
+                      ? 'text-green-500'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {formatSignedCurrency(rebuiltPerformance.pnl.realizedPnL)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('performance.totalFees')}:{' '}
+                  {formatCurrency(rebuiltPerformance.pnl.totalFees)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Unrealized PnL */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('performance.unrealizedPnl')}
+                </CardTitle>
+                <IconReceipt className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div
+                  className={`text-2xl font-bold font-mono ${
+                    toNum(rebuiltPerformance.pnl.unrealizedPnL) >= 0
+                      ? 'text-green-500'
+                      : 'text-red-500'
+                  }`}
+                >
+                  {formatSignedCurrency(rebuiltPerformance.pnl.unrealizedPnL)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {t('performance.profitFactor')}:{' '}
+                  {toNum(rebuiltPerformance.pnl.profitFactor).toFixed(2)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Win Rate & Orders */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {t('performance.winRate')}
+                </CardTitle>
+                <IconTarget className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-mono">
+                  {formatPercent(rebuiltPerformance.pnl.winRate)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {rebuiltPerformance.activity?.winningTrades ?? 0} W /{' '}
+                  {rebuiltPerformance.activity?.losingTrades ?? 0} L
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Position Summary Cards */}
         {positionSummary !== null && (
@@ -366,11 +538,197 @@ export default function StrategyDetailPage(props: { params: Params }) {
         <Tabs defaultValue="orders" className="space-y-4">
           <TabsList>
             <TabsTrigger value="orders">{t('tabs.orders')}</TabsTrigger>
+            <TabsTrigger value="performance">{t('tabs.performance')}</TabsTrigger>
             <TabsTrigger value="config">{t('tabs.configuration')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="orders" className="space-y-4">
             <OrdersTable selectedStrategy={id} />
+          </TabsContent>
+
+          <TabsContent value="performance" className="space-y-4">
+            {rebuiltPerformance?.pnl ? (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {/* Net PnL */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.netPnl')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={`text-2xl font-bold font-mono ${
+                          toNum(rebuiltPerformance.pnl.netPnL) >= 0
+                            ? 'text-green-500'
+                            : 'text-red-500'
+                        }`}
+                      >
+                        {formatSignedCurrency(rebuiltPerformance.pnl.netPnL)}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t('performance.totalPnL')}:{' '}
+                        {formatCurrency(rebuiltPerformance.pnl.totalPnL)} -{' '}
+                        {t('performance.totalFees')}:{' '}
+                        {formatCurrency(rebuiltPerformance.pnl.totalFees)}
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Realized PnL */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.realizedPnl')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={`text-2xl font-bold font-mono ${
+                          toNum(rebuiltPerformance.pnl.realizedPnL) >= 0
+                            ? 'text-green-500'
+                            : 'text-red-500'
+                        }`}
+                      >
+                        {formatSignedCurrency(rebuiltPerformance.pnl.realizedPnL)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Unrealized PnL */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.unrealizedPnl')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={`text-2xl font-bold font-mono ${
+                          toNum(rebuiltPerformance.pnl.unrealizedPnL) >= 0
+                            ? 'text-green-500'
+                            : 'text-red-500'
+                        }`}
+                      >
+                        {formatSignedCurrency(rebuiltPerformance.pnl.unrealizedPnL)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* ROI */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.roi')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div
+                        className={`text-2xl font-bold font-mono ${
+                          toNum(rebuiltPerformance.pnl.roi) >= 0
+                            ? 'text-green-500'
+                            : 'text-red-500'
+                        }`}
+                      >
+                        {formatPercent(rebuiltPerformance.pnl.roi)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Win Rate */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.winRate')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono">
+                        {formatPercent(rebuiltPerformance.pnl.winRate)}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {rebuiltPerformance.activity?.winningTrades ?? 0} W /{' '}
+                        {rebuiltPerformance.activity?.losingTrades ?? 0} L
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Profit Factor */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.profitFactor')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono">
+                        {toNum(rebuiltPerformance.pnl.profitFactor).toFixed(2)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Total Fees */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.totalFees')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono text-muted-foreground">
+                        {formatCurrency(rebuiltPerformance.pnl.totalFees)}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Orders */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.orders')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono">
+                        {(rebuiltPerformance.orders?.long?.total?.count ?? 0) +
+                          (rebuiltPerformance.orders?.short?.total?.count ?? 0)}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t('performance.filledOrders')}:{' '}
+                        {(rebuiltPerformance.orders?.long?.filled?.count ?? 0) +
+                          (rebuiltPerformance.orders?.short?.filled?.count ?? 0)}
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Max Drawdown */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {t('performance.maxDrawdown')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono text-red-500">
+                        {formatPercent(rebuiltPerformance.risk?.maxDrawdown ?? 0)}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <div className="text-center space-y-2">
+                    <IconChartBar className="h-8 w-8 text-muted-foreground mx-auto" />
+                    <p className="text-sm text-muted-foreground">
+                      {t('performance.noData')}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="config" className="space-y-4">

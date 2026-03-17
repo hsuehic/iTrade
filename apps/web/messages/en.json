@@ -1361,7 +1361,11 @@
       "notAvailable": "N/A",
       "perpetual": "Perpetual",
       "futures": "Futures",
-      "lastRun": "Last run: {time}"
+      "lastRun": "Last run: {time}",
+      "totalPnl": "Total PnL",
+      "realizedPnl": "Realized",
+      "unrealizedPnl": "Unrealized",
+      "noPnlData": "No PnL data"
     },
     "status": {
       "active": "ACTIVE",
@@ -1381,16 +1385,23 @@
       "title": "Strategy Performance",
       "noData": "No performance data available yet. Start the strategy to generate metrics.",
       "totalPnL": "Total PnL",
+      "realizedPnl": "Realized PnL",
+      "unrealizedPnl": "Unrealized PnL",
       "roi": "ROI",
       "winRate": "Win Rate",
       "orders": "Orders",
-      "maxDrawdown": "Max Drawdown"
+      "maxDrawdown": "Max Drawdown",
+      "netPnl": "Net PnL",
+      "totalFees": "Total Fees",
+      "profitFactor": "Profit Factor",
+      "filledOrders": "Filled"
     },
     "tabs": {
       "realtime": "Realtime",
       "orderBased": "Order-based",
       "orders": "Orders",
-      "configuration": "Configuration"
+      "configuration": "Configuration",
+      "performance": "Performance"
     },
     "netPosition": {
       "title": "Net Position",

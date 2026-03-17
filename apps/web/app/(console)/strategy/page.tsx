@@ -14,6 +14,8 @@ import {
   IconChartLine,
   IconClock,
   IconSettings,
+  IconTrendingUp,
+  IconTrendingDown,
 } from '@tabler/icons-react';
 import {
   getStrategyDefaultParameters,
@@ -83,6 +85,17 @@ export default function StrategyPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [strategyToDelete, setStrategyToDelete] = useState<StrategyEntity | null>(null);
+
+  interface StrategyPnlData {
+    strategyId: number;
+    strategyName: string;
+    pnl: number;
+    realizedPnl: number;
+    unrealizedPnl: number;
+    totalOrders: number;
+    filledOrders: number;
+  }
+  const [pnlMap, setPnlMap] = useState<Map<number, StrategyPnlData>>(new Map());
 
   // Loading states for API operations
   const [isCreating, setIsCreating] = useState(false);
@@ -328,10 +341,25 @@ export default function StrategyPage() {
 
   const fetchStrategies = useCallback(async () => {
     try {
-      const response = await fetch('/api/strategies', { cache: 'no-store' });
-      if (!response.ok) throw new Error(t('errors.fetchStrategies'));
-      const data = await response.json();
+      const [strategiesRes, pnlRes] = await Promise.all([
+        fetch('/api/strategies', { cache: 'no-store' }),
+        fetch('/api/analytics/pnl', { cache: 'no-store' }),
+      ]);
+
+      if (!strategiesRes.ok) throw new Error(t('errors.fetchStrategies'));
+      const data = await strategiesRes.json();
       setStrategies(data.strategies);
+
+      if (pnlRes.ok) {
+        const pnlData = await pnlRes.json();
+        const map = new Map<number, StrategyPnlData>();
+        if (pnlData.pnl?.strategies) {
+          for (const s of pnlData.pnl.strategies) {
+            map.set(s.strategyId, s);
+          }
+        }
+        setPnlMap(map);
+      }
     } catch {
       toast.error(t('errors.loadStrategies'));
     } finally {
@@ -526,6 +554,18 @@ export default function StrategyPage() {
       default:
         return 'bg-gray-500';
     }
+  };
+
+  const formatPnlValue = (value: number) => {
+    const formatted = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.abs(value));
+    if (value > 0) return `+${formatted}`;
+    if (value < 0) return `-${formatted}`;
+    return formatted;
   };
 
   return (
@@ -1279,6 +1319,66 @@ export default function StrategyPage() {
                                 </span>
                               </div>
                             )}
+
+                            {/* PnL Summary */}
+                            {(() => {
+                              const pnl = pnlMap.get(strategy.id);
+                              if (!pnl || (pnl.pnl === 0 && pnl.totalOrders === 0)) {
+                                return null;
+                              }
+                              const isProfitable = pnl.pnl >= 0;
+                              return (
+                                <div className="pt-2 border-t space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-muted-foreground">
+                                      {t('card.totalPnl')}
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                      {isProfitable ? (
+                                        <IconTrendingUp className="h-3.5 w-3.5 text-green-500" />
+                                      ) : (
+                                        <IconTrendingDown className="h-3.5 w-3.5 text-red-500" />
+                                      )}
+                                      <span
+                                        className={`text-sm font-semibold font-mono ${
+                                          isProfitable ? 'text-green-500' : 'text-red-500'
+                                        }`}
+                                      >
+                                        {formatPnlValue(pnl.pnl)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">
+                                      {t('card.realizedPnl')}
+                                    </span>
+                                    <span
+                                      className={`font-mono ${
+                                        pnl.realizedPnl >= 0
+                                          ? 'text-green-500'
+                                          : 'text-red-500'
+                                      }`}
+                                    >
+                                      {formatPnlValue(pnl.realizedPnl)}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-muted-foreground">
+                                      {t('card.unrealizedPnl')}
+                                    </span>
+                                    <span
+                                      className={`font-mono ${
+                                        pnl.unrealizedPnl >= 0
+                                          ? 'text-green-500'
+                                          : 'text-red-500'
+                                      }`}
+                                    >
+                                      {formatPnlValue(pnl.unrealizedPnl)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </CardContent>
                         <CardFooter className="flex gap-2">
