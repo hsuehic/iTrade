@@ -25,10 +25,11 @@
 
 set -euo pipefail
 
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()  { echo -e "${GREEN}▶${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠${NC}  $*"; }
 error() { echo -e "${RED}✖${NC}  $*" >&2; exit 1; }
+dim()   { echo -e "${CYAN}  $*${NC}"; }
 
 # ── CONFIG — edit or override via environment variables ──────
 # Local postgres Docker container name
@@ -67,6 +68,96 @@ GCE_DUMP_PATH="/tmp/itrade_db_import.dump"
 GCE_COMPOSE_FILE="/opt/itrade/app/docker-compose.prod.yml"
 GCE_CONTAINER="itrade-db"
 # ─────────────────────────────────────────────────────────────
+
+# ── Helpers ──────────────────────────────────────────────────
+
+# Get PG major version from a running local container
+get_local_pg_version() {
+  local container="${1:-$LOCAL_CONTAINER}"
+  docker exec "$container" psql -U "${LOCAL_DB_USER:-postgres}" -d postgres \
+    -tAc "SHOW server_version;" 2>/dev/null | cut -d. -f1 || echo "?"
+}
+
+# Get PG major version from GCE container via SSH
+get_gce_pg_version() {
+  ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
+    "docker exec -e PGPASSWORD='${GCE_DB_PASS:-}' '$GCE_CONTAINER' \
+       psql -U '${GCE_DB_USER:-itrade}' -d postgres \
+       -tAc 'SHOW server_version;'" 2>/dev/null | cut -d. -f1 || echo "?"
+}
+
+# Check that a local container is running AND healthy (not in a restart loop)
+require_local_container() {
+  local container="${1:-$LOCAL_CONTAINER}"
+
+  if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+    error "Container '$container' is not running. Start it first."
+  fi
+
+  local status
+  status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$container" 2>/dev/null || echo "unknown")
+
+  if [[ "$status" == "unhealthy" ]]; then
+    error "Container '$container' is unhealthy. Check: docker logs $container"
+  fi
+
+  # Wait briefly if health check is still starting
+  if [[ "$status" == "starting" ]]; then
+    warn "Container '$container' health check is starting, waiting..."
+    local waited=0
+    while [[ $waited -lt 30 ]]; do
+      sleep 2
+      waited=$((waited + 2))
+      status=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "unknown")
+      if [[ "$status" == "healthy" ]]; then
+        break
+      fi
+      if [[ "$status" == "unhealthy" ]]; then
+        error "Container '$container' became unhealthy. Check: docker logs $container"
+      fi
+    done
+    if [[ "$status" != "healthy" && "$status" != "no-healthcheck" ]]; then
+      error "Container '$container' did not become healthy within 30s (status: $status)"
+    fi
+  fi
+}
+
+# Check that the GCE DB container is running and healthy via SSH
+require_gce_container() {
+  local status
+  status=$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
+    "docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' '$GCE_CONTAINER' 2>/dev/null || echo 'not-found'" 2>/dev/null)
+
+  case "$status" in
+    healthy|no-healthcheck) ;;
+    unhealthy)
+      error "GCE container '$GCE_CONTAINER' is unhealthy. SSH in and check: docker logs $GCE_CONTAINER"
+      ;;
+    not-found)
+      error "GCE container '$GCE_CONTAINER' not found. Is the DB running on GCE?"
+      ;;
+    starting)
+      warn "GCE container '$GCE_CONTAINER' health check is starting, waiting..."
+      local waited=0
+      while [[ $waited -lt 30 ]]; do
+        sleep 2
+        waited=$((waited + 2))
+        status=$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
+          "docker inspect --format='{{.State.Health.Status}}' '$GCE_CONTAINER' 2>/dev/null || echo 'unknown'" 2>/dev/null)
+        if [[ "$status" == "healthy" ]]; then break; fi
+        if [[ "$status" == "unhealthy" ]]; then
+          error "GCE container '$GCE_CONTAINER' became unhealthy. SSH in and check: docker logs $GCE_CONTAINER"
+        fi
+      done
+      if [[ "$status" != "healthy" ]]; then
+        error "GCE container '$GCE_CONTAINER' did not become healthy within 30s (status: $status)"
+      fi
+      ;;
+    *)
+      error "GCE container '$GCE_CONTAINER' has unexpected status: $status"
+      ;;
+  esac
+}
 
 # ── Read local DB credentials ─────────────────────────────────
 load_local_creds() {
@@ -107,16 +198,59 @@ load_gce_creds() {
   info "Remote database  : $GCE_DB_NAME  (user: $GCE_DB_USER)"
 }
 
+# ── Step: version ────────────────────────────────────────────
+cmd_version() {
+  echo ""
+  info "PostgreSQL version check"
+  echo ""
+
+  # Local
+  local local_ver="?"
+  if docker ps --format '{{.Names}}' | grep -q "^${LOCAL_CONTAINER}$"; then
+    load_local_creds
+    local_ver=$(get_local_pg_version "$LOCAL_CONTAINER")
+    local local_status
+    local_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}' "$LOCAL_CONTAINER" 2>/dev/null || echo "unknown")
+    local local_image
+    local_image=$(docker inspect --format='{{.Config.Image}}' "$LOCAL_CONTAINER" 2>/dev/null || echo "unknown")
+    info "Local:  PostgreSQL $local_ver  (image: $local_image, status: $local_status)"
+  else
+    warn "Local:  Container '$LOCAL_CONTAINER' is not running"
+  fi
+
+  # GCE
+  if [[ -n "$GCE_HOST" && -n "$GCE_USER" ]]; then
+    load_gce_creds
+    require_gce_container
+    local gce_ver
+    gce_ver=$(get_gce_pg_version)
+    local gce_image
+    gce_image=$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
+      "docker inspect --format='{{.Config.Image}}' '$GCE_CONTAINER'" 2>/dev/null || echo "unknown")
+    local gce_status
+    gce_status=$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
+      "docker inspect --format='{{.State.Health.Status}}' '$GCE_CONTAINER'" 2>/dev/null || echo "unknown")
+    info "GCE:    PostgreSQL $gce_ver  (image: $gce_image, status: $gce_status)"
+
+    if [[ "$local_ver" != "?" && "$gce_ver" != "?" && "$local_ver" != "$gce_ver" ]]; then
+      warn "Version mismatch! Local PG $local_ver vs GCE PG $gce_ver"
+      warn "pg_dump/pg_restore works across versions, but keeping them in sync is recommended."
+    fi
+  else
+    warn "GCE:    GCE_HOST / GCE_USER not set, skipping remote check"
+  fi
+
+  echo ""
+}
+
 # ── Step: export ──────────────────────────────────────────────
 cmd_export() {
   load_local_creds
+  require_local_container "$LOCAL_CONTAINER"
 
-  info "Exporting local database '$LOCAL_DB_NAME' from container '$LOCAL_CONTAINER'..."
-
-  # Check local container is running
-  if ! docker ps --format '{{.Names}}' | grep -q "^${LOCAL_CONTAINER}$"; then
-    error "Container '$LOCAL_CONTAINER' is not running. Start it first."
-  fi
+  local pg_ver
+  pg_ver=$(get_local_pg_version "$LOCAL_CONTAINER")
+  info "Exporting local database '$LOCAL_DB_NAME' (PG $pg_ver) from container '$LOCAL_CONTAINER'..."
 
   # pg_dump in custom format (-F c) → compressed binary, best for pg_restore
   docker exec \
@@ -132,6 +266,7 @@ cmd_export() {
 
   # Copy dump out of container to local filesystem
   docker cp "$LOCAL_CONTAINER:/tmp/itrade_export.dump" "$DUMP_FILE"
+  docker exec "$LOCAL_CONTAINER" rm -f /tmp/itrade_export.dump
 
   DUMP_SIZE=$(du -sh "$DUMP_FILE" | cut -f1)
   info "✅ Export complete: $DUMP_FILE ($DUMP_SIZE)"
@@ -164,6 +299,11 @@ cmd_import() {
   [[ -z "$GCE_USER" ]] && error "GCE_USER is not set."
 
   load_gce_creds
+  require_gce_container
+
+  local gce_ver
+  gce_ver=$(get_gce_pg_version)
+  info "GCE PostgreSQL version: $gce_ver"
 
   warn "⚠️  This will REPLACE all data in the GCE database '$GCE_DB_NAME'."
   warn "   Existing GCE data will be overwritten. Are you sure? (yes/no)"
@@ -237,11 +377,15 @@ cmd_download() {
   [[ -z "$GCE_USER" ]] && error "GCE_USER is not set."
 
   load_gce_creds
+  require_gce_container
+
+  local gce_ver
+  gce_ver=$(get_gce_pg_version)
 
   # Timestamp-based output filename (local)
   DOWNLOAD_FILE="${DOWNLOAD_FILE:-/tmp/itrade_db_gce_$(date +%Y%m%d_%H%M%S).dump}"
 
-  info "Dumping GCE database '$GCE_DB_NAME' from container '$GCE_CONTAINER'..."
+  info "Dumping GCE database '$GCE_DB_NAME' (PG $gce_ver) from container '$GCE_CONTAINER'..."
 
   # Run pg_dump inside GCE container, save to a temp path on GCE
   ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
@@ -267,16 +411,16 @@ cmd_download() {
 # ── Step: restore-local (restore GCE dump → local container) ──
 cmd_restore_local() {
   load_local_creds
+  require_local_container "$LOCAL_CONTAINER"
+
+  local pg_ver
+  pg_ver=$(get_local_pg_version "$LOCAL_CONTAINER")
+  info "Local PostgreSQL version: $pg_ver"
 
   # Auto-find most recent GCE dump if DOWNLOAD_FILE not set
   if [[ -z "${DOWNLOAD_FILE:-}" ]] || [[ ! -f "${DOWNLOAD_FILE:-}" ]]; then
     DOWNLOAD_FILE=$(ls -t /tmp/itrade_db_gce_*.dump 2>/dev/null | head -1 || true)
     [[ -z "$DOWNLOAD_FILE" ]] && error "No GCE dump file found in /tmp/. Run 'download' step first."
-  fi
-
-  # Check local container is running
-  if ! docker ps --format '{{.Names}}' | grep -q "^${LOCAL_CONTAINER}$"; then
-    error "Container '$LOCAL_CONTAINER' is not running. Start it first."
   fi
 
   warn "⚠️  This will REPLACE all data in the LOCAL database '$LOCAL_DB_NAME'."
@@ -346,7 +490,8 @@ Usage: bash deploy/db-sync.sh <command>
   download      SSH to GCE, pg_dump there, scp → /tmp/itrade_db_gce_<ts>.dump
   restore-local Restore the downloaded dump into local container
 
-────── Misc ────────────────────────────────────────────────────
+────── Diagnostics ────────────────────────────────────────────
+  version       Show PostgreSQL versions and health status (local + GCE)
   help          Show this help
 
 Environment variables (or set in .env.gce):
@@ -379,6 +524,7 @@ case "$COMMAND" in
   pull)           cmd_pull          ;;
   download)       cmd_download      ;;
   restore-local)  cmd_restore_local ;;
+  version)        cmd_version       ;;
   help|--help|-h) cmd_help          ;;
   *) error "Unknown command: $COMMAND. Run 'bash deploy/db-sync.sh help'" ;;
 esac
