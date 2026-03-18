@@ -10,25 +10,29 @@ FROM node:20-alpine AS deps
 RUN apk update && apk add --no-cache python3 make g++
 RUN npm install -g pnpm@10.18.0 turbo@1.13.4 ts-node@10.9.2
 
+# Create non-root user early so --chown can reference it in COPY layers
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 appuser
+
 WORKDIR /app
 
 # Copy workspace manifests first (cache-friendly layer)
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
+COPY --chown=appuser:nodejs package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
 
 # Copy all package.json files to satisfy pnpm workspace resolution
-COPY packages/core/package.json             ./packages/core/
-COPY packages/data-manager/package.json     ./packages/data-manager/
-COPY packages/exchange-connectors/package.json ./packages/exchange-connectors/
-COPY packages/strategies/package.json       ./packages/strategies/
-COPY packages/utils/package.json            ./packages/utils/
-COPY packages/logger/package.json           ./packages/logger/
-COPY packages/risk-manager/package.json     ./packages/risk-manager/
-COPY packages/portfolio-manager/package.json ./packages/portfolio-manager/
-COPY packages/push-notification/package.json ./packages/push-notification/
-COPY packages/backtesting/package.json      ./packages/backtesting/
-COPY packages/dry-run-engine/package.json   ./packages/dry-run-engine/
-COPY apps/web/package.json                  ./apps/web/
-COPY apps/console/package.json              ./apps/console/
+COPY --chown=appuser:nodejs packages/core/package.json             ./packages/core/
+COPY --chown=appuser:nodejs packages/data-manager/package.json     ./packages/data-manager/
+COPY --chown=appuser:nodejs packages/exchange-connectors/package.json ./packages/exchange-connectors/
+COPY --chown=appuser:nodejs packages/strategies/package.json       ./packages/strategies/
+COPY --chown=appuser:nodejs packages/utils/package.json            ./packages/utils/
+COPY --chown=appuser:nodejs packages/logger/package.json           ./packages/logger/
+COPY --chown=appuser:nodejs packages/risk-manager/package.json     ./packages/risk-manager/
+COPY --chown=appuser:nodejs packages/portfolio-manager/package.json ./packages/portfolio-manager/
+COPY --chown=appuser:nodejs packages/push-notification/package.json ./packages/push-notification/
+COPY --chown=appuser:nodejs packages/backtesting/package.json      ./packages/backtesting/
+COPY --chown=appuser:nodejs packages/dry-run-engine/package.json   ./packages/dry-run-engine/
+COPY --chown=appuser:nodejs apps/web/package.json                  ./apps/web/
+COPY --chown=appuser:nodejs apps/console/package.json              ./apps/console/
 
 # Use BuildKit cache mount for pnpm store (faster rebuilds)
 # This cache persists across builds, significantly speeding up pnpm install
@@ -36,20 +40,13 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install -r --no-frozen-lockfile
 
 # Copy all source code (preserving monorepo structure)
-COPY tsconfig.base.json ./
-COPY packages/ ./packages/
-COPY apps/ ./apps/
+COPY --chown=appuser:nodejs tsconfig.base.json ./
+COPY --chown=appuser:nodejs packages/ ./packages/
+COPY --chown=appuser:nodejs apps/ ./apps/
 
 # Build all packages and apps using Turbo (with build cache)
 RUN --mount=type=cache,id=turbo-cache,target=/app/.turbo \
     turbo build --concurrency=2
-
-# Create non-root user for runtime
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser  --system --uid 1001 appuser
-
-# Set ownership for the entire app directory
-RUN chown -R appuser:nodejs /app
 
 USER appuser
 
