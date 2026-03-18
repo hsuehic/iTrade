@@ -4,14 +4,17 @@
 #
 # Triggers: push to 'main' branch, or manual dispatch
 #
-# Strategy:
+# Strategy (near-zero downtime):
 #   Job 1 — Build Docker images on CI runner → push to GHCR
-#   Job 2 — SSH to GCE → pull images → docker compose up
+#   Job 2 — SSH to GCE → pre-pull images (while old is running)
+#            → selectively recreate only changed services
+#            → DB and nginx stay running throughout
 #
-# This is MUCH faster than building on GCE because:
-#   - GitHub runners have 2 vCPU + 7GB RAM (vs small GCE instance)
-#   - Registry-level layer caching across builds
-#   - GCE only needs to pull ~200MB of compressed layers
+# Downtime minimization:
+#   - Images are pre-pulled while old containers still serve traffic
+#   - Only console/web/schema-migrator are recreated (not DB or nginx)
+#   - Certbot runs conditionally (skipped if cert is valid)
+#   - Docker cleanup runs post-deploy (after services are healthy)
 #
 # Required GitHub Secrets:
 #   GCE_HOST            → GCE instance external IP or domain
@@ -275,14 +278,13 @@ jobs:
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
 
-          echo "🚀 Starting minimal deployment to GCE..."
+          echo "🚀 Starting zero-downtime deployment to GCE..."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "  Deploying commit: ${COMMIT_SHA:0:8}"
           echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
-          echo "  Strategy: Download docker-compose.prod.yml only (~8KB)"
+          echo "  Strategy: Pre-pull → selective recreate (DB+nginx stay running)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          # Use robust SSH options
           SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no"
 
           ssh $SSH_OPTS "$GCE_USER@$GCE_HOST" \
@@ -295,12 +297,14 @@ jobs:
             CERTBOT_ENV="/opt/itrade/.env.certbot"
             CERTS_BASE="/opt/itrade/certbot/certs"
             WEBROOT_DIR="/opt/itrade/certbot/webroot"
+            DEPLOY_START=$(date +%s)
 
-            # ── Download required deploy files ──
-            echo "▶ Downloading deployment files..."
-            mkdir -p "$APP_DIR"
-            cd "$APP_DIR"
-            
+            # ══════════════════════════════════════════════════════
+            # Phase 1: Preparation (old containers still serving traffic)
+            # ══════════════════════════════════════════════════════
+            echo ""
+            echo "══ Phase 1: Preparation (zero downtime) ══"
+
             download_from_github() {
               local source_path="$1"
               local dest_path="$2"
@@ -320,61 +324,48 @@ jobs:
 
               if [ "$ok" = true ] && [ -s "$tmp_path" ]; then
                 mv "$tmp_path" "$dest_path"
-                echo "✅ Downloaded: $source_path"
+                echo "  ✅ Downloaded: $source_path"
                 return 0
               fi
 
               rm -f "$tmp_path"
-              echo "❌ Failed to download: $source_path"
+              echo "  ❌ Failed to download: $source_path"
               return 1
             }
 
+            echo "▶ Downloading deployment files..."
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
             download_from_github "docker-compose.prod.yml" "$COMPOSE_FILE"
-            
-            # Validate downloaded file
-            if [ ! -s "$COMPOSE_FILE" ]; then
-              echo "❌ docker-compose.prod.yml is empty"
-              exit 1
-            fi
-            
-            if ! grep -q "services:" "$COMPOSE_FILE"; then
-              echo "❌ docker-compose.prod.yml is invalid (missing services)"
-              exit 1
-            fi
-            
-            FILE_SIZE=$(wc -c < "$COMPOSE_FILE")
-            echo "✅ docker-compose.prod.yml valid (${FILE_SIZE} bytes)"
 
-            # ── Fix permissions and verify environment files ──
-            echo "▶ Fixing permissions and checking environment files..."
-            
-            # Ensure correct ownership of /opt/itrade directory
+            if [ ! -s "$COMPOSE_FILE" ] || ! grep -q "services:" "$COMPOSE_FILE"; then
+              echo "❌ docker-compose.prod.yml is empty or invalid"
+              exit 1
+            fi
+            FILE_SIZE=$(wc -c < "$COMPOSE_FILE")
+            echo "  ✅ docker-compose.prod.yml valid (${FILE_SIZE} bytes)"
+
+            echo "▶ Verifying environment files..."
             sudo chown -R $(whoami):$(whoami) /opt/itrade/ 2>/dev/null || true
-            sudo chmod 755 /opt/itrade/ 2>/dev/null || true
-            sudo chmod 755 /opt/itrade/app/ 2>/dev/null || true
+            sudo chmod 755 /opt/itrade/ /opt/itrade/app/ 2>/dev/null || true
             sudo chmod 600 /opt/itrade/.env.* 2>/dev/null || true
-            
-            # Verify environment files exist
+
             for env_file in /opt/itrade/.env.{console,db,web,certbot}; do
               if [ ! -f "$env_file" ]; then
                 echo "❌ Missing: $env_file"
                 exit 1
               fi
-              echo "✅ Found: $env_file"
             done
-            echo "✅ All environment files present with correct permissions"
+            echo "  ✅ All environment files present"
 
-            # ── Bootstrap nginx config + SSL files if needed ──
-            echo "▶ Ensuring nginx config and certificate paths exist..."
+            echo "▶ Preparing nginx config and SSL paths..."
             DOMAIN=$(sed -n 's/^DOMAIN=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
             if [ -z "${DOMAIN:-}" ]; then
               echo "❌ DOMAIN is missing in $CERTBOT_ENV"
               exit 1
             fi
-            echo "✅ SSL domain: $DOMAIN"
 
             if [ -d "$NGINX_CONF" ]; then
-              echo "⚠️  $NGINX_CONF is a directory; moving it away"
               mv "$NGINX_CONF" "/opt/itrade/nginx.conf.backup.$(date +%s)"
             fi
 
@@ -443,203 +434,212 @@ jobs:
             DUMMY_CERT="$CERTS_BASE/live/$DOMAIN/fullchain.pem"
             DUMMY_KEY="$CERTS_BASE/live/$DOMAIN/privkey.pem"
             if [ ! -s "$DUMMY_CERT" ] || [ ! -s "$DUMMY_KEY" ]; then
-              echo "▶ Generating temporary bootstrap certificate..."
+              echo "  ▶ Generating temporary bootstrap certificate..."
               openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                 -keyout "$DUMMY_KEY" \
                 -out "$DUMMY_CERT" \
                 -subj "/CN=$DOMAIN" >/dev/null 2>&1
-              echo "✅ Temporary bootstrap certificate generated"
+              echo "  ✅ Bootstrap certificate generated"
             else
-              echo "✅ Existing certificate files found"
+              echo "  ✅ Existing certificate found"
             fi
 
-            # ── Stop existing containers and free ports ──
-            echo "▶ Stopping existing iTrade containers..."
-            if [ -f "$COMPOSE_FILE" ]; then
-              docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
-              echo "✅ Existing containers stopped and removed"
-            else
-              echo "ℹ️  No existing compose file found; checking for stale containers"
-            fi
-
-            # Stop any individually-named iTrade containers that might linger
-            for ctr in itrade-nginx itrade-web itrade-console itrade-db itrade-certbot itrade-schema-migrator; do
-              if docker ps -a --format '{{.Names}}' | grep -qx "$ctr"; then
-                docker rm -f "$ctr" 2>/dev/null || true
-                echo "  Removed stale container: $ctr"
-              fi
-            done
-
-            # ── Clean up unused Docker images to save disk space ──
-            echo "▶ Cleaning up unused Docker resources..."
-            docker image prune -af --filter "until=168h" 2>/dev/null || true
-            docker builder prune -f 2>/dev/null || true
-            # NOTE: Do NOT run `docker volume prune` — it would delete postgres_data
-            # while containers are stopped, destroying the database.
-            DISK_AFTER=$(df -h / | awk 'NR==2{print $4}')
-            echo "✅ Docker cleanup complete (available disk: ${DISK_AFTER})"
-
-            # ── Free host ports 80/443 for Docker nginx ──
-            echo "▶ Checking host services on ports 80/443..."
+            # Disable host nginx if running (only needed on first deploy)
             if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
-              echo "⚠️  Host nginx service is active; stopping it to avoid port conflicts"
+              echo "  ⚠️  Stopping host nginx to avoid port conflict"
               sudo systemctl stop nginx || true
               sudo systemctl disable nginx || true
             fi
 
-            # Kill any remaining processes on ports 80/443 (non-Docker)
-            for port in 80 443; do
-              PIDS=""
-              if command -v lsof >/dev/null 2>&1; then
-                PIDS=$(sudo lsof -ti ":$port" 2>/dev/null || true)
-              elif command -v fuser >/dev/null 2>&1; then
-                PIDS=$(sudo fuser "$port/tcp" 2>/dev/null | tr -s ' ' '\n' || true)
-              fi
-              if [ -n "$PIDS" ]; then
-                echo "⚠️  Killing remaining processes on port $port: $PIDS"
-                echo "$PIDS" | xargs sudo kill -9 2>/dev/null || true
-              fi
-            done
-
-            # Brief pause to let OS release sockets
-            sleep 2
-
-            PORT_CONFLICTS=$(ss -ltn '( sport = :80 or sport = :443 )' | sed -n '2,$p' || true)
-            if [ -n "$PORT_CONFLICTS" ]; then
-              echo "❌ Ports 80/443 are still occupied after cleanup:"
-              echo "$PORT_CONFLICTS"
-              echo "Attempting to identify processes..."
-              sudo ss -tlnp '( sport = :80 or sport = :443 )' || true
-              echo "Please free these ports manually before deployment."
-              exit 1
-            fi
-            echo "✅ Ports 80/443 are available for Docker nginx"
-
-            # ── Login to GHCR ──
             echo "▶ Logging in to GHCR..."
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
-            # ── Set image references ──
             export CONSOLE_IMAGE="$IMAGE_PREFIX/console:$COMMIT_SHA"
             export SCHEMA_MIGRATOR_IMAGE="$IMAGE_PREFIX/schema-migrator:$COMMIT_SHA"
             export WEB_IMAGE="$IMAGE_PREFIX/web:$COMMIT_SHA"
-            
-            echo "▶ Using images:"
-            echo "  Console: $CONSOLE_IMAGE"
-            echo "  Schema Migrator: $SCHEMA_MIGRATOR_IMAGE"
-            echo "  Web: $WEB_IMAGE"
 
-            # ── Pull pre-built images ──
-            echo "▶ Pulling pre-built images..."
+            echo "▶ Pre-pulling new images (services still running)..."
             PULL_START=$(date +%s)
-            
-            if ! docker compose -f "$COMPOSE_FILE" pull console schema-migrator web; then
-              echo "❌ Failed to pull images"
-              exit 1
-            fi
-            
+
+            docker compose -f "$COMPOSE_FILE" pull console schema-migrator web
+
             PULL_END=$(date +%s)
-            echo "✅ Images pulled in $((PULL_END - PULL_START))s"
+            echo "  ✅ Images pre-pulled in $((PULL_END - PULL_START))s (zero downtime)"
 
-            # ── Deploy containers (runtime only, never build on GCE) ──
-            echo "▶ Starting containers..."
-            DEPLOY_START=$(date +%s)
-            
-            if ! docker compose -f "$COMPOSE_FILE" up -d --no-build db schema-migrator console web nginx; then
-              echo "❌ Failed to start containers"
-              docker compose -f "$COMPOSE_FILE" logs --tail=50
-              exit 1
-            fi
+            PHASE1_END=$(date +%s)
+            echo "══ Phase 1 complete: $((PHASE1_END - DEPLOY_START))s (zero downtime) ══"
 
-            # ── Ensure nginx is ready before ACME challenge ──
-            echo "▶ Waiting for nginx to become ready..."
-            NGINX_TIMEOUT=60
-            NGINX_ELAPSED=0
-            until docker exec itrade-nginx nginx -t >/dev/null 2>&1; do
-              if [ $NGINX_ELAPSED -ge $NGINX_TIMEOUT ]; then
-                echo "❌ nginx readiness timeout"
-                docker compose -f "$COMPOSE_FILE" logs --tail=50 nginx
-                exit 1
+            # ══════════════════════════════════════════════════════
+            # Phase 2: Rolling update (minimal downtime)
+            # Only recreate services with new images.
+            # DB and nginx stay running throughout.
+            # ══════════════════════════════════════════════════════
+            echo ""
+            echo "══ Phase 2: Rolling update (minimal downtime starts) ══"
+            DOWNTIME_START=$(date +%s)
+
+            # Ensure DB is running and healthy (noop if already running)
+            docker compose -f "$COMPOSE_FILE" up -d --no-build db
+            echo "▶ Waiting for database..."
+            DB_TIMEOUT=30
+            DB_ELAPSED=0
+            while [ $DB_ELAPSED -lt $DB_TIMEOUT ]; do
+              if docker inspect --format='{{.State.Health.Status}}' itrade-db 2>/dev/null | grep -q "healthy"; then
+                break
               fi
               sleep 2
-              NGINX_ELAPSED=$((NGINX_ELAPSED + 2))
+              DB_ELAPSED=$((DB_ELAPSED + 2))
             done
-            echo "✅ nginx is ready"
-
-            # ── Issue / refresh certificate (idempotent) ──
-            CERTBOT_EMAIL=$(sed -n 's/^CERTBOT_EMAIL=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
-            if [ -z "${CERTBOT_EMAIL:-}" ]; then
-              echo "❌ CERTBOT_EMAIL is missing in $CERTBOT_ENV"
+            if [ $DB_ELAPSED -ge $DB_TIMEOUT ]; then
+              echo "❌ Database health check timeout"
+              docker compose -f "$COMPOSE_FILE" logs --tail=20 db
               exit 1
             fi
+            echo "  ✅ Database healthy (waited ${DB_ELAPSED}s)"
 
-            echo "▶ Ensuring Let's Encrypt certificate is issued for $DOMAIN..."
-            if ! docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot certonly \
-              --webroot \
-              --webroot-path=/var/www/certbot \
-              --domain "$DOMAIN" \
-              --email "$CERTBOT_EMAIL" \
-              --agree-tos \
-              --non-interactive \
-              --keep-until-expiring \
-              --cert-name "$DOMAIN"; then
-              echo "❌ Certificate issuance/refresh failed"
-              docker compose -f "$COMPOSE_FILE" logs --tail=100 nginx
+            # Run schema migrator with new image
+            docker compose -f "$COMPOSE_FILE" rm -sf schema-migrator 2>/dev/null || true
+            echo "▶ Running schema migration..."
+            MIGRATION_START=$(date +%s)
+            docker compose -f "$COMPOSE_FILE" up --no-build schema-migrator
+
+            MIGRATOR_EXIT=$(docker inspect --format='{{.State.ExitCode}}' itrade-schema-migrator 2>/dev/null || echo "1")
+            MIGRATION_END=$(date +%s)
+            if [ "$MIGRATOR_EXIT" != "0" ]; then
+              echo "❌ Schema migration failed (exit code: $MIGRATOR_EXIT)"
+              docker compose -f "$COMPOSE_FILE" logs --tail=30 schema-migrator
               exit 1
             fi
+            echo "  ✅ Schema migration complete ($((MIGRATION_END - MIGRATION_START))s)"
 
-            echo "▶ Reloading nginx certificate..."
-            docker exec itrade-nginx nginx -s reload
+            # Recreate console and web with new images
+            # docker compose up -d detects image changes and only recreates affected containers
+            echo "▶ Updating console and web services..."
+            docker compose -f "$COMPOSE_FILE" up -d --no-build console web
 
-            echo "▶ Starting certbot renewal service..."
-            docker compose -f "$COMPOSE_FILE" up -d --no-build certbot
+            # Ensure nginx is running and reload config
+            docker compose -f "$COMPOSE_FILE" up -d --no-build nginx
+            docker exec itrade-nginx nginx -s reload 2>/dev/null || true
 
-            echo "▶ Ensuring nginx reload cron exists for renewed certificates..."
-            CRON_MARKER="# iTrade nginx SSL reload"
-            CRON_JOB="0 */12 * * * docker exec itrade-nginx nginx -s reload >> /var/log/nginx-reload.log 2>&1"
-            if ! crontab -l 2>/dev/null | grep -q "itrade-nginx nginx -s reload"; then
-              (crontab -l 2>/dev/null; echo "$CRON_MARKER"; echo "$CRON_JOB") | crontab -
-              echo "✅ Installed nginx reload cron"
-            else
-              echo "✅ nginx reload cron already present"
-            fi
-
-            # ── Wait for web health check ──
+            # Wait for web health
             echo "▶ Waiting for web service to be healthy..."
-            TIMEOUT=90
-            ELAPSED=0
-            
-            while [ $ELAPSED -lt $TIMEOUT ]; do
+            WEB_TIMEOUT=90
+            WEB_ELAPSED=0
+            while [ $WEB_ELAPSED -lt $WEB_TIMEOUT ]; do
               if docker inspect --format='{{.State.Health.Status}}' itrade-web 2>/dev/null | grep -q "healthy"; then
                 break
               fi
               sleep 3
-              ELAPSED=$((ELAPSED + 3))
-              echo "  Waiting... ${ELAPSED}s/${TIMEOUT}s"
+              WEB_ELAPSED=$((WEB_ELAPSED + 3))
+              if [ $((WEB_ELAPSED % 15)) -eq 0 ]; then
+                echo "  Waiting... ${WEB_ELAPSED}s/${WEB_TIMEOUT}s"
+              fi
             done
-            
-            if [ $ELAPSED -ge $TIMEOUT ]; then
+
+            DOWNTIME_END=$(date +%s)
+
+            if [ $WEB_ELAPSED -ge $WEB_TIMEOUT ]; then
               echo "❌ Web service health check timeout"
               docker compose -f "$COMPOSE_FILE" logs --tail=50 web
               exit 1
             fi
-            
-            DEPLOY_END=$(date +%s)
-            echo "✅ Deployment completed in $((DEPLOY_END - DEPLOY_START))s"
 
-            # ── Cleanup ──
-            echo "▶ Cleaning up..."
-            docker image prune -f >/dev/null 2>&1 || true
+            echo "  ✅ Web service healthy (waited ${WEB_ELAPSED}s)"
+            echo "══ Phase 2 complete: ~$((DOWNTIME_END - DOWNTIME_START))s service downtime ══"
+
+            # ══════════════════════════════════════════════════════
+            # Phase 3: Post-deploy (services are already healthy)
+            # ══════════════════════════════════════════════════════
+            echo ""
+            echo "══ Phase 3: Post-deploy tasks (zero downtime) ══"
+
+            # Conditional certbot: only run if certificate needs attention
+            CERT_FILE="$CERTS_BASE/live/$DOMAIN/fullchain.pem"
+            NEED_CERT=false
+
+            if [ ! -s "$CERT_FILE" ]; then
+              NEED_CERT=true
+              echo "  Certificate missing → will issue"
+            elif openssl x509 -in "$CERT_FILE" -noout -subject 2>/dev/null | grep -qi "O = \|self.signed\|CN = $DOMAIN" && \
+                 ! openssl x509 -in "$CERT_FILE" -noout -issuer 2>/dev/null | grep -qi "Let's Encrypt\|R3\|R10\|R11\|E1\|E5"; then
+              NEED_CERT=true
+              echo "  Self-signed certificate detected → will issue real one"
+            elif ! openssl x509 -in "$CERT_FILE" -noout -checkend 2592000 2>/dev/null; then
+              NEED_CERT=true
+              echo "  Certificate expires within 30 days → will renew"
+            fi
+
+            if [ "$NEED_CERT" = true ]; then
+              CERTBOT_EMAIL=$(sed -n 's/^CERTBOT_EMAIL=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
+              if [ -n "${CERTBOT_EMAIL:-}" ]; then
+                # Certbot refuses to overwrite a live directory it didn't create
+                # (e.g. our bootstrap self-signed cert). Clean it up so certbot
+                # can manage the directory from scratch.
+                CERT_LIVE_DIR="$CERTS_BASE/live/$DOMAIN"
+                CERT_RENEWAL_CONF="$CERTS_BASE/renewal/$DOMAIN.conf"
+                if [ -d "$CERT_LIVE_DIR" ] && [ ! -f "$CERT_RENEWAL_CONF" ]; then
+                  echo "  ▶ Clearing non-certbot certificate from live directory..."
+                  rm -rf "$CERT_LIVE_DIR"
+                  rm -rf "$CERTS_BASE/archive/$DOMAIN" 2>/dev/null || true
+                fi
+
+                echo "▶ Issuing/renewing Let's Encrypt certificate..."
+                if docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot certonly \
+                  --webroot \
+                  --webroot-path=/var/www/certbot \
+                  --domain "$DOMAIN" \
+                  --email "$CERTBOT_EMAIL" \
+                  --agree-tos \
+                  --non-interactive \
+                  --keep-until-expiring \
+                  --cert-name "$DOMAIN"; then
+                  docker exec itrade-nginx nginx -s reload
+                  echo "  ✅ Certificate issued/renewed and nginx reloaded"
+                else
+                  # Certbot failed — restore bootstrap cert so nginx can still reload
+                  if [ ! -s "$CERTS_BASE/live/$DOMAIN/fullchain.pem" ]; then
+                    echo "  ▶ Restoring bootstrap certificate..."
+                    mkdir -p "$CERTS_BASE/live/$DOMAIN"
+                    openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                      -keyout "$CERTS_BASE/live/$DOMAIN/privkey.pem" \
+                      -out "$CERTS_BASE/live/$DOMAIN/fullchain.pem" \
+                      -subj "/CN=$DOMAIN" >/dev/null 2>&1
+                  fi
+                  echo "  ⚠️  Certificate issuance failed (non-fatal, services running with self-signed cert)"
+                fi
+              fi
+            else
+              echo "  ✅ Certificate is valid, skipping certbot"
+            fi
+
+            # Start certbot renewal service
+            docker compose -f "$COMPOSE_FILE" up -d --no-build certbot
+
+            # Ensure nginx reload cron for certificate renewals
+            CRON_JOB="0 */12 * * * docker exec itrade-nginx nginx -s reload >> /var/log/nginx-reload.log 2>&1"
+            if ! crontab -l 2>/dev/null | grep -q "itrade-nginx nginx -s reload"; then
+              (crontab -l 2>/dev/null; echo "# iTrade nginx SSL reload"; echo "$CRON_JOB") | crontab -
+              echo "  ✅ Installed nginx reload cron"
+            fi
+
             docker logout ghcr.io >/dev/null 2>&1 || true
 
+            DEPLOY_END=$(date +%s)
+
             # ── Final status ──
+            echo ""
             echo "▶ Final container status:"
             docker compose -f "$COMPOSE_FILE" ps
 
             echo ""
             echo "🎉 Deployment successful!"
-            echo "   Total time: $((DEPLOY_END - PULL_START))s"
-            echo "   Downloaded: ${FILE_SIZE} bytes (~$((FILE_SIZE / 1024))KB)"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "  Total pipeline time:  $((DEPLOY_END - DEPLOY_START))s"
+            echo "  Image pre-pull:       $((PULL_END - PULL_START))s (zero downtime)"
+            echo "  Service downtime:     ~$((DOWNTIME_END - DOWNTIME_START))s"
+            echo "  Schema migration:     $((MIGRATION_END - MIGRATION_START))s"
+            echo "  Web health wait:      ${WEB_ELAPSED}s"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           ENDSSH
 
       - name: Report deployment status
