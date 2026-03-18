@@ -41,7 +41,7 @@ services:
   # PostgreSQL database
   # ----------------------------------------------------------
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: itrade-db
     volumes:
       - postgres_data:/var/lib/postgresql/data

@@ -166,6 +166,39 @@ jobs:
               fi
             done
             
+            # Check openssl availability
+            echo "Checking openssl..."
+            if command -v openssl >/dev/null 2>&1; then
+              echo "✅ openssl available: $(openssl version)"
+            else
+              echo "❌ openssl NOT installed — bootstrap cert generation will fail"
+              echo "   Fix: sudo apt-get install -y openssl"
+            fi
+
+            # Check directory permissions
+            echo "Checking /opt/itrade permissions..."
+            ls -la /opt/itrade/ 2>/dev/null || echo "⚠️  Cannot list /opt/itrade/"
+            CERT_DIR="/opt/itrade/certbot/certs"
+            if [ -d "$CERT_DIR" ]; then
+              echo "✅ Cert directory exists: $CERT_DIR"
+              ls -la "$CERT_DIR/" 2>/dev/null || true
+            else
+              echo "⚠️  Cert directory missing: $CERT_DIR"
+            fi
+
+            # Test openssl cert generation
+            echo "Testing openssl cert generation..."
+            TMPDIR=$(mktemp -d)
+            if openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+              -keyout "$TMPDIR/test.key" \
+              -out "$TMPDIR/test.crt" \
+              -subj "/CN=test.example.com" 2>&1; then
+              echo "✅ openssl cert generation works"
+            else
+              echo "❌ openssl cert generation FAILED"
+            fi
+            rm -rf "$TMPDIR"
+
             # Test docker-compose download
             echo "Testing docker-compose download..."
             cd /opt/itrade/app

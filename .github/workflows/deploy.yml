@@ -437,11 +437,31 @@ jobs:
             DUMMY_KEY="$CERTS_BASE/live/$DOMAIN/privkey.pem"
             if [ ! -s "$DUMMY_CERT" ] || [ ! -s "$DUMMY_KEY" ]; then
               echo "  ▶ Generating temporary bootstrap certificate..."
-              openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+
+              # Ensure openssl is available (may be missing on minimal GCE images)
+              if ! command -v openssl >/dev/null 2>&1; then
+                echo "  ▶ openssl not found, installing..."
+                sudo apt-get update -qq && sudo apt-get install -y -qq openssl
+              fi
+
+              # Ensure the target directory exists and is writable
+              mkdir -p "$CERTS_BASE/live/$DOMAIN"
+
+              # Generate self-signed cert; show errors for diagnostics
+              if openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                 -keyout "$DUMMY_KEY" \
                 -out "$DUMMY_CERT" \
-                -subj "/CN=$DOMAIN" >/dev/null 2>&1
-              echo "  ✅ Bootstrap certificate generated"
+                -subj "/CN=$DOMAIN" 2>&1; then
+                echo "  ✅ Bootstrap certificate generated"
+              else
+                echo "  ⚠️  openssl failed as current user, retrying with sudo..."
+                sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                  -keyout "$DUMMY_KEY" \
+                  -out "$DUMMY_CERT" \
+                  -subj "/CN=$DOMAIN" 2>&1
+                sudo chown "$(whoami):$(whoami)" "$DUMMY_KEY" "$DUMMY_CERT"
+                echo "  ✅ Bootstrap certificate generated (with sudo)"
+              fi
             else
               echo "  ✅ Existing certificate found"
             fi
@@ -605,7 +625,11 @@ jobs:
                     openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                       -keyout "$CERTS_BASE/live/$DOMAIN/privkey.pem" \
                       -out "$CERTS_BASE/live/$DOMAIN/fullchain.pem" \
-                      -subj "/CN=$DOMAIN" >/dev/null 2>&1
+                      -subj "/CN=$DOMAIN" 2>&1 || \
+                    sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                      -keyout "$CERTS_BASE/live/$DOMAIN/privkey.pem" \
+                      -out "$CERTS_BASE/live/$DOMAIN/fullchain.pem" \
+                      -subj "/CN=$DOMAIN" 2>&1 || true
                   fi
                   echo "  ⚠️  Certificate issuance failed (non-fatal, services running with self-signed cert)"
                 fi
