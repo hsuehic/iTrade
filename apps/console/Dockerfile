@@ -1,7 +1,10 @@
 # ============================================================
 # Console Application
 # ============================================================
-# Uses the unified build base image with everything pre-built
+# Uses the unified build base image with everything pre-built.
+# Both stages run TypeScript source directly (tsx / ts-node with
+# --conditions=source) so they resolve workspace packages to .ts
+# source files, bypassing dist/ bundler output entirely.
 # ============================================================
 
 # ============================================================
@@ -12,10 +15,7 @@ FROM itrade-deps:latest AS schema-migrator
 WORKDIR /app/packages/data-manager
 
 ENV NODE_ENV=production
-ENV TS_NODE_PROJECT=tsconfig.json
 
-# Run the package script so runtime resolution is handled by pnpm workspace binaries.
-# This avoids `node -r ts-node/register` module resolution failures in container runtime.
 CMD ["pnpm", "run", "sync-schema"]
 
 # ============================================================
@@ -27,6 +27,4 @@ WORKDIR /app/apps/console
 
 ENV NODE_ENV=production
 
-# Use production start script with compiled JavaScript for faster startup (~2s vs ~20s with ts-node)
-# reflect-metadata is still needed for TypeORM decorators
-CMD ["pnpm", "start:prod"]
+CMD ["pnpm", "start"]

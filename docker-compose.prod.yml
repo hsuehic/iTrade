@@ -78,10 +78,6 @@ services:
     container_name: itrade-schema-migrator
     env_file:
       - /opt/itrade/.env.console # provides DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_DB
-    environment:
-      # Ensure runtime can resolve workspace dependencies from console package node_modules.
-      NODE_PATH: /app/apps/console/node_modules
-    command: ['node', '-r', 'reflect-metadata', 'sync-schema-to-db.js']
     depends_on:
       db:
         condition: service_healthy
@@ -106,14 +102,9 @@ services:
     container_name: itrade-console
     env_file:
       - /opt/itrade/.env.console
-    environment:
-      # Include fallback runtime deps path for packages not linked into this legacy image.
-      NODE_PATH: /opt/itrade/runtime-node-path/node_modules:/app/apps/console/node_modules
-    volumes:
-      - /opt/itrade/runtime-node-path:/opt/itrade/runtime-node-path:ro
     depends_on:
-      db:
-        condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully
     restart: unless-stopped
     # Give trading engine time to gracefully close WebSocket connections & flush state
     stop_grace_period: 30s
