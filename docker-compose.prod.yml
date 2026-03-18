@@ -10,8 +10,8 @@
 #   /opt/itrade/.env.web
 #   /opt/itrade/.env.certbot      ← for SSL (DOMAIN + CERTBOT_EMAIL)
 #
-# SSL first-time setup (run ONCE after DNS is pointed to this server):
-#   cd /opt/itrade/app && bash deploy/certbot-init.sh
+# SSL setup: Certificates and nginx.conf should already be configured on the server
+# (Initial setup was done during first deployment)
 #
 # Startup order:
 #   db (healthy) → schema-migrator (completed) → console + web → nginx + certbot

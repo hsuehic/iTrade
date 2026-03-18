@@ -201,11 +201,25 @@ jobs:
       - name: Add GCE host to known_hosts
         run: |
           echo "🔍 Adding GCE host to known_hosts..."
+          echo "Target host: ${{ secrets.GCE_HOST }}"
 
-          # Add host keys to known_hosts (now that SSH service is working)
-          ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts
+          # Add host keys to known_hosts
+          if ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts; then
+            echo "✅ Host keys added successfully"
+          else
+            echo "❌ Failed to add host keys"
+            echo "Attempting to connect anyway (may prompt for host verification)"
+          fi
 
-          echo "✅ Host keys added successfully"
+      - name: Test SSH connection
+        run: |
+          echo "🔍 Testing SSH connection..."
+          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" "echo 'SSH connection successful'"; then
+            echo "✅ SSH connection working"
+          else
+            echo "❌ SSH connection failed"
+            exit 1
+          fi
 
       - name: Deploy on GCE
         env:
@@ -220,165 +234,150 @@ jobs:
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
 
-          echo "🚀 Starting deployment to GCE..."
+          echo "🚀 Starting minimal deployment to GCE..."
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Deploying commit: ${COMMIT_SHA:0:8}"
+          echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
+          echo "  Strategy: Download docker-compose.prod.yml only (~8KB)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << ENDSSH
+          ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << 'ENDSSH'
             set -euo pipefail
 
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "  Deploying commit: ${COMMIT_SHA:0:8}"
-            echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
             APP_DIR="/opt/itrade/app"
-            COMPOSE_FILE="\$APP_DIR/docker-compose.prod.yml"
+            COMPOSE_FILE="$APP_DIR/docker-compose.prod.yml"
 
-            # ── Download deployment files (lightweight approach) ──
-            echo "▶ Downloading deployment files (optimized - no full source code)..."
-            
-            # Create app directory if it doesn't exist
-            mkdir -p "\$APP_DIR"
-            cd "\$APP_DIR"
-            
-            # Try lightweight file download first
-            REPO="${GITHUB_REPOSITORY}"
-            BASE_URL="https://raw.githubusercontent.com/\${REPO}/\${COMMIT_SHA}"
-            DOWNLOAD_SUCCESS=true
-            
+            # ── Download docker-compose.prod.yml (8KB only) ──
             echo "▶ Downloading docker-compose.prod.yml..."
-            if ! curl -fsSL "\$BASE_URL/docker-compose.prod.yml" -o docker-compose.prod.yml; then
-              echo "⚠️  Failed to download docker-compose.prod.yml"
-              DOWNLOAD_SUCCESS=false
+            mkdir -p "$APP_DIR"
+            cd "$APP_DIR"
+            
+            # Download with multiple fallback methods
+            DOWNLOAD_SUCCESS=false
+            
+            # Method 1: GitHub raw API
+            if curl -fsSL --connect-timeout 10 --max-time 30 \
+              "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$COMMIT_SHA/docker-compose.prod.yml" \
+              -o docker-compose.prod.yml.tmp; then
+              mv docker-compose.prod.yml.tmp docker-compose.prod.yml
+              DOWNLOAD_SUCCESS=true
+              echo "✅ Downloaded via GitHub raw API"
             fi
             
-            echo "▶ Downloading deployment scripts..."
-            mkdir -p deploy
-            
-            # Download essential deployment files
-            DEPLOY_FILES=(
-              "deploy/certbot-init.sh"
-              "deploy/fix-git-permissions.sh"
-              "deploy/nginx.conf.template"
-              "deploy/env.console.template"
-              "deploy/env.web.template"
-              "deploy/env.db.template"
-              "deploy/env.certbot.template"
-              "deploy/sync-env.sh"
-            )
-            
-            for file in "\${DEPLOY_FILES[@]}"; do
-              echo "▶ Downloading \$file..."
-              if ! curl -fsSL "\$BASE_URL/\$file" -o "\$file"; then
-                echo "⚠️  Failed to download \$file"
-                DOWNLOAD_SUCCESS=false
-                break
+            # Method 2: GitHub contents API (if method 1 failed)
+            if [ "$DOWNLOAD_SUCCESS" = false ]; then
+              echo "▶ Trying GitHub contents API..."
+              if curl -fsSL --connect-timeout 10 --max-time 30 \
+                -H "Accept: application/vnd.github.raw" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/docker-compose.prod.yml?ref=$COMMIT_SHA" \
+                -o docker-compose.prod.yml.tmp; then
+                mv docker-compose.prod.yml.tmp docker-compose.prod.yml
+                DOWNLOAD_SUCCESS=true
+                echo "✅ Downloaded via GitHub contents API"
               fi
-              
-              # Make shell scripts executable
-              if [[ "\$file" == *.sh ]]; then
-                chmod +x "\$file"
-              fi
-            done
-            
-            # Fallback to Git if file download failed
-            if [ "\$DOWNLOAD_SUCCESS" = false ]; then
-              echo "⚠️  File download failed, falling back to Git clone..."
-              
-              # Clean up partial downloads
-              rm -f docker-compose.prod.yml
-              rm -rf deploy
-              
-              # Clone repository (fallback method)
-              cd /opt/itrade
-              if [ -d "app" ]; then
-                sudo rm -rf app_backup 2>/dev/null || true
-                mv app app_backup
-              fi
-              
-              git clone https://github.com/\${GITHUB_REPOSITORY}.git app
-              cd "\$APP_DIR"
-              git checkout "\${COMMIT_SHA}"
-              
-              # Ensure correct ownership
-              sudo chown -R \$(whoami):\$(whoami) .
-              echo "✅ Repository cloned as fallback"
-            else
-              echo "✅ Deployment files downloaded successfully (lightweight method)"
             fi
             
-            # Verify critical files exist
-            if [ ! -f "docker-compose.prod.yml" ]; then
-              echo "❌ docker-compose.prod.yml missing"
+            if [ "$DOWNLOAD_SUCCESS" = false ]; then
+              echo "❌ Failed to download docker-compose.prod.yml"
               exit 1
             fi
             
-            if [ ! -f "deploy/certbot-init.sh" ]; then
-              echo "❌ deploy/certbot-init.sh missing"
+            # Validate downloaded file
+            if [ ! -s "docker-compose.prod.yml" ]; then
+              echo "❌ docker-compose.prod.yml is empty"
               exit 1
             fi
             
-            echo "✅ All required deployment files present"
-
-            # ── Ensure environment files have correct ownership ──
-            echo "▶ Checking environment file permissions..."
-            if [ -f "/opt/itrade/.env.console" ]; then
-              # Fix ownership if needed (files might be owned by different user)
-              sudo chown \$(whoami):\$(whoami) /opt/itrade/.env.* 2>/dev/null || true
-              chmod 600 /opt/itrade/.env.* 2>/dev/null || true
-              echo "✅ Environment file permissions verified"
-            else
-              echo "❌ Environment files not found at /opt/itrade/"
-              echo "Please ensure .env.console, .env.db, .env.web, .env.certbot exist"
+            if ! grep -q "services:" docker-compose.prod.yml; then
+              echo "❌ docker-compose.prod.yml is invalid (missing services)"
               exit 1
             fi
+            
+            FILE_SIZE=$(wc -c < docker-compose.prod.yml)
+            echo "✅ docker-compose.prod.yml valid (${FILE_SIZE} bytes)"
 
-            # ── Login to GHCR ─────────────────────────────────
-            echo "▶ Logging in to GHCR..."
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GH_ACTOR}" --password-stdin
-
-            # ── Set image references for docker compose ───────
-            export CONSOLE_IMAGE="${IMAGE_PREFIX}/console:${COMMIT_SHA}"
-            export SCHEMA_MIGRATOR_IMAGE="${IMAGE_PREFIX}/schema-migrator:${COMMIT_SHA}"
-            export WEB_IMAGE="${IMAGE_PREFIX}/web:${COMMIT_SHA}"
-
-            # ── Pull pre-built images ─────────────────────────
-            echo "▶ Pulling pre-built images..."
-            PULL_START=\$(date +%s)
-            docker compose -f "\$COMPOSE_FILE" pull console schema-migrator web
-            PULL_END=\$(date +%s)
-            echo "▶ Images pulled in \$((PULL_END - PULL_START))s"
-
-            # ── Swap containers ───────────────────────────────
-            echo "▶ Swapping containers — downtime window starts now..."
-            SWAP_START=\$(date +%s)
-            docker compose -f "\$COMPOSE_FILE" up -d
-
-            # ── Wait for web healthcheck ──────────────────────
-            echo "▶ Waiting for web healthcheck to pass..."
-            TIMEOUT=90
-            ELAPSED=0
-            until docker inspect --format='{{.State.Health.Status}}' itrade-web 2>/dev/null | grep -q "healthy"; do
-              if [ \$ELAPSED -ge \$TIMEOUT ]; then
-                echo "❌ Web healthcheck timed out after \${TIMEOUT}s"
-                docker compose -f "\$COMPOSE_FILE" logs --tail=50 web
+            # ── Verify environment files exist ──
+            echo "▶ Checking environment files..."
+            for env_file in /opt/itrade/.env.{console,db,web,certbot}; do
+              if [ ! -f "$env_file" ]; then
+                echo "❌ Missing: $env_file"
                 exit 1
               fi
-              sleep 3
-              ELAPSED=\$((ELAPSED + 3))
             done
-            SWAP_END=\$(date +%s)
-            echo "▶ Web is healthy. Container swap took \$((SWAP_END - SWAP_START))s"
+            echo "✅ All environment files present"
 
-            # ── Cleanup ───────────────────────────────────────
-            echo "▶ Pruning unused images..."
-            docker image prune -f
-            docker logout ghcr.io
+            # ── Login to GHCR ──
+            echo "▶ Logging in to GHCR..."
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
 
-            # ── Final status ──────────────────────────────────
-            docker compose -f "\$COMPOSE_FILE" ps
+            # ── Set image references ──
+            export CONSOLE_IMAGE="$IMAGE_PREFIX/console:$COMMIT_SHA"
+            export SCHEMA_MIGRATOR_IMAGE="$IMAGE_PREFIX/schema-migrator:$COMMIT_SHA"
+            export WEB_IMAGE="$IMAGE_PREFIX/web:$COMMIT_SHA"
+            
+            echo "▶ Using images:"
+            echo "  Console: $CONSOLE_IMAGE"
+            echo "  Schema Migrator: $SCHEMA_MIGRATOR_IMAGE"
+            echo "  Web: $WEB_IMAGE"
+
+            # ── Pull pre-built images ──
+            echo "▶ Pulling pre-built images..."
+            PULL_START=$(date +%s)
+            
+            if ! docker compose -f "$COMPOSE_FILE" pull console schema-migrator web; then
+              echo "❌ Failed to pull images"
+              exit 1
+            fi
+            
+            PULL_END=$(date +%s)
+            echo "✅ Images pulled in $((PULL_END - PULL_START))s"
+
+            # ── Deploy containers ──
+            echo "▶ Starting containers..."
+            DEPLOY_START=$(date +%s)
+            
+            if ! docker compose -f "$COMPOSE_FILE" up -d; then
+              echo "❌ Failed to start containers"
+              docker compose -f "$COMPOSE_FILE" logs --tail=50
+              exit 1
+            fi
+
+            # ── Wait for web health check ──
+            echo "▶ Waiting for web service to be healthy..."
+            TIMEOUT=90
+            ELAPSED=0
+            
+            while [ $ELAPSED -lt $TIMEOUT ]; do
+              if docker inspect --format='{{.State.Health.Status}}' itrade-web 2>/dev/null | grep -q "healthy"; then
+                break
+              fi
+              sleep 3
+              ELAPSED=$((ELAPSED + 3))
+              echo "  Waiting... ${ELAPSED}s/${TIMEOUT}s"
+            done
+            
+            if [ $ELAPSED -ge $TIMEOUT ]; then
+              echo "❌ Web service health check timeout"
+              docker compose -f "$COMPOSE_FILE" logs --tail=50 web
+              exit 1
+            fi
+            
+            DEPLOY_END=$(date +%s)
+            echo "✅ Deployment completed in $((DEPLOY_END - DEPLOY_START))s"
+
+            # ── Cleanup ──
+            echo "▶ Cleaning up..."
+            docker image prune -f >/dev/null 2>&1 || true
+            docker logout ghcr.io >/dev/null 2>&1 || true
+
+            # ── Final status ──
+            echo "▶ Final container status:"
+            docker compose -f "$COMPOSE_FILE" ps
 
             echo ""
-            echo "✅ Deployment complete!"
+            echo "🎉 Deployment successful!"
+            echo "   Total time: $((DEPLOY_END - PULL_START))s"
+            echo "   Downloaded: ${FILE_SIZE} bytes (~$((FILE_SIZE / 1024))KB)"
           ENDSSH
 
       - name: Report deployment status
