@@ -6,6 +6,8 @@ import { TypeOrmDataManager } from './src/index';
 // Load environment variables
 config();
 
+const SCRIPT_TIMEOUT_MS = 120_000; // 2 minutes hard limit
+
 console.log('🔧 Schema Migration Starting...');
 console.log('Environment check:');
 console.log('- NODE_ENV:', process.env.NODE_ENV);
@@ -47,8 +49,15 @@ const configuration = {
   username: process.env.DB_USER!,
   password: process.env.DB_PASSWORD!,
   database: process.env.DB_DB!,
-  synchronize: true, // Auto-sync schema with entities
-  logging: false, // Disable verbose logging during migration
+  synchronize: true,
+  logging: false,
+  ssl: false,
+  extra: {
+    connectionTimeoutMillis: 15_000,
+    query_timeout: 30_000,
+    statement_timeout: 30_000,
+    idle_in_transaction_session_timeout: 30_000,
+  },
 };
 
 console.log('📋 Database configuration:');
@@ -59,6 +68,16 @@ console.log({
 const dataManager = new TypeOrmDataManager(configuration);
 
 async function main() {
+  const killTimer = setTimeout(() => {
+    console.error(
+      '❌ Schema migration timed out after',
+      SCRIPT_TIMEOUT_MS / 1000,
+      'seconds',
+    );
+    process.exit(1);
+  }, SCRIPT_TIMEOUT_MS);
+  killTimer.unref();
+
   try {
     console.log('🔄 Initializing database connection...');
     await dataManager.initialize();
@@ -80,6 +99,8 @@ async function main() {
     } catch (err) {
       console.error('⚠️ Error closing database connection:', err);
     }
+    clearTimeout(killTimer);
+    process.exit(process.exitCode ?? 0);
   }
 }
 
