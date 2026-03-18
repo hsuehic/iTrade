@@ -21,8 +21,8 @@ if (buildMode === 'dev' || isDevelopment) {
 const nextConfig: NextConfig = {
   distDir,
 
-  // Enable standalone output for production Docker builds (smaller image)
-  ...(buildMode === 'prod' && { output: 'standalone' }),
+  // Note: Using Next.js CLI instead of standalone for better monorepo support
+  // ...(buildMode === 'prod' && { output: 'standalone' }),
 
   typescript: {
     tsconfigPath,
