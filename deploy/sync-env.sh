@@ -142,14 +142,21 @@ tar --no-xattrs -czf "$TAR_FILE" -C "$LOCAL_ENV_DIR" "${ENV_BASENAMES[@]}" 2>/de
 tar -czf "$TAR_FILE" -C "$LOCAL_ENV_DIR" "${ENV_BASENAMES[@]}"
 
 if [[ "$USE_GCLOUD" == true ]]; then
+  # Detect if direct SSH works, otherwise fall back to IAP tunnel
+  IAP_FLAG=()
+  if ! timeout 5 bash -c "echo >/dev/tcp/${GCE_HOST:-127.0.0.1}/22" 2>/dev/null; then
+    log "Direct SSH unreachable — using IAP tunnel"
+    IAP_FLAG=(--tunnel-through-iap)
+  fi
+
   # Single file upload - much faster than multiple files
   gcloud compute scp "$TAR_FILE" \
     "${GCE_INSTANCE}:${TMP_DIR}.tar.gz" \
     --ssh-key-expire-after=1d \
-    "${ZONE_FLAG[@]}"
+    "${ZONE_FLAG[@]}" "${IAP_FLAG[@]}"
   
   # Extract on remote
-  gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" \
+  gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" "${IAP_FLAG[@]}" \
     --command="mkdir -p $TMP_DIR && tar -xzf ${TMP_DIR}.tar.gz -C $TMP_DIR && rm ${TMP_DIR}.tar.gz"
 else
   ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "mkdir -p $TMP_DIR"
@@ -169,7 +176,7 @@ done
 MOVE_CMD="sudo mkdir -p $REMOTE_ENV_DIR && sudo mv $TMP_DIR/.env.* $REMOTE_ENV_DIR/ && sudo chown $GCE_USER:$GCE_USER $REMOTE_ENV_DIR/.env.* && sudo chmod 600 $REMOTE_ENV_DIR/.env.* && rm -rf $TMP_DIR"
 
 if [[ "$USE_GCLOUD" == true ]]; then
-  gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" --command="$MOVE_CMD"
+  gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" "${IAP_FLAG[@]}" --command="$MOVE_CMD"
 else
   ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "$MOVE_CMD"
 fi

@@ -453,6 +453,32 @@ jobs:
               echo "✅ Existing certificate files found"
             fi
 
+            # ── Stop existing containers and free ports ──
+            echo "▶ Stopping existing iTrade containers..."
+            if [ -f "$COMPOSE_FILE" ]; then
+              docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+              echo "✅ Existing containers stopped and removed"
+            else
+              echo "ℹ️  No existing compose file found; checking for stale containers"
+            fi
+
+            # Stop any individually-named iTrade containers that might linger
+            for ctr in itrade-nginx itrade-web itrade-console itrade-db itrade-certbot itrade-schema-migrator; do
+              if docker ps -a --format '{{.Names}}' | grep -qx "$ctr"; then
+                docker rm -f "$ctr" 2>/dev/null || true
+                echo "  Removed stale container: $ctr"
+              fi
+            done
+
+            # ── Clean up unused Docker images to save disk space ──
+            echo "▶ Cleaning up unused Docker resources..."
+            docker image prune -af --filter "until=168h" 2>/dev/null || true
+            docker builder prune -f 2>/dev/null || true
+            # NOTE: Do NOT run `docker volume prune` — it would delete postgres_data
+            # while containers are stopped, destroying the database.
+            DISK_AFTER=$(df -h / | awk 'NR==2{print $4}')
+            echo "✅ Docker cleanup complete (available disk: ${DISK_AFTER})"
+
             # ── Free host ports 80/443 for Docker nginx ──
             echo "▶ Checking host services on ports 80/443..."
             if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
@@ -461,11 +487,30 @@ jobs:
               sudo systemctl disable nginx || true
             fi
 
+            # Kill any remaining processes on ports 80/443 (non-Docker)
+            for port in 80 443; do
+              PIDS=""
+              if command -v lsof >/dev/null 2>&1; then
+                PIDS=$(sudo lsof -ti ":$port" 2>/dev/null || true)
+              elif command -v fuser >/dev/null 2>&1; then
+                PIDS=$(sudo fuser "$port/tcp" 2>/dev/null | tr -s ' ' '\n' || true)
+              fi
+              if [ -n "$PIDS" ]; then
+                echo "⚠️  Killing remaining processes on port $port: $PIDS"
+                echo "$PIDS" | xargs sudo kill -9 2>/dev/null || true
+              fi
+            done
+
+            # Brief pause to let OS release sockets
+            sleep 2
+
             PORT_CONFLICTS=$(ss -ltn '( sport = :80 or sport = :443 )' | sed -n '2,$p' || true)
             if [ -n "$PORT_CONFLICTS" ]; then
-              echo "❌ Ports 80/443 are still occupied:"
+              echo "❌ Ports 80/443 are still occupied after cleanup:"
               echo "$PORT_CONFLICTS"
-              echo "Please free these ports before deployment."
+              echo "Attempting to identify processes..."
+              sudo ss -tlnp '( sport = :80 or sport = :443 )' || true
+              echo "Please free these ports manually before deployment."
               exit 1
             fi
             echo "✅ Ports 80/443 are available for Docker nginx"

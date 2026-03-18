@@ -111,6 +111,7 @@ const trustedOrigins = Array.from(
       'http://localhost:3000',
       'http://localhost:3002',
       'https://itrade.ihsueh.com',
+      'https://bot.ihsueh.com',
       'https://appleid.apple.com',
       ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS || '')
         .split(',')
@@ -152,9 +153,18 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
         },
       },
     },
-    database: new Pool({
-      connectionString: process.env.POSTGRES_URL as string,
-    }),
+    database: new Pool(
+      process.env.POSTGRES_URL
+        ? { connectionString: process.env.POSTGRES_URL }
+        : {
+            host: process.env.DB_HOST || 'localhost',
+            port: parseInt(process.env.DB_PORT || '5432', 10),
+            user: process.env.DB_USER || 'postgres',
+            password: process.env.DB_PASSWORD || 'postgres',
+            database: process.env.DB_DB || 'itrade',
+            ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+          },
+    ),
     //...other options
     emailAndPassword: {
       enabled: true,
