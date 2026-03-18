@@ -215,6 +215,7 @@ jobs:
           GH_ACTOR: ${{ github.actor }}
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
@@ -235,8 +236,75 @@ jobs:
             # ── Pull latest code (for compose file, env templates, etc.) ──
             echo "▶ Pulling latest code..."
             cd "\$APP_DIR"
-            git fetch origin main
+            
+            # Diagnostic information
+            echo "▶ Current user: \$(whoami)"
+            echo "▶ Current directory: \$(pwd)"
+            echo "▶ Git directory ownership: \$(stat -c '%U:%G' .git 2>/dev/null || stat -f '%Su:%Sg' .git 2>/dev/null || echo 'unknown')"
+            
+            # Fix Git repository permissions if needed
+            if [ ! -w .git/objects ]; then
+              echo "▶ Git objects directory not writable, fixing permissions..."
+              sudo chown -R \$(whoami):\$(whoami) .git/
+              chmod -R u+w .git/
+              echo "✅ Git permissions fixed"
+            else
+              echo "✅ Git objects directory is writable"
+            fi
+            
+            # Ensure we can write to the working directory
+            if [ ! -w . ]; then
+              echo "▶ Working directory not writable, fixing permissions..."
+              sudo chown -R \$(whoami):\$(whoami) .
+              echo "✅ Working directory permissions fixed"
+            else
+              echo "✅ Working directory is writable"
+            fi
+            
+            # Try to pull latest code, with fallback to fresh clone if Git is corrupted
+            echo "▶ Fetching latest changes..."
+            if ! git fetch origin main 2>&1; then
+              echo "⚠️  Git fetch failed, attempting to fix repository..."
+              
+              # Show Git status for debugging
+              echo "▶ Git status before cleanup:"
+              git status --porcelain 2>&1 || echo "Git status failed"
+              
+              # Clean up any corrupted state
+              echo "▶ Cleaning up Git state..."
+              git reset --hard HEAD 2>/dev/null || true
+              git clean -fd 2>/dev/null || true
+              
+              # Try fetch again
+              echo "▶ Retrying git fetch..."
+              if ! git fetch origin main 2>&1; then
+                echo "⚠️  Git repository appears corrupted, re-cloning..."
+                cd /opt/itrade
+                
+                # Backup current directory
+                if [ -d "app_backup" ]; then
+                  sudo rm -rf app_backup
+                fi
+                mv app app_backup
+                
+                # Clone fresh copy
+                echo "▶ Cloning fresh repository..."
+                git clone https://github.com/\${GITHUB_REPOSITORY}.git app
+                cd "\$APP_DIR"
+                
+                # Ensure correct ownership
+                sudo chown -R \$(whoami):\$(whoami) .
+                echo "✅ Repository re-cloned successfully"
+              else
+                echo "✅ Git fetch successful after cleanup"
+              fi
+            else
+              echo "✅ Git fetch successful"
+            fi
+            
+            echo "▶ Resetting to origin/main..."
             git reset --hard origin/main
+            echo "✅ Code updated to latest version"
 
             # ── Ensure environment files have correct ownership ──
             echo "▶ Checking environment file permissions..."
