@@ -146,8 +146,8 @@ services:
     # Graceful shutdown: give Next.js time to finish in-flight requests
     stop_grace_period: 15s
     healthcheck:
-      # Hits Next.js built-in health endpoint (available in Next.js 13.4+)
-      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/api/health || exit 1']
+      # Check if Next.js is responding on port 3002
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3002/ >/dev/null 2>&1 || exit 1']
       interval: 15s
       timeout: 5s
       retries: 3
