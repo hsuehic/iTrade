@@ -519,6 +519,17 @@ jobs:
             fi
             echo "  ✅ Database healthy (waited ${DB_ELAPSED}s)"
 
+            # Stop console before schema migration to prevent lock conflicts.
+            # TypeORM synchronize DDL requires AccessExclusiveLock, which deadlocks
+            # with the console's active DML (INSERT/SELECT on the same tables).
+            echo "▶ Stopping console before schema migration..."
+            docker compose -f "$COMPOSE_FILE" stop console 2>/dev/null || true
+
+            # Terminate any lingering DB connections from the old console
+            docker exec itrade-db psql -U "${POSTGRES_USER:-itrade}" -d "${POSTGRES_DB:-itrade}" \
+              -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid != pg_backend_pid() AND application_name != 'schema-migrator';" \
+              2>/dev/null || true
+
             # Run schema migrator with new image
             docker compose -f "$COMPOSE_FILE" rm -sf schema-migrator 2>/dev/null || true
             echo "▶ Running schema migration..."

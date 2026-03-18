@@ -142,17 +142,15 @@ services:
     # Graceful shutdown: give Next.js time to finish in-flight requests
     stop_grace_period: 15s
     healthcheck:
-      # Check if Next.js is responding on port 3002.
-      # Use Node fetch to avoid relying on curl/wget binaries in minimal images.
       test:
         [
           'CMD-SHELL',
           'node -e "fetch(''http://localhost:3002/'').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
       interval: 15s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 30s # Give Next.js time to boot before first check
+      start_period: 30s
     networks:
       - itrade-net
     logging:
