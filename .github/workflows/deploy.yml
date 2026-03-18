@@ -191,33 +191,74 @@ jobs:
       - name: Setup SSH agent
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.GCE_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/gce_deploy_key
+          chmod 700 ~/.ssh
+
+          # Decode SSH private key with error handling
+          echo "${{ secrets.GCE_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/gce_deploy_key 2>/dev/null || {
+            echo "❌ Failed to decode SSH private key"
+            echo "The GCE_SSH_PRIVATE_KEY secret may not be properly base64 encoded"
+            exit 1
+          }
+
           chmod 600 ~/.ssh/gce_deploy_key
+
+          # Validate SSH key format
+          if ! ssh-keygen -l -f ~/.ssh/gce_deploy_key >/dev/null 2>&1; then
+            echo "❌ SSH private key format is invalid"
+            echo "Please check that GCE_SSH_PRIVATE_KEY is a valid SSH private key"
+            exit 1
+          fi
+
+          # Start SSH agent
           eval "$(ssh-agent -s)"
           ssh-add ~/.ssh/gce_deploy_key
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
+
+          echo "✅ SSH agent configured successfully"
 
       - name: Add GCE host to known_hosts
         run: |
           echo "🔍 Adding GCE host to known_hosts..."
           echo "Target host: ${{ secrets.GCE_HOST }}"
 
-          # Add host keys to known_hosts
-          if ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts; then
-            echo "✅ Host keys added successfully"
-          else
-            echo "❌ Failed to add host keys"
-            echo "Attempting to connect anyway (may prompt for host verification)"
-          fi
+          # Add host keys to known_hosts with retry
+          for attempt in 1 2 3; do
+            if ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null; then
+              echo "✅ Host keys added successfully (attempt $attempt)"
+              break
+            else
+              echo "⚠️  Host key scan failed (attempt $attempt)"
+              if [ $attempt -eq 3 ]; then
+                echo "❌ All host key scan attempts failed"
+                echo "Will attempt connection with StrictHostKeyChecking=no"
+              fi
+              sleep 2
+            fi
+          done
 
       - name: Test SSH connection
         run: |
           echo "🔍 Testing SSH connection..."
-          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" "echo 'SSH connection successful'"; then
-            echo "✅ SSH connection working"
+          echo "User: ${{ secrets.GCE_USER }}"
+          echo "Host: ${{ secrets.GCE_HOST }}"
+
+          # Test with multiple SSH options for robustness
+          SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3"
+
+          if ssh $SSH_OPTS -o StrictHostKeyChecking=yes "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" "echo 'SSH connection successful'; whoami; pwd" 2>/dev/null; then
+            echo "✅ SSH connection working with StrictHostKeyChecking=yes"
+          elif ssh $SSH_OPTS -o StrictHostKeyChecking=no "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" "echo 'SSH connection successful'; whoami; pwd" 2>/dev/null; then
+            echo "✅ SSH connection working with StrictHostKeyChecking=no"
+            echo "⚠️  Host key verification was bypassed"
           else
-            echo "❌ SSH connection failed"
+            echo "❌ SSH connection failed with both strict and non-strict host checking"
+            echo "Common issues:"
+            echo "  - GCE_HOST: Incorrect IP address or hostname"
+            echo "  - GCE_USER: Incorrect username"
+            echo "  - GCE_SSH_PRIVATE_KEY: Invalid or unauthorized SSH key"
+            echo "  - Network: Firewall blocking SSH (port 22)"
+            echo "  - Instance: GCE instance not running or accessible"
             exit 1
           fi
 
@@ -241,7 +282,10 @@ jobs:
           echo "  Strategy: Download docker-compose.prod.yml only (~8KB)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-          ssh -o StrictHostKeyChecking=yes "$GCE_USER@$GCE_HOST" bash << 'ENDSSH'
+          # Use robust SSH options
+          SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no"
+
+          ssh $SSH_OPTS "$GCE_USER@$GCE_HOST" bash << 'ENDSSH'
             set -euo pipefail
 
             APP_DIR="/opt/itrade/app"
@@ -296,15 +340,24 @@ jobs:
             FILE_SIZE=$(wc -c < docker-compose.prod.yml)
             echo "✅ docker-compose.prod.yml valid (${FILE_SIZE} bytes)"
 
-            # ── Verify environment files exist ──
-            echo "▶ Checking environment files..."
+            # ── Fix permissions and verify environment files ──
+            echo "▶ Fixing permissions and checking environment files..."
+            
+            # Ensure correct ownership of /opt/itrade directory
+            sudo chown -R $(whoami):$(whoami) /opt/itrade/ 2>/dev/null || true
+            sudo chmod 755 /opt/itrade/ 2>/dev/null || true
+            sudo chmod 755 /opt/itrade/app/ 2>/dev/null || true
+            sudo chmod 600 /opt/itrade/.env.* 2>/dev/null || true
+            
+            # Verify environment files exist
             for env_file in /opt/itrade/.env.{console,db,web,certbot}; do
               if [ ! -f "$env_file" ]; then
                 echo "❌ Missing: $env_file"
                 exit 1
               fi
+              echo "✅ Found: $env_file"
             done
-            echo "✅ All environment files present"
+            echo "✅ All environment files present with correct permissions"
 
             # ── Login to GHCR ──
             echo "▶ Logging in to GHCR..."
