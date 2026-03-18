@@ -662,7 +662,10 @@ export class BinanceExchange extends BaseExchange {
         }
       } catch (err: any) {
         // Endpoint may not be enabled for all API keys — fall through to fallback
-        console.warn('[Binance] /sapi/v1/asset/wallet/balance unavailable, using fallback:', err.message);
+        console.warn(
+          '[Binance] /sapi/v1/asset/wallet/balance unavailable, using fallback:',
+          err.message,
+        );
       }
     }
 
@@ -672,7 +675,9 @@ export class BinanceExchange extends BaseExchange {
         const spotEquityUsdt = totalNetAssetOfBtc * btcPrice;
         totalEquity = new Decimal(spotEquityUsdt + futuresWalletBalance);
       } else {
-        console.warn('[Binance] Unable to calculate totalEquity: BTC price unavailable and no futures balance');
+        console.warn(
+          '[Binance] Unable to calculate totalEquity: BTC price unavailable and no futures balance',
+        );
       }
     }
 

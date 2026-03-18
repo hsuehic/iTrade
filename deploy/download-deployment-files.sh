@@ -10,7 +10,7 @@
 #
 # Files downloaded:
 #   - docker-compose.prod.yml
-#   - deploy/ directory (scripts and templates)
+#   - deploy/ directory (scripts and env templates)
 # =============================================================
 
 set -euo pipefail
@@ -43,7 +43,6 @@ log "Downloading deployment files..."
 DEPLOY_FILES=(
   "deploy/certbot-init.sh"
   "deploy/fix-git-permissions.sh"
-  "deploy/nginx.conf.template"
   "deploy/env.console.template"
   "deploy/env.web.template"
   "deploy/env.db.template"

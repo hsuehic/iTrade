@@ -285,59 +285,64 @@ jobs:
           # Use robust SSH options
           SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no"
 
-          ssh $SSH_OPTS "$GCE_USER@$GCE_HOST" bash << 'ENDSSH'
+          ssh $SSH_OPTS "$GCE_USER@$GCE_HOST" \
+            "GITHUB_REPOSITORY='$GITHUB_REPOSITORY' COMMIT_SHA='$COMMIT_SHA' GHCR_TOKEN='$GHCR_TOKEN' GH_ACTOR='$GH_ACTOR' IMAGE_PREFIX='$IMAGE_PREFIX' bash -s" << 'ENDSSH'
             set -euo pipefail
 
             APP_DIR="/opt/itrade/app"
             COMPOSE_FILE="$APP_DIR/docker-compose.prod.yml"
+            NGINX_CONF="/opt/itrade/nginx.conf"
+            CERTBOT_ENV="/opt/itrade/.env.certbot"
+            CERTS_BASE="/opt/itrade/certbot/certs"
+            WEBROOT_DIR="/opt/itrade/certbot/webroot"
 
-            # ── Download docker-compose.prod.yml (8KB only) ──
-            echo "▶ Downloading docker-compose.prod.yml..."
+            # ── Download required deploy files ──
+            echo "▶ Downloading deployment files..."
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
             
-            # Download with multiple fallback methods
-            DOWNLOAD_SUCCESS=false
-            
-            # Method 1: GitHub raw API
-            if curl -fsSL --connect-timeout 10 --max-time 30 \
-              "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$COMMIT_SHA/docker-compose.prod.yml" \
-              -o docker-compose.prod.yml.tmp; then
-              mv docker-compose.prod.yml.tmp docker-compose.prod.yml
-              DOWNLOAD_SUCCESS=true
-              echo "✅ Downloaded via GitHub raw API"
-            fi
-            
-            # Method 2: GitHub contents API (if method 1 failed)
-            if [ "$DOWNLOAD_SUCCESS" = false ]; then
-              echo "▶ Trying GitHub contents API..."
+            download_from_github() {
+              local source_path="$1"
+              local dest_path="$2"
+              local tmp_path="${dest_path}.tmp"
+              local ok=false
+
               if curl -fsSL --connect-timeout 10 --max-time 30 \
+                "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$COMMIT_SHA/$source_path" \
+                -o "$tmp_path"; then
+                ok=true
+              elif curl -fsSL --connect-timeout 10 --max-time 30 \
                 -H "Accept: application/vnd.github.raw" \
-                "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/docker-compose.prod.yml?ref=$COMMIT_SHA" \
-                -o docker-compose.prod.yml.tmp; then
-                mv docker-compose.prod.yml.tmp docker-compose.prod.yml
-                DOWNLOAD_SUCCESS=true
-                echo "✅ Downloaded via GitHub contents API"
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/contents/$source_path?ref=$COMMIT_SHA" \
+                -o "$tmp_path"; then
+                ok=true
               fi
-            fi
-            
-            if [ "$DOWNLOAD_SUCCESS" = false ]; then
-              echo "❌ Failed to download docker-compose.prod.yml"
-              exit 1
-            fi
+
+              if [ "$ok" = true ] && [ -s "$tmp_path" ]; then
+                mv "$tmp_path" "$dest_path"
+                echo "✅ Downloaded: $source_path"
+                return 0
+              fi
+
+              rm -f "$tmp_path"
+              echo "❌ Failed to download: $source_path"
+              return 1
+            }
+
+            download_from_github "docker-compose.prod.yml" "$COMPOSE_FILE"
             
             # Validate downloaded file
-            if [ ! -s "docker-compose.prod.yml" ]; then
+            if [ ! -s "$COMPOSE_FILE" ]; then
               echo "❌ docker-compose.prod.yml is empty"
               exit 1
             fi
             
-            if ! grep -q "services:" docker-compose.prod.yml; then
+            if ! grep -q "services:" "$COMPOSE_FILE"; then
               echo "❌ docker-compose.prod.yml is invalid (missing services)"
               exit 1
             fi
             
-            FILE_SIZE=$(wc -c < docker-compose.prod.yml)
+            FILE_SIZE=$(wc -c < "$COMPOSE_FILE")
             echo "✅ docker-compose.prod.yml valid (${FILE_SIZE} bytes)"
 
             # ── Fix permissions and verify environment files ──
@@ -358,6 +363,112 @@ jobs:
               echo "✅ Found: $env_file"
             done
             echo "✅ All environment files present with correct permissions"
+
+            # ── Bootstrap nginx config + SSL files if needed ──
+            echo "▶ Ensuring nginx config and certificate paths exist..."
+            DOMAIN=$(sed -n 's/^DOMAIN=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
+            if [ -z "${DOMAIN:-}" ]; then
+              echo "❌ DOMAIN is missing in $CERTBOT_ENV"
+              exit 1
+            fi
+            echo "✅ SSL domain: $DOMAIN"
+
+            if [ -d "$NGINX_CONF" ]; then
+              echo "⚠️  $NGINX_CONF is a directory; moving it away"
+              mv "$NGINX_CONF" "/opt/itrade/nginx.conf.backup.$(date +%s)"
+            fi
+
+            mkdir -p "$CERTS_BASE/live/$DOMAIN" "$WEBROOT_DIR"
+            {
+              echo 'server {'
+              echo '    listen 80;'
+              echo '    listen [::]:80;'
+              echo "    server_name ${DOMAIN};"
+              echo ''
+              echo '    location /.well-known/acme-challenge/ {'
+              echo '        root /var/www/certbot;'
+              echo '    }'
+              echo ''
+              echo '    location / {'
+              echo '        return 301 https://$host$request_uri;'
+              echo '    }'
+              echo '}'
+              echo ''
+              echo 'server {'
+              echo '    listen 443 ssl;'
+              echo '    listen [::]:443 ssl;'
+              echo '    http2 on;'
+              echo "    server_name ${DOMAIN};"
+              echo ''
+              echo "    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;"
+              echo "    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;"
+              echo ''
+              echo '    ssl_protocols       TLSv1.2 TLSv1.3;'
+              echo '    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;'
+              echo '    ssl_prefer_server_ciphers off;'
+              echo '    ssl_session_cache   shared:SSL:10m;'
+              echo '    ssl_session_timeout 1d;'
+              echo '    ssl_session_tickets off;'
+              echo ''
+              echo '    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;'
+              echo '    add_header X-Content-Type-Options    nosniff;'
+              echo '    add_header X-Frame-Options           SAMEORIGIN;'
+              echo '    add_header Referrer-Policy           "strict-origin-when-cross-origin";'
+              echo ''
+              echo '    client_max_body_size 10M;'
+              echo ''
+              echo '    location / {'
+              echo '        resolver 127.0.0.11 ipv6=off valid=30s;'
+              echo '        set $web_upstream web;'
+              echo '        proxy_pass         http://$web_upstream:3002;'
+              echo '        proxy_http_version 1.1;'
+              echo '        proxy_set_header Upgrade    $http_upgrade;'
+              echo '        proxy_set_header Connection "upgrade";'
+              echo '        proxy_set_header Host              $host;'
+              echo '        proxy_set_header X-Real-IP         $remote_addr;'
+              echo '        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;'
+              echo '        proxy_set_header X-Forwarded-Proto $scheme;'
+              echo '        proxy_cache_bypass $http_upgrade;'
+              echo '        proxy_connect_timeout 60s;'
+              echo '        proxy_send_timeout    60s;'
+              echo '        proxy_read_timeout    60s;'
+              echo '        proxy_next_upstream error timeout http_502 http_503;'
+              echo '        proxy_next_upstream_tries    2;'
+              echo '        proxy_next_upstream_timeout  30s;'
+              echo '    }'
+              echo '}'
+            } > "$NGINX_CONF"
+            chmod 644 "$NGINX_CONF"
+
+            DUMMY_CERT="$CERTS_BASE/live/$DOMAIN/fullchain.pem"
+            DUMMY_KEY="$CERTS_BASE/live/$DOMAIN/privkey.pem"
+            if [ ! -s "$DUMMY_CERT" ] || [ ! -s "$DUMMY_KEY" ]; then
+              echo "▶ Generating temporary bootstrap certificate..."
+              openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+                -keyout "$DUMMY_KEY" \
+                -out "$DUMMY_CERT" \
+                -subj "/CN=$DOMAIN" >/dev/null 2>&1
+              echo "✅ Temporary bootstrap certificate generated"
+            else
+              echo "✅ Existing certificate files found"
+            fi
+
+            # ── Free host ports 80/443 for Docker nginx ──
+            echo "▶ Checking host services on ports 80/443..."
+            if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+              echo "⚠️  Host nginx service is active; stopping it to avoid port conflicts"
+              sudo systemctl stop nginx || true
+              sudo systemctl disable nginx || true
+            fi
+
+            PORT_CONFLICTS=$(ss -ltn '( sport = :80 or sport = :443 )' | sed -n '2,$p' || true)
+            if [ -n "$PORT_CONFLICTS" ]; then
+              echo "❌ Ports 80/443 are still occupied:"
+              echo "$PORT_CONFLICTS"
+              echo "Please free these ports before deployment."
+              exit 1
+            fi
+            echo "✅ Ports 80/443 are available for Docker nginx"
 
             # ── Login to GHCR ──
             echo "▶ Logging in to GHCR..."
@@ -385,14 +496,67 @@ jobs:
             PULL_END=$(date +%s)
             echo "✅ Images pulled in $((PULL_END - PULL_START))s"
 
-            # ── Deploy containers ──
+            # ── Deploy containers (runtime only, never build on GCE) ──
             echo "▶ Starting containers..."
             DEPLOY_START=$(date +%s)
             
-            if ! docker compose -f "$COMPOSE_FILE" up -d; then
+            if ! docker compose -f "$COMPOSE_FILE" up -d --no-build db schema-migrator console web nginx; then
               echo "❌ Failed to start containers"
               docker compose -f "$COMPOSE_FILE" logs --tail=50
               exit 1
+            fi
+
+            # ── Ensure nginx is ready before ACME challenge ──
+            echo "▶ Waiting for nginx to become ready..."
+            NGINX_TIMEOUT=60
+            NGINX_ELAPSED=0
+            until docker exec itrade-nginx nginx -t >/dev/null 2>&1; do
+              if [ $NGINX_ELAPSED -ge $NGINX_TIMEOUT ]; then
+                echo "❌ nginx readiness timeout"
+                docker compose -f "$COMPOSE_FILE" logs --tail=50 nginx
+                exit 1
+              fi
+              sleep 2
+              NGINX_ELAPSED=$((NGINX_ELAPSED + 2))
+            done
+            echo "✅ nginx is ready"
+
+            # ── Issue / refresh certificate (idempotent) ──
+            CERTBOT_EMAIL=$(sed -n 's/^CERTBOT_EMAIL=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
+            if [ -z "${CERTBOT_EMAIL:-}" ]; then
+              echo "❌ CERTBOT_EMAIL is missing in $CERTBOT_ENV"
+              exit 1
+            fi
+
+            echo "▶ Ensuring Let's Encrypt certificate is issued for $DOMAIN..."
+            if ! docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot certonly \
+              --webroot \
+              --webroot-path=/var/www/certbot \
+              --domain "$DOMAIN" \
+              --email "$CERTBOT_EMAIL" \
+              --agree-tos \
+              --non-interactive \
+              --keep-until-expiring \
+              --cert-name "$DOMAIN"; then
+              echo "❌ Certificate issuance/refresh failed"
+              docker compose -f "$COMPOSE_FILE" logs --tail=100 nginx
+              exit 1
+            fi
+
+            echo "▶ Reloading nginx certificate..."
+            docker exec itrade-nginx nginx -s reload
+
+            echo "▶ Starting certbot renewal service..."
+            docker compose -f "$COMPOSE_FILE" up -d --no-build certbot
+
+            echo "▶ Ensuring nginx reload cron exists for renewed certificates..."
+            CRON_MARKER="# iTrade nginx SSL reload"
+            CRON_JOB="0 */12 * * * docker exec itrade-nginx nginx -s reload >> /var/log/nginx-reload.log 2>&1"
+            if ! crontab -l 2>/dev/null | grep -q "itrade-nginx nginx -s reload"; then
+              (crontab -l 2>/dev/null; echo "$CRON_MARKER"; echo "$CRON_JOB") | crontab -
+              echo "✅ Installed nginx reload cron"
+            else
+              echo "✅ nginx reload cron already present"
             fi
 
             # ── Wait for web health check ──

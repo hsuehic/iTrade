@@ -14,8 +14,9 @@ WORKDIR /app/packages/data-manager
 ENV NODE_ENV=production
 ENV TS_NODE_PROJECT=tsconfig.json
 
-# Use ts-node with tsconfig-paths for schema migration
-CMD ["node", "-r", "ts-node/register", "-r", "tsconfig-paths/register", "-r", "reflect-metadata", "sync-schema-to-db.ts"]
+# Run the package script so runtime resolution is handled by pnpm workspace binaries.
+# This avoids `node -r ts-node/register` module resolution failures in container runtime.
+CMD ["pnpm", "run", "sync-schema"]
 
 # ============================================================
 # Stage 2: console — Production console application

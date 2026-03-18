@@ -200,11 +200,9 @@ test_certbot() {
   
   # Check required files exist
   info "Checking required files..."
-  NGINX_TEMPLATE="$SCRIPT_DIR/nginx.conf.template"
   COMPOSE_FILE="$PROJECT_ROOT/docker-compose.prod.yml"
   
   MISSING_FILES=()
-  [[ ! -f "$NGINX_TEMPLATE" ]] && MISSING_FILES+=("nginx.conf.template")
   [[ ! -f "$COMPOSE_FILE" ]] && MISSING_FILES+=("docker-compose.prod.yml")
   
   if [[ ${#MISSING_FILES[@]} -gt 0 ]]; then
@@ -216,13 +214,6 @@ test_certbot() {
   
   info "✅ All required files present"
   
-  # Validate nginx.conf.template has DOMAIN_PLACEHOLDER
-  if grep -q "DOMAIN_PLACEHOLDER" "$NGINX_TEMPLATE"; then
-    info "✅ nginx.conf.template contains DOMAIN_PLACEHOLDER"
-  else
-    warn "⚠️  nginx.conf.template may not contain DOMAIN_PLACEHOLDER"
-  fi
-  
   # Check certbot-init.sh logic (dry-run checks)
   info "Validating certbot script logic..."
   
@@ -233,11 +224,11 @@ test_certbot() {
     warn "⚠️  Script may not read .env.certbot correctly"
   fi
   
-  # Check if script generates nginx.conf
-  if grep -q "nginx.conf" "$CERTBOT_SCRIPT"; then
-    info "✅ Script generates nginx.conf"
+  # Check if script generates nginx.conf inline
+  if grep -q "cat > \"\\$NGINX_CONF\"" "$CERTBOT_SCRIPT"; then
+    info "✅ Script generates nginx.conf inline"
   else
-    warn "⚠️  Script may not generate nginx.conf"
+    warn "⚠️  Script may not generate nginx.conf inline"
   fi
   
   info "✅ Certbot validation test PASSED"

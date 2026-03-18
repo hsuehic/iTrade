@@ -15,7 +15,7 @@
 #      (auto-extracted from NEXT_PUBLIC_APP_URL if DOMAIN is absent)
 #   2. Creates host directories for certs + webroot
 #   3. Generates a temporary self-signed cert so nginx can start
-#   4. Generates /opt/itrade/nginx.conf from nginx.conf.template
+#   4. Generates /opt/itrade/nginx.conf directly from DOMAIN
 #   5. Starts the stack (nginx serves HTTP + ACME challenge)
 #   6. Runs certbot to get the real Let's Encrypt certificate
 #   7. Reloads nginx to pick up the real cert
@@ -93,15 +93,77 @@ else
   info "Certificate already exists at $DUMMY_CERT — skipping dummy cert step."
 fi
 
-# ── Step 4: Generate nginx.conf from template ─────────────────
+# ── Step 4: Generate nginx.conf from DOMAIN ───────────────────
 info "Generating nginx.conf → $NGINX_CONF ..."
-sed "s/DOMAIN_PLACEHOLDER/$DOMAIN/g" \
-  "$APP_DIR/deploy/nginx.conf.template" > "$NGINX_CONF"
+if [[ -d "$NGINX_CONF" ]]; then
+  warn "$NGINX_CONF is a directory. Moving it to a timestamped backup."
+  mv "$NGINX_CONF" "/opt/itrade/nginx.conf.backup.$(date +%s)"
+fi
+cat > "$NGINX_CONF" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name $DOMAIN;
+
+    ssl_certificate     /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options    nosniff;
+    add_header X-Frame-Options           SAMEORIGIN;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin";
+
+    client_max_body_size 10M;
+
+    location / {
+        resolver 127.0.0.11 ipv6=off valid=30s;
+        set \$web_upstream web;
+        proxy_pass         http://\$web_upstream:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout    60s;
+        proxy_read_timeout    60s;
+        proxy_next_upstream error timeout http_502 http_503;
+        proxy_next_upstream_tries    2;
+        proxy_next_upstream_timeout  30s;
+    }
+}
+EOF
+chmod 644 "$NGINX_CONF"
 info "nginx.conf written."
 
 # ── Step 5: Start the stack (nginx needs to be up for ACME) ──
 info "Starting services (nginx must be up to serve ACME challenge)..."
-docker compose -f "$COMPOSE_FILE" up -d db web console nginx
+docker compose -f "$COMPOSE_FILE" up -d --no-build db web console nginx
 
 # Wait for nginx to be ready
 MAX_WAIT=30
@@ -117,7 +179,7 @@ info "nginx is ready."
 
 # ── Step 6: Run certbot to get the real certificate ───────────
 info "Requesting Let's Encrypt certificate for $DOMAIN ..."
-docker compose -f "$COMPOSE_FILE" run --rm certbot certonly \
+docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
   --domain "$DOMAIN" \
@@ -133,6 +195,9 @@ info "Certificate obtained successfully."
 info "Reloading nginx with the real Let's Encrypt certificate..."
 docker exec itrade-nginx nginx -s reload
 info "nginx reloaded."
+
+info "Starting certbot renewal service..."
+docker compose -f "$COMPOSE_FILE" up -d --no-build certbot
 
 # ── Step 8: Install system cron for post-renewal nginx reload ─
 # certbot service renews automatically; after renewal, nginx must

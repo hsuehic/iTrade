@@ -33,7 +33,7 @@ COPY apps/console/package.json              ./apps/console/
 # Use BuildKit cache mount for pnpm store (faster rebuilds)
 # This cache persists across builds, significantly speeding up pnpm install
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm install -r --no-frozen-lockfile
 
 # Copy all source code (preserving monorepo structure)
 COPY tsconfig.base.json ./
@@ -42,7 +42,7 @@ COPY apps/ ./apps/
 
 # Build all packages and apps using Turbo (with build cache)
 RUN --mount=type=cache,id=turbo-cache,target=/app/.turbo \
-    turbo build
+    turbo build --concurrency=2
 
 # Create non-root user for runtime
 RUN addgroup --system --gid 1001 nodejs && \

@@ -312,7 +312,11 @@ export interface IDataManager {
   getStrategyPositionSummary?(
     strategyId: number,
     symbol: string,
-  ): Promise<{ netExecutedPosition: Decimal; pendingBuySize: Decimal; pendingSellSize: Decimal }>;
+  ): Promise<{
+    netExecutedPosition: Decimal;
+    pendingBuySize: Decimal;
+    pendingSellSize: Decimal;
+  }>;
 }
 
 // Backtesting Engine Interface
