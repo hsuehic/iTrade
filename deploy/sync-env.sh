@@ -173,7 +173,7 @@ for local_file in "${ENV_FILES[@]}"; do
 done
 
 # ── Step 3: Move files to final destination with correct ownership ──
-MOVE_CMD="sudo mkdir -p $REMOTE_ENV_DIR && sudo mv $TMP_DIR/.env.* $REMOTE_ENV_DIR/ && sudo chown $GCE_USER:$GCE_USER $REMOTE_ENV_DIR/.env.* && sudo chmod 600 $REMOTE_ENV_DIR/.env.* && rm -rf $TMP_DIR"
+MOVE_CMD=" (sudo -n mkdir -p $REMOTE_ENV_DIR 2>/dev/null || mkdir -p $REMOTE_ENV_DIR) && (sudo -n mv $TMP_DIR/.env.* $REMOTE_ENV_DIR/ 2>/dev/null || mv $TMP_DIR/.env.* $REMOTE_ENV_DIR/) && (sudo -n chown $GCE_USER:$GCE_USER $REMOTE_ENV_DIR/.env.* 2>/dev/null || true) && (sudo -n chmod 600 $REMOTE_ENV_DIR/.env.* 2>/dev/null || chmod 600 $REMOTE_ENV_DIR/.env.*) && rm -rf $TMP_DIR"
 
 if [[ "$USE_GCLOUD" == true ]]; then
   gcloud compute ssh "$GCE_INSTANCE" "${ZONE_FLAG[@]}" "${IAP_FLAG[@]}" --command="$MOVE_CMD"

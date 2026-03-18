@@ -31,7 +31,8 @@ fail() { echo -e "${RED}[error]${NC}    $*"; exit 1; }
 
 # Create directory structure
 log "Creating directory structure..."
-mkdir -p "$APP_DIR/deploy"
+sudo -n mkdir -p "$APP_DIR/deploy" 2>/dev/null || mkdir -p "$APP_DIR/deploy"
+sudo -n chown -R $(whoami):$(whoami) /opt/itrade 2>/dev/null || true
 
 # Download docker-compose.prod.yml
 log "Downloading docker-compose.prod.yml..."

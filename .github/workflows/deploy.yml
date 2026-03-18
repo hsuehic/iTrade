@@ -333,8 +333,12 @@ jobs:
               return 1
             }
 
+            echo "▶ Setting up directories..."
+            sudo -n mkdir -p /opt/itrade "$APP_DIR" "$CERTS_BASE" "$WEBROOT_DIR" 2>/dev/null || mkdir -p /opt/itrade "$APP_DIR" "$CERTS_BASE" "$WEBROOT_DIR"
+            sudo -n chown -R $(whoami):$(whoami) /opt/itrade/ 2>/dev/null || true
+            sudo -n chmod 755 /opt/itrade/ /opt/itrade/app/ 2>/dev/null || true
+
             echo "▶ Downloading deployment files..."
-            mkdir -p "$APP_DIR"
             cd "$APP_DIR"
             download_from_github "docker-compose.prod.yml" "$COMPOSE_FILE"
 
@@ -346,8 +350,6 @@ jobs:
             echo "  ✅ docker-compose.prod.yml valid (${FILE_SIZE} bytes)"
 
             echo "▶ Verifying environment files..."
-            sudo chown -R $(whoami):$(whoami) /opt/itrade/ 2>/dev/null || true
-            sudo chmod 755 /opt/itrade/ /opt/itrade/app/ 2>/dev/null || true
             sudo chmod 600 /opt/itrade/.env.* 2>/dev/null || true
 
             for env_file in /opt/itrade/.env.{console,db,web,certbot}; do
