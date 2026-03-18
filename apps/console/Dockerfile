@@ -71,6 +71,17 @@ COPY packages/data-manager/ ./packages/data-manager/
 COPY packages/core/ ./packages/core/
 COPY packages/utils/ ./packages/utils/
 COPY tsconfig.base.json ./
+COPY package.json pnpm-workspace.yaml ./
+
+# Build the data-manager package to ensure dist/ is available
+WORKDIR /app/packages/utils
+RUN pnpm build
+
+WORKDIR /app/packages/core  
+RUN pnpm build
+
+WORKDIR /app/packages/data-manager
+RUN pnpm build
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser  --system --uid 1001 consoleapp
@@ -82,8 +93,8 @@ WORKDIR /app/packages/data-manager
 ENV NODE_ENV=production
 ENV TS_NODE_PROJECT=tsconfig.json
 
-# Use the TypeScript version with globally installed ts-node
-CMD ["node", "-r", "ts-node/register", "-r", "reflect-metadata", "sync-schema-to-db.ts"]
+# Use the TypeScript version with globally installed ts-node and tsconfig-paths
+CMD ["node", "-r", "ts-node/register", "-r", "tsconfig-paths/register", "-r", "reflect-metadata", "sync-schema-to-db.ts"]
 
 # ============================================================
 # Stage 3b: runner — lean production image (plain node, no ts-node)
