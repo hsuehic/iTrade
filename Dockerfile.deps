@@ -44,6 +44,13 @@ COPY --chown=appuser:nodejs tsconfig.base.json ./
 COPY --chown=appuser:nodejs packages/ ./packages/
 COPY --chown=appuser:nodejs apps/ ./apps/
 
+# Recreate pnpm symlinks after the source COPY.
+# Docker's COPY creates new overlayfs layers that can break the symlinks
+# pnpm created in packages/*/node_modules/ during the earlier install step.
+# This is fast (~5s) because all packages are already in the local .pnpm store.
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install -r --prefer-offline --frozen-lockfile
+
 # Build all packages and apps using Turbo (with build cache)
 RUN --mount=type=cache,id=turbo-cache,target=/app/.turbo \
     turbo build --concurrency=2

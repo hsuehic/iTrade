@@ -31,8 +31,7 @@ const configuration = {
 
 console.log(configuration);
 
-// Import the TypeOrmDataManager from the compiled dist
-const { TypeOrmDataManager } = require('./dist/TypeOrmDataManager');
+const { TypeOrmDataManager } = require('./dist');
 
 const dataManager = new TypeOrmDataManager(configuration);
 

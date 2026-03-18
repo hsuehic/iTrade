@@ -13,9 +13,9 @@ async function generate() {
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
-    username: process.env.DB_USERNAME || 'postgres',
+    username: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
-    database: process.env.DB_NAME || 'itrade',
+    database: process.env.DB_DB || 'itrade',
     synchronize: false,
     logging: false,
   });
@@ -69,9 +69,9 @@ async function generate() {
           // Explicitly pass DB vars just in case, though pm2 can inherit
           DB_HOST: process.env.DB_HOST,
           DB_PORT: process.env.DB_PORT,
-          DB_USERNAME: process.env.DB_USERNAME,
+          DB_USER: process.env.DB_USER,
           DB_PASSWORD: process.env.DB_PASSWORD,
-          DB_NAME: process.env.DB_NAME,
+          DB_DB: process.env.DB_DB,
           ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
         },
       };
