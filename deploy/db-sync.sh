@@ -45,6 +45,14 @@ if [[ -f "$GCE_ENV_FILE" ]]; then
 fi
 GCE_HOST="${GCE_HOST:-}"
 GCE_USER="${GCE_USER:-}"
+GCE_KEY="${GCE_KEY:-}"
+
+# SSH options (mirrors sync-env.sh)
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o BatchMode=yes)
+if [[ -n "$GCE_KEY" ]]; then
+  [[ -f "$GCE_KEY" ]] || error "GCE_KEY file not found: $GCE_KEY"
+  SSH_OPTS+=(-i "$GCE_KEY")
+fi
 
 # Remote paths on GCE
 GCE_DUMP_PATH="/tmp/itrade_db_import.dump"
@@ -77,9 +85,9 @@ load_local_creds() {
 # ── Read GCE DB credentials ───────────────────────────────────
 load_gce_creds() {
   # Read from /opt/itrade/.env.db on GCE (we pull it over SSH)
-  GCE_DB_USER="${GCE_DB_USER:-$(ssh "$GCE_USER@$GCE_HOST" "grep -E '^POSTGRES_USER=' /opt/itrade/.env.db | cut -d= -f2 | tr -d '[:space:]'" 2>/dev/null || echo 'itrade_user')}"
-  GCE_DB_NAME="${GCE_DB_NAME:-$(ssh "$GCE_USER@$GCE_HOST" "grep -E '^POSTGRES_DB=' /opt/itrade/.env.db | cut -d= -f2 | tr -d '[:space:]'" 2>/dev/null || echo 'itrade_db')}"
-  GCE_DB_PASS="${GCE_DB_PASS:-$(ssh "$GCE_USER@$GCE_HOST" "grep -E '^POSTGRES_PASSWORD=' /opt/itrade/.env.db | cut -d= -f2 | tr -d '[:space:]'" 2>/dev/null || echo '')}"
+  GCE_DB_USER="${GCE_DB_USER:-$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "grep -E '^POSTGRES_USER=' /opt/itrade/.env.db | cut -d= -f2 | tr -d '[:space:]'" 2>/dev/null || echo 'itrade_user')}"
+  GCE_DB_NAME="${GCE_DB_NAME:-$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "grep -E '^POSTGRES_DB=' /opt/itrade/.env.db | cut -d= -f2 | tr -d '[:space:]'" 2>/dev/null || echo 'itrade_db')}"
+  GCE_DB_PASS="${GCE_DB_PASS:-$(ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "grep -E '^POSTGRES_PASSWORD=' /opt/itrade/.env.db | cut -d= -f2 | tr -d '[:space:]'" 2>/dev/null || echo '')}"
 
   info "Remote container : $GCE_CONTAINER  ($GCE_USER@$GCE_HOST)"
   info "Remote database  : $GCE_DB_NAME  (user: $GCE_DB_USER)"
@@ -130,7 +138,7 @@ cmd_upload() {
   fi
 
   info "Uploading $DUMP_FILE → $GCE_USER@$GCE_HOST:$GCE_DUMP_PATH ..."
-  scp "$DUMP_FILE" "$GCE_USER@$GCE_HOST:$GCE_DUMP_PATH"
+  scp "${SSH_OPTS[@]}" "$DUMP_FILE" "$GCE_USER@$GCE_HOST:$GCE_DUMP_PATH"
   info "✅ Upload complete."
   echo ""
   echo "  Run next: bash deploy/db-sync.sh import"
@@ -150,7 +158,7 @@ cmd_import() {
 
   info "Importing dump into GCE container '$GCE_CONTAINER' ..."
 
-  ssh "$GCE_USER@$GCE_HOST" bash << REMOTE
+  ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" bash << REMOTE
     set -euo pipefail
 
     # Check dump file exists
@@ -222,7 +230,7 @@ cmd_download() {
   info "Dumping GCE database '$GCE_DB_NAME' from container '$GCE_CONTAINER'..."
 
   # Run pg_dump inside GCE container, save to a temp path on GCE
-  ssh "$GCE_USER@$GCE_HOST" \
+  ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" \
     "docker exec -e PGPASSWORD='$GCE_DB_PASS' '$GCE_CONTAINER' \
        pg_dump -U '$GCE_DB_USER' -d '$GCE_DB_NAME' \
                -F c --no-owner --no-acl \
@@ -230,10 +238,10 @@ cmd_download() {
 
   # Download dump from GCE to local machine
   info "Downloading dump → $DOWNLOAD_FILE ..."
-  scp "$GCE_USER@$GCE_HOST:/tmp/itrade_gce_export.dump" "$DOWNLOAD_FILE"
+  scp "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST:/tmp/itrade_gce_export.dump" "$DOWNLOAD_FILE"
 
   # Clean up temp file on GCE
-  ssh "$GCE_USER@$GCE_HOST" "rm -f /tmp/itrade_gce_export.dump"
+  ssh "${SSH_OPTS[@]}" "$GCE_USER@$GCE_HOST" "rm -f /tmp/itrade_gce_export.dump"
 
   DUMP_SIZE=$(du -sh "$DOWNLOAD_FILE" | cut -f1)
   info "✅ Download complete: $DOWNLOAD_FILE ($DUMP_SIZE)"
