@@ -1,0 +1,202 @@
+# =============================================================
+# iTrade — Debug Deployment Issues
+# =============================================================
+# This workflow helps debug deployment issues step by step
+# =============================================================
+
+name: Debug Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug_level:
+        description: 'Debug level (basic/full)'
+        required: false
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - full
+
+jobs:
+  debug-deploy:
+    name: 🔍 Debug Deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check GitHub Secrets
+        run: |
+          echo "🔍 Checking GitHub Secrets availability..."
+
+          if [ -n "${{ secrets.GCE_HOST }}" ]; then
+            echo "✅ GCE_HOST secret is set"
+            echo "GCE_HOST length: ${#GCE_HOST} characters"
+          else
+            echo "❌ GCE_HOST secret is missing"
+          fi
+
+          if [ -n "${{ secrets.GCE_USER }}" ]; then
+            echo "✅ GCE_USER secret is set"
+            echo "GCE_USER length: ${#GCE_USER} characters"
+          else
+            echo "❌ GCE_USER secret is missing"
+          fi
+
+          if [ -n "${{ secrets.GCE_SSH_PRIVATE_KEY }}" ]; then
+            echo "✅ GCE_SSH_PRIVATE_KEY secret is set"
+            echo "GCE_SSH_PRIVATE_KEY length: ${#GCE_SSH_PRIVATE_KEY} characters"
+          else
+            echo "❌ GCE_SSH_PRIVATE_KEY secret is missing"
+          fi
+        env:
+          GCE_HOST: ${{ secrets.GCE_HOST }}
+          GCE_USER: ${{ secrets.GCE_USER }}
+          GCE_SSH_PRIVATE_KEY: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+
+      - name: Test docker-compose.prod.yml download
+        run: |
+          echo "🔍 Testing docker-compose.prod.yml download..."
+
+          REPO="${{ github.repository }}"
+          COMMIT="${{ github.sha }}"
+          BASE_URL="https://raw.githubusercontent.com/${REPO}/${COMMIT}"
+
+          echo "Repository: $REPO"
+          echo "Commit: $COMMIT"
+          echo "URL: $BASE_URL/docker-compose.prod.yml"
+
+          if curl -fsSL --connect-timeout 10 --max-time 30 \
+            "$BASE_URL/docker-compose.prod.yml" -o docker-compose.prod.yml; then
+            
+            FILE_SIZE=$(wc -c < docker-compose.prod.yml)
+            echo "✅ Download successful (${FILE_SIZE} bytes)"
+            
+            if grep -q "services:" docker-compose.prod.yml; then
+              echo "✅ File content is valid"
+            else
+              echo "❌ File content is invalid"
+              head -10 docker-compose.prod.yml
+            fi
+          else
+            echo "❌ Download failed"
+            exit 1
+          fi
+
+      - name: Setup SSH (if secrets available)
+        if: ${{ secrets.GCE_HOST && secrets.GCE_USER && secrets.GCE_SSH_PRIVATE_KEY }}
+        run: |
+          echo "🔍 Setting up SSH..."
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Decode and save private key
+          echo "${{ secrets.GCE_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/gce_deploy_key
+          chmod 600 ~/.ssh/gce_deploy_key
+
+          # Test key format
+          if ssh-keygen -l -f ~/.ssh/gce_deploy_key >/dev/null 2>&1; then
+            echo "✅ SSH private key format is valid"
+          else
+            echo "❌ SSH private key format is invalid"
+            exit 1
+          fi
+
+          # Start SSH agent
+          eval "$(ssh-agent -s)"
+          ssh-add ~/.ssh/gce_deploy_key
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> $GITHUB_ENV
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
+
+      - name: Test SSH connection (if secrets available)
+        if: ${{ secrets.GCE_HOST && secrets.GCE_USER && secrets.GCE_SSH_PRIVATE_KEY }}
+        run: |
+          echo "🔍 Testing SSH connection..."
+
+          # Add host to known_hosts
+          ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts || true
+
+          # Test connection with timeout
+          if timeout 30 ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes \
+            "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" \
+            "echo 'SSH connection successful'; whoami; pwd; docker --version"; then
+            echo "✅ SSH connection successful"
+          else
+            echo "❌ SSH connection failed"
+            echo "Common issues:"
+            echo "  - Incorrect GCE_HOST (IP/domain)"
+            echo "  - Incorrect GCE_USER (username)"
+            echo "  - SSH key not authorized on server"
+            echo "  - Firewall blocking SSH (port 22)"
+            echo "  - GCE instance not running"
+            exit 1
+          fi
+
+      - name: Test basic deployment commands (if SSH works)
+        if: ${{ secrets.GCE_HOST && secrets.GCE_USER && secrets.GCE_SSH_PRIVATE_KEY }}
+        run: |
+          echo "🔍 Testing basic deployment commands..."
+
+          ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes \
+            "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" bash << 'ENDSSH'
+            set -euo pipefail
+            
+            echo "Current user: $(whoami)"
+            echo "Current directory: $(pwd)"
+            echo "Docker version: $(docker --version)"
+            
+            # Check if app directory exists
+            if [ -d "/opt/itrade/app" ]; then
+              echo "✅ /opt/itrade/app directory exists"
+            else
+              echo "⚠️  /opt/itrade/app directory missing"
+              echo "Creating directory..."
+              sudo mkdir -p /opt/itrade/app
+              sudo chown $(whoami):$(whoami) /opt/itrade/app
+            fi
+            
+            # Check environment files
+            echo "Checking environment files..."
+            for env_file in /opt/itrade/.env.{console,db,web,certbot}; do
+              if [ -f "$env_file" ]; then
+                echo "✅ $env_file exists"
+              else
+                echo "❌ $env_file missing"
+              fi
+            done
+            
+            # Test docker-compose download
+            echo "Testing docker-compose download..."
+            cd /opt/itrade/app
+            if curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/docker-compose.prod.yml" \
+              -o docker-compose.test.yml; then
+              echo "✅ docker-compose download successful"
+              rm -f docker-compose.test.yml
+            else
+              echo "❌ docker-compose download failed"
+            fi
+            
+            echo "✅ Basic deployment test completed"
+          ENDSSH
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "🔍 Debug Summary:"
+          echo "================"
+
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ All debug checks passed!"
+            echo "The deployment should work. Check the main deploy workflow logs for specific errors."
+          else
+            echo "❌ Some debug checks failed."
+            echo "Review the failed steps above to identify the issue."
+            echo ""
+            echo "Common solutions:"
+            echo "1. Verify GitHub Secrets are set correctly"
+            echo "2. Test SSH access manually: ssh user@your-gce-host"
+            echo "3. Ensure GCE instance is running and accessible"
+            echo "4. Check environment files exist on the server"
+            echo "5. Verify Docker is installed and running on GCE"
+          fi
