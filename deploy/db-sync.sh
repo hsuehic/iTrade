@@ -32,7 +32,15 @@ error() { echo -e "${RED}✖${NC}  $*" >&2; exit 1; }
 
 # ── CONFIG — edit or override via environment variables ──────
 # Local postgres Docker container name
-LOCAL_CONTAINER="${LOCAL_CONTAINER:-itrade-db}"
+if [[ -z "${LOCAL_CONTAINER:-}" ]]; then
+  if docker ps --format '{{.Names}}' | grep -q "^itrade-db$"; then
+    LOCAL_CONTAINER="itrade-db"
+  elif docker ps --format '{{.Names}}' | grep -q "^proxy-manager-db-1$"; then
+    LOCAL_CONTAINER="proxy-manager-db-1"
+  else
+    LOCAL_CONTAINER="itrade-db"
+  fi
+fi
 
 # Dump file location (local machine)
 DUMP_FILE="${DUMP_FILE:-/tmp/itrade_db_$(date +%Y%m%d_%H%M%S).dump}"
@@ -77,6 +85,12 @@ load_local_creds() {
   LOCAL_DB_USER="${LOCAL_DB_USER:-$(grep -E '^DB_USER=' "$LOCAL_ENV_FILE" | cut -d= -f2 | tr -d '[:space:]' || echo 'postgres')}"
   LOCAL_DB_PASS="${LOCAL_DB_PASS:-$(grep -E '^DB_PASSWORD=' "$LOCAL_ENV_FILE" | cut -d= -f2 | tr -d '[:space:]' || echo '')}"
   LOCAL_DB_NAME="${LOCAL_DB_NAME:-$(grep -E '^DB_DB=' "$LOCAL_ENV_FILE" | cut -d= -f2 | tr -d '[:space:]' || echo 'itrade')}"
+
+  # Override LOCAL_CONTAINER if defined in the local env file
+  ENV_LOCAL_CONTAINER=$(grep -E '^LOCAL_CONTAINER=' "$LOCAL_ENV_FILE" | cut -d= -f2 | tr -d '[:space:]' || echo '')
+  if [[ -n "$ENV_LOCAL_CONTAINER" ]]; then
+    LOCAL_CONTAINER="$ENV_LOCAL_CONTAINER"
+  fi
 
   info "Local  container : $LOCAL_CONTAINER"
   info "Local  database  : $LOCAL_DB_NAME  (user: $LOCAL_DB_USER)"
