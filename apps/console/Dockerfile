@@ -26,6 +26,6 @@ WORKDIR /app/apps/console
 
 ENV NODE_ENV=production
 
-# Use compiled JavaScript for faster startup (~2s vs ~20s with ts-node)
+# Use production start script with compiled JavaScript for faster startup (~2s vs ~20s with ts-node)
 # reflect-metadata is still needed for TypeORM decorators
-CMD ["node", "-r", "reflect-metadata", "dist/main.js"]
+CMD ["pnpm", "start:prod"]
