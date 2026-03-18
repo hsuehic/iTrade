@@ -233,78 +233,91 @@ jobs:
             APP_DIR="/opt/itrade/app"
             COMPOSE_FILE="\$APP_DIR/docker-compose.prod.yml"
 
-            # ── Pull latest code (for compose file, env templates, etc.) ──
-            echo "▶ Pulling latest code..."
+            # ── Download deployment files (lightweight approach) ──
+            echo "▶ Downloading deployment files (optimized - no full source code)..."
+            
+            # Create app directory if it doesn't exist
+            mkdir -p "\$APP_DIR"
             cd "\$APP_DIR"
             
-            # Diagnostic information
-            echo "▶ Current user: \$(whoami)"
-            echo "▶ Current directory: \$(pwd)"
-            echo "▶ Git directory ownership: \$(stat -c '%U:%G' .git 2>/dev/null || stat -f '%Su:%Sg' .git 2>/dev/null || echo 'unknown')"
+            # Try lightweight file download first
+            REPO="${GITHUB_REPOSITORY}"
+            BASE_URL="https://raw.githubusercontent.com/\${REPO}/\${COMMIT_SHA}"
+            DOWNLOAD_SUCCESS=true
             
-            # Fix Git repository permissions if needed
-            if [ ! -w .git/objects ]; then
-              echo "▶ Git objects directory not writable, fixing permissions..."
-              sudo chown -R \$(whoami):\$(whoami) .git/
-              chmod -R u+w .git/
-              echo "✅ Git permissions fixed"
-            else
-              echo "✅ Git objects directory is writable"
+            echo "▶ Downloading docker-compose.prod.yml..."
+            if ! curl -fsSL "\$BASE_URL/docker-compose.prod.yml" -o docker-compose.prod.yml; then
+              echo "⚠️  Failed to download docker-compose.prod.yml"
+              DOWNLOAD_SUCCESS=false
             fi
             
-            # Ensure we can write to the working directory
-            if [ ! -w . ]; then
-              echo "▶ Working directory not writable, fixing permissions..."
-              sudo chown -R \$(whoami):\$(whoami) .
-              echo "✅ Working directory permissions fixed"
-            else
-              echo "✅ Working directory is writable"
-            fi
+            echo "▶ Downloading deployment scripts..."
+            mkdir -p deploy
             
-            # Try to pull latest code, with fallback to fresh clone if Git is corrupted
-            echo "▶ Fetching latest changes..."
-            if ! git fetch origin main 2>&1; then
-              echo "⚠️  Git fetch failed, attempting to fix repository..."
-              
-              # Show Git status for debugging
-              echo "▶ Git status before cleanup:"
-              git status --porcelain 2>&1 || echo "Git status failed"
-              
-              # Clean up any corrupted state
-              echo "▶ Cleaning up Git state..."
-              git reset --hard HEAD 2>/dev/null || true
-              git clean -fd 2>/dev/null || true
-              
-              # Try fetch again
-              echo "▶ Retrying git fetch..."
-              if ! git fetch origin main 2>&1; then
-                echo "⚠️  Git repository appears corrupted, re-cloning..."
-                cd /opt/itrade
-                
-                # Backup current directory
-                if [ -d "app_backup" ]; then
-                  sudo rm -rf app_backup
-                fi
-                mv app app_backup
-                
-                # Clone fresh copy
-                echo "▶ Cloning fresh repository..."
-                git clone https://github.com/\${GITHUB_REPOSITORY}.git app
-                cd "\$APP_DIR"
-                
-                # Ensure correct ownership
-                sudo chown -R \$(whoami):\$(whoami) .
-                echo "✅ Repository re-cloned successfully"
-              else
-                echo "✅ Git fetch successful after cleanup"
+            # Download essential deployment files
+            DEPLOY_FILES=(
+              "deploy/certbot-init.sh"
+              "deploy/fix-git-permissions.sh"
+              "deploy/nginx.conf.template"
+              "deploy/env.console.template"
+              "deploy/env.web.template"
+              "deploy/env.db.template"
+              "deploy/env.certbot.template"
+              "deploy/sync-env.sh"
+            )
+            
+            for file in "\${DEPLOY_FILES[@]}"; do
+              echo "▶ Downloading \$file..."
+              if ! curl -fsSL "\$BASE_URL/\$file" -o "\$file"; then
+                echo "⚠️  Failed to download \$file"
+                DOWNLOAD_SUCCESS=false
+                break
               fi
+              
+              # Make shell scripts executable
+              if [[ "\$file" == *.sh ]]; then
+                chmod +x "\$file"
+              fi
+            done
+            
+            # Fallback to Git if file download failed
+            if [ "\$DOWNLOAD_SUCCESS" = false ]; then
+              echo "⚠️  File download failed, falling back to Git clone..."
+              
+              # Clean up partial downloads
+              rm -f docker-compose.prod.yml
+              rm -rf deploy
+              
+              # Clone repository (fallback method)
+              cd /opt/itrade
+              if [ -d "app" ]; then
+                sudo rm -rf app_backup 2>/dev/null || true
+                mv app app_backup
+              fi
+              
+              git clone https://github.com/\${GITHUB_REPOSITORY}.git app
+              cd "\$APP_DIR"
+              git checkout "\${COMMIT_SHA}"
+              
+              # Ensure correct ownership
+              sudo chown -R \$(whoami):\$(whoami) .
+              echo "✅ Repository cloned as fallback"
             else
-              echo "✅ Git fetch successful"
+              echo "✅ Deployment files downloaded successfully (lightweight method)"
             fi
             
-            echo "▶ Resetting to origin/main..."
-            git reset --hard origin/main
-            echo "✅ Code updated to latest version"
+            # Verify critical files exist
+            if [ ! -f "docker-compose.prod.yml" ]; then
+              echo "❌ docker-compose.prod.yml missing"
+              exit 1
+            fi
+            
+            if [ ! -f "deploy/certbot-init.sh" ]; then
+              echo "❌ deploy/certbot-init.sh missing"
+              exit 1
+            fi
+            
+            echo "✅ All required deployment files present"
 
             # ── Ensure environment files have correct ownership ──
             echo "▶ Checking environment file permissions..."
