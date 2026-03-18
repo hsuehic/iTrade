@@ -118,6 +118,7 @@ jobs:
 
           DOCKER_BUILDKIT=1 docker build \
             -f apps/console/Dockerfile \
+            --target console \
             -t "${PREFIX}/console:latest" \
             -t "${PREFIX}/console:${SHA}" \
             --build-arg BUILDKIT_INLINE_CACHE=1 \

@@ -1,59 +1,9 @@
 # ============================================================
-# Stage 1: deps — use shared dependencies base image
+# Web Application (Next.js)
 # ============================================================
-# Uses the shared itrade-deps image built from Dockerfile.deps
-# This avoids installing dependencies multiple times across services
-# ============================================================
-FROM itrade-deps:latest AS deps
-
-# ============================================================
-# Stage 2: builder — build packages + Next.js app
-# ============================================================
-FROM node:20-alpine AS builder
-
-RUN apk add --update --no-cache python3 build-base
-RUN npm install -g pnpm@10.18.0
-
-WORKDIR /app
-
-# Copy installed node_modules from deps stage
-COPY --from=deps /app/node_modules         ./node_modules
-COPY --from=deps /app/packages/core/node_modules        ./packages/core/node_modules
-COPY --from=deps /app/packages/data-manager/node_modules ./packages/data-manager/node_modules
-COPY --from=deps /app/packages/exchange-connectors/node_modules ./packages/exchange-connectors/node_modules
-COPY --from=deps /app/packages/strategies/node_modules  ./packages/strategies/node_modules
-COPY --from=deps /app/packages/utils/node_modules       ./packages/utils/node_modules
-COPY --from=deps /app/packages/logger/node_modules      ./packages/logger/node_modules
-COPY --from=deps /app/packages/risk-manager/node_modules ./packages/risk-manager/node_modules
-COPY --from=deps /app/packages/portfolio-manager/node_modules ./packages/portfolio-manager/node_modules
-COPY --from=deps /app/packages/push-notification/node_modules ./packages/push-notification/node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
-
-# Copy all source code
-COPY . .
-
-# Build workspace packages that web depends on (in dependency order)
-RUN pnpm --filter=@itrade/utils build
-RUN pnpm --filter=@itrade/core build
-RUN pnpm --filter=@itrade/logger build
-RUN pnpm --filter=@itrade/data-manager build
-RUN pnpm --filter=@itrade/strategies build
-RUN pnpm --filter=@itrade/exchange-connectors build
-RUN pnpm --filter=@itrade/push-notification build
-
-# Build Next.js with prod config (output: standalone -> .next-prod/standalone)
-ENV NODE_ENV=production
-ENV BUILD_MODE=prod
-ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN pnpm --filter=@itrade/web-manager build:prod
-
-# ============================================================
-# Stage 3: runner — minimal production image
+# Uses the unified build base image with everything pre-built
 # ============================================================
 FROM node:20-alpine AS runner
-
-# No additional packages needed for runner stage
 
 WORKDIR /app
 
@@ -67,12 +17,12 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser  --system --uid 1001 nextjs
 
-# Copy standalone output (includes server.js + bundled node_modules)
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-prod/standalone ./
+# Copy standalone output from the deps build stage
+COPY --from=itrade-deps:latest --chown=nextjs:nodejs /app/apps/web/.next-prod/standalone ./
 
 # Copy static assets and public folder
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next-prod/static    ./apps/web/.next-prod/static
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public               ./apps/web/public
+COPY --from=itrade-deps:latest --chown=nextjs:nodejs /app/apps/web/.next-prod/static    ./apps/web/.next-prod/static
+COPY --from=itrade-deps:latest --chown=nextjs:nodejs /app/apps/web/public               ./apps/web/public
 
 USER nextjs
 

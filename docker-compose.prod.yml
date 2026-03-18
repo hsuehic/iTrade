@@ -98,6 +98,7 @@ services:
     build:
       context: .
       dockerfile: apps/console/Dockerfile
+      target: console
     container_name: itrade-console
     env_file:
       - /opt/itrade/.env.console

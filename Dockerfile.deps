@@ -1,19 +1,19 @@
 # ============================================================
-# Shared Dependencies Base Image
+# Unified Build Base Image
 # ============================================================
-# This image contains all workspace dependencies installed.
-# It's used as a base for web, console, and schema-migrator builds
-# to avoid installing dependencies multiple times.
+# This image contains all workspace dependencies AND builds.
+# It's used as a base for web, console, and schema-migrator
+# to avoid building multiple times and preserve monorepo structure.
 # ============================================================
 FROM node:20-alpine AS deps
 
-RUN apk add --update --no-cache python3 build-base
-RUN npm install -g pnpm@10.18.0
+RUN apk update && apk add --no-cache python3 make g++
+RUN npm install -g pnpm@10.18.0 turbo@1.13.4 ts-node@10.9.2
 
 WORKDIR /app
 
 # Copy workspace manifests first (cache-friendly layer)
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json ./
 
 # Copy all package.json files to satisfy pnpm workspace resolution
 COPY packages/core/package.json             ./packages/core/
@@ -35,5 +35,23 @@ COPY apps/console/package.json              ./apps/console/
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
-# This stage is complete - all dependencies are installed
-# Other Dockerfiles will use: FROM itrade-deps:latest AS deps
+# Copy all source code (preserving monorepo structure)
+COPY tsconfig.base.json ./
+COPY packages/ ./packages/
+COPY apps/ ./apps/
+
+# Build all packages and apps using Turbo (with build cache)
+RUN --mount=type=cache,id=turbo-cache,target=/app/.turbo \
+    turbo build
+
+# Create non-root user for runtime
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 appuser
+
+# Set ownership for the entire app directory
+RUN chown -R appuser:nodejs /app
+
+USER appuser
+
+# This stage is complete - all dependencies are installed and everything is built
+# App-specific Dockerfiles will use: FROM itrade-deps:latest
