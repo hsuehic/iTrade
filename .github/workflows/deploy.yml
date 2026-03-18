@@ -564,7 +564,7 @@ jobs:
                  ! openssl x509 -in "$CERT_FILE" -noout -issuer 2>/dev/null | grep -qi "Let's Encrypt\|R3\|R10\|R11\|E1\|E5"; then
               NEED_CERT=true
               echo "  Self-signed certificate detected → will issue real one"
-            elif ! openssl x509 -in "$CERT_FILE" -noout -checkend 2592000 2>/dev/null; then
+            elif ! openssl x509 -in "$CERT_FILE" -noout -checkend 2592000 >/dev/null 2>&1; then
               NEED_CERT=true
               echo "  Certificate expires within 30 days → will renew"
             fi
@@ -618,7 +618,7 @@ jobs:
             # Ensure nginx reload cron for certificate renewals
             CRON_JOB="0 */12 * * * docker exec itrade-nginx nginx -s reload >> /var/log/nginx-reload.log 2>&1"
             if ! crontab -l 2>/dev/null | grep -q "itrade-nginx nginx -s reload"; then
-              (crontab -l 2>/dev/null; echo "# iTrade nginx SSL reload"; echo "$CRON_JOB") | crontab -
+              (crontab -l 2>/dev/null || true; echo "# iTrade nginx SSL reload"; echo "$CRON_JOB") | crontab -
               echo "  ✅ Installed nginx reload cron"
             fi
 
