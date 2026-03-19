@@ -192,7 +192,13 @@ if [ "$MIGRATOR_EXIT" != "0" ]; then
 fi
 echo "  ✅ Schema migration complete ($((MIGRATION_END - MIGRATION_START))s)"
 
-echo "▶ Updating console, web, and adminer services..."
+echo "▶ Removing old console, web, and adminer containers..."
+docker compose -f "$COMPOSE_FILE" rm -sf console web adminer 2>/dev/null || true
+for cname in itrade-console itrade-web itrade-adminer; do
+  docker rm -f "$cname" 2>/dev/null || true
+done
+
+echo "▶ Starting console, web, and adminer services..."
 docker compose -f "$COMPOSE_FILE" up -d --no-build console web adminer
 
 echo "▶ Waiting for web service to be healthy..."
