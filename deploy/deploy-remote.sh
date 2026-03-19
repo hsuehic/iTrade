@@ -163,8 +163,8 @@ if [ "$MIGRATOR_EXIT" != "0" ]; then
 fi
 echo "  ✅ Schema migration complete ($((MIGRATION_END - MIGRATION_START))s)"
 
-echo "▶ Updating console and web services..."
-docker compose -f "$COMPOSE_FILE" up -d --no-build console web
+echo "▶ Updating console, web, and adminer services..."
+docker compose -f "$COMPOSE_FILE" up -d --no-build console web adminer
 
 echo "▶ Waiting for web service to be healthy..."
 WEB_TIMEOUT=90
@@ -208,7 +208,12 @@ done
 # Remove stale nginx reload cron if it exists
 if crontab -l 2>/dev/null | grep -q "itrade-nginx nginx -s reload"; then
   echo "▶ Removing old nginx reload cron job..."
-  crontab -l 2>/dev/null | grep -v "itrade-nginx nginx -s reload" | grep -v "# iTrade nginx SSL reload" | crontab -
+  CLEAN_CRON=$(crontab -l 2>/dev/null | grep -v "itrade-nginx nginx -s reload" | grep -v "# iTrade nginx SSL reload" || true)
+  if [ -n "$CLEAN_CRON" ]; then
+    echo "$CLEAN_CRON" | crontab -
+  else
+    crontab -r 2>/dev/null || true
+  fi
   echo "  ✅ Cron job removed"
 fi
 
