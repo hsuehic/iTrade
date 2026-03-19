@@ -361,22 +361,33 @@ jobs:
             echo "  ✅ All environment files present"
 
             echo "▶ Preparing nginx config and SSL paths..."
-            DOMAIN=$(sed -n 's/^DOMAIN=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
-            if [ -z "${DOMAIN:-}" ]; then
-              echo "❌ DOMAIN is missing in $CERTBOT_ENV"
+            # Support DOMAINS= (comma-separated, multi-domain) with DOMAIN= fallback
+            DOMAINS_RAW=$(sed -n 's/^DOMAINS=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
+            if [ -z "${DOMAINS_RAW:-}" ]; then
+              DOMAINS_RAW=$(sed -n 's/^DOMAIN=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
+            fi
+            if [ -z "${DOMAINS_RAW:-}" ]; then
+              echo "❌ DOMAINS (or DOMAIN) is missing in $CERTBOT_ENV"
               exit 1
             fi
+
+            # Parse comma-separated domains
+            IFS=',' read -ra DOMAIN_LIST <<< "$DOMAINS_RAW"
+            CERT_NAME="${DOMAIN_LIST[0]}"
+            SERVER_NAMES="${DOMAIN_LIST[*]}"
+            echo "  Domains: ${SERVER_NAMES}"
+            echo "  Cert name: ${CERT_NAME}"
 
             if [ -d "$NGINX_CONF" ]; then
               mv "$NGINX_CONF" "/opt/itrade/nginx.conf.backup.$(date +%s)"
             fi
 
-            mkdir -p "$CERTS_BASE/live/$DOMAIN" "$WEBROOT_DIR"
+            mkdir -p "$CERTS_BASE/live/$CERT_NAME" "$WEBROOT_DIR"
             {
               echo 'server {'
               echo '    listen 80;'
               echo '    listen [::]:80;'
-              echo "    server_name ${DOMAIN};"
+              echo "    server_name ${SERVER_NAMES};"
               echo ''
               echo '    location /.well-known/acme-challenge/ {'
               echo '        root /var/www/certbot;'
@@ -391,10 +402,10 @@ jobs:
               echo '    listen 443 ssl;'
               echo '    listen [::]:443 ssl;'
               echo '    http2 on;'
-              echo "    server_name ${DOMAIN};"
+              echo "    server_name ${SERVER_NAMES};"
               echo ''
-              echo "    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;"
-              echo "    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;"
+              echo "    ssl_certificate     /etc/letsencrypt/live/${CERT_NAME}/fullchain.pem;"
+              echo "    ssl_certificate_key /etc/letsencrypt/live/${CERT_NAME}/privkey.pem;"
               echo ''
               echo '    ssl_protocols       TLSv1.2 TLSv1.3;'
               echo '    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;'
@@ -433,34 +444,39 @@ jobs:
             } > "$NGINX_CONF"
             chmod 644 "$NGINX_CONF"
 
-            DUMMY_CERT="$CERTS_BASE/live/$DOMAIN/fullchain.pem"
-            DUMMY_KEY="$CERTS_BASE/live/$DOMAIN/privkey.pem"
+            DUMMY_CERT="$CERTS_BASE/live/$CERT_NAME/fullchain.pem"
+            DUMMY_KEY="$CERTS_BASE/live/$CERT_NAME/privkey.pem"
             if [ ! -s "$DUMMY_CERT" ] || [ ! -s "$DUMMY_KEY" ]; then
               echo "  ▶ Generating temporary bootstrap certificate..."
 
-              # Ensure openssl is available (may be missing on minimal GCE images)
               if ! command -v openssl >/dev/null 2>&1; then
                 echo "  ▶ openssl not found, installing..."
                 sudo apt-get update -qq && sudo apt-get install -y -qq openssl
               fi
 
-              # Ensure the target directory exists and is writable
-              mkdir -p "$CERTS_BASE/live/$DOMAIN"
+              mkdir -p "$CERTS_BASE/live/$CERT_NAME"
 
-              # Generate self-signed cert; show errors for diagnostics
+              # Build SAN extension for all domains
+              SAN_EXT=""
+              for d in "${DOMAIN_LIST[@]}"; do
+                if [ -z "$SAN_EXT" ]; then SAN_EXT="DNS:$d"; else SAN_EXT="$SAN_EXT,DNS:$d"; fi
+              done
+
               if openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                 -keyout "$DUMMY_KEY" \
                 -out "$DUMMY_CERT" \
-                -subj "/CN=$DOMAIN" 2>&1; then
-                echo "  ✅ Bootstrap certificate generated"
+                -subj "/CN=$CERT_NAME" \
+                -addext "subjectAltName=$SAN_EXT" 2>&1; then
+                echo "  ✅ Bootstrap certificate generated (SAN: $SAN_EXT)"
               else
                 echo "  ⚠️  openssl failed as current user, retrying with sudo..."
                 sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
                   -keyout "$DUMMY_KEY" \
                   -out "$DUMMY_CERT" \
-                  -subj "/CN=$DOMAIN" 2>&1
+                  -subj "/CN=$CERT_NAME" \
+                  -addext "subjectAltName=$SAN_EXT" 2>&1
                 sudo chown "$(whoami):$(whoami)" "$DUMMY_KEY" "$DUMMY_CERT"
-                echo "  ✅ Bootstrap certificate generated (with sudo)"
+                echo "  ✅ Bootstrap certificate generated (with sudo, SAN: $SAN_EXT)"
               fi
             else
               echo "  ✅ Existing certificate found"
@@ -587,13 +603,13 @@ jobs:
             echo "══ Phase 3: Post-deploy tasks (zero downtime) ══"
 
             # Conditional certbot: only run if certificate needs attention
-            CERT_FILE="$CERTS_BASE/live/$DOMAIN/fullchain.pem"
+            CERT_FILE="$CERTS_BASE/live/$CERT_NAME/fullchain.pem"
             NEED_CERT=false
 
             if [ ! -s "$CERT_FILE" ]; then
               NEED_CERT=true
               echo "  Certificate missing → will issue"
-            elif openssl x509 -in "$CERT_FILE" -noout -subject 2>/dev/null | grep -qi "O = \|self.signed\|CN = $DOMAIN" && \
+            elif openssl x509 -in "$CERT_FILE" -noout -subject 2>/dev/null | grep -qi "O = \|self.signed\|CN = $CERT_NAME" && \
                  ! openssl x509 -in "$CERT_FILE" -noout -issuer 2>/dev/null | grep -qi "Let's Encrypt\|R3\|R10\|R11\|E1\|E5"; then
               NEED_CERT=true
               echo "  Self-signed certificate detected → will issue real one"
@@ -605,42 +621,52 @@ jobs:
             if [ "$NEED_CERT" = true ]; then
               CERTBOT_EMAIL=$(sed -n 's/^CERTBOT_EMAIL=//p' "$CERTBOT_ENV" | head -n 1 | tr -d '[:space:]"')
               if [ -n "${CERTBOT_EMAIL:-}" ]; then
-                # Certbot refuses to overwrite a live directory it didn't create
-                # (e.g. our bootstrap self-signed cert). Clean it up so certbot
-                # can manage the directory from scratch.
-                CERT_LIVE_DIR="$CERTS_BASE/live/$DOMAIN"
-                CERT_RENEWAL_CONF="$CERTS_BASE/renewal/$DOMAIN.conf"
+                CERT_LIVE_DIR="$CERTS_BASE/live/$CERT_NAME"
+                CERT_RENEWAL_CONF="$CERTS_BASE/renewal/$CERT_NAME.conf"
                 if [ -d "$CERT_LIVE_DIR" ] && [ ! -f "$CERT_RENEWAL_CONF" ]; then
                   echo "  ▶ Clearing non-certbot certificate from live directory..."
                   rm -rf "$CERT_LIVE_DIR"
-                  rm -rf "$CERTS_BASE/archive/$DOMAIN" 2>/dev/null || true
+                  rm -rf "$CERTS_BASE/archive/$CERT_NAME" 2>/dev/null || true
                 fi
 
-                echo "▶ Issuing/renewing Let's Encrypt certificate..."
+                # Build --domain flags for all domains
+                DOMAIN_FLAGS=""
+                for d in "${DOMAIN_LIST[@]}"; do
+                  DOMAIN_FLAGS="$DOMAIN_FLAGS --domain $d"
+                done
+
+                echo "▶ Issuing/renewing Let's Encrypt certificate for: ${SERVER_NAMES}..."
                 if docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot certonly \
                   --webroot \
                   --webroot-path=/var/www/certbot \
-                  --domain "$DOMAIN" \
+                  $DOMAIN_FLAGS \
                   --email "$CERTBOT_EMAIL" \
                   --agree-tos \
                   --non-interactive \
                   --keep-until-expiring \
-                  --cert-name "$DOMAIN"; then
+                  --cert-name "$CERT_NAME"; then
                   docker exec itrade-nginx nginx -s reload
                   echo "  ✅ Certificate issued/renewed and nginx reloaded"
                 else
-                  # Certbot failed — restore bootstrap cert so nginx can still reload
-                  if [ ! -s "$CERTS_BASE/live/$DOMAIN/fullchain.pem" ]; then
+                  if [ ! -s "$CERTS_BASE/live/$CERT_NAME/fullchain.pem" ]; then
                     echo "  ▶ Restoring bootstrap certificate..."
-                    mkdir -p "$CERTS_BASE/live/$DOMAIN"
+                    mkdir -p "$CERTS_BASE/live/$CERT_NAME"
+
+                    SAN_EXT=""
+                    for d in "${DOMAIN_LIST[@]}"; do
+                      if [ -z "$SAN_EXT" ]; then SAN_EXT="DNS:$d"; else SAN_EXT="$SAN_EXT,DNS:$d"; fi
+                    done
+
                     openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-                      -keyout "$CERTS_BASE/live/$DOMAIN/privkey.pem" \
-                      -out "$CERTS_BASE/live/$DOMAIN/fullchain.pem" \
-                      -subj "/CN=$DOMAIN" 2>&1 || \
+                      -keyout "$CERTS_BASE/live/$CERT_NAME/privkey.pem" \
+                      -out "$CERTS_BASE/live/$CERT_NAME/fullchain.pem" \
+                      -subj "/CN=$CERT_NAME" \
+                      -addext "subjectAltName=$SAN_EXT" 2>&1 || \
                     sudo openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-                      -keyout "$CERTS_BASE/live/$DOMAIN/privkey.pem" \
-                      -out "$CERTS_BASE/live/$DOMAIN/fullchain.pem" \
-                      -subj "/CN=$DOMAIN" 2>&1 || true
+                      -keyout "$CERTS_BASE/live/$CERT_NAME/privkey.pem" \
+                      -out "$CERTS_BASE/live/$CERT_NAME/fullchain.pem" \
+                      -subj "/CN=$CERT_NAME" \
+                      -addext "subjectAltName=$SAN_EXT" 2>&1 || true
                   fi
                   echo "  ⚠️  Certificate issuance failed (non-fatal, services running with self-signed cert)"
                 fi
