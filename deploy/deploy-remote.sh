@@ -234,6 +234,38 @@ if crontab -l 2>/dev/null | grep -q "itrade-nginx nginx -s reload"; then
   echo "  ✅ Cron job removed"
 fi
 
+# Remove unused Docker images to free disk space on GCE
+echo "▶ Cleaning up unused Docker images..."
+BEFORE_SIZE=$(docker system df --format '{{.Size}}' 2>/dev/null | head -1 || echo "unknown")
+
+# 1) Remove dangling (untagged) images
+docker image prune -f 2>/dev/null || true
+
+# 2) Remove old GHCR images no longer used by any running container
+USED_IMAGES=$(docker ps --format '{{.Image}}' | sort -u)
+OLD_IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' \
+  | grep "^ghcr.io/" \
+  | grep -v "<none>" \
+  | while read -r img; do
+      echo "$USED_IMAGES" | grep -qxF "$img" || echo "$img"
+    done)
+
+if [ -n "$OLD_IMAGES" ]; then
+  echo "  Removing unused GHCR images:"
+  echo "$OLD_IMAGES" | while read -r img; do
+    echo "    - $img"
+    docker rmi "$img" 2>/dev/null || true
+  done
+else
+  echo "  No unused GHCR images found"
+fi
+
+# 3) Final dangling cleanup after rmi
+docker image prune -f 2>/dev/null || true
+
+AFTER_SIZE=$(docker system df --format '{{.Size}}' 2>/dev/null | head -1 || echo "unknown")
+echo "  ✅ Image cleanup complete (before: ${BEFORE_SIZE}, after: ${AFTER_SIZE})"
+
 docker logout ghcr.io >/dev/null 2>&1 || true
 
 DEPLOY_END=$(date +%s)
