@@ -23,36 +23,36 @@ jobs:
     name: 🔍 Debug Deployment
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      GCE_HOST: ${{ secrets.GCE_HOST }}
+      GCE_USER: ${{ secrets.GCE_USER }}
+      GCE_SSH_PRIVATE_KEY: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
 
     steps:
       - name: Check GitHub Secrets
         run: |
           echo "🔍 Checking GitHub Secrets availability..."
 
-          if [ -n "${{ secrets.GCE_HOST }}" ]; then
+          if [ -n "$GCE_HOST" ]; then
             echo "✅ GCE_HOST secret is set"
             echo "GCE_HOST length: ${#GCE_HOST} characters"
           else
             echo "❌ GCE_HOST secret is missing"
           fi
 
-          if [ -n "${{ secrets.GCE_USER }}" ]; then
+          if [ -n "$GCE_USER" ]; then
             echo "✅ GCE_USER secret is set"
             echo "GCE_USER length: ${#GCE_USER} characters"
           else
             echo "❌ GCE_USER secret is missing"
           fi
 
-          if [ -n "${{ secrets.GCE_SSH_PRIVATE_KEY }}" ]; then
+          if [ -n "$GCE_SSH_PRIVATE_KEY" ]; then
             echo "✅ GCE_SSH_PRIVATE_KEY secret is set"
             echo "GCE_SSH_PRIVATE_KEY length: ${#GCE_SSH_PRIVATE_KEY} characters"
           else
             echo "❌ GCE_SSH_PRIVATE_KEY secret is missing"
           fi
-        env:
-          GCE_HOST: ${{ secrets.GCE_HOST }}
-          GCE_USER: ${{ secrets.GCE_USER }}
-          GCE_SSH_PRIVATE_KEY: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
 
       - name: Test docker-compose.prod.yml download
         run: |
@@ -84,7 +84,7 @@ jobs:
           fi
 
       - name: Setup SSH (if secrets available)
-        if: ${{ secrets.GCE_HOST && secrets.GCE_USER && secrets.GCE_SSH_PRIVATE_KEY }}
+        if: env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != ''
         run: |
           echo "🔍 Setting up SSH..."
 
@@ -92,7 +92,7 @@ jobs:
           chmod 700 ~/.ssh
 
           # Decode and save private key
-          echo "${{ secrets.GCE_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/gce_deploy_key
+          echo "$GCE_SSH_PRIVATE_KEY" | base64 -d > ~/.ssh/gce_deploy_key
           chmod 600 ~/.ssh/gce_deploy_key
 
           # Test key format
@@ -110,16 +110,16 @@ jobs:
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> $GITHUB_ENV
 
       - name: Test SSH connection (if secrets available)
-        if: ${{ secrets.GCE_HOST && secrets.GCE_USER && secrets.GCE_SSH_PRIVATE_KEY }}
+        if: env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != ''
         run: |
           echo "🔍 Testing SSH connection..."
 
           # Add host to known_hosts
-          ssh-keyscan -H -T 10 "${{ secrets.GCE_HOST }}" >> ~/.ssh/known_hosts || true
+          ssh-keyscan -H -T 10 "$GCE_HOST" >> ~/.ssh/known_hosts || true
 
           # Test connection with timeout
           if timeout 30 ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes \
-            "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" \
+            "$GCE_USER@$GCE_HOST" \
             "echo 'SSH connection successful'; whoami; pwd; docker --version"; then
             echo "✅ SSH connection successful"
           else
@@ -134,12 +134,12 @@ jobs:
           fi
 
       - name: Test basic deployment commands (if SSH works)
-        if: ${{ secrets.GCE_HOST && secrets.GCE_USER && secrets.GCE_SSH_PRIVATE_KEY }}
+        if: env.GCE_HOST != '' && env.GCE_USER != '' && env.GCE_SSH_PRIVATE_KEY != ''
         run: |
           echo "🔍 Testing basic deployment commands..."
 
           ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes \
-            "${{ secrets.GCE_USER }}@${{ secrets.GCE_HOST }}" bash << 'ENDSSH'
+            "$GCE_USER@$GCE_HOST" bash << 'ENDSSH'
             set -euo pipefail
             
             echo "Current user: $(whoami)"
