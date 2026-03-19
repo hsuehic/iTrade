@@ -16,6 +16,12 @@ import {
   IconSettings,
   IconTrendingUp,
   IconTrendingDown,
+  IconSearch,
+  IconSortAscending,
+  IconSortDescending,
+  IconChevronLeft,
+  IconChevronRight,
+  IconArrowsSort,
 } from '@tabler/icons-react';
 import {
   getStrategyDefaultParameters,
@@ -28,14 +34,7 @@ import {
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CardFooter,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -68,6 +67,14 @@ import {
 } from '@/components/strategy/InitialDataConfigForm';
 import { SubscriptionConfigForm } from '@/components/strategy/SubscriptionConfigForm';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
   SUPPORTED_EXCHANGES,
   getSymbolFormatHint,
   getTradingPairsForExchange,
@@ -75,6 +82,20 @@ import {
   ExchangeId,
 } from '@/lib/exchanges';
 import { SubscriptionConfig } from '@itrade/core';
+
+type SortField = 'status' | 'name' | 'symbol' | 'pnl' | 'createdAt';
+type SortDirection = 'asc' | 'desc';
+interface SortConfig {
+  field: SortField;
+  direction: SortDirection;
+}
+
+const STATUS_SORT_ORDER: Record<string, number> = {
+  active: 0,
+  paused: 1,
+  error: 2,
+  stopped: 3,
+};
 
 export default function StrategyPage() {
   const router = useRouter();
@@ -96,6 +117,17 @@ export default function StrategyPage() {
     filledOrders: number;
   }
   const [pnlMap, setPnlMap] = useState<Map<number, StrategyPnlData>>(new Map());
+
+  // Search, filter, sort, pagination state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterExchange, setFilterExchange] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [sortConfig, setSortConfig] = useState<SortConfig>({
+    field: 'status',
+    direction: 'asc',
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Loading states for API operations
   const [isCreating, setIsCreating] = useState(false);
@@ -370,6 +402,103 @@ export default function StrategyPage() {
   useEffect(() => {
     fetchStrategies();
   }, [fetchStrategies]);
+
+  const filteredAndSortedStrategies = useMemo(() => {
+    let result = [...strategies];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.symbol && s.symbol.toLowerCase().includes(q)) ||
+          (s.normalizedSymbol && s.normalizedSymbol.toLowerCase().includes(q)) ||
+          (s.exchange && s.exchange.toLowerCase().includes(q)) ||
+          (s.type && s.type.toLowerCase().includes(q)),
+      );
+    }
+
+    // Exchange filter
+    if (filterExchange !== 'all') {
+      result = result.filter((s) => s.exchange === filterExchange);
+    }
+
+    // Status filter
+    if (filterStatus !== 'all') {
+      result = result.filter((s) => s.status === filterStatus);
+    }
+
+    // Sorting
+    result.sort((a, b) => {
+      const { field, direction } = sortConfig;
+      let cmp = 0;
+
+      switch (field) {
+        case 'status':
+          cmp = (STATUS_SORT_ORDER[a.status] ?? 99) - (STATUS_SORT_ORDER[b.status] ?? 99);
+          if (cmp === 0) {
+            cmp = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          }
+          break;
+        case 'name':
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case 'symbol':
+          cmp = (a.normalizedSymbol || a.symbol || '').localeCompare(
+            b.normalizedSymbol || b.symbol || '',
+          );
+          break;
+        case 'pnl': {
+          const pnlA = pnlMap.get(a.id)?.pnl ?? 0;
+          const pnlB = pnlMap.get(b.id)?.pnl ?? 0;
+          cmp = pnlA - pnlB;
+          break;
+        }
+        case 'createdAt':
+          cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+      }
+
+      return direction === 'desc' ? -cmp : cmp;
+    });
+
+    return result;
+  }, [strategies, searchQuery, filterExchange, filterStatus, sortConfig, pnlMap]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAndSortedStrategies.length / pageSize),
+  );
+  const paginatedStrategies = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredAndSortedStrategies.slice(start, start + pageSize);
+  }, [filteredAndSortedStrategies, currentPage, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterExchange, filterStatus, sortConfig]);
+
+  const handleSort = (field: SortField) => {
+    setSortConfig((prev) => {
+      if (prev.field === field) {
+        return { field, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      if (field === 'createdAt' || field === 'pnl') return { field, direction: 'desc' };
+      return { field, direction: 'asc' };
+    });
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortConfig.field !== field) {
+      return <IconArrowsSort className="h-3.5 w-3.5 text-muted-foreground/50" />;
+    }
+    return sortConfig.direction === 'asc' ? (
+      <IconSortAscending className="h-3.5 w-3.5" />
+    ) : (
+      <IconSortDescending className="h-3.5 w-3.5" />
+    );
+  };
 
   const createStrategy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1197,7 +1326,7 @@ export default function StrategyPage() {
               </div>
 
               {/* Strategies List */}
-              <div className="px-4 lg:px-6">
+              <div className="px-4 lg:px-6 space-y-4">
                 {loading ? (
                   <div className="flex items-center justify-center py-20">
                     <div className="text-center space-y-3">
@@ -1224,229 +1353,363 @@ export default function StrategyPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {strategies.map((strategy) => (
-                      <Card
-                        key={strategy.id}
-                        className="hover:shadow-lg transition-shadow duration-200"
-                      >
-                        <CardHeader>
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="flex-1">
-                              <CardTitle
-                                className="text-lg flex items-center gap-2 cursor-pointer hover:underline"
-                                onClick={() => router.push(`/strategy/${strategy.id}`)}
-                              >
-                                <div
-                                  className={`h-2 w-2 rounded-full ${getStatusColor(strategy.status)}`}
-                                />
-                                {strategy.name}
-                              </CardTitle>
-                              <CardDescription className="mt-1">
-                                {strategy.type.replace(/_/g, ' ')}
-                              </CardDescription>
-                            </div>
-                            {getStatusBadge(strategy.status)}
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          {strategy.description && (
-                            <p className="text-sm text-muted-foreground line-clamp-2">
-                              {strategy.description}
-                            </p>
-                          )}
-
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">
-                                {t('card.exchange')}
-                              </span>
-                              <Badge
-                                variant="outline"
-                                className="font-medium gap-1.5 flex items-center"
-                              >
-                                <ExchangeLogo
-                                  exchange={strategy.exchange || ''}
-                                  size="sm"
-                                />
-                                {strategy.exchange
-                                  ? strategy.exchange.charAt(0).toUpperCase() +
-                                    strategy.exchange.slice(1)
-                                  : t('card.notSet')}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">
-                                {t('card.tradingPair')}
-                              </span>
+                  <>
+                    {/* Search & Filters */}
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="relative flex-1">
+                        <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder={t('list.searchPlaceholder')}
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
+                      <Select value={filterExchange} onValueChange={setFilterExchange}>
+                        <SelectTrigger className="w-full sm:w-[180px]">
+                          <SelectValue placeholder={t('list.allExchanges')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('list.allExchanges')}</SelectItem>
+                          {SUPPORTED_EXCHANGES.map((ex) => (
+                            <SelectItem key={ex.id} value={ex.id}>
                               <div className="flex items-center gap-2">
-                                {strategy.symbol && (
-                                  <SymbolIcon
-                                    symbol={strategy.symbol}
-                                    exchangeId={strategy.exchange?.toLowerCase()}
-                                    size="sm"
-                                  />
-                                )}
-                                <span className="font-mono font-medium">
-                                  {strategy.normalizedSymbol ||
-                                    strategy.symbol ||
-                                    t('card.notAvailable')}
-                                </span>
-                                {strategy.marketType &&
-                                  strategy.marketType !== 'spot' && (
-                                    <span
-                                      className="text-xs"
-                                      title={
-                                        strategy.marketType === 'perpetual'
-                                          ? t('card.perpetual')
-                                          : t('card.futures')
+                                <ExchangeLogo exchange={ex.id} size="sm" />
+                                {ex.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={filterStatus} onValueChange={setFilterStatus}>
+                        <SelectTrigger className="w-full sm:w-[160px]">
+                          <SelectValue placeholder={t('list.allStatus')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('list.allStatus')}</SelectItem>
+                          <SelectItem value="active">{t('status.active')}</SelectItem>
+                          <SelectItem value="stopped">{t('status.stopped')}</SelectItem>
+                          <SelectItem value="paused">{t('status.paused')}</SelectItem>
+                          <SelectItem value="error">{t('status.error')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Table */}
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead
+                              className="cursor-pointer select-none"
+                              onClick={() => handleSort('status')}
+                            >
+                              <div className="flex items-center gap-1">
+                                {t('list.columns.status')}
+                                <SortIcon field="status" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer select-none"
+                              onClick={() => handleSort('name')}
+                            >
+                              <div className="flex items-center gap-1">
+                                {t('list.columns.name')}
+                                <SortIcon field="name" />
+                              </div>
+                            </TableHead>
+                            <TableHead>{t('list.columns.type')}</TableHead>
+                            <TableHead>{t('list.columns.exchange')}</TableHead>
+                            <TableHead
+                              className="cursor-pointer select-none"
+                              onClick={() => handleSort('symbol')}
+                            >
+                              <div className="flex items-center gap-1">
+                                {t('list.columns.symbol')}
+                                <SortIcon field="symbol" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer select-none"
+                              onClick={() => handleSort('pnl')}
+                            >
+                              <div className="flex items-center gap-1">
+                                {t('list.columns.pnl')}
+                                <SortIcon field="pnl" />
+                              </div>
+                            </TableHead>
+                            <TableHead
+                              className="cursor-pointer select-none"
+                              onClick={() => handleSort('createdAt')}
+                            >
+                              <div className="flex items-center gap-1">
+                                {t('list.columns.created')}
+                                <SortIcon field="createdAt" />
+                              </div>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('list.columns.actions')}
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {paginatedStrategies.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={8} className="h-24 text-center">
+                                <p className="text-muted-foreground">
+                                  {t('list.noResults')}
+                                </p>
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            paginatedStrategies.map((strategy) => {
+                              const pnl = pnlMap.get(strategy.id);
+                              return (
+                                <TableRow key={strategy.id}>
+                                  {/* Status */}
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      <div
+                                        className={`h-2 w-2 rounded-full ${getStatusColor(strategy.status)}`}
+                                      />
+                                      {getStatusBadge(strategy.status)}
+                                    </div>
+                                  </TableCell>
+                                  {/* Name */}
+                                  <TableCell>
+                                    <button
+                                      className="font-medium hover:underline text-left"
+                                      onClick={() =>
+                                        router.push(`/strategy/${strategy.id}`)
                                       }
                                     >
-                                      {strategy.marketType === 'perpetual' ? '⚡' : '📈'}
+                                      {strategy.name}
+                                    </button>
+                                    {strategy.description && (
+                                      <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5 max-w-[220px]">
+                                        {strategy.description}
+                                      </p>
+                                    )}
+                                  </TableCell>
+                                  {/* Type */}
+                                  <TableCell>
+                                    <span className="text-sm text-muted-foreground">
+                                      {strategy.type.replace(/_/g, ' ')}
                                     </span>
-                                  )}
-                              </div>
-                            </div>
-                            {strategy.lastExecutionTime && (
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
-                                <IconClock className="h-3 w-3" />
-                                <span>
-                                  {t('card.lastRun', {
-                                    time: new Date(
-                                      strategy.lastExecutionTime,
-                                    ).toLocaleString(),
-                                  })}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* PnL Summary */}
-                            {(() => {
-                              const pnl = pnlMap.get(strategy.id);
-                              if (!pnl || (pnl.pnl === 0 && pnl.totalOrders === 0)) {
-                                return null;
-                              }
-                              const isProfitable = pnl.pnl >= 0;
-                              return (
-                                <div className="pt-2 border-t space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs text-muted-foreground">
-                                      {t('card.totalPnl')}
-                                    </span>
-                                    <div className="flex items-center gap-1">
-                                      {isProfitable ? (
-                                        <IconTrendingUp className="h-3.5 w-3.5 text-green-500" />
-                                      ) : (
-                                        <IconTrendingDown className="h-3.5 w-3.5 text-red-500" />
-                                      )}
-                                      <span
-                                        className={`text-sm font-semibold font-mono ${
-                                          isProfitable ? 'text-green-500' : 'text-red-500'
-                                        }`}
+                                  </TableCell>
+                                  {/* Exchange */}
+                                  <TableCell>
+                                    {strategy.exchange ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="font-medium gap-1.5 flex items-center w-fit"
                                       >
-                                        {formatPnlValue(pnl.pnl)}
+                                        <ExchangeLogo
+                                          exchange={strategy.exchange}
+                                          size="sm"
+                                        />
+                                        {strategy.exchange.charAt(0).toUpperCase() +
+                                          strategy.exchange.slice(1)}
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-muted-foreground text-sm">
+                                        {t('card.notSet')}
                                       </span>
+                                    )}
+                                  </TableCell>
+                                  {/* Symbol */}
+                                  <TableCell>
+                                    <div className="flex items-center gap-2">
+                                      {strategy.symbol && (
+                                        <SymbolIcon
+                                          symbol={strategy.symbol}
+                                          exchangeId={strategy.exchange?.toLowerCase()}
+                                          size="sm"
+                                        />
+                                      )}
+                                      <span className="font-mono text-sm">
+                                        {strategy.normalizedSymbol ||
+                                          strategy.symbol ||
+                                          t('card.notAvailable')}
+                                      </span>
+                                      {strategy.marketType &&
+                                        strategy.marketType !== 'spot' && (
+                                          <span
+                                            className="text-xs"
+                                            title={
+                                              strategy.marketType === 'perpetual'
+                                                ? t('card.perpetual')
+                                                : t('card.futures')
+                                            }
+                                          >
+                                            {strategy.marketType === 'perpetual'
+                                              ? '⚡'
+                                              : '📈'}
+                                          </span>
+                                        )}
                                     </div>
-                                  </div>
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">
-                                      {t('card.realizedPnl')}
+                                  </TableCell>
+                                  {/* PnL */}
+                                  <TableCell>
+                                    {pnl && (pnl.pnl !== 0 || pnl.totalOrders !== 0) ? (
+                                      <div className="flex items-center gap-1">
+                                        {pnl.pnl >= 0 ? (
+                                          <IconTrendingUp className="h-3.5 w-3.5 text-green-500" />
+                                        ) : (
+                                          <IconTrendingDown className="h-3.5 w-3.5 text-red-500" />
+                                        )}
+                                        <span
+                                          className={`text-sm font-semibold font-mono ${
+                                            pnl.pnl >= 0
+                                              ? 'text-green-500'
+                                              : 'text-red-500'
+                                          }`}
+                                        >
+                                          {formatPnlValue(pnl.pnl)}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm text-muted-foreground">
+                                        —
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                  {/* Created At */}
+                                  <TableCell>
+                                    <span className="text-sm text-muted-foreground">
+                                      {new Date(strategy.createdAt).toLocaleDateString()}
                                     </span>
-                                    <span
-                                      className={`font-mono ${
-                                        pnl.realizedPnl >= 0
-                                          ? 'text-green-500'
-                                          : 'text-red-500'
-                                      }`}
-                                    >
-                                      {formatPnlValue(pnl.realizedPnl)}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-xs">
-                                    <span className="text-muted-foreground">
-                                      {t('card.unrealizedPnl')}
-                                    </span>
-                                    <span
-                                      className={`font-mono ${
-                                        pnl.unrealizedPnl >= 0
-                                          ? 'text-green-500'
-                                          : 'text-red-500'
-                                      }`}
-                                    >
-                                      {formatPnlValue(pnl.unrealizedPnl)}
-                                    </span>
-                                  </div>
-                                </div>
+                                  </TableCell>
+                                  {/* Actions */}
+                                  <TableCell>
+                                    <div className="flex items-center justify-end gap-1">
+                                      {strategy.status === 'active' ? (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            updateStrategyStatus(strategy.id, 'stopped')
+                                          }
+                                          disabled={isUpdatingStatusId === strategy.id}
+                                        >
+                                          {isUpdatingStatusId === strategy.id ? (
+                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                          ) : (
+                                            <IconPlayerPause className="h-3.5 w-3.5" />
+                                          )}
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            updateStrategyStatus(strategy.id, 'active')
+                                          }
+                                          disabled={isUpdatingStatusId === strategy.id}
+                                        >
+                                          {isUpdatingStatusId === strategy.id ? (
+                                            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                          ) : (
+                                            <IconPlayerPlay className="h-3.5 w-3.5" />
+                                          )}
+                                        </Button>
+                                      )}
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => editStrategy(strategy)}
+                                        disabled={
+                                          strategy.status === 'active' ||
+                                          isUpdatingStatusId === strategy.id
+                                        }
+                                      >
+                                        <IconEdit className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => openDeleteDialog(strategy)}
+                                        disabled={
+                                          strategy.status === 'active' ||
+                                          isUpdatingStatusId === strategy.id
+                                        }
+                                        className="hover:bg-destructive hover:text-destructive-foreground"
+                                      >
+                                        <IconTrash className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
                               );
-                            })()}
-                          </div>
-                        </CardContent>
-                        <CardFooter className="flex gap-2">
-                          {strategy.status === 'active' ? (
-                            <Button
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => updateStrategyStatus(strategy.id, 'stopped')}
-                              disabled={isUpdatingStatusId === strategy.id}
-                            >
-                              {isUpdatingStatusId === strategy.id ? (
-                                <>
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                                  {t('actions.stopping')}
-                                </>
-                              ) : (
-                                <>
-                                  <IconPlayerPause className="h-4 w-4 mr-2" />
-                                  {t('actions.stop')}
-                                </>
-                              )}
-                            </Button>
-                          ) : (
-                            <Button
-                              className="flex-1"
-                              onClick={() => updateStrategyStatus(strategy.id, 'active')}
-                              disabled={isUpdatingStatusId === strategy.id}
-                            >
-                              {isUpdatingStatusId === strategy.id ? (
-                                <>
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                                  {t('actions.starting')}
-                                </>
-                              ) : (
-                                <>
-                                  <IconPlayerPlay className="h-4 w-4 mr-2" />
-                                  {t('actions.start')}
-                                </>
-                              )}
-                            </Button>
+                            })
                           )}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <div className="text-sm text-muted-foreground">
+                        {t('list.showing', {
+                          start: Math.min(
+                            (currentPage - 1) * pageSize + 1,
+                            filteredAndSortedStrategies.length,
+                          ),
+                          end: Math.min(
+                            currentPage * pageSize,
+                            filteredAndSortedStrategies.length,
+                          ),
+                          total: filteredAndSortedStrategies.length,
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={pageSize.toString()}
+                          onValueChange={(v) => {
+                            setPageSize(Number(v));
+                            setCurrentPage(1);
+                          }}
+                        >
+                          <SelectTrigger className="w-[100px] h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[5, 10, 20, 50].map((size) => (
+                              <SelectItem key={size} value={size.toString()}>
+                                {t('list.perPage', { count: size })}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center gap-1">
                           <Button
                             variant="outline"
-                            size="icon"
-                            onClick={() => editStrategy(strategy)}
-                            disabled={
-                              strategy.status === 'active' ||
-                              isUpdatingStatusId === strategy.id
-                            }
+                            size="sm"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1}
                           >
-                            <IconEdit className="h-4 w-4" />
+                            <IconChevronLeft className="h-4 w-4" />
                           </Button>
+                          <span className="text-sm px-2 min-w-[80px] text-center">
+                            {t('list.page', {
+                              current: currentPage,
+                              total: totalPages,
+                            })}
+                          </span>
                           <Button
                             variant="outline"
-                            size="icon"
-                            onClick={() => openDeleteDialog(strategy)}
-                            disabled={
-                              strategy.status === 'active' ||
-                              isUpdatingStatusId === strategy.id
+                            size="sm"
+                            onClick={() =>
+                              setCurrentPage((p) => Math.min(totalPages, p + 1))
                             }
-                            className="hover:bg-destructive hover:text-destructive-foreground"
+                            disabled={currentPage >= totalPages}
                           >
-                            <IconTrash className="h-4 w-4" />
+                            <IconChevronRight className="h-4 w-4" />
                           </Button>
-                        </CardFooter>
-                      </Card>
-                    ))}
-                  </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

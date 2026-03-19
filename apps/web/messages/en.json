@@ -1415,7 +1415,26 @@
       "totalSold": "Total Sold",
       "totalSoldDesc": "Total filled {symbol} sell size"
     },
-    "backToList": "Back to Strategies List"
+    "backToList": "Back to Strategies List",
+    "list": {
+      "searchPlaceholder": "Search by name, symbol, exchange...",
+      "allExchanges": "All Exchanges",
+      "allStatus": "All Status",
+      "columns": {
+        "status": "Status",
+        "name": "Name",
+        "type": "Type",
+        "exchange": "Exchange",
+        "symbol": "Symbol",
+        "pnl": "PnL",
+        "created": "Created",
+        "actions": "Actions"
+      },
+      "noResults": "No strategies found matching your filters.",
+      "showing": "Showing {start} to {end} of {total}",
+      "perPage": "{count} / page",
+      "page": "Page {current} of {total}"
+    }
   },
   "orders": {
     "title": "Orders",

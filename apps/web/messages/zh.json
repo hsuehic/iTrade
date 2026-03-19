@@ -1404,6 +1404,26 @@
       "totalBoughtDesc": "已成交的 {symbol} 买入总量",
       "totalSold": "总卖出量",
       "totalSoldDesc": "已成交的 {symbol} 卖出总量"
+    },
+    "backToList": "返回策略列表",
+    "list": {
+      "searchPlaceholder": "按名称、交易对、交易所搜索...",
+      "allExchanges": "全部交易所",
+      "allStatus": "全部状态",
+      "columns": {
+        "status": "状态",
+        "name": "名称",
+        "type": "类型",
+        "exchange": "交易所",
+        "symbol": "交易对",
+        "pnl": "盈亏",
+        "created": "创建时间",
+        "actions": "操作"
+      },
+      "noResults": "未找到符合条件的策略。",
+      "showing": "显示 {start} 至 {end}，共 {total} 条",
+      "perPage": "{count} 条/页",
+      "page": "第 {current} / {total} 页"
     }
   },
   "orders": {
