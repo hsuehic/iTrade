@@ -8,13 +8,12 @@
 #   Job 1 — Build Docker images on CI runner → push to GHCR
 #   Job 2 — SSH to GCE → pre-pull images (while old is running)
 #            → selectively recreate only changed services
-#            → DB and nginx stay running throughout
+#            → DB stays running throughout
 #
 # Downtime minimization:
 #   - Images are pre-pulled while old containers still serve traffic
-#   - Only console/web/schema-migrator are recreated (not DB or nginx)
-#   - Certbot runs conditionally (skipped if cert is valid)
-#   - Docker cleanup runs post-deploy (after services are healthy)
+#   - Only console/web/schema-migrator are recreated (not DB)
+#   - SSL/proxy handled externally by nginx-proxy-manager
 #
 # Required GitHub Secrets:
 #   GCE_HOST            → GCE instance external IP or domain
@@ -282,7 +281,7 @@ jobs:
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "  Deploying commit: ${COMMIT_SHA:0:8}"
           echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
-          echo "  Strategy: Pre-pull → selective recreate (DB+nginx stay running)"
+          echo "  Strategy: Pre-pull → selective recreate (DB stays running)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no"

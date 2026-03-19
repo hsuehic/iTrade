@@ -71,10 +71,7 @@ fi
 
 # ── 4. Create directory structure ────────────────────────────
 log "Creating /opt/itrade directory structure..."
-sudo mkdir -p \
-  "$APP_DIR" \
-  "$ENV_DIR/certbot/certs" \
-  "$ENV_DIR/certbot/webroot"
+sudo mkdir -p "$APP_DIR"
 sudo chown -R "$DEPLOY_USER:$DEPLOY_USER" "$ENV_DIR"
 
 # ── 5. Clone or update the repository ───────────────────────
@@ -110,16 +107,16 @@ create_env_from_template() {
 create_env_from_template "env.db.template"      ".env.db"
 create_env_from_template "env.console.template" ".env.console"
 create_env_from_template "env.web.template"     ".env.web"
-create_env_from_template "env.certbot.template" ".env.certbot"
-
 # ── 7. Configure firewall (ufw) ──────────────────────────────
 if command -v ufw &>/dev/null; then
   log "Configuring UFW firewall..."
   sudo ufw allow ssh
   sudo ufw allow 80/tcp
   sudo ufw allow 443/tcp
+  sudo ufw allow 81/tcp
+  sudo ufw allow 3002/tcp
   sudo ufw --force enable
-  log "Firewall configured: SSH, HTTP (80), HTTPS (443) allowed."
+  log "Firewall configured: SSH, HTTP (80), HTTPS (443), NPM Admin (81), Next.js (3002) allowed."
 else
   warn "ufw not found — configure firewall rules manually in GCE console."
 fi
@@ -169,7 +166,6 @@ echo "  1. Edit env files with real values:"
 echo "       nano $ENV_DIR/.env.db"
 echo "       nano $ENV_DIR/.env.console"
 echo "       nano $ENV_DIR/.env.web"
-echo "       nano $ENV_DIR/.env.certbot   ← set DOMAIN + CERTBOT_EMAIL"
 echo ""
 echo "  2. Add GitHub Secrets:"
 echo "       GCE_HOST            → $GCE_IP"
@@ -177,26 +173,13 @@ echo "       GCE_USER            → $DEPLOY_USER"
 echo "       GCE_SSH_PRIVATE_KEY → (see private key printed above)"
 echo ""
 echo "  3. Point your domain DNS A-record → $GCE_IP"
-echo "     (wait for DNS propagation before the next step)"
 echo ""
-echo "  4. First deploy — start all services:"
+echo "  4. Set up nginx-proxy-manager (separately) to proxy to port 3002"
+echo "     and manage SSL certificates."
+echo ""
+echo "  5. First deploy — start all services:"
 echo "       cd $APP_DIR"
 echo "       docker compose -f docker-compose.prod.yml up -d --build"
-echo ""
-echo "  5. Initialize SSL (run ONCE, requires DNS already pointing here):"
-echo "       cd $APP_DIR"
-echo "       bash deploy/certbot-init.sh"
-echo ""
-echo "     This will:"
-echo "       • Read DOMAIN from $ENV_DIR/.env.certbot"
-echo "         (auto-extracted from NEXT_PUBLIC_APP_URL if DOMAIN is unset)"
-echo "       • Generate a self-signed cert for nginx bootstrap"
-echo "       • Obtain a real Let's Encrypt certificate via HTTP-01 challenge"
-echo "       • Switch nginx to HTTPS and reload it"
-echo "       • Install a system cron to reload nginx every 12h after renewal"
-echo ""
-echo "     After this, renewal is fully automatic (certbot service in Docker"
-echo "     Compose checks every 12h and renews when cert is <30 days from expiry)."
 echo ""
 echo "  6. Push to 'main' branch — GitHub Actions auto-deploys on every push."
 echo ""

@@ -13,7 +13,6 @@
 #   bash deploy/test-local.sh                    # Run all tests
 #   bash deploy/test-local.sh web                # Test web build only
 #   bash deploy/test-local.sh console            # Test console build only
-#   bash deploy/test-local.sh certbot            # Test certbot validation
 #   bash deploy/test-local.sh sync               # Test env sync validation
 # =============================================================
 
@@ -164,85 +163,9 @@ test_console_build() {
   fi
 }
 
-# ── Test 3: Certbot Validation ────────────────────────────────
-test_certbot() {
-  section "Test 3: Certbot Initialization Validation"
-  
-  info "Validating certbot-init.sh script..."
-  echo ""
-  
-  CERTBOT_SCRIPT="$SCRIPT_DIR/certbot-init.sh"
-  
-  # Check script exists
-  if [[ ! -f "$CERTBOT_SCRIPT" ]]; then
-    error "❌ certbot-init.sh not found at $CERTBOT_SCRIPT"
-    ((TESTS_FAILED++))
-    FAILED_TESTS+=("certbot-validation")
-    return 1
-  fi
-  
-  # Check script is executable
-  if [[ ! -x "$CERTBOT_SCRIPT" ]]; then
-    warn "Making certbot-init.sh executable..."
-    chmod +x "$CERTBOT_SCRIPT"
-  fi
-  
-  # Validate script syntax
-  info "Checking bash syntax..."
-  if bash -n "$CERTBOT_SCRIPT" 2>&1; then
-    info "✅ Script syntax is valid"
-  else
-    error "❌ Script has syntax errors"
-    ((TESTS_FAILED++))
-    FAILED_TESTS+=("certbot-validation")
-    return 1
-  fi
-  
-  # Check required files exist
-  info "Checking required files..."
-  COMPOSE_FILE="$PROJECT_ROOT/docker-compose.prod.yml"
-  
-  MISSING_FILES=()
-  [[ ! -f "$COMPOSE_FILE" ]] && MISSING_FILES+=("docker-compose.prod.yml")
-  
-  if [[ ${#MISSING_FILES[@]} -gt 0 ]]; then
-    error "❌ Missing required files: ${MISSING_FILES[*]}"
-    ((TESTS_FAILED++))
-    FAILED_TESTS+=("certbot-validation")
-    return 1
-  fi
-  
-  info "✅ All required files present"
-  
-  # Check certbot-init.sh logic (dry-run checks)
-  info "Validating certbot script logic..."
-  
-  # Check if script reads .env.certbot
-  if grep -q "ENV_CERTBOT" "$CERTBOT_SCRIPT"; then
-    info "✅ Script reads .env.certbot file"
-  else
-    warn "⚠️  Script may not read .env.certbot correctly"
-  fi
-  
-  # Check if script generates nginx.conf inline
-  if grep -q "cat > \"\\$NGINX_CONF\"" "$CERTBOT_SCRIPT"; then
-    info "✅ Script generates nginx.conf inline"
-  else
-    warn "⚠️  Script may not generate nginx.conf inline"
-  fi
-  
-  info "✅ Certbot validation test PASSED"
-  info "Note: This is a dry-run validation. Actual certbot requires:"
-  info "  - DNS pointing to server"
-  info "  - Services running on GCE"
-  info "  - Valid .env.certbot file"
-  ((TESTS_PASSED++))
-  return 0
-}
-
-# ── Test 4: Environment Sync Validation ────────────────────────
+# ── Test 3: Environment Sync Validation ────────────────────────
 test_env_sync() {
-  section "Test 4: Environment Sync Validation"
+  section "Test 3: Environment Sync Validation"
   
   info "Validating sync-env.sh script..."
   echo ""
@@ -290,7 +213,6 @@ test_env_sync() {
       "$SCRIPT_DIR/env.db.template"
       "$SCRIPT_DIR/env.console.template"
       "$SCRIPT_DIR/env.web.template"
-      "$SCRIPT_DIR/env.certbot.template"
     )
     
     MISSING_TEMPLATES=()
@@ -340,9 +262,9 @@ test_env_sync() {
   return 0
 }
 
-# ── Test 5: Docker Compose Validation ─────────────────────────
+# ── Test 4: Docker Compose Validation ─────────────────────────
 test_docker_compose() {
-  section "Test 5: Docker Compose Configuration Validation"
+  section "Test 4: Docker Compose Configuration Validation"
   
   info "Validating docker-compose.prod.yml..."
   echo ""
@@ -394,7 +316,7 @@ test_docker_compose() {
   # Check required services are defined
   # Check YAML directly since docker compose config requires env files
   info "Checking required services..."
-  REQUIRED_SERVICES=("db" "schema-migrator" "console" "web" "nginx" "certbot")
+  REQUIRED_SERVICES=("db" "schema-migrator" "console" "web")
   MISSING_SERVICES=()
   
   for service in "${REQUIRED_SERVICES[@]}"; do
@@ -474,7 +396,6 @@ Tests deployment steps locally before pushing to GitHub Actions.
 Available tests:
   web        Test web Docker image build
   console    Test console Docker image build
-  certbot    Validate certbot-init.sh script
   sync       Validate sync-env.sh script
   compose    Validate docker-compose.prod.yml
   all        Run all tests (default)
@@ -503,9 +424,6 @@ main() {
     console)
       test_console_build
       ;;
-    certbot)
-      test_certbot
-      ;;
     sync)
       test_env_sync
       ;;
@@ -515,7 +433,6 @@ main() {
     all)
       test_web_build
       test_console_build
-      test_certbot
       test_env_sync
       test_docker_compose
       ;;

@@ -158,7 +158,7 @@ jobs:
             
             # Check environment files
             echo "Checking environment files..."
-            for env_file in /opt/itrade/.env.{console,db,web,certbot}; do
+            for env_file in /opt/itrade/.env.{console,db,web}; do
               if [ -f "$env_file" ]; then
                 echo "✅ $env_file exists"
               else
@@ -178,26 +178,6 @@ jobs:
             # Check directory permissions
             echo "Checking /opt/itrade permissions..."
             ls -la /opt/itrade/ 2>/dev/null || echo "⚠️  Cannot list /opt/itrade/"
-            CERT_DIR="/opt/itrade/certbot/certs"
-            if [ -d "$CERT_DIR" ]; then
-              echo "✅ Cert directory exists: $CERT_DIR"
-              ls -la "$CERT_DIR/" 2>/dev/null || true
-            else
-              echo "⚠️  Cert directory missing: $CERT_DIR"
-            fi
-
-            # Test openssl cert generation
-            echo "Testing openssl cert generation..."
-            TMPDIR=$(mktemp -d)
-            if openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
-              -keyout "$TMPDIR/test.key" \
-              -out "$TMPDIR/test.crt" \
-              -subj "/CN=test.example.com" 2>&1; then
-              echo "✅ openssl cert generation works"
-            else
-              echo "❌ openssl cert generation FAILED"
-            fi
-            rm -rf "$TMPDIR"
 
             # Test docker-compose download
             echo "Testing docker-compose download..."

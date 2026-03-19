@@ -100,7 +100,6 @@ Create it and copy the templates:
   cp $SCRIPT_DIR/env.db.template      $LOCAL_ENV_DIR/.env.db
   cp $SCRIPT_DIR/env.console.template $LOCAL_ENV_DIR/.env.console
   cp $SCRIPT_DIR/env.web.template     $LOCAL_ENV_DIR/.env.web
-  cp $SCRIPT_DIR/env.certbot.template $LOCAL_ENV_DIR/.env.certbot
 Then fill in the real values and re-run this script."
 fi
 

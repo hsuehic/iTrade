@@ -1,0 +1,45 @@
+services:
+  app:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: itrade-npm
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    environment:
+      DB_MYSQL_HOST: 'db'
+      DB_MYSQL_PORT: 3306
+      DB_MYSQL_USER: 'npm'
+      DB_MYSQL_PASSWORD: 'npm'
+      DB_MYSQL_NAME: 'npm'
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    depends_on:
+      - db
+    networks:
+      - proxy-net
+
+  db:
+    image: 'jc21/mariadb-aria:latest'
+    container_name: itrade-npm-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 'npm'
+      MYSQL_DATABASE: 'npm'
+      MYSQL_USER: 'npm'
+      MYSQL_PASSWORD: 'npm'
+    volumes:
+      - npm_db:/var/lib/mysql
+    networks:
+      - proxy-net
+
+volumes:
+  npm_data:
+  npm_letsencrypt:
+  npm_db:
+
+networks:
+  proxy-net:
+    external: true

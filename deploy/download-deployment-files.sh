@@ -42,12 +42,10 @@ curl -fsSL "$BASE_URL/docker-compose.prod.yml" -o "$APP_DIR/docker-compose.prod.
 log "Downloading deployment files..."
 
 DEPLOY_FILES=(
-  "deploy/certbot-init.sh"
   "deploy/fix-git-permissions.sh"
   "deploy/env.console.template"
   "deploy/env.web.template"
   "deploy/env.db.template"
-  "deploy/env.certbot.template"
   "deploy/setup-gce.sh"
   "deploy/sync-env.sh"
   "deploy/test-local.sh"
@@ -73,12 +71,6 @@ if [ -f "$APP_DIR/docker-compose.prod.yml" ]; then
   log "✅ docker-compose.prod.yml"
 else
   fail "❌ docker-compose.prod.yml missing"
-fi
-
-if [ -f "$APP_DIR/deploy/certbot-init.sh" ]; then
-  log "✅ deploy/certbot-init.sh"
-else
-  fail "❌ deploy/certbot-init.sh missing"
 fi
 
 log "🎉 Ready for Docker deployment!"

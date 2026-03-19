@@ -85,7 +85,6 @@ mkdir -p /tmp/mock-env
 echo "POSTGRES_DB=test" > /tmp/mock-env/.env.db
 echo "NODE_ENV=production" > /tmp/mock-env/.env.console
 echo "NEXT_PUBLIC_APP_URL=https://test.com" > /tmp/mock-env/.env.web
-echo "DOMAIN=test.com" > /tmp/mock-env/.env.certbot
 
 # Test with mock env files
 export CONSOLE_IMAGE="ghcr.io/hsuehic/itrade/console:test"
