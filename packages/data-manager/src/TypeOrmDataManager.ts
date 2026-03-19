@@ -1051,10 +1051,10 @@ export class TypeOrmDataManager implements IDataManager {
   async saveAccountSnapshot(data: AccountSnapshotData): Promise<void> {
     this.ensureInitialized();
 
-    // 1. Save historical snapshot (archive)
-    await this.accountSnapshotRepository.save(data);
-
-    // 2. Update current state (Scenario 2: Current Balances/Positions)
+    // Update current state (balances, positions, account_info)
+    // Snapshot archiving to account_snapshots is disabled to save storage.
+    // Balance history tables (balance_min, balance_day, etc.) are populated
+    // separately via the 'snapshotSaved' event in BotInstance/cron.
     if (data.accountInfoId) {
       await this.updateCurrentAccountState(data);
     }
@@ -1192,6 +1192,15 @@ export class TypeOrmDataManager implements IDataManager {
       interval,
       userId,
     );
+  }
+
+  /**
+   * Purge excess balance history rows across all tables,
+   * keeping only the configured max rows per account per table.
+   */
+  async purgeBalanceHistory(): Promise<Record<string, number>> {
+    this.ensureInitialized();
+    return this.balanceHistoryRepository.purgeAllExcess();
   }
 
   // Get AccountSnapshotRepository for advanced queries

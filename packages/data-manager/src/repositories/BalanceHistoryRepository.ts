@@ -12,6 +12,17 @@ import {
   BalanceMinEntity,
 } from '../entities/BalanceHistory';
 
+const MAX_ROWS_PER_ACCOUNT: Record<string, number> = {
+  balance_min: 100,
+  balance_5min: 100,
+  balance_15min: 100,
+  balance_30min: 100,
+  balance_hour: 100,
+  balance_day: 365,
+  balance_week: 104,
+  balance_month: 120,
+};
+
 export class BalanceHistoryRepository {
   private monthRepo: Repository<BalanceMonthEntity>;
   private weekRepo: Repository<BalanceWeekEntity>;
@@ -116,6 +127,94 @@ export class BalanceHistoryRepository {
       ),
     ];
     await Promise.all(jobs);
+
+    // Enforce retention: trim old rows in background (fire-and-forget)
+    this.enforceRetention(accountInfo.id).catch(() => {});
+  }
+
+  /**
+   * Delete rows exceeding MAX_ROWS_PER_ACCOUNT for a single account
+   * across all history tables.
+   */
+  private async enforceRetention(accountInfoId: number): Promise<void> {
+    const tableRepoMap: [string, Repository<any>][] = [
+      ['balance_min', this.minRepo],
+      ['balance_5min', this.min5Repo],
+      ['balance_15min', this.min15Repo],
+      ['balance_30min', this.min30Repo],
+      ['balance_hour', this.hourRepo],
+      ['balance_day', this.dayRepo],
+      ['balance_week', this.weekRepo],
+      ['balance_month', this.monthRepo],
+    ];
+
+    for (const [tableName, repo] of tableRepoMap) {
+      const maxRows = MAX_ROWS_PER_ACCOUNT[tableName] ?? 100;
+      await this.trimTable(repo, tableName, accountInfoId, maxRows);
+    }
+  }
+
+  private async trimTable(
+    repo: Repository<any>,
+    tableName: string,
+    accountInfoId: number,
+    maxRows: number,
+  ): Promise<void> {
+    try {
+      const count = await repo.count({
+        where: { accountInfo: { id: accountInfoId } },
+      });
+      if (count <= maxRows) return;
+
+      await this.dataSource.query(
+        `DELETE FROM "${tableName}" WHERE id IN (
+          SELECT id FROM "${tableName}"
+          WHERE account_info_id = $1
+          ORDER BY period ASC
+          LIMIT $2
+        )`,
+        [accountInfoId, count - maxRows],
+      );
+    } catch {
+      // Non-critical: retention failure should not break balance updates
+    }
+  }
+
+  /**
+   * One-time bulk cleanup: enforce retention for ALL accounts across all tables.
+   */
+  async purgeAllExcess(): Promise<Record<string, number>> {
+    const tables = [
+      'balance_min',
+      'balance_5min',
+      'balance_15min',
+      'balance_30min',
+      'balance_hour',
+      'balance_day',
+      'balance_week',
+      'balance_month',
+    ];
+    const result: Record<string, number> = {};
+
+    for (const tableName of tables) {
+      const maxRows = MAX_ROWS_PER_ACCOUNT[tableName] ?? 100;
+      const deleted = await this.dataSource.query(
+        `DELETE FROM "${tableName}" WHERE id IN (
+          SELECT id FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY account_info_id
+                     ORDER BY period DESC
+                   ) AS rn
+            FROM "${tableName}"
+          ) ranked
+          WHERE rn > $1
+        )`,
+        [maxRows],
+      );
+      result[tableName] = deleted[1] ?? 0;
+    }
+    return result;
   }
 
   private async upsert(
