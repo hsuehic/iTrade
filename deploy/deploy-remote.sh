@@ -107,6 +107,35 @@ echo ""
 echo "══ Phase 2: Rolling update (minimal downtime starts) ══"
 DOWNTIME_START=$(date +%s)
 
+# One-time fix: a previous deploy changed the volume mount from
+# .../postgresql/data → .../postgresql. This caused pg18 to see an empty
+# PGDATA and initialise a fresh DB in a nested data/ dir, while the real
+# data sits at the volume root. We now mount at .../data again, but need
+# to remove the empty nested data/ dir so pg18 starts cleanly.
+echo "▶ Checking postgres volume layout..."
+docker compose -f "$COMPOSE_FILE" stop db 2>/dev/null || true
+docker compose -f "$COMPOSE_FILE" rm -f db 2>/dev/null || true
+
+VOLUME_NAME=$(docker compose -f "$COMPOSE_FILE" config --volumes 2>/dev/null | grep postgres_data || true)
+if [ -n "$VOLUME_NAME" ]; then
+  PROJECT_NAME=$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "app")
+  FULL_VOL="${PROJECT_NAME}_${VOLUME_NAME}"
+
+  ROOT_VER=$(docker run --rm -v "${FULL_VOL}:/vol" alpine cat /vol/PG_VERSION 2>/dev/null || echo "")
+  HAS_NESTED=$(docker run --rm -v "${FULL_VOL}:/vol" alpine test -d /vol/data && echo "yes" || echo "")
+
+  if [ -n "$ROOT_VER" ] && [ -n "$HAS_NESTED" ]; then
+    echo "  Found pg${ROOT_VER} data at volume root with stale nested data/ dir"
+    echo "▶ Removing nested data/ dir..."
+    docker run --rm -v "${FULL_VOL}:/vol" alpine rm -rf /vol/data
+    echo "  ✅ Cleaned up; pg${ROOT_VER} data intact at volume root"
+  elif [ -n "$ROOT_VER" ]; then
+    echo "  ✅ Volume has correct pg${ROOT_VER} layout"
+  else
+    echo "  ℹ️  No PG_VERSION at volume root (fresh volume or already correct)"
+  fi
+fi
+
 docker compose -f "$COMPOSE_FILE" up -d --no-build db
 echo "▶ Waiting for database..."
 DB_TIMEOUT=30
