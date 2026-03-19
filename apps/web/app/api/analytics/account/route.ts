@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
-import { computeLiveBalances } from '@/lib/live-balance';
 
 // Transform historical data for chart
 export interface ChartDataPoint {
@@ -91,40 +90,16 @@ export async function GET(request: Request) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Compute live-price totalBalance using the SAME logic as /api/portfolio/assets
-    // This ensures web dashboard and mobile portfolio always show the same number.
-    // ─────────────────────────────────────────────────────────────────────────
-    const accountIds = latestSnapshots.map((a) => a.id);
-    const allBalances = await dm.getBalancesForAccounts(accountIds);
-
-    // Build account-id → exchange lookup
-    const accountExchangeMap = new Map(latestSnapshots.map((a) => [a.id, a.exchange]));
-
-    // Flat list of {asset, exchange, total} for the shared utility
-    const assetList = allBalances.map((b) => ({
-      asset: b.asset,
-      exchange: accountExchangeMap.get(b.accountInfoId) ?? '',
-      total: parseFloat(b.total.toString()),
-    }));
-
-    // computeLiveBalances fetches prices with a 30s cache (shared across routes)
-    const { totalValue: liveTotal, valueByExchange } =
-      await computeLiveBalances(assetList);
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Position / PnL totals still come from AccountInfo aggregate fields
-    // (these are updated by AccountPollingService on each poll cycle)
+    // Use exchange-reported totalBalance from AccountInfo (set by AccountPollingService
+    // from each exchange's totalEquity). This properly accounts for unrealized P&L
+    // on open positions and matches the balance history chart data.
     // ─────────────────────────────────────────────────────────────────────────
     let totalPositionValue = 0;
     let totalUnrealizedPnl = 0;
     let totalPositions = 0;
 
     const exchangeData = latestSnapshots.map((account) => {
-      const exchangeLower = account.exchange.toLowerCase();
-      // Use live-price balance for this exchange; fall back to DB value if missing
-      const liveBalance =
-        valueByExchange.get(exchangeLower) ?? parseFloat(account.totalBalance.toString());
-
+      const balance = parseFloat(account.totalBalance.toString());
       const positionValue = parseFloat(account.totalPositionValue.toString());
       const unrealizedPnl = parseFloat(account.unrealizedPnl.toString());
 
@@ -134,7 +109,7 @@ export async function GET(request: Request) {
 
       return {
         exchange: account.exchange,
-        balance: liveBalance,
+        balance,
         positionValue,
         unrealizedPnl,
         positionCount: account.positionCount,
@@ -142,9 +117,7 @@ export async function GET(request: Request) {
       };
     });
 
-    // Use live total; fall back to summing DB values if live computation returned 0
-    const totalBalance =
-      liveTotal > 0 ? liveTotal : exchangeData.reduce((sum, e) => sum + e.balance, 0);
+    const totalBalance = exchangeData.reduce((sum, e) => sum + e.balance, 0);
 
     // Get historical data for chart
     const exchangesToQuery =
