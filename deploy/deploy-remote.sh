@@ -416,7 +416,24 @@ echo "  ✅ Database healthy (waited ${DB_ELAPSED}s)"
 echo "▶ Stopping console before schema migration..."
 docker compose -f "$COMPOSE_FILE" stop console 2>/dev/null || true
 
-docker exec itrade-db psql -U "${POSTGRES_USER:-itrade}" -d "${POSTGRES_DB:-itrade}" \
+# Sync DB password: POSTGRES_PASSWORD only takes effect during initial initdb.
+# If the volume already exists with a different password, the env var is ignored.
+# Read the expected password from .env.console and reset it inside the running DB.
+CONSOLE_ENV="/opt/itrade/.env.console"
+EXPECTED_DB_USER=$(sed -n 's/^DB_USER=//p' "$CONSOLE_ENV" | head -n 1)
+EXPECTED_DB_PASS=$(sed -n 's/^DB_PASSWORD=//p' "$CONSOLE_ENV" | head -n 1)
+EXPECTED_DB_USER="${EXPECTED_DB_USER:-itrade}"
+
+if [ -n "${EXPECTED_DB_PASS:-}" ]; then
+  echo "▶ Syncing database password..."
+  ESCAPED_PASS=$(printf '%s' "$EXPECTED_DB_PASS" | sed "s/'/''/g")
+  docker exec itrade-db psql -U "${EXPECTED_DB_USER}" -d postgres \
+    -c "ALTER USER ${EXPECTED_DB_USER} WITH PASSWORD '${ESCAPED_PASS}';" \
+    2>/dev/null && echo "  ✅ Database password synced" \
+    || echo "  ⚠️  Password sync failed (may already be correct)"
+fi
+
+docker exec itrade-db psql -U "${EXPECTED_DB_USER}" -d "${POSTGRES_DB:-itrade}" \
   -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid != pg_backend_pid() AND application_name != 'schema-migrator';" \
   2>/dev/null || true
 
