@@ -44,7 +44,7 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     env_file:
       - /opt/itrade/.env.db
     restart: unless-stopped
@@ -102,6 +102,8 @@ services:
     container_name: itrade-console
     env_file:
       - /opt/itrade/.env.console
+    volumes:
+      - /opt/itrade/firebase-service-account.json:/secrets/firebase-service-account.json:ro
     depends_on:
       schema-migrator:
         condition: service_completed_successfully
@@ -152,6 +154,8 @@ services:
       - '3002:3002'
     env_file:
       - /opt/itrade/.env.web
+    volumes:
+      - /opt/itrade/firebase-service-account.json:/secrets/firebase-service-account.json:ro
     depends_on:
       db:
         condition: service_healthy
