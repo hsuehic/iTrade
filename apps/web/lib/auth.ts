@@ -153,18 +153,14 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
         },
       },
     },
-    database: new Pool(
-      process.env.POSTGRES_URL
-        ? { connectionString: process.env.POSTGRES_URL }
-        : {
-            host: process.env.DB_HOST || 'localhost',
-            port: parseInt(process.env.DB_PORT || '5432', 10),
-            user: process.env.DB_USER || 'postgres',
-            password: process.env.DB_PASSWORD || 'postgres',
-            database: process.env.DB_DB || 'itrade',
-            ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-          },
-    ),
+    database: new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_DB || 'itrade',
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    }),
     //...other options
     emailAndPassword: {
       enabled: true,
