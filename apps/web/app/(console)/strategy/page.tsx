@@ -1577,7 +1577,18 @@ export default function StrategyPage() {
                                   {/* Created At */}
                                   <TableCell>
                                     <span className="text-sm text-muted-foreground">
-                                      {new Date(strategy.createdAt).toLocaleDateString()}
+                                      {new Date(strategy.createdAt).toLocaleString(
+                                        undefined,
+                                        {
+                                          year: 'numeric',
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                          second: '2-digit',
+                                          hour12: false,
+                                        },
+                                      )}
                                     </span>
                                   </TableCell>
                                   {/* Actions */}

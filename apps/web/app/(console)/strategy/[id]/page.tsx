@@ -261,6 +261,51 @@ export default function StrategyDetailPage(props: { params: Params }) {
               <div className="font-mono text-xs opacity-80">{strategy.type}</div>
             </div>
 
+            {(() => {
+              const startStr = strategy.performance?.startTime || strategy.createdAt;
+              if (!startStr) return null;
+              const startTime = new Date(startStr);
+              // Use current time if active, otherwise the updatedAt time
+              const endTime =
+                strategy.status === 'active' ? new Date() : new Date(strategy.updatedAt);
+
+              const durationMs = Math.max(0, endTime.getTime() - startTime.getTime());
+              const s = Math.floor(durationMs / 1000) % 60;
+              const m = Math.floor(durationMs / (1000 * 60)) % 60;
+              const h = Math.floor(durationMs / (1000 * 60 * 60)) % 24;
+              const d = Math.floor(durationMs / (1000 * 60 * 60 * 24));
+
+              const timeParts = [];
+              if (d > 0) timeParts.push(`${d}d`);
+              if (h > 0 || d > 0) timeParts.push(`${h}h`);
+              if (m > 0 || h > 0 || d > 0) timeParts.push(`${m}m`);
+              timeParts.push(`${s}s`);
+
+              const formatOpt: Intl.DateTimeFormatOptions = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+              };
+
+              return (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 font-mono text-xs opacity-80 ml-8 mt-1.5 text-muted-foreground">
+                  <span className="font-semibold text-foreground/80">
+                    Runtime: {timeParts.join(' ')}
+                  </span>
+                  <span className="opacity-70">
+                    &nbsp;|&nbsp;{startTime.toLocaleString(undefined, formatOpt)} -{' '}
+                    {strategy.status === 'active'
+                      ? 'Now'
+                      : endTime.toLocaleString(undefined, formatOpt)}
+                  </span>
+                </div>
+              );
+            })()}
+
             {strategy.errorMessage && (
               <div className="ml-8 mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-md text-sm text-red-600 dark:text-red-400">
                 Error: {strategy.errorMessage}
