@@ -7,7 +7,7 @@
       buildImplicitDependencies = "YES">
       <BuildActionEntries>
          <BuildActionEntry
-            buildForTesting = "NO"
+            buildForTesting = "YES"
             buildForRunning = "YES"
             buildForProfiling = "YES"
             buildForArchiving = "YES"
@@ -106,15 +106,6 @@
             <ActionContent
                title = "Run Script"
                scriptText = "# Type a script or drag a script file from your workspace to insert its path.&#10;#!/bin/sh&#10;set -e&#10;&#10;echo &quot;&#x1f680; Post-clone / Pre-build Flutter setup&quot;&#10;&#10;# &#x5b89;&#x88c5; Flutter&#xff08;&#x5982;&#x679c;&#x4e0d;&#x5b58;&#x5728;&#xff09;&#10;if [ ! -d &quot;$HOME/flutter&quot; ]; then&#10;    git clone https://github.com/flutter/flutter.git --depth 1 -b stable $HOME/flutter&#10;fi&#10;&#10;export PATH=&quot;$HOME/flutter/bin:$PATH&quot;&#10;&#10;# &#x786e;&#x4fdd; flutter &#x53ef;&#x7528;&#10;flutter --version&#10;flutter pub get&#10;&#10;# &#x6784;&#x5efa; iOS&#10;BUILD_NAME=&quot;1.2.3-$CI_BRANCH&quot;&#10;BUILD_NUMBER=&quot;$CI_BUILD_NUMBER&quot;&#10;&#10;flutter build ios \&#10;  --release \&#10;  --build-name=$BUILD_NAME \&#10;  --build-number=$BUILD_NUMBER&#10;">
-               <EnvironmentBuildable>
-                  <BuildableReference
-                     BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "97C146ED1CF9000F007C117D"
-                     BuildableName = "Runner.app"
-                     BlueprintName = "Runner"
-                     ReferencedContainer = "container:Runner.xcodeproj">
-                  </BuildableReference>
-               </EnvironmentBuildable>
             </ActionContent>
          </ExecutionAction>
       </PreActions>
