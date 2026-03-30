@@ -319,9 +319,10 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
    * Uses worst-case position: assumes all pending BUYs fill AND the new BUY fills.
    * This guarantees maxSize is never breached even if all open orders fill simultaneously.
    */
-  private canAddLong(): boolean {
+  private canAddLong(extraPendingLong: Decimal = new Decimal(0)): boolean {
     const worstCaseLong = this.positionSize
       .plus(this.getPendingLongRemaining())
+      .plus(extraPendingLong)
       .plus(this.orderAmount);
     return worstCaseLong.lte(this.maxSize);
   }
@@ -331,11 +332,52 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
    * Uses worst-case position: assumes all pending SELLs fill AND the new SELL fills.
    * This guarantees minSize is never breached even if all open orders fill simultaneously.
    */
-  private canAddShort(): boolean {
+  private canAddShort(extraPendingShort: Decimal = new Decimal(0)): boolean {
     const worstCaseShort = this.positionSize
       .minus(this.getPendingShortRemaining())
+      .minus(extraPendingShort)
       .minus(this.orderAmount);
     return worstCaseShort.gte(this.minSize);
+  }
+
+  /**
+   * Generate new entry orders with reservation-based risk checks.
+   * This guarantees that if all newly generated orders fill, size limits are still respected.
+   */
+  private generateEntrySignalsWithReservation(options?: {
+    allowBuy?: boolean;
+    allowSell?: boolean;
+  }): StrategyResult[] {
+    const signals: StrategyResult[] = [];
+    let reservedLong = new Decimal(0);
+    let reservedShort = new Decimal(0);
+    const orderAmount = new Decimal(this.orderAmount);
+    const allowBuy = options?.allowBuy ?? true;
+    const allowSell = options?.allowSell ?? true;
+
+    if (allowBuy && this.canAddLong(reservedLong)) {
+      const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
+      signals.push(this.generatePlaceOrderSignal(price, OrderSide.BUY));
+      reservedLong = reservedLong.add(orderAmount);
+      this._logger.debug(`[SpreadGrid] Generated BUY signal @ ${price}`);
+    } else if (allowBuy) {
+      this._logger.debug(
+        `[SpreadGrid] Skipping BUY: canAddLong=false (Fills: ${this.positionSize}, PendingBuy: ${this.getPendingLongRemaining()}, ReservedBuy: ${reservedLong}, Max: ${this.maxSize})`,
+      );
+    }
+
+    if (allowSell && this.canAddShort(reservedShort)) {
+      const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
+      signals.push(this.generatePlaceOrderSignal(price, OrderSide.SELL));
+      reservedShort = reservedShort.add(orderAmount);
+      this._logger.debug(`[SpreadGrid] Generated SELL signal @ ${price}`);
+    } else if (allowSell) {
+      this._logger.debug(
+        `[SpreadGrid] Skipping SELL: canAddShort=false (Fills: ${this.positionSize}, PendingSell: ${this.getPendingShortRemaining()}, ReservedSell: ${reservedShort}, Min: ${this.minSize})`,
+      );
+    }
+
+    return signals;
   }
 
   private generatePlaceOrderSignal(price: Decimal, side: OrderSide): StrategyOrderResult {
@@ -372,14 +414,39 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     };
   }
 
+  private inferReferencePriceFromOpenOrders(orders: Order[]): Decimal | null {
+    const stepRatio = new Decimal(this.stepPercent).div(100);
+    const inferredRefs: Decimal[] = [];
+
+    for (const order of orders) {
+      if (!order.price || order.price.lte(0)) continue;
+      if (order.side === OrderSide.BUY) {
+        const denom = new Decimal(1).minus(stepRatio);
+        if (denom.gt(0)) {
+          inferredRefs.push(order.price.div(denom));
+        }
+      } else {
+        const denom = new Decimal(1).plus(stepRatio);
+        if (denom.gt(0)) {
+          inferredRefs.push(order.price.div(denom));
+        }
+      }
+    }
+
+    if (inferredRefs.length === 0) return null;
+    const sum = inferredRefs.reduce((acc, val) => acc.add(val), new Decimal(0));
+    return sum.div(inferredRefs.length);
+  }
+
   public override async processInitialData(
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
     const signals: StrategyResult[] = [];
+    const hasSqlNetPosition = initialData.strategyNetPosition !== undefined;
 
     // Prioritize SQL-level net position calculation for better performance
-    if (initialData.strategyNetPosition !== undefined) {
-      this.positionSize = initialData.strategyNetPosition;
+    if (hasSqlNetPosition) {
+      this.positionSize = initialData.strategyNetPosition!;
       this._logger.info(
         `✅ [SpreadGrid] Initialized positionSize from SQL: ${this.positionSize.toString()}`,
       );
@@ -387,8 +454,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       this.positionSize = new Decimal(0);
     }
 
+    let ownedOrders: Order[] = [];
     if (initialData.openOrders) {
-      const ownedOrders = initialData.openOrders.filter((order) => {
+      ownedOrders = initialData.openOrders.filter((order) => {
         // Prioritize Strategy ID / Client Order ID match over Symbol match
         const isIdMatch =
           order.strategyId && String(order.strategyId) === String(this.getStrategyId());
@@ -413,16 +481,25 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         }
         this.orders.set(order.clientOrderId, order);
 
-        // Remove the unfilled (pending) portion from positionSize so it only reflects fills.
-        // For a BUY open order: SQL added +quantity, but only +executedQuantity was actually filled.
-        // For a SELL open order: SQL added -quantity, but only -executedQuantity was actually filled.
         const executed = order.executedQuantity || new Decimal(0);
-        const remaining = order.quantity.sub(executed);
-        if (remaining.gt(0)) {
+        if (hasSqlNetPosition) {
+          // SQL net position includes pending quantity for NEW/PARTIALLY_FILLED orders.
+          // Convert it to fills-only by removing the remaining unfilled part.
+          const remaining = order.quantity.sub(executed);
+          if (remaining.gt(0)) {
+            if (order.side === OrderSide.BUY) {
+              this.positionSize = this.positionSize.sub(remaining);
+            } else {
+              this.positionSize = this.positionSize.add(remaining);
+            }
+          }
+        } else if (executed.gt(0)) {
+          // Fallback mode (no SQL net position): bootstrap fills-only position from
+          // executed quantities visible on open orders (typically PARTIALLY_FILLED).
           if (order.side === OrderSide.BUY) {
-            this.positionSize = this.positionSize.sub(remaining);
+            this.positionSize = this.positionSize.add(executed);
           } else {
-            this.positionSize = this.positionSize.add(remaining);
+            this.positionSize = this.positionSize.sub(executed);
           }
         }
 
@@ -440,24 +517,42 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       });
     }
 
-    if (this.openLowerOrder) {
-      this.referencePrice = this.openLowerOrder
-        .price!.div(100 - this.stepPercent)
+    const inferredRef = this.inferReferencePriceFromOpenOrders(ownedOrders);
+    if (inferredRef) {
+      this.referencePrice = inferredRef;
+      this._logger.info(
+        `[SpreadGrid] Inferred referencePrice from ${ownedOrders.length} open orders: ${this.referencePrice.toString()}`,
+      );
+    } else if (this.openLowerOrder?.price) {
+      this.referencePrice = this.openLowerOrder.price
+        .div(100 - this.stepPercent)
         .mul(100);
-    } else if (this.openUpperOrder) {
-      this.referencePrice = this.openUpperOrder
-        .price!.div(100 + this.stepPercent)
+    } else if (this.openUpperOrder?.price) {
+      this.referencePrice = this.openUpperOrder.price
+        .div(100 + this.stepPercent)
         .mul(100);
     }
-    if (!this.openLowerOrder && this.canAddLong()) {
-      const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
 
-      signals.push(this.generatePlaceOrderSignal(price, OrderSide.BUY));
+    // Restart reconciliation:
+    // Existing pending orders will be cancelled and should not be counted for new risk checks.
+    if (ownedOrders.length > 0) {
+      for (const openOrder of ownedOrders) {
+        signals.push(this.generateCancelOrderSignal(openOrder));
+      }
+      this.orders.clear();
+      this.orderMetadataMap.clear();
+      this.pendingClientOrderIds.clear();
+      this.openLowerOrder = null;
+      this.openUpperOrder = null;
+      this.processedQuantityMap.clear();
     }
-    if (!this.openUpperOrder && this.canAddShort()) {
-      const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
-      signals.push(this.generatePlaceOrderSignal(price, OrderSide.SELL));
-    }
+
+    signals.push(
+      ...this.generateEntrySignalsWithReservation({
+        allowBuy: !this.openLowerOrder,
+        allowSell: !this.openUpperOrder,
+      }),
+    );
 
     return signals;
   }
@@ -631,26 +726,8 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     this.openLowerOrder = null;
     this.openUpperOrder = null;
 
-    // place new orders
-    if (this.canAddLong()) {
-      const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
-      signals.push(this.generatePlaceOrderSignal(price, OrderSide.BUY));
-      this._logger.debug(`[SpreadGrid] Generated BUY signal @ ${price}`);
-    } else {
-      this._logger.debug(
-        `[SpreadGrid] Skipping BUY: canAddLong=false (Fills: ${this.positionSize}, PendingBuy: ${this.getPendingLongRemaining()}, Max: ${this.maxSize})`,
-      );
-    }
-
-    if (this.canAddShort()) {
-      const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
-      signals.push(this.generatePlaceOrderSignal(price, OrderSide.SELL));
-      this._logger.debug(`[SpreadGrid] Generated SELL signal @ ${price}`);
-    } else {
-      this._logger.debug(
-        `[SpreadGrid] Skipping SELL: canAddShort=false (Fills: ${this.positionSize}, PendingSell: ${this.getPendingShortRemaining()}, Min: ${this.minSize})`,
-      );
-    }
+    // place new orders with reservation-aware checks
+    signals.push(...this.generateEntrySignalsWithReservation());
 
     return signals;
   }
