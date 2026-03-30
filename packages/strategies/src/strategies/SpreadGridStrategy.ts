@@ -299,9 +299,22 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
    * Used for worst-case position estimation before placing new signals.
    */
   private getPendingLongRemaining(): Decimal {
-    if (!this.openLowerOrder) return new Decimal(0);
-    const executed = this.openLowerOrder.executedQuantity || new Decimal(0);
-    return this.openLowerOrder.quantity.sub(executed);
+    let total = new Decimal(0);
+    for (const order of this.orders.values()) {
+      if (order.side !== OrderSide.BUY) continue;
+      if (
+        order.status !== OrderStatus.NEW &&
+        order.status !== OrderStatus.PARTIALLY_FILLED
+      ) {
+        continue;
+      }
+      const executed = order.executedQuantity || new Decimal(0);
+      const remaining = order.quantity.sub(executed);
+      if (remaining.gt(0)) {
+        total = total.add(remaining);
+      }
+    }
+    return total;
   }
 
   /**
@@ -309,9 +322,22 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
    * Used for worst-case position estimation before placing new signals.
    */
   private getPendingShortRemaining(): Decimal {
-    if (!this.openUpperOrder) return new Decimal(0);
-    const executed = this.openUpperOrder.executedQuantity || new Decimal(0);
-    return this.openUpperOrder.quantity.sub(executed);
+    let total = new Decimal(0);
+    for (const order of this.orders.values()) {
+      if (order.side !== OrderSide.SELL) continue;
+      if (
+        order.status !== OrderStatus.NEW &&
+        order.status !== OrderStatus.PARTIALLY_FILLED
+      ) {
+        continue;
+      }
+      const executed = order.executedQuantity || new Decimal(0);
+      const remaining = order.quantity.sub(executed);
+      if (remaining.gt(0)) {
+        total = total.add(remaining);
+      }
+    }
+    return total;
   }
 
   /**
@@ -589,6 +615,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
   private handleOrderUpdates(orders: Order[]): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    let shouldRebuildAfterFill = false;
     for (const order of orders) {
       if (!order.clientOrderId) continue;
       if (this.processedFillIds.has(order.clientOrderId)) continue;
@@ -644,7 +671,8 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
           this._logger.debug(
             `[SpreadGrid] Order ${order.clientOrderId} FILLED. Processing fill...`,
           );
-          return this.handleOrderFilled(order);
+          signals.push(...this.handleOrderFilled(order, false));
+          shouldRebuildAfterFill = true;
         } else if (this.isTerminalStatus(order.status)) {
           // Fill-only tracking: we never added pending qty to positionSize, so no revert needed.
           // Just clean up order references.
@@ -664,10 +692,16 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         }
       }
     }
+    if (shouldRebuildAfterFill) {
+      signals.push(...this.rebuildOrdersAfterFill());
+    }
     return signals;
   }
 
-  private handleOrderFilled(order: Order): StrategyResult[] {
+  private handleOrderFilled(
+    order: Order,
+    rebuildOrders: boolean = true,
+  ): StrategyResult[] {
     const signals: StrategyResult[] = [];
     const filledQty = order.executedQuantity || order.quantity || new Decimal(0);
 
@@ -713,11 +747,21 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       this.filledEntries.push(entry);
     }
 
-    // cancel all existing orders
+    if (rebuildOrders) {
+      signals.push(...this.rebuildOrdersAfterFill());
+    }
+
+    return signals;
+  }
+
+  private rebuildOrdersAfterFill(): StrategyResult[] {
+    const signals: StrategyResult[] = [];
+    // cancel all existing active orders that are not terminal
     this.orders.forEach((o) => {
-      if (o.clientOrderId && o.clientOrderId !== order.clientOrderId) {
-        signals.push(this.generateCancelOrderSignal(o));
-      }
+      if (!o.clientOrderId) return;
+      if (o.status === OrderStatus.FILLED) return;
+      if (this.isTerminalStatus(o.status)) return;
+      signals.push(this.generateCancelOrderSignal(o));
     });
 
     this.orders.clear();
@@ -728,7 +772,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
     // place new orders with reservation-aware checks
     signals.push(...this.generateEntrySignalsWithReservation());
-
     return signals;
   }
 

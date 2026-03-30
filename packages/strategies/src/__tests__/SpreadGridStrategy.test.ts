@@ -158,4 +158,35 @@ describe('SpreadGridStrategy', () => {
     // Rebuilt ladder should stay around reference ~2045 inferred from both open orders.
     expect(sellSignal?.price?.toNumber()).toBeCloseTo(2058.2925, 6);
   });
+
+  it('respects minSize when multiple FILLED updates arrive in one batch', async () => {
+    await strategy.processInitialData({
+      symbol: 'ETH/USDC:USDC',
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [],
+    });
+
+    const filledOrders = [1, 2, 3, 4].map((seq) =>
+      createOrder({
+        clientOrderId: `E1D${seq}D1710000000`,
+        side: OrderSide.SELL,
+        price: 2050 + seq,
+        quantity: 3,
+        status: OrderStatus.FILLED,
+        executedQuantity: 3,
+        strategyId: 1,
+      }),
+    );
+
+    const result = await strategy.analyze({ orders: filledOrders });
+    const signals = normalizeAnalyzeResult(result).filter(
+      (signal): signal is StrategyOrderResult =>
+        signal.action === 'buy' || signal.action === 'sell',
+    );
+
+    expect(signals.some((s) => s.action === 'sell')).toBe(false);
+    expect(signals.some((s) => s.action === 'buy')).toBe(true);
+    expect(strategy.getStrategyState().canAddShort).toBe(false);
+  });
 });

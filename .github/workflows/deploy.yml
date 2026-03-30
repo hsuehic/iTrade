@@ -60,6 +60,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Compute image metadata
         id: meta
@@ -189,6 +191,38 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect schema-related changes
+        id: schema_check
+        run: |
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+
+          # workflow_dispatch may not provide "before"; default to running schema sync for safety.
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "schema_changed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=missing-base-sha" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=200 origin "${BASE_SHA}" || true
+          fi
+
+          CHANGED_FILES="$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")"
+          echo "Changed files between ${BASE_SHA:0:8}..${HEAD_SHA:0:8}:"
+          echo "${CHANGED_FILES}"
+
+          if echo "${CHANGED_FILES}" | grep -Eq \
+            '^packages/.*/src/(entities|models)/|^packages/.*/src/.*/(entities|models)/|^packages/.*/src/.*(Entity|Model)\.ts$|^packages/data-manager/sync-schema-to-db\.ts$'; then
+            echo "schema_changed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=model-or-entity-changed" >> "$GITHUB_OUTPUT"
+          else
+            echo "schema_changed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no-model-entity-change" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Setup SSH agent
         run: |
@@ -273,6 +307,8 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          SCHEMA_CHANGED: ${{ steps.schema_check.outputs.schema_changed }}
+          SCHEMA_CHECK_REASON: ${{ steps.schema_check.outputs.reason }}
         run: |
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           IMAGE_PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
@@ -282,6 +318,7 @@ jobs:
           echo "  Deploying commit: ${COMMIT_SHA:0:8}"
           echo "  Message: $(echo "$COMMIT_MSG" | head -1)"
           echo "  Strategy: Pre-pull → selective recreate (DB stays running)"
+          echo "  Schema check: ${SCHEMA_CHANGED} (${SCHEMA_CHECK_REASON})"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
           SSH_OPTS="-o ConnectTimeout=15 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=no"
@@ -292,7 +329,7 @@ jobs:
 
           echo "▶ Executing deploy script on GCE..."
           ssh $SSH_OPTS "$GCE_USER@$GCE_HOST" \
-            "GITHUB_REPOSITORY='$GITHUB_REPOSITORY' COMMIT_SHA='$COMMIT_SHA' GHCR_TOKEN='$GHCR_TOKEN' GH_ACTOR='$GH_ACTOR' IMAGE_PREFIX='$IMAGE_PREFIX' bash /tmp/deploy-remote.sh"
+            "GITHUB_REPOSITORY='$GITHUB_REPOSITORY' COMMIT_SHA='$COMMIT_SHA' GHCR_TOKEN='$GHCR_TOKEN' GH_ACTOR='$GH_ACTOR' IMAGE_PREFIX='$IMAGE_PREFIX' SCHEMA_CHANGED='$SCHEMA_CHANGED' bash /tmp/deploy-remote.sh"
 
       - name: Report deployment status
         if: always()

@@ -21,6 +21,22 @@ APP_DIR="/opt/itrade/app"
 COMPOSE_FILE="$APP_DIR/docker-compose.prod.yml"
 DEPLOY_START=$(date +%s)
 
+wait_for_db_healthy() {
+  local timeout="${1:-30}"
+  local elapsed=0
+
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if docker inspect --format='{{.State.Health.Status}}' itrade-db 2>/dev/null | grep -q "healthy"; then
+      echo "$elapsed"
+      return 0
+    fi
+    sleep 2
+    elapsed=$((elapsed + 2))
+  done
+
+  return 1
+}
+
 # ══════════════════════════════════════════════════════════════
 # Phase 1: Preparation (old containers still serving traffic)
 # ══════════════════════════════════════════════════════════════
@@ -114,65 +130,62 @@ DOWNTIME_START=$(date +%s)
 #
 # IMPORTANT: Never mount at /var/lib/postgresql/data — PG18 doesn't use
 # that path, so data would end up in a disposable anonymous volume instead.
-echo "▶ Starting database..."
-docker compose -f "$COMPOSE_FILE" stop db 2>/dev/null || true
-docker compose -f "$COMPOSE_FILE" rm -f db 2>/dev/null || true
-
+echo "▶ Ensuring database is running (no container replace)..."
 docker compose -f "$COMPOSE_FILE" up -d --no-build db
 echo "▶ Waiting for database..."
 DB_TIMEOUT=30
-DB_ELAPSED=0
-while [ $DB_ELAPSED -lt $DB_TIMEOUT ]; do
-  if docker inspect --format='{{.State.Health.Status}}' itrade-db 2>/dev/null | grep -q "healthy"; then
-    break
-  fi
-  sleep 2
-  DB_ELAPSED=$((DB_ELAPSED + 2))
-done
-if [ $DB_ELAPSED -ge $DB_TIMEOUT ]; then
+if ! DB_ELAPSED=$(wait_for_db_healthy "$DB_TIMEOUT"); then
   echo "❌ Database health check timeout"
   docker compose -f "$COMPOSE_FILE" logs --tail=20 db
   exit 1
 fi
 echo "  ✅ Database healthy (waited ${DB_ELAPSED}s)"
 
-echo "▶ Stopping console before schema migration..."
-docker compose -f "$COMPOSE_FILE" stop console 2>/dev/null || true
+SCHEMA_CHANGED="${SCHEMA_CHANGED:-true}"
+if [ "$SCHEMA_CHANGED" = "true" ]; then
+  echo "▶ Schema-related changes detected, running sync-schema..."
+  echo "▶ Stopping console before schema migration..."
+  docker compose -f "$COMPOSE_FILE" stop console 2>/dev/null || true
 
-# Sync DB password: POSTGRES_PASSWORD only takes effect during initial initdb.
-# If the volume already exists with a different password, the env var is ignored.
-# Read the expected password from .env.console and reset it inside the running DB.
-CONSOLE_ENV="/opt/itrade/.env.console"
-EXPECTED_DB_USER=$(sed -n 's/^DB_USER=//p' "$CONSOLE_ENV" | head -n 1)
-EXPECTED_DB_PASS=$(sed -n 's/^DB_PASSWORD=//p' "$CONSOLE_ENV" | head -n 1)
-EXPECTED_DB_USER="${EXPECTED_DB_USER:-itrade}"
+  # Sync DB password: POSTGRES_PASSWORD only takes effect during initial initdb.
+  # If the volume already exists with a different password, the env var is ignored.
+  # Read the expected password from .env.console and reset it inside the running DB.
+  CONSOLE_ENV="/opt/itrade/.env.console"
+  EXPECTED_DB_USER=$(sed -n 's/^DB_USER=//p' "$CONSOLE_ENV" | head -n 1)
+  EXPECTED_DB_PASS=$(sed -n 's/^DB_PASSWORD=//p' "$CONSOLE_ENV" | head -n 1)
+  EXPECTED_DB_USER="${EXPECTED_DB_USER:-itrade}"
 
-if [ -n "${EXPECTED_DB_PASS:-}" ]; then
-  echo "▶ Syncing database password..."
-  ESCAPED_PASS=$(printf '%s' "$EXPECTED_DB_PASS" | sed "s/'/''/g")
-  docker exec itrade-db psql -U "${EXPECTED_DB_USER}" -d postgres \
-    -c "ALTER USER ${EXPECTED_DB_USER} WITH PASSWORD '${ESCAPED_PASS}';" \
-    2>/dev/null && echo "  ✅ Database password synced" \
-    || echo "  ⚠️  Password sync failed (may already be correct)"
+  if [ -n "${EXPECTED_DB_PASS:-}" ]; then
+    echo "▶ Syncing database password..."
+    ESCAPED_PASS=$(printf '%s' "$EXPECTED_DB_PASS" | sed "s/'/''/g")
+    docker exec itrade-db psql -U "${EXPECTED_DB_USER}" -d postgres \
+      -c "ALTER USER ${EXPECTED_DB_USER} WITH PASSWORD '${ESCAPED_PASS}';" \
+      2>/dev/null && echo "  ✅ Database password synced" \
+      || echo "  ⚠️  Password sync failed (may already be correct)"
+  fi
+
+  docker exec itrade-db psql -U "${EXPECTED_DB_USER}" -d "${POSTGRES_DB:-itrade}" \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid != pg_backend_pid() AND application_name != 'schema-migrator';" \
+    2>/dev/null || true
+
+  docker compose -f "$COMPOSE_FILE" rm -sf schema-migrator 2>/dev/null || true
+  echo "▶ Running schema migration..."
+  MIGRATION_START=$(date +%s)
+  docker compose -f "$COMPOSE_FILE" up --no-build schema-migrator
+
+  MIGRATOR_EXIT=$(docker inspect --format='{{.State.ExitCode}}' itrade-schema-migrator 2>/dev/null || echo "1")
+  MIGRATION_END=$(date +%s)
+  if [ "$MIGRATOR_EXIT" != "0" ]; then
+    echo "❌ Schema migration failed (exit code: $MIGRATOR_EXIT)"
+    docker compose -f "$COMPOSE_FILE" logs --tail=30 schema-migrator
+    exit 1
+  fi
+  echo "  ✅ Schema migration complete ($((MIGRATION_END - MIGRATION_START))s)"
+else
+  echo "▶ No schema-related changes detected, skipping schema migration"
+  MIGRATION_START=$(date +%s)
+  MIGRATION_END=$(date +%s)
 fi
-
-docker exec itrade-db psql -U "${EXPECTED_DB_USER}" -d "${POSTGRES_DB:-itrade}" \
-  -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid != pg_backend_pid() AND application_name != 'schema-migrator';" \
-  2>/dev/null || true
-
-docker compose -f "$COMPOSE_FILE" rm -sf schema-migrator 2>/dev/null || true
-echo "▶ Running schema migration..."
-MIGRATION_START=$(date +%s)
-docker compose -f "$COMPOSE_FILE" up --no-build schema-migrator
-
-MIGRATOR_EXIT=$(docker inspect --format='{{.State.ExitCode}}' itrade-schema-migrator 2>/dev/null || echo "1")
-MIGRATION_END=$(date +%s)
-if [ "$MIGRATOR_EXIT" != "0" ]; then
-  echo "❌ Schema migration failed (exit code: $MIGRATOR_EXIT)"
-  docker compose -f "$COMPOSE_FILE" logs --tail=30 schema-migrator
-  exit 1
-fi
-echo "  ✅ Schema migration complete ($((MIGRATION_END - MIGRATION_START))s)"
 
 echo "▶ Removing old console, web, and adminer containers..."
 docker compose -f "$COMPOSE_FILE" rm -sf console web adminer 2>/dev/null || true
@@ -181,7 +194,14 @@ for cname in itrade-console itrade-web itrade-adminer; do
 done
 
 echo "▶ Starting console, web, and adminer services..."
-docker compose -f "$COMPOSE_FILE" up -d --no-build console web adminer
+echo "▶ Verifying database is still healthy before app startup..."
+if ! DB_ELAPSED_BEFORE_APPS=$(wait_for_db_healthy 30); then
+  echo "❌ Database is not healthy, aborting console/web startup"
+  docker compose -f "$COMPOSE_FILE" logs --tail=20 db
+  exit 1
+fi
+echo "  ✅ Database healthy before startup (waited ${DB_ELAPSED_BEFORE_APPS}s)"
+docker compose -f "$COMPOSE_FILE" up -d --no-build --no-deps console web adminer
 
 echo "▶ Waiting for web service to be healthy..."
 WEB_TIMEOUT=90
