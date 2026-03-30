@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1510"
-   version = "1.3">
+   version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES">
       <BuildActionEntries>
          <BuildActionEntry
-            buildForTesting = "YES"
+            buildForTesting = "NO"
             buildForRunning = "YES"
             buildForProfiling = "YES"
             buildForArchiving = "YES"
@@ -17,6 +17,20 @@
                BlueprintIdentifier = "97C146ED1CF9000F007C117D"
                BuildableName = "Runner.app"
                BlueprintName = "Runner"
+               ReferencedContainer = "container:Runner.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "NO"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "331C8080294A63A400263BE5"
+               BuildableName = "RunnerTests.xctest"
+               BlueprintName = "RunnerTests"
                ReferencedContainer = "container:Runner.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -38,17 +52,6 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "331C8080294A63A400263BE5"
-               BuildableName = "RunnerTests.xctest"
-               BlueprintName = "RunnerTests"
-               ReferencedContainer = "container:Runner.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
@@ -97,5 +100,35 @@
    <ArchiveAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Run Script"
+               scriptText = "# Type a script or drag a script file from your workspace to insert its path.&#10;#!/bin/sh&#10;set -e&#10;&#10;echo &quot;&#x1f680; Post-clone / Pre-build Flutter setup&quot;&#10;&#10;# &#x5b89;&#x88c5; Flutter&#xff08;&#x5982;&#x679c;&#x4e0d;&#x5b58;&#x5728;&#xff09;&#10;if [ ! -d &quot;$HOME/flutter&quot; ]; then&#10;    git clone https://github.com/flutter/flutter.git --depth 1 -b stable $HOME/flutter&#10;fi&#10;&#10;export PATH=&quot;$HOME/flutter/bin:$PATH&quot;&#10;&#10;# &#x786e;&#x4fdd; flutter &#x53ef;&#x7528;&#10;flutter --version&#10;flutter pub get&#10;&#10;# &#x6784;&#x5efa; iOS&#10;BUILD_NAME=&quot;1.2.3-$CI_BRANCH&quot;&#10;BUILD_NUMBER=&quot;$CI_BUILD_NUMBER&quot;&#10;&#10;flutter build ios \&#10;  --release \&#10;  --build-name=$BUILD_NAME \&#10;  --build-number=$BUILD_NUMBER&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "97C146ED1CF9000F007C117D"
+                     BuildableName = "Runner.app"
+                     BlueprintName = "Runner"
+                     ReferencedContainer = "container:Runner.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
+      <PostActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.SendEmailAction">
+            <ActionContent
+               title = "Send Email"
+               emailRecipient = "xiaoweihsueh@gmail.com"
+               emailSubject = "test"
+               emailBody = "test"
+               attachLogToEmail = "NO">
+            </ActionContent>
+         </ExecutionAction>
+      </PostActions>
    </ArchiveAction>
 </Scheme>
