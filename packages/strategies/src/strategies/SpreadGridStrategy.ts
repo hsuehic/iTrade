@@ -275,6 +275,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   }
 
   private ensureMakerPrice(price: Decimal, side: OrderSide): Decimal | null {
+    if (!this.checkMarketPrice) {
+      return price;
+    }
     if (!this.lastOrderBook || this.isOrderBookStale()) {
       return null;
     }
@@ -441,7 +444,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const allowBuy = options?.allowBuy ?? true;
     const allowSell = options?.allowSell ?? true;
 
-    if (this.isOrderBookStale()) {
+    if (this.checkMarketPrice && this.isOrderBookStale()) {
       this._logger.warn(
         `[SpreadGrid] Skipping entry signals: stale orderbook (${this.orderBookStaleMs}ms)`,
       );
