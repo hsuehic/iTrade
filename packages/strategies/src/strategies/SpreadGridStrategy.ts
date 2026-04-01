@@ -204,6 +204,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
   private lastOrderBook: OrderBook | null = null;
+  private readonly orderBookStaleMs = 10000;
 
   private positionSize: Decimal = new Decimal(0);
   private filledEntries: FilledEntry[] = [];
@@ -255,6 +256,47 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     }
     if (!price) return;
     this.lastOrderBookPrice = price;
+  }
+
+  private isOrderBookStale(now: number = Date.now()): boolean {
+    if (!this.lastOrderBook?.timestamp) return true;
+    const lastTs = this.lastOrderBook.timestamp.getTime();
+    if (Number.isNaN(lastTs)) return true;
+    return now - lastTs > this.orderBookStaleMs;
+  }
+
+  private getBestBidAsk(): { bestBid?: Decimal; bestAsk?: Decimal } {
+    const bestBid = this.lastOrderBook?.bids?.[0]?.[0];
+    const bestAsk = this.lastOrderBook?.asks?.[0]?.[0];
+    if (bestBid?.gt(0) || bestAsk?.gt(0)) {
+      return { bestBid, bestAsk };
+    }
+    return {};
+  }
+
+  private ensureMakerPrice(price: Decimal, side: OrderSide): Decimal | null {
+    if (!this.lastOrderBook || this.isOrderBookStale()) {
+      return null;
+    }
+
+    const { bestBid, bestAsk } = this.getBestBidAsk();
+    if (side === OrderSide.BUY) {
+      if (bestBid && bestBid.gt(0)) {
+        return Decimal.min(price, bestBid);
+      }
+      if (bestAsk && bestAsk.gt(0)) {
+        return price.lt(bestAsk) ? price : null;
+      }
+      return null;
+    }
+
+    if (bestAsk && bestAsk.gt(0)) {
+      return Decimal.max(price, bestAsk);
+    }
+    if (bestBid && bestBid.gt(0)) {
+      return price.gt(bestBid) ? price : null;
+    }
+    return null;
   }
 
   private getOrderBookRange(): { minBid: Decimal; maxAsk: Decimal } | null {
@@ -382,11 +424,25 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const allowBuy = options?.allowBuy ?? true;
     const allowSell = options?.allowSell ?? true;
 
+    if (this.isOrderBookStale()) {
+      this._logger.warn(
+        `[SpreadGrid] Skipping entry signals: stale orderbook (${this.orderBookStaleMs}ms)`,
+      );
+      return signals;
+    }
+
     if (allowBuy && this.canAddLong(reservedLong)) {
       const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
-      signals.push(this.generatePlaceOrderSignal(price, OrderSide.BUY));
-      reservedLong = reservedLong.add(orderAmount);
-      this._logger.debug(`[SpreadGrid] Generated BUY signal @ ${price}`);
+      const makerPrice = this.ensureMakerPrice(price, OrderSide.BUY);
+      if (makerPrice) {
+        signals.push(this.generatePlaceOrderSignal(makerPrice, OrderSide.BUY));
+        reservedLong = reservedLong.add(orderAmount);
+        this._logger.debug(`[SpreadGrid] Generated BUY signal @ ${makerPrice}`);
+      } else {
+        this._logger.warn(
+          `[SpreadGrid] Skipping BUY: unable to ensure maker price (missing bid/ask or stale).`,
+        );
+      }
     } else if (allowBuy) {
       this._logger.debug(
         `[SpreadGrid] Skipping BUY: canAddLong=false (Fills: ${this.positionSize}, PendingBuy: ${this.getPendingLongRemaining()}, ReservedBuy: ${reservedLong}, Max: ${this.maxSize})`,
@@ -395,9 +451,16 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
     if (allowSell && this.canAddShort(reservedShort)) {
       const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
-      signals.push(this.generatePlaceOrderSignal(price, OrderSide.SELL));
-      reservedShort = reservedShort.add(orderAmount);
-      this._logger.debug(`[SpreadGrid] Generated SELL signal @ ${price}`);
+      const makerPrice = this.ensureMakerPrice(price, OrderSide.SELL);
+      if (makerPrice) {
+        signals.push(this.generatePlaceOrderSignal(makerPrice, OrderSide.SELL));
+        reservedShort = reservedShort.add(orderAmount);
+        this._logger.debug(`[SpreadGrid] Generated SELL signal @ ${makerPrice}`);
+      } else {
+        this._logger.warn(
+          `[SpreadGrid] Skipping SELL: unable to ensure maker price (missing bid/ask or stale).`,
+        );
+      }
     } else if (allowSell) {
       this._logger.debug(
         `[SpreadGrid] Skipping SELL: canAddShort=false (Fills: ${this.positionSize}, PendingSell: ${this.getPendingShortRemaining()}, ReservedSell: ${reservedShort}, Min: ${this.minSize})`,
@@ -470,6 +533,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   ): Promise<StrategyAnalyzeResult> {
     const signals: StrategyResult[] = [];
     const hasSqlNetPosition = initialData.strategyNetPosition !== undefined;
+    this.updateOrderBookPrice(initialData.orderBook);
 
     // Prioritize SQL-level net position calculation for better performance
     if (hasSqlNetPosition) {
@@ -560,20 +624,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         .mul(100);
     }
 
-    // Restart reconciliation:
-    // Existing pending orders will be cancelled and should not be counted for new risk checks.
-    if (ownedOrders.length > 0) {
-      for (const openOrder of ownedOrders) {
-        signals.push(this.generateCancelOrderSignal(openOrder));
-      }
-      this.orders.clear();
-      this.orderMetadataMap.clear();
-      this.pendingClientOrderIds.clear();
-      this.openLowerOrder = null;
-      this.openUpperOrder = null;
-      this.processedQuantityMap.clear();
-    }
-
     signals.push(
       ...this.generateEntrySignalsWithReservation({
         allowBuy: !this.openLowerOrder,
@@ -587,7 +637,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
     const { orders } = dataUpdate;
     if (dataUpdate.orderbook) {
-      this.lastOrderBook = dataUpdate.orderbook;
+      this.updateOrderBookPrice(dataUpdate.orderbook);
     }
     if (orders && orders.length > 0) {
       const signals = this.handleOrderUpdates(orders);
@@ -853,7 +903,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
   public override getSubscriptionConfig() {
     return {
-      orderbook: this.checkMarketPrice ? { enabled: true, depth: 5 } : { enabled: false },
+      orderbook: { enabled: true, depth: 5 },
       method: 'websocket' as const,
       exchange: this._context.exchange,
     };
@@ -864,9 +914,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       fetchPositions: true,
       fetchOpenOrders: true,
       fetchBalance: true,
-      fetchOrderBook: this.checkMarketPrice
-        ? { enabled: true, depth: 5 }
-        : { enabled: false },
+      fetchOrderBook: { enabled: true, depth: 5 },
       fetchStrategyNetPosition: true,
     };
   }

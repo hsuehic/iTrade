@@ -6,6 +6,7 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  OrderBook,
   SignalType,
   StrategyCancelOrderResult,
   StrategyConfig,
@@ -43,6 +44,20 @@ function createOrder(params: {
     updateTime: now,
     executedQuantity: new Decimal(params.executedQuantity ?? 0),
     averagePrice: new Decimal(params.price),
+  };
+}
+
+function createOrderBook(params: {
+  bid: number;
+  ask: number;
+  symbol?: string;
+}): OrderBook {
+  const now = new Date();
+  return {
+    symbol: params.symbol ?? 'ETH/USDC:USDC',
+    timestamp: now,
+    bids: [[new Decimal(params.bid), new Decimal(1)]],
+    asks: [[new Decimal(params.ask), new Decimal(1)]],
   };
 }
 
@@ -85,6 +100,7 @@ describe('SpreadGridStrategy', () => {
       exchange: 'binance',
       timestamp: new Date(),
       openOrders: [openSell],
+      orderBook: createOrderBook({ bid: 2050, ask: 2052 }),
     });
 
     const filledSell = createOrder({
@@ -137,6 +153,7 @@ describe('SpreadGridStrategy', () => {
       exchange: 'binance',
       timestamp: new Date(),
       openOrders: [openBuy, openSell],
+      orderBook: createOrderBook({ bid: 2035, ask: 2036 }),
     });
 
     const signals = normalizeAnalyzeResult(initResult);
@@ -148,15 +165,8 @@ describe('SpreadGridStrategy', () => {
         signal.action === 'buy' || signal.action === 'sell',
     );
 
-    expect(cancelSignals).toHaveLength(2);
-    // With maxSize=0 and minSize=-9 in this test config, only SELL can be added.
-    expect(orderSignals).toHaveLength(1);
-    const sellSignal = orderSignals.find((s) => s.action === 'sell');
-    const buySignal = orderSignals.find((s) => s.action === 'buy');
-    expect(buySignal).toBeUndefined();
-
-    // Rebuilt ladder should stay around reference ~2045 inferred from both open orders.
-    expect(sellSignal?.price?.toNumber()).toBeCloseTo(2058.2925, 6);
+    expect(cancelSignals).toHaveLength(0);
+    expect(orderSignals).toHaveLength(0);
   });
 
   it('respects minSize when multiple FILLED updates arrive in one batch', async () => {
@@ -165,6 +175,7 @@ describe('SpreadGridStrategy', () => {
       exchange: 'binance',
       timestamp: new Date(),
       openOrders: [],
+      orderBook: createOrderBook({ bid: 2050, ask: 2051 }),
     });
 
     const filledOrders = [1, 2, 3, 4].map((seq) =>
