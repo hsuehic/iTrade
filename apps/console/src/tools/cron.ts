@@ -18,23 +18,19 @@
 
 import 'reflect-metadata';
 import dotenv from 'dotenv';
-import {
-  AccountPollingService,
-  ConsoleLogger,
-  LogLevel,
-  PollingResult,
-} from '@itrade/core';
+import { AccountPollingService, PollingResult } from '@itrade/core';
 import {
   BinanceExchange,
   OKXExchange,
   CoinbaseExchange,
 } from '@itrade/exchange-connectors';
 import { TypeOrmDataManager } from '@itrade/data-manager';
+import { silentLogger } from '../utils/silent-logger';
 
 // Load environment variables
 dotenv.config();
 
-const logger = new ConsoleLogger(LogLevel.INFO);
+const logger = silentLogger;
 
 // Polling interval (default: 6 seconds for testing)
 const POLLING_INTERVAL = parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '6000');

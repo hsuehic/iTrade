@@ -21,8 +21,6 @@ export class BotManager {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    this.logger.info('🤖 Starting BotManager...');
-
     // Load all users from DB
     await this.refreshBots();
 
@@ -31,7 +29,6 @@ export class BotManager {
   }
 
   public async stop(): Promise<void> {
-    this.logger.info('🛑 Stopping all bots...');
     for (const [, bot] of this.bots) {
       await bot.stop();
     }
@@ -63,9 +60,6 @@ export class BotManager {
 
         // OKX requires passphrase
         if (acc.exchange.toLowerCase() === 'okx' && !acc.passphrase) {
-          this.logger.warn(
-            `⚠️  OKX account for user ${acc.userId} missing passphrase, skipping`,
-          );
           return false;
         }
 
@@ -78,10 +72,6 @@ export class BotManager {
         if (acc.userId) activeUserIds.add(acc.userId);
       });
 
-      this.logger.info(
-        `📊 Found ${activeUserIds.size} users with valid exchange accounts (${validAccounts.length} total accounts)`,
-      );
-
       const accountsByUser = new Map<string, AccountInfoEntity[]>();
       for (const account of validAccounts) {
         if (!account.userId) continue;
@@ -93,19 +83,13 @@ export class BotManager {
       // Start new bots
       for (const userId of activeUserIds) {
         if (!this.bots.has(userId)) {
-          this.logger.info(`🆕 Found new active user: ${userId}. Starting bot...`);
           const bot = new BotInstance(userId, this.dataManager, this.logger);
 
           try {
             await bot.initialize(); // Load exchanges, trackers
             await bot.start(); // Start engine
             this.bots.set(userId, bot);
-            this.logger.info(`✅ Bot successfully started for user ${userId}`);
-          } catch (error) {
-            this.logger.error(
-              `❌ Failed to initialize bot for user ${userId}:`,
-              error as Error,
-            );
+          } catch {
             // Clean up if initialization failed
             try {
               await bot.stop();
@@ -120,9 +104,6 @@ export class BotManager {
       for (const [userId, bot] of this.bots) {
         const userAccounts = accountsByUser.get(userId) ?? [];
         if (!activeUserIds.has(userId) || userAccounts.length === 0) {
-          this.logger.info(
-            `🗑️ User ${userId} no longer has valid accounts. Stopping bot...`,
-          );
           await bot.stop();
           this.bots.delete(userId);
           continue;
@@ -130,15 +111,12 @@ export class BotManager {
 
         try {
           await bot.syncExchanges(userAccounts);
-        } catch (error) {
-          this.logger.error(
-            `❌ Failed to refresh exchanges for user ${userId}:`,
-            error as Error,
-          );
+        } catch {
+          return;
         }
       }
-    } catch (error) {
-      this.logger.error('❌ Error refreshing bots:', error as Error);
+    } catch {
+      return;
     }
   }
 

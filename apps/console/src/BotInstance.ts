@@ -22,6 +22,7 @@ import { BalanceTracker } from './integration/helpers/balance-tracker';
 import { PositionTracker } from './integration/helpers/position-tracker';
 import { PushNotificationService } from './services/push-notification-service';
 import { CryptoUtils } from '@itrade/utils/CryptoUtils';
+import { silentLogger } from './utils/silent-logger';
 
 export class BotInstance {
   public engine: TradingEngine;
@@ -61,12 +62,12 @@ export class BotInstance {
     this.engine = new TradingEngine(
       this.riskManager,
       this.portfolioManager,
-      this.logger,
+      silentLogger,
       userId,
       dataManager, // 🆕 Pass dataManager for performance persistence
     );
 
-    this.pushNotificationService = new PushNotificationService(dataManager, logger, {
+    this.pushNotificationService = new PushNotificationService(dataManager, {
       defaultUserId: userId,
     });
 
@@ -76,15 +77,20 @@ export class BotInstance {
       this.pushNotificationService,
       userId,
     );
-    this.balanceTracker = new BalanceTracker(userId, dataManager, logger);
+    this.balanceTracker = new BalanceTracker(userId, dataManager, silentLogger);
     this.positionTracker = new PositionTracker(
       userId,
       dataManager,
-      logger,
+      silentLogger,
       (exchangeName) => this.exchanges.get(exchangeName),
     );
 
-    this.strategyManager = new StrategyManager(this.engine, dataManager, logger, userId);
+    this.strategyManager = new StrategyManager(
+      this.engine,
+      dataManager,
+      silentLogger,
+      userId,
+    );
 
     this.pollingConfig = {
       pollingInterval: BotInstance.parseInterval(
@@ -95,7 +101,7 @@ export class BotInstance {
       retryAttempts: 3,
     };
 
-    this.pollingService = new AccountPollingService(this.pollingConfig, logger);
+    this.pollingService = new AccountPollingService(this.pollingConfig, silentLogger);
     this.pollingService.setDataManager(dataManager);
 
     this.openOrdersSyncInterval = BotInstance.parseInterval(
@@ -128,15 +134,6 @@ export class BotInstance {
         });
 
         if (accountInfo) {
-          const snapshotTotal = new Decimal(snapshot.totalBalance);
-          const calculatedTotal = new Decimal(snapshot.availableBalance).add(
-            new Decimal(snapshot.lockedBalance),
-          );
-
-          this.logger.info(
-            `[BalanceSync] ${snapshot.exchange} - Snapshot Total: ${snapshotTotal}, Calc(Free+Locked): ${calculatedTotal}, Diff: ${snapshotTotal.minus(calculatedTotal)}`,
-          );
-
           await this.dataManager.updateBalanceHistory(
             accountInfo,
             new Decimal(snapshot.availableBalance),
@@ -145,22 +142,14 @@ export class BotInstance {
             snapshot.timestamp,
             snapshot.savingBalance ? new Decimal(snapshot.savingBalance) : new Decimal(0),
           );
-          this.logger.debug(
-            `Synced balance history for ${snapshot.exchange} (User: ${this.userId})`,
-          );
         }
-      } catch (error) {
-        this.logger.error(
-          `Failed to sync balance history for ${snapshot.exchange}`,
-          error as Error,
-        );
+      } catch {
+        return;
       }
     });
   }
 
   public async initialize(): Promise<void> {
-    this.logger.info(`🤖 Initializing bot for user ${this.userId}...`);
-
     // Initialize Trackers
     await this.orderTracker.start();
     await this.balanceTracker.start();
@@ -172,8 +161,6 @@ export class BotInstance {
 
     // Initialize Strategy Manager
     await this.strategyManager.start();
-
-    this.logger.info(`✅ Bot initialized for user ${this.userId}`);
   }
 
   public async start(): Promise<void> {
@@ -184,13 +171,10 @@ export class BotInstance {
     await this.syncOpenOrders();
     this.startOpenOrdersSync();
     this.isRunning = true;
-    this.logger.info(`🚀 Bot started for user ${this.userId}`);
   }
 
   public async stop(): Promise<void> {
     if (!this.isRunning) return;
-
-    this.logger.info(`🛑 Stopping bot for user ${this.userId}...`);
 
     this.stopOpenOrdersSync();
 
@@ -215,7 +199,6 @@ export class BotInstance {
     this.exchanges.clear();
 
     this.isRunning = false;
-    this.logger.info(`✅ Bot stopped for user ${this.userId}`);
   }
 
   public async syncExchanges(accounts: AccountInfoEntity[]): Promise<void> {
@@ -277,11 +260,7 @@ export class BotInstance {
         } else {
           skipCount++;
         }
-      } catch (error) {
-        this.logger.error(
-          `   ❌ Failed to load ${account.exchange} for user ${this.userId}`,
-          error as Error,
-        );
+      } catch {
         skipCount++;
       }
     }
@@ -294,10 +273,6 @@ export class BotInstance {
           `Please ensure accounts have valid API credentials.`,
       );
     }
-
-    this.logger.info(
-      `   📊 Loaded ${successCount} exchange(s) for user ${this.userId} (${skipCount} skipped)`,
-    );
   }
 
   public getOrderTrackers() {
@@ -319,7 +294,6 @@ export class BotInstance {
     let connectOptions: ExchangeCredentials;
 
     if (!account.apiKey || !account.secretKey) {
-      this.logger.warn(`   ⚠️  ${exchangeName} account missing credentials, skipping`);
       return false;
     }
 
@@ -338,7 +312,6 @@ export class BotInstance {
         break;
       case 'okx':
         if (!passphrase) {
-          this.logger.warn(`   ⚠️  OKX account missing passphrase, skipping`);
           return false;
         }
         exchange = new OKXExchange(!USE_MAINNET_FOR_DATA);
@@ -354,7 +327,6 @@ export class BotInstance {
         connectOptions = { apiKey, secretKey, sandbox: !USE_MAINNET_FOR_DATA };
         break;
       default:
-        this.logger.warn(`   ⚠️  Unknown exchange type: ${exchangeName}, skipping`);
         return false;
     }
 
@@ -369,7 +341,6 @@ export class BotInstance {
     this.exchanges.set(exchangeName, exchange);
     this.exchangeAccountIds.set(exchangeName, account.id);
     this.registerExchangeSyncListeners(exchangeName, exchange);
-    this.logger.info(`   ✅ ${exchangeName} connected (User: ${this.userId})`);
     return true;
   }
 
@@ -381,23 +352,13 @@ export class BotInstance {
     try {
       await exchange.disconnect();
     } catch (error) {
-      this.logger.warn(
-        `   ⚠️  Failed to disconnect ${exchangeName} for user ${this.userId}`,
-        {
-          error: (error as Error).message,
-        },
-      );
+      void error;
     }
 
     try {
       this.engine.removeExchange(exchangeName);
     } catch (error) {
-      this.logger.warn(
-        `   ⚠️  Failed to remove ${exchangeName} from engine for user ${this.userId}`,
-        {
-          error: (error as Error).message,
-        },
-      );
+      void error;
     }
 
     this.exchanges.delete(exchangeName);
@@ -409,7 +370,7 @@ export class BotInstance {
     await this.pollingService.stop();
     this.pollingService.removeAllListeners();
 
-    this.pollingService = new AccountPollingService(this.pollingConfig, this.logger);
+    this.pollingService = new AccountPollingService(this.pollingConfig, silentLogger);
     this.pollingService.setDataManager(this.dataManager);
     this.setupPollingListeners();
 
@@ -432,12 +393,6 @@ export class BotInstance {
     this.openOrdersSyncTimer = setInterval(() => {
       void this.syncOpenOrders();
     }, this.openOrdersSyncInterval);
-
-    this.logger.info(
-      `⏱️ Open orders sync enabled every ${Math.round(
-        this.openOrdersSyncInterval / 1000,
-      )}s (User: ${this.userId})`,
-    );
   }
 
   private stopOpenOrdersSync(): void {
@@ -447,7 +402,6 @@ export class BotInstance {
 
     clearInterval(this.openOrdersSyncTimer);
     this.openOrdersSyncTimer = null;
-    this.logger.info(`⏹️ Open orders sync stopped (User: ${this.userId})`);
   }
 
   private async syncOpenOrders(): Promise<void> {
@@ -525,9 +479,6 @@ export class BotInstance {
       if (!this.isRunning) {
         return;
       }
-      this.logger.info(
-        `🔌 ${exchangeName} WebSocket reconnected - refreshing open order status (User: ${this.userId})`,
-      );
       void this.syncOpenOrders();
     };
 
@@ -565,12 +516,7 @@ export class BotInstance {
           ),
         );
 
-        const failed = results.filter((result) => result.status === 'rejected').length;
-        if (failed > 0) {
-          this.logger.warn(
-            `⚠️ Open orders sync partially failed for ${exchangeName} (${failed}/${openOrders.length})`,
-          );
-        }
+        void results;
       }
 
       const openOrderIds = new Set(openOrders.map((order) => order.id));
@@ -582,10 +528,8 @@ export class BotInstance {
       for (const order of staleOrders) {
         await this.refreshOrderStatus(exchangeName, exchange, orderManager, order);
       }
-    } catch (error) {
-      this.logger.warn(`⚠️ Failed to sync open orders for ${exchangeName}`, {
-        error: (error as Error).message,
-      });
+    } catch {
+      return;
     }
   }
 
@@ -654,19 +598,8 @@ export class BotInstance {
         strategyType: normalizedOrder.strategyType,
         strategyName: normalizedOrder.strategyName,
       });
-
-      if (normalizedOrder.status !== order.status) {
-        this.logger.info(
-          `📌 Order ${order.id} status updated (${exchangeName}): ${order.status} → ${normalizedOrder.status}`,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `⚠️ Failed to refresh order ${order.id} status for ${exchangeName}`,
-        {
-          error: (error as Error).message,
-        },
-      );
+    } catch {
+      return;
     }
   }
 

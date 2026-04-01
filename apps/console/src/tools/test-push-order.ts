@@ -1,20 +1,12 @@
 import 'reflect-metadata';
 import { Decimal } from 'decimal.js';
-import {
-  ConsoleLogger,
-  LogLevel,
-  OrderSide,
-  OrderStatus,
-  OrderType,
-  TimeInForce,
-} from '@itrade/core';
+import { OrderSide, OrderStatus, OrderType, TimeInForce } from '@itrade/core';
 import { TypeOrmDataManager } from '@itrade/data-manager';
 import * as dotenv from 'dotenv';
 import type { PushNotificationService } from '../services/push-notification-service';
 
 type PushTestKind = 'created' | 'filled' | 'partial';
 
-const logger = new ConsoleLogger(LogLevel.INFO);
 dotenv.config();
 
 function getRequiredEnv(name: string): string {
@@ -64,13 +56,9 @@ async function main() {
   const { PushNotificationService } = await import(
     '../services/push-notification-service'
   );
-  const service: PushNotificationService = new PushNotificationService(
-    dataManager,
-    logger,
-    {
-      defaultUserId: userId,
-    },
-  );
+  const service: PushNotificationService = new PushNotificationService(dataManager, {
+    defaultUserId: userId,
+  });
 
   const orderId = `test-push-${Date.now()}`;
   await service.notifyOrderUpdate(
@@ -98,10 +86,8 @@ async function main() {
   );
 
   await dataManager.dataSource.destroy();
-  logger.info(`✅ Push test finished (${kind}) for order ${orderId}`);
 }
 
-main().catch((error) => {
-  logger.error('❌ Push test failed', error as Error);
+main().catch(() => {
   process.exit(1);
 });

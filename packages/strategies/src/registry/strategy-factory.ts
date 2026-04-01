@@ -32,6 +32,7 @@ import {
   SpreadGridStrategy,
   SpreadGridStrategyRegistryConfig,
 } from '../strategies/SpreadGridStrategy';
+import { silentLogger } from '../utils/silent-logger';
 
 // ============================================================================
 // 策略参数接口定义
@@ -279,7 +280,7 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
     exchange: contextFields.exchange || '',
     strategyId,
     strategyName,
-    logger: contextFields.logger,
+    logger: silentLogger,
     subscription: contextFields.subscription,
     initialDataConfig: contextFields.initialDataConfig,
     loadedInitialData: contextFields.loadedInitialData,
@@ -317,8 +318,6 @@ export function createStrategyInstance<TParams extends StrategyParameters>(
       method: 'websocket', // Use WebSocket by default
     };
   }
-  console.log('fullConfig:', JSON.stringify(fullConfig, null, 2));
-
   // 实例化策略
   const strategyInstance = new StrategyClass(fullConfig);
 

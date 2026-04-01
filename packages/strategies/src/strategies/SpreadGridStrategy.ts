@@ -18,6 +18,7 @@ import {
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
+import { silentLogger } from '../utils/silent-logger';
 
 /**
  * 📊 SingleLadderLifoTPStrategy 参数
@@ -219,7 +220,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private lastOrderBookPrice: Decimal | null = null;
 
   constructor(config: StrategyConfig<SpreadGridParameters>) {
-    super(config);
+    super({ ...config, logger: silentLogger });
     const { parameters } = config;
 
     this.basePrice = parameters.basePrice;

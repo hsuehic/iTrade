@@ -11,6 +11,7 @@ import {
   KlineInterval,
 } from '@itrade/core';
 import { StrategyRegistryConfig } from '../type';
+import { silentLogger } from '../utils/silent-logger';
 
 export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingAverageParameters> =
   {
@@ -125,7 +126,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
   private position: 'long' | 'short' | 'none' = 'none';
 
   constructor(config: MovingAverageConfig) {
-    super(config);
+    super({ ...config, logger: silentLogger });
   }
 
   public override async processInitialData(

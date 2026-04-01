@@ -1,4 +1,4 @@
-import { ConsoleLogger, TradingEngine, LogLevel, IStrategy } from '@itrade/core';
+import { TradingEngine, IStrategy } from '@itrade/core';
 
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
@@ -7,13 +7,14 @@ import {
   CoinbaseExchange,
   OKXExchange,
 } from '@itrade/exchange-connectors';
+import { silentLogger } from '../../utils/silent-logger';
 import { Decimal } from 'decimal.js';
 import * as dotenv from 'dotenv';
 
 // Load environment variables from .env file
 dotenv.config();
 
-const logger = new ConsoleLogger(LogLevel.WARN);
+const logger = silentLogger;
 
 export async function run(strategies: Map<string, IStrategy>) {
   // Initialize components

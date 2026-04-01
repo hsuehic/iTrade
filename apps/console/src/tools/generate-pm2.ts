@@ -7,8 +7,6 @@ import * as path from 'path';
 dotenv.config();
 
 async function generate() {
-  console.log('🔄 Connecting to database to fetch active users...');
-
   const dataManager = new TypeOrmDataManager({
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
@@ -43,12 +41,9 @@ async function generate() {
     });
 
     if (users.size === 0) {
-      console.warn('⚠️  No active users found in database.');
       await dataManager.close();
       return;
     }
-
-    console.log(`✅ Found ${users.size} active users: ${Array.from(users).join(', ')}`);
 
     // Generate PM2 Config
     const apps = Array.from(users).map((userId) => {
@@ -83,15 +78,6 @@ async function generate() {
 
     const outputPath = path.resolve(process.cwd(), 'ecosystem.config.js');
     fs.writeFileSync(outputPath, configContent);
-
-    console.log(`\n🎉 Generated ecosystem.config.js at ${outputPath}`);
-    console.log(`\n🚀 To start the bots:`);
-    console.log(`   npm run build`);
-    console.log(`   pm2 start ecosystem.config.js`);
-    console.log(`\n📝 To monitor:`);
-    console.log(`   pm2 monit`);
-  } catch (error) {
-    console.error('❌ Error generating PM2 config:', error);
   } finally {
     if (dataManager['isInitialized']) {
       // Hack check if connected
@@ -100,4 +86,6 @@ async function generate() {
   }
 }
 
-generate().catch(console.error);
+generate().catch(() => {
+  process.exit(1);
+});

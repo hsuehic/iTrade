@@ -54,14 +54,9 @@ export class OrderTracker {
   }
 
   async start(): Promise<void> {
-    this.logger.debug('Starting Order Tracker...');
-
     // 🆕 Load existing OPEN orders from database to prevent duplicate notifications on restart
     // Only open orders need to be tracked - closed orders are cleaned up automatically
     try {
-      this.logger.debug(
-        `🔍 Loading existing orders for user: ${this.userId || 'ALL'}...`,
-      );
       const existingOrders = await this.dataManager.getOrders({
         userId: this.userId,
       });
@@ -71,14 +66,8 @@ export class OrderTracker {
         // when status updates arrive via WebSocket after app restart
         this.notifiedOrderIds.add(order.id);
       }
-      this.logger.debug(
-        `✅ Loaded ${existingOrders.length} orders from database (marked as already notified)`,
-      );
-    } catch (error) {
-      this.logger.error(
-        '❌ Failed to load existing orders from database',
-        error as Error,
-      );
+    } catch {
+      return;
     }
 
     // Listen for order events
@@ -101,36 +90,11 @@ export class OrderTracker {
     this.eventBus.onOrderRejected((data: OrderEventData) => {
       this.handleOrderRejected(data.order);
     });
-
-    this.logger.debug(
-      `✅ Order Tracker started (partial fill debounce: ${this.DEBOUNCE_MS}ms per order)`,
-    );
   }
 
   async stop(): Promise<void> {
     // Flush all pending partial fills
     await this.flushAllPendingUpdates();
-
-    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.debug('📊 Order Tracker Final Report');
-    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    this.logger.debug(`   Total Orders Created: ${this.totalOrders}`);
-    this.logger.debug(`   Orders Filled: ${this.totalFilled}`);
-    this.logger.debug(
-      `   Partial Fill Updates: ${this.totalPartialFills} received, ${this.totalPartialFillsSaved} saved`,
-    );
-    if (this.totalPartialFills > 0) {
-      this.logger.debug(
-        `   Partial Fill Debounce Efficiency: ${((1 - this.totalPartialFillsSaved / this.totalPartialFills) * 100).toFixed(1)}% reduction`,
-      );
-    }
-    this.logger.debug(`   Orders Cancelled: ${this.totalCancelled}`);
-    this.logger.debug(`   Orders Rejected: ${this.totalRejected}`);
-
-    const runTime = Date.now() - this.startTime.getTime();
-    const hours = (runTime / (1000 * 60 * 60)).toFixed(2);
-    this.logger.debug(`   Running time: ${hours} hours`);
-    this.logger.debug('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
   /**
@@ -174,8 +138,8 @@ export class OrderTracker {
           this.strategyUserCache.set(order.strategyId, strategy.userId);
           return strategy.userId;
         }
-      } catch (error) {
-        this.logger.error('❌ Failed to resolve strategy user', error as Error);
+      } catch {
+        return null;
       }
     }
 
@@ -236,9 +200,12 @@ export class OrderTracker {
         strategyName: order.strategyName, // ✅ Save strategy name
       });
 
-      this.logger.debug(
-        `💾 Order saved: ${order.id} | Strategy: ${order.strategyName || 'none'} (ID: ${strategyId || 'N/A'}) | Exchange: ${exchange || 'unknown'}`,
-      );
+      if (isNew) {
+        const orderPrice = order.price ? order.price.toString() : 'market';
+        this.logger.info(
+          `🧾 Order placed: ${order.symbol} ${order.side} ${order.quantity.toString()} @ ${orderPrice} (${order.id})`,
+        );
+      }
 
       // 🔥 FIX: Check if we've notified this order, not just if it's new in OrderManager
       // This allows notifications for manually placed orders loaded from DB on startup
@@ -246,16 +213,9 @@ export class OrderTracker {
       if (!hasBeenNotified) {
         this.notifiedOrderIds.add(order.id);
         await this.pushNotificationService?.notifyOrderUpdate(order, 'created');
-        this.logger.debug(
-          `📨 Sent "Order Placed" notification for ${order.symbol} ${order.side} (${order.id})`,
-        );
-      } else {
-        this.logger.debug(
-          `ℹ️  Suppressing duplicate notification for already notified order: ${order.id}`,
-        );
       }
-    } catch (error) {
-      this.logger.error('❌ Failed to save order to database', error as Error);
+    } catch {
+      return;
     }
   }
 
@@ -317,9 +277,13 @@ export class OrderTracker {
         strategyName: mergedOrder.strategyName,
       });
 
-      this.logger.debug(
-        `💾 Order filled and updated: ${mergedOrder.id} (${mergedOrder.executedQuantity?.toString()}/${mergedOrder.quantity.toString()})`,
-      );
+      if (shouldNotify) {
+        const filledQuantity =
+          mergedOrder.executedQuantity?.toString() ?? mergedOrder.quantity.toString();
+        this.logger.info(
+          `✅ Order filled: ${mergedOrder.symbol} ${mergedOrder.side} ${filledQuantity} (${mergedOrder.id})`,
+        );
+      }
 
       // 🧹 Clean up: remove from notified set (order is now closed)
       // This prevents memory leaks during long-running sessions
@@ -334,8 +298,8 @@ export class OrderTracker {
       if (shouldNotify) {
         await this.pushNotificationService?.notifyOrderUpdate(mergedOrder, 'filled');
       }
-    } catch (error) {
-      this.logger.error('❌ Failed to update filled order', error as Error);
+    } catch {
+      return;
     }
   }
 
@@ -372,12 +336,8 @@ export class OrderTracker {
         timestamp: new Date(),
         timer,
       });
-
-      this.logger.debug(
-        `⏳ Partial fill queued: ${mergedOrder.id} (${mergedOrder.executedQuantity?.toString()}/${mergedOrder.quantity.toString()})`,
-      );
-    } catch (error) {
-      this.logger.error('❌ Failed to queue partial fill update', error as Error);
+    } catch {
+      return;
     }
   }
 
@@ -427,14 +387,10 @@ export class OrderTracker {
       this.totalPartialFillsSaved++;
       this.pendingPartialFills.delete(orderId);
 
-      this.logger.debug(
-        `💾 Partial fill saved: ${order.id} (${order.executedQuantity?.toString()}/${order.quantity.toString()})`,
-      );
-
       await this.pushNotificationService?.notifyOrderUpdate(order, 'partial');
-    } catch (error) {
-      this.logger.error(`❌ Failed to save partial fill for ${orderId}`, error as Error);
+    } catch {
       this.pendingPartialFills.delete(orderId);
+      return;
     }
   }
 
@@ -482,10 +438,8 @@ export class OrderTracker {
       setTimeout(() => {
         this.orderManager.removeOrder(mergedOrder.id);
       }, 5000); // Wait 5s to allow queries to complete
-
-      this.logger.debug(`💾 Order cancelled and updated: ${mergedOrder.id}`);
-    } catch (error) {
-      this.logger.error('❌ Failed to update cancelled order', error as Error);
+    } catch {
+      return;
     }
   }
 
@@ -535,22 +489,16 @@ export class OrderTracker {
         this.orderManager.removeOrder(mergedOrder.id);
       }, 5000); // Wait 5s to allow queries to complete
 
-      this.logger.error(`💾 Order rejected and updated: ${mergedOrder.id}`);
-
       if (shouldNotify && mergedOrder.errorMessage) {
         await this.pushNotificationService?.notifyOrderUpdate(mergedOrder, 'failed');
       }
-    } catch (error) {
-      this.logger.error('❌ Failed to update rejected order', error as Error);
+    } catch {
+      return;
     }
   }
 
   private async flushAllPendingUpdates(): Promise<void> {
     if (this.pendingPartialFills.size === 0) return;
-
-    this.logger.debug(
-      `🔄 Flushing ${this.pendingPartialFills.size} pending partial fill updates...`,
-    );
 
     // Cancel all timers and save immediately
     const promises: Promise<void>[] = [];
@@ -562,6 +510,5 @@ export class OrderTracker {
     }
 
     await Promise.allSettled(promises);
-    this.logger.debug('✅ All pending partial fill updates flushed');
   }
 }

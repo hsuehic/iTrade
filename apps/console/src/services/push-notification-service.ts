@@ -1,5 +1,5 @@
 import type { Decimal } from 'decimal.js';
-import type { ILogger, Order } from '@itrade/core';
+import type { Order } from '@itrade/core';
 import {
   PushDeviceEntity,
   PushNotificationLogEntity,
@@ -38,7 +38,6 @@ export class PushNotificationService {
 
   constructor(
     private readonly dataManager: TypeOrmDataManager,
-    private readonly logger: ILogger,
     options?: PushNotificationOptions,
   ) {
     this.platform = options?.platform ?? parsePlatformEnv(process.env.PUSH_PLATFORM);
@@ -53,13 +52,11 @@ export class PushNotificationService {
 
   async notifyOrderUpdate(order: Order, kind: OrderNotificationKind): Promise<void> {
     if (!isPushEnabled()) {
-      this.logger.info('📨 Push notifications disabled (Firebase not initialized).');
       return;
     }
 
     const userId = await this.resolveUserId(order);
     if (!userId) {
-      this.logger.info(`📨 Push skipped: no user for order ${order.id}`);
       return;
     }
 
@@ -69,15 +66,11 @@ export class PushNotificationService {
       kind !== 'failed' &&
       (order.status === 'CANCELED' || order.status === 'REJECTED')
     ) {
-      this.logger.info(
-        `📨 Push skipped: order ${order.id} is ${order.status}, suppressing notification`,
-      );
       return;
     }
 
     const devices = await this.getActiveTokens(userId);
     if (devices.length === 0) {
-      this.logger.info(`📨 Push skipped: no active devices for user ${userId}`);
       return;
     }
 
@@ -111,8 +104,8 @@ export class PushNotificationService {
           this.strategyUserCache.set(order.strategyId, row.userId);
           return row.userId;
         }
-      } catch (error) {
-        this.logger.error('❌ Failed to resolve strategy user', error as Error);
+      } catch {
+        return null;
       }
     }
 
@@ -148,8 +141,8 @@ export class PushNotificationService {
     tokens: string[],
     notification: { title?: string; body?: string },
     data: Record<string, string>,
-    order: Order,
-    kind: OrderNotificationKind,
+    _order: Order,
+    _kind: OrderNotificationKind,
   ): Promise<void> {
     let successCount = 0;
     let failureCount = 0;
@@ -167,7 +160,6 @@ export class PushNotificationService {
         result = summarizeBatch(batch);
       }
     } catch (error) {
-      this.logger.error('❌ Failed to send order push', error as Error);
       failureCount = tokens.length;
       result = { error: (error as Error).message };
     }
@@ -189,18 +181,8 @@ export class PushNotificationService {
           result,
         }),
       );
-    } catch (error) {
-      this.logger.warn('Failed to persist push log:', {
-        error: (error as Error).message,
-      });
-    }
-
-    if (successCount > 0) {
-      this.logger.info(
-        `📨 Push sent (${kind}): ${order.symbol} ${order.side} ` +
-          `${order.executedQuantity?.toString() ?? '0'}/${order.quantity.toString()} ` +
-          `to ${tokens.length} device(s)`,
-      );
+    } catch {
+      return;
     }
   }
 }

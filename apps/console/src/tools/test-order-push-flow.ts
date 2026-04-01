@@ -17,8 +17,6 @@ import { PushNotificationService } from '../services/push-notification-service';
 
 dotenv.config();
 
-const logger = new ConsoleLogger(LogLevel.INFO);
-
 type MockPushNotificationService = {
   notifyOrderUpdate(
     order: Order,
@@ -27,6 +25,7 @@ type MockPushNotificationService = {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const logger = new ConsoleLogger(LogLevel.INFO);
 
 function buildMockPushService(): MockPushNotificationService {
   return {
@@ -34,9 +33,8 @@ function buildMockPushService(): MockPushNotificationService {
       order: Order,
       kind: 'created' | 'filled' | 'partial' | 'failed',
     ): Promise<void> {
-      logger.info(
-        `✅ Mock push invoked (${kind}) for order ${order.id} (${order.symbol})`,
-      );
+      void order;
+      void kind;
     },
   };
 }
@@ -67,16 +65,8 @@ async function main(): Promise<void> {
   const useRealPush = process.env.USE_REAL_PUSH === 'true';
   const includeUserId = process.env.ORDER_HAS_USER_ID === 'true';
 
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   const testKind = (process.env.PUSH_TEST_KIND ?? 'filled').toLowerCase();
   const isFailed = testKind === 'failed';
-
-  logger.info('🧪 Testing Order Push Flow');
-  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logger.info(`User scoped bot: ${userId}`);
-  logger.info(`Order payload has userId: ${includeUserId}`);
-  logger.info(`Use real push provider: ${useRealPush}`);
-  logger.info(`Test kind: ${isFailed ? 'failed' : 'filled'}`);
 
   const dataManager = useRealPush
     ? await createDataManager()
@@ -88,7 +78,7 @@ async function main(): Promise<void> {
       } as unknown as TypeOrmDataManager);
 
   const pushService = useRealPush
-    ? new PushNotificationService(dataManager, logger, { defaultUserId: userId })
+    ? new PushNotificationService(dataManager, { defaultUserId: userId })
     : buildMockPushService();
 
   const tracker = new OrderTracker(dataManager, logger, pushService, userId);
@@ -114,10 +104,8 @@ async function main(): Promise<void> {
   };
 
   if (isFailed) {
-    logger.info(`Emitting OrderRejected event for ${order.id}`);
     EventBus.getInstance().emitOrderRejected({ order, timestamp: new Date() });
   } else {
-    logger.info(`Emitting OrderFilled event for ${order.id}`);
     EventBus.getInstance().emitOrderFilled({ order, timestamp: new Date() });
   }
 
@@ -127,11 +115,8 @@ async function main(): Promise<void> {
   if (useRealPush) {
     await dataManager.close();
   }
-
-  logger.info('✅ Order push flow test completed');
 }
 
-main().catch((error) => {
-  logger.error('❌ Order filled push flow test failed', error as Error);
+main().catch(() => {
   process.exit(1);
 });

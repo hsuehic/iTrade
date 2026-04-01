@@ -17,6 +17,7 @@ import {
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
+import { silentLogger } from '../utils/silent-logger';
 
 export const HammerChannelStrategyRegistryConfig: StrategyRegistryConfig<HammerChannelParameters> =
   {
@@ -295,7 +296,7 @@ export class HammerChannelStrategy extends BaseStrategy<HammerChannelParameters>
   private tickers: FixedLengthList<Ticker>;
 
   constructor(config: StrategyConfig<HammerChannelParameters>) {
-    super(config);
+    super({ ...config, logger: silentLogger });
     const { parameters } = config;
     // Initialize parameters with defaults
     this.windowSize = parameters.windowSize ?? 15;

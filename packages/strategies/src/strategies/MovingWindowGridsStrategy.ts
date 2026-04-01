@@ -15,6 +15,7 @@ import {
 } from '@itrade/core';
 import Decimal from 'decimal.js';
 import { StrategyRegistryConfig } from '../type';
+import { silentLogger } from '../utils/silent-logger';
 
 /**
  * 📊 MovingWindowGridsStrategy 参数
@@ -159,7 +160,7 @@ export class MovingWindowGridsStrategy extends BaseStrategy<MovingWindowGridsPar
   private lastProcessedKlineTime: number = 0;
 
   constructor(config: StrategyConfig<MovingWindowGridsParameters>) {
-    super(config);
+    super({ ...config, logger: silentLogger });
 
     // Parameters will be initialized in onInitialized
     this.minVolatility = config.parameters.minVolatility / 100;
