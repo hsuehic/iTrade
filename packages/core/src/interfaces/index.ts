@@ -28,6 +28,8 @@ import {
   StrategyRuntimeContext,
   TradeMode,
   StrategyPerformance,
+  InitialDataConfig,
+  SubscriptionConfig,
 } from '../types';
 
 // Exchange Interface
@@ -206,6 +208,10 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
   };
 
   cleanup?(): Promise<void>;
+
+  /** Configuration retrieval methods */
+  getInitialDataConfig?(): InitialDataConfig;
+  getSubscriptionConfig?(): SubscriptionConfig;
 }
 
 export interface ExecuteOrderParameters {

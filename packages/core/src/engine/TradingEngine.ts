@@ -1767,7 +1767,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     const context = strategy.context;
-    if (!context?.initialDataConfig) {
+
+    // Use the dynamic initialDataConfig from the strategy if available, falling back to context
+    const initialDataConfig = strategy.getInitialDataConfig
+      ? strategy.getInitialDataConfig()
+      : context?.initialDataConfig;
+
+    if (!initialDataConfig) {
       return;
     }
 
@@ -1780,7 +1786,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
       // 🆕 Fetch strategy net position from database if requested to improve performance/accuracy
       if (
-        context.initialDataConfig?.fetchStrategyNetPosition &&
+        initialDataConfig?.fetchStrategyNetPosition &&
         this._dataManager?.getStrategyNetPosition
       ) {
         const strategyId = strategy.getStrategyId?.();
