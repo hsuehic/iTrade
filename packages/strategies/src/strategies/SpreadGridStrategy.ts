@@ -329,6 +329,23 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     );
   }
 
+  private getOrderStatusRank(status?: OrderStatus): number {
+    switch (status) {
+      case OrderStatus.NEW:
+        return 1;
+      case OrderStatus.PARTIALLY_FILLED:
+        return 2;
+      case OrderStatus.FILLED:
+        return 3;
+      case OrderStatus.CANCELED:
+      case OrderStatus.REJECTED:
+      case OrderStatus.EXPIRED:
+        return 4;
+      default:
+        return 0;
+    }
+  }
+
   private getPositionMode(): string {
     if (this.minSize > 0) return 'LONG_ONLY_WITH_BASE';
     if (this.maxSize < 0) return 'SHORT_ONLY_WITH_BASE';
@@ -676,15 +693,22 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       if (!metadata) continue;
 
       const existingOrder = this.orders.get(order.clientOrderId);
-      if (
-        existingOrder?.updateTime &&
-        order.updateTime &&
-        existingOrder.updateTime.getTime() > order.updateTime.getTime()
-      ) {
-        this._logger.warn(
-          `[SpreadGrid] Ignoring stale order update for ${order.clientOrderId}. Existing: ${existingOrder.updateTime.toISOString()}, New: ${order.updateTime.toISOString()}`,
-        );
-        continue;
+      if (existingOrder && existingOrder.updateTime && order.updateTime) {
+        const existingTs = existingOrder.updateTime.getTime();
+        const incomingTs = order.updateTime.getTime();
+        const existingExecuted = existingOrder.executedQuantity || new Decimal(0);
+        const incomingExecuted = order.executedQuantity || new Decimal(0);
+        const existingRank = this.getOrderStatusRank(existingOrder.status);
+        const incomingRank = this.getOrderStatusRank(order.status);
+        const isProgressUpdate =
+          incomingRank > existingRank || incomingExecuted.gt(existingExecuted);
+
+        if (existingTs > incomingTs && !isProgressUpdate) {
+          this._logger.warn(
+            `[SpreadGrid] Ignoring stale order update for ${order.clientOrderId}. Existing: ${existingOrder.updateTime.toISOString()}, New: ${order.updateTime.toISOString()}`,
+          );
+          continue;
+        }
       }
 
       this.orders.set(order.clientOrderId, order);
