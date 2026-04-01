@@ -78,8 +78,6 @@ export class BinanceWebSocketManager extends EventEmitter {
    */
   private async createConnection(marketType: BinanceMarketType): Promise<void> {
     const url = this.getUrl(marketType);
-    console.log(`[BinanceWS] Creating ${marketType} connection to ${url}`);
-
     const ws = new WebSocket(url);
     const state: WebSocketState = {
       ws,
@@ -98,7 +96,6 @@ export class BinanceWebSocketManager extends EventEmitter {
 
       ws.on('open', () => {
         clearTimeout(timeout);
-        console.log(`[BinanceWS] ${marketType} connection opened`);
         state.reconnectAttempts = 0;
         state.lastActivityAt = Date.now();
         this.startHeartbeat(marketType);
@@ -121,14 +118,12 @@ export class BinanceWebSocketManager extends EventEmitter {
       });
 
       ws.on('close', () => {
-        console.log(`[BinanceWS] ${marketType} connection closed`);
         this.stopHeartbeat(marketType);
         this.emit('disconnected', marketType);
         this.scheduleReconnect(marketType);
       });
 
       ws.on('error', (err: Error) => {
-        console.error(`[BinanceWS] ${marketType} error:`, err.message);
         clearTimeout(timeout);
         this.emit('error', marketType, err);
       });
@@ -144,13 +139,11 @@ export class BinanceWebSocketManager extends EventEmitter {
 
     // Handle subscription confirmation
     if (message.result === null && message.id) {
-      console.log(`[BinanceWS] ${marketType} subscription confirmed (ID: ${message.id})`);
       return;
     }
 
     // Handle error
     if (message.error) {
-      console.error(`[BinanceWS] ${marketType} error:`, message.error);
       this.emit('error', marketType, new Error(JSON.stringify(message.error)));
       return;
     }
@@ -227,19 +220,8 @@ export class BinanceWebSocketManager extends EventEmitter {
           id: ++this.subscriptionIdCounter,
         };
 
-        console.log(
-          `[BinanceWS] Subscribing: ${streamName} on ${marketType} (ID: ${subscribeMsg.id})`,
-        );
         state.ws.send(JSON.stringify(subscribeMsg));
-      } else {
-        console.warn(
-          `[BinanceWS] Cannot subscribe to ${streamName}, ${marketType} WebSocket not open`,
-        );
       }
-    } else {
-      console.log(
-        `[BinanceWS] Already subscribed to ${type} ${symbol}, skipping duplicate subscription`,
-      );
     }
   }
 
@@ -254,7 +236,6 @@ export class BinanceWebSocketManager extends EventEmitter {
   ): Promise<void> {
     const state = this.connections.get(marketType);
     if (!state) {
-      console.warn(`[BinanceWS] No ${marketType} connection to unsubscribe from`);
       return;
     }
 
@@ -278,16 +259,13 @@ export class BinanceWebSocketManager extends EventEmitter {
         id: ++this.subscriptionIdCounter,
       };
 
-      console.log(`[BinanceWS] Unsubscribing: ${streamName} on ${marketType}`);
       state.ws.send(JSON.stringify(unsubscribeMsg));
     }
 
     // Keep connection alive even with no subscriptions
     // This allows for faster re-subscription and maintains the heartbeat
     if (state.subscriptions.size === 0) {
-      console.log(
-        `[BinanceWS] No more subscriptions for ${marketType}, but keeping connection alive`,
-      );
+      // Keep connection alive
     }
   }
 
@@ -309,9 +287,6 @@ export class BinanceWebSocketManager extends EventEmitter {
       const now = Date.now();
       const staleThreshold = this.config.heartbeatInterval * 2;
       if (lastActivityAt && now - lastActivityAt > staleThreshold) {
-        console.warn(
-          `[BinanceWS] ${marketType} connection stale, terminating to trigger reconnect`,
-        );
         state.ws.terminate();
       }
     }, this.config.heartbeatInterval);
@@ -339,7 +314,6 @@ export class BinanceWebSocketManager extends EventEmitter {
       this.config.maxReconnectAttempts > 0 &&
       state.reconnectAttempts >= this.config.maxReconnectAttempts
     ) {
-      console.error(`[BinanceWS] Max reconnect attempts reached for ${marketType}`);
       this.emit('max_reconnect_reached', marketType);
       return;
     }
@@ -347,15 +321,11 @@ export class BinanceWebSocketManager extends EventEmitter {
     const delay = this.config.reconnectDelay * Math.pow(2, state.reconnectAttempts);
     state.reconnectAttempts++;
 
-    console.log(
-      `[BinanceWS] Scheduling reconnect for ${marketType} in ${delay}ms (attempt ${state.reconnectAttempts})`,
-    );
-
     setTimeout(async () => {
       try {
         await this.reconnect(marketType);
-      } catch (error) {
-        console.error(`[BinanceWS] Reconnect failed for ${marketType}:`, error);
+      } catch {
+        // noop
       }
     }, delay);
   }
@@ -366,8 +336,6 @@ export class BinanceWebSocketManager extends EventEmitter {
   private async reconnect(marketType: BinanceMarketType): Promise<void> {
     const state = this.connections.get(marketType);
     if (!state) return;
-
-    console.log(`[BinanceWS] Reconnecting ${marketType}...`);
 
     // Store subscriptions before recreating connection
     const savedSubscriptions = new Map(state.subscriptions);
@@ -413,7 +381,6 @@ export class BinanceWebSocketManager extends EventEmitter {
    * Close all connections (called during shutdown)
    */
   public closeAll(): void {
-    console.log(`[BinanceWS] Closing all connections for shutdown`);
     for (const marketType of this.connections.keys()) {
       this.closeConnection(marketType);
     }

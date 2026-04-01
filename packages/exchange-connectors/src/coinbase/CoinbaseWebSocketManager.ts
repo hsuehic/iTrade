@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
-import { ConsoleLogger } from '@itrade/core';
 
 interface SubscriptionInfo {
   productIds: Set<string>;
@@ -36,14 +35,12 @@ export class CoinbaseWebSocketManager extends EventEmitter {
   private readonly baseReconnectDelay = 1000;
   private readonly heartbeatInterval = 10000; // 10 seconds checking
   private isConnecting: boolean = false; // Track if connection is in progress
-  private logger: ConsoleLogger;
   // JWT generation callback (provided by CoinbaseExchange)
   private generateJWT: (() => string) | null = null;
 
   constructor(wsUrl: string) {
     super();
     this.wsUrl = wsUrl;
-    this.logger = new ConsoleLogger();
     this.state = {
       ws: null,
       reconnectAttempts: 0,
@@ -69,16 +66,13 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    */
   public createConnection(): void {
     if (this.state.ws?.readyState === WebSocket.OPEN) {
-      this.logger.info('[Coinbase] WebSocket already connected');
       return;
     }
 
     if (this.isConnecting) {
-      this.logger.info('[Coinbase] WebSocket connection already in progress');
       return;
     }
 
-    this.logger.info('[Coinbase] Creating WebSocket connection...');
     this.isConnecting = true;
 
     if (this.state.ws) {
@@ -91,7 +85,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     // Set a connection timeout to prevent hanging in "connecting" state
     this.state.connectionTimer = setTimeout(() => {
       if (this.isConnecting) {
-        this.logger.error('[Coinbase] Connection timed out, terminating...');
         this.isConnecting = false;
         if (this.state.ws) {
           this.state.ws.terminate(); // This should trigger 'close' event
@@ -104,16 +97,14 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
     try {
       this.state.ws = new WebSocket(this.wsUrl);
-    } catch (error) {
+    } catch {
       this.isConnecting = false;
-      this.logger.error('[Coinbase] Failed to create WebSocket instance', error as Error);
       if (this.state.connectionTimer) clearTimeout(this.state.connectionTimer);
       this.scheduleReconnect();
       return;
     }
 
     this.state.ws.on('open', () => {
-      this.logger.info('[Coinbase] WebSocket connected');
       // Clear connection timeout
       if (this.state.connectionTimer) {
         clearTimeout(this.state.connectionTimer);
@@ -135,9 +126,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
 
       // Resubscribe to all previous subscriptions
       if (this.state.subscriptions.size > 0) {
-        this.logger.info(
-          `[Coinbase] Resubscribing to ${this.state.subscriptions.size} channels...`,
-        );
         this.resubscribeAll();
       }
     });
@@ -147,13 +135,12 @@ export class CoinbaseWebSocketManager extends EventEmitter {
         this.state.lastActivityAt = Date.now();
         const message = JSON.parse(data.toString());
         this.handleMessage(message);
-      } catch (error) {
-        console.error('[Coinbase] Failed to parse message:', error);
+      } catch {
+        // ignore
       }
     });
 
     this.state.ws.on('pong', () => {
-      this.logger.debug('[Coinbase] Pong received');
       this.state.lastActivityAt = Date.now();
     });
 
@@ -162,8 +149,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       this.state.ws?.pong();
     });
 
-    this.state.ws.on('close', (code: number, reason: Buffer) => {
-      console.log(`[Coinbase] WebSocket closed: ${code} - ${reason.toString()}`);
+    this.state.ws.on('close', (code: number) => {
       if (this.state.connectionTimer) {
         clearTimeout(this.state.connectionTimer);
         this.state.connectionTimer = null;
@@ -177,7 +163,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     });
 
     this.state.ws.on('error', (error: Error) => {
-      console.error('[Coinbase] WebSocket error:', error.message);
       if (this.state.connectionTimer) {
         clearTimeout(this.state.connectionTimer);
         this.state.connectionTimer = null;
@@ -190,8 +175,7 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       if (this.state.ws && this.state.ws.readyState !== WebSocket.CLOSED) {
         try {
           this.state.ws.terminate();
-        } catch (e) {
-          console.error('[Coinbase] Failed to terminate socket on error:', e);
+        } catch {
           // If terminate fails, forcefully schedule reconnect as a fallback
           this.scheduleReconnect();
         }
@@ -203,11 +187,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    * Handle incoming WebSocket messages
    */
   private handleMessage(message: any): void {
-    // Log all non-heartbeat messages for debugging
-    // if (message.type !== 'heartbeat') {
-    //   this.logger.info(`[Coinbase] push:\n ${JSON.stringify(message, null, 2)}`);
-    // }
-
     // Emit raw message for processing in CoinbaseExchange
     this.emit('data', message);
   }
@@ -236,9 +215,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     }
 
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
-      this.logger.info(
-        `[Coinbase] WebSocket not connected, subscription to ${channel} will be sent after connection`,
-      );
       this.createConnection();
       // Don't retry here - resubscribeAll() will be called when connection opens
       return;
@@ -260,16 +236,8 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       const jwt = this.generateJWT();
       subscribeMessage.jwt = jwt;
       this.state.jwtToken = jwt;
-      this.logger.info(`[Coinbase] Subscribing to ${channel} with JWT authentication...`);
-      this.logger.info(
-        `[Coinbase] JWT token (first 50 chars): ${jwt.substring(0, 50)}...`,
-      );
     }
 
-    this.logger.info(
-      `[Coinbase] Sending subscription message:
-      ${JSON.stringify(subscribeMessage, null, 2)}`,
-    );
     this.state.ws.send(JSON.stringify(subscribeMessage));
   }
 
@@ -287,9 +255,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     }
 
     if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
-      this.logger.warn(
-        '[Coinbase] WebSocket not connected, subscription removed from local state but unsubscribe message not sent',
-      );
       return;
     }
 
@@ -300,13 +265,9 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       channel: channel,
     };
 
-    this.logger.info(`[Coinbase] Unsubscribing from ${channel}:${productIds.join(', ')}`);
     this.state.ws.send(JSON.stringify(unsubscribeMessage));
 
     // Keep connection alive (don't close even if no subscriptions)
-    this.logger.info(
-      `[Coinbase] Connection kept alive (${this.state.subscriptions.size} channels remaining)`,
-    );
   }
 
   /**
@@ -315,10 +276,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
   private resubscribeAll(): void {
     for (const [channel, subInfo] of this.state.subscriptions.entries()) {
       const productIdsArray = Array.from(subInfo.productIds);
-      this.logger.info(
-        `[Coinbase] Resubscribing to ${channel}:${productIdsArray.join(', ')}`,
-      );
-
       const subscribeMessage: any = {
         type: 'subscribe',
         channel: channel,
@@ -336,9 +293,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
         this.state.jwtToken = jwt;
       }
 
-      this.logger.info(
-        `[Coinbase] Resubscription message: ${JSON.stringify(subscribeMessage, null, 2)}`,
-      );
       this.state.ws?.send(JSON.stringify(subscribeMessage));
     }
   }
@@ -362,16 +316,12 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       const staleThreshold = 30000;
 
       if (idleTime > staleThreshold) {
-        this.logger.warn(
-          `[Coinbase] Connection stale (idle ${idleTime}ms > ${staleThreshold}ms limit). forcing reconnect...`,
-        );
         this.state.ws.terminate(); // Trigger 'close' -> reconnect
         return;
       }
 
       // If idle for more than `heartbeatInterval` (10s), send a ping to check connection
       if (idleTime > this.heartbeatInterval) {
-        this.logger.info(`[Coinbase] Connection idle for ${idleTime}ms, sending ping...`);
         this.state.ws.ping();
       }
     }, this.heartbeatInterval);
@@ -399,7 +349,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
       this.maxReconnectAttempts > 0 &&
       this.state.reconnectAttempts >= this.maxReconnectAttempts
     ) {
-      this.logger.error('[Coinbase] Max reconnection attempts reached, giving up');
       this.emit('max_reconnect_failed');
       return;
     }
@@ -407,10 +356,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
     const delay = Math.min(
       this.baseReconnectDelay * Math.pow(2, this.state.reconnectAttempts),
       30000, // Max 30 seconds
-    );
-
-    this.logger.info(
-      `[Coinbase] Scheduling reconnection attempt ${this.state.reconnectAttempts + 1} in ${delay}ms...`,
     );
 
     this.state.reconnectTimer = setTimeout(() => {
@@ -424,8 +369,6 @@ export class CoinbaseWebSocketManager extends EventEmitter {
    * Explicitly close the WebSocket connection
    */
   public closeConnection(): void {
-    this.logger.info('[Coinbase] Closing WebSocket connection...');
-
     // Clear timers
     if (this.state.reconnectTimer) {
       clearTimeout(this.state.reconnectTimer);

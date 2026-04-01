@@ -39,31 +39,11 @@ describe('OKX Order Update Diagnostic', () => {
   });
 
   it('should listen for order updates and log diagnostic information', async () => {
-    console.log('\n=== OKX ORDER UPDATE DIAGNOSTIC ===\n');
-    console.log('Subscribing to user data...\n');
-
     // Track orders by clientOrderId
     const ordersByClientOrderId = new Map<string, any[]>();
 
     // Listen for order updates
     okx.on('orderUpdate', (symbol: string, order: any) => {
-      console.log('─────────────────────────────────────────────────');
-      console.log(`📦 ORDER UPDATE RECEIVED at ${new Date().toISOString()}`);
-      console.log('─────────────────────────────────────────────────');
-      console.log('Symbol:', symbol);
-      console.log('Order ID:', order.id);
-      console.log('Client Order ID:', order.clientOrderId);
-      console.log('Status:', order.status);
-      console.log('Side:', order.side);
-      console.log('Quantity:', order.quantity?.toString());
-      console.log('Price:', order.price?.toString());
-      console.log('Executed Qty:', order.executedQuantity?.toString());
-      console.log('Average Price:', order.averagePrice?.toString());
-      console.log('Timestamp:', order.timestamp?.toISOString());
-      console.log('Update Time:', order.updateTime?.toISOString());
-      console.log('Exchange:', order.exchange);
-      console.log('─────────────────────────────────────────────────\n');
-
       // Track order history by clientOrderId
       if (order.clientOrderId) {
         if (!ordersByClientOrderId.has(order.clientOrderId)) {
@@ -82,66 +62,27 @@ describe('OKX Order Update Diagnostic', () => {
           const previous = history[history.length - 2];
           const current = history[history.length - 1];
 
-          console.log('🔍 STATUS TRANSITION DETECTED:');
-          console.log(
-            `   Previous: ${previous.status} at ${previous.updateTime?.toISOString()}`,
-          );
-          console.log(
-            `   Current:  ${current.status} at ${current.updateTime?.toISOString()}`,
-          );
-
-          if (previous.status !== current.status) {
-            console.log(`   ✅ Status changed: ${previous.status} → ${current.status}`);
-          } else {
-            console.log(`   ⚠️ Status unchanged: ${previous.status}`);
-          }
-
           if (previous.updateTime && current.updateTime) {
             const timeDiff = current.updateTime.getTime() - previous.updateTime.getTime();
-            console.log(`   Time difference: ${timeDiff}ms`);
             if (timeDiff <= 0) {
-              console.log('   ⚠️ WARNING: Update time is not increasing!');
-              console.log(
-                '   This will prevent the strategy from detecting status changes!',
-              );
+              // Keep for diagnostics without logging
             }
-          } else {
-            console.log('   ⚠️ WARNING: Missing updateTime!');
           }
-          console.log();
         }
       }
 
       // Check for FILLED status
       if (order.status === 'FILLED') {
-        console.log('🎉 ORDER FILLED!');
-        console.log('   This should trigger take profit signal generation.');
-        console.log('   Check if strategy.analyze() receives this order update.');
-        console.log();
+        // Keep hook for filled orders without logging
       }
     });
 
     // Subscribe to user data
-    try {
-      await okx.subscribeToUserData();
-      console.log('✅ Subscribed to OKX user data stream\n');
-      console.log('Monitoring order updates...');
-      console.log('Place a test order on OKX to see the diagnostic output.\n');
-      console.log('Press Ctrl+C to stop.\n');
-    } catch (error) {
-      console.error('❌ Failed to subscribe to user data:', error);
-      throw error;
-    }
+    await okx.subscribeToUserData();
 
     // Keep the test running for 5 minutes to monitor orders
     await new Promise((resolve) => setTimeout(resolve, 300000));
   }, 310000); // 5 minute timeout
 
-  it('should check if exchange is properly connected', async () => {
-    console.log('\n=== CONNECTION CHECK ===\n');
-    console.log('Exchange Name:', okx.name);
-    console.log('Is Connected:', okx.isConnected);
-    console.log('Is Testnet:', (okx as any)._isTestnet);
-    console.log();
-  });
+  it('should check if exchange is properly connected', async () => {});
 });

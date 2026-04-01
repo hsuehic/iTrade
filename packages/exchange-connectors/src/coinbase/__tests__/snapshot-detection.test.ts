@@ -8,7 +8,7 @@
  * 4. Resets state on reconnection
  */
 
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 import { CoinbaseExchange } from '@itrade/exchange-connectors';
 
@@ -217,8 +217,6 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
   });
 
   test('should track total snapshot order count correctly', () => {
-    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-
     // First batch: 50
     simulateUserChannelMessage(
       Array.from({ length: 50 }, (_, i) => createMockOrder(`order-${i}`)),
@@ -234,11 +232,8 @@ describe('CoinbaseExchange - Initial Snapshot Detection', () => {
       Array.from({ length: 9 }, (_, i) => createMockOrder(`order-${i + 100}`)),
     );
 
-    // Check that the completion message logged the correct total
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Initial snapshot complete - received 109 existing orders'),
-    );
-
-    consoleLogSpy.mockRestore();
+    // Snapshot count should match total orders processed
+    expect((exchange as any).initialSnapshotOrderCount).toBe(109);
+    expect((exchange as any).isReceivingInitialSnapshot).toBe(false);
   });
 });

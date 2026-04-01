@@ -301,10 +301,6 @@ export class BinanceExchange extends BaseExchange {
     const signedParams = this.signRequest(params);
     const createOrderPath = isFutures ? '/fapi/v1/order' : '/api/v3/order';
     const httpClient = isFutures ? this.futuresClient : this.httpClient;
-    console.log('[Binance] createOrder request', {
-      pathname: createOrderPath,
-      params: signedParams,
-    });
     const response = await httpClient.post(createOrderPath, null, {
       params: signedParams,
     });
@@ -340,8 +336,6 @@ export class BinanceExchange extends BaseExchange {
       await this.futuresClient.post('/fapi/v1/leverage', null, {
         params: signedParams,
       });
-
-      console.log(`[Binance] Set leverage for ${symbol}: ${leverage}`);
     } catch (error: any) {
       // If error is "No need to change leverage" or similar, ignore it
       const code = error.response?.data?.code;
@@ -349,16 +343,7 @@ export class BinanceExchange extends BaseExchange {
         // -4028: Leverage already set
         // -4046: No need to change margin type
         // -4161: Leverage reduction is not supported in Isolated Margin Mode with open positions
-        console.warn(
-          `[Binance] Ignoring expected leverage error for ${symbol}:`,
-          error.response?.data?.msg || code,
-        );
       } else {
-        console.error(
-          `[Binance] Failed to set leverage for ${symbol}:`,
-          error.response?.data || error.message,
-        );
-        console.error('Stack:', error.stack);
         throw error;
       }
     }
@@ -383,18 +368,12 @@ export class BinanceExchange extends BaseExchange {
       await this.futuresClient.post('/fapi/v1/marginType', null, {
         params: signedParams,
       });
-
-      console.log(`[Binance] Set margin type for ${symbol}: ${marginType}`);
     } catch (error: any) {
       const code = error.response?.data?.code;
       // If error is "No need to change margin type", ignore it
       if (code === -4046) {
         // Margin type already set, no action needed
       } else {
-        console.warn(
-          `[Binance] Failed to set margin type for ${symbol}:`,
-          error.response?.data || error.message,
-        );
         // Don't throw - margin type is optional
       }
     }
@@ -437,10 +416,6 @@ export class BinanceExchange extends BaseExchange {
     const signedParams = this.signRequest(params);
     const cancelOrderPath = isFutures ? '/fapi/v1/order' : '/api/v3/order';
     const httpClient = isFutures ? this.futuresClient : this.httpClient;
-    console.log('[Binance] cancelOrder request', {
-      pathname: cancelOrderPath,
-      params: signedParams,
-    });
     const response = await httpClient.delete(cancelOrderPath, {
       params: signedParams,
     });
@@ -595,8 +570,6 @@ export class BinanceExchange extends BaseExchange {
       updateTime = this.formatTimestamp(data.updateTime);
       // totalNetAssetOfBtc is the BTC-equivalent value of the entire spot wallet
       totalNetAssetOfBtc = parseFloat(data.totalNetAssetOfBtc || '0');
-    } else {
-      console.warn('[Binance] Failed to fetch spot account info:', spotRes.reason);
     }
 
     // Process Futures Data
@@ -629,8 +602,6 @@ export class BinanceExchange extends BaseExchange {
           });
         }
       }
-    } else {
-      console.warn('[Binance] Failed to fetch futures account info:', futuresRes.reason);
     }
 
     // Calculate totalEquity in USDT.
@@ -660,12 +631,8 @@ export class BinanceExchange extends BaseExchange {
             .reduce((sum: number, w: any) => sum + parseFloat(w.balance || '0'), 0);
           totalEquity = new Decimal(totalBtc * btcPrice);
         }
-      } catch (err: any) {
+      } catch {
         // Endpoint may not be enabled for all API keys — fall through to fallback
-        console.warn(
-          '[Binance] /sapi/v1/asset/wallet/balance unavailable, using fallback:',
-          err.message,
-        );
       }
     }
 
@@ -674,10 +641,6 @@ export class BinanceExchange extends BaseExchange {
       if (btcPrice > 0 || futuresWalletBalance > 0) {
         const spotEquityUsdt = totalNetAssetOfBtc * btcPrice;
         totalEquity = new Decimal(spotEquityUsdt + futuresWalletBalance);
-      } else {
-        console.warn(
-          '[Binance] Unable to calculate totalEquity: BTC price unavailable and no futures balance',
-        );
       }
     }
 
@@ -719,8 +682,7 @@ export class BinanceExchange extends BaseExchange {
             timestamp: new Date(parseInt(pos.updateTime)),
           };
         });
-    } catch (error) {
-      console.error('[Binance] Failed to fetch positions:', error);
+    } catch {
       return [];
     }
   }
@@ -860,12 +822,6 @@ export class BinanceExchange extends BaseExchange {
       market: isFuturesSymbol ? 'futures' : 'spot',
     };
 
-    console.debug(
-      `[BinanceExchange] Symbol info for ${symbol} (${binanceSymbol}): ` +
-        `maxQty=${maxQuantity?.toString()}, minQty=${minQuantity.toString()}, ` +
-        `stepSize=${stepSize.toString()}, tickSize=${tickSize.toString()}`,
-    );
-
     return symbolInfo;
   }
 
@@ -890,18 +846,15 @@ export class BinanceExchange extends BaseExchange {
    * Setup WebSocket Manager event listeners
    */
   private setupWebSocketManagerListeners(): void {
-    this.wsManager.on('connected', (marketType: BinanceMarketType) => {
-      console.log(`[Binance] ${marketType} WebSocket connected`);
+    this.wsManager.on('connected', (_marketType: BinanceMarketType) => {
       this.emit('ws_connected', this.name);
     });
 
-    this.wsManager.on('disconnected', (marketType: BinanceMarketType) => {
-      console.log(`[Binance] ${marketType} WebSocket disconnected`);
+    this.wsManager.on('disconnected', (_marketType: BinanceMarketType) => {
       this.emit('ws_disconnected', this.name);
     });
 
-    this.wsManager.on('error', (marketType: BinanceMarketType, error: Error) => {
-      console.error(`[Binance] ${marketType} WebSocket error:`, error.message);
+    this.wsManager.on('error', (_marketType: BinanceMarketType, error: Error) => {
       this.emit('ws_error', error);
     });
 
@@ -913,9 +866,8 @@ export class BinanceExchange extends BaseExchange {
       'resubscribe_needed',
       (marketType: BinanceMarketType, type: string, symbol: string) => {
         // Auto-resubscribe after reconnection
-        console.log(`[Binance] Resubscribing to ${type}:${symbol} on ${marketType}`);
         this.subscribe(type, symbol).catch((err) => {
-          console.error(`[Binance] Resubscribe failed:`, err);
+          this.emit('ws_error', err);
         });
       },
     );
@@ -947,8 +899,6 @@ export class BinanceExchange extends BaseExchange {
     symbol: string,
     type: 'ticker' | 'orderbook' | 'trades' | 'klines',
   ): Promise<void> {
-    console.log(`[Binance] Unsubscribing from ${type}:${symbol}`);
-
     // Determine market type
     const marketType = this.wsManager.getMarketType(symbol);
 
@@ -981,8 +931,6 @@ export class BinanceExchange extends BaseExchange {
   ): Promise<void> {
     // Determine market type from symbol
     const marketType = this.wsManager.getMarketType(symbol);
-
-    console.log(`[Binance] Subscribing to ${type}:${symbol} (${marketType})`);
 
     // Store normalized -> original symbol mapping for later lookup
     // For klines, strip the @interval part for mapping
@@ -1048,7 +996,6 @@ export class BinanceExchange extends BaseExchange {
 
   protected async createWebSocketConnection(): Promise<void> {
     // Not used directly anymore, WebSocket Manager handles connections
-    console.log('[Binance] Using WebSocket Manager for connections');
   }
 
   protected handleWebSocketMessage(message: any, marketType?: BinanceMarketType): void {
@@ -1095,7 +1042,7 @@ export class BinanceExchange extends BaseExchange {
           );
           break;
         default:
-          console.warn(`[Binance] Unknown event type: ${eventType}`);
+          break;
       }
     }
   }
@@ -1268,8 +1215,8 @@ export class BinanceExchange extends BaseExchange {
             this.emit('orderUpdate', order.symbol, order);
           });
         }
-      } catch (error) {
-        console.warn('[Binance] Failed to fetch open orders:', error);
+      } catch {
+        // ignore
       }
 
       // Get futures positions (if available)
@@ -1281,8 +1228,8 @@ export class BinanceExchange extends BaseExchange {
       } catch {
         // Futures might not be enabled, ignore error
       }
-    } catch (error) {
-      console.warn('[Binance] Failed to fetch initial account state:', error);
+    } catch {
+      // ignore
     }
   }
 

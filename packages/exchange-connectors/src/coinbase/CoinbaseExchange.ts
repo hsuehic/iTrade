@@ -19,7 +19,6 @@ import {
   ExchangeInfo,
   SymbolInfo,
   TradeMode,
-  ConsoleLogger,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -40,8 +39,6 @@ export class CoinbaseExchange extends BaseExchange {
   private subscribedGranularities = new Map<string, string>(); // productId -> granularity (in seconds)
   private lastUserDataSyncAt = 0; // throttle balance/position sync after user events
   private balancePollingInterval: NodeJS.Timeout | null = null; // Periodic balance polling
-  private logger = new ConsoleLogger();
-
   // 🆕 Initial snapshot tracking for user channel
   private isReceivingInitialSnapshot = true; // true until we receive first batch < 50 orders
   private initialSnapshotOrderCount = 0; // track total orders in initial snapshot
@@ -79,19 +76,15 @@ export class CoinbaseExchange extends BaseExchange {
    */
   private setupWebSocketManagerListeners(): void {
     this.wsManager.on('connected', () => {
-      this.logger.debug('[Coinbase] WebSocket Manager connected');
       // 🆕 Reset initial snapshot state on new connection
       this.resetInitialSnapshotState();
     });
 
-    this.wsManager.on('disconnected', (code: number) => {
-      this.logger.debug(`[Coinbase] WebSocket Manager disconnected: ${code}`);
+    this.wsManager.on('disconnected', (_code: number) => {
       this.resetInitialSnapshotState();
     });
 
-    this.wsManager.on('error', (error: Error) => {
-      console.error('[Coinbase] WebSocket Manager error:', error.message);
-    });
+    this.wsManager.on('error', (_error: Error) => {});
 
     this.wsManager.on('data', (message: any) => {
       this.handleWebSocketMessage(message);
@@ -104,9 +97,6 @@ export class CoinbaseExchange extends BaseExchange {
   private resetInitialSnapshotState(): void {
     this.isReceivingInitialSnapshot = true;
     this.initialSnapshotOrderCount = 0;
-    this.logger.debug(
-      '[Coinbase] 🔄 Initial snapshot state reset - will suppress events for existing orders',
-    );
   }
 
   /**
@@ -169,9 +159,6 @@ export class CoinbaseExchange extends BaseExchange {
     } catch (error: any) {
       // Handle 404 for INTX perpetual products that don't have ticker data in public API
       if (error.response?.status === 404 && productId.includes('-PERP-INTX')) {
-        console.warn(
-          `[Coinbase] Ticker data not available for INTX product ${productId}, using fallback`,
-        );
         // Return a minimal ticker with zero values
         // The actual price will be updated via WebSocket or position data
         return {
@@ -343,31 +330,7 @@ export class CoinbaseExchange extends BaseExchange {
     const body = buildBody();
     const marginType = isPerpetual ? 'ISOLATED' : null;
 
-    this.logger.info('[Coinbase] Creating order:', {
-      product_id: productId,
-      side,
-      type,
-      quantity: quantity.toString(),
-      price: price?.toString(),
-      clientOrderId,
-      isPerpetual,
-      tradeMode: options?.tradeMode,
-      marginType,
-      leverage: options?.leverage,
-    });
-
     const resp = await this.httpClient.post('/api/v3/brokerage/orders', body);
-
-    this.logger.debug('[Coinbase] Order response:', {
-      status: resp.status,
-      data: resp.data,
-      hasOrder: !!(
-        resp.data?.success_response?.order ||
-        resp.data?.success_response?.order_id ||
-        resp.data?.order
-      ),
-      hasError: !!(resp.data?.error_response || resp.data?.error),
-    });
 
     // Extract order from response
     const successResponse = resp.data?.success_response;
@@ -395,21 +358,12 @@ export class CoinbaseExchange extends BaseExchange {
         resp.data?.error ||
         resp.data?.message ||
         JSON.stringify(resp.data);
-      console.error('[Coinbase] Order creation failed:', {
-        body,
-        response: resp.data,
-        errorMsg,
-      });
       throw new Error(
         `Coinbase order creation failed: ${errorMsg}. Full response: ${JSON.stringify(
           resp.data,
         )}`,
       );
     }
-
-    this.logger.info('[Coinbase] Order created successfully:', {
-      orderId: orderData.order_id,
-    });
 
     const order = this.transformOrder(normalizedOrderData);
     if (!order.quantity || order.quantity.isZero()) {
@@ -568,20 +522,13 @@ export class CoinbaseExchange extends BaseExchange {
 
             hasOverallSummary = true;
           }
-        } catch (error: any) {
-          console.warn(
-            `[Coinbase] Failed to fetch INTX portfolio ${portfolioUuid}:`,
-            error.response?.data || error.message,
-          );
+        } catch {
+          // ignore
         }
       }
 
       return balances;
-    } catch (error: any) {
-      console.warn(
-        '[Coinbase] Failed to fetch INTX balances:',
-        error.response?.data || error.message,
-      );
+    } catch {
       return [];
     }
   }
@@ -626,7 +573,6 @@ export class CoinbaseExchange extends BaseExchange {
 
           for (const pos of portfolioPositions) {
             if (!pos.symbol || !pos.net_size) {
-              console.warn('[Coinbase] Position missing symbol or net_size:', pos);
               continue;
             }
 
@@ -681,17 +627,12 @@ export class CoinbaseExchange extends BaseExchange {
             continue; // This portfolio has no positions
           }
           // For other errors, log and continue
-          console.warn(
-            `Failed to fetch positions for portfolio ${portfolioUuid}:`,
-            error.message,
-          );
         }
       }
 
       return positions;
-    } catch (error: any) {
+    } catch {
       // If we can't get accounts at all, return empty array
-      console.warn('Failed to fetch accounts for positions:', error.message);
       return [];
     }
   }
@@ -817,12 +758,10 @@ export class CoinbaseExchange extends BaseExchange {
   protected handleWebSocketMessage(msg: any): void {
     const channel = msg.channel || msg.type;
     if (!channel) {
-      this.logger.warn('[Coinbase] WebSocket message missing channel/type', msg);
       return;
     }
 
     if (channel === 'error' || msg.type === 'error') {
-      this.logger.error('[Coinbase] WebSocket error message', msg);
       return;
     }
 
@@ -929,12 +868,6 @@ export class CoinbaseExchange extends BaseExchange {
         // Handle user data (orders, balances, positions)
         if (msg.events) {
           for (const e of msg.events) {
-            // Log full event structure for debugging
-            this.logger.debug('[Coinbase] User event keys:', {
-              keys: Object.keys(e),
-              eventType: e.type,
-            });
-
             // 🆕 Handle case where orders array exists but is empty (no open orders)
             if (e.orders !== undefined) {
               const batchSize = e.orders.length;
@@ -949,9 +882,6 @@ export class CoinbaseExchange extends BaseExchange {
 
                 if (snapshotComplete) {
                   this.isReceivingInitialSnapshot = false;
-                  console.log(
-                    `[Coinbase] Initial snapshot complete - received ${this.initialSnapshotOrderCount} existing orders`,
-                  );
                 } else {
                   // processing snapshot batch
                 }
@@ -990,39 +920,22 @@ export class CoinbaseExchange extends BaseExchange {
                     // WebSocket update is missing critical data - fetch via REST API
                     const orderId = orderData.order_id || orderData.id;
                     if (orderId) {
-                      console.log(
-                        `[Coinbase] ⚠️ Order ${orderId} missing data (size: ${!!hasSizeInfo}, price: ${!!hasPriceInfo}), fetching via REST API...`,
-                      );
-
                       // Fetch complete order details asynchronously
                       this.fetchAndEmitCompleteOrder(orderId, orderData.product_id).catch(
-                        (err) => {
-                          console.error(
-                            `[Coinbase] Failed to fetch order ${orderId}:`,
-                            err?.message || err,
-                          );
+                        () => {
                           // Fallback: emit the partial order we have
                           const partialOrder = this.transformCoinbaseUserOrder(orderData);
-                          console.log(
-                            `[Coinbase] 📦 Order Update (partial): ${partialOrder.symbol} - ${partialOrder.status}`,
-                          );
                           this.emit('orderUpdate', partialOrder.symbol, partialOrder);
                         },
                       );
                     } else {
                       // No order ID - emit partial order as fallback
                       const order = this.transformCoinbaseUserOrder(orderData);
-                      console.log(
-                        `[Coinbase] 📦 Order Update (no ID): ${order.symbol} - ${order.status}`,
-                      );
                       this.emit('orderUpdate', order.symbol, order);
                     }
                   } else {
                     // WebSocket has complete data - emit directly
                     const order = this.transformCoinbaseUserOrder(orderData);
-                    this.logger.info(
-                      `[Coinbase] 📦 Order Update: ${order.symbol} - ${order.status}`,
-                    );
                     this.emit('orderUpdate', order.symbol, order);
                   }
                 }
@@ -1039,7 +952,6 @@ export class CoinbaseExchange extends BaseExchange {
 
             // Handle positions (if pushed via WebSocket)
             if (e.positions) {
-              this.logger.debug(`[Coinbase] Processing position updates`);
               const allPositions: any[] = [];
 
               // Coinbase positions structure:
@@ -1054,13 +966,8 @@ export class CoinbaseExchange extends BaseExchange {
               if (allPositions.length > 0) {
                 const positions = this.transformCoinbasePositions(allPositions);
                 if (positions.length > 0) {
-                  this.logger.debug(
-                    `[Coinbase] 📊 Position Update: ${positions.length} positions`,
-                  );
                   this.emit('positionUpdate', 'coinbase', positions);
                 }
-              } else {
-                this.logger.debug(`[Coinbase] No open positions`);
               }
             }
 
@@ -1090,12 +997,7 @@ export class CoinbaseExchange extends BaseExchange {
               if (now - this.lastUserDataSyncAt > 1000) {
                 this.lastUserDataSyncAt = now;
                 // Fire and forget; errors are logged but don't crash handler
-                this.refreshBalancesAndPositions().catch((err) =>
-                  console.warn(
-                    '[Coinbase] Failed to refresh balances/positions:',
-                    err?.message || err,
-                  ),
-                );
+                this.refreshBalancesAndPositions().catch(() => {});
               }
             }
           }
@@ -1203,9 +1105,7 @@ export class CoinbaseExchange extends BaseExchange {
     this.stopBalancePolling();
 
     this.balancePollingInterval = setInterval(() => {
-      this.refreshBalancesAndPositions().catch((err) =>
-        console.warn('[Coinbase] Polling error:', err?.message || err),
-      );
+      this.refreshBalancesAndPositions().catch(() => {});
     }, CoinbaseExchange.BALANCE_POLL_INTERVAL);
   }
 
@@ -1232,39 +1132,27 @@ export class CoinbaseExchange extends BaseExchange {
     orderId: string,
     productId?: string,
   ): Promise<void> {
-    try {
-      // Fetch complete order details via REST API
-      const resp = await this.httpClient.get(
-        `/api/v3/brokerage/orders/historical/${orderId}`,
-      );
-      const orderData = resp.data?.orders
-        ? resp.data.orders[0]
-        : resp.data?.order || resp.data;
+    // Fetch complete order details via REST API
+    const resp = await this.httpClient.get(
+      `/api/v3/brokerage/orders/historical/${orderId}`,
+    );
+    const orderData = resp.data?.orders
+      ? resp.data.orders[0]
+      : resp.data?.order || resp.data;
 
-      if (!orderData) {
-        throw new Error('Order not found in API response');
-      }
-
-      // Transform to iTrade Order format
-      const order = this.transformOrder(orderData);
-
-      // Denormalize symbol
-      const productIdToUse = orderData.product_id || productId || order.symbol;
-      order.symbol = this.denormalizeSymbol(productIdToUse);
-
-      this.logger.info(
-        `[Coinbase] ✅ Fetched complete order: ${order.symbol} - ${order.status} - Qty: ${order.quantity.toString()}`,
-      );
-
-      // Emit the complete order update
-      this.emit('orderUpdate', order.symbol, order);
-    } catch (error: any) {
-      console.error(
-        `[Coinbase] Failed to fetch order ${orderId}:`,
-        error.response?.data || error.message,
-      );
-      throw error;
+    if (!orderData) {
+      throw new Error('Order not found in API response');
     }
+
+    // Transform to iTrade Order format
+    const order = this.transformOrder(orderData);
+
+    // Denormalize symbol
+    const productIdToUse = orderData.product_id || productId || order.symbol;
+    order.symbol = this.denormalizeSymbol(productIdToUse);
+
+    // Emit the complete order update
+    this.emit('orderUpdate', order.symbol, order);
   }
 
   /**
@@ -1317,24 +1205,7 @@ export class CoinbaseExchange extends BaseExchange {
 
     // Debug: Log if quantity is zero to help diagnose field name issues
     if (quantity.isZero()) {
-      console.warn(
-        '[Coinbase] Order quantity is zero. Available fields:',
-        JSON.stringify(
-          {
-            base_size: orderData.base_size,
-            size: orderData.size,
-            order_size: orderData.order_size,
-            quantity: orderData.quantity,
-            leaves_quantity: orderData.leaves_quantity,
-            filled_size: orderData.filled_size,
-            cumulative_quantity: orderData.cumulative_quantity,
-            config_base_size: limitConfig?.base_size || marketConfig?.base_size,
-            all_keys: Object.keys(orderData),
-          },
-          null,
-          2,
-        ),
-      );
+      // keep fallback behavior without logging
     }
     // Determine order type with stronger checks
     // If we have limit configuration or a limit price, it's definitely a LIMIT order
@@ -1360,9 +1231,6 @@ export class CoinbaseExchange extends BaseExchange {
         // It's possible for a MARKET order to have a price (execution price), but usually not limit_price
         // specific fields check:
         if (orderData.limit_price || limitConfig) {
-          console.warn(
-            `[Coinbase] Order has MARKET type but contains limit_price/config. Forcing LIMIT type.`,
-          );
           orderTypeStr = 'LIMIT';
         }
       }
@@ -1438,7 +1306,6 @@ export class CoinbaseExchange extends BaseExchange {
       case 'FOK':
         return 'FOK' as TimeInForce;
       default:
-        console.warn(`[Coinbase] Unknown TimeInForce: ${coinbaseTif}, defaulting to GTC`);
         return 'GTC' as TimeInForce;
     }
   }
@@ -1448,7 +1315,6 @@ export class CoinbaseExchange extends BaseExchange {
    */
   private transformBalances(balanceData: any[]): Balance[] {
     if (!Array.isArray(balanceData)) {
-      console.warn('[Coinbase] transformBalances: input is not an array');
       return [];
     }
 
@@ -1467,11 +1333,7 @@ export class CoinbaseExchange extends BaseExchange {
             locked,
             total: free.add(locked),
           };
-        } catch (err) {
-          console.warn(
-            '[Coinbase] Failed to transform balance:',
-            (err as any)?.message || err,
-          );
+        } catch {
           return null;
         }
       })
@@ -1487,7 +1349,6 @@ export class CoinbaseExchange extends BaseExchange {
    */
   private transformCoinbasePositions(positionData: any[]): Position[] {
     if (!Array.isArray(positionData)) {
-      console.warn('[Coinbase] transformCoinbasePositions: input is not an array');
       return [];
     }
 
@@ -1516,21 +1377,14 @@ export class CoinbaseExchange extends BaseExchange {
               const mapped = this.positionSymbolMap.get(positionId);
               if (mapped) {
                 productSymbol = mapped;
-                this.logger.debug(
-                  `[Coinbase] Resolved position_id ${positionId} -> symbol ${productSymbol}`,
-                );
               } else {
                 // Try using product_id as fallback
                 productSymbol = p.product_id || p.symbol;
-                this.logger.debug(
-                  `[Coinbase] No mapping for position ${positionId}, using fallback: ${productSymbol}`,
-                );
               }
             }
           }
 
           if (!productSymbol || productSymbol === 'UNKNOWN') {
-            console.warn('[Coinbase] Position missing valid symbol, skipping:', p);
             return null;
           }
 
@@ -1566,11 +1420,7 @@ export class CoinbaseExchange extends BaseExchange {
             timestamp: new Date(p.timestamp || Date.now()),
             updateTime: new Date(p.timestamp || Date.now()),
           } as Position;
-        } catch (err) {
-          console.warn(
-            '[Coinbase] Failed to transform position:',
-            (err as any)?.message || err,
-          );
+        } catch {
           return null;
         }
       })
@@ -1582,7 +1432,6 @@ export class CoinbaseExchange extends BaseExchange {
    */
   private transformPositions(positionData: any[]): Position[] {
     if (!Array.isArray(positionData)) {
-      console.warn('[Coinbase] transformPositions: input is not an array');
       return [];
     }
 
@@ -1614,11 +1463,7 @@ export class CoinbaseExchange extends BaseExchange {
             timestamp: new Date(p.timestamp || Date.now()),
             updateTime: new Date(p.timestamp || Date.now()),
           } as Position;
-        } catch (err) {
-          console.warn(
-            '[Coinbase] Failed to transform position:',
-            (err as any)?.message || err,
-          );
+        } catch {
           return null;
         }
       })
@@ -1631,8 +1476,8 @@ export class CoinbaseExchange extends BaseExchange {
       if (balances?.length) {
         this.emit('accountUpdate', 'coinbase', balances);
       }
-    } catch (err) {
-      console.warn('[Coinbase] Balance refresh error:', (err as any)?.message || err);
+    } catch {
+      // ignore
     }
 
     try {
@@ -1640,9 +1485,8 @@ export class CoinbaseExchange extends BaseExchange {
       if (positions?.length) {
         this.emit('positionUpdate', 'coinbase', positions);
       }
-    } catch (err) {
+    } catch {
       // It's normal to have no positions for spot-only accounts
-      console.warn('[Coinbase] Position refresh note:', (err as any)?.message || err);
     }
   }
 
@@ -1750,9 +1594,7 @@ export class CoinbaseExchange extends BaseExchange {
     })();
 
     if (wantsJwt && !isEcPemKey) {
-      console.warn(
-        '[Coinbase] JWT auth requires an EC PEM private key; falling back to HMAC.',
-      );
+      // Fallback to HMAC when JWT is unavailable
     }
 
     // Use JWT only when we have a valid EC PEM private key

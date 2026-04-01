@@ -234,12 +234,6 @@ export class OKXExchange extends BaseExchange {
     const orderSize = await this.calculateContractSize(quantity, symbolInfo);
 
     // Log the conversion for debugging
-    if (isSwap) {
-      console.log(
-        `[OKX] Order size conversion for ${symbol}: ${quantity.toString()} ${symbolInfo.baseAsset} = ${orderSize.toString()} contracts (ctVal=${symbolInfo.contractValue?.toString()})`,
-      );
-    }
-
     // Determine tdMode: use option if provided, else default
     // SPOT: cash (non-margin trading)
     // SWAP/FUTURES: isolated (safer than cross), or cross if specified
@@ -551,9 +545,6 @@ export class OKXExchange extends BaseExchange {
     } catch (error: any) {
       // If 401 Unauthorized, it's likely due to insufficient API key permissions
       if (error.response?.status === 401) {
-        console.warn(
-          '[OKX] getOrderHistory requires Trade permission on API key. Returning empty array.',
-        );
         return [];
       }
       throw error;
@@ -654,8 +645,8 @@ export class OKXExchange extends BaseExchange {
           });
         }
       });
-    } catch (error: any) {
-      console.warn(`[OKX] Error fetching funding balance: ${error.message}`);
+    } catch {
+      // ignore
     }
 
     // 3. Get Simple Earn Balance
@@ -674,12 +665,10 @@ export class OKXExchange extends BaseExchange {
 
       if (earnBalanceResponse.data.code === '0') {
         const earnData = earnBalanceResponse.data.data;
-        console.log(`[OKX] Simple Earn Data Count: ${earnData.length}`); // DEBUG LOG
         earnData.forEach((detail: any) => {
           const asset = detail.ccy;
           // For Simple Earn, "amt" is the principal amount
           const amount = this.formatDecimal(detail.amt);
-          console.log(`[OKX] Found Saving for ${asset}: ${amount}`); // DEBUG LOG
 
           if (balancesMap.has(asset)) {
             const existing = balancesMap.get(asset)!;
@@ -696,13 +685,9 @@ export class OKXExchange extends BaseExchange {
             });
           }
         });
-      } else {
-        console.warn(
-          `[OKX] Simple Earn API non-zero code: ${earnBalanceResponse.data.code}, msg: ${earnBalanceResponse.data.msg}`,
-        );
       }
-    } catch (error: any) {
-      console.warn(`[OKX] Error fetching simple earn balance: ${error.message}`);
+    } catch {
+      // ignore
     }
 
     // 4. Get Total Asset Valuation (Total Equity in USD)
@@ -721,8 +706,7 @@ export class OKXExchange extends BaseExchange {
         // totalBal: The total valuation of the account in the requested currency (USD)
         totalEquity = this.formatDecimal(valuationResponse.data.data[0].totalBal);
       }
-    } catch (error: any) {
-      console.warn(`[OKX] Error fetching asset valuation: ${error.message}`);
+    } catch {
       // Fallback: Use trading account total equity if available
       if (tradingData.totalEq) {
         totalEquity = this.formatDecimal(tradingData.totalEq);
@@ -982,19 +966,14 @@ export class OKXExchange extends BaseExchange {
     }
 
     // 4. Fetch and Cache
-    try {
-      const info = await this.getSymbolInfo(symbol);
+    const info = await this.getSymbolInfo(symbol);
 
-      this.symbolInfoCache.set(symbol, info);
-      this.symbolInfoCache.set(normalized, info);
-      if (unified !== symbol) {
-        this.symbolInfoCache.set(unified, info);
-      }
-      return info;
-    } catch (error) {
-      console.error(`[OKX] Failed to cache symbol info for ${symbol}:`, error);
-      throw error;
+    this.symbolInfoCache.set(symbol, info);
+    this.symbolInfoCache.set(normalized, info);
+    if (unified !== symbol) {
+      this.symbolInfoCache.set(unified, info);
     }
+    return info;
   }
 
   /**
@@ -1017,10 +996,7 @@ export class OKXExchange extends BaseExchange {
       const ctMult = info.contractMultiplier || new Decimal(1);
 
       return quantityContracts.mul(ctVal).mul(ctMult);
-    } catch (error) {
-      console.warn(
-        `[OKX] Failed to get symbol info for ${symbol}, returning raw quantity: ${error}`,
-      );
+    } catch {
       return quantityContracts;
     }
   }
@@ -1295,7 +1271,6 @@ export class OKXExchange extends BaseExchange {
     }
 
     if (message.event === 'error') {
-      console.error(`[OKX] WebSocket error:`, message.msg, message);
       this.emit('ws_error', new Error(message.msg));
       return;
     }
@@ -1305,9 +1280,7 @@ export class OKXExchange extends BaseExchange {
       if (message.code === '0') {
         this.okxPrivateAuthenticated = true;
         if (this.shouldSubscribeUserData) {
-          this.sendUserDataSubscriptions().catch((e) =>
-            console.error('[OKX] Failed to resubscribe user data:', e),
-          );
+          this.sendUserDataSubscriptions().catch(() => {});
         }
       } else {
         this.okxPrivateAuthenticated = false;
@@ -1346,38 +1319,11 @@ export class OKXExchange extends BaseExchange {
         );
       } else if (channel === 'orders') {
         try {
-          // 🆕 DEBUG: Log ALL raw order updates from OKX
-          console.log('[OKX] 📨 Raw Order WebSocket Message:', {
-            instId: data.instId,
-            ordId: data.ordId,
-            clOrdId: data.clOrdId,
-            state: data.state, // ⚠️ This is the critical field for status
-            sz: data.sz,
-            accFillSz: data.accFillSz,
-            avgPx: data.avgPx,
-            side: data.side,
-            ordType: data.ordType,
-            uTime: data.uTime,
-            cTime: data.cTime,
-          });
-
           const order = await this.transformOKXPrivateOrder(data);
 
-          // 🆕 DEBUG: Log transformed order
-          console.log('[OKX] 📦 Transformed Order:', {
-            id: order.id.substring(0, 12) + '...',
-            clientOrderId: order.clientOrderId?.substring(0, 8) + '...',
-            symbol: order.symbol,
-            status: order.status, // ⚠️ Verify this matches expected status
-            side: order.side,
-            quantity: order.quantity.toString(),
-            executedQuantity: order.executedQuantity?.toString() || '0',
-          });
-
           this.emit('orderUpdate', order.symbol, order);
-        } catch (error) {
-          console.error('[OKX] Error transforming order data:', error);
-          console.error('[OKX] Raw order data:', JSON.stringify(data, null, 2));
+        } catch {
+          // noop
         }
       } else if (channel === 'balance_and_position') {
         try {
@@ -1386,21 +1332,16 @@ export class OKXExchange extends BaseExchange {
           if (positions.length) {
             this.emit('positionUpdate', 'okx', positions);
           }
-        } catch (error) {
-          console.error('[OKX] Error transforming balance_and_position data:', error);
-          console.error(
-            '[OKX] Raw balance_and_position data:',
-            JSON.stringify(data, null, 2),
-          );
+        } catch {
+          // noop
         }
       } else if (channel === 'account') {
         // Handle account channel (spot balance updates)
         try {
           const balances = this.transformOKXAccount(data);
           if (balances.length) this.emit('accountUpdate', 'okx', balances);
-        } catch (error) {
-          console.error('[OKX] Error transforming account data:', error);
-          console.error('[OKX] Raw account data:', JSON.stringify(data, null, 2));
+        } catch {
+          // noop
         }
       }
     }
@@ -1570,11 +1511,7 @@ export class OKXExchange extends BaseExchange {
 
     // 🆕 CRITICAL: Warn if we encounter an unknown status
     if (!statusMap[state]) {
-      console.warn(
-        `[OKX] ⚠️ Unknown order state: "${state}" - defaulting to NEW. ` +
-          `Please update transformOKXOrderStatus mapping.`,
-      );
-      console.warn(`   Known states: ${Object.keys(statusMap).join(', ')}`);
+      // Unknown status defaults to NEW
     }
 
     return statusMap[state] || OrderStatus.NEW;
@@ -1600,7 +1537,7 @@ export class OKXExchange extends BaseExchange {
 
     const derivedId = (order.ordId || uuidv4()).toString().trim();
     if (!order.ordId) {
-      console.warn(`[OKX] REST response missing ordId, generated UUID: ${derivedId}`);
+      // keep generated UUID
     }
 
     return {
@@ -1727,22 +1664,6 @@ export class OKXExchange extends BaseExchange {
     // If uTime is not provided, use current time to ensure order updates are detected
     const updateTime = data.uTime ? new Date(parseInt(data.uTime)) : new Date();
 
-    // 🔍 Debug logging for order updates
-    console.log('[OKX] 📦 Order Update:', {
-      ordId: data.ordId,
-      clOrdId: data.clOrdId,
-      symbol,
-      state: data.state,
-      status: this.transformOKXOrderStatus(data.state || 'live'),
-      szRaw: data.sz,
-      sz: qty.toString(),
-      accFillSzRaw: data.accFillSz,
-      accFillSz: executedQuantity?.toString(),
-      avgPx: data.avgPx,
-      uTime: data.uTime,
-      updateTime: updateTime.toISOString(),
-    });
-
     return {
       id: (data.ordId || uuidv4()).toString().trim(),
       clientOrderId: data.clOrdId,
@@ -1799,16 +1720,6 @@ export class OKXExchange extends BaseExchange {
         );
         const positionValue = quantity.abs().mul(markPrice);
         const leverage = this.getOkxLeverage(p, quantity, avgPrice, markPrice);
-
-        console.log('[OKX] 📊 Position calculated:', {
-          symbol: unifiedSymbol,
-          quantityRaw: quantityRaw.toString(),
-          quantity: quantity.toString(),
-          avgPrice: p.avgPx,
-          markPrice: markPrice.toString(),
-          positionValue: positionValue.toString(),
-          notionalUsd: p.notionalUsd,
-        });
 
         positions.push({
           symbol: unifiedSymbol,
@@ -1915,25 +1826,18 @@ export class OKXExchange extends BaseExchange {
 
     // Handle different possible data structures
     if (!data) {
-      console.warn('[OKX] transformOKXAccount received null/undefined data');
       return balances;
     }
 
     // Check if data has details array
     const details = data.details || data;
     if (!Array.isArray(details)) {
-      console.warn('[OKX] transformOKXAccount: details is not an array', {
-        dataType: typeof data,
-        hasDetails: 'details' in data,
-        detailsType: typeof details,
-      });
       return balances;
     }
 
     for (const detail of details) {
       try {
         if (!detail || !detail.ccy) {
-          console.warn('[OKX] Skipping invalid account detail:', detail);
           continue;
         }
 
@@ -1945,8 +1849,8 @@ export class OKXExchange extends BaseExchange {
           locked,
           total: free.add(locked),
         });
-      } catch (error) {
-        console.error('[OKX] Error transforming account detail:', error, detail);
+      } catch {
+        // ignore
       }
     }
 
@@ -2025,7 +1929,7 @@ export class OKXExchange extends BaseExchange {
       if (ws.readyState === WebSocket.OPEN) {
         try {
           ws.ping();
-        } catch (_) {
+        } catch {
           // ignore
         }
       }
@@ -2034,7 +1938,6 @@ export class OKXExchange extends BaseExchange {
       const now = Date.now();
       const staleThreshold = 60000;
       if (lastActivityAt && now - lastActivityAt > staleThreshold) {
-        console.warn(`[OKX] ${key} connection stale, terminating to trigger reconnect`);
         ws.terminate();
       }
     }, 20000);
@@ -2106,10 +2009,6 @@ export class OKXExchange extends BaseExchange {
     // ✅ Only send WebSocket subscription if not already subscribed
     if (!alreadySubscribed) {
       await this.sendWebSocketSubscription(type, symbol, depthOrInterval);
-    } else {
-      console.log(
-        `[OKX] Already subscribed to ${type} ${symbol}, skipping duplicate subscription`,
-      );
     }
   }
 
@@ -2142,7 +2041,6 @@ export class OKXExchange extends BaseExchange {
     }
 
     this.shouldSubscribeUserData = true;
-    console.log('[OKX] Subscribing to user data streams...');
 
     // Create private connection and authenticate
     await this.createWsConnect('private');
@@ -2166,8 +2064,6 @@ export class OKXExchange extends BaseExchange {
       });
     }
 
-    console.log('[OKX] Private WebSocket authenticated, subscribing to channels...');
-
     await this.sendUserDataSubscriptions();
   }
 
@@ -2175,9 +2071,6 @@ export class OKXExchange extends BaseExchange {
     const ws = this.wsConnections.get('private');
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       // If not open, we can't send. Reconnect logic should handle it eventually or it's dead.
-      console.warn(
-        '[OKX] Private WebSocket not OPEN, cannot send user data subscriptions',
-      );
       return;
     }
 
@@ -2192,7 +2085,6 @@ export class OKXExchange extends BaseExchange {
       ],
     };
 
-    console.log('[OKX] Subscribing to orders channel...');
     ws.send(JSON.stringify(ordersSubscription));
 
     // Subscribe to balance and position channel
@@ -2205,7 +2097,6 @@ export class OKXExchange extends BaseExchange {
       ],
     };
 
-    console.log('[OKX] Subscribing to balance_and_position channel...');
     ws.send(JSON.stringify(balanceAndPositionSubscription));
 
     // Subscribe to account channel (for spot balance updates)
@@ -2218,10 +2109,7 @@ export class OKXExchange extends BaseExchange {
       ],
     };
 
-    console.log('[OKX] Subscribing to account channel...');
     ws.send(JSON.stringify(accountSubscription));
-
-    console.log('[OKX] User data subscription requests sent');
   }
 
   private signOkxWsLogin(): {
@@ -2253,11 +2141,9 @@ export class OKXExchange extends BaseExchange {
   ): Promise<void> {
     if (key !== 'private') return;
     if (this.okxPrivateAuthenticated) {
-      console.log('[OKX] Private WebSocket already authenticated');
       return;
     }
 
-    console.log('[OKX] Authenticating private WebSocket...');
     const login = this.signOkxWsLogin();
     ws.send(
       JSON.stringify({

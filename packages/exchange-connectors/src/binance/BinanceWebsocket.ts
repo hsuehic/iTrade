@@ -12,13 +12,6 @@ export interface Logger {
   error: (...args: any[]) => void;
 }
 
-const defaultLogger: Logger = {
-  info: console.log,
-  debug: console.debug,
-  warn: console.warn,
-  error: console.error,
-};
-
 type MarketType = 'spot' | 'futures';
 type NetworkType = 'mainnet' | 'testnet';
 
@@ -48,8 +41,6 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
   private activityTimers: Map<MarketType, NodeJS.Timeout> = new Map();
   private reconnectTimers: Map<MarketType, NodeJS.Timeout> = new Map();
   private lastActivityAt: Map<MarketType, number> = new Map();
-  private logger: Logger;
-
   constructor(private config: WSConfig) {
     super();
     this.config = {
@@ -58,7 +49,6 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       pingInterval: 180000,
       ...config,
     };
-    this.logger = config.logger || defaultLogger;
   }
 
   /** ==================== Public API ==================== */
@@ -175,9 +165,8 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       this.keepAliveTimers.set(market, timer);
 
       this.connectMarket(market, key); // User Data Stream WS
-      this.logger.info(`[WS][${market}] UserDataStream initialized`);
-    } catch (err) {
-      this.logger.error(`[WS][${market}] UserDataStream init failed`, err);
+    } catch {
+      // noop
     }
   }
 
@@ -198,21 +187,18 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       await axios.put(url, undefined, {
         headers: { 'X-MBX-APIKEY': this.config.apiKey },
       });
-      this.logger.debug?.(`[WS][${market}] keepalive success`);
-    } catch (err) {
-      this.logger.error(`[WS][${market}] keepalive failed`, err);
+    } catch {
+      // noop
     }
   }
 
   /** ==================== WebSocket Connect ==================== */
   private connectMarket(market: MarketType, listenKey?: string) {
     const wsUrl = this.getWsUrl(market, listenKey);
-    console.log(market, ':', wsUrl);
     const ws = new WebSocket(wsUrl);
     this.wsMap.set(market, ws);
 
     ws.on('open', () => {
-      this.logger.info(`[WS][${market}] Connected`);
       this.lastActivityAt.set(market, Date.now());
       this.startPing(ws, market);
       this.startActivityMonitor(ws, market);
@@ -222,14 +208,13 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     ws.on('ping', () => ws.pong());
     ws.on('message', (msg) => this.handleMessage(msg, market));
     ws.on('close', () => this.handleClose(market));
-    ws.on('error', (err) => this.logger.error(`[WS][${market}] Error`, err));
+    ws.on('error', () => undefined);
   }
 
   private startPing(ws: WebSocket, market: MarketType) {
     if (market !== 'futures') return;
     const timer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN && market === 'futures') ws.ping();
-      this.logger.debug?.(`[WS][${market}] Ping`);
     }, this.config.pingInterval!);
     this.pingTimers.set(market, timer);
   }
@@ -240,9 +225,6 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       const now = Date.now();
       const staleThreshold = (this.config.pingInterval ?? 180000) * 2;
       if (lastActivity && now - lastActivity > staleThreshold) {
-        this.logger.warn?.(
-          `[WS][${market}] Connection stale, terminating to trigger reconnect`,
-        );
         ws.terminate();
       }
     }, this.config.pingInterval ?? 180000);
@@ -254,7 +236,6 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     const ws = this.wsMap.get(market);
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ method: 'SUBSCRIBE', params: [stream], id: Date.now() }));
-      this.logger.info(`[WS][${market}] Subscribed: ${stream}`);
     }
   }
 
@@ -264,7 +245,6 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       ws.send(
         JSON.stringify({ method: 'UNSUBSCRIBE', params: [stream], id: Date.now() }),
       );
-      this.logger.info(`[WS][${market}] Unsubscribed: ${stream}`);
     }
   }
 
@@ -293,40 +273,25 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
     const eventType = data.e;
 
     // Debug logging for user data events
-    if (eventType) {
-      this.logger.debug?.(`[WS][${market}] Received event: ${eventType}`);
-    }
-
     // Order updates
     if (eventType === 'executionReport' || eventType === 'ORDER_TRADE_UPDATE') {
-      this.logger.info(`[WS][${market}] 📦 Order update received: ${eventType}`);
       this.emit(`${market}:orderUpdate`, data);
     }
     // Spot account balance updates
     else if (eventType === 'outboundAccountPosition') {
-      this.logger.info(
-        `[WS][${market}] 💰 Account balance update received (${data.B?.length || 0} assets)`,
-      );
       this.emit(`${market}:accountUpdate`, data);
     }
     // Spot individual balance changes
     else if (eventType === 'balanceUpdate') {
-      this.logger.info(`[WS][${market}] 💰 Balance update received for ${data.a}`);
       this.emit(`${market}:accountUpdate`, data);
     }
     // Futures account updates (includes both balance and positions)
     else if (eventType === 'ACCOUNT_UPDATE') {
-      this.logger.info(
-        `[WS][${market}] 💰 Account update received (${data.a?.B?.length || 0} balances, ${data.a?.P?.length || 0} positions)`,
-      );
       this.emit(`${market}:accountUpdate`, data);
     }
     // Listen key expired warning
     else if (eventType === 'listenKeyExpired') {
-      this.logger.warn?.(`[WS][${market}] Listen key expired! Reinitializing...`);
-      this.initUserDataStream(market).catch((err) => {
-        this.logger.error(`[WS][${market}] Failed to reinitialize user data stream`, err);
-      });
+      this.initUserDataStream(market).catch(() => undefined);
     }
 
     const stream = data.stream;
@@ -341,7 +306,6 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
   }
 
   private handleClose(market: MarketType) {
-    this.logger.warn?.(`[WS][${market}] Connection closed`);
     this.emit('disconnected', market);
     const activityTimer = this.activityTimers.get(market);
     if (activityTimer) clearInterval(activityTimer);
@@ -358,9 +322,7 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
       const timer = setTimeout(() => {
         // If we had a listen key, we must re-initialize to get a fresh one
         if (this.listenKeyMap.has(market)) {
-          this.initUserDataStream(market).catch((err) => {
-            this.logger.error(`[WS][${market}] Failed to reconnect user stream`, err);
-          });
+          this.initUserDataStream(market).catch(() => undefined);
         } else {
           this.connectMarket(market);
         }
