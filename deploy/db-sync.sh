@@ -308,7 +308,7 @@ cmd_import() {
   warn "⚠️  This will REPLACE all data in the GCE database '$GCE_DB_NAME'."
   warn "   Existing GCE data will be overwritten. Are you sure? (yes/no)"
   read -r CONFIRM
-  [[ "$CONFIRM" != "yes" ]] && { info "Aborted."; exit 0; }
+  [[ "$CONFIRM" != "yes" ]] && { info "Aborted."; exit 1; } || true
 
   info "Importing dump into GCE container '$GCE_CONTAINER' ..."
 
@@ -392,7 +392,9 @@ cmd_download() {
     "docker exec -e PGPASSWORD='$GCE_DB_PASS' '$GCE_CONTAINER' \
        pg_dump -U '$GCE_DB_USER' -d '$GCE_DB_NAME' \
                -F c --no-owner --no-acl \
-               -f /tmp/itrade_gce_export.dump"
+               -f /tmp/itrade_gce_export.dump && \
+     docker cp '$GCE_CONTAINER:/tmp/itrade_gce_export.dump' /tmp/itrade_gce_export.dump && \
+     docker exec '$GCE_CONTAINER' rm -f /tmp/itrade_gce_export.dump"
 
   # Download dump from GCE to local machine
   info "Downloading dump → $DOWNLOAD_FILE ..."
@@ -425,9 +427,9 @@ cmd_restore_local() {
 
   warn "⚠️  This will REPLACE all data in the LOCAL database '$LOCAL_DB_NAME'."
   warn "   Source dump: $DOWNLOAD_FILE"
-  warn "   Are you sure? (yes/no)"
-  read -r CONFIRM
-  [[ "$CONFIRM" != "yes" ]] && { info "Aborted."; exit 0; }
+  # warn "   Are you sure? (yes/no)"
+  # read -r CONFIRM
+  # [[ "$CONFIRM" != "yes" ]] && { info "Aborted."; exit 1; } || true
 
   info "Copying dump into local container '$LOCAL_CONTAINER'..."
   docker cp "$DOWNLOAD_FILE" "$LOCAL_CONTAINER:/tmp/itrade_restore.dump"

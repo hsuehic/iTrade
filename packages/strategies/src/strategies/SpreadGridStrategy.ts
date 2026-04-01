@@ -665,15 +665,10 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         .mul(100);
     }
 
-    const exposurePosition = this.positionSize
-      .plus(this.getPendingLongRemaining())
-      .minus(this.getPendingShortRemaining());
     signals.push(
       ...this.generateEntrySignalsWithReservation({
         allowBuy: !this.openLowerOrder,
         allowSell: !this.openUpperOrder,
-        positionOverride: exposurePosition,
-        includePendingInCheck: false,
       }),
     );
 
