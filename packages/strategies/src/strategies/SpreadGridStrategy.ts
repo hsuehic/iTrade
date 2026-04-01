@@ -565,13 +565,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     let ownedOrders: Order[] = [];
     if (initialData.openOrders) {
       ownedOrders = initialData.openOrders.filter((order) => {
-        // Prioritize Strategy ID / Client Order ID match over Symbol match
         const isIdMatch =
           order.strategyId && String(order.strategyId) === String(this.getStrategyId());
-        const isClientOIdMatch =
-          order.clientOrderId && this.isStrategyOrderId(order.clientOrderId);
-
-        return isIdMatch || isClientOIdMatch;
+        return !!isIdMatch;
       });
 
       this._logger.debug(
@@ -582,13 +578,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       // strategyNetPosition (from SQL) includes pending order quantities (NEW/PARTIALLY_FILLED).
       // We subtract the unfilled (remaining) portion of each open order to convert to fills-only.
       ownedOrders.forEach((order: Order) => {
-        if (!order.clientOrderId) return;
-        let metadata = this.orderMetadataMap.get(order.clientOrderId);
-        if (!metadata) {
-          metadata = this.ensureRecoveredMetadata(order);
-        }
-        this.orders.set(order.clientOrderId, order);
-
         const executed = order.executedQuantity || new Decimal(0);
         if (hasSqlNetPosition) {
           // SQL net position includes pending quantity for NEW/PARTIALLY_FILLED orders.
@@ -611,16 +600,33 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
           }
         }
 
-        // Track the already-processed (partially filled) quantity to avoid double-counting on fill.
-        if (executed.gt(0)) {
-          this.processedQuantityMap.set(order.clientOrderId, executed);
-        }
-
         // Track open order references (for duplicate order prevention).
         if (order.side === OrderSide.BUY) {
           this.openLowerOrder = order;
         } else {
           this.openUpperOrder = order;
+        }
+
+        if (!order.clientOrderId) {
+          this._logger.warn(
+            `[SpreadGrid] Open order missing clientOrderId; metadata and pending tracking skipped. OrderId=${order.id ?? 'n/a'}`,
+          );
+          return;
+        }
+
+        let metadata = this.orderMetadataMap.get(order.clientOrderId);
+        if (!metadata) {
+          metadata = this.ensureRecoveredMetadata(order);
+        }
+        if (metadata) {
+          this.orderMetadataMap.set(order.clientOrderId, metadata);
+          this.pendingClientOrderIds.add(order.clientOrderId);
+        }
+        this.orders.set(order.clientOrderId, order);
+
+        // Track the already-processed (partially filled) quantity to avoid double-counting on fill.
+        if (executed.gt(0)) {
+          this.processedQuantityMap.set(order.clientOrderId, executed);
         }
       });
     }
@@ -919,9 +925,13 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       canAddLong: this.canAddLong(),
       canAddShort: this.canAddShort(),
       mode: this.getPositionMode(),
-      // Calculated entry prices for monitoring
-      buyPrice: this.referencePrice.mul(1 - this.stepPercent).toNumber(),
-      sellPrice: this.referencePrice.mul(1 + this.stepPercent).toNumber(),
+      // Calculated entry prices for monitoring (stepPercent is in % units)
+      buyPrice: this.referencePrice
+        .mul(new Decimal(1).minus(new Decimal(this.stepPercent).div(100)))
+        .toNumber(),
+      sellPrice: this.referencePrice
+        .mul(new Decimal(1).plus(new Decimal(this.stepPercent).div(100)))
+        .toNumber(),
     };
   }
 
