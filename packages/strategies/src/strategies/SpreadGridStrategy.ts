@@ -408,9 +408,15 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
    * Uses worst-case position: assumes all pending BUYs fill AND the new BUY fills.
    * This guarantees maxSize is never breached even if all open orders fill simultaneously.
    */
-  private canAddLong(extraPendingLong: Decimal = new Decimal(0)): boolean {
-    const worstCaseLong = this.positionSize
-      .plus(this.getPendingLongRemaining())
+  private canAddLong(
+    extraPendingLong: Decimal = new Decimal(0),
+    positionOverride?: Decimal,
+    includePending: boolean = true,
+  ): boolean {
+    const basePosition = positionOverride ?? this.positionSize;
+    const pendingLong = includePending ? this.getPendingLongRemaining() : new Decimal(0);
+    const worstCaseLong = basePosition
+      .plus(pendingLong)
       .plus(extraPendingLong)
       .plus(this.orderAmount);
     return worstCaseLong.lte(this.maxSize);
@@ -421,9 +427,17 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
    * Uses worst-case position: assumes all pending SELLs fill AND the new SELL fills.
    * This guarantees minSize is never breached even if all open orders fill simultaneously.
    */
-  private canAddShort(extraPendingShort: Decimal = new Decimal(0)): boolean {
-    const worstCaseShort = this.positionSize
-      .minus(this.getPendingShortRemaining())
+  private canAddShort(
+    extraPendingShort: Decimal = new Decimal(0),
+    positionOverride?: Decimal,
+    includePending: boolean = true,
+  ): boolean {
+    const basePosition = positionOverride ?? this.positionSize;
+    const pendingShort = includePending
+      ? this.getPendingShortRemaining()
+      : new Decimal(0);
+    const worstCaseShort = basePosition
+      .minus(pendingShort)
       .minus(extraPendingShort)
       .minus(this.orderAmount);
     return worstCaseShort.gte(this.minSize);
@@ -436,6 +450,8 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private generateEntrySignalsWithReservation(options?: {
     allowBuy?: boolean;
     allowSell?: boolean;
+    positionOverride?: Decimal;
+    includePendingInCheck?: boolean;
   }): StrategyResult[] {
     const signals: StrategyResult[] = [];
     let reservedLong = new Decimal(0);
@@ -443,6 +459,8 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const orderAmount = new Decimal(this.orderAmount);
     const allowBuy = options?.allowBuy ?? true;
     const allowSell = options?.allowSell ?? true;
+    const positionOverride = options?.positionOverride;
+    const includePendingInCheck = options?.includePendingInCheck ?? true;
 
     if (this.checkMarketPrice && this.isOrderBookStale()) {
       this._logger.warn(
@@ -451,7 +469,10 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       return signals;
     }
 
-    if (allowBuy && this.canAddLong(reservedLong)) {
+    if (
+      allowBuy &&
+      this.canAddLong(reservedLong, positionOverride, includePendingInCheck)
+    ) {
       const price = this.referencePrice.mul(100 - this.stepPercent).div(100);
       const makerPrice = this.ensureMakerPrice(price, OrderSide.BUY);
       if (makerPrice) {
@@ -469,7 +490,10 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       );
     }
 
-    if (allowSell && this.canAddShort(reservedShort)) {
+    if (
+      allowSell &&
+      this.canAddShort(reservedShort, positionOverride, includePendingInCheck)
+    ) {
       const price = this.referencePrice.mul(100 + this.stepPercent).div(100);
       const makerPrice = this.ensureMakerPrice(price, OrderSide.SELL);
       if (makerPrice) {
@@ -568,9 +592,12 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     let ownedOrders: Order[] = [];
     if (initialData.openOrders) {
       ownedOrders = initialData.openOrders.filter((order) => {
+        if (order.symbol !== this._context.symbol) return false;
         const isIdMatch =
           order.strategyId && String(order.strategyId) === String(this.getStrategyId());
-        return !!isIdMatch;
+        const isClientOrderMatch =
+          order.clientOrderId && this.isStrategyOrderId(order.clientOrderId);
+        return Boolean(isIdMatch || isClientOrderMatch);
       });
 
       this._logger.debug(
@@ -578,22 +605,10 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       );
 
       // positionSize tracks FILLS ONLY.
-      // strategyNetPosition (from SQL) includes pending order quantities (NEW/PARTIALLY_FILLED).
-      // We subtract the unfilled (remaining) portion of each open order to convert to fills-only.
+      // If SQL net position is already fills-only, we should NOT subtract open order quantity here.
       ownedOrders.forEach((order: Order) => {
         const executed = order.executedQuantity || new Decimal(0);
-        if (hasSqlNetPosition) {
-          // SQL net position includes pending quantity for NEW/PARTIALLY_FILLED orders.
-          // Convert it to fills-only by removing the remaining unfilled part.
-          const remaining = order.quantity.sub(executed);
-          if (remaining.gt(0)) {
-            if (order.side === OrderSide.BUY) {
-              this.positionSize = this.positionSize.sub(remaining);
-            } else {
-              this.positionSize = this.positionSize.add(remaining);
-            }
-          }
-        } else if (executed.gt(0)) {
+        if (!hasSqlNetPosition && executed.gt(0)) {
           // Fallback mode (no SQL net position): bootstrap fills-only position from
           // executed quantities visible on open orders (typically PARTIALLY_FILLED).
           if (order.side === OrderSide.BUY) {
@@ -650,10 +665,15 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         .mul(100);
     }
 
+    const exposurePosition = this.positionSize
+      .plus(this.getPendingLongRemaining())
+      .minus(this.getPendingShortRemaining());
     signals.push(
       ...this.generateEntrySignalsWithReservation({
         allowBuy: !this.openLowerOrder,
         allowSell: !this.openUpperOrder,
+        positionOverride: exposurePosition,
+        includePendingInCheck: false,
       }),
     );
 

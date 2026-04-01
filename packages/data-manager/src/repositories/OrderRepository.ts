@@ -158,23 +158,17 @@ export class OrderRepository {
 
   /**
    * Calculates the net position size owned by a specific strategy at the SQL level.
-   * This considers both executed quantities and open order quantities (intended exposure).
-   * Formula: SUM(side_multiplier * quantity_to_consider)
-   * - For NEW/PARTIALLY_FILLED: quantity (intended)
-   * - For FILLED/CANCELED/OTHERS: executedQuantity (realized)
+   * This uses executed quantities ONLY (filled amounts).
+   * Formula: SUM(side_multiplier * executedQuantity)
    */
   async getStrategyNetPosition(strategyId: number, symbol: string): Promise<Decimal> {
-    const activeStatuses = [OrderStatus.NEW, OrderStatus.PARTIALLY_FILLED];
-
     const result = await this.repository
       .createQueryBuilder('order')
       .select(
         `SUM(
           CASE
-            WHEN order.side = :buy THEN
-              (CASE WHEN order.status IN (:...active) THEN order.quantity ELSE COALESCE(order.executedQuantity, 0) END)
-            ELSE
-              -(CASE WHEN order.status IN (:...active) THEN order.quantity ELSE COALESCE(order.executedQuantity, 0) END)
+            WHEN order.side = :buy THEN COALESCE(order.executedQuantity, 0)
+            ELSE -COALESCE(order.executedQuantity, 0)
           END
         )`,
         'netPosition',
@@ -183,7 +177,6 @@ export class OrderRepository {
       .andWhere('order.symbol = :symbol', { symbol })
       .setParameters({
         buy: 'BUY', // Assuming string value for the enum in DB
-        active: activeStatuses,
       })
       .getRawOne();
 
