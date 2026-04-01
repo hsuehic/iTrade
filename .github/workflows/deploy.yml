@@ -69,9 +69,20 @@ jobs:
           REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           PREFIX="${{ env.REGISTRY }}/${REPO_LC}"
           SHA="${{ github.sha }}"
+          FILES=$(git ls-files \
+            package.json \
+            pnpm-lock.yaml \
+            pnpm-workspace.yaml \
+            turbo.json \
+            'apps/*/package.json' \
+            'packages/*/package.json' \
+            | sort)
+          DEPS_HASH=$(cat $FILES | sha256sum | cut -d' ' -f1)
           echo "prefix=${PREFIX}" >> "$GITHUB_OUTPUT"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "deps_hash=${DEPS_HASH}" >> "$GITHUB_OUTPUT"
           echo "Image prefix: ${PREFIX}"
+          echo "Deps hash: ${DEPS_HASH}"
 
       - name: Login to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
@@ -81,16 +92,38 @@ jobs:
         if: github.event.inputs.force_rebuild != 'true'
         run: |
           PREFIX="${{ steps.meta.outputs.prefix }}"
-          docker pull "${PREFIX}/deps:latest" 2>/dev/null && \
-            docker tag "${PREFIX}/deps:latest" itrade-deps:latest || true
           docker pull "${PREFIX}/console:latest" 2>/dev/null || true
           docker pull "${PREFIX}/schema-migrator:latest" 2>/dev/null || true
           docker pull "${PREFIX}/web:latest" 2>/dev/null || true
 
-      # ── Build shared dependencies base image ────────────────
-      - name: Build deps image
+      - name: Check deps image cache
+        id: deps_cache
+        if: github.event.inputs.force_rebuild != 'true'
         run: |
           PREFIX="${{ steps.meta.outputs.prefix }}"
+          DEPS_HASH="${{ steps.meta.outputs.deps_hash }}"
+          if docker manifest inspect "${PREFIX}/deps:${DEPS_HASH}" >/dev/null 2>&1; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Found deps image: ${PREFIX}/deps:${DEPS_HASH}"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "ℹ️  No deps image for hash ${DEPS_HASH}"
+          fi
+
+      - name: Pull deps image for build base
+        if: github.event.inputs.force_rebuild != 'true' && steps.deps_cache.outputs.hit == 'true'
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          DEPS_HASH="${{ steps.meta.outputs.deps_hash }}"
+          docker pull "${PREFIX}/deps:${DEPS_HASH}"
+          docker tag "${PREFIX}/deps:${DEPS_HASH}" itrade-deps:latest
+
+      # ── Build shared dependencies base image ────────────────
+      - name: Build deps image
+        if: github.event.inputs.force_rebuild == 'true' || steps.deps_cache.outputs.hit != 'true'
+        run: |
+          PREFIX="${{ steps.meta.outputs.prefix }}"
+          DEPS_HASH="${{ steps.meta.outputs.deps_hash }}"
           CACHE_FLAG=""
           if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
             CACHE_FLAG="--no-cache"
@@ -102,11 +135,13 @@ jobs:
             -f Dockerfile.deps \
             -t itrade-deps:latest \
             -t "${PREFIX}/deps:latest" \
+            -t "${PREFIX}/deps:${DEPS_HASH}" \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             ${CACHE_FLAG} \
             .
 
           docker push "${PREFIX}/deps:latest"
+          docker push "${PREFIX}/deps:${DEPS_HASH}"
 
       # ── Build and push console image ────────────────────────
       - name: Build and push console image

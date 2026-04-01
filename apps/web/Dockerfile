@@ -1,9 +1,27 @@
 # ============================================================
 # Web Application (Next.js)
 # ============================================================
-# Uses the unified build base image with everything pre-built
+# Uses the unified deps base image and builds in this image
 # ============================================================
-FROM itrade-deps:latest AS runner
+FROM itrade-deps:latest AS build
+
+WORKDIR /app
+
+COPY --chown=appuser:nodejs tsconfig.base.json ./
+COPY --chown=appuser:nodejs packages/ ./packages/
+COPY --chown=appuser:nodejs apps/ ./apps/
+
+RUN pnpm -r --filter "./packages/*" build
+
+WORKDIR /app/apps/web
+
+ENV NODE_ENV=production
+ENV BUILD_MODE=prod
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN pnpm build
+
+FROM build AS runner
 
 WORKDIR /app/apps/web
 

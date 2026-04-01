@@ -7,6 +7,13 @@
 # ============================================================
 FROM node:20-alpine AS deps
 
+ARG ZSCALER_CA_B64=""
+
+RUN if [ -n "$ZSCALER_CA_B64" ]; then \
+      mkdir -p /etc/ssl/certs && \
+      echo "$ZSCALER_CA_B64" | base64 -d >> /etc/ssl/certs/ca-certificates.crt; \
+    fi
+
 RUN apk update && apk add --no-cache python3 make g++
 RUN npm install -g pnpm@10.18.0 turbo@1.13.4 ts-node@10.9.2
 
@@ -39,23 +46,7 @@ COPY --chown=appuser:nodejs apps/console/package.json              ./apps/consol
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install -r --no-frozen-lockfile
 
-# Copy all source code (preserving monorepo structure)
-COPY --chown=appuser:nodejs tsconfig.base.json ./
-COPY --chown=appuser:nodejs packages/ ./packages/
-COPY --chown=appuser:nodejs apps/ ./apps/
-
-# Recreate pnpm symlinks after the source COPY.
-# Docker's COPY creates new overlayfs layers that can break the symlinks
-# pnpm created in packages/*/node_modules/ during the earlier install step.
-# This is fast (~5s) because all packages are already in the local .pnpm store.
-RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install -r --prefer-offline --frozen-lockfile
-
-# Build all packages and apps using Turbo (with build cache)
-RUN --mount=type=cache,id=turbo-cache,target=/app/.turbo \
-    turbo build --concurrency=2
-
 USER appuser
 
-# This stage is complete - all dependencies are installed and everything is built
-# App-specific Dockerfiles will use: FROM itrade-deps:latest
+# This stage is complete - only dependencies are installed.
+# App-specific Dockerfiles will COPY source and run builds as needed.

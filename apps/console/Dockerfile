@@ -8,9 +8,20 @@
 # ============================================================
 
 # ============================================================
+# Stage 0: workspace — shared source layer
+# ============================================================
+FROM itrade-deps:latest AS workspace
+
+WORKDIR /app
+
+COPY --chown=appuser:nodejs tsconfig.base.json ./
+COPY --chown=appuser:nodejs packages/ ./packages/
+COPY --chown=appuser:nodejs apps/ ./apps/
+
+# ============================================================
 # Stage 1: schema-migrator — TypeORM schema sync (init container)
 # ============================================================
-FROM itrade-deps:latest AS schema-migrator
+FROM workspace AS schema-migrator
 
 WORKDIR /app/packages/data-manager
 
@@ -21,7 +32,7 @@ CMD ["pnpm", "run", "sync-schema"]
 # ============================================================
 # Stage 2: console — Production console application
 # ============================================================
-FROM itrade-deps:latest AS console
+FROM workspace AS console
 
 WORKDIR /app/apps/console
 
