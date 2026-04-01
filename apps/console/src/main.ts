@@ -57,6 +57,6 @@ async function main() {
 
 // Start the application
 main().catch((error) => {
-  void error;
+  logger.error('Console startup failed', error instanceof Error ? error : { error });
   process.exit(1);
 });

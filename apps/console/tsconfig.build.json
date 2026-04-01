@@ -1,7 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "outDir": "./dist",
     "rootDir": "./src",
     "module": "CommonJS",
@@ -13,8 +12,7 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": true,
-    "inlineSources": true,
-    "paths": {}
+    "inlineSources": true
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
