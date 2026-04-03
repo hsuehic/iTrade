@@ -260,10 +260,16 @@ export class BinanceExchange extends BaseExchange {
   ): Promise<Order> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
 
-    // Determine if this is a futures order
-    const isFutures =
-      this._isFuturesSymbol(symbol) ||
-      Boolean(options?.positionSide || options?.reduceOnly || options?.leverage);
+    // Determine if this is a futures order strictly based on symbol format
+    const isFutures = this._isFuturesSymbol(symbol);
+
+    if (!isFutures && options) {
+      if (options.leverage || options.positionSide || options.reduceOnly) {
+        console.warn(
+          `Derivatives options (leverage, positionSide, reduceOnly) were provided for spot symbol ${symbol}. These will be ignored by spot API.`,
+        );
+      }
+    }
 
     // Set leverage for futures if provided and different from current
     if (isFutures && options?.leverage) {
