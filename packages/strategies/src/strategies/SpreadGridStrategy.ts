@@ -283,23 +283,22 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     }
 
     const { bestBid, bestAsk } = this.getBestBidAsk();
+
     if (side === OrderSide.BUY) {
-      if (bestBid && bestBid.gt(0)) {
-        return Decimal.min(price, bestBid);
-      }
       if (bestAsk && bestAsk.gt(0)) {
         return price.lt(bestAsk) ? price : null;
       }
-      return null;
+      return price;
     }
 
-    if (bestAsk && bestAsk.gt(0)) {
-      return Decimal.max(price, bestAsk);
+    if (side === OrderSide.SELL) {
+      if (bestBid && bestBid.gt(0)) {
+        return price.gt(bestBid) ? price : null;
+      }
+      return price;
     }
-    if (bestBid && bestBid.gt(0)) {
-      return price.gt(bestBid) ? price : null;
-    }
-    return null;
+
+    return price;
   }
 
   private getOrderBookRange(): { minBid: Decimal; maxAsk: Decimal } | null {

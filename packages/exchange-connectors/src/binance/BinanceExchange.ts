@@ -165,7 +165,11 @@ export class BinanceExchange extends BaseExchange {
 
   public async getOrderBook(symbol: string, limit = 100): Promise<OrderBook> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
-    const response = await this.httpClient.get('/api/v3/depth', {
+    const isFutures = this._isFuturesSymbol(symbol);
+    const path = isFutures ? '/fapi/v1/depth' : '/api/v3/depth';
+    const client = isFutures ? this.futuresClient : this.httpClient;
+
+    const response = await client.get(path, {
       params: { symbol: normalizedSymbol, limit },
     });
 
