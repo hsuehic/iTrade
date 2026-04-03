@@ -42,7 +42,7 @@
       "@/*": ["./*"]
     },
     "composite": true,
-    "noEmit": false,
+    "noEmit": true,
     "incremental": true
   },
   "include": [

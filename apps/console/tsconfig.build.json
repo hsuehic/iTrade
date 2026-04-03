@@ -12,7 +12,8 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": true,
-    "inlineSources": true
+    "inlineSources": true,
+    "paths": {}
   },
   "include": ["src/**/*"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
