@@ -53,6 +53,11 @@
   "dependencies": {
     "ws": "^8.18.3"
   },
+  "pnpm": {
+    "overrides": {
+      "decimal.js": "10.4.3"
+    }
+  },
   "lint-staged": {
     "*.{ts,tsx,js,jsx,mjs}": [
       "eslint --fix",
