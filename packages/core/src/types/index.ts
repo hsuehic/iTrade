@@ -271,6 +271,7 @@ export interface SignalMetaData {
   parentOrderId?: string;
   entryPrice?: string;
   takeProfitPrice?: string;
+  stopPrice?: string;
   profitRatio?: number;
 }
 
