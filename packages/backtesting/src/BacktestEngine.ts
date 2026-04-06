@@ -2,221 +2,545 @@ import { Decimal } from 'decimal.js';
 import {
   BacktestConfig,
   BacktestResult,
+  BacktestTrade,
   IBacktestEngine,
   IStrategy,
   IDataManager,
-  BacktestTrade,
-  OrderSide,
   Kline,
-  StrategyResult,
+  KlineInterval,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+  TimeInForce,
+  normalizeAnalyzeResult,
   isHoldResult,
   isActionableResult,
   isCancelOrderResult,
   isUpdateOrderResult,
-  normalizeAnalyzeResult,
-  KlineInterval,
 } from '@itrade/core';
 
-export class BacktestEngine implements IBacktestEngine {
-  private trades: BacktestTrade[] = [];
-  private equity: Array<{ timestamp: Date; value: Decimal }> = [];
-  private currentBalance: Decimal = new Decimal(0);
-  private positions: Map<
-    string,
-    { quantity: Decimal; avgPrice: Decimal; side: OrderSide }
-  > = new Map();
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal order state types
+// ─────────────────────────────────────────────────────────────────────────────
 
+/** A limit entry order waiting to be filled on a future bar. */
+interface PendingEntry {
+  clientOrderId: string;
+  side: OrderSide; // BUY = long entry, SELL = short entry
+  price: Decimal;
+  quantity: Decimal;
+  barIndex: number; // bar at which the order was placed (for TTL tracking)
+}
+
+/** A filled entry position whose take-profit (and optional stop-loss) are being tracked. */
+interface ActiveExit {
+  clientOrderId: string; // TP order's clientOrderId from the strategy signal
+  tpPrice: Decimal;
+  slPrice: Decimal | null; // null when stopLossPercent is 0
+  entrySide: OrderSide; // side of the ENTRY that opened this position
+  entryPrice: Decimal;
+  quantity: Decimal;
+  entryTime: Date;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: build a synthetic Order object to feed back to strategy.analyze()
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _orderId = 1;
+function buildOrder(
+  clientOrderId: string,
+  symbol: string,
+  side: OrderSide,
+  price: Decimal,
+  quantity: Decimal,
+  status: OrderStatus,
+  exchange: string,
+) {
+  return {
+    id: String(_orderId++),
+    clientOrderId,
+    symbol,
+    side,
+    type: OrderType.LIMIT,
+    quantity,
+    price,
+    averagePrice: price,
+    executedQuantity: quantity,
+    status,
+    timeInForce: TimeInForce.GTC,
+    timestamp: new Date(),
+    exchange,
+  };
+}
+
+/** Convert OrderSide enum to the 'buy' | 'sell' literal used in Trade.side. */
+function toTradeSide(side: OrderSide): 'buy' | 'sell' {
+  return side === OrderSide.BUY ? 'buy' : 'sell';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BacktestEngine
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class BacktestEngine implements IBacktestEngine {
+  // ── Public entry point ─────────────────────────────────────────────────────
+
+  /**
+   * Run a backtest for all symbols in `config` using one isolated strategy
+   * instance per symbol (created via `strategyFactory`).
+   *
+   * Simulation loop per bar:
+   *   1. Check whether any pending limit entry orders fill on this bar.
+   *   2. Check whether any active TP / SL orders are hit on this bar.
+   *   3. For each fill, call strategy.analyze({ orders }) + onTradeExecuted()
+   *      so the strategy can react (e.g. place a TP order after an entry fill).
+   *   4. Call strategy.analyze({ klines: [bar] }) for the MA / signal logic.
+   *   5. Queue any new entry / cancel signals from step 4.
+   *   6. Record MTM equity snapshot.
+   *
+   * At end of run, open positions are closed at the last bar's close price.
+   */
   public async runBacktest(
-    strategy: IStrategy,
+    strategyFactory: (symbol: string) => IStrategy,
     config: BacktestConfig,
     dataManager: IDataManager,
   ): Promise<BacktestResult> {
-    // Initialize backtest state
-    this.trades = [];
-    this.equity = [];
-    this.currentBalance = config.initialBalance;
-    this.positions.clear();
+    const entryTtlBars = config.entryTtlBars ?? 16;
+    const stopLossPct = config.stopLossPercent ?? 0;
 
-    // Record initial equity
-    this.equity.push({
-      timestamp: config.startDate,
-      value: this.currentBalance,
-    });
+    const allTrades: BacktestTrade[] = [];
+    const equityCurve: Array<{ timestamp: Date; value: Decimal }> = [];
 
-    // Process each symbol
+    // Start equity at initialBalance; each symbol simulation adjusts the
+    // running cash balance independently then we aggregate.
+    let runningBalance = new Decimal(config.initialBalance);
+
+    equityCurve.push({ timestamp: config.startDate, value: runningBalance });
+
     for (const symbol of config.symbols) {
-      await this.backtestSymbol(symbol, strategy, config, dataManager);
-    }
+      const strategy = strategyFactory(symbol);
+      const exchange = Array.isArray(strategy.config.exchange)
+        ? strategy.config.exchange[0]
+        : strategy.config.exchange;
 
-    // Calculate final metrics
-    return this.calculateMetrics(this.trades, config.initialBalance);
-  }
-
-  private async backtestSymbol(
-    symbol: string,
-    strategy: IStrategy,
-    config: BacktestConfig,
-    dataManager: IDataManager,
-  ): Promise<void> {
-    const { exchange } = strategy.config;
-    // Get historical data
-    const klines = await dataManager.getKlines(
-      symbol,
-      config.timeframe,
-      config.startDate,
-      config.endDate,
-    );
-
-    // Process each kline
-    for (const kline of klines) {
-      // Analyze with strategy
-      const results = normalizeAnalyzeResult(
-        await strategy.analyze({
-          klines: [kline],
-          exchangeName: Array.isArray(exchange) ? exchange[0] : exchange,
-          symbol,
-        }),
+      const klines = await dataManager.getKlines(
+        symbol,
+        config.timeframe,
+        config.startDate,
+        config.endDate,
       );
 
-      for (const result of results) {
-        // Execute trades based on strategy signals
-        if (result.action !== 'hold') {
-          await this.executeTrade(symbol, result, kline, config);
-        }
-      }
+      if (klines.length === 0) continue;
 
-      // Update equity curve
-      const portfolioValue = this.calculatePortfolioValue(klines);
-      this.equity.push({
-        timestamp: kline.closeTime,
-        value: portfolioValue,
-      });
-    }
-  }
-
-  private async executeTrade(
-    symbol: string,
-    signal: StrategyResult,
-    kline: Kline,
-    config: BacktestConfig,
-  ): Promise<void> {
-    if (!isActionableResult(signal)) return;
-    if (isCancelOrderResult(signal) || isUpdateOrderResult(signal)) return;
-
-    // Now signal is guaranteed to be StrategyOrderResult
-    if (!signal.quantity) return;
-
-    const price = signal.price || kline.close;
-    const slippageAdjustedPrice = this.applySlippage(
-      price,
-      signal.action,
-      config.slippage,
-    );
-    const commission = slippageAdjustedPrice.mul(signal.quantity).mul(config.commission);
-
-    const currentPosition = this.positions.get(symbol);
-
-    if (signal.action === 'buy') {
-      const cost = slippageAdjustedPrice.mul(signal.quantity).add(commission);
-
-      if (this.currentBalance.gte(cost)) {
-        this.currentBalance = this.currentBalance.sub(cost);
-
-        if (currentPosition) {
-          // Add to existing position
-          const totalQuantity = currentPosition.quantity.add(signal.quantity);
-          const totalValue = currentPosition.quantity
-            .mul(currentPosition.avgPrice)
-            .add(slippageAdjustedPrice.mul(signal.quantity));
-          const avgPrice = totalValue.div(totalQuantity);
-
-          this.positions.set(symbol, {
-            quantity: totalQuantity,
-            avgPrice,
-            side: OrderSide.BUY,
-          });
-        } else {
-          // New position
-          this.positions.set(symbol, {
-            quantity: signal.quantity,
-            avgPrice: slippageAdjustedPrice,
-            side: OrderSide.BUY,
-          });
-        }
-      }
-    } else if (
-      signal.action === 'sell' &&
-      currentPosition &&
-      currentPosition.quantity.gte(signal.quantity)
-    ) {
-      // Sell position
-      const proceeds = slippageAdjustedPrice.mul(signal.quantity).sub(commission);
-      this.currentBalance = this.currentBalance.add(proceeds);
-
-      // Calculate PnL
-      const pnl = slippageAdjustedPrice
-        .sub(currentPosition.avgPrice)
-        .mul(signal.quantity)
-        .sub(commission);
-
-      // Record trade
-      this.trades.push({
+      const { trades, finalBalance, symbolEquity } = await this.simulateSymbol(
         symbol,
-        side: OrderSide.SELL,
-        entryPrice: currentPosition.avgPrice,
-        exitPrice: slippageAdjustedPrice,
-        quantity: signal.quantity,
-        entryTime: new Date(), // This should be tracked from position opening
-        exitTime: kline.closeTime,
-        pnl,
-        commission,
-        duration: 0, // Calculate based on entry/exit time
-      });
+        exchange,
+        strategy,
+        klines,
+        runningBalance,
+        config.commission,
+        config.slippage,
+        entryTtlBars,
+        stopLossPct,
+      );
 
-      // Update position
-      const remainingQuantity = currentPosition.quantity.sub(signal.quantity);
-      if (remainingQuantity.isZero()) {
-        this.positions.delete(symbol);
-      } else {
-        this.positions.set(symbol, {
-          ...currentPosition,
-          quantity: remainingQuantity,
-        });
+      allTrades.push(...trades);
+      runningBalance = finalBalance;
+
+      // Merge symbol equity snapshots into the global curve.
+      for (const point of symbolEquity) {
+        equityCurve.push(point);
       }
     }
+
+    // Sort equity curve chronologically.
+    equityCurve.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    return this.calculateMetrics(
+      allTrades,
+      new Decimal(config.initialBalance),
+      equityCurve,
+    );
   }
 
-  private applySlippage(
-    price: Decimal,
-    action: 'buy' | 'sell',
-    slippage?: Decimal,
-  ): Decimal {
-    if (!slippage || slippage.isZero()) {
-      return price;
+  // ── Per-symbol simulation ──────────────────────────────────────────────────
+
+  private async simulateSymbol(
+    symbol: string,
+    exchange: string,
+    strategy: IStrategy,
+    klines: Kline[],
+    initialBalance: Decimal,
+    commissionRate: Decimal,
+    slippage: Decimal | undefined,
+    entryTtlBars: number,
+    stopLossPct: number,
+  ): Promise<{
+    trades: BacktestTrade[];
+    finalBalance: Decimal;
+    symbolEquity: Array<{ timestamp: Date; value: Decimal }>;
+  }> {
+    let cash = new Decimal(initialBalance);
+
+    // Pending limit entry orders: clientOrderId → PendingEntry
+    const pendingEntries = new Map<string, PendingEntry>();
+
+    // Active exits being tracked: clientOrderId → ActiveExit
+    const activeExits = new Map<string, ActiveExit>();
+
+    const trades: BacktestTrade[] = [];
+    const symbolEquity: Array<{ timestamp: Date; value: Decimal }> = [];
+
+    const slMultiplierLong =
+      stopLossPct > 0 ? new Decimal(1).minus(new Decimal(stopLossPct).div(100)) : null;
+    const slMultiplierShort =
+      stopLossPct > 0 ? new Decimal(1).plus(new Decimal(stopLossPct).div(100)) : null;
+
+    for (let barIdx = 0; barIdx < klines.length; barIdx++) {
+      const bar = klines[barIdx];
+      const bullish = bar.close.gte(bar.open);
+
+      // ── Phase 1: Collect fills for this bar ─────────────────────────────────
+
+      const fills: Array<
+        | { type: 'entry'; entry: PendingEntry; fillPrice: Decimal }
+        | { type: 'tp'; exit: ActiveExit; fillPrice: Decimal }
+        | { type: 'sl'; exit: ActiveExit; fillPrice: Decimal }
+      > = [];
+
+      // Pending entry fills
+      for (const [cid, entry] of pendingEntries) {
+        // TTL expired → cancel silently
+        if (barIdx - entry.barIndex >= entryTtlBars) {
+          pendingEntries.delete(cid);
+          continue;
+        }
+
+        const hit =
+          entry.side === OrderSide.BUY
+            ? bar.low.lte(entry.price) // long entry: price dips to or below order price
+            : bar.high.gte(entry.price); // short entry: price rises to or above order price
+
+        if (hit) {
+          fills.push({
+            type: 'entry',
+            entry,
+            fillPrice: this.applySlippage(entry.price, entry.side, slippage),
+          });
+          pendingEntries.delete(cid);
+        }
+      }
+
+      // Active TP / SL fills
+      for (const [cid, exit] of activeExits) {
+        const isLong = exit.entrySide === OrderSide.BUY;
+
+        const tpHit = isLong
+          ? bar.high.gte(exit.tpPrice) // long TP: price rises to TP
+          : bar.low.lte(exit.tpPrice); // short TP: price falls to TP
+        const slHit =
+          exit.slPrice !== null &&
+          (isLong
+            ? bar.low.lte(exit.slPrice) // long SL: price drops to SL
+            : bar.high.gte(exit.slPrice)); // short SL: price rises to SL
+
+        if (tpHit && slHit) {
+          // Both hit on same bar — use candle direction as tie-breaker
+          const tpWins = isLong ? bullish : !bullish;
+          if (tpWins) {
+            fills.push({
+              type: 'tp',
+              exit,
+              fillPrice: this.applySlippage(
+                exit.tpPrice,
+                isLong ? OrderSide.SELL : OrderSide.BUY,
+                slippage,
+              ),
+            });
+          } else {
+            fills.push({
+              type: 'sl',
+              exit,
+              fillPrice: this.applySlippage(
+                exit.slPrice!,
+                isLong ? OrderSide.SELL : OrderSide.BUY,
+                slippage,
+              ),
+            });
+          }
+          activeExits.delete(cid);
+        } else if (tpHit) {
+          fills.push({
+            type: 'tp',
+            exit,
+            fillPrice: this.applySlippage(
+              exit.tpPrice,
+              isLong ? OrderSide.SELL : OrderSide.BUY,
+              slippage,
+            ),
+          });
+          activeExits.delete(cid);
+        } else if (slHit) {
+          fills.push({
+            type: 'sl',
+            exit,
+            fillPrice: this.applySlippage(
+              exit.slPrice!,
+              isLong ? OrderSide.SELL : OrderSide.BUY,
+              slippage,
+            ),
+          });
+          activeExits.delete(cid);
+        }
+      }
+
+      // ── Phase 2: Process fills and notify strategy ───────────────────────────
+
+      for (const fill of fills) {
+        if (fill.type === 'entry') {
+          const { entry, fillPrice } = fill;
+          const isLong = entry.side === OrderSide.BUY;
+          const comm = fillPrice.mul(entry.quantity).mul(commissionRate);
+
+          if (isLong) {
+            cash = cash.minus(fillPrice.mul(entry.quantity)).minus(comm);
+          } else {
+            cash = cash.plus(fillPrice.mul(entry.quantity)).minus(comm);
+          }
+
+          // Notify strategy of the entry fill → it should respond with a TP order
+          const filledOrder = buildOrder(
+            entry.clientOrderId,
+            symbol,
+            entry.side,
+            fillPrice,
+            entry.quantity,
+            OrderStatus.FILLED,
+            exchange,
+          );
+          const sigs = normalizeAnalyzeResult(
+            await strategy.analyze({
+              exchangeName: exchange,
+              symbol,
+              orders: [filledOrder],
+            }),
+          );
+          await strategy.onTradeExecuted?.({
+            id: entry.clientOrderId,
+            side: toTradeSide(entry.side),
+            price: fillPrice,
+            quantity: entry.quantity,
+            symbol,
+            exchange,
+            timestamp: bar.openTime,
+          });
+
+          // Register any TP exit orders the strategy returned
+          for (const sig of sigs) {
+            if (isHoldResult(sig) || isCancelOrderResult(sig) || isUpdateOrderResult(sig))
+              continue;
+            if (!isActionableResult(sig)) continue;
+            if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
+            if (sig.action === 'sell' && isLong) {
+              // Long take-profit order
+              activeExits.set(sig.clientOrderId, {
+                clientOrderId: sig.clientOrderId,
+                tpPrice: sig.price,
+                slPrice: slMultiplierLong ? fillPrice.mul(slMultiplierLong) : null,
+                entrySide: OrderSide.BUY,
+                entryPrice: fillPrice,
+                quantity: sig.quantity,
+                entryTime: bar.openTime,
+              });
+            } else if (sig.action === 'buy' && !isLong) {
+              // Short take-profit order (cover buy)
+              activeExits.set(sig.clientOrderId, {
+                clientOrderId: sig.clientOrderId,
+                tpPrice: sig.price,
+                slPrice: slMultiplierShort ? fillPrice.mul(slMultiplierShort) : null,
+                entrySide: OrderSide.SELL,
+                entryPrice: fillPrice,
+                quantity: sig.quantity,
+                entryTime: bar.openTime,
+              });
+            }
+          }
+        } else {
+          // TP or SL exit fill
+          const { exit, fillPrice } = fill;
+          const isLong = exit.entrySide === OrderSide.BUY;
+          const exitSide = isLong ? OrderSide.SELL : OrderSide.BUY;
+          const comm = fillPrice.mul(exit.quantity).mul(commissionRate);
+
+          if (isLong) {
+            cash = cash.plus(fillPrice.mul(exit.quantity)).minus(comm);
+          } else {
+            cash = cash.minus(fillPrice.mul(exit.quantity)).minus(comm);
+          }
+
+          const pnl = isLong
+            ? fillPrice.minus(exit.entryPrice).mul(exit.quantity).minus(comm)
+            : exit.entryPrice.minus(fillPrice).mul(exit.quantity).minus(comm);
+
+          const exitTime = bar.closeTime ?? bar.openTime;
+          trades.push({
+            symbol,
+            side: exit.entrySide,
+            entryPrice: exit.entryPrice,
+            exitPrice: fillPrice,
+            quantity: exit.quantity,
+            entryTime: exit.entryTime,
+            exitTime,
+            pnl,
+            commission: comm,
+            duration: Math.round((exitTime.getTime() - exit.entryTime.getTime()) / 60000),
+          });
+
+          // Notify strategy of exit fill (CANCELED status for SL, FILLED for TP)
+          const exitStatus =
+            fill.type === 'sl' ? OrderStatus.CANCELED : OrderStatus.FILLED;
+          const exitOrder = buildOrder(
+            exit.clientOrderId,
+            symbol,
+            exitSide,
+            fillPrice,
+            exit.quantity,
+            exitStatus,
+            exchange,
+          );
+          const sigs = normalizeAnalyzeResult(
+            await strategy.analyze({
+              exchangeName: exchange,
+              symbol,
+              orders: [exitOrder],
+            }),
+          );
+          await strategy.onTradeExecuted?.({
+            id: exit.clientOrderId,
+            side: toTradeSide(exitSide),
+            price: fillPrice,
+            quantity: exit.quantity,
+            symbol,
+            exchange,
+            timestamp: bar.openTime,
+          });
+
+          // The strategy may return the next entry order after a TP/SL
+          for (const sig of sigs) {
+            if (isHoldResult(sig) || !isActionableResult(sig) || isCancelOrderResult(sig))
+              continue;
+            if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
+            if (sig.action === 'buy' || sig.action === 'sell') {
+              pendingEntries.set(sig.clientOrderId, {
+                clientOrderId: sig.clientOrderId,
+                side: sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+                price: sig.price,
+                quantity: sig.quantity,
+                barIndex: barIdx,
+              });
+            }
+          }
+        }
+      }
+
+      // ── Phase 3: Kline analysis → new entry signals ──────────────────────────
+
+      const klineSigs = normalizeAnalyzeResult(
+        await strategy.analyze({ exchangeName: exchange, symbol, klines: [bar] }),
+      );
+
+      for (const sig of klineSigs) {
+        if (isHoldResult(sig)) continue;
+
+        if (isCancelOrderResult(sig)) {
+          // Strategy cancels a pending entry
+          if (sig.clientOrderId) pendingEntries.delete(sig.clientOrderId);
+          continue;
+        }
+
+        if (!isActionableResult(sig) || isUpdateOrderResult(sig)) continue;
+        if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
+
+        if (sig.action === 'buy' || sig.action === 'sell') {
+          pendingEntries.set(sig.clientOrderId, {
+            clientOrderId: sig.clientOrderId,
+            side: sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+            price: sig.price,
+            quantity: sig.quantity,
+            barIndex: barIdx,
+          });
+        }
+      }
+
+      // ── Phase 4: MTM equity snapshot ─────────────────────────────────────────
+
+      let mtm = new Decimal(cash);
+      for (const exit of activeExits.values()) {
+        const isLong = exit.entrySide === OrderSide.BUY;
+        if (isLong) {
+          mtm = mtm.plus(bar.close.mul(exit.quantity));
+        } else {
+          mtm = mtm.minus(bar.close.mul(exit.quantity));
+        }
+      }
+
+      symbolEquity.push({ timestamp: bar.closeTime ?? bar.openTime, value: mtm });
     }
 
-    const slippageMultiplier =
-      action === 'buy'
-        ? new Decimal(1).add(slippage) // Pay more when buying
-        : new Decimal(1).sub(slippage); // Receive less when selling
+    // ── Close all remaining open positions at last bar's close price ───────────
 
-    return price.mul(slippageMultiplier);
-  }
+    const lastClose = klines[klines.length - 1].close;
+    const lastTime =
+      klines[klines.length - 1].closeTime ?? klines[klines.length - 1].openTime;
 
-  private calculatePortfolioValue(klines: Kline[]): Decimal {
-    const latestPrice = klines[klines.length - 1]?.close || new Decimal(0);
-    let totalValue = this.currentBalance;
+    for (const exit of activeExits.values()) {
+      const isLong = exit.entrySide === OrderSide.BUY;
+      const comm = lastClose.mul(exit.quantity).mul(commissionRate);
 
-    for (const [_symbol, position] of this.positions) {
-      // In a real implementation, you'd get the latest price for each symbol
-      const positionValue = latestPrice.mul(position.quantity);
-      totalValue = totalValue.add(positionValue);
+      if (isLong) {
+        cash = cash.plus(lastClose.mul(exit.quantity)).minus(comm);
+      } else {
+        cash = cash.minus(lastClose.mul(exit.quantity)).minus(comm);
+      }
+
+      const pnl = isLong
+        ? lastClose.minus(exit.entryPrice).mul(exit.quantity).minus(comm)
+        : exit.entryPrice.minus(lastClose).mul(exit.quantity).minus(comm);
+
+      trades.push({
+        symbol,
+        side: exit.entrySide,
+        entryPrice: exit.entryPrice,
+        exitPrice: lastClose,
+        quantity: exit.quantity,
+        entryTime: exit.entryTime,
+        exitTime: lastTime,
+        pnl,
+        commission: comm,
+        duration: Math.round((lastTime.getTime() - exit.entryTime.getTime()) / 60000),
+      });
     }
 
-    return totalValue;
+    return { trades, finalBalance: cash, symbolEquity };
   }
 
-  public calculateMetrics(trades: any[], initialBalance: Decimal): BacktestResult {
+  // ── Slippage helper ────────────────────────────────────────────────────────
+
+  private applySlippage(price: Decimal, side: OrderSide, slippage?: Decimal): Decimal {
+    if (!slippage || slippage.isZero()) return price;
+    return side === OrderSide.BUY
+      ? price.mul(new Decimal(1).plus(slippage))
+      : price.mul(new Decimal(1).minus(slippage));
+  }
+
+  // ── Metrics ────────────────────────────────────────────────────────────────
+
+  public calculateMetrics(
+    trades: BacktestTrade[],
+    initialBalance: Decimal,
+    equityCurve: Array<{ timestamp: Date; value: Decimal }>,
+  ): BacktestResult {
     if (trades.length === 0) {
       return {
         totalReturn: new Decimal(0),
@@ -227,59 +551,70 @@ export class BacktestEngine implements IBacktestEngine {
         profitFactor: new Decimal(0),
         totalTrades: 0,
         avgTradeDuration: 0,
-        equity: this.equity,
+        equity: equityCurve,
         trades: [],
       };
     }
 
-    // Calculate returns
-    const finalBalance = this.equity[this.equity.length - 1]?.value || initialBalance;
-    const totalReturn = finalBalance.sub(initialBalance).div(initialBalance);
+    const finalEquity = equityCurve[equityCurve.length - 1]?.value ?? initialBalance;
+    const totalReturn = finalEquity.minus(initialBalance).div(initialBalance);
 
-    // Calculate win rate
-    const winningTrades = trades.filter((trade) => trade.pnl.gt(0));
-    const winRate = new Decimal(winningTrades.length).div(trades.length);
+    // Win rate
+    const winners = trades.filter((t) => t.pnl.gt(0));
+    const winRate = new Decimal(winners.length).div(trades.length);
 
-    // Calculate profit factor
-    const grossProfit = trades
-      .filter((trade) => trade.pnl.gt(0))
-      .reduce((sum, trade) => sum.add(trade.pnl), new Decimal(0));
-
+    // Profit factor
+    const grossProfit = winners.reduce((s, t) => s.plus(t.pnl), new Decimal(0));
     const grossLoss = trades
-      .filter((trade) => trade.pnl.lt(0))
-      .reduce((sum, trade) => sum.add(trade.pnl.abs()), new Decimal(0));
+      .filter((t) => t.pnl.lte(0))
+      .reduce((s, t) => s.plus(t.pnl.abs()), new Decimal(0));
+    const profitFactor = grossLoss.isZero()
+      ? grossProfit.isZero()
+        ? new Decimal(0)
+        : new Decimal(Infinity)
+      : grossProfit.div(grossLoss);
 
-    const profitFactor = grossLoss.isZero() ? new Decimal(0) : grossProfit.div(grossLoss);
-
-    // Calculate max drawdown
+    // Max drawdown
     let maxDrawdown = new Decimal(0);
     let peak = initialBalance;
-
-    for (const point of this.equity) {
-      if (point.value.gt(peak)) {
-        peak = point.value;
-      }
-      const drawdown = peak.sub(point.value).div(peak);
-      if (drawdown.gt(maxDrawdown)) {
-        maxDrawdown = drawdown;
-      }
+    for (const pt of equityCurve) {
+      if (pt.value.gt(peak)) peak = pt.value;
+      const dd = peak.isZero() ? new Decimal(0) : peak.minus(pt.value).div(peak);
+      if (dd.gt(maxDrawdown)) maxDrawdown = dd;
     }
 
-    // Calculate average trade duration
-    const avgTradeDuration =
-      trades.reduce((sum, trade) => sum + trade.duration, 0) / trades.length;
+    // Annualised return
+    const startTime = equityCurve[0]?.timestamp.getTime() ?? Date.now();
+    const endTime =
+      equityCurve[equityCurve.length - 1]?.timestamp.getTime() ?? Date.now();
+    const years = (endTime - startTime) / (1000 * 60 * 60 * 24 * 365.25);
+    const annualizedReturn =
+      years > 0 ? totalReturn.div(new Decimal(years)) : new Decimal(0);
 
-    // Calculate annualized return (simplified)
-    const years = this.calculateTimeSpanInYears();
-    const annualizedReturn = years > 0 ? totalReturn.div(years) : new Decimal(0);
+    // Sharpe ratio (simplified, no risk-free rate)
+    const returns: Decimal[] = [];
+    for (let i = 1; i < equityCurve.length; i++) {
+      const prev = equityCurve[i - 1].value;
+      if (!prev.isZero()) {
+        returns.push(equityCurve[i].value.minus(prev).div(prev));
+      }
+    }
+    const avgReturn =
+      returns.length > 0
+        ? returns.reduce((s, r) => s.plus(r), new Decimal(0)).div(returns.length)
+        : new Decimal(0);
+    const variance =
+      returns.length > 1
+        ? returns
+            .map((r) => r.minus(avgReturn).pow(2))
+            .reduce((s, v) => s.plus(v), new Decimal(0))
+            .div(returns.length - 1)
+        : new Decimal(0);
+    const stdDev = variance.sqrt();
+    const sharpeRatio = stdDev.isZero() ? new Decimal(0) : avgReturn.div(stdDev);
 
-    // Calculate Sharpe ratio (simplified - would need risk-free rate and volatility)
-    const returns = this.calculateDailyReturns();
-    const avgReturn = returns
-      .reduce((sum, r) => sum.add(r), new Decimal(0))
-      .div(returns.length);
-    const volatility = this.calculateVolatility(returns, avgReturn);
-    const sharpeRatio = volatility.isZero() ? new Decimal(0) : avgReturn.div(volatility);
+    // Average trade duration (in minutes)
+    const avgTradeDuration = trades.reduce((s, t) => s + t.duration, 0) / trades.length;
 
     return {
       totalReturn,
@@ -290,77 +625,28 @@ export class BacktestEngine implements IBacktestEngine {
       profitFactor,
       totalTrades: trades.length,
       avgTradeDuration,
-      equity: this.equity,
+      equity: equityCurve,
       trades,
     };
   }
 
-  private calculateTimeSpanInYears(): number {
-    if (this.equity.length < 2) return 0;
-
-    const start = this.equity[0].timestamp.getTime();
-    const end = this.equity[this.equity.length - 1].timestamp.getTime();
-    const diffMs = end - start;
-    const diffYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
-
-    return diffYears;
-  }
-
-  private calculateDailyReturns(): Decimal[] {
-    const returns: Decimal[] = [];
-
-    for (let i = 1; i < this.equity.length; i++) {
-      const prevValue = this.equity[i - 1].value;
-      const currentValue = this.equity[i].value;
-
-      if (!prevValue.isZero()) {
-        const dailyReturn = currentValue.sub(prevValue).div(prevValue);
-        returns.push(dailyReturn);
-      }
-    }
-
-    return returns;
-  }
-
-  private calculateVolatility(returns: Decimal[], avgReturn: Decimal): Decimal {
-    if (returns.length < 2) return new Decimal(0);
-
-    const squaredDeviations = returns.map((r) => r.sub(avgReturn).pow(2));
-    const variance = squaredDeviations
-      .reduce((sum, deviation) => sum.add(deviation), new Decimal(0))
-      .div(returns.length - 1);
-
-    return variance.sqrt();
-  }
-
+  /** @deprecated Use the overload that accepts a strategyFactory. */
   public generateReport(result: BacktestResult): string {
-    const report = `
-=== BACKTEST RESULTS ===
-
-Performance Metrics:
-- Total Return: ${result.totalReturn.mul(100).toFixed(2)}%
-- Annualized Return: ${result.annualizedReturn.mul(100).toFixed(2)}%
-- Sharpe Ratio: ${result.sharpeRatio.toFixed(3)}
-- Maximum Drawdown: ${result.maxDrawdown.mul(100).toFixed(2)}%
-
-Trading Statistics:
-- Total Trades: ${result.totalTrades}
-- Win Rate: ${result.winRate.mul(100).toFixed(2)}%
-- Profit Factor: ${result.profitFactor.toFixed(3)}
-- Average Trade Duration: ${result.avgTradeDuration.toFixed(1)} periods
-
-Trade Summary:
-${result.trades
-  .slice(0, 10)
-  .map(
-    (trade) =>
-      `${trade.side} ${trade.quantity} ${trade.symbol} @ ${trade.exitPrice} | PnL: ${trade.pnl.toFixed(2)}`,
-  )
-  .join('\n')}
-${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trades` : ''}
-    `.trim();
-
-    return report;
+    return [
+      '=== BACKTEST RESULTS ===',
+      '',
+      'Performance Metrics:',
+      `- Total Return:       ${result.totalReturn.mul(100).toFixed(2)}%`,
+      `- Annualised Return:  ${result.annualizedReturn.mul(100).toFixed(2)}%`,
+      `- Sharpe Ratio:       ${result.sharpeRatio.toFixed(3)}`,
+      `- Max Drawdown:       ${result.maxDrawdown.mul(100).toFixed(2)}%`,
+      '',
+      'Trading Statistics:',
+      `- Total Trades:       ${result.totalTrades}`,
+      `- Win Rate:           ${result.winRate.mul(100).toFixed(2)}%`,
+      `- Profit Factor:      ${result.profitFactor.toFixed(3)}`,
+      `- Avg Trade Duration: ${result.avgTradeDuration.toFixed(1)} min`,
+    ].join('\n');
   }
 
   public async *simulateMarketData(
@@ -369,27 +655,21 @@ ${result.trades.length > 10 ? `\n... and ${result.trades.length - 10} more trade
     endTime: Date,
     timeframe: string,
   ): AsyncGenerator<Kline> {
-    // This is a placeholder implementation
-    // In a real implementation, this would yield historical data in chronological order
+    // Placeholder — callers should use a real IDataManager.
     const duration = endTime.getTime() - startTime.getTime();
-    const intervals = Math.floor(duration / (60 * 1000)); // Assuming 1-minute intervals
-
-    for (let i = 0; i < intervals; i++) {
-      const timestamp = new Date(startTime.getTime() + i * 60 * 1000);
-
-      // Generate synthetic data for demonstration
-      const basePrice = new Decimal(100);
-      const randomFactor = new Decimal(Math.random() * 0.02 - 0.01); // ±1% random change
-      const price = basePrice.mul(new Decimal(1).add(randomFactor));
-
+    const intervalMs = 60_000;
+    const bars = Math.floor(duration / intervalMs);
+    for (let i = 0; i < bars; i++) {
+      const ts = new Date(startTime.getTime() + i * intervalMs);
+      const price = new Decimal(100);
       yield {
         symbol,
         interval: timeframe as unknown as KlineInterval,
-        openTime: timestamp,
-        closeTime: new Date(timestamp.getTime() + 60 * 1000),
+        openTime: ts,
+        closeTime: new Date(ts.getTime() + intervalMs),
         open: price,
-        high: price.mul(1.001),
-        low: price.mul(0.999),
+        high: price.mul('1.001'),
+        low: price.mul('0.999'),
         close: price,
         volume: new Decimal(1000),
         quoteVolume: price.mul(1000),

@@ -482,6 +482,10 @@ export interface BacktestConfig {
   slippage?: Decimal;
   symbols: string[];
   timeframe: string;
+  /** How many bars a pending limit entry order stays alive before being cancelled. Default: 16 */
+  entryTtlBars?: number;
+  /** Engine-level stop-loss as a percentage from entry price (e.g. 1.5 = 1.5%). 0 or omitted = disabled. */
+  stopLossPercent?: number;
 }
 
 export interface BacktestResult {

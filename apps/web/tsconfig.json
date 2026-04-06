@@ -31,6 +31,8 @@
       "@itrade/exchange-connectors/*": ["../../packages/exchange-connectors/src/*"],
       "@itrade/strategies": ["../../packages/strategies/src"],
       "@itrade/strategies/*": ["../../packages/strategies/src/*"],
+      "@itrade/backtesting": ["../../packages/backtesting/src/index.ts"],
+      "@itrade/backtesting/*": ["../../packages/backtesting/src/*"],
       "@itrade/data-manager": ["../../packages/data-manager/src/index.ts"],
       "@itrade/data-manager/*": ["../../packages/data-manager/src/*"],
       "@itrade/risk-manager": ["../../packages/risk-manager/src"],
@@ -59,6 +61,7 @@
     { "path": "../../packages/utils" },
     { "path": "../../packages/logger" },
     { "path": "../../packages/exchange-connectors" },
+    { "path": "../../packages/backtesting" },
     { "path": "../../packages/data-manager" },
     { "path": "../../packages/risk-manager" },
     { "path": "../../packages/portfolio-manager" }

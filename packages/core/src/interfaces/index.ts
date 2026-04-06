@@ -21,6 +21,7 @@ import {
   StrategyAnalyzeResult,
   BacktestConfig,
   BacktestResult,
+  BacktestTrade,
   RiskLimits,
   RiskMetrics,
   InitialDataResult,
@@ -328,14 +329,26 @@ export interface IDataManager {
 // Backtesting Engine Interface
 export interface IBacktestEngine {
   // Backtest Execution
+  /**
+   * Run a backtest against historical kline data.
+   *
+   * @param strategyFactory  Called once per symbol to produce an isolated strategy instance.
+   *                         Use this to avoid cross-symbol state contamination.
+   * @param config           Backtest parameters (date range, symbols, commission, etc.)
+   * @param dataManager      Source of historical kline data.
+   */
   runBacktest(
-    strategy: IStrategy,
+    strategyFactory: (symbol: string) => IStrategy,
     config: BacktestConfig,
     dataManager: IDataManager,
   ): Promise<BacktestResult>;
 
   // Performance Analysis
-  calculateMetrics(trades: Trade[], initialBalance: Decimal): BacktestResult;
+  calculateMetrics(
+    trades: BacktestTrade[],
+    initialBalance: Decimal,
+    equityCurve: Array<{ timestamp: Date; value: Decimal }>,
+  ): BacktestResult;
   generateReport(result: BacktestResult): string;
 
   // Data Simulation
