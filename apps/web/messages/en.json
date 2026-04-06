@@ -734,7 +734,9 @@
       "commissionLabel": "Commission (%)",
       "slippageLabel": "Slippage (%)",
       "notesLabel": "Notes",
-      "notesPlaceholder": "Add any notes about this test session..."
+      "notesPlaceholder": "Add any notes about this test session...",
+      "derivedSymbol": "Symbol from strategy:",
+      "derivedTimeframe": "Timeframe from strategy:"
     },
     "stats": {
       "totalSessions": "Total Sessions",
@@ -1049,32 +1051,16 @@
       "noStrategy": "Create configuration only (run later)",
       "strategyOption": "{name} ({type})",
       "createAndRun": "Create & Run Backtest",
-      "runningBacktest": "Running Backtest..."
+      "runningBacktest": "Running Backtest...",
+      "derivedSymbol": "Symbol from strategy:",
+      "derivedTimeframe": "Timeframe from strategy:"
     },
     "fields": {
       "startDate": "Start Date",
       "endDate": "End Date",
-      "exchange": "Exchange",
-      "exchangePlaceholder": "Select exchange",
-      "tradingPairs": "Trading Pairs",
-      "selectedPairs": "Selected: {count} pair(s)",
       "initialBalance": "Initial Balance ($)",
-      "timeframe": "Timeframe",
       "commission": "Commission (%)",
       "slippage": "Slippage (%)"
-    },
-    "timeframes": {
-      "1m": "1 Minute",
-      "5m": "5 Minutes",
-      "15m": "15 Minutes",
-      "30m": "30 Minutes",
-      "1h": "1 Hour",
-      "4h": "4 Hours",
-      "1d": "1 Day"
-    },
-    "pairTypes": {
-      "perp": "Futures",
-      "spot": "Spot"
     },
     "stats": {
       "configurations": "Configurations",
@@ -1095,7 +1081,6 @@
       "action": "Create Your First Backtest"
     },
     "config": {
-      "symbols": "{symbols}",
       "initial": "${amount} initial",
       "runs": "{count} run(s)"
     },
@@ -1118,8 +1103,7 @@
       "analysis": "Analysis"
     },
     "details": {
-      "title": "Backtest Configuration",
-      "symbols": "{symbols}"
+      "title": "Backtest Configuration"
     },
     "trades": {
       "title": "Trade History",
@@ -1143,12 +1127,10 @@
     "configDetails": {
       "title": "Backtest Parameters",
       "dateRange": "Date Range",
-      "timeframe": "Timeframe",
       "initialBalance": "Initial Balance",
       "commission": "Commission",
       "slippage": "Slippage",
-      "notSet": "Not set",
-      "symbols": "Symbols"
+      "notSet": "Not set"
     },
     "analysis": {
       "returnMetrics": "Return Metrics",
@@ -1180,7 +1162,6 @@
       "fetchConfigs": "Failed to fetch configs",
       "loadConfigs": "Failed to load backtest configurations",
       "fetchStrategies": "Failed to fetch strategies",
-      "selectSymbol": "Please select at least one trading pair",
       "createConfig": "Failed to create config",
       "generic": "An error occurred",
       "deleteConfig": "Failed to delete config",

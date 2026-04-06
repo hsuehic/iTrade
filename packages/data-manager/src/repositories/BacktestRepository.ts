@@ -12,8 +12,10 @@ export interface CreateBacktestConfigData {
   initialBalance: string | number;
   commission: string | number;
   slippage?: string | number;
-  symbols: string[];
-  timeframe: string;
+  /** Symbols come from strategy at run-time; optional in config. */
+  symbols?: string[];
+  /** Fallback timeframe; strategy's klineInterval takes precedence when running. */
+  timeframe?: string;
   userId: string;
 }
 
@@ -62,8 +64,8 @@ export class BacktestRepository {
       initialBalance: new Decimal(data.initialBalance),
       commission: new Decimal(data.commission),
       slippage: data.slippage ? new Decimal(data.slippage) : undefined,
-      symbols: data.symbols,
-      timeframe: data.timeframe,
+      symbols: data.symbols ?? undefined,
+      timeframe: data.timeframe ?? undefined,
       user: { id: data.userId },
     } as any);
 

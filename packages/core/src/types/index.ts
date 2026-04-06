@@ -480,8 +480,10 @@ export interface BacktestConfig {
   initialBalance: Decimal;
   commission: Decimal;
   slippage?: Decimal;
-  symbols: string[];
-  timeframe: string;
+  /** Symbols come from the strategy at run-time; stored here only for display / legacy. */
+  symbols?: string[];
+  /** Fallback timeframe; strategy's klineInterval takes precedence when running. */
+  timeframe?: string;
   /** How many bars a pending limit entry order stays alive before being cancelled. Default: 16 */
   entryTtlBars?: number;
   /** Engine-level stop-loss as a percentage from entry price (e.g. 1.5 = 1.5%). 0 or omitted = disabled. */

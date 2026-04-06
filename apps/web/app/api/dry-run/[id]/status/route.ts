@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSession } from '@/lib/auth';
 import { getDataManager } from '@/lib/data-manager';
+import { getPaperTradingManager } from '@/lib/services/paper-trading-manager-instance';
 import { DryRunSessionRepository, DryRunStatus } from '@itrade/data-manager';
 
 export const dynamic = 'force-dynamic';
@@ -49,8 +50,12 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Determine new status based on action
+    const paperTradingManager = await getPaperTradingManager();
+
+    // Handle actions with paper trading integration
     let newStatus: DryRunStatus;
+    let message: string;
+
     switch (action) {
       case 'start':
         if (existing.status === DryRunStatus.RUNNING) {
@@ -59,30 +64,54 @@ export async function POST(
             { status: 400 },
           );
         }
+
+        // Start paper trading session
+        await paperTradingManager.startSession(sessionId, session.user.id);
         newStatus = DryRunStatus.RUNNING;
+        message = 'Paper trading session started successfully';
         break;
+
       case 'stop':
       case 'complete':
         if (existing.status !== DryRunStatus.RUNNING) {
           return NextResponse.json({ error: 'Session is not running' }, { status: 400 });
         }
+
+        // Stop paper trading session
+        if (paperTradingManager.isSessionRunning(sessionId)) {
+          await paperTradingManager.stopSession(sessionId);
+        }
         newStatus = DryRunStatus.COMPLETED;
+        message = 'Paper trading session stopped successfully';
         break;
+
       case 'cancel':
+        // Stop paper trading session if running
+        if (paperTradingManager.isSessionRunning(sessionId)) {
+          await paperTradingManager.stopSession(sessionId);
+        }
         newStatus = DryRunStatus.CANCELED;
+        message = 'Paper trading session cancelled';
         break;
+
       case 'fail':
+        // Stop paper trading session if running
+        if (paperTradingManager.isSessionRunning(sessionId)) {
+          await paperTradingManager.stopSession(sessionId);
+        }
         newStatus = DryRunStatus.FAILED;
+        message = 'Paper trading session marked as failed';
         break;
+
       default:
         newStatus = DryRunStatus.COMPLETED;
+        message = 'Paper trading session completed';
     }
-
-    await dryRunRepo.updateStatus(sessionId, newStatus);
 
     return NextResponse.json({
       success: true,
       status: newStatus,
+      message,
     });
   } catch (error) {
     console.error('Error updating dry run status:', error);

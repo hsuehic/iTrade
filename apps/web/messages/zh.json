@@ -734,7 +734,9 @@
       "commissionLabel": "手续费（%）",
       "slippageLabel": "滑点（%）",
       "notesLabel": "备注",
-      "notesPlaceholder": "为本次测试添加备注..."
+      "notesPlaceholder": "为本次测试添加备注...",
+      "derivedSymbol": "策略交易对：",
+      "derivedTimeframe": "策略时间周期："
     },
     "stats": {
       "totalSessions": "会话总数",
@@ -1049,32 +1051,16 @@
       "noStrategy": "仅创建配置（稍后运行）",
       "strategyOption": "{name}（{type}）",
       "createAndRun": "创建并运行回测",
-      "runningBacktest": "正在运行回测..."
+      "runningBacktest": "正在运行回测...",
+      "derivedSymbol": "策略交易对：",
+      "derivedTimeframe": "策略时间周期："
     },
     "fields": {
       "startDate": "开始日期",
       "endDate": "结束日期",
-      "exchange": "交易所",
-      "exchangePlaceholder": "选择交易所",
-      "tradingPairs": "交易对",
-      "selectedPairs": "已选：{count} 个交易对",
       "initialBalance": "初始资金（$）",
-      "timeframe": "时间周期",
       "commission": "手续费（%）",
       "slippage": "滑点（%）"
-    },
-    "timeframes": {
-      "1m": "1 分钟",
-      "5m": "5 分钟",
-      "15m": "15 分钟",
-      "30m": "30 分钟",
-      "1h": "1 小时",
-      "4h": "4 小时",
-      "1d": "1 天"
-    },
-    "pairTypes": {
-      "perp": "期货",
-      "spot": "现货"
     },
     "stats": {
       "configurations": "配置数量",
@@ -1095,7 +1081,6 @@
       "action": "创建首个回测"
     },
     "config": {
-      "symbols": "{symbols}",
       "initial": "初始资金 ${amount}",
       "runs": "{count} 次运行"
     },
@@ -1118,8 +1103,7 @@
       "analysis": "分析"
     },
     "details": {
-      "title": "回测配置",
-      "symbols": "{symbols}"
+      "title": "回测配置"
     },
     "trades": {
       "title": "交易记录",
@@ -1143,12 +1127,10 @@
     "configDetails": {
       "title": "回测参数",
       "dateRange": "日期范围",
-      "timeframe": "时间周期",
       "initialBalance": "初始资金",
       "commission": "手续费",
       "slippage": "滑点",
-      "notSet": "未设置",
-      "symbols": "交易对"
+      "notSet": "未设置"
     },
     "analysis": {
       "returnMetrics": "收益指标",
@@ -1180,7 +1162,6 @@
       "fetchConfigs": "获取配置失败",
       "loadConfigs": "加载回测配置失败",
       "fetchStrategies": "获取策略失败",
-      "selectSymbol": "请至少选择一个交易对",
       "createConfig": "创建配置失败",
       "generic": "发生错误",
       "deleteConfig": "删除配置失败",

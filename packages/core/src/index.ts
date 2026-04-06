@@ -9,6 +9,7 @@ export type {
 
 // Core Engine
 export { TradingEngine } from './engine/TradingEngine';
+export { PaperTradingEngine } from './engine/PaperTradingEngine';
 
 // Models
 export { BaseStrategy } from './models/BaseStrategy';

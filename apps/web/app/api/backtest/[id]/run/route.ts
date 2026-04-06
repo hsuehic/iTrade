@@ -23,18 +23,17 @@ export const revalidate = 0;
 /**
  * POST /api/backtest/[id]/run
  *
- * Triggers a backtest run for an existing config.
+ * Triggers a backtest run for an existing config against a chosen strategy.
  *
  * Request body:
  * {
- *   strategyId:       number   (required) — DB id of the strategy to test
- *   entryTtlBars?:   number   — bars before a pending limit entry expires (default 16)
+ *   strategyId:        number  (required) — DB id of the strategy to test
+ *   entryTtlBars?:    number  — bars before a pending limit entry expires (default 16)
  *   stopLossPercent?: number  — engine-level SL % from entry price (default 0 = off)
  * }
  *
- * The config's `symbols` array drives the run. One isolated strategy instance
- * is created per symbol (same type + parameters, different symbol context).
- * Historical klines are read from the database via the DataManager.
+ * Symbol:    always read from strategyEntity.symbol (strategy owns its symbol)
+ * Timeframe: strategyEntity.parameters.klineInterval → config.timeframe → '1h'
  *
  * Returns:
  * { result: { id, totalReturn, winRate, ... } }
@@ -131,12 +130,40 @@ export async function POST(
         strategyEntity.name,
       );
 
+    // ── Resolve symbols and timeframe from strategy ────────────────────────────
+    //
+    // Symbols come exclusively from the strategy (config no longer stores them).
+    // Timeframe comes from the strategy's klineInterval parameter; the config's
+    // timeframe field is used only as a last-resort fallback.
+
+    const strategyParams = (strategyEntity.parameters ?? {}) as Record<string, unknown>;
+
+    if (!strategyEntity.symbol) {
+      return NextResponse.json(
+        {
+          error:
+            'Strategy has no symbol configured. Please set a symbol on the strategy.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const effectiveSymbols = [strategyEntity.symbol];
+
+    // Timeframe: strategy's klineInterval takes precedence over config.timeframe.
+    const effectiveTimeframe =
+      typeof strategyParams.klineInterval === 'string' && strategyParams.klineInterval
+        ? strategyParams.klineInterval
+        : (config.timeframe ?? '1h');
+
     // ── Run the backtest ───────────────────────────────────────────────────────
 
     const engine = new BacktestEngine();
 
     const backtestConfig = {
       ...config,
+      symbols: effectiveSymbols,
+      timeframe: effectiveTimeframe,
       entryTtlBars: entryTtlBars ?? 16,
       stopLossPercent: stopLossPercent ?? 0,
     };
@@ -165,7 +192,7 @@ export async function POST(
         const entity = new BacktestTradeEntity();
         Object.assign(entity, {
           result: savedResult,
-          symbol: t.symbol || config.symbols[0] || '',
+          symbol: t.symbol || effectiveSymbols[0] || '',
           side: t.side,
           entryPrice: t.entryPrice,
           exitPrice: t.exitPrice,

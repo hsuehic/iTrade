@@ -210,14 +210,66 @@ export default function DryRunPage() {
         throw new Error(error.error || t('errors.updateStatus'));
       }
 
+      const result = await response.json();
       toast.success(
-        action === 'stop'
-          ? t('messages.stopped')
-          : t('messages.statusUpdated', { action }),
+        result.message ||
+          (action === 'stop'
+            ? t('messages.stopped')
+            : t('messages.statusUpdated', { action })),
       );
       fetchSessions();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('errors.updateStatus'));
+    } finally {
+      setIsUpdatingId(null);
+    }
+  };
+
+  const startSession = async (id: number) => {
+    if (isUpdatingId === id) return;
+
+    setIsUpdatingId(id);
+    try {
+      const response = await fetch(`/api/dry-run/${id}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to start session');
+      }
+
+      const result = await response.json();
+      toast.success(result.message || 'Session started successfully');
+      fetchSessions();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to start session');
+    } finally {
+      setIsUpdatingId(null);
+    }
+  };
+
+  const stopSession = async (id: number) => {
+    if (isUpdatingId === id) return;
+
+    setIsUpdatingId(id);
+    try {
+      const response = await fetch(`/api/dry-run/${id}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to stop session');
+      }
+
+      const result = await response.json();
+      toast.success(result.message || 'Session stopped successfully');
+      fetchSessions();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to stop session');
     } finally {
       setIsUpdatingId(null);
     }
@@ -384,6 +436,37 @@ export default function DryRunPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {/* Show derived symbol & timeframe when a strategy is selected */}
+                        {formData.strategyId &&
+                          (() => {
+                            const picked = strategies.find(
+                              (s) => s.id.toString() === formData.strategyId,
+                            );
+                            if (!picked) return null;
+                            const klineInterval = (
+                              picked.parameters as Record<string, unknown> | undefined
+                            )?.klineInterval as string | undefined;
+                            return (
+                              <div className="rounded-md bg-muted/50 border px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+                                {picked.symbol && (
+                                  <p>
+                                    <span className="font-medium text-foreground">
+                                      {t('createDialog.derivedSymbol')}
+                                    </span>{' '}
+                                    {picked.symbol}
+                                  </p>
+                                )}
+                                {klineInterval && (
+                                  <p>
+                                    <span className="font-medium text-foreground">
+                                      {t('createDialog.derivedTimeframe')}
+                                    </span>{' '}
+                                    {klineInterval}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
                       </div>
 
                       <div className="space-y-2">
@@ -626,19 +709,36 @@ export default function DryRunPage() {
                           </div>
                           <div className="flex gap-2">
                             {session.status === 'running' ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => updateSessionStatus(session.id, 'stop')}
-                                disabled={isUpdatingId === session.id}
-                              >
-                                {isUpdatingId === session.id ? (
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                ) : (
-                                  <IconPlayerStop className="h-4 w-4" />
-                                )}
-                              </Button>
-                            ) : (
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    window.open(
+                                      `/dry-run/${session.id}/trading`,
+                                      '_blank',
+                                    )
+                                  }
+                                  className="bg-blue-600 hover:bg-blue-700"
+                                >
+                                  <IconChartLine className="h-4 w-4 mr-1" />
+                                  Trade
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => stopSession(session.id)}
+                                  disabled={isUpdatingId === session.id}
+                                >
+                                  {isUpdatingId === session.id ? (
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                  ) : (
+                                    <IconPlayerStop className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </>
+                            ) : session.status === 'completed' ||
+                              session.status === 'failed' ||
+                              session.status === 'canceled' ? (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -646,6 +746,29 @@ export default function DryRunPage() {
                               >
                                 <IconEye className="h-4 w-4" />
                               </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => startSession(session.id)}
+                                  disabled={isUpdatingId === session.id}
+                                  className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                                >
+                                  {isUpdatingId === session.id ? (
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                  ) : (
+                                    <IconPlayerPlay className="h-4 w-4" />
+                                  )}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => viewSessionDetails(session)}
+                                >
+                                  <IconEye className="h-4 w-4" />
+                                </Button>
+                              </>
                             )}
                             <Button
                               variant="outline"

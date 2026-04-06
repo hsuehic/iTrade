@@ -52,11 +52,11 @@ export class BacktestConfigEntity implements BacktestConfig {
   })
   slippage?: Decimal;
 
-  @Column('simple-array')
-  symbols!: string[];
+  @Column('simple-array', { nullable: true })
+  symbols?: string[];
 
-  @Column({ type: 'character varying', length: 10 })
-  timeframe!: string;
+  @Column({ type: 'character varying', length: 10, nullable: true })
+  timeframe?: string;
 
   @OneToMany('backtest_results', 'config', {
     onDelete: 'CASCADE',

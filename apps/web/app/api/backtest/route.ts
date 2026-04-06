@@ -84,15 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const {
-      startDate,
-      endDate,
-      initialBalance,
-      commission,
-      slippage,
-      symbols,
-      timeframe,
-    } = body;
+    const { startDate, endDate, initialBalance, commission, slippage } = body;
 
     // Validation
     if (!startDate || !endDate) {
@@ -104,13 +96,6 @@ export async function POST(request: NextRequest) {
 
     if (!initialBalance) {
       return NextResponse.json({ error: 'Initial balance is required' }, { status: 400 });
-    }
-
-    if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one symbol is required' },
-        { status: 400 },
-      );
     }
 
     // Validate dates
@@ -138,8 +123,6 @@ export async function POST(request: NextRequest) {
       initialBalance,
       commission: commission || 0.001, // Default 0.1%
       slippage,
-      symbols,
-      timeframe: timeframe || '1h',
       userId: session.user.id,
     });
 

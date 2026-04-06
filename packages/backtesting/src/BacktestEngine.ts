@@ -118,7 +118,7 @@ export class BacktestEngine implements IBacktestEngine {
 
     equityCurve.push({ timestamp: config.startDate, value: runningBalance });
 
-    for (const symbol of config.symbols) {
+    for (const symbol of config.symbols ?? []) {
       const strategy = strategyFactory(symbol);
       const exchange = Array.isArray(strategy.config.exchange)
         ? strategy.config.exchange[0]
@@ -126,7 +126,7 @@ export class BacktestEngine implements IBacktestEngine {
 
       const klines = await dataManager.getKlines(
         symbol,
-        config.timeframe,
+        config.timeframe ?? '1h',
         config.startDate,
         config.endDate,
       );

@@ -60,8 +60,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private readonly _strategiesWithLoadedInitialData = new Set<string>(); // Track which strategies have loaded initial data
   private _eventBus: EventBus;
   private subscriptionCoordinator: SubscriptionCoordinator;
-  private readonly _userId?: string;
-  private readonly _dataManager?: IDataManager;
+  protected readonly _userId?: string;
+  protected readonly _dataManager?: IDataManager;
 
   // 🆕 Performance Persistence Debounce Timers
   private readonly _performanceSaveTimers = new Map<number, NodeJS.Timeout>();
@@ -86,9 +86,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   private readonly _symbolInfoTtlMs = 30 * 60 * 1000;
 
   constructor(
-    private riskManager: IRiskManager,
-    private portfolioManager: IPortfolioManager,
-    private logger: ILogger,
+    protected riskManager: IRiskManager,
+    protected portfolioManager: IPortfolioManager,
+    protected logger: ILogger,
     userId?: string,
     dataManager?: IDataManager,
   ) {

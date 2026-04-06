@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import {
   IconPlus,
   IconTrash,
   IconRefresh,
-  IconSearch,
   IconChartLine,
   IconCalendar,
   IconTrendingUp,
@@ -63,11 +62,6 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import {
-  SUPPORTED_EXCHANGES,
-  getTradingPairsForExchange,
-  ExchangeId,
-} from '@/lib/exchanges';
 
 interface BacktestConfig {
   id: number;
@@ -76,8 +70,6 @@ interface BacktestConfig {
   initialBalance: string;
   commission: string;
   slippage?: string;
-  symbols: string[];
-  timeframe: string;
   resultsCount?: number;
   bestResult?: BacktestResult;
   latestResult?: BacktestResult;
@@ -135,7 +127,6 @@ export default function BacktestPage() {
   const [_equityPoints, setEquityPoints] = useState<EquityPoint[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
-  const [symbolSearch, setSymbolSearch] = useState('');
 
   const [formData, setFormData] = useState({
     startDate: '',
@@ -143,9 +134,6 @@ export default function BacktestPage() {
     initialBalance: '10000',
     commission: '0.001',
     slippage: '0.0005',
-    exchange: 'coinbase' as ExchangeId,
-    symbols: [] as string[],
-    timeframe: '1h',
     strategyId: '',
   });
 
@@ -191,11 +179,6 @@ export default function BacktestPage() {
     e.preventDefault();
     if (isCreating) return;
 
-    if (formData.symbols.length === 0) {
-      toast.error(t('errors.selectSymbol'));
-      return;
-    }
-
     setIsCreating(true);
     try {
       // Step 1: Create the backtest config
@@ -208,8 +191,6 @@ export default function BacktestPage() {
           initialBalance: formData.initialBalance,
           commission: formData.commission,
           slippage: formData.slippage,
-          symbols: formData.symbols,
-          timeframe: formData.timeframe,
         }),
       });
 
@@ -261,9 +242,6 @@ export default function BacktestPage() {
       initialBalance: '10000',
       commission: '0.001',
       slippage: '0.0005',
-      exchange: 'coinbase' as ExchangeId,
-      symbols: [],
-      timeframe: '1h',
       strategyId: '',
     });
   };
@@ -454,16 +432,6 @@ export default function BacktestPage() {
     (c) => c.bestResult && parseFloat(c.bestResult.totalReturn) > 0,
   ).length;
 
-  const availablePairs = useMemo(() => {
-    const pairs = getTradingPairsForExchange(formData.exchange);
-    if (!symbolSearch) return pairs;
-    const search = symbolSearch.toLowerCase();
-    return pairs.filter(
-      (p) =>
-        p.name.toLowerCase().includes(search) || p.symbol.toLowerCase().includes(search),
-    );
-  }, [formData.exchange, symbolSearch]);
-
   return (
     <SidebarInset>
       <SiteHeader title={t('title')} />
@@ -525,12 +493,12 @@ export default function BacktestPage() {
                         <Label htmlFor="strategy">{t('dialog.strategyLabel')}</Label>
                         <Select
                           value={formData.strategyId || 'none'}
-                          onValueChange={(value) =>
+                          onValueChange={(value) => {
                             setFormData({
                               ...formData,
                               strategyId: value === 'none' ? '' : value,
-                            })
-                          }
+                            });
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder={t('dialog.strategyPlaceholder')} />
@@ -547,119 +515,53 @@ export default function BacktestPage() {
                             ))}
                           </SelectContent>
                         </Select>
+                        {/* Show derived symbol & timeframe when a strategy is selected */}
+                        {formData.strategyId &&
+                          (() => {
+                            const picked = strategies.find(
+                              (s) => String(s.id) === formData.strategyId,
+                            );
+                            if (!picked) return null;
+                            const klineInterval = (
+                              picked.parameters as Record<string, unknown> | undefined
+                            )?.klineInterval as string | undefined;
+                            return (
+                              <div className="rounded-md bg-muted/50 border px-3 py-2 text-xs text-muted-foreground space-y-0.5">
+                                {picked.symbol && (
+                                  <p>
+                                    <span className="font-medium text-foreground">
+                                      {t('dialog.derivedSymbol')}
+                                    </span>{' '}
+                                    {picked.symbol}
+                                  </p>
+                                )}
+                                {klineInterval && (
+                                  <p>
+                                    <span className="font-medium text-foreground">
+                                      {t('dialog.derivedTimeframe')}
+                                    </span>{' '}
+                                    {klineInterval}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="exchange">{t('fields.exchange')}</Label>
-                        <Select
-                          value={formData.exchange}
-                          onValueChange={(value: ExchangeId) =>
-                            setFormData({ ...formData, exchange: value, symbols: [] })
+                        <Label htmlFor="initialBalance">
+                          {t('fields.initialBalance')}
+                        </Label>
+                        <Input
+                          id="initialBalance"
+                          type="number"
+                          step="100"
+                          min="100"
+                          value={formData.initialBalance}
+                          onChange={(e) =>
+                            setFormData({ ...formData, initialBalance: e.target.value })
                           }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('fields.exchangePlaceholder')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {SUPPORTED_EXCHANGES.map((exchange) => (
-                              <SelectItem key={exchange.id} value={exchange.id}>
-                                {exchange.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>{t('fields.tradingPairs')}</Label>
-                        <div className="relative">
-                          <IconSearch className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            placeholder={
-                              t('filters.searchPlaceholder') || 'Search symbols...'
-                            }
-                            value={symbolSearch}
-                            onChange={(e) => setSymbolSearch(e.target.value)}
-                            className="pl-8 h-9 mb-2"
-                          />
-                        </div>
-                        <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                          {availablePairs.map((pair) => (
-                            <label
-                              key={pair.symbol}
-                              className="flex items-center gap-2 cursor-pointer hover:bg-muted p-1 rounded"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={formData.symbols.includes(pair.symbol)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFormData({
-                                      ...formData,
-                                      symbols: [...formData.symbols, pair.symbol],
-                                    });
-                                  } else {
-                                    setFormData({
-                                      ...formData,
-                                      symbols: formData.symbols.filter(
-                                        (s) => s !== pair.symbol,
-                                      ),
-                                    });
-                                  }
-                                }}
-                                className="rounded"
-                              />
-                              <span className="text-sm font-medium">{pair.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                        {formData.symbols.length > 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            {t('fields.selectedPairs', {
-                              count: formData.symbols.length,
-                            })}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="initialBalance">
-                            {t('fields.initialBalance')}
-                          </Label>
-                          <Input
-                            id="initialBalance"
-                            type="number"
-                            step="100"
-                            min="100"
-                            value={formData.initialBalance}
-                            onChange={(e) =>
-                              setFormData({ ...formData, initialBalance: e.target.value })
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="timeframe">{t('fields.timeframe')}</Label>
-                          <Select
-                            value={formData.timeframe}
-                            onValueChange={(value) =>
-                              setFormData({ ...formData, timeframe: value })
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1m">{t('timeframes.1m')}</SelectItem>
-                              <SelectItem value="5m">{t('timeframes.5m')}</SelectItem>
-                              <SelectItem value="15m">{t('timeframes.15m')}</SelectItem>
-                              <SelectItem value="30m">{t('timeframes.30m')}</SelectItem>
-                              <SelectItem value="1h">{t('timeframes.1h')}</SelectItem>
-                              <SelectItem value="4h">{t('timeframes.4h')}</SelectItem>
-                              <SelectItem value="1d">{t('timeframes.1d')}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        />
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
@@ -832,15 +734,8 @@ export default function BacktestPage() {
                               {new Date(config.startDate).toLocaleDateString(
                                 locale,
                               )} - {new Date(config.endDate).toLocaleDateString(locale)}
-                              <Badge variant="outline" className="ml-2">
-                                {config.timeframe}
-                              </Badge>
                             </CardTitle>
                             <CardDescription className="mt-1">
-                              {t('config.symbols', {
-                                symbols: config.symbols.join(', '),
-                              })}{' '}
-                              •{' '}
                               {t('config.initial', {
                                 amount: formatNumber(config.initialBalance),
                               })}{' '}
@@ -1042,10 +937,7 @@ export default function BacktestPage() {
               {selectedConfig && (
                 <>
                   {new Date(selectedConfig.startDate).toLocaleDateString(locale)} -{' '}
-                  {new Date(selectedConfig.endDate).toLocaleDateString(locale)} •{' '}
-                  {t('details.symbols', {
-                    symbols: selectedConfig.symbols.join(', '),
-                  })}
+                  {new Date(selectedConfig.endDate).toLocaleDateString(locale)}
                 </>
               )}
             </DialogDescription>
@@ -1300,7 +1192,7 @@ export default function BacktestPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-4">
-                    <div>
+                    <div className="col-span-2">
                       <div className="text-sm text-muted-foreground">
                         {t('configDetails.dateRange')}
                       </div>
@@ -1308,12 +1200,6 @@ export default function BacktestPage() {
                         {new Date(selectedConfig.startDate).toLocaleDateString(locale)} -{' '}
                         {new Date(selectedConfig.endDate).toLocaleDateString(locale)}
                       </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">
-                        {t('configDetails.timeframe')}
-                      </div>
-                      <div className="font-medium">{selectedConfig.timeframe}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">
@@ -1339,14 +1225,6 @@ export default function BacktestPage() {
                         {selectedConfig.slippage
                           ? `${(parseFloat(selectedConfig.slippage) * 100).toFixed(2)}%`
                           : t('configDetails.notSet')}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">
-                        {t('configDetails.symbols')}
-                      </div>
-                      <div className="font-medium">
-                        {selectedConfig.symbols.join(', ')}
                       </div>
                     </div>
                   </CardContent>
