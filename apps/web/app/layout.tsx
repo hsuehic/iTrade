@@ -4,10 +4,10 @@ import { Toaster } from 'sonner';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
 import { headers } from 'next/headers';
-import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import Script from 'next/script';
 
+import { IntlProvider } from '@/components/intl-provider';
 import { SessionProvider } from '@/components/session-provider';
 import { getAuthFromHeaders } from '@/lib/auth';
 import './globals.css';
@@ -80,7 +80,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <NextIntlClientProvider locale={locale} messages={messages}>
+        <IntlProvider locale={locale} messages={messages}>
           {/* Global Providers */}
           <SessionProvider session={session}>
             <ThemeProvider
@@ -102,7 +102,7 @@ export default async function RootLayout({
               />
             </ThemeProvider>
           </SessionProvider>
-        </NextIntlClientProvider>
+        </IntlProvider>
       </body>
     </html>
   );

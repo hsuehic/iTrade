@@ -20,6 +20,7 @@ import {
   IconTarget,
   IconAlertTriangle,
   IconCheck,
+  IconPlayerPlay,
 } from '@tabler/icons-react';
 import type { StrategyEntity } from '@itrade/data-manager';
 
@@ -80,6 +81,7 @@ interface BacktestConfig {
   resultsCount?: number;
   bestResult?: BacktestResult;
   latestResult?: BacktestResult;
+  results?: BacktestResult[];
 }
 
 interface BacktestResult {
@@ -119,10 +121,14 @@ export default function BacktestPage() {
   const t = useTranslations('backtest');
   const locale = useLocale();
   const [configs, setConfigs] = useState<BacktestConfig[]>([]);
-  const [_strategies, setStrategies] = useState<StrategyEntity[]>([]);
+  const [strategies, setStrategies] = useState<StrategyEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
+  const [runConfigId, setRunConfigId] = useState<number | null>(null);
+  const [runStrategyId, setRunStrategyId] = useState<string>('');
+  const [isRunning, setIsRunning] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<BacktestConfig | null>(null);
   const [selectedResult, setSelectedResult] = useState<BacktestResult | null>(null);
   const [resultTrades, setResultTrades] = useState<BacktestTrade[]>([]);
@@ -140,6 +146,7 @@ export default function BacktestPage() {
     exchange: 'coinbase' as ExchangeId,
     symbols: [] as string[],
     timeframe: '1h',
+    strategyId: '',
   });
 
   const fetchConfigs = useCallback(async () => {
@@ -191,6 +198,7 @@ export default function BacktestPage() {
 
     setIsCreating(true);
     try {
+      // Step 1: Create the backtest config
       const response = await fetch('/api/backtest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,7 +218,28 @@ export default function BacktestPage() {
         throw new Error(error.error || t('errors.createConfig'));
       }
 
-      toast.success(t('messages.created'));
+      const data = await response.json();
+      const createdConfigId: number = data.config.id;
+
+      // Step 2: If a strategy was selected, auto-run the backtest
+      if (formData.strategyId) {
+        toast.info(t('messages.createdAndRunning'));
+        const runResponse = await fetch(`/api/backtest/${createdConfigId}/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ strategyId: parseInt(formData.strategyId, 10) }),
+        });
+        if (!runResponse.ok) {
+          const runError = await runResponse.json();
+          // Config was created but run failed — still succeed but warn
+          toast.warning(runError.error || t('errors.runFailed'));
+        } else {
+          toast.success(t('messages.runCompleted'));
+        }
+      } else {
+        toast.success(t('messages.created'));
+      }
+
       setIsCreateDialogOpen(false);
       resetForm();
       fetchConfigs();
@@ -235,6 +264,7 @@ export default function BacktestPage() {
       exchange: 'coinbase' as ExchangeId,
       symbols: [],
       timeframe: '1h',
+      strategyId: '',
     });
   };
 
@@ -261,6 +291,35 @@ export default function BacktestPage() {
     }
   };
 
+  const openRunDialog = (config: BacktestConfig) => {
+    setRunConfigId(config.id);
+    setRunStrategyId('');
+    setIsRunDialogOpen(true);
+  };
+
+  const runBacktest = async () => {
+    if (!runConfigId || !runStrategyId || isRunning) return;
+    setIsRunning(true);
+    try {
+      const response = await fetch(`/api/backtest/${runConfigId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ strategyId: parseInt(runStrategyId, 10) }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || t('errors.runFailed'));
+      }
+      toast.success(t('messages.runCompleted'));
+      setIsRunDialogOpen(false);
+      fetchConfigs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('errors.generic'));
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   const viewConfigDetails = async (config: BacktestConfig) => {
     setSelectedConfig(config);
     setSelectedResult(config.bestResult || config.latestResult || null);
@@ -278,7 +337,7 @@ export default function BacktestPage() {
     }
   };
 
-  const _viewResultDetails = async (result: BacktestResult) => {
+  const viewResultDetails = async (result: BacktestResult) => {
     setSelectedResult(result);
     setResultTrades([]);
     setEquityPoints([]);
@@ -463,6 +522,34 @@ export default function BacktestPage() {
                       </div>
 
                       <div className="space-y-2">
+                        <Label htmlFor="strategy">{t('dialog.strategyLabel')}</Label>
+                        <Select
+                          value={formData.strategyId || 'none'}
+                          onValueChange={(value) =>
+                            setFormData({
+                              ...formData,
+                              strategyId: value === 'none' ? '' : value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={t('dialog.strategyPlaceholder')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{t('dialog.noStrategy')}</SelectItem>
+                            {strategies.map((s) => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                <span className="font-medium">{s.name}</span>
+                                <span className="text-muted-foreground ml-2 text-xs">
+                                  ({s.type})
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="exchange">{t('fields.exchange')}</Label>
                         <Select
                           value={formData.exchange}
@@ -626,12 +713,20 @@ export default function BacktestPage() {
                           {isCreating ? (
                             <>
                               <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                              {t('actions.creating')}
+                              {formData.strategyId
+                                ? t('dialog.runningBacktest')
+                                : t('actions.creating')}
                             </>
                           ) : (
                             <>
-                              <IconCheck className="h-4 w-4 mr-2" />
-                              {t('actions.createConfig')}
+                              {formData.strategyId ? (
+                                <IconPlayerPlay className="h-4 w-4 mr-2" />
+                              ) : (
+                                <IconCheck className="h-4 w-4 mr-2" />
+                              )}
+                              {formData.strategyId
+                                ? t('dialog.createAndRun')
+                                : t('actions.createConfig')}
                             </>
                           )}
                         </Button>
@@ -757,6 +852,14 @@ export default function BacktestPage() {
                           </div>
                           <div className="flex gap-2">
                             <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => openRunDialog(config)}
+                            >
+                              <IconPlayerPlay className="h-4 w-4 mr-1" />
+                              {t('actions.run')}
+                            </Button>
+                            <Button
                               variant="outline"
                               size="sm"
                               onClick={() => viewConfigDetails(config)}
@@ -867,6 +970,65 @@ export default function BacktestPage() {
           </div>
         </div>
       </div>
+
+      {/* Run Backtest Dialog */}
+      <Dialog open={isRunDialogOpen} onOpenChange={setIsRunDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <IconPlayerPlay className="h-5 w-5" />
+              {t('run.title')}
+            </DialogTitle>
+            <DialogDescription>{t('run.description')}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>{t('run.strategy')}</Label>
+              {strategies.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t('run.noStrategies')}</p>
+              ) : (
+                <Select value={runStrategyId} onValueChange={setRunStrategyId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('run.strategyPlaceholder')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {strategies.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        <span className="font-medium">{s.name}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">
+                          ({s.type})
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsRunDialogOpen(false)}
+              disabled={isRunning}
+            >
+              {t('actions.cancel')}
+            </Button>
+            <Button
+              onClick={runBacktest}
+              disabled={!runStrategyId || isRunning || strategies.length === 0}
+            >
+              {isRunning ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+              ) : (
+                <IconPlayerPlay className="h-4 w-4 mr-2" />
+              )}
+              {isRunning ? t('run.running') : t('actions.run')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Config Details Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
@@ -1055,6 +1217,76 @@ export default function BacktestPage() {
                     <CardContent className="flex flex-col items-center justify-center py-12">
                       <IconChartLine className="h-12 w-12 text-muted-foreground mb-4" />
                       <p className="text-muted-foreground">{t('trades.empty')}</p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* All past runs for this config */}
+                {selectedConfig.results && selectedConfig.results.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">{t('runs.title')}</CardTitle>
+                      <CardDescription>
+                        {t('runs.count', { count: selectedConfig.results.length })}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t('runs.table.strategy')}</TableHead>
+                            <TableHead className="text-right">
+                              {t('metrics.totalReturn')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('metrics.sharpeRatio')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('metrics.winRate')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('metrics.totalTrades')}
+                            </TableHead>
+                            <TableHead />
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedConfig.results.map((r) => (
+                            <TableRow
+                              key={r.id}
+                              className={selectedResult?.id === r.id ? 'bg-muted/50' : ''}
+                            >
+                              <TableCell className="text-sm text-muted-foreground">
+                                {r.strategy?.name ?? '-'}
+                              </TableCell>
+                              <TableCell
+                                className={`text-right font-medium ${getMetricColor(parseFloat(r.totalReturn), 'return')}`}
+                              >
+                                {parseFloat(r.totalReturn) >= 0 ? '+' : ''}
+                                {formatPercent(r.totalReturn)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatNumber(r.sharpeRatio)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatPercent(r.winRate)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {r.totalTrades}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => viewResultDetails(r)}
+                                >
+                                  <IconEye className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </CardContent>
                   </Card>
                 )}

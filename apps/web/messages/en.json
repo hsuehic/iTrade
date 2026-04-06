@@ -756,6 +756,10 @@
     "sessionStrategyLabel": "Strategy:",
     "sessionManual": "Manual trading",
     "sessionStarted": "Started {time}",
+    "details": {
+      "strategySession": "Strategy session: {name}",
+      "manualSession": "Manual session"
+    },
     "session": {
       "initialBalance": "Initial Balance",
       "trades": "Trades",
@@ -1034,11 +1038,18 @@
       "cancel": "Cancel",
       "creating": "Creating...",
       "createConfig": "Create Configuration",
-      "view": "View"
+      "view": "View",
+      "run": "Run"
     },
     "dialog": {
       "title": "Create Backtest Configuration",
-      "description": "Configure a new backtest to evaluate strategy performance on historical data"
+      "description": "Configure a new backtest to evaluate strategy performance on historical data",
+      "strategyLabel": "Strategy (optional)",
+      "strategyPlaceholder": "Select a strategy to run immediately",
+      "noStrategy": "Create configuration only (run later)",
+      "strategyOption": "{name} ({type})",
+      "createAndRun": "Create & Run Backtest",
+      "runningBacktest": "Running Backtest..."
     },
     "fields": {
       "startDate": "Start Date",
@@ -1174,11 +1185,29 @@
       "generic": "An error occurred",
       "deleteConfig": "Failed to delete config",
       "fetchDetails": "Failed to fetch config details",
-      "fetchResultDetails": "Failed to fetch result details"
+      "fetchResultDetails": "Failed to fetch result details",
+      "runFailed": "Failed to run backtest"
     },
     "messages": {
-      "created": "Backtest configuration created successfully",
-      "deleted": "Configuration deleted successfully"
+      "created": "Backtest configuration created",
+      "createdAndRunning": "Configuration created, running backtest...",
+      "runCompleted": "Backtest completed",
+      "deleted": "Configuration deleted"
+    },
+    "run": {
+      "title": "Run Backtest",
+      "description": "Select a strategy to run against this configuration",
+      "strategy": "Strategy",
+      "strategyPlaceholder": "Select a strategy",
+      "running": "Running...",
+      "noStrategies": "No strategies found. Please create a strategy first."
+    },
+    "runs": {
+      "title": "Past Runs",
+      "count": "{count} run(s) for this configuration",
+      "table": {
+        "strategy": "Strategy"
+      }
     }
   },
   "portfolio": {

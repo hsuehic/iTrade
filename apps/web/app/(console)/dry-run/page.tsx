@@ -354,9 +354,12 @@ export default function DryRunPage() {
                           {t('createDialog.strategyLabel')}
                         </Label>
                         <Select
-                          value={formData.strategyId}
+                          value={formData.strategyId || 'manual'}
                           onValueChange={(value) =>
-                            setFormData({ ...formData, strategyId: value })
+                            setFormData({
+                              ...formData,
+                              strategyId: value === 'manual' ? '' : value,
+                            })
                           }
                         >
                           <SelectTrigger>
@@ -365,7 +368,7 @@ export default function DryRunPage() {
                             />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">
+                            <SelectItem value="manual">
                               {t('createDialog.noStrategy')}
                             </SelectItem>
                             {strategies.map((strategy) => (
