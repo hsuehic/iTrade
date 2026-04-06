@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
+import path from 'path';
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 const buildMode = process.env.BUILD_MODE;
@@ -35,7 +36,11 @@ const nextConfig: NextConfig = {
     (config.resolve as Record<string, unknown>).alias = {
       ...(((config.resolve as Record<string, unknown>).alias as Record<string, string>) ??
         {}),
-      uuid: require.resolve('uuid/dist/index.js'),
+      // uuid v9+ exports map doesn't expose './dist/index.js' as a subpath,
+      // so require.resolve('uuid/dist/index.js') throws ERR_PACKAGE_PATH_NOT_EXPORTED.
+      // Resolve via the always-exported './package.json' subpath instead, then
+      // construct the absolute path to the CJS entry manually.
+      uuid: path.resolve(require.resolve('uuid/package.json'), '..', 'dist', 'index.js'),
     };
 
     if (isServer) {
