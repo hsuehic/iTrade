@@ -1,6 +1,10 @@
 import 'reflect-metadata';
-import { TradingEngine, LogLevel } from '@itrade/core';
-import { ConsoleLogger } from '@itrade/logger';
+import {
+  TradingEngine,
+  LogLevel,
+  ConsoleLogger,
+  createEmptyPerformance,
+} from '@itrade/core';
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
 import {
@@ -118,14 +122,28 @@ async function main() {
   // Start trading engine
   await engine.start();
 
-  for (let symbol in ['BTC/USDT', 'BTC/USDT:USDT']) {
-    for (let exchange in ['binance', 'okx', 'coinbase']) {
+  for (const symbol of ['BTC/USDT', 'BTC/USDT:USDT']) {
+    for (const exchange of ['binance', 'okx', 'coinbase']) {
       const strategy = new MovingAverageStrategy({
-        symbol: 'BTC/USDT',
-        exchange: 'binance',
-        fastPeriod: 10,
-        slowPeriod: 30,
-        threshold: 0.001,
+        type: 'MovingAverageStrategy',
+        symbol,
+        exchange,
+        performance: createEmptyPerformance(
+          symbol,
+          exchange,
+          undefined,
+          `Ma-${symbol}-${exchange}`,
+        ),
+        parameters: {
+          fastPeriod: 10,
+          slowPeriod: 30,
+          klineInterval: '15m',
+          takeProfitPercent: 2,
+          stopLossPercent: 0,
+          orderAmount: 100,
+          maxPositionSize: 500,
+          minPositionSize: 0,
+        },
         subscription: {
           ticker: true,
           orderbook: true,
@@ -275,9 +293,14 @@ async function main() {
   });
   eventBus.onOrderBookUpdate((data) => {
     console.log(data);
-    logger.info(
-      `🔍 ORDER BOOK: ${data.symbol} - ${data.orderbook.asks[0][0].toString()}`,
-    );
+    const bestAsk = data.orderbook.asks?.[0]?.[0];
+    const bestBid = data.orderbook.bids?.[0]?.[0];
+    const bestPrice = bestAsk ?? bestBid;
+    if (bestPrice === undefined) {
+      logger.info(`🔍 ORDER BOOK: ${data.symbol} - no depth available`);
+      return;
+    }
+    logger.info(`🔍 ORDER BOOK: ${data.symbol} - ${bestPrice.toString()}`);
   });
   eventBus.onTradeUpdate((data) => {
     console.log(data);
