@@ -782,10 +782,21 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
    */
   private _positionAllows(action: 'buy' | 'sell'): boolean {
     const qty = new Decimal(this._parameters.orderAmount);
+    const pos = this._currentPosition;
+    const max = this._parameters.maxPositionSize;
+    const min = this._parameters.minPositionSize;
     if (action === 'buy') {
-      return this._currentPosition.plus(qty).lte(this._parameters.maxPositionSize);
+      const allowed = pos.plus(qty).lte(max);
+      this._logger.info(
+        `[_positionAllows:buy] pos=${pos.toString()} + qty=${qty.toString()} <= max=${max} -> ${allowed}`,
+      );
+      return allowed;
     }
-    return this._currentPosition.minus(qty).gte(this._parameters.minPositionSize);
+    const allowed = pos.minus(qty).gte(min);
+    this._logger.info(
+      `[_positionAllows:sell] pos=${pos.toString()} - qty=${qty.toString()} >= min=${min} -> ${allowed}`,
+    );
+    return allowed;
   }
 
   // ── Signal builders ───────────────────────────────────────────────────────

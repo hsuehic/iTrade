@@ -198,8 +198,8 @@ export abstract class BaseStrategy<
       // Update average price if available
       this._averagePrice = trade.price;
 
-      this._logger.debug(
-        `[${this.strategyType}:${this._strategyId}] Trade executed: ${trade.side} ${quantity} @ ${trade.price}`,
+      this._logger.info(
+        `[${this.strategyType}:${this._strategyId}] Position updated to ${this._currentPosition.toString()} (via ${trade.side} ${quantity})`,
       );
 
       // Update performance metrics (Volume, Fees, PnL)

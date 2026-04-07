@@ -22,13 +22,13 @@
     "@changesets/cli": "^2.26.2",
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.14.0",
-    "@next/eslint-plugin-next": "^15.5.11",
+    "@next/eslint-plugin-next": "^16.2.2",
     "@types/node": "^24.6.1",
     "@typescript-eslint/eslint-plugin": "^8.13.0",
     "@typescript-eslint/parser": "^8.13.0",
     "dotenv": "^17.2.3",
     "eslint": "^9.14.0",
-    "eslint-config-next": "15.5.11",
+    "eslint-config-next": "16.2.2",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-prettier": "^5.5.4",
@@ -55,7 +55,15 @@
   },
   "pnpm": {
     "overrides": {
-      "decimal.js": "10.4.3"
+      "decimal.js": "10.4.3",
+      "@next/swc-darwin-arm64": "16.2.2",
+      "@next/swc-darwin-x64": "16.2.2",
+      "@next/swc-linux-arm64-gnu": "16.2.2",
+      "@next/swc-linux-arm64-musl": "16.2.2",
+      "@next/swc-linux-x64-gnu": "16.2.2",
+      "@next/swc-linux-x64-musl": "16.2.2",
+      "@next/swc-win32-arm64-msvc": "16.2.2",
+      "@next/swc-win32-x64-msvc": "16.2.2"
     }
   },
   "lint-staged": {

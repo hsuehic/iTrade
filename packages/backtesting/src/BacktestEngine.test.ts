@@ -542,8 +542,8 @@ describe('BacktestEngine', () => {
         makeDataManager(klines),
       );
 
-      // No activeExit → no force-close trade
-      expect(result.totalTrades).toBe(0);
+      // New behavior: entry fills, stays open, then force-closed at end of run → 1 trade
+      expect(result.totalTrades).toBe(1);
     });
 
     it('4c. Multiple open positions force-closed — all recorded', async () => {
@@ -1121,13 +1121,14 @@ describe('BacktestEngine', () => {
 
       expect(result.totalTrades).toBe(1);
       const trade = result.trades[0];
-      // The engine records pnl = (exitPrice - entryPrice)*qty - exitCommission only.
-      // Entry commission is deducted from cash but NOT included in the trade.pnl field.
+      // The engine records pnl = (exitPrice - entryPrice)*qty - exitCommission - entryCommission.
+      // Entry commission is deducted from cash and NOW included in the trade.pnl field.
       // gross = (110-100)*1 = 10
+      // entry commission = 100*1*0.001 = 0.1
       // exit commission = 110*1*0.001 = 0.11
-      // pnl stored in trade ≈ 10 - 0.11 = 9.89
-      expect(trade.pnl.toNumber()).toBeCloseTo(9.89, 1);
-      expect(trade.commission.toNumber()).toBeCloseTo(0.11, 2);
+      // pnl stored in trade ≈ 10 - 0.1 - 0.11 = 9.79
+      expect(trade.pnl.toNumber()).toBeCloseTo(9.79, 1);
+      expect(trade.commission.toNumber()).toBeCloseTo(0.21, 2);
     });
 
     it('9b. Final equity increases after profitable trade', async () => {

@@ -4,8 +4,9 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
-import react from 'eslint-plugin-react';
-import reactHooks from 'eslint-plugin-react-hooks';
+import reactPlugin from 'eslint-plugin-react';
+import reactHooksPlugin from 'eslint-plugin-react-hooks';
+import nextConfig from 'eslint-config-next/core-web-vitals';
 
 // 导入 FlatCompat 以处理遗留的配置
 import { FlatCompat } from '@eslint/eslintrc';
@@ -74,39 +75,35 @@ export default defineConfig(
   {
     files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
     plugins: {
-      react,
-      'react-hooks': reactHooks,
+      react: reactPlugin,
+      'react-hooks': reactHooksPlugin,
     },
     settings: {
       react: { version: 'detect' },
     },
     rules: {
-      ...react.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
+      ...reactPlugin.configs.recommended.rules,
+      ...reactHooksPlugin.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
     },
   },
 
-  // Next.js 前端应用配置
-  // 将 Next.js 配置和 `compat` 兼容配置合并
-  ...compat
-    .config({
-      extends: ['next/core-web-vitals'],
-      settings: {
-        // 在 compat.config 中设置 rootDir
-        next: {
-          rootDir: 'apps/web/',
-        },
+  // Next.js 前端应用配置 (ESLint 9 Flat Config)
+  ...nextConfig.map((config) => ({
+    ...config,
+    files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
+    settings: {
+      ...config.settings,
+      next: {
+        rootDir: 'apps/web/',
       },
-      rules: {
-        '@next/next/no-html-link-for-pages': 'off',
-        'react/display-name': 'off',
-      },
-    })
-    .map((config) => ({
-      ...config,
-      files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
-    })),
+    },
+    rules: {
+      ...config.rules,
+      '@next/next/no-html-link-for-pages': 'off',
+      'react/display-name': 'off',
+    },
+  })),
 
   // Node.js 控制台应用（apps/console）
   {
