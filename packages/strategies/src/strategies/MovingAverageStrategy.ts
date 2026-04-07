@@ -17,7 +17,6 @@ import {
   OrderSide,
 } from '@itrade/core';
 import { StrategyRegistryConfig } from '../type';
-import { silentLogger } from '../utils/silent-logger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registry Config
@@ -332,7 +331,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
   private processedFillIds: Set<string> = new Set();
 
   constructor(config: MovingAverageConfig) {
-    super({ ...config, logger: silentLogger });
+    super({ ...config });
     this._validateParameters();
   }
 
@@ -567,6 +566,35 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       );
     }
 
+    // 8. Close any opposite positions immediately on crossover (market-like exit)
+    // This prevents simultaneous long/short positions and enables cleaner trend-following.
+    if (crossover === 'bullish' && this._currentPosition.lt(0)) {
+      // We are short, price crossed bullish -> Close all shorts
+      const closeShortSignal: StrategyOrderResult = {
+        action: 'buy',
+        clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
+        quantity: this._currentPosition.abs(),
+        price: this.lastKline?.close ?? kline.close,
+        reason: 'Bullish crossover: closing existing short positions',
+        metadata: {
+          signalType: SignalType.StopLoss, // using StopLoss as a category for "forced" exit
+        },
+      };
+      cancelSignals.push(closeShortSignal);
+    } else if (crossover === 'bearish' && this._currentPosition.gt(0)) {
+      // We are long, price crossed bearish -> Close all longs
+      const closeLongSignal: StrategyOrderResult = {
+        action: 'sell',
+        clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
+        quantity: this._currentPosition,
+        price: this.lastKline?.close ?? kline.close,
+        reason: 'Bearish crossover: closing existing long positions',
+        metadata: {
+          signalType: SignalType.StopLoss,
+        },
+      };
+      cancelSignals.push(closeLongSignal);
+    }
     return cancelSignals;
   }
 

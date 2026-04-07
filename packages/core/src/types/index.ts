@@ -241,6 +241,7 @@ export interface Position {
   unrealizedPnl: Decimal;
   leverage: Decimal;
   timestamp: Date;
+  exchange?: string; // 🆕 Exchange name for multi-exchange support
   // Optional: Market value of the position (quantity * markPrice)
   marketValue?: Decimal;
   // Optional: Position value in USD (from exchange, e.g., OKX's notionalUsd)

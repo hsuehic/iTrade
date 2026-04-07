@@ -714,7 +714,10 @@ export class BacktestEngine implements IBacktestEngine {
           // Remaining open position size after this trade closes (activeExits already has
           // this exit deleted by Phase 1, so the map reflects the remaining positions).
           const remainingPositionSize = [...activeExits.values()].reduce(
-            (sum, ae) => sum.plus(ae.quantity),
+            (sum, ae) =>
+              ae.entrySide === OrderSide.BUY
+                ? sum.plus(ae.quantity)
+                : sum.minus(ae.quantity),
             new Decimal(0),
           );
           trades.push({
@@ -843,10 +846,15 @@ export class BacktestEngine implements IBacktestEngine {
         ? lastClose.minus(exit.entryPrice).mul(exit.quantity).minus(comm)
         : exit.entryPrice.minus(lastClose).mul(exit.quantity).minus(comm);
 
-      // Remaining open size = sum of not-yet-closed exits in this loop
       const remainingPositionSize = remainingExits
         .slice(ri + 1)
-        .reduce((sum, ae) => sum.plus(ae.quantity), new Decimal(0));
+        .reduce(
+          (sum, ae) =>
+            ae.entrySide === OrderSide.BUY
+              ? sum.plus(ae.quantity)
+              : sum.minus(ae.quantity),
+          new Decimal(0),
+        );
 
       trades.push({
         symbol,

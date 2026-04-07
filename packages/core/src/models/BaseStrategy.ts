@@ -16,7 +16,6 @@ import {
   Ticker,
   OrderBook,
   Trade,
-  OrderSide,
   SignalType,
   InitialDataResult,
   InitialDataConfig,
@@ -213,11 +212,9 @@ export abstract class BaseStrategy<
 
   public async onPositionUpdate(position: Position): Promise<void> {
     this.emit('positionUpdate', position);
-    if (
-      position.symbol === this._symbol &&
-      (position as any).exchange === this._exchangeName
-    ) {
-      this._currentPosition = position.quantity;
+    if (position.symbol === this._symbol && position.exchange === this._exchangeName) {
+      this._currentPosition =
+        position.side === 'long' ? position.quantity : position.quantity.neg();
       this._averagePrice = position.avgPrice;
       this._logger.debug(
         `[${this.strategyType}:${this._strategyId}] External position update: ${this._currentPosition.toString()} @ ${this._averagePrice?.toString()}`,
