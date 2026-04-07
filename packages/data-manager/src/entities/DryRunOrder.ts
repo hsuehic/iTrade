@@ -32,6 +32,7 @@ export class DryRunOrderEntity implements Order {
 
   @ManyToOne('dry_run_sessions', 'orders', {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn({ name: 'sessionId' })
   session!: DryRunSessionEntity;

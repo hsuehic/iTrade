@@ -67,7 +67,7 @@ export class BacktestConfigEntity implements BacktestConfig {
   })
   results?: BacktestResultEntity[];
 
-  @ManyToOne('user', 'backtestConfigs', { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('user', 'backtestConfigs', { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

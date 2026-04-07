@@ -29,6 +29,7 @@ export class BacktestResultEntity implements BacktestResult {
 
   @ManyToOne('backtest_configs', 'results', {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn({ name: 'configId' })
   config!: BacktestConfigEntity;

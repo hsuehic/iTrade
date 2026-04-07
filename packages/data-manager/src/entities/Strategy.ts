@@ -135,7 +135,7 @@ export class StrategyEntity {
 
   // TypeORM relation - loads the full User object when needed
   @ManyToOne(() => User, (user) => user.strategies, {
-    nullable: false,
+    nullable: true,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'userId' })

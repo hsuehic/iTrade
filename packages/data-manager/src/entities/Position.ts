@@ -92,7 +92,7 @@ export class PositionEntity implements Position {
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
-  @ManyToOne('user', 'positions', { nullable: false })
+  @ManyToOne('user', 'positions', { nullable: true })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

@@ -102,7 +102,7 @@ export class DryRunSessionEntity {
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
 
-  @ManyToOne('user', 'dryRunSessions', { nullable: false, onDelete: 'CASCADE' })
+  @ManyToOne('user', 'dryRunSessions', { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 }

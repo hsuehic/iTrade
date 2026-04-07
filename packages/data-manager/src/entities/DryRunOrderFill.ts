@@ -23,6 +23,7 @@ export class DryRunOrderFillEntity implements OrderFill {
 
   @ManyToOne('dry_run_orders', 'fills', {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn({ name: 'orderId' })
   order!: DryRunOrderEntity;
