@@ -2,7 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import {
   IconPlus,
   IconTrash,
@@ -20,6 +30,9 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconPlayerPlay,
+  IconChevronDown,
+  IconChevronUp,
+  IconExternalLink,
 } from '@tabler/icons-react';
 import type { StrategyEntity } from '@itrade/data-manager';
 
@@ -65,6 +78,7 @@ import { Progress } from '@/components/ui/progress';
 
 interface BacktestConfig {
   id: number;
+  name?: string;
   startDate: string;
   endDate: string;
   initialBalance: string;
@@ -78,6 +92,7 @@ interface BacktestConfig {
 
 interface BacktestResult {
   id: number;
+  name?: string;
   totalReturn: string;
   annualizedReturn: string;
   sharpeRatio: string;
@@ -102,6 +117,10 @@ interface BacktestTrade {
   pnl: string;
   commission: string;
   duration: number;
+  entryCashBalance?: string | null;
+  entryPositionSize?: string | null;
+  cashBalance?: string | null;
+  positionSize?: string | null;
 }
 
 interface EquityPoint {
@@ -112,6 +131,7 @@ interface EquityPoint {
 export default function BacktestPage() {
   const t = useTranslations('backtest');
   const locale = useLocale();
+  const router = useRouter();
   const [configs, setConfigs] = useState<BacktestConfig[]>([]);
   const [strategies, setStrategies] = useState<StrategyEntity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,21 +140,26 @@ export default function BacktestPage() {
   const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
   const [runConfigId, setRunConfigId] = useState<number | null>(null);
   const [runStrategyId, setRunStrategyId] = useState<string>('');
+  const [runName, setRunName] = useState<string>('');
   const [isRunning, setIsRunning] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState<BacktestConfig | null>(null);
   const [selectedResult, setSelectedResult] = useState<BacktestResult | null>(null);
   const [resultTrades, setResultTrades] = useState<BacktestTrade[]>([]);
-  const [_equityPoints, setEquityPoints] = useState<EquityPoint[]>([]);
+  const [equityPoints, setEquityPoints] = useState<EquityPoint[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
+  // Inline expanded results per config card
+  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  const [cardResults, setCardResults] = useState<Record<number, BacktestResult[]>>({});
+  const [loadingCards, setLoadingCards] = useState<Set<number>>(new Set());
 
   const [formData, setFormData] = useState({
+    name: '',
     startDate: '',
     endDate: '',
     initialBalance: '10000',
     commission: '0.001',
     slippage: '0.0005',
-    strategyId: '',
   });
 
   const fetchConfigs = useCallback(async () => {
@@ -142,7 +167,28 @@ export default function BacktestPage() {
       const response = await fetch('/api/backtest', { cache: 'no-store' });
       if (!response.ok) throw new Error(t('errors.fetchConfigs'));
       const data = await response.json();
-      setConfigs(data.configs);
+      const loadedConfigs: BacktestConfig[] = data.configs;
+      setConfigs(loadedConfigs);
+
+      // Auto-expand all config cards and load their results in parallel
+      if (loadedConfigs.length > 0) {
+        setExpandedCards(new Set(loadedConfigs.map((c) => c.id)));
+        const resultsEntries = await Promise.all(
+          loadedConfigs.map(async (c) => {
+            try {
+              const res = await fetch(`/api/backtest/${c.id}?results=true`, {
+                cache: 'no-store',
+              });
+              if (!res.ok) return [c.id, []] as [number, BacktestResult[]];
+              const d = await res.json();
+              return [c.id, d.config?.results || []] as [number, BacktestResult[]];
+            } catch {
+              return [c.id, []] as [number, BacktestResult[]];
+            }
+          }),
+        );
+        setCardResults(Object.fromEntries(resultsEntries));
+      }
     } catch {
       toast.error(t('errors.loadConfigs'));
     } finally {
@@ -181,11 +227,11 @@ export default function BacktestPage() {
 
     setIsCreating(true);
     try {
-      // Step 1: Create the backtest config
       const response = await fetch('/api/backtest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: formData.name.trim() || undefined,
           startDate: formData.startDate,
           endDate: formData.endDate,
           initialBalance: formData.initialBalance,
@@ -199,28 +245,7 @@ export default function BacktestPage() {
         throw new Error(error.error || t('errors.createConfig'));
       }
 
-      const data = await response.json();
-      const createdConfigId: number = data.config.id;
-
-      // Step 2: If a strategy was selected, auto-run the backtest
-      if (formData.strategyId) {
-        toast.info(t('messages.createdAndRunning'));
-        const runResponse = await fetch(`/api/backtest/${createdConfigId}/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ strategyId: parseInt(formData.strategyId, 10) }),
-        });
-        if (!runResponse.ok) {
-          const runError = await runResponse.json();
-          // Config was created but run failed — still succeed but warn
-          toast.warning(runError.error || t('errors.runFailed'));
-        } else {
-          toast.success(t('messages.runCompleted'));
-        }
-      } else {
-        toast.success(t('messages.created'));
-      }
-
+      toast.success(t('messages.created'));
       setIsCreateDialogOpen(false);
       resetForm();
       fetchConfigs();
@@ -237,12 +262,12 @@ export default function BacktestPage() {
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
     setFormData({
+      name: '',
       startDate: oneMonthAgo.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0],
       initialBalance: '10000',
       commission: '0.001',
       slippage: '0.0005',
-      strategyId: '',
     });
   };
 
@@ -272,6 +297,7 @@ export default function BacktestPage() {
   const openRunDialog = (config: BacktestConfig) => {
     setRunConfigId(config.id);
     setRunStrategyId('');
+    setRunName('');
     setIsRunDialogOpen(true);
   };
 
@@ -282,7 +308,10 @@ export default function BacktestPage() {
       const response = await fetch(`/api/backtest/${runConfigId}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strategyId: parseInt(runStrategyId, 10) }),
+        body: JSON.stringify({
+          strategyId: parseInt(runStrategyId, 10),
+          name: runName.trim() || undefined,
+        }),
       });
       if (!response.ok) {
         const error = await response.json();
@@ -290,6 +319,14 @@ export default function BacktestPage() {
       }
       toast.success(t('messages.runCompleted'));
       setIsRunDialogOpen(false);
+      // Clear stale cached results for this config so fetchConfigs reloads fresh
+      if (runConfigId) {
+        setCardResults((prev) => {
+          const next = { ...prev };
+          delete next[runConfigId];
+          return next;
+        });
+      }
       fetchConfigs();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('errors.generic'));
@@ -300,10 +337,16 @@ export default function BacktestPage() {
 
   const viewConfigDetails = async (config: BacktestConfig) => {
     setSelectedConfig(config);
-    setSelectedResult(config.bestResult || config.latestResult || null);
+    const bestOrLatest = config.bestResult || config.latestResult || null;
+    setSelectedResult(bestOrLatest);
     setIsViewDialogOpen(true);
 
-    // Fetch detailed results
+    // Auto-load trades and equity for the selected result so the chart shows immediately
+    if (bestOrLatest) {
+      viewResultDetails(bestOrLatest);
+    }
+
+    // Fetch detailed results list
     try {
       const response = await fetch(`/api/backtest/${config.id}?results=true`);
       if (response.ok) {
@@ -328,9 +371,43 @@ export default function BacktestPage() {
         const data = await response.json();
         setResultTrades(data.result.trades || []);
         setEquityPoints(data.result.equity || []);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        toast.error(err.error || t('errors.fetchResultDetails'));
       }
     } catch {
-      console.error(t('errors.fetchResultDetails'));
+      toast.error(t('errors.fetchResultDetails'));
+    }
+  };
+
+  const toggleCardResults = async (config: BacktestConfig) => {
+    const id = config.id;
+    const next = new Set(expandedCards);
+    if (next.has(id)) {
+      next.delete(id);
+      setExpandedCards(next);
+      return;
+    }
+    next.add(id);
+    setExpandedCards(next);
+    // Already loaded? Skip fetch.
+    if (cardResults[id]) return;
+    // Load results for this config
+    setLoadingCards((prev) => new Set(prev).add(id));
+    try {
+      const res = await fetch(`/api/backtest/${id}?results=true`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setCardResults((prev) => ({ ...prev, [id]: data.config?.results || [] }));
+      }
+    } catch {
+      // silently ignore — results list will just be empty
+    } finally {
+      setLoadingCards((prev) => {
+        const s = new Set(prev);
+        s.delete(id);
+        return s;
+      });
     }
   };
 
@@ -462,6 +539,19 @@ export default function BacktestPage() {
                       <DialogDescription>{t('dialog.description')}</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={createConfig} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="configName">{t('fields.name')}</Label>
+                        <Input
+                          id="configName"
+                          type="text"
+                          placeholder={t('fields.namePlaceholder')}
+                          value={formData.name}
+                          onChange={(e) =>
+                            setFormData({ ...formData, name: e.target.value })
+                          }
+                        />
+                      </div>
+
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="startDate">{t('fields.startDate')}</Label>
@@ -487,65 +577,6 @@ export default function BacktestPage() {
                             required
                           />
                         </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="strategy">{t('dialog.strategyLabel')}</Label>
-                        <Select
-                          value={formData.strategyId || 'none'}
-                          onValueChange={(value) => {
-                            setFormData({
-                              ...formData,
-                              strategyId: value === 'none' ? '' : value,
-                            });
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={t('dialog.strategyPlaceholder')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">{t('dialog.noStrategy')}</SelectItem>
-                            {strategies.map((s) => (
-                              <SelectItem key={s.id} value={String(s.id)}>
-                                <span className="font-medium">{s.name}</span>
-                                <span className="text-muted-foreground ml-2 text-xs">
-                                  ({s.type})
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {/* Show derived symbol & timeframe when a strategy is selected */}
-                        {formData.strategyId &&
-                          (() => {
-                            const picked = strategies.find(
-                              (s) => String(s.id) === formData.strategyId,
-                            );
-                            if (!picked) return null;
-                            const klineInterval = (
-                              picked.parameters as Record<string, unknown> | undefined
-                            )?.klineInterval as string | undefined;
-                            return (
-                              <div className="rounded-md bg-muted/50 border px-3 py-2 text-xs text-muted-foreground space-y-0.5">
-                                {picked.symbol && (
-                                  <p>
-                                    <span className="font-medium text-foreground">
-                                      {t('dialog.derivedSymbol')}
-                                    </span>{' '}
-                                    {picked.symbol}
-                                  </p>
-                                )}
-                                {klineInterval && (
-                                  <p>
-                                    <span className="font-medium text-foreground">
-                                      {t('dialog.derivedTimeframe')}
-                                    </span>{' '}
-                                    {klineInterval}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })()}
                       </div>
 
                       <div className="space-y-2">
@@ -615,20 +646,12 @@ export default function BacktestPage() {
                           {isCreating ? (
                             <>
                               <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                              {formData.strategyId
-                                ? t('dialog.runningBacktest')
-                                : t('actions.creating')}
+                              {t('actions.creating')}
                             </>
                           ) : (
                             <>
-                              {formData.strategyId ? (
-                                <IconPlayerPlay className="h-4 w-4 mr-2" />
-                              ) : (
-                                <IconCheck className="h-4 w-4 mr-2" />
-                              )}
-                              {formData.strategyId
-                                ? t('dialog.createAndRun')
-                                : t('actions.createConfig')}
+                              <IconCheck className="h-4 w-4 mr-2" />
+                              {t('actions.createConfig')}
                             </>
                           )}
                         </Button>
@@ -731,11 +754,25 @@ export default function BacktestPage() {
                           <div>
                             <CardTitle className="text-lg flex items-center gap-2">
                               <IconCalendar className="h-4 w-4 text-muted-foreground" />
-                              {new Date(config.startDate).toLocaleDateString(
-                                locale,
-                              )} - {new Date(config.endDate).toLocaleDateString(locale)}
+                              {config.name ? (
+                                <span>{config.name}</span>
+                              ) : (
+                                <>
+                                  {new Date(config.startDate).toLocaleDateString(locale)}
+                                  {' - '}
+                                  {new Date(config.endDate).toLocaleDateString(locale)}
+                                </>
+                              )}
                             </CardTitle>
                             <CardDescription className="mt-1">
+                              {config.name && (
+                                <>
+                                  {new Date(config.startDate).toLocaleDateString(locale)}
+                                  {' – '}
+                                  {new Date(config.endDate).toLocaleDateString(locale)}
+                                  {' • '}
+                                </>
+                              )}
                               {t('config.initial', {
                                 amount: formatNumber(config.initialBalance),
                               })}{' '}
@@ -753,6 +790,23 @@ export default function BacktestPage() {
                             >
                               <IconPlayerPlay className="h-4 w-4 mr-1" />
                               {t('actions.run')}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleCardResults(config)}
+                            >
+                              {expandedCards.has(config.id) ? (
+                                <IconChevronUp className="h-4 w-4 mr-1" />
+                              ) : (
+                                <IconChevronDown className="h-4 w-4 mr-1" />
+                              )}
+                              {t('runs.title')}
+                              {config.resultsCount ? (
+                                <span className="ml-1 text-xs opacity-70">
+                                  ({config.resultsCount})
+                                </span>
+                              ) : null}
                             </Button>
                             <Button
                               variant="outline"
@@ -779,7 +833,7 @@ export default function BacktestPage() {
                         </div>
                       </CardHeader>
                       {config.bestResult && (
-                        <CardContent>
+                        <CardContent className="pb-0">
                           <div className="bg-muted/50 rounded-lg p-4">
                             <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
                               <IconTrendingUp className="h-3 w-3" />
@@ -857,6 +911,106 @@ export default function BacktestPage() {
                           </div>
                         </CardContent>
                       )}
+
+                      {/* Expandable results list */}
+                      {expandedCards.has(config.id) && (
+                        <CardContent className="pt-3">
+                          {loadingCards.has(config.id) ? (
+                            <div className="flex items-center justify-center py-6">
+                              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                            </div>
+                          ) : (cardResults[config.id] || []).length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                              {t('runs.empty')}
+                            </p>
+                          ) : (
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>{t('runs.table.name')}</TableHead>
+                                  <TableHead>{t('runs.table.strategy')}</TableHead>
+                                  <TableHead className="text-right">
+                                    {t('metrics.totalReturn')}
+                                  </TableHead>
+                                  <TableHead className="text-right">
+                                    {t('metrics.sharpeRatio')}
+                                  </TableHead>
+                                  <TableHead className="text-right">
+                                    {t('metrics.maxDrawdown')}
+                                  </TableHead>
+                                  <TableHead className="text-right">
+                                    {t('metrics.winRate')}
+                                  </TableHead>
+                                  <TableHead className="text-right">
+                                    {t('metrics.totalTrades')}
+                                  </TableHead>
+                                  <TableHead />
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {(cardResults[config.id] || []).map((r) => (
+                                  <TableRow
+                                    key={r.id}
+                                    className="cursor-pointer hover:bg-muted/60"
+                                    onClick={() =>
+                                      router.push(`/backtest/results/${r.id}`)
+                                    }
+                                  >
+                                    <TableCell className="font-medium text-sm">
+                                      {r.name || (
+                                        <span className="text-muted-foreground text-xs">
+                                          {new Date(r.createdAt).toLocaleDateString(
+                                            locale,
+                                          )}
+                                        </span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                      {r.strategy?.name ?? '-'}
+                                    </TableCell>
+                                    <TableCell
+                                      className={`text-right font-medium ${getMetricColor(parseFloat(r.totalReturn), 'return')}`}
+                                    >
+                                      {parseFloat(r.totalReturn) >= 0 ? '+' : ''}
+                                      {formatPercent(r.totalReturn)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {formatNumber(r.sharpeRatio)}
+                                    </TableCell>
+                                    <TableCell
+                                      className={`text-right ${getMetricColor(parseFloat(r.maxDrawdown), 'drawdown')}`}
+                                    >
+                                      {formatPercent(r.maxDrawdown)}
+                                    </TableCell>
+                                    <TableCell
+                                      className={`text-right ${getMetricColor(parseFloat(r.winRate), 'winrate')}`}
+                                    >
+                                      {formatPercent(r.winRate)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {r.totalTrades}
+                                    </TableCell>
+                                    <TableCell
+                                      className="text-right"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          router.push(`/backtest/results/${r.id}`)
+                                        }
+                                      >
+                                        <IconExternalLink className="h-4 w-4" />
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          )}
+                        </CardContent>
+                      )}
                     </Card>
                   ))}
                 </div>
@@ -899,6 +1053,15 @@ export default function BacktestPage() {
                   </SelectContent>
                 </Select>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="run-name">{t('run.name')}</Label>
+              <Input
+                id="run-name"
+                placeholder={t('run.namePlaceholder')}
+                value={runName}
+                onChange={(e) => setRunName(e.target.value)}
+              />
             </div>
           </div>
 
@@ -954,69 +1117,181 @@ export default function BacktestPage() {
               <TabsContent value="results" className="space-y-4">
                 {/* Results Summary Cards */}
                 {selectedResult && (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardDescription>{t('metrics.totalReturn')}</CardDescription>
-                        <CardTitle
-                          className={`text-2xl flex items-center ${getMetricColor(
-                            parseFloat(selectedResult.totalReturn),
-                            'return',
-                          )}`}
-                        >
-                          {parseFloat(selectedResult.totalReturn) >= 0 ? (
-                            <IconArrowUp className="h-5 w-5 mr-1" />
-                          ) : (
-                            <IconArrowDown className="h-5 w-5 mr-1" />
-                          )}
-                          {formatPercent(selectedResult.totalReturn)}
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardDescription>{t('metrics.sharpeRatio')}</CardDescription>
-                        <CardTitle className="text-2xl flex items-center">
-                          {formatNumber(selectedResult.sharpeRatio)}
-                          {getMetricBadge(
-                            parseFloat(selectedResult.sharpeRatio),
-                            'sharpe',
-                          )}
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardDescription>{t('metrics.maxDrawdown')}</CardDescription>
-                        <CardTitle className="text-2xl flex items-center">
-                          <IconAlertTriangle
-                            className={`h-5 w-5 mr-1 ${getMetricColor(
+                  <div className="space-y-3">
+                    {/* Run label row */}
+                    <div className="flex items-center gap-3 text-sm">
+                      {selectedResult.name && (
+                        <span className="font-semibold">{selectedResult.name}</span>
+                      )}
+                      {selectedResult.strategy?.name && (
+                        <span className="text-muted-foreground">
+                          {t('runs.strategy')}:{' '}
+                          <span className="font-medium text-foreground">
+                            {selectedResult.strategy.name}
+                          </span>
+                        </span>
+                      )}
+                      <span className="text-muted-foreground ml-auto text-xs">
+                        {new Date(selectedResult.createdAt).toLocaleString(locale)}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardDescription>{t('metrics.totalReturn')}</CardDescription>
+                          <CardTitle
+                            className={`text-2xl flex items-center ${getMetricColor(
+                              parseFloat(selectedResult.totalReturn),
+                              'return',
+                            )}`}
+                          >
+                            {parseFloat(selectedResult.totalReturn) >= 0 ? (
+                              <IconArrowUp className="h-5 w-5 mr-1" />
+                            ) : (
+                              <IconArrowDown className="h-5 w-5 mr-1" />
+                            )}
+                            {formatPercent(selectedResult.totalReturn)}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardDescription>{t('metrics.sharpeRatio')}</CardDescription>
+                          <CardTitle className="text-2xl flex items-center">
+                            {formatNumber(selectedResult.sharpeRatio)}
+                            {getMetricBadge(
+                              parseFloat(selectedResult.sharpeRatio),
+                              'sharpe',
+                            )}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardDescription>{t('metrics.maxDrawdown')}</CardDescription>
+                          <CardTitle className="text-2xl flex items-center">
+                            <IconAlertTriangle
+                              className={`h-5 w-5 mr-1 ${getMetricColor(
+                                parseFloat(selectedResult.maxDrawdown),
+                                'drawdown',
+                              )}`}
+                            />
+                            {formatPercent(selectedResult.maxDrawdown)}
+                            {getMetricBadge(
                               parseFloat(selectedResult.maxDrawdown),
                               'drawdown',
+                            )}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardDescription>{t('metrics.winRate')}</CardDescription>
+                          <CardTitle
+                            className={`text-2xl ${getMetricColor(
+                              parseFloat(selectedResult.winRate),
+                              'winrate',
                             )}`}
-                          />
-                          {formatPercent(selectedResult.maxDrawdown)}
-                          {getMetricBadge(
-                            parseFloat(selectedResult.maxDrawdown),
-                            'drawdown',
-                          )}
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardDescription>{t('metrics.winRate')}</CardDescription>
-                        <CardTitle
-                          className={`text-2xl ${getMetricColor(
-                            parseFloat(selectedResult.winRate),
-                            'winrate',
-                          )}`}
-                        >
-                          {formatPercent(selectedResult.winRate)}
-                        </CardTitle>
-                      </CardHeader>
-                    </Card>
+                          >
+                            {formatPercent(selectedResult.winRate)}
+                          </CardTitle>
+                        </CardHeader>
+                      </Card>
+                    </div>
                   </div>
+                )}
+
+                {/* Equity Curve Chart */}
+                {equityPoints.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <IconChartLine className="h-4 w-4" />
+                        {t('chart.equityCurve')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <AreaChart
+                          data={equityPoints.map((pt) => ({
+                            time: new Date(pt.timestamp).getTime(),
+                            value: parseFloat(pt.value),
+                          }))}
+                          margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
+                        >
+                          <defs>
+                            <linearGradient
+                              id="equityGradientDlg"
+                              x1="0"
+                              y1="0"
+                              x2="0"
+                              y2="1"
+                            >
+                              <stop offset="0%" stopColor="#22c55e" stopOpacity={0.15} />
+                              <stop
+                                offset="100%"
+                                stopColor="#22c55e"
+                                stopOpacity={0.02}
+                              />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="hsl(var(--border))"
+                            strokeOpacity={0.4}
+                          />
+                          <XAxis
+                            dataKey="time"
+                            type="number"
+                            scale="time"
+                            domain={['dataMin', 'dataMax']}
+                            tickFormatter={(v) =>
+                              new Date(v).toLocaleDateString(locale, {
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            }
+                            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            tickFormatter={(v) =>
+                              `$${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0)}`
+                            }
+                            tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                            tickLine={false}
+                            axisLine={false}
+                            width={60}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: 'hsl(var(--card))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '8px',
+                              fontSize: 12,
+                            }}
+                            formatter={(v: number) => [
+                              `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                              t('chart.equity'),
+                            ]}
+                            labelFormatter={(label) =>
+                              new Date(label).toLocaleString(locale)
+                            }
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#22c55e"
+                            strokeWidth={1.5}
+                            fill="url(#equityGradientDlg)"
+                            dot={false}
+                            activeDot={{ r: 3, fill: '#22c55e', strokeWidth: 0 }}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {/* Trades Table */}
@@ -1048,6 +1323,12 @@ export default function BacktestPage() {
                             </TableHead>
                             <TableHead className="text-right">
                               {t('trades.table.duration')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.cashBalance')}
+                            </TableHead>
+                            <TableHead className="text-right">
+                              {t('trades.table.positionSize')}
                             </TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1093,6 +1374,16 @@ export default function BacktestPage() {
                               <TableCell className="text-right">
                                 {formatDuration(trade.duration)}
                               </TableCell>
+                              <TableCell className="text-right">
+                                {trade.cashBalance != null
+                                  ? `$${formatNumber(trade.cashBalance)}`
+                                  : '—'}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {trade.positionSize != null
+                                  ? formatNumber(trade.positionSize, 4)
+                                  : '—'}
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -1126,6 +1417,7 @@ export default function BacktestPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead>{t('runs.table.name')}</TableHead>
                             <TableHead>{t('runs.table.strategy')}</TableHead>
                             <TableHead className="text-right">
                               {t('metrics.totalReturn')}
@@ -1148,6 +1440,13 @@ export default function BacktestPage() {
                               key={r.id}
                               className={selectedResult?.id === r.id ? 'bg-muted/50' : ''}
                             >
+                              <TableCell className="font-medium text-sm">
+                                {r.name || (
+                                  <span className="text-muted-foreground text-xs">
+                                    {new Date(r.createdAt).toLocaleDateString(locale)}
+                                  </span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-sm text-muted-foreground">
                                 {r.strategy?.name ?? '-'}
                               </TableCell>
@@ -1167,13 +1466,26 @@ export default function BacktestPage() {
                                 {r.totalTrades}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => viewResultDetails(r)}
-                                >
-                                  <IconEye className="h-4 w-4" />
-                                </Button>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => viewResultDetails(r)}
+                                  >
+                                    <IconEye className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setIsViewDialogOpen(false);
+                                      router.push(`/backtest/results/${r.id}`);
+                                    }}
+                                    title={t('result.openDetail')}
+                                  >
+                                    <IconExternalLink className="h-4 w-4" />
+                                  </Button>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}

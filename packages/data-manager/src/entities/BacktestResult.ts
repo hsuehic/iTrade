@@ -23,6 +23,10 @@ export class BacktestResultEntity implements BacktestResult {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  /** Optional human-readable label for this run (e.g. "Q1 2026 baseline"). */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  name?: string;
+
   @ManyToOne('backtest_configs', 'results', {
     onDelete: 'CASCADE',
   })

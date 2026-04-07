@@ -15,7 +15,8 @@ import {
   type StrategyTypeKey,
 } from '@itrade/strategies';
 import { BacktestEngine } from '@itrade/backtesting';
-import type { IStrategy } from '@itrade/core';
+import type { IStrategy, Kline, KlineInterval, BacktestTrade } from '@itrade/core';
+import { Decimal } from 'decimal.js';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -55,10 +56,11 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { strategyId, entryTtlBars, stopLossPercent } = body as {
+    const { strategyId, entryTtlBars, stopLossPercent, name } = body as {
       strategyId?: number;
       entryTtlBars?: number;
       stopLossPercent?: number;
+      name?: string;
     };
 
     if (!strategyId) {
@@ -156,6 +158,95 @@ export async function POST(
         ? strategyParams.klineInterval
         : (config.timeframe ?? '1h');
 
+    // ── Ensure kline data is available in the DB ───────────────────────────────
+    //
+    // Fetch from Binance REST API if the DB is missing data for the requested
+    // range. We fetch in batches of 1 000 bars and upsert into the DB so
+    // subsequent runs reuse the cached data.
+
+    try {
+      const existingKlines = await dataManager.getKlines(
+        effectiveSymbols[0],
+        effectiveTimeframe,
+        config.startDate,
+        config.endDate,
+      );
+
+      if (existingKlines.length === 0) {
+        console.log(
+          `[Backtest] No klines in DB for ${effectiveSymbols[0]} ${effectiveTimeframe}. Fetching from Binance…`,
+        );
+
+        const symbol = effectiveSymbols[0];
+        const isFutures = symbol.includes(':') || symbol.includes('_PERP');
+
+        // Normalise symbol: ETH/USDC:USDC → ETHUSDC
+        const binanceSymbol = (() => {
+          const upper = symbol.toUpperCase();
+          if (upper.includes(':')) {
+            const [pair] = upper.split(':');
+            return pair.replace('/', '');
+          }
+          return upper.replace('/', '');
+        })();
+
+        const baseUrl = isFutures
+          ? 'https://fapi.binance.com'
+          : 'https://api.binance.com';
+        const endpoint = isFutures ? '/fapi/v1/klines' : '/api/v3/klines';
+        const BATCH_SIZE = 1000;
+
+        let batchStart = new Date(config.startDate);
+
+        while (batchStart < config.endDate) {
+          const url = new URL(`${baseUrl}${endpoint}`);
+          url.searchParams.set('symbol', binanceSymbol);
+          url.searchParams.set('interval', effectiveTimeframe);
+          url.searchParams.set('limit', String(BATCH_SIZE));
+          url.searchParams.set('startTime', String(batchStart.getTime()));
+          url.searchParams.set('endTime', String(config.endDate.getTime()));
+
+          const res = await fetch(url.toString());
+          if (!res.ok) {
+            console.warn(
+              `[Backtest] Binance kline fetch failed: ${res.status} ${await res.text()}`,
+            );
+            break;
+          }
+
+          const raw: any[][] = await res.json();
+          if (!Array.isArray(raw) || raw.length === 0) break;
+
+          const batch: Kline[] = raw.map((k) => ({
+            symbol,
+            exchange: 'binance',
+            interval: effectiveTimeframe as KlineInterval,
+            openTime: new Date(k[0]),
+            closeTime: new Date(k[6]),
+            open: new Decimal(k[1]),
+            high: new Decimal(k[2]),
+            low: new Decimal(k[3]),
+            close: new Decimal(k[4]),
+            volume: new Decimal(k[5]),
+            quoteVolume: new Decimal(k[7]),
+            trades: k[8],
+            isClosed: true,
+          }));
+
+          await dataManager.saveKlines(symbol, effectiveTimeframe, batch);
+
+          const lastOpen = batch[batch.length - 1].openTime;
+          batchStart = new Date(lastOpen.getTime() + 1);
+          if (batch.length < BATCH_SIZE) break;
+        }
+
+        console.log(`[Backtest] Klines fetched and saved for ${symbol}`);
+      }
+    } catch (fetchErr) {
+      console.warn('[Backtest] Could not prefetch klines from exchange:', fetchErr);
+      // Non-fatal — proceed with whatever data is in the DB.
+    }
+
     // ── Run the backtest ───────────────────────────────────────────────────────
 
     const engine = new BacktestEngine();
@@ -175,6 +266,7 @@ export async function POST(
     const savedResult = await backtestRepo.createResult({
       configId,
       strategyId,
+      name: name?.trim() || undefined,
       totalReturn: result.totalReturn.toNumber(),
       annualizedReturn: result.annualizedReturn.toNumber(),
       sharpeRatio: result.sharpeRatio.toNumber(),
@@ -188,7 +280,7 @@ export async function POST(
     // Persist per-trade records
     if (result.trades.length > 0) {
       const tradeRepo = dataSource.getRepository(BacktestTradeEntity);
-      const tradeEntities = result.trades.map((t) => {
+      const tradeEntities = result.trades.map((t: BacktestTrade) => {
         const entity = new BacktestTradeEntity();
         Object.assign(entity, {
           result: savedResult,
@@ -202,6 +294,10 @@ export async function POST(
           pnl: t.pnl,
           commission: t.commission,
           duration: t.duration,
+          entryCashBalance: t.entryCashBalance ?? null,
+          entryPositionSize: t.entryPositionSize ?? null,
+          cashBalance: t.cashBalance ?? null,
+          positionSize: t.positionSize ?? null,
         });
         return entity;
       });
@@ -213,8 +309,10 @@ export async function POST(
       const equityRepo = dataSource.getRepository(EquityPointEntity);
       // Sample at most 2000 points to avoid excessive DB writes
       const step = Math.max(1, Math.floor(result.equity.length / 2000));
-      const sampled = result.equity.filter((_, i) => i % step === 0);
-      const equityEntities = sampled.map((pt) => {
+      const sampled = result.equity.filter(
+        (_: { timestamp: Date; value: Decimal }, i: number) => i % step === 0,
+      );
+      const equityEntities = sampled.map((pt: { timestamp: Date; value: Decimal }) => {
         const entity = new EquityPointEntity();
         Object.assign(entity, {
           result: savedResult,

@@ -7,6 +7,8 @@ import { BacktestTradeEntity } from '../entities/BacktestTrade';
 import { EquityPointEntity } from '../entities/EquityPoint';
 
 export interface CreateBacktestConfigData {
+  /** Optional human-readable label for this configuration. */
+  name?: string;
   startDate: Date;
   endDate: Date;
   initialBalance: string | number;
@@ -59,13 +61,17 @@ export class BacktestRepository {
   // Config CRUD operations
   async createConfig(data: CreateBacktestConfigData): Promise<BacktestConfigEntity> {
     const result = await this.configRepository.insert({
+      name: data.name || undefined,
       startDate: data.startDate,
       endDate: data.endDate,
       initialBalance: new Decimal(data.initialBalance),
       commission: new Decimal(data.commission),
       slippage: data.slippage ? new Decimal(data.slippage) : undefined,
-      symbols: data.symbols ?? undefined,
-      timeframe: data.timeframe ?? undefined,
+      // Provide safe defaults so the INSERT works even if the DB column is still NOT NULL
+      // (i.e. before the schema sync that makes them nullable has been run).
+      // The run endpoint always overrides symbols/timeframe from the strategy anyway.
+      symbols: data.symbols ?? [],
+      timeframe: data.timeframe ?? '1h',
       user: { id: data.userId },
     } as any);
 
@@ -88,12 +94,16 @@ export class BacktestRepository {
     id: number,
     options?: { includeResults?: boolean },
   ): Promise<BacktestConfigEntity | null> {
-    const relations: string[] = [];
-    if (options?.includeResults) relations.push('results');
+    const relations: string[] = ['user'];
+    if (options?.includeResults) {
+      relations.push('results');
+      relations.push('results.strategy'); // include strategy name on each result
+    }
 
     return await this.configRepository.findOne({
       where: { id },
       relations,
+      order: options?.includeResults ? { results: { createdAt: 'DESC' } } : undefined,
     });
   }
 
@@ -171,6 +181,7 @@ export class BacktestRepository {
   async createResult(data: {
     configId: number;
     strategyId?: number;
+    name?: string;
     totalReturn: string | number;
     annualizedReturn: string | number;
     sharpeRatio: string | number;
@@ -183,6 +194,7 @@ export class BacktestRepository {
     const result = await this.resultRepository.insert({
       config: { id: data.configId },
       strategy: data.strategyId ? { id: data.strategyId } : undefined,
+      name: data.name || undefined,
       totalReturn: new Decimal(data.totalReturn),
       annualizedReturn: new Decimal(data.annualizedReturn),
       sharpeRatio: new Decimal(data.sharpeRatio),
@@ -217,7 +229,8 @@ export class BacktestRepository {
       includeStrategy?: boolean;
     },
   ): Promise<BacktestResultEntity | null> {
-    const relations: string[] = ['config'];
+    // Always include config.user so ownership checks work
+    const relations: string[] = ['config', 'config.user'];
     if (options?.includeStrategy) relations.push('strategy');
     if (options?.includeTrades) relations.push('trades');
     if (options?.includeEquity) relations.push('equity');

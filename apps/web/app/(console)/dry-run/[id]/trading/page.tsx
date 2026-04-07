@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -121,11 +121,16 @@ const orderSchema = z
     }
   });
 
-export default function PaperTradingPage({ params }: { params: { id: string } }) {
+export default function PaperTradingPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const t = useTranslations('dryRun');
   const locale = useLocale();
   const router = useRouter();
-  const sessionId = parseInt(params.id, 10);
+  const { id } = use(params);
+  const sessionId = parseInt(id, 10);
 
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -212,7 +217,7 @@ export default function PaperTradingPage({ params }: { params: { id: string } })
     const result = orderSchema.safeParse(orderForm);
     if (!result.success) {
       const errors: Record<string, string> = {};
-      result.error.errors.forEach((error) => {
+      result.error.issues.forEach((error) => {
         if (error.path[0]) {
           errors[error.path[0] as string] = error.message;
         }

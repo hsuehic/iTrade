@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { startDate, endDate, initialBalance, commission, slippage } = body;
+    const { name, startDate, endDate, initialBalance, commission, slippage } = body;
 
     // Validation
     if (!startDate || !endDate) {
@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
     const backtestRepo = new BacktestRepository(dataSource);
 
     const created = await backtestRepo.createConfig({
+      name: name?.trim() || undefined,
       startDate: start,
       endDate: end,
       initialBalance,
@@ -136,8 +137,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating backtest config:', error);
+    const detail = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to create backtest config' },
+      {
+        error: 'Failed to create backtest config',
+        ...(process.env.NODE_ENV !== 'production' && { detail }),
+      },
       { status: 500 },
     );
   }

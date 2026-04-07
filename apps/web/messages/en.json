@@ -803,7 +803,9 @@
         "exit": "Exit",
         "quantity": "Qty",
         "pnl": "P&L",
-        "duration": "Duration"
+        "duration": "Duration",
+        "cashBalance": "Cash Balance",
+        "positionSize": "Open Position"
       },
       "side": {
         "buy": "Buy",
@@ -1056,6 +1058,8 @@
       "derivedTimeframe": "Timeframe from strategy:"
     },
     "fields": {
+      "name": "Name",
+      "namePlaceholder": "e.g. ETH Q1 2026 (optional)",
       "startDate": "Start Date",
       "endDate": "End Date",
       "initialBalance": "Initial Balance ($)",
@@ -1115,7 +1119,9 @@
         "exit": "Exit",
         "quantity": "Qty",
         "pnl": "P&L",
-        "duration": "Duration"
+        "duration": "Duration",
+        "cashBalance": "Cash Balance",
+        "positionSize": "Open Position"
       },
       "side": {
         "buy": "BUY",
@@ -1181,14 +1187,43 @@
       "strategy": "Strategy",
       "strategyPlaceholder": "Select a strategy",
       "running": "Running...",
-      "noStrategies": "No strategies found. Please create a strategy first."
+      "noStrategies": "No strategies found. Please create a strategy first.",
+      "name": "Run Name",
+      "namePlaceholder": "e.g. Q1 baseline (optional)"
     },
     "runs": {
       "title": "Past Runs",
       "count": "{count} run(s) for this configuration",
+      "empty": "No runs yet for this configuration",
       "table": {
-        "strategy": "Strategy"
-      }
+        "strategy": "Strategy",
+        "name": "Name"
+      },
+      "strategy": "Strategy"
+    },
+    "chart": {
+      "equityCurve": "Equity Curve",
+      "equity": "Equity",
+      "noData": "No equity data available"
+    },
+    "result": {
+      "title": "Backtest Result",
+      "notFound": "Result not found",
+      "backToList": "Back to Backtests",
+      "openDetail": "Open Detail Page",
+      "entryTime": "Entry Time",
+      "tradesPage": "Showing {from}–{to} of {total} trades",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "orders": {
+      "title": "Order List",
+      "description": "{count} order fills",
+      "fillTime": "Fill Time",
+      "type": "Type",
+      "typeEntry": "Open",
+      "typeExit": "Close",
+      "price": "Price"
     }
   },
   "portfolio": {

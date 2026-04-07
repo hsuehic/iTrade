@@ -715,6 +715,16 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       const signals = this.handleOrderUpdates(orders);
       if (signals.length > 0) return signals;
     }
+
+    // If we have no open limit orders (either they all expired / were cancelled, or
+    // this strategy has never placed any) but we do have fresh price data, regenerate
+    // entry signals.  This ensures the strategy can recover after TTL-based expiries
+    // (e.g. in backtesting) without requiring an external trigger.
+    if (!this.openLowerOrder && !this.openUpperOrder && !this.isOrderBookStale()) {
+      const newSigs = this.generateEntrySignalsWithReservation();
+      if (newSigs.length > 0) return newSigs;
+    }
+
     return { action: 'hold' };
   }
 

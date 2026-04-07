@@ -1,7 +1,11 @@
 // IMPORTANT: Import reflect-metadata FIRST before any TypeORM-related imports
 // This is critical for production builds where bundler may reorder imports
 import 'reflect-metadata';
-import { TypeOrmDataManager } from '@itrade/data-manager';
+import {
+  TypeOrmDataManager,
+  BacktestConfigEntity,
+  DryRunSessionEntity,
+} from '@itrade/data-manager';
 
 // Use globalThis to persist across module reloads in production
 // This prevents issues with Next.js module caching in serverless environments
@@ -10,6 +14,19 @@ declare global {
 
   var __dataManagerInitPromise: Promise<TypeOrmDataManager> | undefined;
 }
+
+/**
+ * Entity classes that MUST be registered in the DataSource.
+ *
+ * We compare by class-reference equality (not table name strings) so that
+ * Next.js HMR reloads — which create new class objects for the same file —
+ * are correctly detected as stale. A table-name-only check would pass even
+ * after HMR replaced the class reference, causing EntityMetadataNotFoundError.
+ */
+const REQUIRED_ENTITY_CLASSES = [
+  BacktestConfigEntity, // representative of the backtest domain
+  DryRunSessionEntity, // representative of the dry-run domain
+];
 
 /**
  * Get or create the global DataManager instance
@@ -21,10 +38,25 @@ export async function getDataManager(): Promise<TypeOrmDataManager> {
   // Check if already initialized (persisted in globalThis for production)
   const existingInstance = globalThis.__dataManagerInstance;
   if (existingInstance) {
-    // If the instance exists but is missing the new method (due to HMR/caching issues),
-    // clear it and re-initialize.
-    if (typeof existingInstance.getAccountInfoRepository !== 'function') {
-      console.warn('⚠️ Existing DataManager instance is outdated. Re-initializing...');
+    // Verify the instance has required methods AND that the DataSource has
+    // up-to-date class references for all required entity domains.
+    // Class-reference equality catches both:
+    //   (a) entities added after the singleton was first created, and
+    //   (b) HMR reloads that produce new class objects for unchanged files.
+    const hasMethods = typeof existingInstance.getAccountInfoRepository === 'function';
+    const hasCurrentEntityRefs =
+      existingInstance.dataSource?.isInitialized &&
+      REQUIRED_ENTITY_CLASSES.every((EntityClass) =>
+        existingInstance.dataSource?.entityMetadatas?.some(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (m: any) => m.target === EntityClass,
+        ),
+      );
+
+    if (!hasMethods || !hasCurrentEntityRefs) {
+      console.warn(
+        '⚠️ DataManager singleton is stale (entity refs changed or missing). Re-initializing...',
+      );
       globalThis.__dataManagerInstance = undefined;
       globalThis.__dataManagerInitPromise = undefined;
     } else {

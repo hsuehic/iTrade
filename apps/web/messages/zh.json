@@ -803,7 +803,9 @@
         "exit": "平仓",
         "quantity": "数量",
         "pnl": "盈亏",
-        "duration": "持仓时长"
+        "duration": "持仓时长",
+        "cashBalance": "现金余额",
+        "positionSize": "持仓数量"
       },
       "side": {
         "buy": "买入",
@@ -1056,6 +1058,8 @@
       "derivedTimeframe": "策略时间周期："
     },
     "fields": {
+      "name": "名称",
+      "namePlaceholder": "例如：ETH 2026年Q1（可选）",
       "startDate": "开始日期",
       "endDate": "结束日期",
       "initialBalance": "初始资金（$）",
@@ -1115,7 +1119,9 @@
         "exit": "出场",
         "quantity": "数量",
         "pnl": "盈亏",
-        "duration": "持续时间"
+        "duration": "持续时间",
+        "cashBalance": "现金余额",
+        "positionSize": "持仓数量"
       },
       "side": {
         "buy": "买入",
@@ -1181,14 +1187,43 @@
       "strategy": "策略",
       "strategyPlaceholder": "选择策略",
       "running": "运行中...",
-      "noStrategies": "未找到策略，请先创建一个策略。"
+      "noStrategies": "未找到策略，请先创建一个策略。",
+      "name": "运行名称",
+      "namePlaceholder": "例如：Q1基准（可选）"
     },
     "runs": {
       "title": "历史运行",
       "count": "该配置共 {count} 次运行记录",
+      "empty": "该配置暂无运行记录",
       "table": {
-        "strategy": "策略"
-      }
+        "strategy": "策略",
+        "name": "名称"
+      },
+      "strategy": "策略"
+    },
+    "chart": {
+      "equityCurve": "权益曲线",
+      "equity": "权益",
+      "noData": "暂无权益数据"
+    },
+    "result": {
+      "title": "回测结果",
+      "notFound": "未找到该结果",
+      "backToList": "返回回测列表",
+      "openDetail": "打开详情页",
+      "entryTime": "入场时间",
+      "tradesPage": "显示第 {from}–{to} 条，共 {total} 条",
+      "prev": "上一页",
+      "next": "下一页"
+    },
+    "orders": {
+      "title": "订单列表",
+      "description": "共 {count} 笔成交",
+      "fillTime": "成交时间",
+      "type": "类型",
+      "typeEntry": "开仓",
+      "typeExit": "平仓",
+      "price": "成交价"
     }
   },
   "portfolio": {

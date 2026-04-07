@@ -91,6 +91,7 @@ export async function PATCH(
 
     const body = await request.json();
     const {
+      name,
       startDate,
       endDate,
       initialBalance,
@@ -116,6 +117,7 @@ export async function PATCH(
 
     // Build update object
     const updates: Partial<BacktestConfigEntity> = {};
+    if (name !== undefined) updates.name = name?.trim() || undefined;
     if (startDate) updates.startDate = new Date(startDate);
     if (endDate) updates.endDate = new Date(endDate);
     if (initialBalance !== undefined) updates.initialBalance = initialBalance;

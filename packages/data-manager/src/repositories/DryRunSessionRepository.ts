@@ -83,7 +83,8 @@ export class DryRunSessionRepository {
       includeStrategy?: boolean;
     },
   ): Promise<DryRunSessionEntity | null> {
-    const relations: string[] = [];
+    // Always load 'user' so ownership checks work in every API route
+    const relations: string[] = ['user'];
     if (options?.includeStrategy) relations.push('strategy');
     if (options?.includeResults) relations.push('results');
     if (options?.includeTrades) relations.push('trades');

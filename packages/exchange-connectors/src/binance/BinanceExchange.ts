@@ -213,6 +213,7 @@ export class BinanceExchange extends BaseExchange {
     endTime?: Date,
     limit = 500,
   ): Promise<Kline[]> {
+    const isFutures = this._isFuturesSymbol(symbol);
     const normalizedSymbol = this.normalizeSymbol(symbol);
     const params: any = {
       symbol: normalizedSymbol,
@@ -223,7 +224,12 @@ export class BinanceExchange extends BaseExchange {
     if (startTime) params.startTime = startTime.getTime();
     if (endTime) params.endTime = endTime.getTime();
 
-    const response = await this.httpClient.get('/api/v3/klines', { params });
+    // Use the futures client and endpoint for futures symbols so that
+    // USDT-M / USDC-M perpetual symbols (e.g. ETH/USDC:USDC) are routed to
+    // fapi.binance.com instead of the spot API.
+    const client = isFutures ? this.futuresClient : this.httpClient;
+    const path = isFutures ? '/fapi/v1/klines' : '/api/v3/klines';
+    const response = await client.get(path, { params });
 
     return response.data.map((kline: any[]) => ({
       symbol, // Use unified symbol format

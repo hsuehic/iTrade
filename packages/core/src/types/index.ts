@@ -514,6 +514,14 @@ export interface BacktestTrade {
   pnl: Decimal;
   commission: Decimal;
   duration: number;
+  /** Cash balance after entry order filled */
+  entryCashBalance?: Decimal;
+  /** Total open position size after entry order filled */
+  entryPositionSize?: Decimal;
+  /** Cash balance after this trade closed (exit order filled) */
+  cashBalance?: Decimal;
+  /** Total open position size remaining after this trade closed */
+  positionSize?: Decimal;
 }
 
 // Risk Management Types

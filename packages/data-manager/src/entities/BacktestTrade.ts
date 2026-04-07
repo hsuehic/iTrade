@@ -70,4 +70,44 @@ export class BacktestTradeEntity implements BacktestTrade {
 
   @Column({ type: 'int' })
   duration!: number;
+
+  /** Cash balance immediately after entry order filled */
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  entryCashBalance?: Decimal;
+
+  /** Total open position size immediately after entry order filled */
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  entryPositionSize?: Decimal;
+
+  /** Cash balance after this trade closed (exit order filled) */
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  cashBalance?: Decimal;
+
+  /** Total open position size remaining after this trade closed */
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  positionSize?: Decimal;
 }

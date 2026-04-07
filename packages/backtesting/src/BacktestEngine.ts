@@ -8,6 +8,7 @@ import {
   IDataManager,
   Kline,
   KlineInterval,
+  OrderBook,
   OrderSide,
   OrderStatus,
   OrderType,
@@ -30,6 +31,8 @@ interface PendingEntry {
   price: Decimal;
   quantity: Decimal;
   barIndex: number; // bar at which the order was placed (for TTL tracking)
+  /** Leverage multiplier from the order signal (1 = no leverage). */
+  leverage: number;
 }
 
 /** A filled entry position whose take-profit (and optional stop-loss) are being tracked. */
@@ -41,6 +44,12 @@ interface ActiveExit {
   entryPrice: Decimal;
   quantity: Decimal;
   entryTime: Date;
+  /** Cash balance immediately after the entry order filled */
+  entryCashBalance: Decimal;
+  /** Total open position size immediately after the entry order filled */
+  entryPositionSize: Decimal;
+  /** Leverage multiplier used when this position was opened (1 = no leverage). */
+  leverage: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +86,29 @@ function buildOrder(
 /** Convert OrderSide enum to the 'buy' | 'sell' literal used in Trade.side. */
 function toTradeSide(side: OrderSide): 'buy' | 'sell' {
   return side === OrderSide.BUY ? 'buy' : 'sell';
+}
+
+/**
+ * Build a minimal synthetic OrderBook centred on `midPrice`.
+ *
+ * Used to satisfy strategies that gate signals behind a freshness check
+ * (e.g. SpreadGridStrategy's `checkMarketPrice` flag). The 0.01% half-spread
+ * is tight enough that any reasonable limit-order price will pass the
+ * maker-price validation inside the strategy.
+ */
+function buildSyntheticOrderBook(
+  symbol: string,
+  exchange: string,
+  midPrice: Decimal,
+): OrderBook {
+  const halfSpread = midPrice.mul(new Decimal('0.0001')); // 0.01%
+  return {
+    symbol,
+    exchange,
+    timestamp: new Date(), // always fresh → never stale
+    bids: [[midPrice.minus(halfSpread), new Decimal(1000)]],
+    asks: [[midPrice.plus(halfSpread), new Decimal(1000)]],
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -197,6 +229,76 @@ export class BacktestEngine implements IBacktestEngine {
     const slMultiplierShort =
       stopLossPct > 0 ? new Decimal(1).plus(new Decimal(stopLossPct).div(100)) : null;
 
+    // ── Helper: register new entry signals as pending limit orders and notify
+    //    the strategy via onOrderCreated so it can track openLowerOrder /
+    //    openUpperOrder.  This mirrors the live-trading confirmation flow and
+    //    prevents strategies from repeatedly regenerating the same orders.
+    const registerEntrySigs = async (
+      sigs: ReturnType<typeof normalizeAnalyzeResult>,
+      barIndex: number,
+    ) => {
+      for (const sig of sigs) {
+        if (isHoldResult(sig) || !isActionableResult(sig)) continue;
+        if (isCancelOrderResult(sig) || isUpdateOrderResult(sig)) continue;
+        if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
+        if (sig.action !== 'buy' && sig.action !== 'sell') continue;
+
+        const side = sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
+        // Leverage priority:
+        //   1. Per-signal `leverage` field (set by the strategy in each order signal)
+        //   2. Strategy parameters `leverage` key (strategy-level default)
+        //   3. 1 (no leverage — spot-like)
+        const strategyParamLeverage =
+          typeof (strategy.config.parameters as Record<string, unknown>)?.leverage ===
+          'number'
+            ? ((strategy.config.parameters as Record<string, unknown>).leverage as number)
+            : undefined;
+        const signalLeverage = sig.leverage ?? strategyParamLeverage ?? 1;
+        pendingEntries.set(sig.clientOrderId, {
+          clientOrderId: sig.clientOrderId,
+          side,
+          price: sig.price,
+          quantity: sig.quantity,
+          barIndex,
+          leverage: signalLeverage,
+        });
+
+        // Notify strategy that the order has been "confirmed" (NEW status).
+        // This keeps openLowerOrder / openUpperOrder in sync and prevents the
+        // strategy from treating the order as still-pending-confirmation.
+        if (strategy.onOrderCreated) {
+          await strategy.onOrderCreated(
+            buildOrder(
+              sig.clientOrderId,
+              symbol,
+              side,
+              sig.price,
+              sig.quantity,
+              OrderStatus.NEW,
+              exchange,
+            ),
+          );
+        }
+      }
+    };
+
+    // ── Bootstrap: call processInitialData so order-driven strategies
+    //    (e.g. SpreadGridStrategy) can place their initial entry orders.
+    //    We synthesise a fresh OrderBook from the first bar's close price so
+    //    that strategies gated behind a freshness check can generate signals.
+    {
+      const initOB = buildSyntheticOrderBook(symbol, exchange, klines[0].close);
+      const initSigs = normalizeAnalyzeResult(
+        await strategy.processInitialData({
+          symbol,
+          exchange,
+          timestamp: klines[0].openTime,
+          orderBook: initOB,
+        }),
+      );
+      await registerEntrySigs(initSigs, 0);
+    }
+
     for (let barIdx = 0; barIdx < klines.length; barIdx++) {
       const bar = klines[barIdx];
       const bullish = bar.close.gte(bar.open);
@@ -209,14 +311,45 @@ export class BacktestEngine implements IBacktestEngine {
         | { type: 'sl'; exit: ActiveExit; fillPrice: Decimal }
       > = [];
 
-      // Pending entry fills
+      // Collect TTL-expired orders first so we can notify the strategy before
+      // processing fills.  This keeps strategy state (openLowerOrder etc.) clean
+      // and allows order-driven strategies (e.g. SpreadGrid) to regenerate
+      // entries after an expiry.
+      const ttlExpired: PendingEntry[] = [];
       for (const [cid, entry] of pendingEntries) {
-        // TTL expired → cancel silently
         if (barIdx - entry.barIndex >= entryTtlBars) {
           pendingEntries.delete(cid);
-          continue;
+          ttlExpired.push(entry);
         }
+      }
+      if (ttlExpired.length > 0) {
+        const ttlOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
+        for (const expired of ttlExpired) {
+          const cancelledOrder = buildOrder(
+            expired.clientOrderId,
+            symbol,
+            expired.side,
+            expired.price,
+            expired.quantity,
+            OrderStatus.CANCELED,
+            exchange,
+          );
+          const ttlSigs = normalizeAnalyzeResult(
+            await strategy.analyze({
+              exchangeName: exchange,
+              symbol,
+              orders: [cancelledOrder],
+              orderbook: ttlOB,
+            }),
+          );
+          // Re-entry signals from TTL cancellation (strategy may decide to
+          // replace the expired order with a fresh one at the current price).
+          await registerEntrySigs(ttlSigs, barIdx);
+        }
+      }
 
+      // Pending entry fills
+      for (const [cid, entry] of pendingEntries) {
         const hit =
           entry.side === OrderSide.BUY
             ? bar.low.lte(entry.price) // long entry: price dips to or below order price
@@ -301,13 +434,24 @@ export class BacktestEngine implements IBacktestEngine {
         if (fill.type === 'entry') {
           const { entry, fillPrice } = fill;
           const isLong = entry.side === OrderSide.BUY;
+          const entryLeverage = entry.leverage; // ≥ 1
           const comm = fillPrice.mul(entry.quantity).mul(commissionRate);
+          // Margin required = notional / leverage.  At leverage=1 this equals the
+          // full notional (spot-like behaviour for longs).  For perpetual futures
+          // both sides lock margin; the classic "short receives proceeds" model
+          // only applies when leverage=1 AND the side is SELL.
+          const margin = fillPrice.mul(entry.quantity).div(entryLeverage);
 
-          if (isLong) {
-            cash = cash.minus(fillPrice.mul(entry.quantity)).minus(comm);
-          } else {
+          if (entryLeverage === 1 && !isLong) {
+            // Spot-style short: receive full sale proceeds, deduct commission
             cash = cash.plus(fillPrice.mul(entry.quantity)).minus(comm);
+          } else {
+            // Futures-style (or leveraged): lock margin, deduct commission
+            cash = cash.minus(margin).minus(comm);
           }
+
+          // Snapshot cash immediately after entry fills (before TP registration).
+          const entryCashBalance = cash.plus(new Decimal(0));
 
           // Notify strategy of the entry fill → it should respond with a TP order
           const filledOrder = buildOrder(
@@ -319,11 +463,16 @@ export class BacktestEngine implements IBacktestEngine {
             OrderStatus.FILLED,
             exchange,
           );
+          // Supply a fresh synthetic orderbook so strategies that gate signals
+          // behind a price-freshness check (e.g. SpreadGridStrategy) can
+          // generate their next orders.
+          const entryFillOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
           const sigs = normalizeAnalyzeResult(
             await strategy.analyze({
               exchangeName: exchange,
               symbol,
               orders: [filledOrder],
+              orderbook: entryFillOB,
             }),
           );
           await strategy.onTradeExecuted?.({
@@ -336,7 +485,14 @@ export class BacktestEngine implements IBacktestEngine {
             timestamp: bar.openTime,
           });
 
-          // Register any TP exit orders the strategy returned
+          // Track which new TP order IDs are added by this entry fill so we can
+          // back-fill entryPositionSize after all of them have been registered.
+          const newExitCids: string[] = [];
+
+          // Register TP exit orders and re-entry orders the strategy returned.
+          // Opposite-side signals become take-profit exits; same-side signals
+          // are re-entry limit orders (e.g. SpreadGrid places a new lower BUY
+          // after a BUY fill via rebuildOrdersAfterFill).
           for (const sig of sigs) {
             if (isHoldResult(sig) || isCancelOrderResult(sig) || isUpdateOrderResult(sig))
               continue;
@@ -352,7 +508,11 @@ export class BacktestEngine implements IBacktestEngine {
                 entryPrice: fillPrice,
                 quantity: sig.quantity,
                 entryTime: bar.openTime,
+                entryCashBalance,
+                entryPositionSize: new Decimal(0), // filled in below
+                leverage: entryLeverage,
               });
+              newExitCids.push(sig.clientOrderId);
             } else if (sig.action === 'buy' && !isLong) {
               // Short take-profit order (cover buy)
               activeExits.set(sig.clientOrderId, {
@@ -363,20 +523,47 @@ export class BacktestEngine implements IBacktestEngine {
                 entryPrice: fillPrice,
                 quantity: sig.quantity,
                 entryTime: bar.openTime,
+                entryCashBalance,
+                entryPositionSize: new Decimal(0), // filled in below
+                leverage: entryLeverage,
               });
+              newExitCids.push(sig.clientOrderId);
+            } else if (sig.action === 'buy' || sig.action === 'sell') {
+              // Re-entry order returned by the strategy alongside (or instead of) a TP.
+              // Examples: SpreadGrid places a new same-direction entry after each fill.
+              // Use registerEntrySigs to also call onOrderCreated.
+              await registerEntrySigs([sig], barIdx);
             }
+          }
+
+          // Back-fill entryPositionSize for all TP orders just registered.
+          // At this point activeExits reflects the total open position after this entry.
+          const entryPositionSize = [...activeExits.values()].reduce(
+            (sum, ae) => sum.plus(ae.quantity),
+            new Decimal(0),
+          );
+          for (const cid of newExitCids) {
+            const ae = activeExits.get(cid);
+            if (ae) ae.entryPositionSize = entryPositionSize;
           }
         } else {
           // TP or SL exit fill
           const { exit, fillPrice } = fill;
           const isLong = exit.entrySide === OrderSide.BUY;
           const exitSide = isLong ? OrderSide.SELL : OrderSide.BUY;
+          const exitLeverage = exit.leverage;
           const comm = fillPrice.mul(exit.quantity).mul(commissionRate);
 
-          if (isLong) {
-            cash = cash.plus(fillPrice.mul(exit.quantity)).minus(comm);
-          } else {
+          if (exitLeverage === 1 && !isLong) {
+            // Spot-style short exit: pay to cover (buy back borrowed)
             cash = cash.minus(fillPrice.mul(exit.quantity)).minus(comm);
+          } else {
+            // Futures-style exit: return locked margin + realised PnL
+            const lockedMargin = exit.entryPrice.mul(exit.quantity).div(exitLeverage);
+            const grossPnl = isLong
+              ? fillPrice.minus(exit.entryPrice).mul(exit.quantity)
+              : exit.entryPrice.minus(fillPrice).mul(exit.quantity);
+            cash = cash.plus(lockedMargin).plus(grossPnl).minus(comm);
           }
 
           const pnl = isLong
@@ -384,6 +571,12 @@ export class BacktestEngine implements IBacktestEngine {
             : exit.entryPrice.minus(fillPrice).mul(exit.quantity).minus(comm);
 
           const exitTime = bar.closeTime ?? bar.openTime;
+          // Remaining open position size after this trade closes (activeExits already has
+          // this exit deleted by Phase 1, so the map reflects the remaining positions).
+          const remainingPositionSize = [...activeExits.values()].reduce(
+            (sum, ae) => sum.plus(ae.quantity),
+            new Decimal(0),
+          );
           trades.push({
             symbol,
             side: exit.entrySide,
@@ -395,6 +588,10 @@ export class BacktestEngine implements IBacktestEngine {
             pnl,
             commission: comm,
             duration: Math.round((exitTime.getTime() - exit.entryTime.getTime()) / 60000),
+            entryCashBalance: exit.entryCashBalance,
+            entryPositionSize: exit.entryPositionSize,
+            cashBalance: cash,
+            positionSize: remainingPositionSize,
           });
 
           // Notify strategy of exit fill (CANCELED status for SL, FILLED for TP)
@@ -409,11 +606,13 @@ export class BacktestEngine implements IBacktestEngine {
             exitStatus,
             exchange,
           );
+          const exitFillOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
           const sigs = normalizeAnalyzeResult(
             await strategy.analyze({
               exchangeName: exchange,
               symbol,
               orders: [exitOrder],
+              orderbook: exitFillOB,
             }),
           );
           await strategy.onTradeExecuted?.({
@@ -427,62 +626,46 @@ export class BacktestEngine implements IBacktestEngine {
           });
 
           // The strategy may return the next entry order after a TP/SL
-          for (const sig of sigs) {
-            if (isHoldResult(sig) || !isActionableResult(sig) || isCancelOrderResult(sig))
-              continue;
-            if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
-            if (sig.action === 'buy' || sig.action === 'sell') {
-              pendingEntries.set(sig.clientOrderId, {
-                clientOrderId: sig.clientOrderId,
-                side: sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-                price: sig.price,
-                quantity: sig.quantity,
-                barIndex: barIdx,
-              });
-            }
-          }
+          await registerEntrySigs(
+            sigs.filter((s) => !isCancelOrderResult(s)),
+            barIdx,
+          );
         }
       }
 
       // ── Phase 3: Kline analysis → new entry signals ──────────────────────────
+      // Also supply a fresh synthetic orderbook so that any strategy checking
+      // price freshness (e.g. SpreadGridStrategy) can generate signals here too.
 
+      const klineOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
       const klineSigs = normalizeAnalyzeResult(
-        await strategy.analyze({ exchangeName: exchange, symbol, klines: [bar] }),
+        await strategy.analyze({
+          exchangeName: exchange,
+          symbol,
+          klines: [bar],
+          orderbook: klineOB,
+        }),
       );
 
+      // Handle cancellations first, then register new entries.
       for (const sig of klineSigs) {
-        if (isHoldResult(sig)) continue;
-
-        if (isCancelOrderResult(sig)) {
-          // Strategy cancels a pending entry
-          if (sig.clientOrderId) pendingEntries.delete(sig.clientOrderId);
-          continue;
-        }
-
-        if (!isActionableResult(sig) || isUpdateOrderResult(sig)) continue;
-        if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
-
-        if (sig.action === 'buy' || sig.action === 'sell') {
-          pendingEntries.set(sig.clientOrderId, {
-            clientOrderId: sig.clientOrderId,
-            side: sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-            price: sig.price,
-            quantity: sig.quantity,
-            barIndex: barIdx,
-          });
+        if (isCancelOrderResult(sig) && sig.clientOrderId) {
+          pendingEntries.delete(sig.clientOrderId);
         }
       }
+      await registerEntrySigs(klineSigs, barIdx);
 
       // ── Phase 4: MTM equity snapshot ─────────────────────────────────────────
 
       let mtm = new Decimal(cash);
       for (const exit of activeExits.values()) {
         const isLong = exit.entrySide === OrderSide.BUY;
-        if (isLong) {
-          mtm = mtm.plus(bar.close.mul(exit.quantity));
-        } else {
-          mtm = mtm.minus(bar.close.mul(exit.quantity));
-        }
+        // MTM equity = locked margin + unrealised PnL
+        const lockedMargin = exit.entryPrice.mul(exit.quantity).div(exit.leverage);
+        const unrealisedPnl = isLong
+          ? bar.close.minus(exit.entryPrice).mul(exit.quantity)
+          : exit.entryPrice.minus(bar.close).mul(exit.quantity);
+        mtm = mtm.plus(lockedMargin).plus(unrealisedPnl);
       }
 
       symbolEquity.push({ timestamp: bar.closeTime ?? bar.openTime, value: mtm });
@@ -494,19 +677,33 @@ export class BacktestEngine implements IBacktestEngine {
     const lastTime =
       klines[klines.length - 1].closeTime ?? klines[klines.length - 1].openTime;
 
-    for (const exit of activeExits.values()) {
+    const remainingExits = [...activeExits.values()];
+    for (let ri = 0; ri < remainingExits.length; ri++) {
+      const exit = remainingExits[ri];
       const isLong = exit.entrySide === OrderSide.BUY;
+      const exitLeverage = exit.leverage;
       const comm = lastClose.mul(exit.quantity).mul(commissionRate);
 
-      if (isLong) {
-        cash = cash.plus(lastClose.mul(exit.quantity)).minus(comm);
-      } else {
+      if (exitLeverage === 1 && !isLong) {
+        // Spot-style short: pay to cover
         cash = cash.minus(lastClose.mul(exit.quantity)).minus(comm);
+      } else {
+        // Futures-style: return locked margin + realised PnL
+        const lockedMargin = exit.entryPrice.mul(exit.quantity).div(exitLeverage);
+        const grossPnl = isLong
+          ? lastClose.minus(exit.entryPrice).mul(exit.quantity)
+          : exit.entryPrice.minus(lastClose).mul(exit.quantity);
+        cash = cash.plus(lockedMargin).plus(grossPnl).minus(comm);
       }
 
       const pnl = isLong
         ? lastClose.minus(exit.entryPrice).mul(exit.quantity).minus(comm)
         : exit.entryPrice.minus(lastClose).mul(exit.quantity).minus(comm);
+
+      // Remaining open size = sum of not-yet-closed exits in this loop
+      const remainingPositionSize = remainingExits
+        .slice(ri + 1)
+        .reduce((sum, ae) => sum.plus(ae.quantity), new Decimal(0));
 
       trades.push({
         symbol,
@@ -519,6 +716,10 @@ export class BacktestEngine implements IBacktestEngine {
         pnl,
         commission: comm,
         duration: Math.round((lastTime.getTime() - exit.entryTime.getTime()) / 60000),
+        entryCashBalance: exit.entryCashBalance,
+        entryPositionSize: exit.entryPositionSize,
+        cashBalance: cash,
+        positionSize: remainingPositionSize,
       });
     }
 

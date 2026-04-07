@@ -33,9 +33,13 @@ export async function GET(
     const dataSource = dataManager.dataSource;
     const backtestRepo = new BacktestRepository(dataSource);
 
+    // Fetch result WITHOUT trades/equity relations — joining all three large
+    // tables in one query causes a cartesian product that times out.
+    // Strategy + config + config.user is fast; trades and equity are fetched
+    // via separate focused queries below.
     const result = await backtestRepo.findResultById(resultId, {
-      includeTrades,
-      includeEquity,
+      includeTrades: false,
+      includeEquity: false,
       includeStrategy: true,
     });
 
@@ -43,22 +47,21 @@ export async function GET(
       return NextResponse.json({ error: 'Result not found' }, { status: 404 });
     }
 
-    // Verify ownership through config -> user
-    if (result.config?.user?.id !== session.user.id) {
+    // Verify ownership: load config with user relation explicitly.
+    const config = result.config?.id
+      ? await backtestRepo.findConfigById(result.config.id)
+      : null;
+    if (!config || config.user?.id !== session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Get trades and equity separately if requested
-    let trades = result.trades || [];
-    let equity = result.equity || [];
-
-    if (includeTrades && !result.trades) {
-      trades = await backtestRepo.getTrades(resultId, { limit: 1000 });
-    }
-
-    if (includeEquity && !result.equity) {
-      equity = await backtestRepo.getEquityPoints(resultId);
-    }
+    // Fetch trades and equity via dedicated queries (no cartesian product).
+    const [trades, equity] = await Promise.all([
+      includeTrades
+        ? backtestRepo.getTrades(resultId, { limit: 10000 })
+        : Promise.resolve([]),
+      includeEquity ? backtestRepo.getEquityPoints(resultId) : Promise.resolve([]),
+    ]);
 
     // Serialize Decimal values
     const serialized = {
@@ -69,14 +72,21 @@ export async function GET(
       maxDrawdown: result.maxDrawdown?.toString(),
       winRate: result.winRate?.toString(),
       profitFactor: result.profitFactor?.toString(),
-      trades: trades.map((t) => ({
-        ...t,
-        entryPrice: t.entryPrice?.toString(),
-        exitPrice: t.exitPrice?.toString(),
-        quantity: t.quantity?.toString(),
-        pnl: t.pnl?.toString(),
-        commission: t.commission?.toString(),
-      })),
+      // Sort trades chronologically (entryTime ASC) for a natural display order
+      trades: [...trades]
+        .sort((a, b) => new Date(a.entryTime).getTime() - new Date(b.entryTime).getTime())
+        .map((t) => ({
+          ...t,
+          entryPrice: t.entryPrice?.toString(),
+          exitPrice: t.exitPrice?.toString(),
+          quantity: t.quantity?.toString(),
+          pnl: t.pnl?.toString(),
+          commission: t.commission?.toString(),
+          entryCashBalance: t.entryCashBalance?.toString() ?? null,
+          entryPositionSize: t.entryPositionSize?.toString() ?? null,
+          cashBalance: t.cashBalance?.toString() ?? null,
+          positionSize: t.positionSize?.toString() ?? null,
+        })),
       equity: equity.map((e) => ({
         timestamp: e.timestamp,
         value: e.value?.toString(),
@@ -129,7 +139,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Result not found' }, { status: 404 });
     }
 
-    if (result.config?.user?.id !== session.user.id) {
+    const config = result.config?.id
+      ? await backtestRepo.findConfigById(result.config.id)
+      : null;
+    if (!config || config.user?.id !== session.user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

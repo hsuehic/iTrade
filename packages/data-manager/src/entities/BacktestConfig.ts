@@ -21,6 +21,10 @@ export class BacktestConfigEntity implements BacktestConfig {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  /** Optional human-readable label for this configuration (e.g. "ETH Q1 2026"). */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  name?: string;
+
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   startDate!: Date;
 
