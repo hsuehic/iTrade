@@ -1043,7 +1043,8 @@
       "creating": "创建中...",
       "createConfig": "创建配置",
       "view": "查看",
-      "run": "运行"
+      "run": "运行",
+      "delete": "删除"
     },
     "dialog": {
       "title": "创建回测配置",
@@ -1173,13 +1174,14 @@
       "deleteConfig": "删除配置失败",
       "fetchDetails": "获取配置详情失败",
       "fetchResultDetails": "获取结果详情失败",
-      "runFailed": "运行回测失败"
+      "runFailed": "运行回测失败",
+      "deleteResult": "删除回测结果失败"
     },
     "messages": {
       "created": "回测配置创建成功",
       "createdAndRunning": "配置已创建，正在运行回测...",
       "runCompleted": "回测完成",
-      "deleted": "配置已删除"
+      "deleted": "删除成功"
     },
     "run": {
       "title": "运行回测",

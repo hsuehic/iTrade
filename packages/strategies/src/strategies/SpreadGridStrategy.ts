@@ -262,7 +262,9 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     if (!this.lastOrderBook?.timestamp) return true;
     const lastTs = this.lastOrderBook.timestamp.getTime();
     if (Number.isNaN(lastTs)) return true;
-    return now - lastTs > this.orderBookStaleMs;
+
+    // Use simulated time if provided, or Date.now()
+    return Math.abs(now - lastTs) > this.orderBookStaleMs;
   }
 
   private getBestBidAsk(): { bestBid?: Decimal; bestAsk?: Decimal } {
@@ -299,28 +301,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     }
 
     return price;
-  }
-
-  private getOrderBookRange(): { minBid: Decimal; maxAsk: Decimal } | null {
-    if (!this.lastOrderBook) return null;
-    const bids = this.lastOrderBook.bids ?? [];
-    const asks = this.lastOrderBook.asks ?? [];
-    if (bids.length === 0 || asks.length === 0) return null;
-    const minBid = bids[bids.length - 1]?.[0];
-    const maxAsk = asks[asks.length - 1]?.[0];
-    if (!minBid || !maxAsk || minBid.lte(0) || maxAsk.lte(0)) return null;
-    return { minBid, maxAsk };
-  }
-
-  private isSignalPriceWithinOrderBookRange(price: Decimal, side: OrderSide): boolean {
-    if (!this.checkMarketPrice) return true;
-    const range = this.getOrderBookRange();
-    if (!range) return false;
-    const { minBid, maxAsk } = range;
-    if (side === OrderSide.BUY) {
-      return price.gte(minBid) && price.lte(maxAsk);
-    }
-    return price.gte(minBid) && price.lte(maxAsk);
   }
 
   private isTerminalStatus(status: OrderStatus): boolean {
@@ -574,6 +554,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     return {
       action: 'cancel',
       orderId: order.id,
+      clientOrderId: order.clientOrderId, // Required so backtest engine can match by clientOrderId
       symbol: this._symbol,
       reason: 'cancel',
     };
@@ -702,6 +683,32 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         allowSell: !this.openUpperOrder,
       }),
     );
+
+    // Bootstrap referencePrice from market if it's the first run and we are at default 100
+    // This handles the case where the user didn't explicitly configure a basePrice
+    // for a high-value asset (like BTC at 60k).
+    if (
+      !this.openLowerOrder &&
+      !this.openUpperOrder &&
+      this.positionSize.isZero() &&
+      (this.referencePrice.eq(100) || this.referencePrice.isZero())
+    ) {
+      const marketPrice = this.lastOrderBookPrice;
+      if (marketPrice && !marketPrice.eq(this.referencePrice)) {
+        this.referencePrice = marketPrice;
+        this._logger.info(
+          `🪜 [SpreadGrid] auto-initialized referencePrice to market: ${this.referencePrice.toString()}`,
+        );
+        // Clear and regenerate signals around the new correct price
+        signals.length = 0;
+        signals.push(
+          ...this.generateEntrySignalsWithReservation({
+            allowBuy: true,
+            allowSell: true,
+          }),
+        );
+      }
+    }
 
     return signals;
   }

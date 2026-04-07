@@ -148,6 +148,7 @@ export default function BacktestPage() {
   const [equityPoints, setEquityPoints] = useState<EquityPoint[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
+  const [isDeletingResultId, setIsDeletingResultId] = useState<number | null>(null);
   // Inline expanded results per config card
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
   const [cardResults, setCardResults] = useState<Record<number, BacktestResult[]>>({});
@@ -291,6 +292,54 @@ export default function BacktestPage() {
       toast.error(error instanceof Error ? error.message : t('errors.deleteConfig'));
     } finally {
       setIsDeletingId(null);
+    }
+  };
+
+  const deleteResult = async (resultId: number, configId?: number) => {
+    if (isDeletingResultId === resultId) return;
+
+    setIsDeletingResultId(resultId);
+    try {
+      const response = await fetch(`/api/backtest/results/${resultId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || t('errors.deleteResult'));
+      }
+
+      toast.success(t('messages.deleted'));
+
+      if (configId) {
+        // Refresh this config's results in the card list
+        fetchConfigResults(configId);
+      }
+
+      // If we are in the view dialog, refresh it too
+      if (selectedConfig) {
+        viewConfigDetails(selectedConfig);
+      }
+
+      fetchConfigs();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('errors.deleteResult'));
+    } finally {
+      setIsDeletingResultId(null);
+    }
+  };
+
+  const fetchConfigResults = async (id: number) => {
+    try {
+      const res = await fetch(`/api/backtest/${id}?results=true`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCardResults((prev) => ({ ...prev, [id]: data.config?.results || [] }));
+      }
+    } catch {
+      // ignore
     }
   };
 
@@ -994,15 +1043,32 @@ export default function BacktestPage() {
                                       className="text-right"
                                       onClick={(e) => e.stopPropagation()}
                                     >
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() =>
-                                          router.push(`/backtest/results/${r.id}`)
-                                        }
-                                      >
-                                        <IconExternalLink className="h-4 w-4" />
-                                      </Button>
+                                      <div className="flex items-center justify-end gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() =>
+                                            router.push(`/backtest/results/${r.id}`)
+                                          }
+                                          title={t('result.openDetail')}
+                                        >
+                                          <IconExternalLink className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => deleteResult(r.id, config.id)}
+                                          disabled={isDeletingResultId === r.id}
+                                          className="text-muted-foreground hover:text-destructive"
+                                          title={t('actions.delete')}
+                                        >
+                                          {isDeletingResultId === r.id ? (
+                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                          ) : (
+                                            <IconTrash className="h-4 w-4" />
+                                          )}
+                                        </Button>
+                                      </div>
                                     </TableCell>
                                   </TableRow>
                                 ))}
@@ -1484,6 +1550,20 @@ export default function BacktestPage() {
                                     title={t('result.openDetail')}
                                   >
                                     <IconExternalLink className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteResult(r.id, selectedConfig.id)}
+                                    disabled={isDeletingResultId === r.id}
+                                    className="text-muted-foreground hover:text-destructive"
+                                    title={t('actions.delete')}
+                                  >
+                                    {isDeletingResultId === r.id ? (
+                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    ) : (
+                                      <IconTrash className="h-4 w-4" />
+                                    )}
                                   </Button>
                                 </div>
                               </TableCell>

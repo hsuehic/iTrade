@@ -15,7 +15,13 @@ import {
   type StrategyTypeKey,
 } from '@itrade/strategies';
 import { BacktestEngine } from '@itrade/backtesting';
-import type { IStrategy, Kline, KlineInterval, BacktestTrade } from '@itrade/core';
+import type {
+  IStrategy,
+  Kline,
+  KlineInterval,
+  BacktestTrade,
+  IDataManager,
+} from '@itrade/core';
 import { Decimal } from 'decimal.js';
 
 export const dynamic = 'force-dynamic';
@@ -158,93 +164,161 @@ export async function POST(
         ? strategyParams.klineInterval
         : (config.timeframe ?? '1h');
 
-    // ── Ensure kline data is available in the DB ───────────────────────────────
+    // ── Fetch Klines Lively ──────────────────────────────────────────────────
     //
-    // Fetch from Binance REST API if the DB is missing data for the requested
-    // range. We fetch in batches of 1 000 bars and upsert into the DB so
-    // subsequent runs reuse the cached data.
+    // We fetch kline data directly from Binance in-memory and bypass the local
+    // database for both storage and retrieval. This ensures fresh data for every
+    // run without bloating the local DB.
+
+    const allMemoryKlines: Kline[] = [];
+
+    const getIntervalMs = (interval: string) => {
+      const amount = parseInt(interval);
+      const unit = interval.replace(String(amount), '');
+      switch (unit) {
+        case 'm':
+          return amount * 60 * 1000;
+        case 'h':
+          return amount * 60 * 60 * 1000;
+        case 'd':
+          return amount * 24 * 60 * 60 * 1000;
+        case 'w':
+          return amount * 7 * 24 * 60 * 60 * 1000;
+        default:
+          return 60 * 1000;
+      }
+    };
 
     try {
-      const existingKlines = await dataManager.getKlines(
-        effectiveSymbols[0],
-        effectiveTimeframe,
-        config.startDate,
-        config.endDate,
-      );
+      for (const symbol of effectiveSymbols) {
+        const exchangeId = (strategyEntity.exchange || 'binance').toLowerCase();
+        console.log(`[Backtest] Fetching live klines for ${symbol} from ${exchangeId}…`);
 
-      if (existingKlines.length === 0) {
-        console.log(
-          `[Backtest] No klines in DB for ${effectiveSymbols[0]} ${effectiveTimeframe}. Fetching from Binance…`,
-        );
+        const warmupBars = 1000;
+        const intervalMs = getIntervalMs(effectiveTimeframe);
+        let batchStart = new Date(config.startDate.getTime() - warmupBars * intervalMs);
 
-        const symbol = effectiveSymbols[0];
-        const isFutures = symbol.includes(':') || symbol.includes('_PERP');
+        if (exchangeId === 'binance') {
+          const isFutures = symbol.includes(':') || symbol.includes('_PERP');
+          const binanceSymbol = (() => {
+            const upper = symbol.toUpperCase();
+            if (upper.includes(':')) {
+              const [pair] = upper.split(':');
+              return pair.replace('/', '');
+            }
+            return upper.replace('/', '');
+          })();
 
-        // Normalise symbol: ETH/USDC:USDC → ETHUSDC
-        const binanceSymbol = (() => {
-          const upper = symbol.toUpperCase();
-          if (upper.includes(':')) {
-            const [pair] = upper.split(':');
-            return pair.replace('/', '');
+          const baseUrl = isFutures
+            ? 'https://fapi.binance.com'
+            : 'https://api.binance.com';
+          const endpoint = isFutures ? '/fapi/v1/klines' : '/api/v3/klines';
+          const BATCH_SIZE = 1000;
+
+          while (batchStart < config.endDate) {
+            const url = new URL(`${baseUrl}${endpoint}`);
+            url.searchParams.set('symbol', binanceSymbol);
+            url.searchParams.set('interval', effectiveTimeframe);
+            url.searchParams.set('limit', String(BATCH_SIZE));
+            url.searchParams.set('startTime', String(batchStart.getTime()));
+            url.searchParams.set('endTime', String(config.endDate.getTime()));
+
+            const res = await fetch(url.toString());
+            if (!res.ok) {
+              console.warn(
+                `[Backtest] Binance kline fetch failed: ${res.status} ${await res.text()}`,
+              );
+              break;
+            }
+
+            const raw: any[][] = await res.json();
+            if (!Array.isArray(raw) || raw.length === 0) break;
+
+            const batch: Kline[] = raw.map((k) => ({
+              symbol,
+              exchange: 'binance',
+              interval: effectiveTimeframe as KlineInterval,
+              openTime: new Date(k[0]),
+              closeTime: new Date(k[6]),
+              open: new Decimal(k[1]),
+              high: new Decimal(k[2]),
+              low: new Decimal(k[3]),
+              close: new Decimal(k[4]),
+              volume: new Decimal(k[5]),
+              quoteVolume: new Decimal(k[7]),
+              trades: k[8],
+              isClosed: true,
+            }));
+
+            allMemoryKlines.push(...batch);
+            const lastOpen = batch[batch.length - 1].openTime;
+            batchStart = new Date(lastOpen.getTime() + 1);
+            if (batch.length < BATCH_SIZE) break;
           }
-          return upper.replace('/', '');
-        })();
+        } else if (exchangeId === 'okx') {
+          // OKX Implementation
+          // instId: WLD/USDC:USDC -> WLD-USDC-SWAP
+          const okxInstId = symbol.replace(/\//g, '-').replace(/:.*/, '-SWAP');
+          const baseUrl = 'https://www.okx.com';
+          const endpoint = '/api/v5/market/history-candles';
+          const BATCH_SIZE = 100;
 
-        const baseUrl = isFutures
-          ? 'https://fapi.binance.com'
-          : 'https://api.binance.com';
-        const endpoint = isFutures ? '/fapi/v1/klines' : '/api/v3/klines';
-        const BATCH_SIZE = 1000;
+          while (batchStart < config.endDate) {
+            const url = new URL(`${baseUrl}${endpoint}`);
+            url.searchParams.set('instId', okxInstId);
+            url.searchParams.set('bar', effectiveTimeframe);
+            url.searchParams.set('limit', String(BATCH_SIZE));
+            url.searchParams.set('after', String(batchStart.getTime()));
 
-        let batchStart = new Date(config.startDate);
+            const res = await fetch(url.toString());
+            if (!res.ok) {
+              console.warn(
+                `[Backtest] OKX kline fetch failed: ${res.status} ${await res.text()}`,
+              );
+              break;
+            }
 
-        while (batchStart < config.endDate) {
-          const url = new URL(`${baseUrl}${endpoint}`);
-          url.searchParams.set('symbol', binanceSymbol);
-          url.searchParams.set('interval', effectiveTimeframe);
-          url.searchParams.set('limit', String(BATCH_SIZE));
-          url.searchParams.set('startTime', String(batchStart.getTime()));
-          url.searchParams.set('endTime', String(config.endDate.getTime()));
+            const data = await res.json();
+            if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0)
+              break;
 
-          const res = await fetch(url.toString());
-          if (!res.ok) {
-            console.warn(
-              `[Backtest] Binance kline fetch failed: ${res.status} ${await res.text()}`,
-            );
-            break;
+            const batch: Kline[] = data.data.map((k: string[]) => ({
+              symbol,
+              exchange: 'okx',
+              interval: effectiveTimeframe as KlineInterval,
+              openTime: new Date(parseInt(k[0])),
+              closeTime: new Date(parseInt(k[0]) + intervalMs),
+              open: new Decimal(k[1]),
+              high: new Decimal(k[2]),
+              low: new Decimal(k[3]),
+              close: new Decimal(k[4]),
+              volume: new Decimal(k[5]),
+              quoteVolume: new Decimal(k[6]),
+              trades: 0,
+              isClosed: true,
+            }));
+
+            // OKX returns newest first, so we reverse it to match our chronological flow
+            batch.reverse();
+            allMemoryKlines.push(...batch);
+
+            const lastOpen = batch[batch.length - 1].openTime;
+            batchStart = new Date(lastOpen.getTime() + 1);
+            if (batch.length < BATCH_SIZE) break;
           }
-
-          const raw: any[][] = await res.json();
-          if (!Array.isArray(raw) || raw.length === 0) break;
-
-          const batch: Kline[] = raw.map((k) => ({
-            symbol,
-            exchange: 'binance',
-            interval: effectiveTimeframe as KlineInterval,
-            openTime: new Date(k[0]),
-            closeTime: new Date(k[6]),
-            open: new Decimal(k[1]),
-            high: new Decimal(k[2]),
-            low: new Decimal(k[3]),
-            close: new Decimal(k[4]),
-            volume: new Decimal(k[5]),
-            quoteVolume: new Decimal(k[7]),
-            trades: k[8],
-            isClosed: true,
-          }));
-
-          await dataManager.saveKlines(symbol, effectiveTimeframe, batch);
-
-          const lastOpen = batch[batch.length - 1].openTime;
-          batchStart = new Date(lastOpen.getTime() + 1);
-          if (batch.length < BATCH_SIZE) break;
+        } else {
+          console.warn(`[Backtest] Live fetch not yet implemented for ${exchangeId}`);
+          break;
         }
 
-        console.log(`[Backtest] Klines fetched and saved for ${symbol}`);
+        console.log(`[Backtest] Fetched ${allMemoryKlines.length} bars for ${symbol}`);
       }
     } catch (fetchErr) {
-      console.warn('[Backtest] Could not prefetch klines from exchange:', fetchErr);
-      // Non-fatal — proceed with whatever data is in the DB.
+      console.error('[Backtest] Live kline fetch failed:', fetchErr);
+      return NextResponse.json(
+        { error: 'Failed to fetch live kline data from exchange' },
+        { status: 500 },
+      );
     }
 
     // ── Run the backtest ───────────────────────────────────────────────────────
@@ -259,7 +333,24 @@ export async function POST(
       stopLossPercent: stopLossPercent ?? 0,
     };
 
-    const result = await engine.runBacktest(strategyFactory, backtestConfig, dataManager);
+    // Use a temporary MemoryDataManager that serves our live-fetched klines
+    const memoryDataManager = {
+      getKlines: async (sym: string, interval: string, start: Date, end: Date) => {
+        return allMemoryKlines.filter(
+          (k) =>
+            k.symbol === sym &&
+            k.interval === interval &&
+            k.openTime >= start &&
+            k.openTime < end,
+        );
+      },
+    } as any as IDataManager;
+
+    const result = await engine.runBacktest(
+      strategyFactory,
+      backtestConfig,
+      memoryDataManager,
+    );
 
     // ── Persist the result ─────────────────────────────────────────────────────
 

@@ -100,15 +100,33 @@ function buildSyntheticOrderBook(
   symbol: string,
   exchange: string,
   midPrice: Decimal,
+  timestamp?: Date,
 ): OrderBook {
   const halfSpread = midPrice.mul(new Decimal('0.0001')); // 0.01%
   return {
     symbol,
     exchange,
-    timestamp: new Date(), // always fresh → never stale
+    timestamp: timestamp ?? new Date(), // Use bar time if available, fallback to now
     bids: [[midPrice.minus(halfSpread), new Decimal(1000)]],
     asks: [[midPrice.plus(halfSpread), new Decimal(1000)]],
   };
+}
+
+function getIntervalMs(interval: string): number {
+  const amount = parseInt(interval);
+  const unit = interval.replace(String(amount), '');
+  switch (unit) {
+    case 'm':
+      return amount * 60 * 1000;
+    case 'h':
+      return amount * 60 * 60 * 1000;
+    case 'd':
+      return amount * 24 * 60 * 60 * 1000;
+    case 'w':
+      return amount * 7 * 24 * 60 * 60 * 1000;
+    default:
+      return 60 * 1000;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,14 +174,49 @@ export class BacktestEngine implements IBacktestEngine {
         ? strategy.config.exchange[0]
         : strategy.config.exchange;
 
+      const timeframe = config.timeframe ?? '1h';
       const klines = await dataManager.getKlines(
         symbol,
-        config.timeframe ?? '1h',
+        timeframe,
         config.startDate,
         config.endDate,
       );
 
       if (klines.length === 0) continue;
+
+      // ── Strategy Warmup ────────────────────────────────────────────────────
+      // If the strategy requests historical bars for warmup (e.g. MAs),
+      // we fetch them and pass them into processInitialData.
+      const initialDataKlines: Partial<Record<KlineInterval, Kline[]>> = {};
+      const initConfig = strategy.getInitialDataConfig?.();
+      if (initConfig?.klines) {
+        for (const [interval, bars] of Object.entries(initConfig.klines)) {
+          const durationMs = getIntervalMs(interval) * (bars as number);
+          const warmupStart = new Date(config.startDate.getTime() - durationMs);
+          const warmupKlines = await dataManager.getKlines(
+            symbol,
+            interval as string,
+            warmupStart,
+            config.startDate,
+          );
+          initialDataKlines[interval as KlineInterval] = warmupKlines;
+        }
+      }
+
+      const initOB = buildSyntheticOrderBook(
+        symbol,
+        exchange,
+        klines[0].close,
+        klines[0].openTime,
+      );
+
+      await strategy.processInitialData({
+        symbol,
+        exchange,
+        timestamp: klines[0].openTime,
+        orderBook: initOB,
+        klines: initialDataKlines,
+      });
 
       const { trades, finalBalance, symbolEquity } = await this.simulateSymbol(
         symbol,
@@ -282,12 +335,87 @@ export class BacktestEngine implements IBacktestEngine {
       }
     };
 
+    // ── Helper: process cancel signals from strategy.analyze() responses.
+    //    Removes matched orders from both pendingEntries and activeExits, and
+    //    notifies the strategy via analyze({ orders: [CANCELED] }) so its
+    //    internal state (openLowerOrder / openUpperOrder) is correctly cleared.
+    //    Match priority: clientOrderId first, then orderId fallback.
+    const processCancelSignals = async (
+      sigs: ReturnType<typeof normalizeAnalyzeResult>,
+      barPriceRef: Decimal,
+      timestamp: Date,
+    ) => {
+      for (const sig of sigs) {
+        if (!isCancelOrderResult(sig)) continue;
+
+        // Resolve the target order by clientOrderId (preferred) or orderId.
+        const targetCid = sig.clientOrderId ?? null;
+
+        // Try pendingEntries first.
+        let cancelled = false;
+        if (targetCid && pendingEntries.has(targetCid)) {
+          const entry = pendingEntries.get(targetCid)!;
+          pendingEntries.delete(targetCid);
+          cancelled = true;
+          // Notify the strategy that this pending entry has been cancelled.
+          const cancelOB = buildSyntheticOrderBook(
+            symbol,
+            exchange,
+            barPriceRef,
+            timestamp,
+          );
+          await strategy.analyze({
+            exchangeName: exchange,
+            symbol,
+            orders: [
+              buildOrder(
+                entry.clientOrderId,
+                symbol,
+                entry.side,
+                entry.price,
+                entry.quantity,
+                OrderStatus.CANCELED,
+                exchange,
+              ),
+            ],
+            orderbook: cancelOB,
+          });
+        }
+
+        // Try activeExits next (strategy may cancel a TP order).
+        if (!cancelled && targetCid && activeExits.has(targetCid)) {
+          activeExits.delete(targetCid);
+          cancelled = true;
+          // No cash adjustment needed — margin is still locked until position is
+          // closed. The position will be force-closed at end-of-run.
+        }
+
+        // Fallback: scan by orderId string match across pending entries
+        // (orderId in backtest == exchange order id from buildOrder, which
+        // is a simple incrementing number — not stable, but we try anyway).
+        if (!cancelled && sig.orderId) {
+          for (const [cid, entry] of pendingEntries) {
+            // In backtest, the exchange order id is not stored on PendingEntry
+            // so we can't reliably match by orderId. Skip — clientOrderId is
+            // the reliable key and strategies should always include it.
+            void cid;
+            void entry;
+          }
+        }
+      }
+    };
+
     // ── Bootstrap: call processInitialData so order-driven strategies
     //    (e.g. SpreadGridStrategy) can place their initial entry orders.
     //    We synthesise a fresh OrderBook from the first bar's close price so
     //    that strategies gated behind a freshness check can generate signals.
     {
-      const initOB = buildSyntheticOrderBook(symbol, exchange, klines[0].close);
+      const initOB = buildSyntheticOrderBook(
+        symbol,
+        exchange,
+        klines[0].close,
+        klines[0].closeTime,
+      );
       const initSigs = normalizeAnalyzeResult(
         await strategy.processInitialData({
           symbol,
@@ -323,7 +451,7 @@ export class BacktestEngine implements IBacktestEngine {
         }
       }
       if (ttlExpired.length > 0) {
-        const ttlOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
+        const ttlOB = buildSyntheticOrderBook(symbol, exchange, bar.close, bar.closeTime);
         for (const expired of ttlExpired) {
           const cancelledOrder = buildOrder(
             expired.clientOrderId,
@@ -466,7 +594,12 @@ export class BacktestEngine implements IBacktestEngine {
           // Supply a fresh synthetic orderbook so strategies that gate signals
           // behind a price-freshness check (e.g. SpreadGridStrategy) can
           // generate their next orders.
-          const entryFillOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
+          const entryFillOB = buildSyntheticOrderBook(
+            symbol,
+            exchange,
+            bar.close,
+            bar.closeTime,
+          );
           const sigs = normalizeAnalyzeResult(
             await strategy.analyze({
               exchangeName: exchange,
@@ -488,6 +621,13 @@ export class BacktestEngine implements IBacktestEngine {
           // Track which new TP order IDs are added by this entry fill so we can
           // back-fill entryPositionSize after all of them have been registered.
           const newExitCids: string[] = [];
+
+          // ── Process cancel signals FIRST so stale sibling orders are removed
+          //    before new replacement orders are registered.  SpreadGrid's
+          //    rebuildOrdersAfterFill() emits cancels + new entries together;
+          //    without this step the cancelled orders would linger in pendingEntries
+          //    and corrupt canAddLong/canAddShort calculations.
+          await processCancelSignals(sigs, bar.close, bar.closeTime);
 
           // Register TP exit orders and re-entry orders the strategy returned.
           // Opposite-side signals become take-profit exits; same-side signals
@@ -606,7 +746,12 @@ export class BacktestEngine implements IBacktestEngine {
             exitStatus,
             exchange,
           );
-          const exitFillOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
+          const exitFillOB = buildSyntheticOrderBook(
+            symbol,
+            exchange,
+            bar.close,
+            bar.closeTime,
+          );
           const sigs = normalizeAnalyzeResult(
             await strategy.analyze({
               exchangeName: exchange,
@@ -625,11 +770,12 @@ export class BacktestEngine implements IBacktestEngine {
             timestamp: bar.openTime,
           });
 
-          // The strategy may return the next entry order after a TP/SL
-          await registerEntrySigs(
-            sigs.filter((s) => !isCancelOrderResult(s)),
-            barIdx,
-          );
+          // Process cancel signals first (strategy may cancel sibling orders
+          // alongside placing a new entry after a TP/SL fill).
+          await processCancelSignals(sigs, bar.close, bar.closeTime);
+
+          // The strategy may return the next entry order after a TP/SL.
+          await registerEntrySigs(sigs, barIdx);
         }
       }
 
@@ -637,7 +783,7 @@ export class BacktestEngine implements IBacktestEngine {
       // Also supply a fresh synthetic orderbook so that any strategy checking
       // price freshness (e.g. SpreadGridStrategy) can generate signals here too.
 
-      const klineOB = buildSyntheticOrderBook(symbol, exchange, bar.close);
+      const klineOB = buildSyntheticOrderBook(symbol, exchange, bar.close, bar.closeTime);
       const klineSigs = normalizeAnalyzeResult(
         await strategy.analyze({
           exchangeName: exchange,
@@ -647,12 +793,9 @@ export class BacktestEngine implements IBacktestEngine {
         }),
       );
 
-      // Handle cancellations first, then register new entries.
-      for (const sig of klineSigs) {
-        if (isCancelOrderResult(sig) && sig.clientOrderId) {
-          pendingEntries.delete(sig.clientOrderId);
-        }
-      }
+      // Handle cancellations first (removes from pendingEntries + activeExits and
+      // notifies the strategy), then register new entries.
+      await processCancelSignals(klineSigs, bar.close, bar.closeTime);
       await registerEntrySigs(klineSigs, barIdx);
 
       // ── Phase 4: MTM equity snapshot ─────────────────────────────────────────

@@ -1043,7 +1043,8 @@
       "creating": "Creating...",
       "createConfig": "Create Configuration",
       "view": "View",
-      "run": "Run"
+      "run": "Run",
+      "delete": "Delete"
     },
     "dialog": {
       "title": "Create Backtest Configuration",
@@ -1173,13 +1174,14 @@
       "deleteConfig": "Failed to delete config",
       "fetchDetails": "Failed to fetch config details",
       "fetchResultDetails": "Failed to fetch result details",
-      "runFailed": "Failed to run backtest"
+      "runFailed": "Failed to run backtest",
+      "deleteResult": "Failed to delete backtest result"
     },
     "messages": {
       "created": "Backtest configuration created",
       "createdAndRunning": "Configuration created, running backtest...",
       "runCompleted": "Backtest completed",
-      "deleted": "Configuration deleted"
+      "deleted": "Deleted successfully"
     },
     "run": {
       "title": "Run Backtest",
