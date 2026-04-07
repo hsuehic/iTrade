@@ -16,6 +16,7 @@ export class OrderFillEntity implements OrderFill {
 
   @ManyToOne('orders', 'fills', {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   order!: OrderEntity;
 

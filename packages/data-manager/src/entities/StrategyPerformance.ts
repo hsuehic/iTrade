@@ -33,6 +33,7 @@ export class StrategyPerformanceEntity {
 
   @OneToOne('strategies', 'performance', {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn({ name: 'strategyId' })
   strategy!: StrategyEntity;
