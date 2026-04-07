@@ -71,7 +71,7 @@ export function NavSecondary({
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => {
-            const isActive = pathname === item.url;
+            const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`);
             return (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton isActive={isActive} tooltip={item.title} asChild>

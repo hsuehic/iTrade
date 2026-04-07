@@ -97,7 +97,7 @@ export function NavPortfolio() {
         {items.map((item) => (
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton
-              isActive={pathname === item.url || pathname?.startsWith(item.url + '?')}
+              isActive={pathname === item.url || pathname.startsWith(`${item.url}/`)}
               asChild
             >
               <Link href={item.url}>

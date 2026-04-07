@@ -78,7 +78,7 @@ export function NavMain() {
         <SidebarMenu>
           {items.map((item) => {
             const { title, url } = item;
-            const isActive = pathname === url;
+            const isActive = pathname === url || pathname.startsWith(`${url}/`);
             return (
               <SidebarMenuItem key={title}>
                 <SidebarMenuButton isActive={isActive} tooltip={title} asChild>
