@@ -6,7 +6,7 @@ import prettier from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
-import nextConfig from 'eslint-config-next/core-web-vitals';
+// import nextConfig from 'eslint-config-next/core-web-vitals.js';
 
 // 导入 FlatCompat 以处理遗留的配置
 import { FlatCompat } from '@eslint/eslintrc';
@@ -88,8 +88,8 @@ export default defineConfig(
     },
   },
 
-  // Next.js 前端应用配置 (ESLint 9 Flat Config)
-  ...nextConfig.map((config) => ({
+  // Next.js 前端应用配置 (使用 FlatCompat)
+  ...compat.extends('next/core-web-vitals').map((config) => ({
     ...config,
     files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
     settings: {
