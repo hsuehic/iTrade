@@ -696,7 +696,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         side,
         type,
         quantity: adjustedQuantity,
-        price: adjustedPrice,
+        price: adjustedPrice, // 🆕 Pass through stopPrice
         status: 'NEW' as OrderStatus,
         timeInForce: 'GTC' as TimeInForce,
         timestamp: new Date(),
@@ -735,6 +735,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         {
           tradeMode,
           leverage,
+          stopPrice: params.stopPrice, // 🆕 Pass stopPrice to exchange
         },
       );
 
@@ -1143,7 +1144,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
-      const orderType = signal.price ? OrderType.LIMIT : OrderType.MARKET;
+      // 🆕 Determine order type, respecting signal's requested type if present
+      const orderType =
+        signal.type || (signal.price ? OrderType.LIMIT : OrderType.MARKET);
       const side = signal.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
 
       // Extract clientOrderId from signal
@@ -1156,6 +1159,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         quantity: signal.quantity,
         type: orderType,
         price: signal.price,
+        stopPrice: signal.stopPrice, // 🆕 Pass stopPrice from signal
         tradeMode: signal.tradeMode,
         leverage: signal.leverage,
         clientOrderId,
@@ -1320,7 +1324,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         await this.getSymbolInfoWithCache(exchange, symbol, { forceRefresh: true });
       } catch (error) {
         this.logger.warn(
-          `⚠️  [SYMBOL_INFO] Failed to prefetch ${symbol} from ${exchange.name} for ${strategyName}`,
+          `⚠️  [SYMBOL_INFO] Failed to prefetch ${symbol} from ${exchange.name} for ${strategyName}:`,
+          error as any,
         );
       }
     }

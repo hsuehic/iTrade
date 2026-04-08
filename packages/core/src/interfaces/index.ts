@@ -79,6 +79,7 @@ export interface IExchange extends EventEmitter {
       leverage?: number;
       positionSide?: 'LONG' | 'SHORT';
       reduceOnly?: boolean;
+      stopPrice?: Decimal; // 🆕 Added to support stop orders
     },
   ): Promise<Order>;
 
@@ -223,6 +224,7 @@ export interface ExecuteOrderParameters {
   quantity: Decimal;
   type: OrderType;
   price?: Decimal; // Limit price for the main/initial order
+  stopPrice?: Decimal; // 🆕 Trigger price for stop orders
   tradeMode?: TradeMode; // Trading mode for margin/futures
   leverage?: number; // Leverage multiplier
   clientOrderId?: string; // 🆕 Client order ID from strategy signal metadata (optional)

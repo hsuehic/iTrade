@@ -308,7 +308,9 @@ export interface StrategyOrderResult {
   clientOrderId: string;
   symbol?: string;
   quantity?: Decimal;
+  type?: OrderType; // 🆕 Added to support stop orders, etc.
   price?: Decimal; // Limit price for the main/initial order
+  stopPrice?: Decimal; // 🆕 Trigger price for stop orders
   confidence?: number;
   reason?: string;
 

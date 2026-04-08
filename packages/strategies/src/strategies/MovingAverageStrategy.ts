@@ -12,7 +12,9 @@ import {
   SignalMetaData,
   InitialDataResult,
   KlineInterval,
+  Kline,
   Order,
+  OrderType,
   OrderStatus,
   OrderSide,
   TradeMode,
@@ -47,20 +49,16 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
     },
 
     parameterDefinitions: [
-      // ── MA Type ───────────────────────────────────────────────────────────
       {
         name: 'maType',
         type: 'enum',
-        description:
-          'Moving average type. SMA (simple) gives equal weight to all bars; ' +
-          'EMA (exponential) weights recent bars more heavily and reacts faster to price changes.',
+        description: 'Moving average type. SMA or EMA.',
         defaultValue: 'sma',
         required: true,
         validation: { options: ['sma', 'ema'] },
         group: 'Moving Averages',
         order: 0,
       },
-      // ── MA Periods ────────────────────────────────────────────────────────
       {
         name: 'fastPeriod',
         type: 'number',
@@ -75,7 +73,7 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
       {
         name: 'slowPeriod',
         type: 'number',
-        description: 'Slow moving average period (must be > fastPeriod)',
+        description: 'Slow moving average period',
         defaultValue: 55,
         required: true,
         min: 2,
@@ -86,7 +84,7 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
       {
         name: 'klineInterval',
         type: 'enum',
-        description: 'Kline interval for MA calculation and WebSocket subscription',
+        description: 'Kline interval',
         defaultValue: '15m',
         required: true,
         validation: {
@@ -108,12 +106,10 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
         group: 'Moving Averages',
         order: 3,
       },
-      // ── Take Profit ───────────────────────────────────────────────────────
       {
         name: 'takeProfitPercent',
         type: 'number',
-        description:
-          'Take-profit percentage from the actual fill price (e.g. 2 = 2%). A limit TP order is placed automatically after each entry fill.',
+        description: 'Take-profit percentage from the actual fill price.',
         defaultValue: 2,
         required: true,
         min: 0.01,
@@ -122,14 +118,11 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
         group: 'Take Profit',
         order: 4,
       },
-      // ── Stop Loss ─────────────────────────────────────────────────────────
       {
         name: 'stopLossPercent',
         type: 'number',
         description:
-          'Stop-loss percentage from the actual fill price (e.g. 1 = 1%). ' +
-          'Set to 0 (default) to disable. When enabled, a stop-loss limit order is placed ' +
-          'alongside the TP after each entry fill. If the SL fills, the paired TP is cancelled.',
+          'Stop-loss percentage. 0 to disable. Monitored manually by the strategy.',
         defaultValue: 0,
         required: false,
         min: 0,
@@ -138,11 +131,10 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
         group: 'Take Profit',
         order: 5,
       },
-      // ── Risk Management ───────────────────────────────────────────────────
       {
         name: 'orderAmount',
         type: 'number',
-        description: 'Quantity (base asset) to trade per entry order',
+        description: 'Quantity to trade per entry order',
         defaultValue: 100,
         required: true,
         min: 0.0001,
@@ -153,24 +145,22 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
       {
         name: 'maxPositionSize',
         type: 'number',
-        description:
-          'Maximum net long position allowed. New long entries are blocked once this ceiling is reached.',
+        description: 'Maximum net long position allowed',
         defaultValue: 500,
         required: true,
         min: 0,
-        max: 1_000_000,
+        max: 10_000_000,
         group: 'Risk Management',
         order: 7,
       },
       {
         name: 'minPositionSize',
         type: 'number',
-        description:
-          'Minimum net position allowed (0 = long-only / spot; negative = allows shorts for futures).',
+        description: 'Minimum net position allowed.',
         defaultValue: 0,
         required: true,
-        min: -1_000_000,
-        max: 1_000_000,
+        min: -10_000_000,
+        max: 10_000_000,
         group: 'Risk Management',
         order: 8,
       },
@@ -179,8 +169,7 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
         type: 'number',
         description:
           'Leverage multiplier for perpetual/futures trading (e.g. 10 = 10×). ' +
-          'Set to 1 for spot-equivalent (no leverage). ' +
-          'Sent with every order so the exchange sets the correct leverage before placement.',
+          'Set to 1 for spot-equivalent (no leverage).',
         defaultValue: 1,
         required: false,
         min: 1,
@@ -190,226 +179,101 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
       },
     ],
 
-    // ── Subscription requirements (UI metadata) ───────────────────────────
     subscriptionRequirements: {
       klines: {
         required: true,
         allowMultipleIntervals: false,
-        defaultIntervals: ['15m'],
-        intervalsEditable: true,
-        description:
-          'A single kline interval drives the MA calculation. The strategy auto-subscribes via WebSocket and pre-loads enough historical bars.',
+        description: 'Real-time klines for trend detection.',
       },
       ticker: {
         required: false,
-        editable: true,
-        description: 'Optional ticker stream for price monitoring between kline closes.',
+        description: 'Tickers for real-time manual SL triggers.',
       },
     },
 
-    // ── Initial data requirements (UI metadata) ───────────────────────────
     initialDataRequirements: {
       klines: {
         required: true,
-        defaultConfig: { '15m': 65 }, // slowPeriod(55) + 10 buffer
-        allowMultipleIntervals: false,
-        description:
-          'Pre-loads enough historical klines to prime both MAs before trading begins.',
+        defaultConfig: { '15m': 200 },
+        description: 'Pre-loads historical klines.',
       },
       fetchPositions: {
         required: true,
-        description: 'Sync existing position so risk limits are enforced from the start.',
+        editable: false,
+        description: 'Sync current position.',
       },
       fetchOpenOrders: {
         required: true,
-        description:
-          'Recover any pending entry / TP orders placed in a previous session.',
+        editable: false,
+        description: 'Sync existing orders.',
       },
     },
 
     documentation: {
-      overview:
-        'Generates a long (buy) signal when the fast SMA crosses above the slow SMA and a short (sell) signal on the opposite crossover. Entry limit orders are placed at an optimal intra-bar price derived from the most recent kline. A take-profit limit order is created automatically once each entry fills.',
-      parameters:
-        'fastPeriod must be smaller than slowPeriod. klineInterval controls which timeframe is used for both the MA and the WebSocket subscription.',
-      signals:
-        'Long entry: fast SMA > slow SMA (crossover). Short entry: fast SMA < slow SMA (crossover). Take-profit: placed at entryFillPrice ± takeProfitPercent after fill.',
-      riskFactors: [
-        'SMA is a lagging indicator — late entries in fast-moving markets',
-        'Choppy / ranging markets generate false crossover signals',
-        'Limit entry orders may not fill if price moves away quickly',
-        'No stop-loss by default — enable via stopLossPercent > 0',
-      ],
+      overview: 'Trend-following strategy using two EMAs.',
+      parameters: 'Periods, Intervals, Profits, and Risk Limits.',
+      signals: 'EMA Crossover, automated TP/SL logic.',
+      riskFactors: ['Whipsaws', 'Slippage'],
     },
   };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Parameter Interface
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Configuration parameters for MovingAverageStrategy.
- */
 export interface MovingAverageParameters extends StrategyParameters {
-  /**
-   * Moving average type: 'sma' (simple) or 'ema' (exponential).
-   * EMA is seeded from the SMA of the first `period` bars and then updated
-   * incrementally using the formula: EMA = close × k + prevEMA × (1-k),
-   * where k = 2 / (period + 1). Default: 'sma'
-   */
   maType: 'sma' | 'ema';
-  /** Fast MA period. Default: 25 */
   fastPeriod: number;
-  /** Slow MA period. Default: 55 */
   slowPeriod: number;
-  /**
-   * Kline interval used for the MA calculation AND the WebSocket subscription.
-   * Accepts any valid KlineInterval string (e.g. '1m', '15m', '1h').
-   * Default: '15m'
-   */
   klineInterval: string;
-  /**
-   * Take-profit percentage from the actual entry fill price.
-   * e.g. 2 → TP placed at fillPrice × 1.02 (long) or fillPrice × 0.98 (short).
-   * Default: 2
-   */
   takeProfitPercent: number;
-  /**
-   * Stop-loss percentage from the actual entry fill price.
-   * e.g. 1 → SL placed at fillPrice × 0.99 (long) or fillPrice × 1.01 (short).
-   * Set to 0 (default) to disable stop-loss entirely.
-   * When > 0, a stop-loss limit order is placed alongside the TP after each entry fill.
-   * If the SL fills, its paired TP is automatically cancelled, and vice versa.
-   * Default: 0
-   */
   stopLossPercent: number;
-  /** Quantity (base asset) traded per entry order. Default: 100 */
   orderAmount: number;
-  /**
-   * Hard ceiling on net long position (in base asset units).
-   * No new long entries are placed if currentPosition + orderAmount > maxPositionSize.
-   * Default: 500
-   */
   maxPositionSize: number;
-  /**
-   * Hard floor on net position (in base asset units).
-   * 0 = long-only (spot). Negative = allow short exposure (futures).
-   * No new short entries are placed if currentPosition - orderAmount < minPositionSize.
-   * Default: 0
-   */
   minPositionSize: number;
-  /**
-   * Leverage multiplier sent with every order for perpetual/futures trading.
-   * The exchange sets the leverage before placing each order (cached to avoid
-   * redundant API calls when it hasn't changed).
-   * 1 = no leverage (spot-equivalent). Default: 1
-   */
   leverage: number;
 }
 
 type MovingAverageConfig = StrategyConfig<MovingAverageParameters>;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Minimal kline snapshot needed for the entry-price formula. */
 interface KlineSnapshot {
   open: Decimal;
   close: Decimal;
 }
 
-/** Metadata stored for every pending entry order so the TP can be constructed on fill. */
 interface PendingEntryInfo {
   side: 'buy' | 'sell';
-  /** Limit price we sent to the exchange (used as fallback if averagePrice is unavailable). */
   limitPrice: Decimal;
-  /** Quantity of the entry order — stored so committed exposure can be summed before fills. */
   quantity: Decimal;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Strategy Class
-// ─────────────────────────────────────────────────────────────────────────────
-
 export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters> {
-  // ── MA state ──────────────────────────────────────────────────────────────
-  /** Rolling window of close prices (capped at slowPeriod length). */
   private closeHistory: Decimal[] = [];
-  /** Most-recent completed kline (open + close) – used for the entry price formula. */
   private lastKline: KlineSnapshot | null = null;
-  /** Current fast MA value (SMA or EMA depending on maType). */
   private fastMA: Decimal = new Decimal(0);
-  /** Current slow MA value (SMA or EMA depending on maType). */
   private slowMA: Decimal = new Decimal(0);
-  /**
-   * Persisted EMA values — null until the slow period's worth of history is available.
-   * Only used when maType === 'ema'; ignored in SMA mode.
-   */
   private fastEMAValue: Decimal | null = null;
   private slowEMAValue: Decimal | null = null;
-
-  // ── Futures / leverage ────────────────────────────────────────────────────
-  /** Leverage multiplier from parameters — sent with every order signal. */
-  private leverage: number;
-  /**
-   * Margin mode for perpetual/futures orders.
-   * Hardcoded to ISOLATED (same as SpreadGridStrategy) because isolated margin
-   * caps risk to the collateral in this position only.
-   */
-  private readonly tradeMode: TradeMode = TradeMode.ISOLATED;
-
-  /**
-   * Tracks the current MA regime so we only fire on *new* crossovers.
-   * 'bullish'  → fast > slow (we are in, or just entered, an uptrend)
-   * 'bearish'  → fast < slow (we are in, or just entered, a downtrend)
-   * 'none'     → initial / insufficient data
-   */
   private maSignal: 'bullish' | 'bearish' | 'none' = 'none';
 
-  // ── Order lifecycle tracking ──────────────────────────────────────────────
-  /**
-   * Entry orders that have been sent to the exchange but not yet confirmed filled.
-   * Key: clientOrderId  Value: info needed to build the TP once the entry fills.
-   */
   private pendingEntryOrders: Map<string, PendingEntryInfo> = new Map();
-  /**
-   * Entry orders for which a cancel has been requested but not yet confirmed.
-   * Kept here (instead of deleting from pendingEntryOrders outright) so that a
-   * fill arriving before the cancel is confirmed can still trigger TP/SL placement.
-   */
   private cancellingEntryOrders: Map<string, PendingEntryInfo> = new Map();
-  /**
-   * Active take-profit orders placed after an entry fill.
-   * Key: TP clientOrderId  Value: SignalMetaData (contains parentOrderId → entry cid).
-   */
   private activeTpOrders: Map<string, SignalMetaData> = new Map();
-  /**
-   * Active stop-loss orders placed after an entry fill (only when stopLossPercent > 0).
-   * Key: SL clientOrderId  Value: parent entry clientOrderId.
-   */
-  private activeSlOrders: Map<string, string> = new Map();
-  /**
-   * Maps entry clientOrderId → { tpCid, slCid } so each exit order can cancel its pair.
-   */
-  private activePositions: Map<string, { tpCid: string; slCid: string | null }> =
-    new Map();
-  /**
-   * Set of clientOrderIds whose fills have already been processed (idempotency guard).
-   */
+  private activePositions: Map<
+    string,
+    {
+      tpCid: string;
+      slPrice: Decimal | null;
+      quantity: Decimal;
+      side: 'buy' | 'sell';
+    }
+  > = new Map();
   private processedFillIds: Set<string> = new Set();
+  private activeSlOrders: Map<string, string> = new Map();
 
   constructor(config: MovingAverageConfig) {
     super({ ...config });
-    this.leverage = config.parameters.leverage ?? 1;
     this._validateParameters();
   }
 
-  // ── Parameter validation ──────────────────────────────────────────────────
-
   private _validateParameters(): void {
     const {
-      maType,
       fastPeriod,
       slowPeriod,
       maxPositionSize,
@@ -420,77 +284,29 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       leverage,
     } = this._parameters;
 
-    if (fastPeriod >= slowPeriod) {
-      throw new Error(
-        `[MovingAverageStrategy] fastPeriod (${fastPeriod}) must be less than slowPeriod (${slowPeriod}).`,
-      );
-    }
-    if (minPositionSize > maxPositionSize) {
-      throw new Error(
-        `[MovingAverageStrategy] minPositionSize (${minPositionSize}) must be ≤ maxPositionSize (${maxPositionSize}).`,
-      );
-    }
-    if (fastPeriod <= 0) {
-      throw new Error(
-        `[MovingAverageStrategy] fastPeriod must be > 0 (got ${fastPeriod}).`,
-      );
-    }
-    if (takeProfitPercent <= 0) {
-      throw new Error(
-        `[MovingAverageStrategy] takeProfitPercent must be > 0 (got ${takeProfitPercent}).`,
-      );
-    }
-    if (stopLossPercent < 0) {
-      throw new Error(
-        `[MovingAverageStrategy] stopLossPercent must be ≥ 0 (got ${stopLossPercent}). Use 0 to disable.`,
-      );
-    }
-    if (maType !== 'sma' && maType !== 'ema') {
-      throw new Error(
-        `[MovingAverageStrategy] maType must be 'sma' or 'ema' (got '${maType}').`,
-      );
-    }
-    if (orderAmount <= 0) {
-      throw new Error(
-        `[MovingAverageStrategy] orderAmount must be > 0 (got ${orderAmount}).`,
-      );
-    }
-    if (leverage < 1) {
-      throw new Error(`[MovingAverageStrategy] leverage must be ≥ 1 (got ${leverage}).`);
-    }
-    if (leverage > 125) {
-      throw new Error(
-        `[MovingAverageStrategy] leverage must be ≤ 125 (got ${leverage}).`,
-      );
-    }
+    if (fastPeriod >= slowPeriod) throw new Error(`fastPeriod must be < slowPeriod.`);
+    if (minPositionSize > maxPositionSize)
+      throw new Error(`minPositionSize must be ≤ maxPositionSize.`);
+    if (fastPeriod <= 0) throw new Error(`fastPeriod must be > 0.`);
+    if (orderAmount <= 0) throw new Error(`orderAmount must be > 0.`);
+    if (takeProfitPercent <= 0) throw new Error(`takeProfitPercent must be > 0.`);
+    if (stopLossPercent < 0) throw new Error(`stopLossPercent must be ≥ 0.`);
+    if (leverage < 1) throw new Error(`leverage must be ≥ 1.`);
+    if (leverage > 125) throw new Error(`leverage must be ≤ 125.`);
   }
 
-  // ── Dynamic subscription & initial-data config ────────────────────────────
-
-  /**
-   * Overrides BaseStrategy to derive the WebSocket subscription directly from
-   * the `klineInterval` parameter, so changing the parameter automatically
-   * subscribes to the correct interval without UI reconfiguration.
-   */
   public override getSubscriptionConfig() {
     const interval = this._parameters.klineInterval || '15m';
     return {
-      klines: {
-        enabled: true,
-        intervals: [interval],
-      },
+      klines: { enabled: true, intervals: [interval] },
       method: 'websocket' as const,
-      exchange: this._context.exchange,
+      ticker: true,
     };
   }
 
-  /**
-   * Overrides BaseStrategy to request just enough historical bars to warm up
-   * both MAs (slowPeriod + 10 bars as buffer).
-   */
   public override getInitialDataConfig() {
     const interval = this._parameters.klineInterval || '15m';
-    const barsNeeded = this._parameters.slowPeriod + 10;
+    const barsNeeded = Math.max(this._parameters.slowPeriod + 10, 20);
     return {
       klines: { [interval]: barsNeeded },
       fetchPositions: true,
@@ -498,17 +314,10 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     };
   }
 
-  // ── Lifecycle: initial data ───────────────────────────────────────────────
-
-  /**
-   * Called once by the engine before live data starts flowing.
-   * Populates the close history and primes the last-kline snapshot.
-   */
   public override async processInitialData(
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
     const interval = (this._parameters.klineInterval || '15m') as KlineInterval;
-
     if (initialData.klines) {
       const klines = (initialData.klines[interval] ?? []).filter(
         (k) => k.isClosed !== false,
@@ -517,19 +326,11 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
         this.closeHistory = klines.map((k) => k.close);
         const latest = klines[klines.length - 1];
         this.lastKline = { open: latest.open, close: latest.close };
-
-        // Prime the MA state so the first live bar computes a real crossover.
         this._recalculateMAs();
-        this._updateMASignal(); // warm-up: set regime without firing a trade signal
-
-        this._logger.debug(
-          `[MovingAverageStrategy] Primed with ${this.closeHistory.length} ${interval} bars. ` +
-            `FastMA=${this.fastMA.toFixed(4)}, SlowMA=${this.slowMA.toFixed(4)}, regime=${this.maSignal}`,
-        );
+        this._updateMASignal();
       }
     }
 
-    // Recover open orders from a previous session
     if (initialData.openOrders) {
       for (const order of initialData.openOrders) {
         if (!order.clientOrderId) continue;
@@ -539,186 +340,161 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
             limitPrice: order.price ?? new Decimal(0),
             quantity: order.quantity,
           });
-          this._logger.debug(
-            `[MovingAverageStrategy] Recovered pending entry: ${order.clientOrderId}`,
-          );
         } else if (
           order.clientOrderId.startsWith('T') &&
           this._isMyOrder(order.clientOrderId)
         ) {
-          const metadata: SignalMetaData = {
+          this.activeTpOrders.set(order.clientOrderId, {
             signalType: SignalType.TakeProfit,
             clientOrderId: order.clientOrderId,
             timestamp: Date.now(),
-          };
-          this.activeTpOrders.set(order.clientOrderId, metadata);
-          this._logger.debug(
-            `[MovingAverageStrategy] Recovered active TP: ${order.clientOrderId}`,
-          );
-        } else if (
-          order.clientOrderId.startsWith('S') &&
-          this._isMyOrder(order.clientOrderId)
-        ) {
-          // parentOrderId is unknown after restart; best-effort recovery
-          this.activeSlOrders.set(order.clientOrderId, '');
-          this._logger.debug(
-            `[MovingAverageStrategy] Recovered active SL: ${order.clientOrderId}`,
-          );
+          });
+
+          if (!this._currentPosition.isZero()) {
+            const side = this._currentPosition.gt(0) ? 'buy' : 'sell';
+            const tpPct = new Decimal(this._parameters.takeProfitPercent).div(100);
+            if (order.price) {
+              const baseEstimatedFromTp =
+                side === 'buy'
+                  ? order.price.div(new Decimal(1).plus(tpPct))
+                  : order.price.div(new Decimal(1).minus(tpPct));
+              const slPrice = this._calculateStopLossPrice(side, baseEstimatedFromTp);
+
+              this.activePositions.set('recovered', {
+                tpCid: order.clientOrderId,
+                slPrice: this._parameters.stopLossPercent > 0 ? slPrice : null,
+                quantity: this._currentPosition.abs(),
+                side,
+              });
+            }
+          }
         }
       }
     }
-
     return { action: 'hold' };
   }
 
-  // ── Core analyze loop ─────────────────────────────────────────────────────
-
-  /**
-   * Main analysis loop. Called by the engine on every DataUpdate event.
-   *
-   * Handles two independent data paths:
-   *  1. `klines`  → update MA history, detect crossovers, optionally emit entry signal.
-   *  2. `orders`  → detect entry fills and emit the corresponding TP signal;
-   *                 detect TP fills and reset state for re-entry.
-   *
-   * Returns an array so that an entry signal and/or TP signal can be returned
-   * simultaneously in a single engine tick.
-   */
-  public async analyze({ klines, orders }: DataUpdate): Promise<StrategyAnalyzeResult> {
+  public async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
+    const { klines, ticker, orders } = dataUpdate;
     const signals: StrategyResult[] = [];
 
-    // ── Path 1: kline update ──────────────────────────────────────────────
+    const price =
+      ticker?.price ||
+      (klines && klines.length > 0 ? klines[klines.length - 1].close : null);
+    if (price) {
+      signals.push(...this._checkManualStopLoss(price));
+    }
+
     if (klines && klines.length > 0) {
       for (const kline of klines) {
-        const klineSignals = this._processKlineUpdate(kline);
-        signals.push(...klineSignals);
+        signals.push(...this._processKlineUpdate(kline));
       }
     }
 
-    // ── Path 2: order update ──────────────────────────────────────────────
     if (orders && orders.length > 0) {
-      const orderSignals = this._processOrderUpdates(orders);
-      signals.push(...orderSignals);
+      signals.push(...this._processOrderUpdates(orders));
     }
 
     return signals.length > 0 ? signals : { action: 'hold' };
   }
 
-  // ── Path 1: kline processing ──────────────────────────────────────────────
+  private _checkManualStopLoss(price: Decimal): StrategyResult[] {
+    const signals: StrategyResult[] = [];
 
-  /**
-   * Ingests one kline, recomputes the MAs, and returns an entry signal if a
-   * fresh MA crossover is detected and risk limits permit.
-   *
-   * Only processes closed klines (isClosed !== false). In-progress WebSocket
-   * updates where isClosed is explicitly false are ignored so MA values are
-   * never computed from an incomplete candle.
-   */
-  private _processKlineUpdate(kline: {
-    open: Decimal;
-    close: Decimal;
-    isClosed?: boolean;
-  }): StrategyResult[] {
-    // Skip in-progress (forming) klines — only act on closed bars.
-    if (kline.isClosed === false) return [];
+    for (const [entryCid, pos] of Array.from(this.activePositions.entries())) {
+      if (!pos.slPrice) continue;
 
-    // 1. Update rolling close history
-    this.closeHistory.push(kline.close);
-    const maxLen = this._parameters.slowPeriod + 1;
-    if (this.closeHistory.length > maxLen) {
-      this.closeHistory.splice(0, this.closeHistory.length - maxLen);
-    }
-    this.lastKline = { open: kline.open, close: kline.close };
+      const hit =
+        pos.side === 'buy' ? price.lte(pos.slPrice) : price.gte(pos.slPrice);
 
-    // 2. Compute MAs (need at least slowPeriod bars)
-    if (this.closeHistory.length < this._parameters.slowPeriod) {
-      return [];
-    }
-    this._recalculateMAs();
+      if (hit) {
+        signals.push({
+          action: 'cancel',
+          clientOrderId: pos.tpCid,
+          reason: `Manual SL hit`,
+        } as StrategyCancelOrderResult);
 
-    // 3. Detect crossover
-    const crossover = this._detectCrossover();
-    if (crossover === 'none') return [];
+        const exitCid = this.generateClientOrderId(SignalType.StopLoss);
+        signals.push({
+          action: pos.side === 'buy' ? 'sell' : 'buy',
+          clientOrderId: exitCid,
+          quantity: pos.quantity,
+          type: OrderType.MARKET,
+          leverage: this._parameters.leverage,
+          tradeMode: TradeMode.ISOLATED,
+          reason: `Manual SL exit`,
+          metadata: {
+            signalType: SignalType.StopLoss,
+            parentOrderId: entryCid.startsWith('recovered') ? undefined : entryCid,
+            timestamp: Date.now(),
+          },
+        });
 
-    // 4. Cancel any pending entry in the opposite direction
-    const cancelSignals = this._cancelOppositeEntry(crossover);
-
-    // 5. Check whether we already have a pending entry in this direction
-    const hasPendingEntry = [...this.pendingEntryOrders.values()].some(
-      (e) => e.side === (crossover === 'bullish' ? 'buy' : 'sell'),
-    );
-    if (hasPendingEntry) {
-      this._logger.debug(
-        `[MovingAverageStrategy] Crossover ${crossover} – skipped, entry already pending.`,
-      );
-      return cancelSignals;
+        this.activePositions.delete(entryCid);
+        this.activeTpOrders.delete(pos.tpCid);
+        this.maSignal = 'none';
+      }
     }
 
-    // 6. Risk management: position-size gate
-    const action: 'buy' | 'sell' = crossover === 'bullish' ? 'buy' : 'sell';
-    if (!this._positionAllows(action)) {
-      this._logger.debug(
-        `[MovingAverageStrategy] Crossover ${crossover} – blocked by position limits ` +
-          `(pos=${this._currentPosition.toFixed(4)}, max=${this._parameters.maxPositionSize}, min=${this._parameters.minPositionSize}).`,
-      );
-      return cancelSignals;
-    }
-
-    // 7. Build the entry limit signal
-    const entrySignal = this._generateEntrySignal(crossover);
-    if (entrySignal) {
-      cancelSignals.push(entrySignal);
-      this._logger.debug(
-        `[MovingAverageStrategy] ${crossover} crossover → entry ${action} @ ${entrySignal.price?.toFixed(4)}, ` +
-          `cid=${entrySignal.clientOrderId}`,
-      );
-    }
-
-    // 8. Close any opposite positions immediately on crossover (market-like exit)
-    // This prevents simultaneous long/short positions and enables cleaner trend-following.
-    if (crossover === 'bullish' && this._currentPosition.lt(0)) {
-      // We are short, price crossed bullish -> Close all shorts
-      const closeShortSignal: StrategyOrderResult = {
-        action: 'buy',
-        clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
-        quantity: this._currentPosition.abs(),
-        price: this.lastKline?.close ?? kline.close,
-        leverage: this._parameters.leverage,
-        tradeMode: this.tradeMode,
-        reason: 'Bullish crossover: closing existing short positions',
-        metadata: {
-          signalType: SignalType.StopLoss, // using StopLoss as a category for "forced" exit
-        },
-      };
-      cancelSignals.push(closeShortSignal);
-    } else if (crossover === 'bearish' && this._currentPosition.gt(0)) {
-      // We are long, price crossed bearish -> Close all longs
-      const closeLongSignal: StrategyOrderResult = {
-        action: 'sell',
-        clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
-        quantity: this._currentPosition,
-        price: this.lastKline?.close ?? kline.close,
-        leverage: this._parameters.leverage,
-        tradeMode: this.tradeMode,
-        reason: 'Bearish crossover: closing existing long positions',
-        metadata: {
-          signalType: SignalType.StopLoss,
-        },
-      };
-      cancelSignals.push(closeLongSignal);
-    }
-    return cancelSignals;
+    return signals;
   }
 
-  // ── Path 2: order lifecycle processing ───────────────────────────────────
+  private _processKlineUpdate(kline: Kline): StrategyResult[] {
+    if (kline.isClosed === false) return [];
 
-  /**
-   * Scans incoming order updates for fills that belong to this strategy.
-   *
-   *  - Entry FILLED → generate a corresponding TP limit order.
-   *  - TP FILLED    → clean up state so re-entry is possible.
-   *  - CANCELED / REJECTED / EXPIRED → remove from pending maps.
-   */
+    this.closeHistory.push(kline.close);
+    if (this.closeHistory.length > this._parameters.slowPeriod + 100) {
+      this.closeHistory.shift();
+    }
+
+    this._recalculateMAs();
+    const crossover = this._detectCrossover();
+    this.lastKline = { open: kline.open, close: kline.close };
+
+    if (crossover === 'none') return [];
+
+    const signals: StrategyResult[] = [];
+
+    signals.push(...this._cancelOppositeEntry());
+
+    const side: 'buy' | 'sell' = crossover === 'bullish' ? 'buy' : 'sell';
+    const alreadyPending = Array.from(this.pendingEntryOrders.values()).some(
+      (e) => e.side === side,
+    );
+
+    if (!alreadyPending && this._positionAllows(side)) {
+      const entry = this._generateEntrySignal(crossover);
+      if (entry) signals.push(entry);
+    }
+
+    if (crossover === 'bullish' && this._currentPosition.lt(0)) {
+      signals.push(this._generateCloseSignal('buy', this._currentPosition.abs()));
+    } else if (crossover === 'bearish' && this._currentPosition.gt(0)) {
+      signals.push(this._generateCloseSignal('sell', this._currentPosition));
+    }
+
+    return signals;
+  }
+
+  private _generateCloseSignal(
+    action: 'buy' | 'sell',
+    qty: Decimal,
+  ): StrategyOrderResult {
+    return {
+      action,
+      clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
+      quantity: qty,
+      type: OrderType.MARKET,
+      leverage: this._parameters.leverage,
+      tradeMode: TradeMode.ISOLATED,
+      reason: `Crossover exit`,
+      metadata: {
+        signalType: SignalType.StopLoss,
+        timestamp: Date.now(),
+      },
+    };
+  }
+
   private _processOrderUpdates(orders: Order[]): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
@@ -726,105 +502,44 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       const cid = order.clientOrderId;
       if (!cid || !this._isMyOrder(cid)) continue;
 
-      const isTerminal = [
+      const isTerminated = [
         OrderStatus.FILLED,
         OrderStatus.CANCELED,
         OrderStatus.REJECTED,
         OrderStatus.EXPIRED,
       ].includes(order.status);
 
-      // ── Entry order update ───────────────────────────────────────────────
-      // Also check cancellingEntryOrders: if the exchange fills before our cancel
-      // reaches it, the fill must still trigger TP/SL placement.
       if (this.pendingEntryOrders.has(cid) || this.cancellingEntryOrders.has(cid)) {
         if (order.status === OrderStatus.FILLED && !this.processedFillIds.has(cid)) {
           this.processedFillIds.add(cid);
-          const info = (this.pendingEntryOrders.get(cid) ??
-            this.cancellingEntryOrders.get(cid))!;
+          const info =
+            this.pendingEntryOrders.get(cid) ?? this.cancellingEntryOrders.get(cid)!;
 
-          // Use actual average fill price when available; fall back to limit price.
-          const fillPrice = order.averagePrice ?? order.price ?? info.limitPrice;
-          // Use actual executed quantity when available; fall back to the order quantity.
-          const fillQty = order.executedQuantity ?? info.quantity;
-
-          const exitSignals = this._generateExitOrders(
-            cid,
-            info.side,
-            fillPrice,
-            fillQty,
+          signals.push(
+            ...this._handleEntryFill(
+              cid,
+              info.side,
+              order.averagePrice ?? order.price ?? info.limitPrice,
+              order.executedQuantity ?? info.quantity,
+            ),
           );
-          signals.push(...exitSignals);
         }
-        if (isTerminal) {
+
+        if (isTerminated) {
           this.pendingEntryOrders.delete(cid);
           this.cancellingEntryOrders.delete(cid);
         }
-      }
-
-      // ── TP order update ──────────────────────────────────────────────────
-      else if (this.activeTpOrders.has(cid)) {
+      } else if (this.activeTpOrders.has(cid)) {
         if (order.status === OrderStatus.FILLED && !this.processedFillIds.has(cid)) {
           this.processedFillIds.add(cid);
-          this._logger.debug(
-            `[MovingAverageStrategy] TP filled ${cid} — position closed, ready to re-enter.`,
-          );
-
-          // Cancel the paired SL (if any)
-          const tpMeta = this.activeTpOrders.get(cid)!;
-          const entryCid = tpMeta.parentOrderId;
-          if (entryCid) {
-            const pos = this.activePositions.get(entryCid);
-            if (pos?.slCid) {
-              signals.push({
-                action: 'cancel',
-                clientOrderId: pos.slCid,
-                reason: 'TP filled — cancelling paired SL',
-              } as StrategyCancelOrderResult);
-              this.activeSlOrders.delete(pos.slCid);
-            }
-            this.activePositions.delete(entryCid);
+          const parent = this.activeTpOrders.get(cid)?.parentOrderId;
+          if (parent) {
+            this.activePositions.delete(parent);
           }
-
-          // Reset the MA signal so the next crossover triggers a new entry.
           this.maSignal = 'none';
-          // Trade fully closed — retire fill IDs (tracking maps are clean, no re-fire risk).
-          if (entryCid) this.processedFillIds.delete(entryCid);
-          this.processedFillIds.delete(cid);
         }
-        if (isTerminal) {
+        if (isTerminated) {
           this.activeTpOrders.delete(cid);
-        }
-      }
-
-      // ── SL order update ──────────────────────────────────────────────────
-      else if (this.activeSlOrders.has(cid)) {
-        if (order.status === OrderStatus.FILLED && !this.processedFillIds.has(cid)) {
-          this.processedFillIds.add(cid);
-          this._logger.debug(
-            `[MovingAverageStrategy] SL filled ${cid} — position stopped out.`,
-          );
-
-          // Cancel the paired TP
-          const entryCid = this.activeSlOrders.get(cid)!;
-          const pos = this.activePositions.get(entryCid);
-          if (pos?.tpCid) {
-            signals.push({
-              action: 'cancel',
-              clientOrderId: pos.tpCid,
-              reason: 'SL filled — cancelling paired TP',
-            } as StrategyCancelOrderResult);
-            this.activeTpOrders.delete(pos.tpCid);
-          }
-          this.activePositions.delete(entryCid);
-
-          // Reset MA signal so a new crossover can trigger re-entry
-          this.maSignal = 'none';
-          // Trade fully closed — retire fill IDs.
-          this.processedFillIds.delete(entryCid);
-          this.processedFillIds.delete(cid);
-        }
-        if (isTerminal) {
-          this.activeSlOrders.delete(cid);
         }
       }
     }
@@ -832,9 +547,29 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     return signals;
   }
 
-  // ── MA helpers ────────────────────────────────────────────────────────────
+  private _handleEntryFill(
+    entryCid: string,
+    side: 'buy' | 'sell',
+    fillPrice: Decimal,
+    fillQty: Decimal,
+  ): StrategyResult[] {
+    const tpSignal = this._generateTakeProfitSignal(entryCid, side, fillPrice, fillQty);
 
-  /** Recompute both MAs (SMA or EMA) from the current close history. */
+    const slPrice =
+      this._parameters.stopLossPercent > 0
+        ? this._calculateStopLossPrice(side, fillPrice)
+        : null;
+
+    this.activePositions.set(entryCid, {
+      tpCid: tpSignal.clientOrderId,
+      slPrice,
+      quantity: fillQty,
+      side,
+    });
+
+    return [tpSignal];
+  }
+
   private _recalculateMAs(): void {
     if (this._parameters.maType === 'ema') {
       this._recalculateEMAs();
@@ -844,96 +579,77 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     }
   }
 
-  /**
-   * EMA update dispatcher. On first call (after enough history exists) it seeds
-   * both EMAs from scratch via `_seedEMAsFromHistory`. On subsequent calls it
-   * applies the incremental formula using only the latest close price.
-   *
-   * Formula: EMA = close × k + prevEMA × (1 - k),  k = 2 / (period + 1)
-   */
   private _recalculateEMAs(): void {
     const { fastPeriod, slowPeriod } = this._parameters;
     const closes = this.closeHistory;
-    if (closes.length < slowPeriod) return; // not enough history yet
+
+    if (closes.length < slowPeriod) return;
 
     if (this.fastEMAValue === null || this.slowEMAValue === null) {
-      // First-time seed: run through the entire history in order.
       this._seedEMAsFromHistory();
     } else {
-      // Incremental update with the newest bar only.
-      const newClose = closes[closes.length - 1];
+      const latestClose = closes[closes.length - 1];
       const fastK = new Decimal(2).div(fastPeriod + 1);
       const slowK = new Decimal(2).div(slowPeriod + 1);
-      this.fastEMAValue = newClose
+
+      this.fastEMAValue = latestClose
         .mul(fastK)
         .plus(this.fastEMAValue.mul(new Decimal(1).minus(fastK)));
-      this.slowEMAValue = newClose
+      this.slowEMAValue = latestClose
         .mul(slowK)
         .plus(this.slowEMAValue.mul(new Decimal(1).minus(slowK)));
     }
 
-    if (this.fastEMAValue !== null) this.fastMA = this.fastEMAValue;
-    if (this.slowEMAValue !== null) this.slowMA = this.slowEMAValue;
+    this.fastMA = this.fastEMAValue || new Decimal(0);
+    this.slowMA = this.slowEMAValue || new Decimal(0);
   }
 
-  /**
-   * Seeds both EMA accumulators by running through every bar in `closeHistory`
-   * in chronological order.
-   *
-   * Seeding algorithm:
-   *   1. fastEMA  seed = SMA of closes[0..fastPeriod-1]
-   *   2. slowEMA  seed = SMA of closes[0..slowPeriod-1]
-   *   3. Apply the EMA formula forward from the seed index to the last bar.
-   *
-   * This produces the same EMA series a charting library would show, assuming
-   * the strategy was started with exactly this history.
-   */
   private _seedEMAsFromHistory(): void {
     const { fastPeriod, slowPeriod } = this._parameters;
     const closes = this.closeHistory;
 
     const fastK = new Decimal(2).div(fastPeriod + 1);
-    let fastEMA = closes
+    let fEma = closes
       .slice(0, fastPeriod)
       .reduce((a, b) => a.plus(b), new Decimal(0))
       .div(fastPeriod);
     for (let i = fastPeriod; i < closes.length; i++) {
-      fastEMA = closes[i].mul(fastK).plus(fastEMA.mul(new Decimal(1).minus(fastK)));
+      fEma = closes[i].mul(fastK).plus(fEma.mul(new Decimal(1).minus(fastK)));
     }
-    this.fastEMAValue = fastEMA;
+    this.fastEMAValue = fEma;
 
     const slowK = new Decimal(2).div(slowPeriod + 1);
-    let slowEMA = closes
+    let sEma = closes
       .slice(0, slowPeriod)
       .reduce((a, b) => a.plus(b), new Decimal(0))
       .div(slowPeriod);
     for (let i = slowPeriod; i < closes.length; i++) {
-      slowEMA = closes[i].mul(slowK).plus(slowEMA.mul(new Decimal(1).minus(slowK)));
+      sEma = closes[i].mul(slowK).plus(sEma.mul(new Decimal(1).minus(slowK)));
     }
-    this.slowEMAValue = slowEMA;
+    this.slowEMAValue = sEma;
   }
 
-  /**
-   * Updates `this.maSignal` based on current MA values and returns the
-   * crossover type **only if there is a genuine state change**.
-   *
-   * Returns 'bullish' | 'bearish' | 'none'.
-   */
   private _detectCrossover(): 'bullish' | 'bearish' | 'none' {
-    const prevSignal = this.maSignal;
-    const newSignal = this._updateMASignal();
-    if (newSignal !== prevSignal && newSignal !== 'none') {
-      return newSignal === 'bullish' ? 'bullish' : 'bearish';
+    const prev = this.maSignal;
+    const curr = this._updateMASignal();
+
+    if (prev === 'none') {
+      if (this.closeHistory.length >= this._parameters.slowPeriod) {
+        return curr;
+      }
+      return 'none';
     }
+
+    if (curr !== prev && curr !== 'none') {
+      return curr;
+    }
+
     return 'none';
   }
 
-  /**
-   * Computes the new MA regime from current fast/slow values and updates
-   * `this.maSignal`.  Returns the new signal value.
-   */
   private _updateMASignal(): 'bullish' | 'bearish' | 'none' {
     if (this.fastMA.isZero() || this.slowMA.isZero()) return 'none';
+
     if (this.fastMA.gt(this.slowMA)) {
       this.maSignal = 'bullish';
     } else if (this.fastMA.lt(this.slowMA)) {
@@ -942,288 +658,112 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     return this.maSignal;
   }
 
-  /**
-   * Simple SMA over the last `period` bars in `closeHistory`.
-   */
   private _calculateSMA(period: number): Decimal {
     const slice = this.closeHistory.slice(-period);
     if (slice.length < period) return new Decimal(0);
-    const sum = slice.reduce((acc, p) => acc.plus(p), new Decimal(0));
+    const sum = slice.reduce((a, b) => a.plus(b), new Decimal(0));
     return sum.div(period);
   }
 
-  // ── Entry price formula ───────────────────────────────────────────────────
-
-  /**
-   * Calculates the optimal limit entry price from the last completed kline.
-   *
-   * Formula (non-configurable by design):
-   *   Long  entry price = close − (close − open) / 3   i.e. (2·close + open) / 3
-   *   Short entry price = close + (open − close) / 3   i.e. (2·close + open) / 3
-   *
-   * Both reduce to the same expression: the price is 1/3 of the candle body
-   * "inside" from the close toward the open.  For a bullish bar this is
-   * slightly below the close (buyer gets a small pullback entry); for a
-   * bearish bar it is slightly above the close (seller gets a small bounce entry).
-   */
-  private _calcLongEntryPrice(kline: KlineSnapshot): Decimal {
-    return kline.close.minus(kline.close.minus(kline.open).div(3));
-  }
-
-  private _calcShortEntryPrice(kline: KlineSnapshot): Decimal {
-    return kline.close.plus(kline.open.minus(kline.close).div(3));
-  }
-
-  // ── Risk gate ─────────────────────────────────────────────────────────────
-
-  /**
-   * Sums the quantities of all pending (unfilled) entry orders for a given side.
-   * Used to compute the full committed exposure before a new order is placed.
-   */
-  private _pendingExposure(side: 'buy' | 'sell'): Decimal {
-    let total = new Decimal(0);
-    for (const info of this.pendingEntryOrders.values()) {
-      if (info.side === side) total = total.plus(info.quantity);
-    }
-    return total;
-  }
-
-  /**
-   * Returns true if placing the proposed action is within configured position limits.
-   *
-   * Uses the *committed* position — settled fills plus all pending (unfilled) entry
-   * orders — so that orders already in flight count against the limits even before
-   * the exchange confirms them:
-   *
-   *   committed = _currentPosition + pendingBuyQty − pendingSellQty
-   *
-   *   buy  → committed + orderAmount must not exceed maxPositionSize
-   *   sell → committed − orderAmount must not fall below minPositionSize
-   */
-  private _positionAllows(action: 'buy' | 'sell'): boolean {
-    const qty = new Decimal(this._parameters.orderAmount);
-    const committed = this._currentPosition
-      .plus(this._pendingExposure('buy'))
-      .minus(this._pendingExposure('sell'));
-    if (action === 'buy') {
-      return committed.plus(qty).lte(this._parameters.maxPositionSize);
-    }
-    return committed.minus(qty).gte(this._parameters.minPositionSize);
-  }
-
-  // ── Signal builders ───────────────────────────────────────────────────────
-
-  /** Builds a limit entry order result for the given crossover direction. */
   private _generateEntrySignal(
     crossover: 'bullish' | 'bearish',
   ): StrategyOrderResult | null {
     if (!this.lastKline) return null;
 
-    const action: 'buy' | 'sell' = crossover === 'bullish' ? 'buy' : 'sell';
-    const entryPrice =
-      action === 'buy'
-        ? this._calcLongEntryPrice(this.lastKline)
-        : this._calcShortEntryPrice(this.lastKline);
+    const side = crossover === 'bullish' ? 'buy' : 'sell';
 
-    const clientOrderId = this.generateClientOrderId(SignalType.Entry);
-    const qty = new Decimal(this._parameters.orderAmount);
+    const price =
+      side === 'buy'
+        ? this.lastKline.close.minus(
+            this.lastKline.close.minus(this.lastKline.open).div(3),
+          )
+        : this.lastKline.close.plus(
+            this.lastKline.open.minus(this.lastKline.close).div(3),
+          );
 
-    const metadata: SignalMetaData = {
-      signalType: SignalType.Entry,
-      clientOrderId,
-      timestamp: Date.now(),
-    };
+    const cid = this.generateClientOrderId(SignalType.Entry);
 
-    // Track so we can pair with TP on fill and account for committed exposure
-    this.pendingEntryOrders.set(clientOrderId, {
-      side: action,
-      limitPrice: entryPrice,
-      quantity: qty,
+    this.pendingEntryOrders.set(cid, {
+      side,
+      limitPrice: price,
+      quantity: new Decimal(this._parameters.orderAmount),
     });
 
     return {
-      action,
-      clientOrderId,
-      price: entryPrice,
-      quantity: qty,
-      confidence: this._crossoverConfidence(),
+      action: side,
+      clientOrderId: cid,
+      price,
+      quantity: new Decimal(this._parameters.orderAmount),
+      type: OrderType.LIMIT,
       leverage: this._parameters.leverage,
-      tradeMode: this.tradeMode,
-      reason: (() => {
-        const label = this._parameters.maType === 'ema' ? 'EMA' : 'SMA';
-        return `MA crossover (${crossover}): fast${label}=${this.fastMA.toFixed(4)}, slow${label}=${this.slowMA.toFixed(4)}`;
-      })(),
-      metadata,
+      tradeMode: TradeMode.ISOLATED,
+      confidence: 1,
+      reason: `Entry on ${crossover}`,
+      metadata: {
+        signalType: SignalType.Entry,
+        clientOrderId: cid,
+        timestamp: Date.now(),
+      },
     };
   }
 
-  /**
-   * Generates the exit orders (TP + optional SL) for a newly filled entry.
-   * Registers both orders in `activePositions` for mutual cancellation.
-   *
-   * @param entryCid  clientOrderId of the filled entry order
-   * @param entrySide 'buy' | 'sell' of the entry
-   * @param fillPrice actual fill price of the entry
-   * @param fillQty   actual executed quantity — exit orders are sized to match this exactly
-   * @returns array of StrategyOrderResult (always TP; SL added when stopLossPercent > 0)
-   */
-  private _generateExitOrders(
-    entryCid: string,
-    entrySide: 'buy' | 'sell',
-    fillPrice: Decimal,
-    fillQty: Decimal,
-  ): StrategyOrderResult[] {
-    const results: StrategyOrderResult[] = [];
-
-    // ── Take Profit (always) ──────────────────────────────────────────────
-    const tpSignal = this._generateTakeProfitSignal(
-      entryCid,
-      entrySide,
-      fillPrice,
-      fillQty,
-    );
-    if (!tpSignal) return results;
-    results.push(tpSignal);
-
-    // ── Stop Loss (only when enabled) ─────────────────────────────────────
-    let slCid: string | null = null;
-    if (this._parameters.stopLossPercent > 0) {
-      const slSignal = this._generateStopLossSignal(
-        entryCid,
-        entrySide,
-        fillPrice,
-        fillQty,
-      );
-      if (slSignal) {
-        results.push(slSignal);
-        slCid = slSignal.clientOrderId;
-      }
-    }
-
-    // ── Register position for mutual cancellation ─────────────────────────
-    this.activePositions.set(entryCid, {
-      tpCid: tpSignal.clientOrderId,
-      slCid,
-    });
-
-    return results;
-  }
-
-  /**
-   * Builds a take-profit limit order to be placed immediately after the
-   * corresponding entry order fills.
-   *
-   *  Long  TP = fillPrice × (1 + takeProfitPercent / 100)
-   *  Short TP = fillPrice × (1 − takeProfitPercent / 100)
-   */
   private _generateTakeProfitSignal(
     parentOrderId: string,
-    entrySide: 'buy' | 'sell',
-    fillPrice: Decimal,
-    fillQty: Decimal,
-  ): StrategyOrderResult | null {
+    side: 'buy' | 'sell',
+    price: Decimal,
+    qty: Decimal,
+  ): StrategyOrderResult {
     const tpPct = new Decimal(this._parameters.takeProfitPercent).div(100);
     const tpPrice =
-      entrySide === 'buy'
-        ? fillPrice.mul(new Decimal(1).plus(tpPct))
-        : fillPrice.mul(new Decimal(1).minus(tpPct));
+      side === 'buy'
+        ? price.mul(new Decimal(1).plus(tpPct))
+        : price.mul(new Decimal(1).minus(tpPct));
 
-    // TP action is opposite to entry
-    const tpAction: 'buy' | 'sell' = entrySide === 'buy' ? 'sell' : 'buy';
-    const qty = fillQty; // match the exact filled quantity, not the configured orderAmount
-    const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
+    const tpCid = this.generateClientOrderId(SignalType.TakeProfit);
 
     const metadata: SignalMetaData = {
       signalType: SignalType.TakeProfit,
-      clientOrderId,
+      clientOrderId: tpCid,
       parentOrderId,
-      entryPrice: fillPrice.toFixed(8),
-      takeProfitPrice: tpPrice.toFixed(8),
-      profitRatio: this._parameters.takeProfitPercent,
       timestamp: Date.now(),
     };
 
-    this.activeTpOrders.set(clientOrderId, metadata);
+    this.activeTpOrders.set(tpCid, metadata);
 
     return {
-      action: tpAction,
-      clientOrderId,
+      action: side === 'buy' ? 'sell' : 'buy',
+      clientOrderId: tpCid,
+      type: OrderType.LIMIT,
       price: tpPrice,
       quantity: qty,
       leverage: this._parameters.leverage,
-      tradeMode: this.tradeMode,
-      reason: `TP for entry ${parentOrderId}: ${this._parameters.takeProfitPercent}% from ${fillPrice.toFixed(4)}`,
+      tradeMode: TradeMode.ISOLATED,
+      reason: `TP exit`,
       metadata,
     };
   }
 
-  /**
-   * Builds a stop-loss limit order to be placed alongside the TP after an entry fills.
-   *
-   *  Long  SL = fillPrice × (1 − stopLossPercent / 100)
-   *  Short SL = fillPrice × (1 + stopLossPercent / 100)
-   */
-  private _generateStopLossSignal(
-    parentOrderId: string,
-    entrySide: 'buy' | 'sell',
-    fillPrice: Decimal,
-    fillQty: Decimal,
-  ): StrategyOrderResult | null {
+  private _calculateStopLossPrice(side: 'buy' | 'sell', price: Decimal): Decimal {
     const slPct = new Decimal(this._parameters.stopLossPercent).div(100);
-    const slPrice =
-      entrySide === 'buy'
-        ? fillPrice.mul(new Decimal(1).minus(slPct))
-        : fillPrice.mul(new Decimal(1).plus(slPct));
-
-    // SL action is opposite to entry (same as TP direction)
-    const slAction: 'buy' | 'sell' = entrySide === 'buy' ? 'sell' : 'buy';
-    const qty = fillQty; // match the exact filled quantity, not the configured orderAmount
-    const clientOrderId = this.generateClientOrderId(SignalType.StopLoss);
-
-    const metadata: SignalMetaData = {
-      signalType: SignalType.StopLoss,
-      clientOrderId,
-      parentOrderId,
-      entryPrice: fillPrice.toFixed(8),
-      stopPrice: slPrice.toFixed(8),
-      timestamp: Date.now(),
-    };
-
-    this.activeSlOrders.set(clientOrderId, parentOrderId);
-
-    return {
-      action: slAction,
-      clientOrderId,
-      price: slPrice,
-      quantity: qty,
-      leverage: this._parameters.leverage,
-      tradeMode: this.tradeMode,
-      reason: `SL for entry ${parentOrderId}: ${this._parameters.stopLossPercent}% from ${fillPrice.toFixed(4)}`,
-      metadata,
-    };
+    return side === 'buy'
+      ? price.mul(new Decimal(1).minus(slPct))
+      : price.mul(new Decimal(1).plus(slPct));
   }
 
-  /**
-   * If a crossover fires in the opposite direction to a pending entry, cancel
-   * the stale entry to avoid filling into the wrong side.
-   */
-  private _cancelOppositeEntry(crossover: 'bullish' | 'bearish'): StrategyResult[] {
-    const oppositeSide: 'buy' | 'sell' = crossover === 'bullish' ? 'sell' : 'buy';
+  private _cancelOppositeEntry(): StrategyResult[] {
+    const crossover = this.maSignal;
+    if (crossover === 'none') return [];
+    
+    const oppositeSide = crossover === 'bullish' ? 'sell' : 'buy';
     const signals: StrategyResult[] = [];
 
-    for (const [cid, info] of this.pendingEntryOrders.entries()) {
+    for (const [cid, info] of Array.from(this.pendingEntryOrders.entries())) {
       if (info.side === oppositeSide) {
-        this._logger.debug(
-          `[MovingAverageStrategy] Cancelling stale ${oppositeSide} entry ${cid} due to ${crossover} crossover.`,
-        );
-        const cancel: StrategyCancelOrderResult = {
+        signals.push({
           action: 'cancel',
           clientOrderId: cid,
-          reason: `Direction reversed to ${crossover}; stale ${oppositeSide} entry cancelled.`,
-        };
-        signals.push(cancel);
-        // Move to cancellingEntryOrders instead of deleting: if the exchange fills
-        // before the cancel arrives, the fill still needs a TP/SL placed.
+          reason: `Reversal cancel`,
+        });
         this.cancellingEntryOrders.set(cid, info);
         this.pendingEntryOrders.delete(cid);
       }
@@ -1231,108 +771,86 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     return signals;
   }
 
-  // ── Utilities ─────────────────────────────────────────────────────────────
-
-  /**
-   * Simple confidence proxy: how far apart (%) are the two MAs?
-   * Capped at 1.0 (100%).
-   */
-  private _crossoverConfidence(): number {
-    if (this.slowMA.isZero()) return 0;
-    const gap = this.fastMA.minus(this.slowMA).abs().div(this.slowMA);
-    return Math.min(gap.toNumber() * 10, 1.0);
+  private _positionAllows(action: 'buy' | 'sell'): boolean {
+    const amount = new Decimal(this._parameters.orderAmount);
+    const pendingLong = Array.from(this.pendingEntryOrders.values())
+      .filter((o) => o.side === 'buy')
+      .reduce((acc, o) => acc.plus(o.quantity), new Decimal(0));
+    const pendingShort = Array.from(this.pendingEntryOrders.values())
+      .filter((o) => o.side === 'sell')
+      .reduce((acc, o) => acc.plus(o.quantity), new Decimal(0));
+    const netCommitted = this._currentPosition.plus(pendingLong).minus(pendingShort);
+    if (action === 'buy') {
+      return netCommitted.plus(amount).lte(this._parameters.maxPositionSize);
+    } else {
+      return netCommitted.minus(amount).gte(this._parameters.minPositionSize);
+    }
   }
 
-  /**
-   * Checks whether a clientOrderId belongs to this strategy instance.
-   * Format: E{strategyId}D{seq}D{ts}  or  T{strategyId}D{seq}D{ts}
-   */
-  private _isMyOrder(clientOrderId: string): boolean {
+  private _isMyOrder(cid: string): boolean {
     const strategyId = this.getStrategyId();
-    const match = /^(E|T|S)(\d+)D/.exec(clientOrderId);
+    const regex = /^(E|T|S)(\d+)D/;
+    const match = regex.exec(cid);
     return !!match && match[2] === String(strategyId);
   }
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
-
   protected async onCleanup(): Promise<void> {
     this.closeHistory = [];
-    this.lastKline = null;
+    this.activePositions.clear();
+    this.activeTpOrders.clear();
+    this.activeSlOrders.clear();
+    this.pendingEntryOrders.clear();
+    this.processedFillIds.clear();
     this.fastMA = new Decimal(0);
     this.slowMA = new Decimal(0);
     this.fastEMAValue = null;
     this.slowEMAValue = null;
     this.maSignal = 'none';
-    this.pendingEntryOrders.clear();
-    this.cancellingEntryOrders.clear();
-    this.activeTpOrders.clear();
-    this.activeSlOrders.clear();
-    this.activePositions.clear();
-    this.processedFillIds.clear();
+    this.lastKline = null;
   }
-
-  // ── Public accessors (for testing & monitoring) ───────────────────────────
 
   public getFastMA(): Decimal {
     return this.fastMA;
   }
-
   public getSlowMA(): Decimal {
     return this.slowMA;
   }
-
   public getMASignal(): 'bullish' | 'bearish' | 'none' {
     return this.maSignal;
   }
-
   public getPendingEntryCount(): number {
     return this.pendingEntryOrders.size;
   }
-
   public getActiveTpCount(): number {
     return this.activeTpOrders.size;
   }
 
-  /** Comprehensive snapshot for monitoring dashboards and unit tests. */
   public getStrategyState() {
     return {
-      strategyId: this.getStrategyId(),
-      strategyName: this.getStrategyName(),
-      fastMA: this.fastMA.toFixed(8),
-      slowMA: this.slowMA.toFixed(8),
-      maSignal: this.maSignal,
       priceHistoryLength: this.closeHistory.length,
       lastKline: this.lastKline
-        ? { open: this.lastKline.open.toFixed(8), close: this.lastKline.close.toFixed(8) }
+        ? {
+            open: this.lastKline.open.toFixed(8),
+            close: this.lastKline.close.toFixed(8),
+          }
         : null,
-      pendingEntries: [...this.pendingEntryOrders.entries()].map(([cid, info]) => ({
-        clientOrderId: cid,
-        side: info.side,
-        limitPrice: info.limitPrice.toFixed(8),
-      })),
-      activeTpOrders: [...this.activeTpOrders.keys()],
-      activeSlOrders: [...this.activeSlOrders.keys()],
-      activePositions: [...this.activePositions.entries()].map(([entryCid, pos]) => ({
-        entryCid,
-        tpCid: pos.tpCid,
-        slCid: pos.slCid,
-      })),
+      maSignal: this.maSignal,
       currentPosition: this._currentPosition.toFixed(8),
-      averagePrice: this._averagePrice?.toFixed(8) ?? null,
-      isInitialized: this._isInitialized,
-      parameters: {
-        maType: this._parameters.maType,
-        fastPeriod: this._parameters.fastPeriod,
-        slowPeriod: this._parameters.slowPeriod,
-        klineInterval: this._parameters.klineInterval,
-        takeProfitPercent: this._parameters.takeProfitPercent,
-        stopLossPercent: this._parameters.stopLossPercent,
-        orderAmount: this._parameters.orderAmount,
-        maxPositionSize: this._parameters.maxPositionSize,
-        minPositionSize: this._parameters.minPositionSize,
-        leverage: this._parameters.leverage,
-        tradeMode: this.tradeMode,
-      },
+      activePositions: Array.from(this.activePositions.entries()).map(([k, v]) => ({
+        entryCid: k,
+        tpCid: v.tpCid,
+        slPrice: v.slPrice?.toFixed(8),
+      })),
+      pendingEntries: Array.from(this.pendingEntryOrders.entries()).map(([k, v]) => ({
+        clientOrderId: k,
+        ...v,
+      })),
+      activeTpOrders: Array.from(this.activeTpOrders.values()),
+      activeSlOrders: Array.from(this.activeSlOrders.entries()).map(([k, v]) => ({
+        clientOrderId: k,
+        parentOrderId: v,
+      })),
+      parameters: this._parameters,
     };
   }
 }
