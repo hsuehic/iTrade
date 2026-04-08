@@ -1171,6 +1171,8 @@
       "fetchStrategies": "获取策略失败",
       "createConfig": "创建配置失败",
       "generic": "发生错误",
+      "invalidCommission": "手续费百分比无效",
+      "invalidSlippage": "滑点百分比无效",
       "deleteConfig": "删除配置失败",
       "fetchDetails": "获取配置详情失败",
       "fetchResultDetails": "获取结果详情失败",

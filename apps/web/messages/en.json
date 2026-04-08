@@ -1171,6 +1171,8 @@
       "fetchStrategies": "Failed to fetch strategies",
       "createConfig": "Failed to create config",
       "generic": "An error occurred",
+      "invalidCommission": "Invalid commission percentage",
+      "invalidSlippage": "Invalid slippage percentage",
       "deleteConfig": "Failed to delete config",
       "fetchDetails": "Failed to fetch config details",
       "fetchResultDetails": "Failed to fetch result details",

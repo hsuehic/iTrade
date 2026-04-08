@@ -160,7 +160,9 @@ export default function BacktestPage() {
     endDate: '',
     initialBalance: '10000',
     commission: '0.001',
+    commissionInput: '0.1',
     slippage: '0.0005',
+    slippageInput: '0.05',
   });
 
   const fetchConfigs = useCallback(async () => {
@@ -226,6 +228,24 @@ export default function BacktestPage() {
     e.preventDefault();
     if (isCreating) return;
 
+    const commissionPercent = parseFloat(formData.commissionInput);
+    if (Number.isNaN(commissionPercent)) {
+      toast.error(t('errors.invalidCommission'));
+      return;
+    }
+    const commissionRate = (commissionPercent / 100).toString();
+
+    const slippageInput = formData.slippageInput.trim();
+    let slippageRate: string | undefined;
+    if (slippageInput.length > 0) {
+      const slippagePercent = parseFloat(slippageInput);
+      if (Number.isNaN(slippagePercent)) {
+        toast.error(t('errors.invalidSlippage'));
+        return;
+      }
+      slippageRate = (slippagePercent / 100).toString();
+    }
+
     setIsCreating(true);
     try {
       const response = await fetch('/api/backtest', {
@@ -236,8 +256,8 @@ export default function BacktestPage() {
           startDate: formData.startDate,
           endDate: formData.endDate,
           initialBalance: formData.initialBalance,
-          commission: formData.commission,
-          slippage: formData.slippage,
+          commission: commissionRate,
+          slippage: slippageRate,
         }),
       });
 
@@ -268,7 +288,9 @@ export default function BacktestPage() {
       endDate: today.toISOString().split('T')[0],
       initialBalance: '10000',
       commission: '0.001',
+      commissionInput: '0.1',
       slippage: '0.0005',
+      slippageInput: '0.05',
     });
   };
 
@@ -649,14 +671,15 @@ export default function BacktestPage() {
                           <Label htmlFor="commission">{t('fields.commission')}</Label>
                           <Input
                             id="commission"
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             step="0.0001"
                             min="0"
-                            value={(parseFloat(formData.commission) * 100).toString()}
+                            value={formData.commissionInput}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
-                                commission: (parseFloat(e.target.value) / 100).toString(),
+                                commissionInput: e.target.value,
                               })
                             }
                           />
@@ -665,14 +688,15 @@ export default function BacktestPage() {
                           <Label htmlFor="slippage">{t('fields.slippage')}</Label>
                           <Input
                             id="slippage"
-                            type="number"
+                            type="text"
+                            inputMode="decimal"
                             step="0.001"
                             min="0"
-                            value={(parseFloat(formData.slippage) * 100).toString()}
+                            value={formData.slippageInput}
                             onChange={(e) =>
                               setFormData({
                                 ...formData,
-                                slippage: (parseFloat(e.target.value) / 100).toString(),
+                                slippageInput: e.target.value,
                               })
                             }
                           />

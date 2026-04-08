@@ -49,6 +49,7 @@ function makeConfig(
     orderAmount: 100,
     maxPositionSize: 1000,
     minPositionSize: -1000,
+    leverage: 1,
   };
   return {
     type: 'MovingAverageStrategy',
@@ -276,7 +277,7 @@ describe('MovingAverageStrategy', () => {
       );
     });
 
-    it('parameterDefinitions cover all 8 parameters', () => {
+    it('parameterDefinitions cover all 9 parameters', () => {
       const names = MovingAverageStrategyRegistryConfig.parameterDefinitions.map(
         (p) => p.name,
       );
@@ -288,6 +289,7 @@ describe('MovingAverageStrategy', () => {
       expect(names).toContain('orderAmount');
       expect(names).toContain('maxPositionSize');
       expect(names).toContain('minPositionSize');
+      expect(names).toContain('leverage');
     });
   });
 
@@ -1492,6 +1494,96 @@ describe('MovingAverageStrategy', () => {
       expect(toArray(result)).toHaveLength(0);
       expect(s.getFastMA().toNumber()).toBe(fastBefore);
       expect(s.getMASignal()).toBe(maSignalBefore);
+    });
+  });
+
+  // ── 18. Leverage ────────────────────────────────────────────────────────────
+  describe('Leverage (perpetual futures support)', () => {
+    it('registry config defaults leverage to 1', () => {
+      expect(MovingAverageStrategyRegistryConfig.defaultParameters.leverage).toBe(1);
+    });
+
+    it('parameterDefinitions includes leverage with min=1 max=125', () => {
+      const def = MovingAverageStrategyRegistryConfig.parameterDefinitions.find(
+        (p) => p.name === 'leverage',
+      );
+      expect(def).toBeDefined();
+      expect(def?.min).toBe(1);
+      expect(def?.max).toBe(125);
+    });
+
+    it('throws when leverage < 1', () => {
+      expect(() => new MovingAverageStrategy(makeConfig({ leverage: 0 }))).toThrow(
+        'leverage must be ≥ 1',
+      );
+    });
+
+    it('entry signal carries the configured leverage and ISOLATED tradeMode', async () => {
+      const strategy = new MovingAverageStrategy(makeConfig({ leverage: 10 }));
+      const result = await triggerBullishCrossover(strategy, 50, 200);
+      const entries = findBySignalType(result, SignalType.Entry);
+      expect(entries.length).toBeGreaterThan(0);
+      expect(entries[0].leverage).toBe(10);
+      expect(entries[0].tradeMode).toBe('isolated');
+    });
+
+    it('TP signal carries the same leverage and tradeMode as entry', async () => {
+      const strategy = new MovingAverageStrategy(
+        makeConfig({ leverage: 5, takeProfitPercent: 2 }),
+      );
+      const crossoverResult = await triggerBullishCrossover(strategy, 50, 200);
+      const entries = findBySignalType(crossoverResult, SignalType.Entry);
+      const entryCid = entries[0].clientOrderId;
+
+      const filledEntry = makeOrder(
+        entryCid,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        180,
+        100,
+        182,
+      );
+      const exitResult = await strategy.analyze(orderUpdate([filledEntry]));
+      const tpSignals = findBySignalType(exitResult, SignalType.TakeProfit);
+
+      expect(tpSignals[0].leverage).toBe(5);
+      expect(tpSignals[0].tradeMode).toBe('isolated');
+    });
+
+    it('SL signal carries the same leverage and tradeMode', async () => {
+      const strategy = new MovingAverageStrategy(
+        makeConfig({ leverage: 20, stopLossPercent: 1 }),
+      );
+      const crossoverResult = await triggerBullishCrossover(strategy, 50, 200);
+      const entries = findBySignalType(crossoverResult, SignalType.Entry);
+      const entryCid = entries[0].clientOrderId;
+
+      const filledEntry = makeOrder(
+        entryCid,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        180,
+        100,
+        182,
+      );
+      const exitResult = await strategy.analyze(orderUpdate([filledEntry]));
+      const slSignals = findBySignalType(exitResult, SignalType.StopLoss);
+
+      expect(slSignals[0].leverage).toBe(20);
+      expect(slSignals[0].tradeMode).toBe('isolated');
+    });
+
+    it('getStrategyState exposes leverage and tradeMode', () => {
+      const strategy = new MovingAverageStrategy(makeConfig({ leverage: 15 }));
+      const state = strategy.getStrategyState();
+      expect(state.parameters.leverage).toBe(15);
+      expect(state.parameters.tradeMode).toBe('isolated');
+    });
+
+    it('leverage=1 is accepted (spot-equivalent, no leverage)', () => {
+      expect(() => new MovingAverageStrategy(makeConfig({ leverage: 1 }))).not.toThrow();
+      const strategy = new MovingAverageStrategy(makeConfig({ leverage: 1 }));
+      expect(strategy.getStrategyState().parameters.leverage).toBe(1);
     });
   });
 });

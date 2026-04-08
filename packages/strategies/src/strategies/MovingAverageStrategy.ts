@@ -15,6 +15,7 @@ import {
   Order,
   OrderStatus,
   OrderSide,
+  TradeMode,
 } from '@itrade/core';
 import { StrategyRegistryConfig } from '../type';
 
@@ -42,6 +43,7 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
       orderAmount: 100,
       maxPositionSize: 500,
       minPositionSize: 0,
+      leverage: 1,
     },
 
     parameterDefinitions: [
@@ -172,6 +174,20 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
         group: 'Risk Management',
         order: 8,
       },
+      {
+        name: 'leverage',
+        type: 'number',
+        description:
+          'Leverage multiplier for perpetual/futures trading (e.g. 10 = 10×). ' +
+          'Set to 1 for spot-equivalent (no leverage). ' +
+          'Sent with every order so the exchange sets the correct leverage before placement.',
+        defaultValue: 1,
+        required: false,
+        min: 1,
+        max: 125,
+        group: 'Risk Management',
+        order: 9,
+      },
     ],
 
     // ── Subscription requirements (UI metadata) ───────────────────────────
@@ -282,6 +298,13 @@ export interface MovingAverageParameters extends StrategyParameters {
    * Default: 0
    */
   minPositionSize: number;
+  /**
+   * Leverage multiplier sent with every order for perpetual/futures trading.
+   * The exchange sets the leverage before placing each order (cached to avoid
+   * redundant API calls when it hasn't changed).
+   * 1 = no leverage (spot-equivalent). Default: 1
+   */
+  leverage: number;
 }
 
 type MovingAverageConfig = StrategyConfig<MovingAverageParameters>;
@@ -325,6 +348,17 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
    */
   private fastEMAValue: Decimal | null = null;
   private slowEMAValue: Decimal | null = null;
+
+  // ── Futures / leverage ────────────────────────────────────────────────────
+  /** Leverage multiplier from parameters — sent with every order signal. */
+  private leverage: number;
+  /**
+   * Margin mode for perpetual/futures orders.
+   * Hardcoded to ISOLATED (same as SpreadGridStrategy) because isolated margin
+   * caps risk to the collateral in this position only.
+   */
+  private readonly tradeMode: TradeMode = TradeMode.ISOLATED;
+
   /**
    * Tracks the current MA regime so we only fire on *new* crossovers.
    * 'bullish'  → fast > slow (we are in, or just entered, an uptrend)
@@ -367,6 +401,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
   constructor(config: MovingAverageConfig) {
     super({ ...config });
+    this.leverage = config.parameters.leverage ?? 1;
     this._validateParameters();
   }
 
@@ -382,6 +417,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       orderAmount,
       takeProfitPercent,
       stopLossPercent,
+      leverage,
     } = this._parameters;
 
     if (fastPeriod >= slowPeriod) {
@@ -417,6 +453,14 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     if (orderAmount <= 0) {
       throw new Error(
         `[MovingAverageStrategy] orderAmount must be > 0 (got ${orderAmount}).`,
+      );
+    }
+    if (leverage < 1) {
+      throw new Error(`[MovingAverageStrategy] leverage must be ≥ 1 (got ${leverage}).`);
+    }
+    if (leverage > 125) {
+      throw new Error(
+        `[MovingAverageStrategy] leverage must be ≤ 125 (got ${leverage}).`,
       );
     }
   }
@@ -639,6 +683,8 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
         clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
         quantity: this._currentPosition.abs(),
         price: this.lastKline?.close ?? kline.close,
+        leverage: this._parameters.leverage,
+        tradeMode: this.tradeMode,
         reason: 'Bullish crossover: closing existing short positions',
         metadata: {
           signalType: SignalType.StopLoss, // using StopLoss as a category for "forced" exit
@@ -652,6 +698,8 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
         clientOrderId: this.generateClientOrderId(SignalType.StopLoss),
         quantity: this._currentPosition,
         price: this.lastKline?.close ?? kline.close,
+        leverage: this._parameters.leverage,
+        tradeMode: this.tradeMode,
         reason: 'Bearish crossover: closing existing long positions',
         metadata: {
           signalType: SignalType.StopLoss,
@@ -999,6 +1047,8 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       price: entryPrice,
       quantity: qty,
       confidence: this._crossoverConfidence(),
+      leverage: this._parameters.leverage,
+      tradeMode: this.tradeMode,
       reason: (() => {
         const label = this._parameters.maType === 'ema' ? 'EMA' : 'SMA';
         return `MA crossover (${crossover}): fast${label}=${this.fastMA.toFixed(4)}, slow${label}=${this.slowMA.toFixed(4)}`;
@@ -1100,6 +1150,8 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       clientOrderId,
       price: tpPrice,
       quantity: qty,
+      leverage: this._parameters.leverage,
+      tradeMode: this.tradeMode,
       reason: `TP for entry ${parentOrderId}: ${this._parameters.takeProfitPercent}% from ${fillPrice.toFixed(4)}`,
       metadata,
     };
@@ -1144,6 +1196,8 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       clientOrderId,
       price: slPrice,
       quantity: qty,
+      leverage: this._parameters.leverage,
+      tradeMode: this.tradeMode,
       reason: `SL for entry ${parentOrderId}: ${this._parameters.stopLossPercent}% from ${fillPrice.toFixed(4)}`,
       metadata,
     };
@@ -1276,6 +1330,8 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
         orderAmount: this._parameters.orderAmount,
         maxPositionSize: this._parameters.maxPositionSize,
         minPositionSize: this._parameters.minPositionSize,
+        leverage: this._parameters.leverage,
+        tradeMode: this.tradeMode,
       },
     };
   }

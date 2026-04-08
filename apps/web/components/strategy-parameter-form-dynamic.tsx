@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { InfoIcon, AlertTriangleIcon } from 'lucide-react';
 import {
   getStrategyConfig,
@@ -35,6 +35,7 @@ export function StrategyParameterFormDynamic({
   onParametersChange,
 }: StrategyParameterFormDynamicProps) {
   const strategyConfig = getStrategyConfig(strategyType);
+  const validationTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [parameters, setParameters] = useState<Record<string, unknown>>(() => {
     return {
@@ -42,6 +43,7 @@ export function StrategyParameterFormDynamic({
       ...initialParameters,
     };
   });
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   if (!strategyConfig) {
     return (
@@ -64,8 +66,52 @@ export function StrategyParameterFormDynamic({
     onParametersChange(newParameters);
   };
 
+  const validateNumberField = (
+    paramDef: ParameterDefinition,
+    value: number,
+  ): string | null => {
+    if (Number.isNaN(value)) {
+      return paramDef.required ? 'Value is required.' : null;
+    }
+    if (paramDef.min !== undefined && value < paramDef.min) {
+      return `Must be at least ${paramDef.min}.`;
+    }
+    if (paramDef.max !== undefined && value > paramDef.max) {
+      return `Must be at most ${paramDef.max}.`;
+    }
+    return null;
+  };
+
+  const scheduleNumberValidation = (paramDef: ParameterDefinition, value: number) => {
+    const { name } = paramDef;
+    const existing = validationTimeoutsRef.current[name];
+    if (existing) {
+      clearTimeout(existing);
+    }
+    validationTimeoutsRef.current[name] = setTimeout(() => {
+      const error = validateNumberField(paramDef, value);
+      setFieldErrors((prev) => ({
+        ...prev,
+        [name]: error ?? '',
+      }));
+    }, 500);
+  };
+
+  const clampNumberWithinRange = (paramDef: ParameterDefinition, value: number) => {
+    if (Number.isNaN(value)) return value;
+    let clamped = value;
+    if (paramDef.min !== undefined && clamped < paramDef.min) {
+      clamped = paramDef.min;
+    }
+    if (paramDef.max !== undefined && clamped > paramDef.max) {
+      clamped = paramDef.max;
+    }
+    return clamped;
+  };
+
   const renderField = (paramDef: ParameterDefinition) => {
     const value = parameters[paramDef.name] ?? paramDef.defaultValue;
+    const errorMessage = fieldErrors[paramDef.name];
 
     switch (paramDef.type) {
       case 'number':
@@ -85,15 +131,39 @@ export function StrategyParameterFormDynamic({
               onChange={(e) => {
                 // Use valueAsNumber which properly handles number inputs including negative
                 const numValue = e.target.valueAsNumber;
-                if (!isNaN(numValue)) {
+                scheduleNumberValidation(paramDef, numValue);
+                if (!Number.isNaN(numValue)) {
                   handleParameterChange(paramDef.name, numValue);
                 }
+              }}
+              onBlur={(e) => {
+                const rawValue = e.target.valueAsNumber;
+                const clampedValue = clampNumberWithinRange(paramDef, rawValue);
+                if (!Number.isNaN(clampedValue) && clampedValue !== rawValue) {
+                  handleParameterChange(paramDef.name, clampedValue);
+                }
+                const error = validateNumberField(paramDef, clampedValue);
+                setFieldErrors((prev) => ({
+                  ...prev,
+                  [paramDef.name]: error ?? '',
+                }));
               }}
               min={paramDef.min}
               max={paramDef.max}
               required={paramDef.required}
               step={paramDef.step || 'any'}
+              aria-invalid={Boolean(errorMessage)}
+              aria-describedby={errorMessage ? `${paramDef.name}-error` : undefined}
             />
+            {errorMessage && (
+              <p
+                id={`${paramDef.name}-error`}
+                className="text-xs text-red-600"
+                role="alert"
+              >
+                {errorMessage}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {paramDef.description}
               {paramDef.min !== undefined && paramDef.max !== undefined && (
