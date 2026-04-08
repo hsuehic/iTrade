@@ -139,7 +139,8 @@ export abstract class BaseStrategy<
     const shortTimestamp = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
     const strategyId = this.getStrategyId();
     // 主订单格式: E{strategyId}D{sequence}D{timestamp} , 止盈订单: T{strategyId}D{sequence}D{timestamp}
-    const typePrefix = type === SignalType.Entry ? 'E' : 'T';
+    const typePrefix =
+      type === SignalType.Entry ? 'E' : type === SignalType.StopLoss ? 'S' : 'T';
     return `${typePrefix}${strategyId}D${this.orderSequence}D${shortTimestamp}`;
   }
 

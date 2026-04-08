@@ -40,6 +40,7 @@ function makeConfig(
   extra: Partial<StrategyConfig<MovingAverageParameters>> = {},
 ): StrategyConfig<MovingAverageParameters> {
   const defaults: MovingAverageParameters = {
+    maType: 'sma',
     fastPeriod: 3, // small periods so tests don't need huge kline arrays
     slowPeriod: 5,
     klineInterval: '15m',
@@ -611,6 +612,28 @@ describe('MovingAverageStrategy', () => {
       await triggerBullishCrossover(strategy, 50, 200);
       expect(strategy.getPendingEntryCount()).toBe(1);
     });
+
+    it('ignores in-progress klines (isClosed=false) — no signal, MA unchanged', async () => {
+      // Prime enough closed bars so the slow MA is ready but regime is still 'none'
+      for (let i = 0; i < 5; i++) {
+        await strategy.analyze({
+          ...klineUpdate(100, 100),
+          klines: [{ ...makeKline(100, 100), isClosed: true }],
+        });
+      }
+      const maBeforeSignal = strategy.getMASignal();
+
+      // Feed a kline where isClosed=false — should be a no-op
+      const openKline = { ...makeKline(50, 300), isClosed: false };
+      const result = await strategy.analyze({
+        exchangeName: EXCHANGE,
+        symbol: SYMBOL,
+        klines: [openKline],
+      });
+      expect(toArray(result)).toHaveLength(0);
+      // MA state must not change due to the in-progress kline
+      expect(strategy.getMASignal()).toBe(maBeforeSignal);
+    });
   });
 
   // ── 7. Risk Management ───────────────────────────────────────────────────
@@ -661,6 +684,42 @@ describe('MovingAverageStrategy', () => {
       const result = await triggerBearishCrossover(strategy, 200, 50);
       const entries = findBySignalType(result, SignalType.Entry);
       expect(entries.filter((e) => e.action === 'sell').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('committed exposure: pending buy counts against maxPositionSize before it fills', () => {
+      // maxPositionSize=100, orderAmount=100
+      // With no pending orders: 0 + 100 = 100 ≤ 100 → allowed
+      // After injecting a pending buy of 100: committed = 0 + 100 = 100
+      //   → 100 + 100 = 200 > 100 → BLOCKED (old code using only _currentPosition would allow it)
+      const strategy = new MovingAverageStrategy(
+        makeConfig({ orderAmount: 100, maxPositionSize: 100 }),
+      );
+      expect(strategy['_positionAllows']('buy')).toBe(true); // baseline: no pending orders
+
+      strategy['pendingEntryOrders'].set('E99D1D1', {
+        side: 'buy',
+        limitPrice: new Decimal(100),
+        quantity: new Decimal(100),
+      });
+      expect(strategy['_positionAllows']('buy')).toBe(false); // committed = 100, 100+100 > 100
+    });
+
+    it('committed exposure: pending sell counts against minPositionSize before it fills', () => {
+      // minPositionSize=-100, orderAmount=100
+      // With no pending orders: 0 - 100 = -100 ≥ -100 → allowed
+      // After injecting a pending sell of 100: committed = 0 - 100 = -100
+      //   → -100 - 100 = -200 < -100 → BLOCKED
+      const strategy = new MovingAverageStrategy(
+        makeConfig({ orderAmount: 100, minPositionSize: -100, maxPositionSize: 1000 }),
+      );
+      expect(strategy['_positionAllows']('sell')).toBe(true); // baseline
+
+      strategy['pendingEntryOrders'].set('E99D1D1', {
+        side: 'sell',
+        limitPrice: new Decimal(100),
+        quantity: new Decimal(100),
+      });
+      expect(strategy['_positionAllows']('sell')).toBe(false); // committed = -100, -100-100 < -100
     });
   });
 
@@ -732,7 +791,7 @@ describe('MovingAverageStrategy', () => {
       expect(tpSignals[0].price?.toNumber()).toBeCloseTo(limitPrice * 1.02, 5);
     });
 
-    it('TP quantity matches orderAmount', async () => {
+    it('TP quantity matches the executed fill quantity (full fill)', async () => {
       const filledOrder = makeOrder(
         entryClientOrderId,
         OrderSide.BUY,
@@ -744,6 +803,24 @@ describe('MovingAverageStrategy', () => {
       const result = await strategy.analyze(orderUpdate([filledOrder]));
       const tpSignals = findBySignalType(result, SignalType.TakeProfit);
       expect(tpSignals[0].quantity?.toNumber()).toBe(100);
+    });
+
+    it('TP quantity matches executedQuantity even when it differs from orderAmount (partial fill)', async () => {
+      // Simulate a partial fill: order was for 100 but only 60 executed
+      const partialFilledOrder: Order = {
+        ...makeOrder(
+          entryClientOrderId,
+          OrderSide.BUY,
+          OrderStatus.FILLED,
+          180,
+          100,
+          182,
+        ),
+        executedQuantity: new Decimal(60),
+      };
+      const result = await strategy.analyze(orderUpdate([partialFilledOrder]));
+      const tpSignals = findBySignalType(result, SignalType.TakeProfit);
+      expect(tpSignals[0].quantity?.toNumber()).toBe(60); // must match executedQty, not orderAmount
     });
 
     it('TP clientOrderId has the T prefix and correct strategyId', async () => {
@@ -1140,11 +1217,11 @@ describe('MovingAverageStrategy', () => {
       expect(slSignals[0].price?.toNumber()).toBeCloseTo(expectedSl, 5);
     });
 
-    it('SL clientOrderId has the T prefix and correct strategyId', async () => {
+    it('SL clientOrderId has the S prefix and correct strategyId', async () => {
       const { exitResult } = await setupLongWithSL(1);
       const slSignals = findBySignalType(exitResult, SignalType.StopLoss);
       expect(slSignals[0].clientOrderId).toMatch(
-        new RegExp(`^T${STRATEGY_ID}D\\d+D\\d+$`),
+        new RegExp(`^S${STRATEGY_ID}D\\d+D\\d+$`),
       );
     });
 
@@ -1279,6 +1356,142 @@ describe('MovingAverageStrategy', () => {
       // Should request 1h klines, NOT 15m
       expect(cfg.klines?.['1h']).toBeDefined();
       expect(cfg.klines?.['15m']).toBeUndefined();
+    });
+  });
+
+  // ── 17. EMA mode ─────────────────────────────────────────────────────────
+  describe('EMA mode (maType = ema)', () => {
+    // fastPeriod=3, slowPeriod=5 — same small periods used throughout the suite.
+
+    it('registry config defaults maType to sma', () => {
+      expect(MovingAverageStrategyRegistryConfig.defaultParameters.maType).toBe('sma');
+    });
+
+    it('parameterDefinitions includes a maType enum entry', () => {
+      const def = MovingAverageStrategyRegistryConfig.parameterDefinitions.find(
+        (p) => p.name === 'maType',
+      );
+      expect(def).toBeDefined();
+      expect(def?.validation?.options).toEqual(['sma', 'ema']);
+    });
+
+    it('getStrategyState exposes maType', () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+      expect(s.getStrategyState().parameters.maType).toBe('ema');
+    });
+
+    it('EMA reacts faster than SMA to a single new bar (higher after one spike)', () => {
+      // After 5 flat bars at 100, feed ONE bar at 200.
+      // fastPeriod=3, k=0.5:
+      //   EMA = 200×0.5 + 100×0.5 = 150
+      //   SMA(3) = (100+100+200)/3 ≈ 133.33
+      // So EMA > SMA, confirming EMA gives more weight to the latest bar.
+      const smaStrat = new MovingAverageStrategy(makeConfig({ maType: 'sma' }));
+      const emaStrat = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+
+      const flatCloses = [100, 100, 100, 100, 100];
+      for (const c of flatCloses) {
+        smaStrat['closeHistory'].push(new Decimal(c));
+        emaStrat['closeHistory'].push(new Decimal(c));
+      }
+      // Seed both with the flat history first
+      smaStrat['_recalculateMAs']();
+      emaStrat['_recalculateMAs']();
+
+      // Now push one high bar
+      smaStrat['closeHistory'].push(new Decimal(200));
+      emaStrat['closeHistory'].push(new Decimal(200));
+      smaStrat['_recalculateMAs']();
+      emaStrat['_recalculateMAs']();
+
+      expect(smaStrat.getFastMA().toNumber()).toBeCloseTo(133.33, 1); // (100+100+200)/3
+      expect(emaStrat.getFastMA().toNumber()).toBeCloseTo(150, 4); // 200×0.5 + 100×0.5
+      expect(emaStrat.getFastMA().toNumber()).toBeGreaterThan(
+        smaStrat.getFastMA().toNumber(),
+      );
+    });
+
+    it('seeds EMA from processInitialData and primes regime correctly', async () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+
+      // 5 flat bars at close=100
+      const initKlines = Array.from({ length: 5 }, () => makeKline(100, 100));
+      await s.processInitialData(makeInitialData(initKlines));
+
+      // EMA should be seeded and regime set
+      expect(s.getFastMA().toNumber()).toBeGreaterThan(0);
+      expect(s.getSlowMA().toNumber()).toBeGreaterThan(0);
+      // All bars are the same price, so fast == slow => no clear regime yet
+      // (flat series, MA values equal → maSignal could be 'bullish'/'bearish' only if strictly different)
+    });
+
+    it('EMA crossover fires a BUY entry signal', async () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+      const result = await triggerBullishCrossover(s, 50, 200);
+      const entries = findBySignalType(result, SignalType.Entry);
+      expect(entries.length).toBeGreaterThanOrEqual(1);
+      expect(entries.find((e) => e.action === 'buy')).toBeDefined();
+      expect(s.getMASignal()).toBe('bullish');
+    });
+
+    it('EMA crossover fires a SELL entry signal', async () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+      const result = await triggerBearishCrossover(s, 200, 50);
+      const entries = findBySignalType(result, SignalType.Entry);
+      expect(entries.find((e) => e.action === 'sell')).toBeDefined();
+      expect(s.getMASignal()).toBe('bearish');
+    });
+
+    it('EMA updates incrementally: each new bar changes fastMA', async () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+      // Warm up enough bars for the slow MA to be seeded
+      for (let i = 0; i < 6; i++) {
+        await s.analyze(klineUpdate(100, 100));
+      }
+      const before = s.getFastMA().toNumber();
+      // A very different close should shift the EMA
+      await s.analyze(klineUpdate(500, 500));
+      const after = s.getFastMA().toNumber();
+      expect(after).not.toBe(before);
+      expect(after).toBeGreaterThan(before); // moved toward 500
+    });
+
+    it('onCleanup resets EMA state so re-seeding works after restart', async () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+      // Seed the EMA
+      for (let i = 0; i < 6; i++) {
+        await s.analyze(klineUpdate(100, 100));
+      }
+      expect(s.getFastMA().toNumber()).toBeGreaterThan(0);
+
+      await s.onCleanup();
+
+      expect(s.getFastMA().toNumber()).toBe(0);
+      expect(s.getSlowMA().toNumber()).toBe(0);
+
+      // After cleanup, re-seeding from fresh bars should work again
+      const result = await triggerBullishCrossover(s, 50, 200);
+      const entries = findBySignalType(result, SignalType.Entry);
+      expect(entries.find((e) => e.action === 'buy')).toBeDefined();
+    });
+
+    it('in-progress klines (isClosed=false) are ignored in EMA mode too', async () => {
+      const s = new MovingAverageStrategy(makeConfig({ maType: 'ema' }));
+      for (let i = 0; i < 6; i++) {
+        await s.analyze(klineUpdate(100, 100));
+      }
+      const maSignalBefore = s.getMASignal();
+      const fastBefore = s.getFastMA().toNumber();
+
+      const openKline = { ...makeKline(50, 999), isClosed: false };
+      const result = await s.analyze({
+        exchangeName: EXCHANGE,
+        symbol: SYMBOL,
+        klines: [openKline],
+      });
+      expect(toArray(result)).toHaveLength(0);
+      expect(s.getFastMA().toNumber()).toBe(fastBefore);
+      expect(s.getMASignal()).toBe(maSignalBefore);
     });
   });
 });

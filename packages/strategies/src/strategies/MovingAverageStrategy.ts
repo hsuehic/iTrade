@@ -33,6 +33,7 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
     category: 'trend',
 
     defaultParameters: {
+      maType: 'sma',
       fastPeriod: 25,
       slowPeriod: 55,
       klineInterval: '15m',
@@ -44,6 +45,19 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
     },
 
     parameterDefinitions: [
+      // ── MA Type ───────────────────────────────────────────────────────────
+      {
+        name: 'maType',
+        type: 'enum',
+        description:
+          'Moving average type. SMA (simple) gives equal weight to all bars; ' +
+          'EMA (exponential) weights recent bars more heavily and reacts faster to price changes.',
+        defaultValue: 'sma',
+        required: true,
+        validation: { options: ['sma', 'ema'] },
+        group: 'Moving Averages',
+        order: 0,
+      },
       // ── MA Periods ────────────────────────────────────────────────────────
       {
         name: 'fastPeriod',
@@ -221,9 +235,16 @@ export const MovingAverageStrategyRegistryConfig: StrategyRegistryConfig<MovingA
  * Configuration parameters for MovingAverageStrategy.
  */
 export interface MovingAverageParameters extends StrategyParameters {
-  /** Fast SMA period. Default: 25 */
+  /**
+   * Moving average type: 'sma' (simple) or 'ema' (exponential).
+   * EMA is seeded from the SMA of the first `period` bars and then updated
+   * incrementally using the formula: EMA = close × k + prevEMA × (1-k),
+   * where k = 2 / (period + 1). Default: 'sma'
+   */
+  maType: 'sma' | 'ema';
+  /** Fast MA period. Default: 25 */
   fastPeriod: number;
-  /** Slow SMA period. Default: 55 */
+  /** Slow MA period. Default: 55 */
   slowPeriod: number;
   /**
    * Kline interval used for the MA calculation AND the WebSocket subscription.
@@ -280,6 +301,8 @@ interface PendingEntryInfo {
   side: 'buy' | 'sell';
   /** Limit price we sent to the exchange (used as fallback if averagePrice is unavailable). */
   limitPrice: Decimal;
+  /** Quantity of the entry order — stored so committed exposure can be summed before fills. */
+  quantity: Decimal;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,10 +315,16 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
   private closeHistory: Decimal[] = [];
   /** Most-recent completed kline (open + close) – used for the entry price formula. */
   private lastKline: KlineSnapshot | null = null;
-  /** Current fast SMA value. */
+  /** Current fast MA value (SMA or EMA depending on maType). */
   private fastMA: Decimal = new Decimal(0);
-  /** Current slow SMA value. */
+  /** Current slow MA value (SMA or EMA depending on maType). */
   private slowMA: Decimal = new Decimal(0);
+  /**
+   * Persisted EMA values — null until the slow period's worth of history is available.
+   * Only used when maType === 'ema'; ignored in SMA mode.
+   */
+  private fastEMAValue: Decimal | null = null;
+  private slowEMAValue: Decimal | null = null;
   /**
    * Tracks the current MA regime so we only fire on *new* crossovers.
    * 'bullish'  → fast > slow (we are in, or just entered, an uptrend)
@@ -310,6 +339,12 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
    * Key: clientOrderId  Value: info needed to build the TP once the entry fills.
    */
   private pendingEntryOrders: Map<string, PendingEntryInfo> = new Map();
+  /**
+   * Entry orders for which a cancel has been requested but not yet confirmed.
+   * Kept here (instead of deleting from pendingEntryOrders outright) so that a
+   * fill arriving before the cancel is confirmed can still trigger TP/SL placement.
+   */
+  private cancellingEntryOrders: Map<string, PendingEntryInfo> = new Map();
   /**
    * Active take-profit orders placed after an entry fill.
    * Key: TP clientOrderId  Value: SignalMetaData (contains parentOrderId → entry cid).
@@ -339,6 +374,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
   private _validateParameters(): void {
     const {
+      maType,
       fastPeriod,
       slowPeriod,
       maxPositionSize,
@@ -371,6 +407,11 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     if (stopLossPercent < 0) {
       throw new Error(
         `[MovingAverageStrategy] stopLossPercent must be ≥ 0 (got ${stopLossPercent}). Use 0 to disable.`,
+      );
+    }
+    if (maType !== 'sma' && maType !== 'ema') {
+      throw new Error(
+        `[MovingAverageStrategy] maType must be 'sma' or 'ema' (got '${maType}').`,
       );
     }
     if (orderAmount <= 0) {
@@ -425,7 +466,9 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     const interval = (this._parameters.klineInterval || '15m') as KlineInterval;
 
     if (initialData.klines) {
-      const klines = initialData.klines[interval] ?? [];
+      const klines = (initialData.klines[interval] ?? []).filter(
+        (k) => k.isClosed !== false,
+      );
       if (klines.length > 0) {
         this.closeHistory = klines.map((k) => k.close);
         const latest = klines[klines.length - 1];
@@ -450,6 +493,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
           this.pendingEntryOrders.set(order.clientOrderId, {
             side: order.side === OrderSide.BUY ? 'buy' : 'sell',
             limitPrice: order.price ?? new Decimal(0),
+            quantity: order.quantity,
           });
           this._logger.debug(
             `[MovingAverageStrategy] Recovered pending entry: ${order.clientOrderId}`,
@@ -466,6 +510,15 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
           this.activeTpOrders.set(order.clientOrderId, metadata);
           this._logger.debug(
             `[MovingAverageStrategy] Recovered active TP: ${order.clientOrderId}`,
+          );
+        } else if (
+          order.clientOrderId.startsWith('S') &&
+          this._isMyOrder(order.clientOrderId)
+        ) {
+          // parentOrderId is unknown after restart; best-effort recovery
+          this.activeSlOrders.set(order.clientOrderId, '');
+          this._logger.debug(
+            `[MovingAverageStrategy] Recovered active SL: ${order.clientOrderId}`,
           );
         }
       }
@@ -492,8 +545,10 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
     // ── Path 1: kline update ──────────────────────────────────────────────
     if (klines && klines.length > 0) {
-      const klineSignals = this._processKlineUpdate(klines[klines.length - 1]);
-      signals.push(...klineSignals);
+      for (const kline of klines) {
+        const klineSignals = this._processKlineUpdate(kline);
+        signals.push(...klineSignals);
+      }
     }
 
     // ── Path 2: order update ──────────────────────────────────────────────
@@ -510,15 +565,24 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
   /**
    * Ingests one kline, recomputes the MAs, and returns an entry signal if a
    * fresh MA crossover is detected and risk limits permit.
+   *
+   * Only processes closed klines (isClosed !== false). In-progress WebSocket
+   * updates where isClosed is explicitly false are ignored so MA values are
+   * never computed from an incomplete candle.
    */
   private _processKlineUpdate(kline: {
     open: Decimal;
     close: Decimal;
+    isClosed?: boolean;
   }): StrategyResult[] {
+    // Skip in-progress (forming) klines — only act on closed bars.
+    if (kline.isClosed === false) return [];
+
     // 1. Update rolling close history
     this.closeHistory.push(kline.close);
-    if (this.closeHistory.length > this._parameters.slowPeriod + 1) {
-      this.closeHistory.shift();
+    const maxLen = this._parameters.slowPeriod + 1;
+    if (this.closeHistory.length > maxLen) {
+      this.closeHistory.splice(0, this.closeHistory.length - maxLen);
     }
     this.lastKline = { open: kline.open, close: kline.close };
 
@@ -622,19 +686,30 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       ].includes(order.status);
 
       // ── Entry order update ───────────────────────────────────────────────
-      if (this.pendingEntryOrders.has(cid)) {
+      // Also check cancellingEntryOrders: if the exchange fills before our cancel
+      // reaches it, the fill must still trigger TP/SL placement.
+      if (this.pendingEntryOrders.has(cid) || this.cancellingEntryOrders.has(cid)) {
         if (order.status === OrderStatus.FILLED && !this.processedFillIds.has(cid)) {
           this.processedFillIds.add(cid);
-          const info = this.pendingEntryOrders.get(cid)!;
+          const info = (this.pendingEntryOrders.get(cid) ??
+            this.cancellingEntryOrders.get(cid))!;
 
           // Use actual average fill price when available; fall back to limit price.
           const fillPrice = order.averagePrice ?? order.price ?? info.limitPrice;
+          // Use actual executed quantity when available; fall back to the order quantity.
+          const fillQty = order.executedQuantity ?? info.quantity;
 
-          const exitSignals = this._generateExitOrders(cid, info.side, fillPrice);
+          const exitSignals = this._generateExitOrders(
+            cid,
+            info.side,
+            fillPrice,
+            fillQty,
+          );
           signals.push(...exitSignals);
         }
         if (isTerminal) {
           this.pendingEntryOrders.delete(cid);
+          this.cancellingEntryOrders.delete(cid);
         }
       }
 
@@ -664,6 +739,9 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
           // Reset the MA signal so the next crossover triggers a new entry.
           this.maSignal = 'none';
+          // Trade fully closed — retire fill IDs (tracking maps are clean, no re-fire risk).
+          if (entryCid) this.processedFillIds.delete(entryCid);
+          this.processedFillIds.delete(cid);
         }
         if (isTerminal) {
           this.activeTpOrders.delete(cid);
@@ -693,6 +771,9 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
           // Reset MA signal so a new crossover can trigger re-entry
           this.maSignal = 'none';
+          // Trade fully closed — retire fill IDs.
+          this.processedFillIds.delete(entryCid);
+          this.processedFillIds.delete(cid);
         }
         if (isTerminal) {
           this.activeSlOrders.delete(cid);
@@ -705,10 +786,83 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
   // ── MA helpers ────────────────────────────────────────────────────────────
 
-  /** Recompute both SMAs from the current close history. */
+  /** Recompute both MAs (SMA or EMA) from the current close history. */
   private _recalculateMAs(): void {
-    this.fastMA = this._calculateSMA(this._parameters.fastPeriod);
-    this.slowMA = this._calculateSMA(this._parameters.slowPeriod);
+    if (this._parameters.maType === 'ema') {
+      this._recalculateEMAs();
+    } else {
+      this.fastMA = this._calculateSMA(this._parameters.fastPeriod);
+      this.slowMA = this._calculateSMA(this._parameters.slowPeriod);
+    }
+  }
+
+  /**
+   * EMA update dispatcher. On first call (after enough history exists) it seeds
+   * both EMAs from scratch via `_seedEMAsFromHistory`. On subsequent calls it
+   * applies the incremental formula using only the latest close price.
+   *
+   * Formula: EMA = close × k + prevEMA × (1 - k),  k = 2 / (period + 1)
+   */
+  private _recalculateEMAs(): void {
+    const { fastPeriod, slowPeriod } = this._parameters;
+    const closes = this.closeHistory;
+    if (closes.length < slowPeriod) return; // not enough history yet
+
+    if (this.fastEMAValue === null || this.slowEMAValue === null) {
+      // First-time seed: run through the entire history in order.
+      this._seedEMAsFromHistory();
+    } else {
+      // Incremental update with the newest bar only.
+      const newClose = closes[closes.length - 1];
+      const fastK = new Decimal(2).div(fastPeriod + 1);
+      const slowK = new Decimal(2).div(slowPeriod + 1);
+      this.fastEMAValue = newClose
+        .mul(fastK)
+        .plus(this.fastEMAValue.mul(new Decimal(1).minus(fastK)));
+      this.slowEMAValue = newClose
+        .mul(slowK)
+        .plus(this.slowEMAValue.mul(new Decimal(1).minus(slowK)));
+    }
+
+    if (this.fastEMAValue !== null) this.fastMA = this.fastEMAValue;
+    if (this.slowEMAValue !== null) this.slowMA = this.slowEMAValue;
+  }
+
+  /**
+   * Seeds both EMA accumulators by running through every bar in `closeHistory`
+   * in chronological order.
+   *
+   * Seeding algorithm:
+   *   1. fastEMA  seed = SMA of closes[0..fastPeriod-1]
+   *   2. slowEMA  seed = SMA of closes[0..slowPeriod-1]
+   *   3. Apply the EMA formula forward from the seed index to the last bar.
+   *
+   * This produces the same EMA series a charting library would show, assuming
+   * the strategy was started with exactly this history.
+   */
+  private _seedEMAsFromHistory(): void {
+    const { fastPeriod, slowPeriod } = this._parameters;
+    const closes = this.closeHistory;
+
+    const fastK = new Decimal(2).div(fastPeriod + 1);
+    let fastEMA = closes
+      .slice(0, fastPeriod)
+      .reduce((a, b) => a.plus(b), new Decimal(0))
+      .div(fastPeriod);
+    for (let i = fastPeriod; i < closes.length; i++) {
+      fastEMA = closes[i].mul(fastK).plus(fastEMA.mul(new Decimal(1).minus(fastK)));
+    }
+    this.fastEMAValue = fastEMA;
+
+    const slowK = new Decimal(2).div(slowPeriod + 1);
+    let slowEMA = closes
+      .slice(0, slowPeriod)
+      .reduce((a, b) => a.plus(b), new Decimal(0))
+      .div(slowPeriod);
+    for (let i = slowPeriod; i < closes.length; i++) {
+      slowEMA = closes[i].mul(slowK).plus(slowEMA.mul(new Decimal(1).minus(slowK)));
+    }
+    this.slowEMAValue = slowEMA;
   }
 
   /**
@@ -775,28 +929,38 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
   // ── Risk gate ─────────────────────────────────────────────────────────────
 
   /**
-   * Returns true if the proposed action is within configured position limits.
+   * Sums the quantities of all pending (unfilled) entry orders for a given side.
+   * Used to compute the full committed exposure before a new order is placed.
+   */
+  private _pendingExposure(side: 'buy' | 'sell'): Decimal {
+    let total = new Decimal(0);
+    for (const info of this.pendingEntryOrders.values()) {
+      if (info.side === side) total = total.plus(info.quantity);
+    }
+    return total;
+  }
+
+  /**
+   * Returns true if placing the proposed action is within configured position limits.
    *
-   *  buy  → currentPosition + orderAmount must not exceed maxPositionSize
-   *  sell → currentPosition − orderAmount must not fall below minPositionSize
+   * Uses the *committed* position — settled fills plus all pending (unfilled) entry
+   * orders — so that orders already in flight count against the limits even before
+   * the exchange confirms them:
+   *
+   *   committed = _currentPosition + pendingBuyQty − pendingSellQty
+   *
+   *   buy  → committed + orderAmount must not exceed maxPositionSize
+   *   sell → committed − orderAmount must not fall below minPositionSize
    */
   private _positionAllows(action: 'buy' | 'sell'): boolean {
     const qty = new Decimal(this._parameters.orderAmount);
-    const pos = this._currentPosition;
-    const max = this._parameters.maxPositionSize;
-    const min = this._parameters.minPositionSize;
+    const committed = this._currentPosition
+      .plus(this._pendingExposure('buy'))
+      .minus(this._pendingExposure('sell'));
     if (action === 'buy') {
-      const allowed = pos.plus(qty).lte(max);
-      this._logger.info(
-        `[_positionAllows:buy] pos=${pos.toString()} + qty=${qty.toString()} <= max=${max} -> ${allowed}`,
-      );
-      return allowed;
+      return committed.plus(qty).lte(this._parameters.maxPositionSize);
     }
-    const allowed = pos.minus(qty).gte(min);
-    this._logger.info(
-      `[_positionAllows:sell] pos=${pos.toString()} - qty=${qty.toString()} >= min=${min} -> ${allowed}`,
-    );
-    return allowed;
+    return committed.minus(qty).gte(this._parameters.minPositionSize);
   }
 
   // ── Signal builders ───────────────────────────────────────────────────────
@@ -822,10 +986,11 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       timestamp: Date.now(),
     };
 
-    // Track so we can pair with TP on fill
+    // Track so we can pair with TP on fill and account for committed exposure
     this.pendingEntryOrders.set(clientOrderId, {
       side: action,
       limitPrice: entryPrice,
+      quantity: qty,
     });
 
     return {
@@ -834,9 +999,10 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       price: entryPrice,
       quantity: qty,
       confidence: this._crossoverConfidence(),
-      reason:
-        `MA crossover (${crossover}): fastSMA=${this.fastMA.toFixed(4)}, ` +
-        `slowSMA=${this.slowMA.toFixed(4)}`,
+      reason: (() => {
+        const label = this._parameters.maType === 'ema' ? 'EMA' : 'SMA';
+        return `MA crossover (${crossover}): fast${label}=${this.fastMA.toFixed(4)}, slow${label}=${this.slowMA.toFixed(4)}`;
+      })(),
       metadata,
     };
   }
@@ -848,24 +1014,36 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
    * @param entryCid  clientOrderId of the filled entry order
    * @param entrySide 'buy' | 'sell' of the entry
    * @param fillPrice actual fill price of the entry
+   * @param fillQty   actual executed quantity — exit orders are sized to match this exactly
    * @returns array of StrategyOrderResult (always TP; SL added when stopLossPercent > 0)
    */
   private _generateExitOrders(
     entryCid: string,
     entrySide: 'buy' | 'sell',
     fillPrice: Decimal,
+    fillQty: Decimal,
   ): StrategyOrderResult[] {
     const results: StrategyOrderResult[] = [];
 
     // ── Take Profit (always) ──────────────────────────────────────────────
-    const tpSignal = this._generateTakeProfitSignal(entryCid, entrySide, fillPrice);
+    const tpSignal = this._generateTakeProfitSignal(
+      entryCid,
+      entrySide,
+      fillPrice,
+      fillQty,
+    );
     if (!tpSignal) return results;
     results.push(tpSignal);
 
     // ── Stop Loss (only when enabled) ─────────────────────────────────────
     let slCid: string | null = null;
     if (this._parameters.stopLossPercent > 0) {
-      const slSignal = this._generateStopLossSignal(entryCid, entrySide, fillPrice);
+      const slSignal = this._generateStopLossSignal(
+        entryCid,
+        entrySide,
+        fillPrice,
+        fillQty,
+      );
       if (slSignal) {
         results.push(slSignal);
         slCid = slSignal.clientOrderId;
@@ -892,6 +1070,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     parentOrderId: string,
     entrySide: 'buy' | 'sell',
     fillPrice: Decimal,
+    fillQty: Decimal,
   ): StrategyOrderResult | null {
     const tpPct = new Decimal(this._parameters.takeProfitPercent).div(100);
     const tpPrice =
@@ -901,7 +1080,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
     // TP action is opposite to entry
     const tpAction: 'buy' | 'sell' = entrySide === 'buy' ? 'sell' : 'buy';
-    const qty = new Decimal(this._parameters.orderAmount);
+    const qty = fillQty; // match the exact filled quantity, not the configured orderAmount
     const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
 
     const metadata: SignalMetaData = {
@@ -936,6 +1115,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     parentOrderId: string,
     entrySide: 'buy' | 'sell',
     fillPrice: Decimal,
+    fillQty: Decimal,
   ): StrategyOrderResult | null {
     const slPct = new Decimal(this._parameters.stopLossPercent).div(100);
     const slPrice =
@@ -945,7 +1125,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
 
     // SL action is opposite to entry (same as TP direction)
     const slAction: 'buy' | 'sell' = entrySide === 'buy' ? 'sell' : 'buy';
-    const qty = new Decimal(this._parameters.orderAmount);
+    const qty = fillQty; // match the exact filled quantity, not the configured orderAmount
     const clientOrderId = this.generateClientOrderId(SignalType.StopLoss);
 
     const metadata: SignalMetaData = {
@@ -988,6 +1168,9 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
           reason: `Direction reversed to ${crossover}; stale ${oppositeSide} entry cancelled.`,
         };
         signals.push(cancel);
+        // Move to cancellingEntryOrders instead of deleting: if the exchange fills
+        // before the cancel arrives, the fill still needs a TP/SL placed.
+        this.cancellingEntryOrders.set(cid, info);
         this.pendingEntryOrders.delete(cid);
       }
     }
@@ -1012,7 +1195,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
    */
   private _isMyOrder(clientOrderId: string): boolean {
     const strategyId = this.getStrategyId();
-    const match = /^(E|T)(\d+)D/.exec(clientOrderId);
+    const match = /^(E|T|S)(\d+)D/.exec(clientOrderId);
     return !!match && match[2] === String(strategyId);
   }
 
@@ -1023,8 +1206,11 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     this.lastKline = null;
     this.fastMA = new Decimal(0);
     this.slowMA = new Decimal(0);
+    this.fastEMAValue = null;
+    this.slowEMAValue = null;
     this.maSignal = 'none';
     this.pendingEntryOrders.clear();
+    this.cancellingEntryOrders.clear();
     this.activeTpOrders.clear();
     this.activeSlOrders.clear();
     this.activePositions.clear();
@@ -1081,6 +1267,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       averagePrice: this._averagePrice?.toFixed(8) ?? null,
       isInitialized: this._isInitialized,
       parameters: {
+        maType: this._parameters.maType,
         fastPeriod: this._parameters.fastPeriod,
         slowPeriod: this._parameters.slowPeriod,
         klineInterval: this._parameters.klineInterval,
