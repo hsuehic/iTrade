@@ -70,4 +70,7 @@ export class BacktestConfigEntity implements BacktestConfig {
   @ManyToOne('user', 'backtestConfigs', { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
+
+  @Column({ type: 'text', nullable: true })
+  userId!: string;
 }

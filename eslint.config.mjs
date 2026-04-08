@@ -8,14 +8,13 @@ import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 // import nextConfig from 'eslint-config-next/core-web-vitals.js';
 
-// 导入 FlatCompat 以处理遗留的配置
-import { FlatCompat } from '@eslint/eslintrc';
+// 导入 FlatCompat 以处理遗留的配置 (commented out to avoid circular config)
+// import { FlatCompat } from '@eslint/eslintrc';
 
-// 实例化 FlatCompat，并指定 monorepo 的根目录
-// 这对于在子目录中找到 Next.js 实例至关重要
-const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
-});
+// 实例化 FlatCompat，并指定 monorepo 的根目录 (commented out)
+// const compat = new FlatCompat({
+//   baseDirectory: import.meta.dirname,
+// });
 
 export default defineConfig(
   // 基础设置
@@ -89,21 +88,22 @@ export default defineConfig(
   },
 
   // Next.js 前端应用配置 (使用 FlatCompat)
-  ...compat.extends('next/core-web-vitals').map((config) => ({
-    ...config,
-    files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
-    settings: {
-      ...config.settings,
-      next: {
-        rootDir: 'apps/web/',
-      },
-    },
-    rules: {
-      ...config.rules,
-      '@next/next/no-html-link-for-pages': 'off',
-      'react/display-name': 'off',
-    },
-  })),
+  // Next.js config via FlatCompat removed to prevent circular reference
+  // ...compat.extends('next/core-web-vitals').map((config) => ({
+  //   ...config,
+  //   files: ['apps/web/**/*.{ts,tsx,js,jsx}'],
+  //   settings: {
+  //     ...config.settings,
+  //     next: {
+  //       rootDir: 'apps/web/',
+  //     },
+  //   },
+  //   rules: {
+  //     ...config.rules,
+  //     '@next/next/no-html-link-for-pages': 'off',
+  //     'react/display-name': 'off',
+  //   },
+  // })),
 
   // Node.js 控制台应用（apps/console）
   {

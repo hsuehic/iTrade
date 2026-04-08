@@ -137,36 +137,59 @@ export class BacktestRepository {
   ): Promise<BacktestConfigWithStats[]> {
     const configs = await this.findAllConfigs(filters, options);
 
-    const configsWithStats: BacktestConfigWithStats[] = await Promise.all(
-      configs.map(async (config) => {
-        const resultsCount = await this.resultRepository.count({
-          where: { config: { id: config.id } },
-        });
+    if (configs.length === 0) return [];
 
-        // Get best result by total return
-        const bestResult = await this.resultRepository.findOne({
-          where: { config: { id: config.id } },
-          order: { totalReturn: 'DESC' },
-          relations: ['strategy'],
-        });
+    const configIds = configs.map((c) => c.id);
 
-        // Get latest result
-        const latestResult = await this.resultRepository.findOne({
-          where: { config: { id: config.id } },
-          order: { createdAt: 'DESC' },
-          relations: ['strategy'],
-        });
+    // Fetch result counts in bulk
+    const counts = await this.resultRepository
+      .createQueryBuilder('result')
+      .select('result.configId', 'configId')
+      .addSelect('COUNT(*)', 'resultsCount')
+      .where('result.configId IN (:...ids)', { ids: configIds })
+      .groupBy('result.configId')
+      .getRawMany();
 
-        return {
-          ...config,
-          resultsCount,
-          bestResult: bestResult || undefined,
-          latestResult: latestResult || undefined,
-        };
-      }),
+    // Fetch all results for these configs to find best and latest in JS
+    // This is safer and easier than complex window functions in TypeORM
+    const allResults = await this.resultRepository
+      .createQueryBuilder('result')
+      .leftJoinAndSelect('result.strategy', 'strategy')
+      .where('result.configId IN (:...ids)', { ids: configIds })
+      .orderBy('result.totalReturn', 'DESC') // Order by return for bestResult
+      .getMany();
+
+    // Map stats back
+    const countMap = new Map(
+      counts.map((c) => [parseInt(c.configId, 10), parseInt(c.resultsCount, 10)]),
     );
 
-    return configsWithStats;
+    // Track best and latest for each config
+    const bestResults = new Map<number, BacktestResultEntity>();
+    const latestResults = new Map<number, BacktestResultEntity>();
+
+    for (const res of allResults) {
+      const configId = (res as any).configId;
+      if (!configId) continue;
+
+      // First one we see is the best (due to ORDER BY totalReturn DESC)
+      if (!bestResults.has(configId)) {
+        bestResults.set(configId, res);
+      }
+
+      // Track latest by comparing createdAt
+      const currentLatest = latestResults.get(configId);
+      if (!currentLatest || res.createdAt > currentLatest.createdAt) {
+        latestResults.set(configId, res);
+      }
+    }
+
+    return configs.map((config) => ({
+      ...config,
+      resultsCount: countMap.get(config.id) || 0,
+      bestResult: bestResults.get(config.id),
+      latestResult: latestResults.get(config.id),
+    }));
   }
 
   async updateConfig(id: number, updates: Partial<BacktestConfigEntity>): Promise<void> {

@@ -2,8 +2,8 @@ import { DataSource, Repository } from 'typeorm';
 import { Decimal } from 'decimal.js';
 
 import { DryRunSessionEntity, DryRunStatus } from '../entities/DryRunSession';
-import type { DryRunResultEntity } from '../entities/DryRunResult';
-import type { DryRunTradeEntity } from '../entities/DryRunTrade';
+import { DryRunResultEntity } from '../entities/DryRunResult';
+import { DryRunTradeEntity } from '../entities/DryRunTrade';
 
 export interface CreateDryRunSessionData {
   strategyId?: number;
@@ -39,8 +39,8 @@ export class DryRunSessionRepository {
 
   constructor(dataSource: DataSource) {
     this.repository = dataSource.getRepository(DryRunSessionEntity);
-    this.resultRepository = dataSource.getRepository('DryRunResultEntity');
-    this.tradeRepository = dataSource.getRepository('DryRunTradeEntity');
+    this.resultRepository = dataSource.getRepository(DryRunResultEntity);
+    this.tradeRepository = dataSource.getRepository(DryRunTradeEntity);
   }
 
   async create(data: CreateDryRunSessionData): Promise<DryRunSessionEntity> {
@@ -144,39 +144,58 @@ export class DryRunSessionRepository {
       includeStrategy: true,
     });
 
-    // Fetch stats for each session
-    const sessionsWithStats: DryRunSessionWithStats[] = await Promise.all(
-      sessions.map(async (session) => {
-        const tradesCount = await this.tradeRepository.count({
-          where: { session: { id: session.id } },
-        });
+    if (sessions.length === 0) return [];
 
-        // Get total PnL from trades
-        const trades = await this.tradeRepository.find({
-          where: { session: { id: session.id } },
-          select: ['pnl'],
-        });
-        const totalPnL = trades.reduce(
-          (sum, trade) => sum.plus(trade.pnl),
-          new Decimal(0),
-        );
+    const sessionIds = sessions.map((s) => s.id);
 
-        // Get latest result
-        const latestResult = await this.resultRepository.findOne({
-          where: { session: { id: session.id } },
-          order: { createdAt: 'DESC' },
-        });
+    // Fetch counts and PnLs in bulk using QueryBuilder for performance
+    const stats = await this.tradeRepository
+      .createQueryBuilder('trade')
+      .select('trade.sessionId', 'sessionId')
+      .addSelect('COUNT(*)', 'tradesCount')
+      .addSelect('SUM(trade.pnl)', 'totalPnL')
+      .where('trade.sessionId IN (:...ids)', { ids: sessionIds })
+      .groupBy('trade.sessionId')
+      .getRawMany();
 
-        return {
-          ...session,
-          tradesCount,
-          totalPnL,
-          latestResult: latestResult || undefined,
-        };
-      }),
+    // Fetch latest results for these sessions
+    // To get strictly the LATEST result per session in one query is complex in plain SQL/TypeORM,
+    // so we fetch all results for these sessions and pick the latest in JS (since results are few per session)
+    const allResults = await this.resultRepository
+      .createQueryBuilder('result')
+      .where('result.sessionId IN (:...ids)', { ids: sessionIds })
+      .orderBy('result.createdAt', 'DESC')
+      .getMany();
+
+    // Map stats back
+    const statsMap = new Map(
+      stats.map((s) => [
+        parseInt(s.sessionId, 10),
+        {
+          tradesCount: parseInt(s.tradesCount, 10),
+          totalPnL: new Decimal(s.totalPnL || 0),
+        },
+      ]),
     );
 
-    return sessionsWithStats;
+    // Map latest results back
+    const resultMap = new Map<number, DryRunResultEntity>();
+    for (const res of allResults) {
+      const sessionId = (res as any).sessionId;
+      if (sessionId && !resultMap.has(sessionId)) {
+        resultMap.set(sessionId, res);
+      }
+    }
+
+    return sessions.map((session) => {
+      const s = statsMap.get(session.id);
+      return {
+        ...session,
+        tradesCount: s?.tradesCount || 0,
+        totalPnL: s?.totalPnL || new Decimal(0),
+        latestResult: resultMap.get(session.id),
+      };
+    });
   }
 
   async update(id: number, updates: Partial<DryRunSessionEntity>): Promise<void> {
