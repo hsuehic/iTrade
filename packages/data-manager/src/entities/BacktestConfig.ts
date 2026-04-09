@@ -11,8 +11,7 @@ import {
 import { BacktestConfig } from '@itrade/core';
 
 import { decimalTransformer } from '../utils/transformers';
-import type { BacktestResultEntity } from './BacktestResult';
-import type { User } from './User';
+import { User } from './User';
 
 @Entity('backtest_configs')
 @Index(['user'])
@@ -62,12 +61,13 @@ export class BacktestConfigEntity implements BacktestConfig {
   @Column({ type: 'character varying', length: 10, nullable: true })
   timeframe?: string;
 
-  @OneToMany('backtest_results', 'config', {
+  // Removed TypeORM decorator to prevent circular dependency
+  results?: any[];
+
+  @ManyToOne(() => User, (user) => user.backtestConfigs, {
+    nullable: true,
     onDelete: 'CASCADE',
   })
-  results?: BacktestResultEntity[];
-
-  @ManyToOne('user', 'backtestConfigs', { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 

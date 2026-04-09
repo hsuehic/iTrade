@@ -6,16 +6,13 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
-  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { BacktestResult } from '@itrade/core';
 
 import { decimalTransformer } from '../utils/transformers';
-import type { BacktestTradeEntity } from './BacktestTrade';
-import type { EquityPointEntity } from './EquityPoint';
-import type { StrategyEntity } from './Strategy';
-import type { BacktestConfigEntity } from './BacktestConfig';
+import { StrategyEntity } from './Strategy';
+import { BacktestConfigEntity } from './BacktestConfig';
 
 @Entity('backtest_results')
 @Index(['createdAt'])
@@ -27,14 +24,14 @@ export class BacktestResultEntity implements BacktestResult {
   @Column({ type: 'varchar', length: 255, nullable: true })
   name?: string;
 
-  @ManyToOne('backtest_configs', 'results', {
+  @ManyToOne(() => BacktestConfigEntity, (config) => config.results, {
     onDelete: 'CASCADE',
     nullable: true,
   })
   @JoinColumn({ name: 'configId' })
   config!: BacktestConfigEntity;
 
-  @ManyToOne('strategies', 'backtestResults', { nullable: true })
+  @ManyToOne(() => StrategyEntity, { nullable: true })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
@@ -95,16 +92,13 @@ export class BacktestResultEntity implements BacktestResult {
   @Column({ type: 'int' })
   avgTradeDuration!: number;
 
-  @OneToMany('equity_points', 'result', {
-    cascade: true,
-  })
-  equity!: EquityPointEntity[];
-
-  @OneToMany('backtest_trades', 'result', {
-    cascade: true,
-  })
-  trades!: BacktestTradeEntity[];
-
   @CreateDateColumn()
   createdAt!: Date;
+
+  // These properties satisfy the BacktestResult interface
+  // but are intentionally omitted from TypeORM decorators (@OneToMany)
+  // to avoid cyclical dependencies that crash the Next.js production build.
+  // They are populated manually when fetching detailed results.
+  trades!: any[];
+  equity!: any[];
 }

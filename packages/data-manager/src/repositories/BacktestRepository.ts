@@ -95,16 +95,23 @@ export class BacktestRepository {
     options?: { includeResults?: boolean },
   ): Promise<BacktestConfigEntity | null> {
     const relations: string[] = ['user'];
-    if (options?.includeResults) {
-      relations.push('results');
-      relations.push('results.strategy'); // include strategy name on each result
-    }
+    // includeResults manually fetched below to avoid circular TypeORM decorators
 
-    return await this.configRepository.findOne({
+    const config = await this.configRepository.findOne({
       where: { id },
       relations,
-      order: options?.includeResults ? { results: { createdAt: 'DESC' } } : undefined,
     });
+
+    if (config && options?.includeResults) {
+      const results = await this.resultRepository.find({
+        where: { config: { id: config.id } },
+        relations: ['strategy'],
+        order: { createdAt: 'DESC' },
+      });
+      config.results = results;
+    }
+
+    return config;
   }
 
   async findAllConfigs(
@@ -255,8 +262,9 @@ export class BacktestRepository {
     // Always include config.user so ownership checks work
     const relations: string[] = ['config', 'config.user'];
     if (options?.includeStrategy) relations.push('strategy');
-    if (options?.includeTrades) relations.push('trades');
-    if (options?.includeEquity) relations.push('equity');
+    // includeTrades and includeEquity are removed from relations because the
+    // BacktestResultEntity model no longer has those as OneToMany TypeORM relations
+    // to prevent circular DI references. They are resolved via separate queries if needed.
 
     return await this.resultRepository.findOne({
       where: { id },

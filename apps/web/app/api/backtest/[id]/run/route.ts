@@ -371,28 +371,25 @@ export async function POST(
     // Persist per-trade records
     if (result.trades.length > 0) {
       const tradeRepo = dataSource.getRepository(BacktestTradeEntity);
-      const tradeEntities = result.trades.map((t: BacktestTrade) => {
-        const entity = new BacktestTradeEntity();
-        Object.assign(entity, {
-          result: savedResult,
-          symbol: t.symbol || effectiveSymbols[0] || '',
-          side: t.side,
-          entryPrice: t.entryPrice,
-          exitPrice: t.exitPrice,
-          quantity: t.quantity,
-          entryTime: t.entryTime,
-          exitTime: t.exitTime,
-          pnl: t.pnl,
-          commission: t.commission,
-          duration: t.duration,
-          entryCashBalance: t.entryCashBalance ?? null,
-          entryPositionSize: t.entryPositionSize ?? null,
-          cashBalance: t.cashBalance ?? null,
-          positionSize: t.positionSize ?? null,
-        });
-        return entity;
-      });
-      await tradeRepo.save(tradeEntities);
+      const tradePayloads = result.trades.map((t: BacktestTrade) => ({
+        result: { id: savedResult.id },
+        symbol: t.symbol || effectiveSymbols[0] || '',
+        side: t.side,
+        entryPrice: t.entryPrice,
+        exitPrice: t.exitPrice,
+        quantity: t.quantity,
+        entryTime: t.entryTime,
+        exitTime: t.exitTime,
+        pnl: t.pnl,
+        commission: t.commission,
+        duration: t.duration,
+        entryCashBalance: t.entryCashBalance ?? undefined,
+        entryPositionSize: t.entryPositionSize ?? undefined,
+        cashBalance: t.cashBalance ?? undefined,
+        positionSize: t.positionSize ?? undefined,
+      }));
+      // Use insert to bypass TypeORM topological cascading and cyclic checks
+      await tradeRepo.insert(tradePayloads);
     }
 
     // Persist equity curve (sampled to keep storage reasonable)
@@ -403,16 +400,12 @@ export async function POST(
       const sampled = result.equity.filter(
         (_: { timestamp: Date; value: Decimal }, i: number) => i % step === 0,
       );
-      const equityEntities = sampled.map((pt: { timestamp: Date; value: Decimal }) => {
-        const entity = new EquityPointEntity();
-        Object.assign(entity, {
-          result: savedResult,
-          timestamp: pt.timestamp,
-          value: pt.value,
-        });
-        return entity;
-      });
-      await equityRepo.save(equityEntities);
+      const equityPayloads = sampled.map((pt: { timestamp: Date; value: Decimal }) => ({
+        result: { id: savedResult.id },
+        timestamp: pt.timestamp,
+        value: pt.value,
+      }));
+      await equityRepo.insert(equityPayloads);
     }
 
     // ── Respond ────────────────────────────────────────────────────────────────

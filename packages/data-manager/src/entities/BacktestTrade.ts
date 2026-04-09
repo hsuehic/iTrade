@@ -3,14 +3,14 @@ import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 't
 import { BacktestTrade, OrderSide } from '@itrade/core';
 
 import { decimalTransformer } from '../utils/transformers';
-import type { BacktestResultEntity } from './BacktestResult';
+import { BacktestResultEntity } from './BacktestResult';
 
 @Entity('backtest_trades')
 export class BacktestTradeEntity implements BacktestTrade {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('backtest_results', 'trades', {
+  @ManyToOne(() => BacktestResultEntity, (result) => result.trades, {
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'resultId' })

@@ -13,11 +13,13 @@ import {
 import type { StrategyParameters } from '@itrade/core';
 
 import { SupportedExchange } from '../constants/exchanges';
-import { OrderEntity } from './Order';
 import { User } from './User';
-import { DryRunSessionEntity } from './DryRunSession';
-import { BacktestResultEntity } from './BacktestResult';
-import { StrategyPerformanceEntity } from './StrategyPerformance';
+
+// Import as types to avoid circular dependencies at runtime
+import type { OrderEntity } from './Order';
+import type { DryRunSessionEntity } from './DryRunSession';
+import type { BacktestResultEntity } from './BacktestResult';
+import type { StrategyPerformanceEntity } from './StrategyPerformance';
 
 export enum StrategyStatus {
   ACTIVE = 'active',
@@ -106,32 +108,19 @@ export class StrategyEntity {
   @Column({ type: 'jsonb', nullable: true })
   initialDataConfig?: Record<string, unknown>;
 
-  /**
-   * Performance metrics (OneToOne relationship)
-   * Comprehensive performance data stored in separate table for efficient querying
-   */
-  @OneToOne(() => StrategyPerformanceEntity, (performance) => performance.strategy, {
-    cascade: true,
-    eager: false,
-  })
+  // The following relationships have been removed as TypeORM decorators
+  // to avoid circular module dependencies (ReferenceError in Next.js production).
+  // They are occasionally populated manually or casted.
   performance?: StrategyPerformanceEntity;
+  orders?: OrderEntity[];
+  dryRunSessions?: DryRunSessionEntity[];
+  backtestResults?: BacktestResultEntity[];
 
   @Column({ type: 'text', nullable: true })
   errorMessage?: string;
 
   @Column({ type: 'timestamptz', nullable: true })
   lastExecutionTime?: Date;
-
-  @OneToMany(() => OrderEntity, (order) => order.strategy, {
-    onDelete: 'CASCADE',
-  })
-  orders?: OrderEntity[];
-
-  @OneToMany(() => DryRunSessionEntity, (session) => session.strategy)
-  dryRunSessions?: DryRunSessionEntity[];
-
-  @OneToMany(() => BacktestResultEntity, (result) => result.strategy)
-  backtestResults?: BacktestResultEntity[];
 
   // TypeORM relation - loads the full User object when needed
   @ManyToOne(() => User, (user) => user.strategies, {
