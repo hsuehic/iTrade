@@ -804,7 +804,7 @@
         "quantity": "Qty",
         "pnl": "P&L",
         "duration": "Duration",
-        "cashBalance": "Cash Balance",
+        "cashBalance": "Account Balance",
         "positionSize": "Open Position"
       },
       "side": {
@@ -1121,7 +1121,7 @@
         "quantity": "Qty",
         "pnl": "P&L",
         "duration": "Duration",
-        "cashBalance": "Cash Balance",
+        "cashBalance": "Account Balance",
         "positionSize": "Open Position"
       },
       "side": {

@@ -33,6 +33,7 @@ interface PendingEntry {
   barIndex: number; // bar at which the order was placed (for TTL tracking)
   /** Leverage multiplier from the order signal (1 = no leverage). */
   leverage: number;
+  type: OrderType;
 }
 
 /** A filled entry position chunk being tracked for matching and MTM. */
@@ -186,7 +187,7 @@ export class BacktestEngine implements IBacktestEngine {
         klines,
         symbol,
         exchange,
-        runningBalance.toNumber(),
+        runningBalance,
       );
 
       allTrades.push(...trades);
@@ -208,7 +209,7 @@ export class BacktestEngine implements IBacktestEngine {
     klines: Kline[],
     symbol: string,
     exchange: string,
-    initialBalance: number,
+    initialBalance: Decimal,
   ): Promise<{
     trades: BacktestTrade[];
     finalBalance: Decimal;
@@ -227,7 +228,7 @@ export class BacktestEngine implements IBacktestEngine {
     const stopLossPct = config.stopLossPercent || 0;
     const entryTtlBars = config.entryTtlBars || 100;
 
-    let cash = new Decimal(initialBalance);
+    let cash = initialBalance;
     let netPosition = new Decimal(0);
     const pendingEntries = new Map<string, PendingEntry>();
     const trades: BacktestTrade[] = [];
@@ -247,11 +248,11 @@ export class BacktestEngine implements IBacktestEngine {
       let equity = new Decimal(currentCash);
       for (const pos of openPositions) {
         const isLong = pos.side === OrderSide.BUY;
-        if (pos.leverage === 1 && !isLong) {
-          equity = equity.minus(currentPrice.mul(pos.quantity));
-        } else if (pos.leverage === 1 && isLong) {
+        if (pos.leverage === 1) {
+          // Spot equity: value of the asset held
           equity = equity.plus(currentPrice.mul(pos.quantity));
         } else {
+          // Leveraged equity: margin + unrealized P&L
           const margin = pos.entryPrice.mul(pos.quantity).div(pos.leverage);
           const upnl = isLong
             ? currentPrice.minus(pos.entryPrice).mul(pos.quantity)
@@ -270,7 +271,8 @@ export class BacktestEngine implements IBacktestEngine {
           isUpdateOrderResult(sig)
         )
           continue;
-        if (!sig.quantity || !sig.price || !sig.clientOrderId) continue;
+        if (!sig.quantity || !sig.clientOrderId) continue;
+        if (sig.type !== OrderType.MARKET && !sig.price) continue;
         const side = sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
         const signalLeverage = sig.leverage ?? 1;
         pendingEntries.set(sig.clientOrderId, {
@@ -280,14 +282,15 @@ export class BacktestEngine implements IBacktestEngine {
           quantity: sig.quantity,
           barIndex,
           leverage: signalLeverage,
-        });
+          type: sig.type || OrderType.LIMIT,
+        } as PendingEntry);
         if (strategy.onOrderCreated) {
           await strategy.onOrderCreated(
             buildOrder(
               sig.clientOrderId,
               symbol,
               side,
-              sig.price,
+              sig.price ?? new Decimal(0),
               sig.quantity,
               OrderStatus.NEW,
               exchange,
@@ -390,15 +393,25 @@ export class BacktestEngine implements IBacktestEngine {
 
       // Pending entry fills
       for (const [cid, entry] of pendingEntries) {
-        const hit =
-          entry.side === OrderSide.BUY
-            ? bar.low.lte(entry.price)
-            : bar.high.gte(entry.price);
-        if (hit) {
+        let hit = false;
+        let fillPrice: Decimal | undefined;
+
+        if (entry.type === OrderType.MARKET) {
+          hit = true;
+          fillPrice = bar.open; // Fill MARKET orders immediately at next available price (bar open)
+        } else if (entry.price) {
+          hit =
+            entry.side === OrderSide.BUY
+              ? bar.low.lte(entry.price)
+              : bar.high.gte(entry.price);
+          if (hit) fillPrice = entry.price;
+        }
+
+        if (hit && fillPrice) {
           fills.push({
             type: 'entry',
             entry,
-            fillPrice: this.applySlippage(entry.price, entry.side, slippage),
+            fillPrice: this.applySlippage(fillPrice, entry.side, slippage),
           });
           pendingEntries.delete(cid);
         }
@@ -470,10 +483,18 @@ export class BacktestEngine implements IBacktestEngine {
             const entryComm = match.entryCommission.mul(tradeQty.div(match.quantity));
             const exitComm = fillPrice.mul(tradeQty).mul(commissionRate);
 
-            if (match.leverage === 1 && match.side === OrderSide.SELL) {
-              cash = cash.minus(fillPrice.mul(tradeQty)).minus(exitComm);
+            let margin = new Decimal(0);
+            if (match.leverage === 1) {
+              // Spot: Sell returns cash, Buy costs cash
+              if (match.side === OrderSide.BUY) {
+                // We are closing a long (selling)
+                cash = cash.plus(fillPrice.mul(tradeQty)).minus(exitComm);
+              } else {
+                // We are closing a short (buying back)
+                cash = cash.minus(fillPrice.mul(tradeQty)).minus(exitComm);
+              }
             } else {
-              const margin = match.entryPrice.mul(tradeQty).div(match.leverage);
+              margin = match.entryPrice.mul(tradeQty).div(match.leverage);
               const grossPnl =
                 match.side === OrderSide.BUY
                   ? fillPrice.minus(match.entryPrice).mul(tradeQty)
@@ -504,7 +525,7 @@ export class BacktestEngine implements IBacktestEngine {
                 ((bar.closeTime ?? bar.openTime).getTime() - match.entryTime.getTime()) /
                   60000,
               ),
-              entryCashBalance: match.entryEquity,
+              entryCashBalance: calculateMTM(cash.plus(margin), match.entryPrice),
               entryPositionSize: match.entryNetPosition,
               cashBalance: calculateMTM(cash, fillPrice),
               positionSize: netPosition,
@@ -516,8 +537,13 @@ export class BacktestEngine implements IBacktestEngine {
             fillQty = fillQty.minus(tradeQty);
           } else {
             const comm = fillPrice.mul(fillQty).mul(commissionRate);
-            if (leverage === 1 && fillSide === OrderSide.SELL) {
-              cash = cash.plus(fillPrice.mul(fillQty)).minus(comm);
+            if (leverage === 1) {
+              // Spot: Buy consumes cash, Sell adds cash
+              if (fillSide === OrderSide.BUY) {
+                cash = cash.minus(fillPrice.mul(fillQty)).minus(comm);
+              } else {
+                cash = cash.plus(fillPrice.mul(fillQty)).minus(comm);
+              }
             } else {
               const margin = fillPrice.mul(fillQty).div(leverage);
               cash = cash.minus(margin).minus(comm);
@@ -630,8 +656,13 @@ export class BacktestEngine implements IBacktestEngine {
       for (let i = openPositions.length - 1; i >= 0; i--) {
         const pos = openPositions[i];
         const comm = lastClose.mul(pos.quantity).mul(commissionRate);
-        if (pos.leverage === 1 && pos.side === OrderSide.SELL) {
-          cash = cash.minus(lastClose.mul(pos.quantity)).minus(comm);
+        if (pos.leverage === 1) {
+          // Spot: closing long adds cash, closing short costs cash
+          if (pos.side === OrderSide.BUY) {
+            cash = cash.plus(lastClose.mul(pos.quantity)).minus(comm);
+          } else {
+            cash = cash.minus(lastClose.mul(pos.quantity)).minus(comm);
+          }
         } else {
           const margin = pos.entryPrice.mul(pos.quantity).div(pos.leverage);
           const pnl =
@@ -662,7 +693,7 @@ export class BacktestEngine implements IBacktestEngine {
           duration: Math.round((lastTime.getTime() - pos.entryTime.getTime()) / 60000),
           entryCashBalance: pos.entryEquity,
           entryPositionSize: pos.entryNetPosition,
-          cashBalance: cash,
+          cashBalance: calculateMTM(cash, lastClose),
           positionSize: netPosition,
         });
       }

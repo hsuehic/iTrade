@@ -804,7 +804,7 @@
         "quantity": "数量",
         "pnl": "盈亏",
         "duration": "持仓时长",
-        "cashBalance": "现金余额",
+        "cashBalance": "账户余额",
         "positionSize": "持仓数量"
       },
       "side": {
@@ -1121,7 +1121,7 @@
         "quantity": "数量",
         "pnl": "盈亏",
         "duration": "持续时间",
-        "cashBalance": "现金余额",
+        "cashBalance": "账户余额",
         "positionSize": "持仓数量"
       },
       "side": {
@@ -1378,7 +1378,8 @@
       "createStrategy": "创建策略失败",
       "generic": "发生错误",
       "updateStatus": "更新策略状态失败",
-      "deleteStrategy": "删除策略失败"
+      "deleteStrategy": "删除策略失败",
+      "notFound": "未找到策略"
     },
     "messages": {
       "updated": "策略更新成功",
