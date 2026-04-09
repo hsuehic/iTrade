@@ -33,7 +33,7 @@ export class DryRunSessionEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @ManyToOne('strategies', 'dryRunSessions', { nullable: true })
+  @ManyToOne('strategies', 'dryRunSessions', { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 

@@ -31,7 +31,7 @@ export class BacktestResultEntity implements BacktestResult {
   @JoinColumn({ name: 'configId' })
   config!: BacktestConfigEntity;
 
-  @ManyToOne(() => StrategyEntity, { nullable: true })
+  @ManyToOne(() => StrategyEntity, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'strategyId' })
   strategy?: StrategyEntity;
 
