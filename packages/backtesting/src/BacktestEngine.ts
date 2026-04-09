@@ -183,7 +183,7 @@ export class BacktestEngine implements IBacktestEngine {
       const { trades, finalBalance, symbolEquity } = await this.simulateSymbol(
         strategy,
         config,
-        dataManager,
+        klines,
         symbol,
         exchange,
         runningBalance.toNumber(),
@@ -205,7 +205,7 @@ export class BacktestEngine implements IBacktestEngine {
   private async simulateSymbol(
     strategy: IStrategy,
     config: BacktestConfig,
-    dataManager: IDataManager,
+    klines: Kline[],
     symbol: string,
     exchange: string,
     initialBalance: number,
@@ -214,12 +214,14 @@ export class BacktestEngine implements IBacktestEngine {
     finalBalance: Decimal;
     symbolEquity: Array<{ timestamp: Date; value: Decimal }>;
   }> {
-    const klines = await dataManager.getKlines(
-      symbol,
-      exchange,
-      config.startDate,
-      config.endDate,
-    );
+    if (klines.length === 0) {
+      return {
+        trades: [],
+        finalBalance: new Decimal(initialBalance),
+        symbolEquity: [],
+      };
+    }
+
     const slippage = config.slippage || new Decimal(0);
     const commissionRate = config.commission || new Decimal(0);
     const stopLossPct = config.stopLossPercent || 0;
@@ -621,49 +623,51 @@ export class BacktestEngine implements IBacktestEngine {
     }
 
     // Force close
-    const lastBar = klines[klines.length - 1];
-    const lastClose = lastBar.close;
-    const lastTime = lastBar.closeTime ?? lastBar.openTime;
-    for (let i = openPositions.length - 1; i >= 0; i--) {
-      const pos = openPositions[i];
-      const comm = lastClose.mul(pos.quantity).mul(commissionRate);
-      if (pos.leverage === 1 && pos.side === OrderSide.SELL) {
-        cash = cash.minus(lastClose.mul(pos.quantity)).minus(comm);
-      } else {
-        const margin = pos.entryPrice.mul(pos.quantity).div(pos.leverage);
-        const pnl =
+    if (klines.length > 0) {
+      const lastBar = klines[klines.length - 1];
+      const lastClose = lastBar.close;
+      const lastTime = lastBar.closeTime ?? lastBar.openTime;
+      for (let i = openPositions.length - 1; i >= 0; i--) {
+        const pos = openPositions[i];
+        const comm = lastClose.mul(pos.quantity).mul(commissionRate);
+        if (pos.leverage === 1 && pos.side === OrderSide.SELL) {
+          cash = cash.minus(lastClose.mul(pos.quantity)).minus(comm);
+        } else {
+          const margin = pos.entryPrice.mul(pos.quantity).div(pos.leverage);
+          const pnl =
+            pos.side === OrderSide.BUY
+              ? lastClose.minus(pos.entryPrice).mul(pos.quantity)
+              : pos.entryPrice.minus(lastClose).mul(pos.quantity);
+          cash = cash.plus(margin).plus(pnl).minus(comm);
+        }
+        netPosition =
           pos.side === OrderSide.BUY
+            ? netPosition.minus(pos.quantity)
+            : netPosition.plus(pos.quantity);
+        trades.push({
+          symbol,
+          side: pos.side,
+          entryPrice: pos.entryPrice,
+          exitPrice: lastClose,
+          quantity: pos.quantity,
+          entryTime: pos.entryTime,
+          exitTime: lastTime,
+          pnl: (pos.side === OrderSide.BUY
             ? lastClose.minus(pos.entryPrice).mul(pos.quantity)
-            : pos.entryPrice.minus(lastClose).mul(pos.quantity);
-        cash = cash.plus(margin).plus(pnl).minus(comm);
+            : pos.entryPrice.minus(lastClose).mul(pos.quantity)
+          )
+            .minus(pos.entryCommission)
+            .minus(comm),
+          commission: pos.entryCommission.plus(comm),
+          duration: Math.round((lastTime.getTime() - pos.entryTime.getTime()) / 60000),
+          entryCashBalance: pos.entryEquity,
+          entryPositionSize: pos.entryNetPosition,
+          cashBalance: cash,
+          positionSize: netPosition,
+        });
       }
-      netPosition =
-        pos.side === OrderSide.BUY
-          ? netPosition.minus(pos.quantity)
-          : netPosition.plus(pos.quantity);
-      trades.push({
-        symbol,
-        side: pos.side,
-        entryPrice: pos.entryPrice,
-        exitPrice: lastClose,
-        quantity: pos.quantity,
-        entryTime: pos.entryTime,
-        exitTime: lastTime,
-        pnl: (pos.side === OrderSide.BUY
-          ? lastClose.minus(pos.entryPrice).mul(pos.quantity)
-          : pos.entryPrice.minus(lastClose).mul(pos.quantity)
-        )
-          .minus(pos.entryCommission)
-          .minus(comm),
-        commission: pos.entryCommission.plus(comm),
-        duration: Math.round((lastTime.getTime() - pos.entryTime.getTime()) / 60000),
-        entryCashBalance: pos.entryEquity,
-        entryPositionSize: pos.entryNetPosition,
-        cashBalance: cash,
-        positionSize: netPosition,
-      });
+      symbolEquity.push({ timestamp: lastTime, value: cash });
     }
-    symbolEquity.push({ timestamp: lastTime, value: cash });
     return { trades, finalBalance: cash, symbolEquity };
   }
 
