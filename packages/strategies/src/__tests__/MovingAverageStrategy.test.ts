@@ -299,7 +299,6 @@ describe('MovingAverageStrategy', () => {
       expect(entries).toHaveLength(1);
       expect(entries[0].action).toBe('sell');
     });
-
   });
 
   describe('Order Processing & Exit Generation', () => {

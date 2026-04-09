@@ -404,8 +404,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
     for (const [entryCid, pos] of Array.from(this.activePositions.entries())) {
       if (!pos.slPrice) continue;
 
-      const hit =
-        pos.side === 'buy' ? price.lte(pos.slPrice) : price.gte(pos.slPrice);
+      const hit = pos.side === 'buy' ? price.lte(pos.slPrice) : price.gte(pos.slPrice);
 
       if (hit) {
         signals.push({
@@ -753,7 +752,7 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
   private _cancelOppositeEntry(): StrategyResult[] {
     const crossover = this.maSignal;
     if (crossover === 'none') return [];
-    
+
     const oppositeSide = crossover === 'bullish' ? 'sell' : 'buy';
     const signals: StrategyResult[] = [];
 
