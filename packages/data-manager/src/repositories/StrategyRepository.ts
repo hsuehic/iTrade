@@ -2,6 +2,7 @@ import { DataSource, Repository } from 'typeorm';
 import { normalizeSymbol, detectMarketType } from '@itrade/utils';
 
 import { StrategyEntity, StrategyStatus, MarketType } from '../entities/Strategy';
+import { StrategyPerformanceEntity } from '../entities/StrategyPerformance';
 
 export class StrategyRepository {
   private repository: Repository<StrategyEntity>;
@@ -67,25 +68,26 @@ export class StrategyRepository {
     id: number,
     options?: { includeUser?: boolean; includePerformance?: boolean },
   ): Promise<StrategyEntity | null> {
-    const relations: string[] = [];
+    const query = this.repository
+      .createQueryBuilder('strategy')
+      .where('strategy.id = :id', { id });
 
     if (options?.includeUser) {
-      relations.push('user');
+      query.leftJoinAndSelect('strategy.user', 'user');
     }
+
     if (options?.includePerformance) {
-      relations.push('performance');
+      // Use leftJoinAndMapOne because StrategyEntity doesn't have the decorator
+      // to avoid circular module dependencies (ReferenceError in Next.js production)
+      query.leftJoinAndMapOne(
+        'strategy.performance',
+        StrategyPerformanceEntity,
+        'performance',
+        'performance.strategyId = strategy.id',
+      );
     }
 
-    if (relations.length > 0) {
-      return await this.repository.findOne({
-        where: { id },
-        relations,
-      });
-    }
-
-    return await this.repository.findOne({
-      where: { id },
-    });
+    return await query.getOne();
   }
 
   async findAll(filters?: {
@@ -104,7 +106,14 @@ export class StrategyRepository {
 
     // Only join performance if explicitly requested
     if (filters?.includePerformance) {
-      query.leftJoinAndSelect('strategy.performance', 'performance');
+      // Use leftJoinAndMapOne because StrategyEntity doesn't have the decorator
+      // to avoid circular module dependencies (ReferenceError in Next.js production)
+      query.leftJoinAndMapOne(
+        'strategy.performance',
+        StrategyPerformanceEntity,
+        'performance',
+        'performance.strategyId = strategy.id',
+      );
     }
 
     if (filters?.userId) {

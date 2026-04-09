@@ -20,6 +20,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && pkgroll --sourcemap --tsconfig tsconfig.build.json",
+    "dev": "pkgroll --watch --sourcemap --tsconfig tsconfig.build.json",
     "sync-schema": "tsx sync-schema-to-db.ts",
     "test": "vitest run",
     "test:watch": "vitest",

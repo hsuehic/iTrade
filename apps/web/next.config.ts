@@ -5,6 +5,14 @@ import path from 'path';
 const isDevelopment = process.env.NODE_ENV === 'development';
 const buildMode = process.env.BUILD_MODE;
 
+const itradePackages = [
+  '@itrade/data-manager',
+  '@itrade/core',
+  '@itrade/utils',
+  '@itrade/logger',
+  '@itrade/exchange-connectors',
+];
+
 let distDir = '.next';
 let tsconfigPath = './tsconfig.json';
 
@@ -54,7 +62,11 @@ const nextConfig: NextConfig = {
         ...prev,
         (data: { request?: string }, callback: (err?: null, result?: string) => void) => {
           const { request } = data;
-          if (typeof request === 'string' && request.startsWith('@itrade/')) {
+          if (
+            typeof request === 'string' &&
+            request.startsWith('@itrade/') &&
+            !isDevelopment
+          ) {
             return callback(null, `commonjs ${request}`);
           }
           callback();
@@ -100,14 +112,12 @@ const nextConfig: NextConfig = {
    * ✅ 官方方式：Server-only external packages
    * Turbopack & Webpack 都支持
    */
-  serverExternalPackages: [
-    'typeorm',
-    '@itrade/data-manager',
-    '@itrade/core',
-    '@itrade/utils',
-    '@itrade/logger',
-    '@itrade/exchange-connectors',
-  ],
+  serverExternalPackages: ['typeorm', ...(isDevelopment ? [] : itradePackages)],
+
+  /**
+   * ✅ 开发模式下直接从源码转译，支持热重载
+   */
+  transpilePackages: isDevelopment ? itradePackages : [],
   allowedDevOrigins: [
     'bot.ihsueh.com',
     'itrade.ihsueh.com',
