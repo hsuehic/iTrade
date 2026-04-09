@@ -70,11 +70,6 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
 
-  eslint: {
-    ignoreDuringBuilds: true,
-    dirs: ['app', 'components', 'hooks', 'lib', 'middlewares'],
-  },
-
   images: {
     // All crypto icons are served locally from /public/crypto-icons/
     // No external image domains required

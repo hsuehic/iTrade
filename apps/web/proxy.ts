@@ -61,7 +61,7 @@ const chain = (
   };
 };
 
-export const middleware = chain(withAuth, withPathHeader);
+export const proxy = chain(withAuth, withPathHeader);
 
 export const config = {
   matcher: [

@@ -160,6 +160,8 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_DB || 'itrade',
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
     }),
     //...other options
     emailAndPassword: {
