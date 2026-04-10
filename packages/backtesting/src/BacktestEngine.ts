@@ -249,8 +249,12 @@ export class BacktestEngine implements IBacktestEngine {
       for (const pos of openPositions) {
         const isLong = pos.side === OrderSide.BUY;
         if (pos.leverage === 1) {
-          // Spot equity: value of the asset held
-          equity = equity.plus(currentPrice.mul(pos.quantity));
+          // Spot equity: long holds the asset (add value), short owes the asset (subtract liability)
+          if (isLong) {
+            equity = equity.plus(currentPrice.mul(pos.quantity));
+          } else {
+            equity = equity.minus(currentPrice.mul(pos.quantity));
+          }
         } else {
           // Leveraged equity: margin + unrealized P&L
           const margin = pos.entryPrice.mul(pos.quantity).div(pos.leverage);
@@ -506,6 +510,13 @@ export class BacktestEngine implements IBacktestEngine {
                 ? netPosition.plus(tradeQty)
                 : netPosition.minus(tradeQty);
 
+            // Update position BEFORE computing MTM so cashBalance reflects post-close state
+            // (avoids double-counting the closed portion in calculateMTM)
+            match.quantity = match.quantity.minus(tradeQty);
+            match.entryCommission = match.entryCommission.minus(entryComm);
+            if (match.quantity.isZero()) openPositions.splice(matchIdx, 1);
+            fillQty = fillQty.minus(tradeQty);
+
             trades.push({
               symbol,
               side: match.side,
@@ -525,16 +536,11 @@ export class BacktestEngine implements IBacktestEngine {
                 ((bar.closeTime ?? bar.openTime).getTime() - match.entryTime.getTime()) /
                   60000,
               ),
-              entryCashBalance: calculateMTM(cash.plus(margin), match.entryPrice),
+              entryCashBalance: match.entryEquity,
               entryPositionSize: match.entryNetPosition,
               cashBalance: calculateMTM(cash, fillPrice),
               positionSize: netPosition,
             });
-
-            match.quantity = match.quantity.minus(tradeQty);
-            match.entryCommission = match.entryCommission.minus(entryComm);
-            if (match.quantity.isZero()) openPositions.splice(matchIdx, 1);
-            fillQty = fillQty.minus(tradeQty);
 
             // Notify strategy when a fill closes (or partially closes) a position.
             // This is needed for multi-cycle strategies (e.g. SpreadGrid) that place
@@ -554,13 +560,19 @@ export class BacktestEngine implements IBacktestEngine {
                   exchangeName: exchange,
                   symbol,
                   orders: [closeNotifyOrder],
-                  orderbook: buildSyntheticOrderBook(symbol, exchange, bar.close, bar.closeTime),
+                  orderbook: buildSyntheticOrderBook(
+                    symbol,
+                    exchange,
+                    bar.close,
+                    bar.closeTime,
+                  ),
                 }),
               );
               for (const closeSig of closeSigs) {
                 if (isCancelOrderResult(closeSig)) {
                   await processCancelSignals([closeSig], bar.close, bar.closeTime);
-                  const cid = (closeSig as any).clientOrderId || (closeSig as any).orderId;
+                  const cid =
+                    (closeSig as any).clientOrderId || (closeSig as any).orderId;
                   if (cid) {
                     const idx = fills.findIndex(
                       (f: any) =>
@@ -591,7 +603,6 @@ export class BacktestEngine implements IBacktestEngine {
               fillSide === OrderSide.BUY
                 ? netPosition.plus(fillQty)
                 : netPosition.minus(fillQty);
-            const mtmNow = calculateMTM(cash, fillPrice);
             const newPos: OpenPosition = {
               clientOrderId:
                 fill.type === 'entry'
@@ -603,10 +614,13 @@ export class BacktestEngine implements IBacktestEngine {
               entryTime: bar.openTime,
               leverage,
               entryCommission: comm,
-              entryEquity: mtmNow,
+              // Placeholder: set after push so calculateMTM includes this position
+              entryEquity: new Decimal(0),
               entryNetPosition: netPosition,
             };
             openPositions.push(newPos);
+            // Compute entry equity AFTER pushing so the new position's margin/value is included
+            newPos.entryEquity = calculateMTM(cash, fillPrice);
 
             // 2. Notification: strategy might place a TP/SL or replace orders after a fill
             const filledOrder = buildOrder(
