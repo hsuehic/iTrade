@@ -28,6 +28,7 @@ apps/*/src/**/*.d.ts.map
 .env.production
 .env.test
 .env.gce
+.env.*
 
 # Local env files for GCE deployment (filled-in copies of deploy/env.*.template)
 deploy/envs/
