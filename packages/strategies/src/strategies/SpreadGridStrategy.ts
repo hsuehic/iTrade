@@ -204,6 +204,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
   private lastOrderBook: OrderBook | null = null;
+  private lastOrderBookReceivedAt: number = 0;
   private readonly orderBookStaleMs = 10000;
 
   private positionSize: Decimal = new Decimal(0);
@@ -244,6 +245,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private updateOrderBookPrice(orderbook?: OrderBook): void {
     if (!orderbook) return;
     this.lastOrderBook = orderbook;
+    this.lastOrderBookReceivedAt = Date.now();
     const bestBid = orderbook.bids?.[0]?.[0];
     const bestAsk = orderbook.asks?.[0]?.[0];
     let price: Decimal | null = null;
@@ -258,13 +260,12 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     this.lastOrderBookPrice = price;
   }
 
-  private isOrderBookStale(now: number = Date.now()): boolean {
-    if (!this.lastOrderBook?.timestamp) return true;
-    const lastTs = this.lastOrderBook.timestamp.getTime();
-    if (Number.isNaN(lastTs)) return true;
-
-    // Use simulated time if provided, or Date.now()
-    return Math.abs(now - lastTs) > this.orderBookStaleMs;
+  private isOrderBookStale(): boolean {
+    if (!this.lastOrderBook) return true;
+    // Use real wall-clock time of when the orderbook was last received.
+    // This correctly handles backtesting where orderbook.timestamp is a historical
+    // bar time (not real-time), which would otherwise always appear stale.
+    return Date.now() - this.lastOrderBookReceivedAt > this.orderBookStaleMs;
   }
 
   private getBestBidAsk(): { bestBid?: Decimal; bestAsk?: Decimal } {

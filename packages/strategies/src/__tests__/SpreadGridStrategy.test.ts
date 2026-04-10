@@ -169,6 +169,51 @@ describe('SpreadGridStrategy', () => {
     expect(orderSignals).toHaveLength(0);
   });
 
+  it('regenerates signals on kline update after all orders close (backtest scenario with historical timestamps)', async () => {
+    // Simulate backtesting: orderbook timestamps are historical (e.g., 2024), not current.
+    // The bug was that isOrderBookStale() compared lastOrderBook.timestamp to Date.now(),
+    // making historical bar times always appear stale, so no new signals were generated.
+    const historicalTime = new Date('2024-06-15T12:00:00Z');
+
+    await strategy.processInitialData({
+      symbol: 'ETH/USDC:USDC',
+      exchange: 'binance',
+      timestamp: historicalTime,
+      openOrders: [],
+      orderBook: { ...createOrderBook({ bid: 2050, ask: 2051 }), timestamp: historicalTime },
+    });
+
+    // Kline update with historical timestamp (as backtest engine would provide)
+    const result = await strategy.analyze({
+      exchangeName: 'binance',
+      symbol: 'ETH/USDC:USDC',
+      klines: [
+        {
+          symbol: 'ETH/USDC:USDC',
+          interval: '1h' as any,
+          openTime: historicalTime,
+          closeTime: new Date(historicalTime.getTime() + 3600000),
+          open: new Decimal(2050),
+          high: new Decimal(2060),
+          low: new Decimal(2040),
+          close: new Decimal(2055),
+          volume: new Decimal(1000),
+          quoteVolume: new Decimal(2050000),
+          trades: 100,
+        },
+      ],
+      orderbook: { ...createOrderBook({ bid: 2054, ask: 2056 }), timestamp: historicalTime },
+    });
+
+    const signals = normalizeAnalyzeResult(result).filter(
+      (signal): signal is StrategyOrderResult =>
+        signal.action === 'buy' || signal.action === 'sell',
+    );
+
+    // Must generate signals even though orderbook has historical timestamp
+    expect(signals.length).toBeGreaterThan(0);
+  });
+
   it('respects minSize when multiple FILLED updates arrive in one batch', async () => {
     await strategy.processInitialData({
       symbol: 'ETH/USDC:USDC',

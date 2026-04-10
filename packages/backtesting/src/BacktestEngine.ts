@@ -535,6 +535,45 @@ export class BacktestEngine implements IBacktestEngine {
             match.entryCommission = match.entryCommission.minus(entryComm);
             if (match.quantity.isZero()) openPositions.splice(matchIdx, 1);
             fillQty = fillQty.minus(tradeQty);
+
+            // Notify strategy when a fill closes (or partially closes) a position.
+            // This is needed for multi-cycle strategies (e.g. SpreadGrid) that place
+            // new cycle orders in response to a TP/SL or entry fill.
+            if (fillQty.isZero()) {
+              const closeNotifyOrder = buildOrder(
+                entryCid,
+                symbol,
+                fillSide,
+                fillPrice,
+                fill.type === 'entry' ? fill.entry.quantity : fill.exit.quantity,
+                OrderStatus.FILLED,
+                exchange,
+              );
+              const closeSigs = normalizeAnalyzeResult(
+                await strategy.analyze({
+                  exchangeName: exchange,
+                  symbol,
+                  orders: [closeNotifyOrder],
+                  orderbook: buildSyntheticOrderBook(symbol, exchange, bar.close, bar.closeTime),
+                }),
+              );
+              for (const closeSig of closeSigs) {
+                if (isCancelOrderResult(closeSig)) {
+                  await processCancelSignals([closeSig], bar.close, bar.closeTime);
+                  const cid = (closeSig as any).clientOrderId || (closeSig as any).orderId;
+                  if (cid) {
+                    const idx = fills.findIndex(
+                      (f: any) =>
+                        (f.type === 'entry' && f.entry.clientOrderId === cid) ||
+                        (f.type !== 'entry' && f.exit.clientOrderId === cid),
+                    );
+                    if (idx !== -1) fills.splice(idx, 1);
+                  }
+                } else if (isActionableResult(closeSig)) {
+                  await registerEntrySigs([closeSig], barIdx);
+                }
+              }
+            }
           } else {
             const comm = fillPrice.mul(fillQty).mul(commissionRate);
             if (leverage === 1) {
@@ -593,7 +632,22 @@ export class BacktestEngine implements IBacktestEngine {
               }),
             );
             for (const sig of sigs) {
-              if (
+              if (isCancelOrderResult(sig)) {
+                // Must check cancel BEFORE isActionableResult because isActionableResult
+                // returns true for cancel signals too (action !== 'hold'), so cancel
+                // signals would otherwise be routed to registerEntrySigs and silently dropped.
+                await processCancelSignals([sig], bar.close, bar.closeTime);
+                const cancelSig = sig as any;
+                const targetCid = cancelSig.clientOrderId || cancelSig.orderId;
+                if (targetCid) {
+                  const fIdx = fills.findIndex(
+                    (f: any) =>
+                      (f.type === 'entry' && f.entry.clientOrderId === targetCid) ||
+                      (f.type !== 'entry' && f.exit.clientOrderId === targetCid),
+                  );
+                  if (fIdx !== -1) fills.splice(fIdx, 1);
+                }
+              } else if (
                 isActionableResult(sig) &&
                 ((sig.action === 'sell' && fillSide === OrderSide.BUY) ||
                   (sig.action === 'buy' && fillSide === OrderSide.SELL))
@@ -611,18 +665,6 @@ export class BacktestEngine implements IBacktestEngine {
                 });
               } else if (isActionableResult(sig)) {
                 await registerEntrySigs([sig], barIdx);
-              } else if (isCancelOrderResult(sig)) {
-                await processCancelSignals([sig], bar.close, bar.closeTime);
-                const cancelSig = sig as any;
-                const targetCid = cancelSig.clientOrderId || cancelSig.orderId;
-                if (targetCid) {
-                  const fIdx = fills.findIndex(
-                    (f: any) =>
-                      (f.type === 'entry' && f.entry.clientOrderId === targetCid) ||
-                      (f.type !== 'entry' && f.exit.clientOrderId === targetCid),
-                  );
-                  if (fIdx !== -1) fills.splice(fIdx, 1);
-                }
               }
             }
             fillQty = new Decimal(0);
