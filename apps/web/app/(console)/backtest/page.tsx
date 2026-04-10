@@ -932,6 +932,23 @@ export default function BacktestPage() {
                                     : ''}
                                   {formatPercent(config.bestResult.totalReturn)}
                                 </div>
+                                <div
+                                  className={`text-xs font-mono ${getMetricColor(
+                                    parseFloat(config.bestResult.totalReturn),
+                                    'return',
+                                  )}`}
+                                >
+                                  {parseFloat(config.bestResult.totalReturn) >= 0
+                                    ? '+'
+                                    : '-'}
+                                  $
+                                  {formatNumber(
+                                    Math.abs(
+                                      parseFloat(config.initialBalance) *
+                                        parseFloat(config.bestResult.totalReturn),
+                                    ),
+                                  )}
+                                </div>
                               </div>
                               <div>
                                 <div className="text-xs text-muted-foreground">
@@ -1044,8 +1061,19 @@ export default function BacktestPage() {
                                     <TableCell
                                       className={`text-right font-medium ${getMetricColor(parseFloat(r.totalReturn), 'return')}`}
                                     >
-                                      {parseFloat(r.totalReturn) >= 0 ? '+' : ''}
-                                      {formatPercent(r.totalReturn)}
+                                      <div>
+                                        {parseFloat(r.totalReturn) >= 0 ? '+' : ''}
+                                        {formatPercent(r.totalReturn)}
+                                      </div>
+                                      <div className="text-xs font-mono opacity-80">
+                                        {parseFloat(r.totalReturn) >= 0 ? '+' : '-'}$
+                                        {formatNumber(
+                                          Math.abs(
+                                            parseFloat(config.initialBalance) *
+                                              parseFloat(r.totalReturn),
+                                          ),
+                                        )}
+                                      </div>
                                     </TableCell>
                                     <TableCell className="text-right">
                                       {formatNumber(r.sharpeRatio)}
@@ -1242,6 +1270,22 @@ export default function BacktestPage() {
                             )}
                             {formatPercent(selectedResult.totalReturn)}
                           </CardTitle>
+                          {selectedConfig && (
+                            <div
+                              className={`text-sm font-mono ${getMetricColor(
+                                parseFloat(selectedResult.totalReturn),
+                                'return',
+                              )}`}
+                            >
+                              {parseFloat(selectedResult.totalReturn) >= 0 ? '+' : '-'}$
+                              {formatNumber(
+                                Math.abs(
+                                  parseFloat(selectedConfig.initialBalance) *
+                                    parseFloat(selectedResult.totalReturn),
+                                ),
+                              )}
+                            </div>
+                          )}
                         </CardHeader>
                       </Card>
                       <Card>
@@ -1543,8 +1587,21 @@ export default function BacktestPage() {
                               <TableCell
                                 className={`text-right font-medium ${getMetricColor(parseFloat(r.totalReturn), 'return')}`}
                               >
-                                {parseFloat(r.totalReturn) >= 0 ? '+' : ''}
-                                {formatPercent(r.totalReturn)}
+                                <div>
+                                  {parseFloat(r.totalReturn) >= 0 ? '+' : ''}
+                                  {formatPercent(r.totalReturn)}
+                                </div>
+                                {selectedConfig && (
+                                  <div className="text-xs font-mono opacity-80">
+                                    {parseFloat(r.totalReturn) >= 0 ? '+' : '-'}$
+                                    {formatNumber(
+                                      Math.abs(
+                                        parseFloat(selectedConfig.initialBalance) *
+                                          parseFloat(r.totalReturn),
+                                      ),
+                                    )}
+                                  </div>
+                                )}
                               </TableCell>
                               <TableCell className="text-right">
                                 {formatNumber(r.sharpeRatio)}
@@ -1661,14 +1718,33 @@ export default function BacktestPage() {
                           <span className="text-muted-foreground">
                             {t('metrics.totalReturn')}
                           </span>
-                          <span
-                            className={`font-bold ${getMetricColor(
-                              parseFloat(selectedResult.totalReturn),
-                              'return',
-                            )}`}
-                          >
-                            {formatPercent(selectedResult.totalReturn)}
-                          </span>
+                          <div className="text-right">
+                            <div
+                              className={`font-bold ${getMetricColor(
+                                parseFloat(selectedResult.totalReturn),
+                                'return',
+                              )}`}
+                            >
+                              {parseFloat(selectedResult.totalReturn) >= 0 ? '+' : ''}
+                              {formatPercent(selectedResult.totalReturn)}
+                            </div>
+                            {selectedConfig && (
+                              <div
+                                className={`text-xs font-mono ${getMetricColor(
+                                  parseFloat(selectedResult.totalReturn),
+                                  'return',
+                                )}`}
+                              >
+                                {parseFloat(selectedResult.totalReturn) >= 0 ? '+' : '-'}$
+                                {formatNumber(
+                                  Math.abs(
+                                    parseFloat(selectedConfig.initialBalance) *
+                                      parseFloat(selectedResult.totalReturn),
+                                  ),
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-muted-foreground">
@@ -1718,14 +1794,30 @@ export default function BacktestPage() {
                           <span className="text-muted-foreground">
                             {t('metrics.maxDrawdown')}
                           </span>
-                          <span
-                            className={`font-bold ${getMetricColor(
-                              parseFloat(selectedResult.maxDrawdown),
-                              'drawdown',
-                            )}`}
-                          >
-                            {formatPercent(selectedResult.maxDrawdown)}
-                          </span>
+                          <div className="text-right">
+                            <div
+                              className={`font-bold ${getMetricColor(
+                                parseFloat(selectedResult.maxDrawdown),
+                                'drawdown',
+                              )}`}
+                            >
+                              -{formatPercent(selectedResult.maxDrawdown)}
+                            </div>
+                            {selectedConfig && (
+                              <div
+                                className={`text-xs font-mono ${getMetricColor(
+                                  parseFloat(selectedResult.maxDrawdown),
+                                  'drawdown',
+                                )}`}
+                              >
+                                -$
+                                {formatNumber(
+                                  parseFloat(selectedConfig.initialBalance) *
+                                    parseFloat(selectedResult.maxDrawdown),
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-muted-foreground">

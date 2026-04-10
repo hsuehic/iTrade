@@ -277,7 +277,20 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
   }
 
   const totalReturnNum = parseFloat(result.totalReturn);
+  const maxDrawdownNum = parseFloat(result.maxDrawdown);
   const pageTitle = result.name || result.strategy?.name || `Result #${result.id}`;
+
+  // Absolute P&L: initial × totalReturn
+  const absReturn =
+    initialBalance !== undefined ? initialBalance * totalReturnNum : undefined;
+
+  // Absolute max drawdown: peak equity × maxDrawdown
+  const peakEquity =
+    equityData.length > 0
+      ? Math.max(...equityData.map((pt) => pt.value))
+      : initialBalance;
+  const absMaxDrawdown =
+    peakEquity !== undefined ? peakEquity * maxDrawdownNum : undefined;
 
   return (
     <SidebarInset>
@@ -306,6 +319,11 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
               >
                 {totalReturnNum >= 0 ? '+' : ''}
                 {formatPercent(result.totalReturn)}
+                {absReturn !== undefined && (
+                  <span className="ml-1.5 opacity-75">
+                    ({totalReturnNum >= 0 ? '+' : ''}${formatNumber(Math.abs(absReturn))})
+                  </span>
+                )}
               </Badge>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground ml-8">
@@ -346,6 +364,11 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
                 {totalReturnNum >= 0 ? '+' : ''}
                 {formatPercent(result.totalReturn)}
               </div>
+              {absReturn !== undefined && (
+                <div className={`text-sm font-mono ${getReturnColor(totalReturnNum)}`}>
+                  {totalReturnNum >= 0 ? '+' : '-'}${formatNumber(Math.abs(absReturn))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground mt-1">
                 {t('metrics.annualizedReturn')}: {formatPercent(result.annualizedReturn)}
               </p>
@@ -378,8 +401,13 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-mono text-red-500">
-                {formatPercent(result.maxDrawdown)}
+                -{formatPercent(result.maxDrawdown)}
               </div>
+              {absMaxDrawdown !== undefined && absMaxDrawdown > 0 && (
+                <div className="text-sm font-mono text-red-500">
+                  -${formatNumber(absMaxDrawdown)}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground mt-1">
                 {result.config && (
                   <>
@@ -453,9 +481,11 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
                         amount: formatNumber(result.config.initialBalance),
                       })}
                       {' → '}
-                      {equityData.length > 0
-                        ? `$${formatNumber(equityData[equityData.length - 1].value)}`
-                        : ''}
+                      {initialBalance !== undefined
+                        ? `$${formatNumber(initialBalance * (1 + totalReturnNum))}`
+                        : equityData.length > 0
+                          ? `$${formatNumber(equityData[equityData.length - 1].value)}`
+                          : ''}
                     </CardDescription>
                   )}
                 </CardHeader>
@@ -639,7 +669,7 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
                             {t('trades.table.duration')}
                           </TableHead>
                           <TableHead className="text-right">
-                            {t('trades.table.cashBalance')}
+                            {t('trades.table.equity')}
                           </TableHead>
                           <TableHead className="text-right">
                             {t('trades.table.positionSize')}
@@ -793,7 +823,7 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
                             {t('trades.table.quantity')}
                           </TableHead>
                           <TableHead className="text-right">
-                            {t('trades.table.cashBalance')}
+                            {t('trades.table.equity')}
                           </TableHead>
                           <TableHead className="text-right">
                             {t('trades.table.positionSize')}

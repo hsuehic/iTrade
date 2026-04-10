@@ -1121,7 +1121,7 @@
         "quantity": "数量",
         "pnl": "盈亏",
         "duration": "持续时间",
-        "cashBalance": "账户余额",
+        "equity": "权益",
         "positionSize": "持仓数量"
       },
       "side": {

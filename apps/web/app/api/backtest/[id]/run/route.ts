@@ -395,10 +395,13 @@ export async function POST(
     // Persist equity curve (sampled to keep storage reasonable)
     if (result.equity.length > 0) {
       const equityRepo = dataSource.getRepository(EquityPointEntity);
-      // Sample at most 2000 points to avoid excessive DB writes
+      // Sample at most 2000 points to avoid excessive DB writes.
+      // Always include the final point so the last equity matches totalReturn.
       const step = Math.max(1, Math.floor(result.equity.length / 2000));
+      const lastIdx = result.equity.length - 1;
       const sampled = result.equity.filter(
-        (_: { timestamp: Date; value: Decimal }, i: number) => i % step === 0,
+        (_: { timestamp: Date; value: Decimal }, i: number) =>
+          i % step === 0 || i === lastIdx,
       );
       const equityPayloads = sampled.map((pt: { timestamp: Date; value: Decimal }) => ({
         result: { id: savedResult.id },

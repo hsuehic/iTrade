@@ -709,6 +709,12 @@ export class BacktestEngine implements IBacktestEngine {
       const lastBar = klines[klines.length - 1];
       const lastClose = lastBar.close;
       const lastTime = lastBar.closeTime ?? lastBar.openTime;
+
+      // Collect force-closed trades with a placeholder cashBalance, then backfill
+      // all of them with the same final settled cash after every position closes.
+      // This ensures every force-closed trade's equity column equals the final
+      // equity shown by totalReturn (no double-counting of still-open MTM).
+      const forceClosedTrades: BacktestTrade[] = [];
       for (let i = openPositions.length - 1; i >= 0; i--) {
         const pos = openPositions[i];
         const comm = lastClose.mul(pos.quantity).mul(commissionRate);
@@ -731,7 +737,8 @@ export class BacktestEngine implements IBacktestEngine {
           pos.side === OrderSide.BUY
             ? netPosition.minus(pos.quantity)
             : netPosition.plus(pos.quantity);
-        trades.push({
+        openPositions.splice(i, 1);
+        forceClosedTrades.push({
           symbol,
           side: pos.side,
           entryPrice: pos.entryPrice,
@@ -749,10 +756,18 @@ export class BacktestEngine implements IBacktestEngine {
           duration: Math.round((lastTime.getTime() - pos.entryTime.getTime()) / 60000),
           entryCashBalance: pos.entryEquity,
           entryPositionSize: pos.entryNetPosition,
-          cashBalance: calculateMTM(cash, lastClose),
+          cashBalance: new Decimal(0), // backfilled below
           positionSize: netPosition,
         });
       }
+      // All positions closed; backfill every force-closed trade with the same
+      // final settled cash so their equity column matches totalReturn exactly.
+      const finalCash = cash;
+      forceClosedTrades.forEach((t) => {
+        t.cashBalance = finalCash;
+      });
+      trades.push(...forceClosedTrades);
+
       symbolEquity.push({ timestamp: lastTime, value: cash });
     }
     return { trades, finalBalance: cash, symbolEquity };

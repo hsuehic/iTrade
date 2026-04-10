@@ -1121,7 +1121,7 @@
         "quantity": "Qty",
         "pnl": "P&L",
         "duration": "Duration",
-        "cashBalance": "Account Balance",
+        "equity": "Equity",
         "positionSize": "Open Position"
       },
       "side": {
