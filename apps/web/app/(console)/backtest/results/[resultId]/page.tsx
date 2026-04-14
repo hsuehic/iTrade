@@ -1,17 +1,23 @@
 'use client';
 
-import { useState, useEffect, useCallback, use } from 'react';
+/* eslint-disable react/prop-types */
+
+import { useState, useEffect, useCallback, useMemo, use } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import {
   AreaChart,
   Area,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  Line,
+  Scatter,
+  Customized,
 } from 'recharts';
 import {
   IconArrowLeft,
@@ -41,6 +47,13 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -64,7 +77,13 @@ interface BacktestResult {
   totalTrades: number;
   avgTradeDuration: number;
   createdAt: string;
-  strategy?: { id: number; name: string; type: string };
+  strategy?: {
+    id: number;
+    name: string;
+    type: string;
+    symbol?: string | null;
+    parameters?: Record<string, unknown>;
+  };
   config?: {
     id: number;
     name?: string;
@@ -73,6 +92,8 @@ interface BacktestResult {
     initialBalance: string;
     commission: string;
     slippage?: string;
+    symbols?: string[];
+    timeframe?: string;
   };
 }
 
@@ -99,6 +120,80 @@ interface EquityPoint {
   value: string;
 }
 
+interface BacktestKline {
+  openTime: string;
+  closeTime: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+}
+
+interface BacktestKlineResponse {
+  symbol: string;
+  interval: string;
+  klines: BacktestKline[];
+  truncated?: boolean;
+}
+
+interface KlineChartPoint {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+type AxisScale = ((value: number) => number) & { bandwidth?: () => number };
+
+interface ChartAxisMap {
+  scale: AxisScale;
+}
+
+interface CandleLayerProps {
+  data?: KlineChartPoint[];
+  xAxisMap?: Record<string, ChartAxisMap>;
+  yAxisMap?: Record<string, ChartAxisMap>;
+  offset?: { left: number; top: number; width: number; height: number };
+}
+
+interface OrderTooltipData {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  type: 'entry' | 'exit';
+  price: number;
+  quantity: string;
+  orderTime: number;
+  tradeId: number;
+  pnl?: string;
+}
+
+interface OrderClusterData {
+  time: number;
+  count: number;
+  buyCount: number;
+  sellCount: number;
+  avgPrice: number;
+  totalQuantity: number;
+}
+
+interface OrderMarkerData {
+  time: number;
+  price: number;
+  side: 'BUY' | 'SELL';
+  type: 'entry' | 'exit';
+  isOrder: true;
+  order: OrderTooltipData;
+  cluster?: OrderClusterData;
+}
+
+interface KlineTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload?: Record<string, unknown> }>;
+  label?: number;
+}
+
 const PAGE_SIZE = 50;
 
 export default function BacktestResultDetailPage(props: { params: Params }) {
@@ -112,8 +207,171 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
   const [result, setResult] = useState<BacktestResult | null>(null);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
   const [equityPoints, setEquityPoints] = useState<EquityPoint[]>([]);
+  const [klineData, setKlineData] = useState<KlineChartPoint[]>([]);
+  const [klineSymbol, setKlineSymbol] = useState<string | null>(null);
+  const [klineInterval, setKlineInterval] = useState<string | null>(null);
+  const [klineLoading, setKlineLoading] = useState(false);
+  const [klineError, setKlineError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tradePage, setTradePage] = useState(0);
+
+  const toBinanceSymbol = (symbol: string) => {
+    const upper = symbol.toUpperCase();
+    if (upper.includes(':')) {
+      const [pair] = upper.split(':');
+      return pair.replace('/', '');
+    }
+    return upper.replace('/', '');
+  };
+
+  const getIntervalMs = (interval: string) => {
+    const amount = parseInt(interval, 10);
+    const unit = interval.replace(String(amount), '');
+    switch (unit) {
+      case 'm':
+        return amount * 60 * 1000;
+      case 'h':
+        return amount * 60 * 60 * 1000;
+      case 'd':
+        return amount * 24 * 60 * 60 * 1000;
+      case 'w':
+        return amount * 7 * 24 * 60 * 60 * 1000;
+      default:
+        return 60 * 1000;
+    }
+  };
+
+  const fetchBinanceKlines = useCallback(
+    async (symbol: string, interval: string): Promise<BacktestKline[]> => {
+      if (!result?.config?.startDate || !result?.config?.endDate) return [];
+      const endDate = new Date(result.config.endDate);
+      const startDate = new Date(result.config.startDate);
+      if (Number.isNaN(endDate.getTime()) || Number.isNaN(startDate.getTime())) return [];
+
+      const intervalMs = getIntervalMs(interval);
+      const limit = 1000;
+      const targetStart = new Date(
+        Math.max(startDate.getTime(), endDate.getTime() - intervalMs * limit),
+      );
+      const isFutures =
+        result.strategy?.marketType === 'perpetual' ||
+        result.strategy?.marketType === 'futures' ||
+        symbol.includes(':') ||
+        symbol.includes('_PERP');
+      const baseUrl = isFutures ? 'https://fapi.binance.com' : 'https://api.binance.com';
+      const endpoint = isFutures ? '/fapi/v1/klines' : '/api/v3/klines';
+      const url = new URL(`${baseUrl}${endpoint}`);
+      url.searchParams.set('symbol', toBinanceSymbol(symbol));
+      url.searchParams.set('interval', interval);
+      url.searchParams.set('limit', String(limit));
+      url.searchParams.set('startTime', String(targetStart.getTime()));
+      const res = await fetch(url.toString());
+      if (!res.ok) return [];
+      const raw: Array<
+        [number, string, string, string, string, string, number, string, number]
+      > = await res.json();
+      return raw
+        .map((k) => ({
+          openTime: new Date(k[0]).toISOString(),
+          closeTime: new Date(k[6]).toISOString(),
+          open: k[1],
+          high: k[2],
+          low: k[3],
+          close: k[4],
+          volume: k[5],
+        }))
+        .filter((k) => new Date(k.openTime) <= endDate);
+    },
+    [result],
+  );
+
+  const getNumericParam = (value: unknown) =>
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value))
+        ? Number(value)
+        : null;
+
+  const movingAverageType = useMemo(() => {
+    const params = result?.strategy?.parameters as Record<string, unknown> | undefined;
+    if (!params || typeof params.maType !== 'string') return null;
+    const type = params.maType.toLowerCase();
+    return type === 'ema' || type === 'sma' ? type : null;
+  }, [result]);
+
+  const movingAverageFastPeriod = useMemo(() => {
+    const params = result?.strategy?.parameters as Record<string, unknown> | undefined;
+    return params ? getNumericParam(params.fastPeriod) : null;
+  }, [result]);
+
+  const movingAverageSlowPeriod = useMemo(() => {
+    const params = result?.strategy?.parameters as Record<string, unknown> | undefined;
+    return params ? getNumericParam(params.slowPeriod) : null;
+  }, [result]);
+
+  const computeMovingAverage = useCallback(
+    (data: KlineChartPoint[], period: number, type: 'sma' | 'ema') => {
+      if (period <= 0 || data.length === 0) return [];
+      if (type === 'sma') {
+        const values: Array<number | null> = [];
+        let sum = 0;
+        data.forEach((point, index) => {
+          sum += point.close;
+          if (index >= period) {
+            sum -= data[index - period].close;
+          }
+          values[index] = index >= period - 1 ? sum / period : null;
+        });
+        return values;
+      }
+
+      const values: Array<number | null> = [];
+      let ema: number | null = null;
+      const multiplier = 2 / (period + 1);
+      data.forEach((point, index) => {
+        if (index < period - 1) {
+          values[index] = null;
+          return;
+        }
+        if (index === period - 1) {
+          const seed = data
+            .slice(0, period)
+            .reduce((total, current) => total + current.close, 0);
+          ema = seed / period;
+          values[index] = ema;
+          return;
+        }
+        if (ema === null) {
+          ema = point.close;
+        } else {
+          ema = (point.close - ema) * multiplier + ema;
+        }
+        values[index] = ema;
+      });
+      return values;
+    },
+    [],
+  );
+
+  const movingAverageFast = useMemo(() => {
+    if (!movingAverageType || !movingAverageFastPeriod) return [];
+    return computeMovingAverage(klineData, movingAverageFastPeriod, movingAverageType);
+  }, [computeMovingAverage, klineData, movingAverageFastPeriod, movingAverageType]);
+
+  const movingAverageSlow = useMemo(() => {
+    if (!movingAverageType || !movingAverageSlowPeriod) return [];
+    return computeMovingAverage(klineData, movingAverageSlowPeriod, movingAverageType);
+  }, [computeMovingAverage, klineData, movingAverageSlowPeriod, movingAverageType]);
+
+  const klineChartData = useMemo(
+    () =>
+      klineData.map((point, index) => ({
+        ...point,
+        maFast: movingAverageFast[index] ?? null,
+        maSlow: movingAverageSlow[index] ?? null,
+      })),
+    [klineData, movingAverageFast, movingAverageSlow],
+  );
 
   const fetchResult = useCallback(async () => {
     try {
@@ -138,9 +396,85 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
     }
   }, [resultId, t]);
 
+  const getStrategyInterval = useCallback((strategy?: BacktestResult['strategy']) => {
+    if (!strategy?.parameters) return null;
+    const params = strategy.parameters as Record<string, unknown>;
+    return typeof params.klineInterval === 'string' ? params.klineInterval : null;
+  }, []);
+
   useEffect(() => {
     if (!isNaN(resultId)) fetchResult();
   }, [resultId, fetchResult]);
+
+  const fetchKlines = useCallback(
+    async (symbol: string, interval: string) => {
+      try {
+        setKlineLoading(true);
+        setKlineError(null);
+        const params = new URLSearchParams({
+          symbol,
+          interval,
+          limit: '5000',
+        });
+        const res = await fetch(`/api/backtest/results/${resultId}/klines?${params}`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setKlineError(err.error || t('errors.fetchKlines'));
+          setKlineData([]);
+          return;
+        }
+        let data: BacktestKlineResponse = await res.json();
+        if (
+          data.klines.length === 0 &&
+          result?.strategy?.exchange?.toLowerCase() === 'binance'
+        ) {
+          const fallback = await fetchBinanceKlines(symbol, interval);
+          if (fallback.length > 0) {
+            data = { ...data, klines: fallback };
+          }
+        }
+        const parsed = data.klines
+          .map((kline) => {
+            const open = parseFloat(kline.open);
+            const high = parseFloat(kline.high);
+            const low = parseFloat(kline.low);
+            const close = parseFloat(kline.close);
+            const time = new Date(kline.openTime).getTime();
+            if (![open, high, low, close, time].every((v) => Number.isFinite(v))) {
+              return null;
+            }
+            return { time, open, high, low, close };
+          })
+          .filter((point): point is KlineChartPoint => point !== null);
+        setKlineData(parsed);
+        setKlineSymbol(data.symbol);
+        setKlineInterval(data.interval);
+      } catch {
+        setKlineError(t('errors.fetchKlines'));
+        setKlineData([]);
+      } finally {
+        setKlineLoading(false);
+      }
+    },
+    [fetchBinanceKlines, resultId, result, t],
+  );
+
+  useEffect(() => {
+    if (!result) return;
+    const defaultSymbol =
+      result.config?.symbols?.[0] ?? result.strategy?.symbol ?? trades[0]?.symbol ?? null;
+    const defaultInterval =
+      getStrategyInterval(result.strategy) ?? result.config?.timeframe;
+    setKlineSymbol((current) => current ?? defaultSymbol);
+    setKlineInterval((current) => current ?? defaultInterval ?? '1h');
+  }, [result, trades, getStrategyInterval]);
+
+  useEffect(() => {
+    if (!klineSymbol || !klineInterval) return;
+    fetchKlines(klineSymbol, klineInterval);
+  }, [klineSymbol, klineInterval, fetchKlines]);
 
   const formatNumber = (value: string | number | undefined, decimals = 2) => {
     if (value === undefined || value === null) return '-';
@@ -243,6 +577,342 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
     orderPage * ORDER_PAGE_SIZE,
     (orderPage + 1) * ORDER_PAGE_SIZE,
   );
+
+  const tradeById = useMemo(
+    () => new Map(trades.map((trade) => [trade.id, trade])),
+    [trades],
+  );
+  const tradeSymbols = Array.from(new Set(trades.map((trade) => trade.symbol)));
+  const availableSymbols =
+    result?.config?.symbols && result.config.symbols.length > 0
+      ? result.config.symbols
+      : tradeSymbols;
+
+  const klineTimeRange = useMemo(() => {
+    if (klineData.length === 0) return null;
+    const times = klineData.map((point) => point.time);
+    return {
+      start: Math.min(...times),
+      end: Math.max(...times),
+    };
+  }, [klineData]);
+
+  const orderMarkers: OrderMarkerData[] = useMemo(() => {
+    const intervalMs = klineInterval ? getIntervalMs(klineInterval) : null;
+    const rangeStart = klineTimeRange?.start ?? null;
+    const clusterBuckets = new Map<number, OrderClusterData>();
+
+    const filtered = orderFills
+      .filter((order) => !klineSymbol || order.symbol === klineSymbol)
+      .filter((order) => {
+        if (!klineTimeRange) return true;
+        const time = order.fillTime.getTime();
+        return time >= klineTimeRange.start && time <= klineTimeRange.end;
+      })
+      .map((order) => {
+        const price = parseFloat(order.price);
+        if (!Number.isFinite(price)) return null;
+        const time = order.fillTime.getTime();
+        if (intervalMs && rangeStart !== null) {
+          const bucketTime =
+            Math.floor((time - rangeStart) / intervalMs) * intervalMs + rangeStart;
+          const existing = clusterBuckets.get(bucketTime);
+          const buyCount = existing?.buyCount ?? 0;
+          const sellCount = existing?.sellCount ?? 0;
+          const count = existing?.count ?? 0;
+          const avgPrice = existing?.avgPrice ?? 0;
+          const totalQuantity = existing?.totalQuantity ?? 0;
+          const quantity = Number.isNaN(Number(order.quantity))
+            ? 0
+            : parseFloat(order.quantity);
+          const nextCount = count + 1;
+          clusterBuckets.set(bucketTime, {
+            time: bucketTime,
+            count: nextCount,
+            buyCount: buyCount + (order.side === 'BUY' ? 1 : 0),
+            sellCount: sellCount + (order.side === 'SELL' ? 1 : 0),
+            avgPrice: (avgPrice * count + price) / nextCount,
+            totalQuantity: totalQuantity + quantity,
+          });
+          return null;
+        }
+
+        const trade = tradeById.get(order.tradeId);
+        return {
+          time,
+          price,
+          side: order.side,
+          type: order.type,
+          isOrder: true,
+          order: {
+            symbol: order.symbol,
+            side: order.side,
+            type: order.type,
+            price,
+            quantity: order.quantity,
+            orderTime: time,
+            tradeId: order.tradeId,
+            pnl: trade?.pnl,
+          },
+        };
+      })
+      .filter((order): order is OrderMarkerData => order !== null);
+
+    if (intervalMs && rangeStart !== null) {
+      const clustered = Array.from(clusterBuckets.values())
+        .filter((cluster) => cluster.count > 0)
+        .map((cluster) => {
+          const side = cluster.buyCount >= cluster.sellCount ? 'BUY' : 'SELL';
+          return {
+            time: cluster.time,
+            price: cluster.avgPrice,
+            side,
+            type: 'entry',
+            isOrder: true,
+            order: {
+              symbol: klineSymbol ?? '',
+              side,
+              type: 'entry',
+              price: cluster.avgPrice,
+              quantity: String(cluster.totalQuantity),
+              orderTime: cluster.time,
+              tradeId: -1,
+            },
+            cluster,
+          };
+        });
+      if (clustered.length <= 400) return clustered;
+      const step = Math.ceil(clustered.length / 400);
+      return clustered.filter((_, index) => index % step === 0);
+    }
+
+    if (filtered.length <= 400) return filtered;
+    const step = Math.ceil(filtered.length / 400);
+    return filtered.filter((_, index) => index % step === 0);
+  }, [klineInterval, klineSymbol, klineTimeRange, orderFills, tradeById]);
+
+  const isOrderPayload = (payload: Record<string, unknown>): payload is OrderMarkerData =>
+    payload.isOrder === true;
+
+  const isKlinePayload = (payload: Record<string, unknown>): payload is KlineChartPoint =>
+    typeof payload.open === 'number' &&
+    typeof payload.high === 'number' &&
+    typeof payload.low === 'number' &&
+    typeof payload.close === 'number' &&
+    typeof payload.time === 'number';
+
+  const renderOrderMarker = ({
+    cx,
+    cy,
+    payload,
+  }: {
+    cx?: number;
+    cy?: number;
+    payload?: OrderMarkerData;
+  }) => {
+    if (cx === undefined || cy === undefined || !payload) return null;
+    const color = payload.side === 'BUY' ? '#22c55e' : '#ef4444';
+    if (payload.cluster && payload.cluster.count > 1) {
+      const radius = Math.min(10, 3 + payload.cluster.count * 0.5);
+      return (
+        <g>
+          <circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="hsl(var(--card))"
+            stroke={color}
+            strokeWidth={1.2}
+            fillOpacity={0.85}
+          />
+          <text
+            x={cx}
+            y={cy + 3}
+            textAnchor="middle"
+            fontSize={Math.max(8, radius)}
+            fill={color}
+            fontWeight={600}
+          >
+            {payload.cluster.count}
+          </text>
+        </g>
+      );
+    }
+    const size = 4;
+    const isEntry = payload.type === 'entry';
+    const points =
+      payload.side === 'BUY'
+        ? `${cx},${cy - size} ${cx - size},${cy + size} ${cx + size},${cy + size}`
+        : `${cx},${cy + size} ${cx - size},${cy - size} ${cx + size},${cy - size}`;
+    return (
+      <polygon
+        points={points}
+        fill={isEntry ? color : 'hsl(var(--card))'}
+        stroke={color}
+        strokeWidth={1}
+        fillOpacity={isEntry ? 0.85 : 0.65}
+        strokeOpacity={0.85}
+      />
+    );
+  };
+
+  const renderCandles = (props: CandleLayerProps) => {
+    if (!props.data || props.data.length === 0) return null;
+    const xAxis = props.xAxisMap ? Object.values(props.xAxisMap)[0] : null;
+    const yAxis = props.yAxisMap ? Object.values(props.yAxisMap)[0] : null;
+    const xScale = xAxis?.scale;
+    const yScale = yAxis?.scale;
+    if (!xScale || !yScale || !props.offset) return null;
+    const candleWidth = Math.min(
+      8,
+      Math.max(2, (props.offset.width / props.data.length) * 0.7),
+    );
+
+    return (
+      <g>
+        {props.data.map((point) => {
+          const x = xScale(point.time);
+          if (!Number.isFinite(x)) return null;
+          const openY = yScale(point.open);
+          const closeY = yScale(point.close);
+          const highY = yScale(point.high);
+          const lowY = yScale(point.low);
+          const color = point.close >= point.open ? '#22c55e' : '#ef4444';
+          const bodyTop = Math.min(openY, closeY);
+          const bodyHeight = Math.max(1, Math.abs(openY - closeY));
+
+          return (
+            <g key={point.time}>
+              <line
+                x1={x}
+                x2={x}
+                y1={highY}
+                y2={lowY}
+                stroke={color}
+                strokeOpacity={0.6}
+                strokeWidth={1}
+              />
+              <rect
+                x={x - candleWidth / 2}
+                y={bodyTop}
+                width={candleWidth}
+                height={bodyHeight}
+                fill={color}
+                fillOpacity={0.75}
+              />
+            </g>
+          );
+        })}
+      </g>
+    );
+  };
+
+  const renderKlineTooltip = ({ active, payload }: KlineTooltipProps) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const orderItem = payload.find(
+      (item) => item.payload && isOrderPayload(item.payload),
+    )?.payload;
+    if (orderItem && isOrderPayload(orderItem)) {
+      if (orderItem.cluster && orderItem.cluster.count > 1) {
+        const cluster = orderItem.cluster;
+        const dominantSide = cluster.buyCount >= cluster.sellCount ? 'BUY' : 'SELL';
+        return (
+          <div className="rounded-md border bg-card px-3 py-2 text-xs shadow-md">
+            <div className="text-sm font-medium">
+              {new Date(cluster.time).toLocaleString(locale)}
+            </div>
+            <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+              <span className="text-muted-foreground">{t('trades.table.side')}</span>
+              <span className="text-right font-mono">
+                {dominantSide === 'BUY' ? t('trades.side.buy') : t('trades.side.sell')}
+              </span>
+              <span className="text-muted-foreground">{t('orders.price')}</span>
+              <span className="text-right font-mono">
+                ${formatNumber(cluster.avgPrice, 4)}
+              </span>
+              <span className="text-muted-foreground">{t('orders.count')}</span>
+              <span className="text-right font-mono">{cluster.count}</span>
+              <span className="text-muted-foreground">{t('trades.table.quantity')}</span>
+              <span className="text-right font-mono">
+                {formatNumber(cluster.totalQuantity, 4)}
+              </span>
+              <span className="text-muted-foreground">{t('trades.side.buy')}</span>
+              <span className="text-right font-mono">{cluster.buyCount}</span>
+              <span className="text-muted-foreground">{t('trades.side.sell')}</span>
+              <span className="text-right font-mono">{cluster.sellCount}</span>
+            </div>
+          </div>
+        );
+      }
+      const order = orderItem.order;
+      const isBuy = order.side === 'BUY';
+      return (
+        <div className="rounded-md border bg-card px-3 py-2 text-xs shadow-md">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className={isBuy ? 'text-green-600' : 'text-red-600'}>
+              {isBuy ? t('trades.side.buy') : t('trades.side.sell')}
+            </span>
+            <span className="font-mono">{order.symbol}</span>
+            <span className="text-muted-foreground">
+              {order.type === 'entry' ? t('orders.typeEntry') : t('orders.typeExit')}
+            </span>
+          </div>
+          <div className="text-muted-foreground">
+            {new Date(order.orderTime).toLocaleString(locale)}
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+            <span className="text-muted-foreground">{t('orders.price')}</span>
+            <span className="text-right font-mono">${formatNumber(order.price, 4)}</span>
+            <span className="text-muted-foreground">{t('trades.table.quantity')}</span>
+            <span className="text-right font-mono">
+              {formatNumber(order.quantity, 4)}
+            </span>
+            {order.pnl && (
+              <>
+                <span className="text-muted-foreground">{t('trades.table.pnl')}</span>
+                <span className="text-right font-mono">
+                  {parseFloat(order.pnl) >= 0 ? '+' : ''}${formatNumber(order.pnl)}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const klineItem = payload.find(
+      (item) => item.payload && isKlinePayload(item.payload),
+    )?.payload;
+    if (klineItem && isKlinePayload(klineItem)) {
+      return (
+        <div className="rounded-md border bg-card px-3 py-2 text-xs shadow-md">
+          <div className="text-sm font-medium">
+            {new Date(klineItem.time).toLocaleString(locale)}
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
+            <span className="text-muted-foreground">{t('chart.open')}</span>
+            <span className="text-right font-mono">
+              ${formatNumber(klineItem.open, 4)}
+            </span>
+            <span className="text-muted-foreground">{t('chart.high')}</span>
+            <span className="text-right font-mono">
+              ${formatNumber(klineItem.high, 4)}
+            </span>
+            <span className="text-muted-foreground">{t('chart.low')}</span>
+            <span className="text-right font-mono">
+              ${formatNumber(klineItem.low, 4)}
+            </span>
+            <span className="text-muted-foreground">{t('chart.close')}</span>
+            <span className="text-right font-mono">
+              ${formatNumber(klineItem.close, 4)}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   if (loading) {
     return (
@@ -468,6 +1138,153 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
 
           {/* Equity Curve Tab */}
           <TabsContent value="chart" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <IconChartLine className="h-4 w-4 text-blue-500" />
+                      {t('chart.kline')}
+                    </CardTitle>
+                    <CardDescription>{t('chart.klineDescription')}</CardDescription>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {availableSymbols.length > 1 && (
+                      <Select
+                        value={klineSymbol ?? undefined}
+                        onValueChange={(value) => setKlineSymbol(value)}
+                      >
+                        <SelectTrigger size="sm" className="h-8 text-xs">
+                          <SelectValue placeholder={t('trades.table.symbol')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableSymbols.map((symbol) => (
+                            <SelectItem key={symbol} value={symbol}>
+                              {symbol}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {klineInterval && (
+                      <Badge variant="secondary" className="text-xs">
+                        {klineInterval}
+                      </Badge>
+                    )}
+                    {movingAverageType && movingAverageFastPeriod && (
+                      <Badge variant="outline" className="text-xs">
+                        {`${movingAverageType.toUpperCase()} ${movingAverageFastPeriod}`}
+                      </Badge>
+                    )}
+                    {movingAverageType && movingAverageSlowPeriod && (
+                      <Badge variant="outline" className="text-xs">
+                        {`${movingAverageType.toUpperCase()} ${movingAverageSlowPeriod}`}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {klineLoading ? (
+                  <Skeleton className="h-72 w-full" />
+                ) : klineChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={400}>
+                    <ComposedChart
+                      data={klineChartData}
+                      margin={{ top: 12, right: 24, left: 8, bottom: 8 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border))"
+                        strokeOpacity={0.25}
+                      />
+                      <XAxis
+                        dataKey="time"
+                        type="number"
+                        scale="time"
+                        domain={['dataMin', 'dataMax']}
+                        tickCount={6}
+                        tickFormatter={(value) =>
+                          new Date(value).toLocaleDateString(locale, {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        }
+                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        domain={[
+                          (min: number) => min * 0.98,
+                          (max: number) => max * 1.02,
+                        ]}
+                        tickFormatter={(value) => `$${formatNumber(value, 2)}`}
+                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={64}
+                      />
+                      <Tooltip
+                        content={renderKlineTooltip}
+                        cursor={{
+                          stroke: 'hsl(var(--border))',
+                          strokeDasharray: '3 3',
+                        }}
+                      />
+                      <Customized component={renderCandles} data={klineChartData} />
+                      <Line
+                        type="monotone"
+                        dataKey="close"
+                        stroke="transparent"
+                        dot={false}
+                        activeDot={{ r: 3, fill: 'hsl(var(--foreground))' }}
+                        isAnimationActive={false}
+                      />
+                      {movingAverageType && movingAverageFastPeriod && (
+                        <Line
+                          type="monotone"
+                          dataKey="maFast"
+                          stroke="#38bdf8"
+                          strokeWidth={1.4}
+                          dot={false}
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                      )}
+                      {movingAverageType && movingAverageSlowPeriod && (
+                        <Line
+                          type="monotone"
+                          dataKey="maSlow"
+                          stroke="#f59e0b"
+                          strokeWidth={1.4}
+                          dot={false}
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                      )}
+                      <Scatter
+                        data={orderMarkers}
+                        dataKey="price"
+                        shape={renderOrderMarker}
+                        isAnimationActive={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                    <IconChartLine className="h-8 w-8 text-muted-foreground" />
+                    <span>{t('chart.noKlineData')}</span>
+                    {klineError && (
+                      <span className="text-xs text-destructive">{klineError}</span>
+                    )}
+                  </div>
+                )}
+                {!klineLoading && klineChartData.length > 0 && klineError && (
+                  <p className="mt-2 text-xs text-destructive">{klineError}</p>
+                )}
+              </CardContent>
+            </Card>
             {equityData.length > 0 ? (
               <Card>
                 <CardHeader className="pb-2">

@@ -1176,6 +1176,7 @@
       "deleteConfig": "删除配置失败",
       "fetchDetails": "获取配置详情失败",
       "fetchResultDetails": "获取结果详情失败",
+      "fetchKlines": "获取K线数据失败",
       "runFailed": "运行回测失败",
       "deleteResult": "删除回测结果失败"
     },
@@ -1208,7 +1209,14 @@
     "chart": {
       "equityCurve": "权益曲线",
       "equity": "权益",
-      "noData": "暂无权益数据"
+      "noData": "暂无权益数据",
+      "kline": "价格（K线）",
+      "klineDescription": "历史价格走势与订单标记",
+      "noKlineData": "暂无K线数据",
+      "open": "开盘",
+      "high": "最高",
+      "low": "最低",
+      "close": "收盘"
     },
     "result": {
       "title": "回测结果",
@@ -1227,7 +1235,8 @@
       "type": "类型",
       "typeEntry": "开仓",
       "typeExit": "平仓",
-      "price": "成交价"
+      "price": "成交价",
+      "count": "数量"
     }
   },
   "portfolio": {

@@ -110,6 +110,8 @@ export function TickerGrid() {
   const okxWsRef = useRef<WebSocket | null>(null);
   const binanceReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const okxReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const okxRestIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const okxRestFallbackRef = useRef(false);
 
   // Data buffers for throttling
   const latestBinanceDataRef = useRef<Map<string, TickerData>>(new Map());
@@ -139,6 +141,61 @@ export function TickerGrid() {
         setConnectionStatus('websocket');
         setLoading(false);
       }
+    };
+
+    const fetchOkxTickers = async () => {
+      try {
+        const responses = await Promise.all(
+          OKX_COINS.flatMap((coin) =>
+            coin.instIds.map(async (instId) => {
+              const res = await fetch(
+                `https://www.okx.com/api/v5/market/ticker?instId=${instId}`,
+              );
+              if (!res.ok) return null;
+              const data = await res.json();
+              if (
+                data.code !== '0' ||
+                !Array.isArray(data.data) ||
+                data.data.length === 0
+              ) {
+                return null;
+              }
+              return data.data[0];
+            }),
+          ),
+        );
+
+        responses
+          .filter((item): item is OKXTickerData['data'][number] => item !== null)
+          .forEach((tickerData) => {
+            const open24h = parseFloat(tickerData.open24h);
+            const last = parseFloat(tickerData.last);
+            const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
+
+            updateTicker(
+              {
+                price: tickerData.last,
+                change24h: changePercent,
+                volume24h: parseFloat(tickerData.volCcy24h),
+                high24h: tickerData.high24h,
+                low24h: tickerData.low24h,
+              },
+              'OKX',
+              tickerData.instId,
+            );
+          });
+      } catch (error) {
+        console.warn('OKX REST ticker fetch failed:', error);
+      }
+    };
+
+    const startOkxRestFallback = () => {
+      if (okxRestIntervalRef.current) return;
+      okxRestFallbackRef.current = true;
+      okxConnected = true;
+      updateConnectionState();
+      fetchOkxTickers();
+      okxRestIntervalRef.current = setInterval(fetchOkxTickers, 15000);
     };
 
     const updateTicker = (
@@ -316,6 +373,7 @@ export function TickerGrid() {
 
     // Connect to OKX WebSocket
     const connectOKX = (endpointIndex = 0, retryCount = 0) => {
+      if (okxRestFallbackRef.current) return;
       const endpoints = [
         'wss://ws.okx.com:8443/ws/v5/public',
         'wss://itrade.ihsueh.com/ws/okx/ws/v5/public',
@@ -375,9 +433,14 @@ export function TickerGrid() {
       };
 
       ws.onerror = (error) => {
-        console.error('OKX WebSocket error:', error);
-        setConnectionStatus('error');
-        updateConnectionState();
+        console.warn('OKX WebSocket error:', error);
+        okxConnected = false;
+        if (
+          retryCount >= maxRetriesPerEndpoint - 1 &&
+          endpointIndex >= endpoints.length - 1
+        ) {
+          startOkxRestFallback();
+        }
       };
 
       ws.onclose = () => {
@@ -395,9 +458,11 @@ export function TickerGrid() {
           }, 3000);
           return;
         }
-        okxReconnectTimeoutRef.current = setTimeout(() => {
-          connectOKX(0, 0);
-        }, 3000);
+        if (!okxRestFallbackRef.current) {
+          okxReconnectTimeoutRef.current = setTimeout(() => {
+            connectOKX(0, 0);
+          }, 3000);
+        }
       };
     };
 
@@ -419,6 +484,10 @@ export function TickerGrid() {
       if (okxReconnectTimeoutRef.current) {
         clearTimeout(okxReconnectTimeoutRef.current);
       }
+      if (okxRestIntervalRef.current) {
+        clearTimeout(okxRestIntervalRef.current);
+      }
+      okxRestFallbackRef.current = false;
       clearInterval(intervalId);
     };
   }, []);

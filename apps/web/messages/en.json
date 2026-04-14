@@ -1176,6 +1176,7 @@
       "deleteConfig": "Failed to delete config",
       "fetchDetails": "Failed to fetch config details",
       "fetchResultDetails": "Failed to fetch result details",
+      "fetchKlines": "Failed to fetch kline data",
       "runFailed": "Failed to run backtest",
       "deleteResult": "Failed to delete backtest result"
     },
@@ -1208,7 +1209,14 @@
     "chart": {
       "equityCurve": "Equity Curve",
       "equity": "Equity",
-      "noData": "No equity data available"
+      "noData": "No equity data available",
+      "kline": "Price (Kline)",
+      "klineDescription": "Historical price action with order fills",
+      "noKlineData": "No kline data available",
+      "open": "Open",
+      "high": "High",
+      "low": "Low",
+      "close": "Close"
     },
     "result": {
       "title": "Backtest Result",
@@ -1227,7 +1235,8 @@
       "type": "Type",
       "typeEntry": "Open",
       "typeExit": "Close",
-      "price": "Price"
+      "price": "Price",
+      "count": "Count"
     }
   },
   "portfolio": {
