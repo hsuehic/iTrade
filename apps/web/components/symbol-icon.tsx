@@ -36,6 +36,7 @@ function extractBaseAsset(symbol: string): string {
   return base || symbol;
 }
 
+// eslint-disable-next-line react/display-name
 export const SymbolIcon = memo(
   ({ symbol, exchangeId: _exchangeId, size = 'md', className }: SymbolIconProps) => {
     const baseAsset = extractBaseAsset(symbol);

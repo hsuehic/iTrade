@@ -111,6 +111,7 @@ export const SUPPORTED_BASE_CURRENCIES = [
   'SUI',
   'UNI',
   'FIL',
+  'RAVE',
 ] as const;
 
 export const SUPPORTED_QUOTE_CURRENCIES = {
