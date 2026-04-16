@@ -180,7 +180,10 @@ describe('SpreadGridStrategy', () => {
       exchange: 'binance',
       timestamp: historicalTime,
       openOrders: [],
-      orderBook: { ...createOrderBook({ bid: 2050, ask: 2051 }), timestamp: historicalTime },
+      orderBook: {
+        ...createOrderBook({ bid: 2050, ask: 2051 }),
+        timestamp: historicalTime,
+      },
     });
 
     // Kline update with historical timestamp (as backtest engine would provide)
@@ -202,7 +205,10 @@ describe('SpreadGridStrategy', () => {
           trades: 100,
         },
       ],
-      orderbook: { ...createOrderBook({ bid: 2054, ask: 2056 }), timestamp: historicalTime },
+      orderbook: {
+        ...createOrderBook({ bid: 2054, ask: 2056 }),
+        timestamp: historicalTime,
+      },
     });
 
     const signals = normalizeAnalyzeResult(result).filter(

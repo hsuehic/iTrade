@@ -461,7 +461,10 @@ export class MovingAverageStrategy extends BaseStrategy<MovingAverageParameters>
       (e) => e.side === side,
     );
 
-    if (!alreadyPending && this._positionAllows(side)) {
+    const hasOpenPosition =
+      this.activePositions.size > 0 || !this._currentPosition.isZero();
+
+    if (!alreadyPending && !hasOpenPosition && this._positionAllows(side)) {
       const entry = this._generateEntrySignal(crossover);
       if (entry) signals.push(entry);
     }

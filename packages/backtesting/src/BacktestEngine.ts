@@ -12,6 +12,9 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  Position,
+  SignalType,
+  Trade,
   TimeInForce,
   normalizeAnalyzeResult,
   isHoldResult,
@@ -34,6 +37,7 @@ interface PendingEntry {
   /** Leverage multiplier from the order signal (1 = no leverage). */
   leverage: number;
   type: OrderType;
+  signalType: SignalType;
 }
 
 /** A filled entry position chunk being tracked for matching and MTM. */
@@ -58,6 +62,7 @@ interface OpenPosition {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let _orderId = 1;
+let _tradeId = 1;
 function buildOrder(
   clientOrderId: string,
   symbol: string,
@@ -81,6 +86,27 @@ function buildOrder(
     timeInForce: TimeInForce.GTC,
     timestamp: new Date(),
     exchange,
+  };
+}
+
+function buildTrade(
+  symbol: string,
+  side: OrderSide,
+  price: Decimal,
+  quantity: Decimal,
+  exchange: string,
+  timestamp: Date,
+  fee?: Decimal,
+): Trade {
+  return {
+    id: String(_tradeId++),
+    symbol,
+    price,
+    quantity,
+    side: side === OrderSide.BUY ? 'buy' : 'sell',
+    timestamp,
+    exchange,
+    fee,
   };
 }
 
@@ -267,7 +293,41 @@ export class BacktestEngine implements IBacktestEngine {
       return equity;
     };
 
+    const notifyPositionUpdate = async (
+      price: Decimal,
+      leverageValue: number,
+      timestamp: Date,
+    ) => {
+      const onPositionUpdate = (
+        strategy as { onPositionUpdate?: (position: Position) => Promise<void> }
+      ).onPositionUpdate;
+      if (!onPositionUpdate || netPosition.isZero()) return;
+      await onPositionUpdate.call(strategy, {
+        symbol,
+        exchange,
+        side: netPosition.gt(0) ? 'long' : 'short',
+        quantity: netPosition.abs(),
+        avgPrice: price,
+        markPrice: price,
+        unrealizedPnl: new Decimal(0),
+        leverage: new Decimal(leverageValue),
+        timestamp,
+      });
+    };
+
     const registerEntrySigs = async (sigs: any[], barIndex: number) => {
+      const parameters = strategy.config?.parameters as
+        | Record<string, unknown>
+        | undefined;
+      const maxPositionSize =
+        typeof parameters?.maxPositionSize === 'number'
+          ? new Decimal(parameters.maxPositionSize)
+          : null;
+      const minPositionSize =
+        typeof parameters?.minPositionSize === 'number'
+          ? new Decimal(parameters.minPositionSize)
+          : null;
+
       for (const sig of sigs) {
         if (
           !isActionableResult(sig) ||
@@ -279,14 +339,43 @@ export class BacktestEngine implements IBacktestEngine {
         if (sig.type !== OrderType.MARKET && !sig.price) continue;
         const side = sig.action === 'buy' ? OrderSide.BUY : OrderSide.SELL;
         const signalLeverage = sig.leverage ?? 1;
+        const signalType =
+          (sig.metadata?.signalType as SignalType | undefined) ?? SignalType.Entry;
+        const sigQuantity = new Decimal(sig.quantity);
+        if ((maxPositionSize || minPositionSize) && signalType === SignalType.Entry) {
+          const pendingLong = Array.from(pendingEntries.values())
+            .filter(
+              (entry) =>
+                entry.signalType === SignalType.Entry && entry.side === OrderSide.BUY,
+            )
+            .reduce((acc, entry) => acc.plus(entry.quantity), new Decimal(0));
+          const pendingShort = Array.from(pendingEntries.values())
+            .filter(
+              (entry) =>
+                entry.signalType === SignalType.Entry && entry.side === OrderSide.SELL,
+            )
+            .reduce((acc, entry) => acc.plus(entry.quantity), new Decimal(0));
+          const netCommitted = netPosition.plus(pendingLong).minus(pendingShort);
+          if (side === OrderSide.BUY && maxPositionSize) {
+            if (netCommitted.plus(sigQuantity).gt(maxPositionSize)) {
+              continue;
+            }
+          }
+          if (side === OrderSide.SELL && minPositionSize) {
+            if (netCommitted.minus(sigQuantity).lt(minPositionSize)) {
+              continue;
+            }
+          }
+        }
         pendingEntries.set(sig.clientOrderId, {
           clientOrderId: sig.clientOrderId,
           side,
           price: sig.price,
-          quantity: sig.quantity,
+          quantity: sigQuantity,
           barIndex,
           leverage: signalLeverage,
           type: sig.type || OrderType.LIMIT,
+          signalType,
         } as PendingEntry);
         if (strategy.onOrderCreated) {
           await strategy.onOrderCreated(
@@ -509,6 +598,24 @@ export class BacktestEngine implements IBacktestEngine {
               fillSide === OrderSide.BUY
                 ? netPosition.plus(tradeQty)
                 : netPosition.minus(tradeQty);
+            if (strategy.onTradeExecuted) {
+              await strategy.onTradeExecuted(
+                buildTrade(
+                  symbol,
+                  fillSide,
+                  fillPrice,
+                  tradeQty,
+                  exchange,
+                  bar.closeTime ?? bar.openTime,
+                  exitComm,
+                ),
+              );
+            }
+            await notifyPositionUpdate(
+              fillPrice,
+              match.leverage,
+              bar.closeTime ?? bar.openTime,
+            );
 
             // Update position BEFORE computing MTM so cashBalance reflects post-close state
             // (avoids double-counting the closed portion in calculateMTM)
@@ -555,6 +662,9 @@ export class BacktestEngine implements IBacktestEngine {
                 OrderStatus.FILLED,
                 exchange,
               );
+              if (strategy.onOrderFilled) {
+                await strategy.onOrderFilled(closeNotifyOrder);
+              }
               const closeSigs = normalizeAnalyzeResult(
                 await strategy.analyze({
                   exchangeName: exchange,
@@ -603,6 +713,24 @@ export class BacktestEngine implements IBacktestEngine {
               fillSide === OrderSide.BUY
                 ? netPosition.plus(fillQty)
                 : netPosition.minus(fillQty);
+            if (strategy.onTradeExecuted) {
+              await strategy.onTradeExecuted(
+                buildTrade(
+                  symbol,
+                  fillSide,
+                  fillPrice,
+                  fillQty,
+                  exchange,
+                  bar.closeTime ?? bar.openTime,
+                  comm,
+                ),
+              );
+            }
+            await notifyPositionUpdate(
+              fillPrice,
+              leverage,
+              bar.closeTime ?? bar.openTime,
+            );
             const newPos: OpenPosition = {
               clientOrderId:
                 fill.type === 'entry'
@@ -632,6 +760,9 @@ export class BacktestEngine implements IBacktestEngine {
               OrderStatus.FILLED,
               exchange,
             );
+            if (strategy.onOrderFilled) {
+              await strategy.onOrderFilled(filledOrder);
+            }
             const sigs = normalizeAnalyzeResult(
               await strategy.analyze({
                 exchangeName: exchange,
