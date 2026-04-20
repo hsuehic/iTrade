@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { ExchangeLogo } from '@/components/exchange-logo';
 import { SymbolIcon } from '@/components/symbol-icon';
 import { OrdersTable } from '@/components/orders-table';
+import { getDisplaySymbol, extractBaseCurrency } from '@/lib/exchanges';
 
 import { StrategyConfigView } from '@/components/strategy/strategy-config-view';
 
@@ -134,7 +135,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
         t(newStatus === StrategyStatus.ACTIVE ? 'messages.started' : 'messages.stopped'),
       );
       fetchStrategy(); // Reload to get updated status/state
-    } catch (err) {
+    } catch {
       toast.error(t('errors.updateStatus'));
     } finally {
       setUpdatingStatus(false);
@@ -251,11 +252,13 @@ export default function StrategyDetailPage(props: { params: Params }) {
               <div className="h-4 w-[1px] bg-border" />
               <div className="flex items-center gap-1.5 font-mono">
                 <SymbolIcon
-                  symbol={strategy.symbol?.split('/')[0] || ''}
+                  symbol={extractBaseCurrency(strategy.symbol || '')}
                   exchangeId={strategy.exchange?.toLowerCase()}
                   className="h-4 w-4"
                 />
-                {strategy.symbol}
+                {strategy.symbol && strategy.exchange
+                  ? getDisplaySymbol(strategy.symbol, strategy.exchange)
+                  : strategy.symbol}
               </div>
               <div className="h-4 w-[1px] bg-border" />
               <div className="font-mono text-xs opacity-80">{strategy.type}</div>

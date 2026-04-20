@@ -8,24 +8,30 @@ import {
 } from 'typeorm';
 
 @Entity('symbols')
-@Index(['symbol'], { unique: true })
+@Index(['symbol', 'exchange'], { unique: true })
 @Index(['baseAsset', 'quoteAsset'])
 @Index(['exchange'])
 export class SymbolEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ type: 'character varying', length: 20, unique: true })
+  @Column({ type: 'character varying', length: 50 })
   symbol!: string;
 
-  @Column({ type: 'character varying', length: 10 })
+  @Column({ type: 'character varying', length: 20 })
   baseAsset!: string;
 
-  @Column({ type: 'character varying', length: 10 })
+  @Column({ type: 'character varying', length: 20 })
   quoteAsset!: string;
 
   @Column({ type: 'character varying', length: 20, default: 'binance' })
   exchange!: string;
+
+  @Column({ type: 'character varying', length: 20, default: 'spot' })
+  type!: 'spot' | 'perpetual';
+
+  @Column({ type: 'character varying', length: 100, nullable: true })
+  name?: string;
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;

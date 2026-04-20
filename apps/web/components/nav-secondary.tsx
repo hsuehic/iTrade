@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { locales, type AppLocale } from '@/i18n/routing';
+import { authClient } from '@/lib/auth-client';
 
 export function NavSecondary({
   ...props
@@ -52,6 +53,8 @@ export function NavSecondary({
       window.location.reload();
     }
   };
+
+  const { data: session } = authClient.useSession();
 
   const items = [
     {

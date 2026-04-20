@@ -326,6 +326,9 @@ export interface IDataManager {
     pendingBuySize: Decimal;
     pendingSellSize: Decimal;
   }>;
+
+  // Dry Run
+  getDryRunOrders?(sessionId: number): Promise<any[]>;
 }
 
 // Backtesting Engine Interface

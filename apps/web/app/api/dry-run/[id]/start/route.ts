@@ -36,7 +36,7 @@ export async function POST(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== session.user.id) {
+    if (existing.user?.id !== (session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -55,7 +55,7 @@ export async function POST(
 
     // Start the paper trading session
     const paperTradingManager = await getPaperTradingManager();
-    await paperTradingManager.startSession(sessionId, session.user.id);
+    await paperTradingManager.startSession(sessionId, (session.user as any).id);
 
     return NextResponse.json({
       success: true,

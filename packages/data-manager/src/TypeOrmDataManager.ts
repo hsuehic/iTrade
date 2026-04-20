@@ -607,6 +607,15 @@ export class TypeOrmDataManager implements IDataManager {
     return await repo.save(entity);
   }
 
+  async getDryRunOrders(sessionId: number): Promise<DryRunOrderEntity[]> {
+    this.ensureInitialized();
+    const repo = this.dataSource.getRepository(DryRunOrderEntity);
+    return await repo.find({
+      where: { session: { id: sessionId } as any },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async deleteOldData(
     symbol: string,
     interval: string,

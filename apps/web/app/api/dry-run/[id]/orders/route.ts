@@ -73,7 +73,7 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== session.user.id) {
+    if (existing.user?.id !== (session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -137,7 +137,7 @@ export async function POST(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== session.user.id) {
+    if (existing.user?.id !== (session.user as any).id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -151,7 +151,7 @@ export async function POST(
     }
 
     console.info('[Paper Trading] Manual order submission', {
-      userId: session.user.id,
+      userId: (session.user as any).id,
       sessionId,
       symbol: parsed.data.symbol,
       side: parsed.data.side,

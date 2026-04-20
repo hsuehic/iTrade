@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { SymbolIcon } from '@/components/symbol-icon';
-import { TradingPair, extractBaseCurrency } from '@/lib/exchanges';
+import { TradingPair, extractBaseCurrency, getDisplaySymbol } from '@/lib/exchanges';
 
 interface SymbolSelectorProps {
   value: string;
@@ -75,7 +75,9 @@ export function SymbolSelector({
                 exchangeId={selectedPair.exchange?.toLowerCase()}
                 size="sm"
               />
-              <span className="truncate">{selectedPair.name}</span>
+              <span className="truncate">
+                {getDisplaySymbol(selectedPair.symbol, selectedPair.exchange)}
+              </span>
             </div>
           ) : (
             <span className="text-muted-foreground">{placeholder}</span>
@@ -123,7 +125,17 @@ export function SymbolSelector({
                   exchangeId={pair.exchange?.toLowerCase()}
                   size="sm"
                 />
-                <span className="font-medium truncate">{pair.name}</span>
+                <div className="flex flex-col truncate">
+                  <span className="font-medium truncate">
+                    {getDisplaySymbol(pair.symbol, pair.exchange)}
+                  </span>
+                  {pair.name &&
+                    pair.name !== getDisplaySymbol(pair.symbol, pair.exchange) && (
+                      <span className="text-xs text-muted-foreground truncate">
+                        {pair.name}
+                      </span>
+                    )}
+                </div>
               </div>
               {value === pair.symbol && (
                 <IconCheck className="h-4 w-4 text-primary shrink-0" />

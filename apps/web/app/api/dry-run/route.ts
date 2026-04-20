@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     const sessions = await dryRunRepo.findWithStats(
       {
-        userId: session.user.id,
+        userId: (session.user as any).id,
         status: status || undefined,
         strategyId: strategyId ? parseInt(strategyId, 10) : undefined,
       },
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     );
 
     const total = await dryRunRepo.count({
-      userId: session.user.id,
+      userId: (session.user as any).id,
       status: status || undefined,
     });
 
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Verify ownership
-      if (strategy.userId !== session.user.id) {
+      if (strategy.userId !== (session.user as any).id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
       }
 
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
       commission: commission || 0.001, // Default 0.1%
       slippage: slippage || 0.0005, // Default 0.05%
       notes,
-      userId: session.user.id,
+      userId: (session.user as any).id,
     });
 
     return NextResponse.json({

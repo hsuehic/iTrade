@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import { NavPortfolio } from '@/components/nav-portfolio';
 import { NavMain } from '@/components/nav-main';
+import { NavAdmin } from '@/components/nav-admin';
 import { NavSecondary } from '@/components/nav-secondary';
 import { NavUser } from '@/components/nav-user';
 
@@ -17,7 +18,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 
-export async function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader>
@@ -38,6 +39,7 @@ export async function AppSidebar({ ...props }: React.ComponentProps<typeof Sideb
       <SidebarContent>
         <NavMain />
         <NavPortfolio />
+        <NavAdmin />
         <NavSecondary className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>

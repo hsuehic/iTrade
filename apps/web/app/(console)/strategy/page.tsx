@@ -77,10 +77,11 @@ import {
 import {
   SUPPORTED_EXCHANGES,
   getSymbolFormatHint,
-  getTradingPairsForExchange,
   getDefaultTradingPair,
   ExchangeId,
+  getDisplaySymbol,
 } from '@/lib/exchanges';
+import { useTradingPairs } from '@/hooks/use-trading-pairs';
 import { SubscriptionConfig } from '@itrade/core';
 
 type SortField = 'status' | 'name' | 'symbol' | 'pnl' | 'createdAt';
@@ -398,6 +399,11 @@ export default function StrategyPage() {
       setLoading(false);
     }
   }, [t]);
+
+  const { pairs: availablePairs, loading: pairsLoading } = useTradingPairs(
+    (Array.isArray(formData.exchange) ? formData.exchange[0] : formData.exchange) ||
+      undefined,
+  );
 
   useEffect(() => {
     fetchStrategies();
@@ -1122,13 +1128,14 @@ export default function StrategyPage() {
                                   onValueChange={(value) =>
                                     setFormData({ ...formData, symbol: value })
                                   }
-                                  pairs={getTradingPairsForExchange(
-                                    (Array.isArray(formData.exchange)
-                                      ? formData.exchange[0]
-                                      : formData.exchange) as ExchangeId,
-                                  )}
-                                  placeholder={t('fields.tradingPairPlaceholder')}
+                                  pairs={availablePairs}
+                                  placeholder={
+                                    pairsLoading
+                                      ? 'Loading...'
+                                      : t('fields.tradingPairPlaceholder')
+                                  }
                                 />
+
                                 <p className="text-xs text-muted-foreground">
                                   {t('fields.symbolFormat')}{' '}
                                   {getSymbolFormatHint(
@@ -1528,9 +1535,14 @@ export default function StrategyPage() {
                                         />
                                       )}
                                       <span className="font-mono text-sm">
-                                        {strategy.normalizedSymbol ||
-                                          strategy.symbol ||
-                                          t('card.notAvailable')}
+                                        {strategy.symbol && strategy.exchange
+                                          ? getDisplaySymbol(
+                                              strategy.symbol,
+                                              strategy.exchange,
+                                            )
+                                          : strategy.normalizedSymbol ||
+                                            strategy.symbol ||
+                                            t('card.notAvailable')}
                                       </span>
                                       {strategy.marketType &&
                                         strategy.marketType !== 'spot' && (

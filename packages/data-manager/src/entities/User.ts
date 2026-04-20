@@ -40,6 +40,15 @@ export class User {
   @Column('text', { name: 'role', nullable: true })
   role?: string | null;
 
+  @Column('boolean', { name: 'banned', default: false })
+  banned!: boolean;
+
+  @Column('text', { name: 'banReason', nullable: true })
+  banReason?: string | null;
+
+  @Column('timestamp with time zone', { name: 'banExpires', nullable: true })
+  banExpires?: Date | null;
+
   @OneToMany('account', 'user', {
     onDelete: 'CASCADE',
   })

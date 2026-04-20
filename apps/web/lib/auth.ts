@@ -1,4 +1,7 @@
-import { User, betterAuth } from 'better-auth';
+import { betterAuth } from 'better-auth';
+
+import { admin } from 'better-auth/plugins';
+
 import { Pool } from 'pg';
 import * as jose from 'jose';
 
@@ -175,7 +178,7 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
           url,
           token: _token,
         }: {
-          user: User;
+          user: any;
           url: string;
           token: string;
         }) => {
@@ -186,15 +189,7 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
           );
         },
       },
-      sendResetPassword: async ({
-        user,
-        url,
-        token: _token,
-      }: {
-        user: User;
-        url: string;
-        token: string;
-      }) => {
+      sendResetPassword: async ({ user, url, token: _token }) => {
         console.log('Reset Password:', user, url, _token);
         await sendEmail(
           user.email,
@@ -260,6 +255,7 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
     },
+    plugins: [admin()],
   });
 
 export const auth: ReturnType<typeof betterAuth> = createAuth();

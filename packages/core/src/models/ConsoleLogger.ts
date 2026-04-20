@@ -58,9 +58,19 @@ export class ConsoleLogger implements ILogger {
     }
   }
 
-  warn(message: string, meta?: Record<string, unknown>): void {
+  warn(message: string, error?: Error | Record<string, unknown>): void {
     if (this.shouldLog(LogLevel.WARN)) {
-      console.warn(this.formatMessage(LogLevel.WARN, message, meta));
+      if (error instanceof Error) {
+        console.warn(
+          this.formatMessage(LogLevel.WARN, message, {
+            error: error.message,
+            stack: error.stack,
+            name: error.name,
+          }),
+        );
+      } else {
+        console.warn(this.formatMessage(LogLevel.WARN, message, error));
+      }
     }
   }
 

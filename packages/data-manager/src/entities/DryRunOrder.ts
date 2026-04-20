@@ -102,6 +102,15 @@ export class DryRunOrderEntity implements Order {
   })
   cummulativeQuoteQuantity?: Decimal | undefined;
 
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  commission?: Decimal | undefined;
+
   @OneToMany('dry_run_order_fills', 'order', {
     cascade: true,
   })
