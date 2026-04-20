@@ -7,9 +7,6 @@ import {
   IconDots,
   IconTrash,
   IconEdit,
-  IconRefresh,
-  IconCheck,
-  IconX,
   IconLoader2,
   IconSearch,
 } from '@tabler/icons-react';
@@ -17,13 +14,7 @@ import {
 import { SiteHeader } from '@/components/site-header';
 import { SidebarInset } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -38,7 +29,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
@@ -70,7 +60,6 @@ export default function AdminTradingPairsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedPair, setSelectedPair] = useState<any | null>(null);
-  const [isSeeding, setIsSeeding] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter states
@@ -220,27 +209,6 @@ export default function AdminTradingPairsPage() {
     }
   };
 
-  const handleSeed = async () => {
-    setIsSeeding(true);
-    try {
-      const response = await fetch('/api/admin/trading-pairs/seed', {
-        method: 'POST',
-      });
-
-      if (!response.ok) throw new Error('Failed to seed pairs');
-      const data = await response.json();
-
-      toast.success(
-        `Seeding complete: ${data.added} added, ${data.skipped} skipped, ${data.errors} errors`,
-      );
-      fetchPairs();
-    } catch (error) {
-      toast.error('Failed to seed trading pairs');
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
   if (sessionPending || (session && (session.user as any).role !== 'admin')) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -260,20 +228,10 @@ export default function AdminTradingPairsPage() {
               Manage supported trading pairs for all exchanges.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleSeed} disabled={isSeeding}>
-              {isSeeding ? (
-                <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <IconRefresh className="mr-2 h-4 w-4" />
-              )}
-              Seed from Config
-            </Button>
-            <Button onClick={() => handleOpenDialog()}>
-              <IconPlus className="mr-2 h-4 w-4" />
-              Add Pair
-            </Button>
-          </div>
+          <Button onClick={() => handleOpenDialog()}>
+            <IconPlus className="mr-2 h-4 w-4" />
+            Add Pair
+          </Button>
         </div>
 
         <div className="flex flex-col md:flex-row gap-4 items-end bg-muted/30 p-4 rounded-lg border">
