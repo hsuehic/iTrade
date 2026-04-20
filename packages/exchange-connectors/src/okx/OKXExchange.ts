@@ -914,12 +914,18 @@ export class OKXExchange extends BaseExchange {
     let adjustedMinQuantity = minQuantity;
     let adjustedStepSize = stepSize;
     let adjustedQuantityPrecision = quantityPrecision;
+    let adjustedMaxQuantity = instrumentData.maxMktSz
+      ? new Decimal(instrumentData.maxMktSz)
+      : undefined;
 
     if (contractValue && market !== 'spot') {
       const multiplier = contractMultiplier || new Decimal(1);
       const scale = contractValue.mul(multiplier);
       adjustedMinQuantity = minQuantity.mul(scale);
       adjustedStepSize = stepSize.mul(scale);
+      if (adjustedMaxQuantity) {
+        adjustedMaxQuantity = adjustedMaxQuantity.mul(scale);
+      }
 
       // Recalculate precision based on adjusted step size
       // e.g. stepSize "0.1" -> precision 1
@@ -934,9 +940,7 @@ export class OKXExchange extends BaseExchange {
       pricePrecision,
       quantityPrecision: adjustedQuantityPrecision,
       minQuantity: adjustedMinQuantity,
-      maxQuantity: instrumentData.maxMktSz
-        ? new Decimal(instrumentData.maxMktSz)
-        : undefined,
+      maxQuantity: adjustedMaxQuantity,
       minNotional,
       stepSize: adjustedStepSize,
       tickSize,

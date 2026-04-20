@@ -27,6 +27,7 @@ export default defineConfig(
       '**/.next/**',
       '**/.next-*/**',
       '.next-*',
+      'apps/web/next-env.d.ts',
       '**/coverage',
       '**/generated',
     ],
