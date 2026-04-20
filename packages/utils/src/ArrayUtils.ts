@@ -312,7 +312,7 @@ export class ArrayUtils {
   /**
    * Deep flatten a nested array
    */
-  static flattenDeep<T>(array: any[]): T[] {
+  static flattenDeep<T>(array: unknown[]): T[] {
     return array.flat(Infinity) as T[];
   }
 }

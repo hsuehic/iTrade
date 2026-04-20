@@ -89,8 +89,8 @@ export function StrategyPerformanceMetrics({
         (p.orders?.long?.total?.count || 0) + (p.orders?.short?.total?.count || 0),
       filledOrders:
         (p.orders?.long?.filled?.count || 0) + (p.orders?.short?.filled?.count || 0),
-      maxDrawdown: (p.pnl as any).maxDrawdown || 0,
-      sharpeRatio: (p.pnl as any).sharpeRatio || 0,
+      maxDrawdown: p.risk?.maxDrawdown || 0,
+      sharpeRatio: p.risk?.sharpeRatio || 0,
     };
   }
 

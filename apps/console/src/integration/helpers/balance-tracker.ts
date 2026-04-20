@@ -123,7 +123,7 @@ export class BalanceTracker {
     if (!update) return;
 
     try {
-      const { accountInfo, exchange, timestamp } = update;
+      const { accountInfo, exchange } = update;
       const userId = this.userId;
 
       if (!userId) {

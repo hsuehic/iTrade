@@ -2,7 +2,19 @@ import { promises as fs } from 'fs';
 import { join, dirname } from 'path';
 
 import { Decimal } from 'decimal.js';
-import { IDataManager, Kline } from '@itrade/core';
+import { IDataManager, Kline, KlineInterval, Trade } from '@itrade/core';
+
+type RawKline = {
+  openTime: string;
+  closeTime: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+  quoteVolume: string;
+  trades: number;
+};
 
 export class FileDataManager implements IDataManager {
   private dataPath: string;
@@ -23,9 +35,9 @@ export class FileDataManager implements IDataManager {
 
     try {
       const data = await fs.readFile(filepath, 'utf-8');
-      const rawKlines = JSON.parse(data);
+      const rawKlines = JSON.parse(data) as RawKline[];
 
-      let filteredKlines = rawKlines.filter((kline: any) => {
+      let filteredKlines = rawKlines.filter((kline) => {
         const klineTime = new Date(kline.openTime);
         return klineTime >= startTime && klineTime <= endTime;
       });
@@ -34,9 +46,9 @@ export class FileDataManager implements IDataManager {
         filteredKlines = filteredKlines.slice(0, limit);
       }
 
-      return filteredKlines.map((kline: any) => ({
+      return filteredKlines.map((kline) => ({
         symbol,
-        interval,
+        interval: interval as KlineInterval,
         openTime: new Date(kline.openTime),
         closeTime: new Date(kline.closeTime),
         open: new Decimal(kline.open),
@@ -155,7 +167,7 @@ export class FileDataManager implements IDataManager {
     }
   }
 
-  async saveTrades(symbol: string, trades: any[]): Promise<void> {
+  async saveTrades(symbol: string, trades: Trade[]): Promise<void> {
     // TODO: Implement trades storage for file-based data manager
     console.warn(
       `saveTrades not yet implemented for FileDataManager. Symbol: ${symbol}, trades: ${trades.length}`,
@@ -167,7 +179,7 @@ export class FileDataManager implements IDataManager {
     startTime: Date,
     endTime: Date,
     limit?: number,
-  ): Promise<any[]> {
+  ): Promise<Trade[]> {
     // TODO: Implement trades retrieval for file-based data manager
     console.warn(
       `getTrades not yet implemented for FileDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`,

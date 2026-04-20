@@ -1325,7 +1325,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       } catch (error) {
         this.logger.warn(
           `⚠️  [SYMBOL_INFO] Failed to prefetch ${symbol} from ${exchange.name} for ${strategyName}:`,
-          error as any,
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
         );
       }
     }

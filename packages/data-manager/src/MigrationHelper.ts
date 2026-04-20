@@ -2,9 +2,9 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 
 import { Decimal } from 'decimal.js';
-import { KlineInterval } from '@itrade/core';
+import { Kline, KlineInterval } from '@itrade/core';
 
-import { TypeOrmDataManager } from './TypeOrmDataManager';
+import { TypeOrmDataManager, type TypeOrmDataManagerConfig } from './TypeOrmDataManager';
 
 export interface MigrationOptions {
   batchSize?: number;
@@ -87,8 +87,8 @@ export class MigrationHelper {
   }
 
   async migrateBetweenDatabases(
-    sourceConfig: any,
-    _targetConfig: any,
+    sourceConfig: TypeOrmDataManagerConfig,
+    _targetConfig: TypeOrmDataManagerConfig,
     options: {
       symbols?: string[];
       intervals?: string[];
@@ -231,7 +231,17 @@ export class MigrationHelper {
 
       // Read and parse JSON file
       const data = await fs.readFile(filePath, 'utf-8');
-      const rawKlines = JSON.parse(data);
+      const rawKlines = JSON.parse(data) as Array<{
+        openTime: string;
+        closeTime: string;
+        open: string;
+        high: string;
+        low: string;
+        close: string;
+        volume: string;
+        quoteVolume: string;
+        trades: number;
+      }>;
 
       if (!Array.isArray(rawKlines)) {
         throw new Error('File does not contain an array of klines');
@@ -240,7 +250,7 @@ export class MigrationHelper {
       stats.totalRecords = rawKlines.length;
 
       // Convert raw data to Kline format with proper type casting
-      const klines = rawKlines.map((raw: any) => ({
+      const klines = rawKlines.map((raw) => ({
         symbol,
         interval: interval as KlineInterval,
         openTime: new Date(raw.openTime),
@@ -287,10 +297,10 @@ export class MigrationHelper {
     }
   }
 
-  private validateKline(kline: any): boolean {
+  private validateKline(kline: Kline): boolean {
     try {
       // Basic validation
-      return (
+      return !!(
         kline.symbol &&
         kline.interval &&
         kline.openTime instanceof Date &&

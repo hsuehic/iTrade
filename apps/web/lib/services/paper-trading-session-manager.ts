@@ -6,6 +6,7 @@ import {
   OrderSide,
   OrderType,
   TradeMode,
+  type Order,
 } from '@itrade/core';
 import { PaperPortfolioManager } from '@itrade/portfolio-manager';
 import { RiskManager } from '@itrade/risk-manager';
@@ -15,11 +16,7 @@ import {
   DryRunStatus,
   StrategyEntity,
 } from '@itrade/data-manager';
-import {
-  BinanceExchange,
-  CoinbaseExchange,
-  OKXExchange,
-} from '@itrade/exchange-connectors';
+import { BinanceExchange, OKXExchange } from '@itrade/exchange-connectors';
 
 export interface ManualOrderParams {
   symbol: string;
@@ -172,7 +169,7 @@ export class PaperTradingSessionManager {
   async executeManualOrder(
     sessionId: number,
     orderParams: ManualOrderParams,
-  ): Promise<any> {
+  ): Promise<Order> {
     const engine = this.activeSessions.get(sessionId);
     if (!engine) {
       throw new Error(`Session ${sessionId} is not running`);
@@ -214,16 +211,32 @@ export class PaperTradingSessionManager {
     }
 
     const stats = await engine.getPaperTradingStats();
+    const portfolio = this.isPortfolioSummary(stats.portfolio) ? stats.portfolio : null;
 
     return {
       totalOrders: stats.totalOrders,
       totalTrades: stats.totalTrades,
       totalVolume: stats.totalVolume.toString(),
       totalCommission: stats.totalCommission.toString(),
-      currentValue: stats.portfolio?.totalValue?.toString() || '0',
-      pnl: stats.portfolio?.pnl?.toString() || '0',
-      pnlPercent: stats.portfolio?.pnlPercent?.toString() || '0',
+      currentValue: portfolio?.totalValue.toString() || '0',
+      pnl: portfolio?.pnl.toString() || '0',
+      pnlPercent: portfolio?.pnlPercent.toString() || '0',
     };
+  }
+
+  private isPortfolioSummary(
+    portfolio: unknown,
+  ): portfolio is { totalValue: Decimal; pnl: Decimal; pnlPercent: Decimal } {
+    if (!portfolio || typeof portfolio !== 'object') {
+      return false;
+    }
+
+    const record = portfolio as Record<string, unknown>;
+    return (
+      record.totalValue instanceof Decimal &&
+      record.pnl instanceof Decimal &&
+      record.pnlPercent instanceof Decimal
+    );
   }
 
   /**
@@ -298,7 +311,9 @@ export class PaperTradingSessionManager {
 
       this.logger.info('📡 [PAPER_SESSION] Connected to Binance for market data');
     } catch (error) {
-      this.logger.warn('Failed to connect to Binance for market data', error as Error);
+      this.logger.warn('Failed to connect to Binance for market data', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     try {
@@ -309,7 +324,9 @@ export class PaperTradingSessionManager {
 
       this.logger.info('📡 [PAPER_SESSION] Connected to OKX for market data');
     } catch (error) {
-      this.logger.warn('Failed to connect to OKX for market data', error as Error);
+      this.logger.warn('Failed to connect to OKX for market data', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -366,10 +383,11 @@ export class PaperTradingSessionManager {
   ): Promise<void> {
     try {
       const stats = await engine.getPaperTradingStats();
+      const portfolio = this.isPortfolioSummary(stats.portfolio) ? stats.portfolio : null;
 
-      if (stats.portfolio && this.dataManager.saveDryRunResult) {
+      if (portfolio && this.dataManager.saveDryRunResult) {
         await this.dataManager.saveDryRunResult(sessionId, {
-          totalReturn: stats.portfolio.pnlPercent?.div(100) || new Decimal(0),
+          totalReturn: portfolio.pnlPercent.div(100),
           annualizedReturn: new Decimal(0), // TODO: Calculate based on session duration
           sharpeRatio: new Decimal(0), // TODO: Calculate from trade history
           maxDrawdown: new Decimal(0), // TODO: Calculate from equity curve

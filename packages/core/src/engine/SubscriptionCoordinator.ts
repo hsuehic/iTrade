@@ -484,7 +484,6 @@ export class SubscriptionCoordinator implements ISubscriptionCoordinator {
         case 'orderbook': {
           // For orderbook, we need to pass depth info for proper unsubscribe
           // Store depth in subscription key, retrieve it here
-          const depth = params.depth as number | undefined;
           // Note: Exchange implementations should handle depth internally
           // For now, pass symbol with depth metadata if needed
           await exchange.unsubscribe(symbol, type);

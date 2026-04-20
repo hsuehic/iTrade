@@ -18,7 +18,8 @@
 
 import 'reflect-metadata';
 import dotenv from 'dotenv';
-import { AccountPollingService, PollingResult } from '@itrade/core';
+import { Decimal } from 'decimal.js';
+import { AccountPollingService, IExchange, PollingResult } from '@itrade/core';
 import {
   BinanceExchange,
   OKXExchange,
@@ -31,6 +32,22 @@ import { silentLogger } from '../utils/silent-logger';
 dotenv.config();
 
 const logger = silentLogger;
+
+type ExchangePolledEvent = {
+  exchange: string;
+  balances?: unknown[];
+  positions?: unknown[];
+};
+
+type SnapshotSavedEvent = {
+  exchange: string;
+  totalBalance: Decimal;
+  positionCount: number;
+  availableBalance: Decimal;
+  lockedBalance: Decimal;
+  savingBalance?: Decimal;
+  timestamp: Date;
+};
 
 // Polling interval (default: 6 seconds for testing)
 const POLLING_INTERVAL = parseInt(process.env.ACCOUNT_POLLING_INTERVAL || '6000');
@@ -61,7 +78,7 @@ async function initialize() {
   logger.info('✅ Database connected');
 
   // Initialize exchanges
-  const exchanges = new Map<string, any>();
+  const exchanges = new Map<string, IExchange>();
   const USE_TESTNET = false; // 使用主网
 
   // Binance
@@ -75,8 +92,9 @@ async function initialize() {
       });
       exchanges.set('binance', binance);
       logger.info('✅ Binance exchange initialized');
-    } catch (error: any) {
-      logger.warn(`⚠️  Failed to initialize Binance: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`⚠️  Failed to initialize Binance: ${message}`);
     }
   } else {
     logger.warn('⚠️  Binance API credentials not found in environment variables');
@@ -98,8 +116,9 @@ async function initialize() {
       });
       exchanges.set('okx', okx);
       logger.info('✅ OKX exchange initialized');
-    } catch (error: any) {
-      logger.warn(`⚠️  Failed to initialize OKX: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`⚠️  Failed to initialize OKX: ${message}`);
     }
   } else {
     logger.info('ℹ️  OKX API credentials not configured (optional)');
@@ -116,8 +135,9 @@ async function initialize() {
       });
       exchanges.set('coinbase', coinbase);
       logger.info('✅ Coinbase exchange initialized');
-    } catch (error: any) {
-      logger.warn(`⚠️  Failed to initialize Coinbase: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`⚠️  Failed to initialize Coinbase: ${message}`);
     }
   } else {
     logger.info('ℹ️  Coinbase API credentials not configured (optional)');
@@ -187,13 +207,13 @@ async function initialize() {
     );
   });
 
-  accountPollingService.on('exchangePolled', (data: any) => {
+  accountPollingService.on('exchangePolled', (data: ExchangePolledEvent) => {
     logger.debug(
       `✅ ${data.exchange}: ${data.balances?.length || 0} balances, ${data.positions?.length || 0} positions`,
     );
   });
 
-  accountPollingService.on('snapshotSaved', async (snapshot: any) => {
+  accountPollingService.on('snapshotSaved', async (snapshot: SnapshotSavedEvent) => {
     logger.info(
       `💾 ${snapshot.exchange} snapshot saved: Equity=${snapshot.totalBalance.toFixed(2)}, Positions=${snapshot.positionCount}`,
     );
@@ -222,8 +242,9 @@ async function initialize() {
         );
         logger.info(`✅ Synced balance history for ${snapshot.exchange}`);
       }
-    } catch (error: any) {
-      logger.error(`❌ Failed to sync balance history: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Failed to sync balance history: ${message}`);
     }
   });
 
@@ -251,8 +272,9 @@ async function main() {
     logger.info(`⏱️  Polling every ${POLLING_INTERVAL / 1000} seconds`);
     logger.info('📊 Latest data will be saved to database automatically');
     logger.info('💡 Press Ctrl+C to stop');
-  } catch (error: any) {
-    logger.error(`❌ Failed to start account polling: ${error.message}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`❌ Failed to start account polling: ${message}`);
     process.exit(1);
   }
 }

@@ -185,7 +185,7 @@ export class PnLRepository {
 
     // Fetch all orders in ONE query (optimized)
     const strategyIds = strategyResults.map((row) => row.strategyId);
-    let allOrders: any[] = [];
+    let allOrders: OrderEntity[] = [];
 
     if (strategyIds.length > 0) {
       const ordersQuery = this.repository
@@ -204,8 +204,11 @@ export class PnLRepository {
     }
 
     // Group orders by strategyId in memory
-    const ordersByStrategy = new Map<number, any[]>();
+    const ordersByStrategy = new Map<number, OrderEntity[]>();
     for (const order of allOrders) {
+      if (order.strategyId === undefined || order.strategyId === null) {
+        continue;
+      }
       if (!ordersByStrategy.has(order.strategyId)) {
         ordersByStrategy.set(order.strategyId, []);
       }
@@ -214,7 +217,10 @@ export class PnLRepository {
 
     // Calculate PnL for each strategy using pre-fetched orders
     const strategies = strategyResults.map((row) => {
-      const orders = ordersByStrategy.get(row.strategyId) || [];
+      const strategyId = Number(row.strategyId);
+      const orders = Number.isFinite(strategyId)
+        ? ordersByStrategy.get(strategyId) || []
+        : [];
 
       const { realizedPnl, unrealizedPnl } = this.calculatePnLFromOrders(orders);
 
@@ -223,7 +229,7 @@ export class PnLRepository {
       const filledOrders = orders.filter((o) => o.status === 'FILLED').length;
 
       return {
-        strategyId: row.strategyId,
+        strategyId,
         strategyName: row.strategyName,
         pnl: realizedPnl + unrealizedPnl,
         realizedPnl,

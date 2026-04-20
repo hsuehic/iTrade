@@ -1107,7 +1107,7 @@ describe('MovingWindowGridsStrategy', () => {
       expect(state.activeOrders).toBeGreaterThan(0);
 
       // Call cleanup (protected method, access through method signature)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       await (strategy as any).onCleanup();
 
       state = strategy.getStrategyState();

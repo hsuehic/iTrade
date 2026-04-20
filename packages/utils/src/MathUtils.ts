@@ -302,13 +302,13 @@ export class MathUtils {
   }
 
   // Utility Functions
-  static isDecimal(value: any): boolean {
+  static isDecimal(value: unknown): boolean {
     return value instanceof Decimal;
   }
 
-  static toDecimal(value: any): Decimal {
+  static toDecimal(value: unknown): Decimal {
     try {
-      return new Decimal(value);
+      return new Decimal(value as Decimal.Value);
     } catch {
       return new Decimal(0);
     }

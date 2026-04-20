@@ -6,9 +6,7 @@ import path from 'node:path';
 function loadServiceAccountFromPath(filePath: string): admin.ServiceAccount | null {
   const candidates = [
     filePath,
-    path.resolve(process.cwd(), filePath),
-    path.resolve(process.cwd(), '..', filePath),
-    path.resolve(process.cwd(), '../..', filePath),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), filePath),
   ];
 
   const found = candidates.find((p) => existsSync(p));

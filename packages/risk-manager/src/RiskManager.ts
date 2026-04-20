@@ -87,7 +87,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
 
   // Risk Limit Validation
   async validateOrder(
-    order: any,
+    order: Order,
     portfolioValue: Decimal,
     positions: Position[],
   ): Promise<boolean> {
@@ -115,7 +115,10 @@ export class RiskManager extends EventEmitter implements IRiskManager {
     return Promise.resolve(true);
   }
 
-  private async checkPositionSize(order: any, portfolioValue: Decimal): Promise<boolean> {
+  private async checkPositionSize(
+    order: Order,
+    portfolioValue: Decimal,
+  ): Promise<boolean> {
     if (portfolioValue.eq(0)) return false;
 
     const orderValue = order.quantity.mul(order.price || new Decimal(0));
@@ -173,7 +176,7 @@ export class RiskManager extends EventEmitter implements IRiskManager {
   }
 
   private async checkLeverage(
-    order: any,
+    order: Order,
     portfolioValue: Decimal,
     positions: Position[],
   ): Promise<boolean> {

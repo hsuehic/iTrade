@@ -376,11 +376,11 @@ export interface StrategyPerformanceJSON {
   strategyName?: string;
   symbol: string;
   exchange: string;
-  orders: any; // Simplified for JSON
-  symbols: any[]; // Simplified for JSON
-  pnl: any; // Simplified for JSON
-  position: any; // Simplified for JSON
-  activity: any; // Simplified for JSON
+  orders: Record<string, unknown>; // Simplified for JSON
+  symbols: Record<string, unknown>[]; // Simplified for JSON
+  pnl: Record<string, unknown>; // Simplified for JSON
+  position: Record<string, unknown>; // Simplified for JSON
+  activity: Record<string, unknown>; // Simplified for JSON
   time: {
     startTime: string;
     lastUpdateTime: string;
@@ -389,7 +389,7 @@ export interface StrategyPerformanceJSON {
     totalRuntime: number;
     activeTradingTime: number;
   };
-  risk: any; // Simplified for JSON
+  risk: Record<string, unknown>; // Simplified for JSON
   metadata?: Record<string, unknown>;
 }
 

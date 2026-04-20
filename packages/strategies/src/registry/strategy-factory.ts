@@ -64,10 +64,13 @@ export type StrategyConstructor<TParams extends StrategyParameters = StrategyPar
  * 使用类来管理策略注册，提供更好的类型安全性
  */
 class StrategyRegistry {
-  public readonly strategies = new Map<StrategyTypeKey, StrategyConstructor<any>>();
+  public readonly strategies = new Map<
+    StrategyTypeKey,
+    StrategyConstructor<StrategyParameters>
+  >();
   public readonly strategyRegistryConfigs = new Map<
     StrategyTypeKey,
-    StrategyRegistryConfig<any>
+    StrategyRegistryConfig<StrategyParameters>
   >();
 
   /*
@@ -80,8 +83,14 @@ class StrategyRegistry {
     constructor: StrategyConstructor<TParams>,
     registryConfig: StrategyRegistryConfig<TParams>,
   ): void {
-    this.strategies.set(type, constructor);
-    this.strategyRegistryConfigs.set(type, registryConfig);
+    this.strategies.set(
+      type,
+      constructor as unknown as StrategyConstructor<StrategyParameters>,
+    );
+    this.strategyRegistryConfigs.set(
+      type,
+      registryConfig as unknown as StrategyRegistryConfig<StrategyParameters>,
+    );
   }
 
   /**

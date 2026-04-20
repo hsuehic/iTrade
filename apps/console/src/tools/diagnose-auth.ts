@@ -25,7 +25,7 @@ interface DiagnosisResult {
   test: string;
   status: 'PASS' | 'FAIL' | 'WARN';
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 class BinanceAuthDiagnostic {
@@ -42,7 +42,7 @@ class BinanceAuthDiagnostic {
     test: string,
     status: 'PASS' | 'FAIL' | 'WARN',
     message: string,
-    details?: any,
+    details?: Record<string, unknown>,
   ) {
     this.results.push({ test, status, message, details });
 
@@ -53,13 +53,16 @@ class BinanceAuthDiagnostic {
     }
   }
 
-  private signRequest(params: Record<string, any>): Record<string, any> {
-    const queryString = new URLSearchParams(params).toString();
+  private signRequest(params: Record<string, string | number>): Record<string, string> {
+    const stringParams = Object.fromEntries(
+      Object.entries(params).map(([key, value]) => [key, String(value)]),
+    );
+    const queryString = new URLSearchParams(stringParams).toString();
     const signature = crypto
       .createHmac('sha256', this.secretKey)
       .update(queryString)
       .digest('hex');
-    return { ...params, signature };
+    return { ...stringParams, signature };
   }
 
   async runDiagnosis(): Promise<void> {
@@ -125,13 +128,13 @@ class BinanceAuthDiagnostic {
         if (testnetResponse.status === 200) {
           this.addResult('网络连接测试', 'PASS', '测试网连接正常');
         }
-      } catch (testnetError) {
+      } catch {
         this.addResult('网络连接测试', 'WARN', '测试网连接失败（这通常不影响主网使用）');
       }
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.addResult('网络连接测试', 'FAIL', '无法连接到 Binance API', {
-        error: error.message,
-        code: error.code,
+        error: message,
       });
     }
   }
@@ -165,9 +168,10 @@ class BinanceAuthDiagnostic {
       } else {
         this.addResult('时间同步检查', 'PASS', `时间同步正常 (相差${timeDiff}ms)`);
       }
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.addResult('时间同步检查', 'FAIL', '无法获取服务器时间', {
-        error: error.message,
+        error: message,
       });
     }
   }
@@ -195,23 +199,21 @@ class BinanceAuthDiagnostic {
         });
         return;
       }
-    } catch (error: any) {
-      if (error.response?.status === 401) {
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
         this.addResult('API密钥有效性', 'FAIL', 'API 密钥认证失败 (401)', {
           errorCode: error.response.data?.code,
           errorMsg: error.response.data?.msg,
           headers: error.response.headers,
         });
-      } else if (error.response?.status === 403) {
+      } else if (axios.isAxiosError(error) && error.response?.status === 403) {
         this.addResult('API密钥有效性', 'FAIL', 'API 密钥权限不足 (403)', {
           errorCode: error.response.data?.code,
           errorMsg: error.response.data?.msg,
         });
       } else {
-        this.addResult('API密钥有效性', 'FAIL', `API 请求失败: ${error.message}`, {
-          status: error.response?.status,
-          data: error.response?.data,
-        });
+        const message = error instanceof Error ? error.message : String(error);
+        this.addResult('API密钥有效性', 'FAIL', `API 请求失败: ${message}`);
       }
     }
   }
@@ -232,7 +234,11 @@ class BinanceAuthDiagnostic {
       for (const endpoint of endpoints) {
         try {
           const timestamp = Date.now();
-          let config: any = { timeout: 5000 };
+          const config: {
+            timeout: number;
+            params?: Record<string, string | number>;
+            headers?: Record<string, string>;
+          } = { timeout: 5000 };
 
           if (endpoint.requiresAuth) {
             const params = this.signRequest({ timestamp });
@@ -252,8 +258,8 @@ class BinanceAuthDiagnostic {
               `可以访问 ${endpoint.name}`,
             );
           }
-        } catch (error: any) {
-          if (error.response?.status === 401) {
+        } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.status === 401) {
             this.addResult(
               `权限测试-${endpoint.name}`,
               'FAIL',
@@ -263,20 +269,22 @@ class BinanceAuthDiagnostic {
               },
             );
           } else {
+            const message = error instanceof Error ? error.message : String(error);
             this.addResult(
               `权限测试-${endpoint.name}`,
               'WARN',
               `访问 ${endpoint.name} 时出错`,
               {
-                error: error.message,
+                error: message,
               },
             );
           }
         }
       }
-    } catch (error: any) {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.addResult('权限测试', 'FAIL', '权限测试失败', {
-        error: error.message,
+        error: message,
       });
     }
   }

@@ -26,7 +26,7 @@ class OKXRESTTest extends BaseRESTTest {
   protected async testMarketData(
     exchange: IExchange,
     spotSymbol: string,
-    perpetualSymbol: string,
+    _perpetualSymbol: string,
   ): Promise<void> {
     const okx = exchange as OKXExchange;
 

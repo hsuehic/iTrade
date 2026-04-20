@@ -21,8 +21,7 @@
 
 import 'reflect-metadata';
 import dotenv from 'dotenv';
-import { LogLevel } from '@itrade/core';
-import { ConsoleLogger } from '@itrade/core';
+import { Balance, ConsoleLogger, IExchange, LogLevel, Position } from '@itrade/core';
 import {
   BinanceExchange,
   OKXExchange,
@@ -78,9 +77,9 @@ const logger = new ConsoleLogger(LogLevel.INFO);
 
 interface ExchangeData {
   name: string;
-  exchange: any;
-  balances: any[];
-  positions: any[];
+  exchange: IExchange;
+  balances: Balance[];
+  positions: Position[];
 }
 
 async function main() {
@@ -130,8 +129,9 @@ async function main() {
       logger.info(
         `✅ Binance: ${balances.length} balances, ${positions.length} positions`,
       );
-    } catch (error: any) {
-      logger.error(`❌ Failed to fetch Binance data: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Failed to fetch Binance data: ${message}`);
     }
   } else {
     logger.warn('⚠️  Binance credentials not configured');
@@ -161,8 +161,9 @@ async function main() {
       });
 
       logger.info(`✅ OKX: ${balances.length} balances, ${positions.length} positions`);
-    } catch (error: any) {
-      logger.error(`❌ Failed to fetch OKX data: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Failed to fetch OKX data: ${message}`);
     }
   } else {
     logger.warn('⚠️  OKX credentials not configured');
@@ -193,8 +194,9 @@ async function main() {
       logger.info(
         `✅ Coinbase: ${balances.length} balances, ${positions.length} positions`,
       );
-    } catch (error: any) {
-      logger.error(`❌ Failed to fetch Coinbase data: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Failed to fetch Coinbase data: ${message}`);
     }
   } else {
     logger.warn('⚠️  Coinbase credentials not configured');
@@ -252,8 +254,8 @@ async function main() {
         positions: positions.map((p) => ({
           symbol: p.symbol,
           side: p.side,
-          quantity: p.quantity ?? p.size ?? new Decimal(0),
-          avgPrice: p.avgPrice ?? p.entryPrice ?? new Decimal(0),
+          quantity: p.quantity ?? new Decimal(0),
+          avgPrice: p.avgPrice ?? new Decimal(0),
           markPrice: p.markPrice ?? new Decimal(0),
           unrealizedPnl: p.unrealizedPnl ?? new Decimal(0),
           leverage: p.leverage ?? new Decimal(0),
@@ -269,8 +271,9 @@ async function main() {
         `💾 ${name.toUpperCase()}: Equity=$${totalEquity.toFixed(2)}, Balance=$${totalBalance.toFixed(2)}, ` +
           `Positions=${positions.length}, Unrealized P&L=$${unrealizedPnl.toFixed(2)}`,
       );
-    } catch (error: any) {
-      logger.error(`❌ Failed to save ${name} snapshot: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Failed to save ${name} snapshot: ${message}`);
     }
   }
 
@@ -278,7 +281,7 @@ async function main() {
   for (const { exchange } of exchanges) {
     try {
       await exchange.disconnect();
-    } catch (error) {
+    } catch {
       // Ignore disconnect errors
     }
   }

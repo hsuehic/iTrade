@@ -14,17 +14,23 @@ export class OrderRepository {
   async save(order: Partial<OrderEntity>): Promise<OrderEntity> {
     // Use upsert to handle duplicate orders elegantly (single DB operation)
     // If order with same ID exists, update it; otherwise insert new one
-    await this.repository.upsert(order as any, {
-      conflictPaths: ['id'], // Unique constraint on 'id' column
-      skipUpdateIfNoValuesChanged: true, // Skip update if values haven't changed
-    });
+    await this.repository.upsert(
+      order as Parameters<Repository<OrderEntity>['upsert']>[0],
+      {
+        conflictPaths: ['id'], // Unique constraint on 'id' column
+        skipUpdateIfNoValuesChanged: true, // Skip update if values haven't changed
+      },
+    );
 
     // Fetch and return the upserted order
     return (await this.repository.findOne({ where: { id: order.id! } }))!;
   }
 
   async update(id: string, updates: Partial<OrderEntity>): Promise<void> {
-    await this.repository.update({ id }, updates as any);
+    await this.repository.update(
+      { id },
+      updates as Parameters<Repository<OrderEntity>['update']>[1],
+    );
   }
 
   async findById(

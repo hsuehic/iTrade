@@ -36,7 +36,8 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== (session.user as any).id) {
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId || existing.user?.id !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

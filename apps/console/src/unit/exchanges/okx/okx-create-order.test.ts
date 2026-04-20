@@ -161,7 +161,7 @@ async function testOKXCreateOrder() {
     try {
       await exchange.disconnect();
       console.log('\n🧹 Cleanup completed');
-    } catch (err) {
+    } catch {
       // Ignore cleanup errors
     }
   }

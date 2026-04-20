@@ -12,7 +12,7 @@ export interface CacheOptions {
 }
 
 export class CacheManager {
-  private cache: Map<string, CacheEntry<any>> = new Map();
+  private cache: Map<string, CacheEntry<unknown>> = new Map();
   private defaultTTL: number;
   private maxSize: number;
 
@@ -25,7 +25,7 @@ export class CacheManager {
     return [type, symbol, ...params].join(':');
   }
 
-  private isExpired(entry: CacheEntry<any>): boolean {
+  private isExpired(entry: CacheEntry<unknown>): boolean {
     return Date.now() - entry.timestamp > entry.ttl;
   }
 

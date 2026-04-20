@@ -1,16 +1,5 @@
 import type { IExchange, IStrategy } from '../interfaces';
-import type {
-  InitialDataResult,
-  InitialDataConfig,
-  KlineInterval,
-  Kline,
-  Position,
-  Order,
-  Balance,
-  AccountInfo,
-  Ticker,
-  OrderBook,
-} from '../types';
+import type { InitialDataResult, InitialDataConfig, KlineInterval } from '../types';
 import type { ILogger } from '../interfaces';
 
 /**

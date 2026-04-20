@@ -328,7 +328,6 @@ export class CoinbaseExchange extends BaseExchange {
     }
 
     const body = buildBody();
-    const marginType = isPerpetual ? 'ISOLATED' : null;
 
     const resp = await this.httpClient.post('/api/v3/brokerage/orders', body);
 
@@ -505,7 +504,6 @@ export class CoinbaseExchange extends BaseExchange {
           if (summary && !hasOverallSummary) {
             const totalBalance = summary.total_balance?.value || '0';
             const buyingPower = summary.buying_power?.value || '0';
-            const unrealizedPnl = summary.unrealized_pnl?.value || '0';
 
             // Free = buying_power (available for trading)
             // Locked = total_balance - buying_power (used in positions/margin)
@@ -1024,7 +1022,7 @@ export class CoinbaseExchange extends BaseExchange {
    * Note: Coinbase's level2 channel does not support configurable depth levels.
    * It always provides the full order book snapshot and updates.
    */
-  public async subscribeToOrderBook(symbol: string, depth?: number): Promise<void> {
+  public async subscribeToOrderBook(symbol: string, _depth?: number): Promise<void> {
     const productId = this.normalizeSymbol(symbol);
     this.symbolMap.set(productId, symbol); // Store mapping
     // Subscribing to orderbook
@@ -1191,7 +1189,7 @@ export class CoinbaseExchange extends BaseExchange {
         const filled = new Decimal(filledQtyStr);
         const leaves = new Decimal(orderData.leaves_quantity);
         quantityStr = filled.plus(leaves).toString();
-      } catch (e) {
+      } catch {
         // ignore
       }
     }
@@ -1777,7 +1775,7 @@ export class CoinbaseExchange extends BaseExchange {
         const filled = new Decimal(o.filled_size);
         const leaves = new Decimal(o.leaves_quantity);
         quantityStr = filled.plus(leaves).toString();
-      } catch (e) {
+      } catch {
         // ignore
       }
     }

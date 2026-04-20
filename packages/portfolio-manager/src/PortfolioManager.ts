@@ -101,7 +101,7 @@ export class PortfolioManager extends EventEmitter implements IPortfolioManager 
 
       // Inject exchange name if provided
       if (exchangeName) {
-        (pos as any).exchange = exchangeName;
+        pos.exchange = exchangeName;
       }
 
       // Overwrite with authoritative snapshot data
@@ -113,7 +113,7 @@ export class PortfolioManager extends EventEmitter implements IPortfolioManager 
     for (const [symbol, position] of this.positions) {
       // If exchangeName is provided, only prune positions belonging to that exchange
       if (exchangeName) {
-        const posExchange = (position as any).exchange;
+        const posExchange = position.exchange;
         // If position belongs to this exchange AND is not in local snapshot -> delete it
         // If position belongs to OTHER exchange -> keep it
         // If position has no exchange info -> strictly speaking we shouldn't touch it if we are in exchange-specific mode,

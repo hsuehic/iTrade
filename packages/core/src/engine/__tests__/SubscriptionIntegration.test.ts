@@ -365,8 +365,8 @@ describe('Subscription Integration Tests', () => {
     it.skip('should deliver REST polled data to strategies', async () => {
       const mockTicker: Ticker = {
         symbol: 'BTC/USDT',
-        price: Decimal(50000),
-        volume: Decimal(1000),
+        price: new Decimal(50000),
+        volume: new Decimal(1000),
         timestamp: new Date(),
       };
 
@@ -572,7 +572,7 @@ function createMockStrategy(
       indicatorData: {},
       currentPosition: '0',
     }),
-    loadState: vi.fn().mockResolvedValue({} as any),
+    loadState: vi.fn().mockResolvedValue({} as Record<string, unknown>),
     setRecoveryContext: vi.fn().mockResolvedValue(undefined),
     getStateVersion: vi.fn().mockReturnValue('1.0'),
     cleanup: vi.fn().mockResolvedValue(undefined),

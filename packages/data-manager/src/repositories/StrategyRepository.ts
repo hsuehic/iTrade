@@ -18,7 +18,7 @@ export class StrategyRepository {
     status?: string;
     exchange?: string;
     symbol?: string;
-    parameters?: any;
+    parameters?: Record<string, unknown>;
     initialDataConfig?: Record<string, unknown>;
     subscription?: Record<string, unknown>;
     userId: string;
@@ -47,7 +47,7 @@ export class StrategyRepository {
       initialDataConfig: data.initialDataConfig,
       subscription: data.subscription,
       userId: data.userId,
-    } as any);
+    } as Parameters<Repository<StrategyEntity>['insert']>[0]);
 
     // Get the inserted ID and fetch the complete entity
     const insertedId = result.identifiers[0]?.id;
@@ -133,7 +133,7 @@ export class StrategyRepository {
   }
 
   async update(id: number, updates: Partial<StrategyEntity>): Promise<void> {
-    const updateData: any = { ...updates };
+    const updateData: Partial<StrategyEntity> = { ...updates };
 
     // Re-compute normalizedSymbol and marketType if symbol or exchange is being updated
     if (updateData.symbol || updateData.exchange) {
@@ -144,26 +144,36 @@ export class StrategyRepository {
         const exchange = updateData.exchange || existing.exchange;
         if (symbol && exchange) {
           updateData.normalizedSymbol = normalizeSymbol(symbol, exchange);
-          updateData.marketType = detectMarketType(symbol);
+          updateData.marketType = detectMarketType(symbol) as MarketType;
         }
       }
     }
 
-    await this.repository.update({ id }, updateData);
+    await this.repository.update(
+      { id },
+      updateData as Parameters<Repository<StrategyEntity>['update']>[1],
+    );
   }
 
   async delete(id: number): Promise<void> {
     await this.repository.delete({ id });
   }
 
-  async updateStatus(id: number, status: string, errorMessage?: string): Promise<void> {
-    const updates: any = {
+  async updateStatus(
+    id: number,
+    status: StrategyStatus,
+    errorMessage?: string,
+  ): Promise<void> {
+    const updates: Partial<StrategyEntity> = {
       status,
       lastExecutionTime: new Date(),
     };
     if (errorMessage !== undefined) {
       updates.errorMessage = errorMessage;
     }
-    await this.repository.update({ id }, updates);
+    await this.repository.update(
+      { id },
+      updates as Parameters<Repository<StrategyEntity>['update']>[1],
+    );
   }
 }

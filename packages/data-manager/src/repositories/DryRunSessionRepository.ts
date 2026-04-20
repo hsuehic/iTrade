@@ -57,7 +57,7 @@ export class DryRunSessionRepository {
       slippage: data.slippage ? new Decimal(data.slippage) : undefined,
       notes: data.notes,
       user: { id: data.userId },
-    } as any);
+    } as Parameters<Repository<DryRunSessionEntity>['insert']>[0]);
 
     const insertedId = result.identifiers[0]?.id;
     if (!insertedId) {
@@ -181,7 +181,7 @@ export class DryRunSessionRepository {
     // Map latest results back
     const resultMap = new Map<number, DryRunResultEntity>();
     for (const res of allResults) {
-      const sessionId = (res as any).sessionId;
+      const sessionId = (res as { sessionId?: number }).sessionId;
       if (sessionId && !resultMap.has(sessionId)) {
         resultMap.set(sessionId, res);
       }
@@ -199,15 +199,21 @@ export class DryRunSessionRepository {
   }
 
   async update(id: number, updates: Partial<DryRunSessionEntity>): Promise<void> {
-    await this.repository.update({ id }, updates as any);
+    await this.repository.update(
+      { id },
+      updates as Parameters<Repository<DryRunSessionEntity>['update']>[1],
+    );
   }
 
   async updateStatus(id: number, status: DryRunStatus, endTime?: Date): Promise<void> {
-    const updates: any = { status };
+    const updates: Partial<DryRunSessionEntity> = { status };
     if (endTime || status === DryRunStatus.COMPLETED || status === DryRunStatus.FAILED) {
       updates.endTime = endTime || new Date();
     }
-    await this.repository.update({ id }, updates);
+    await this.repository.update(
+      { id },
+      updates as Parameters<Repository<DryRunSessionEntity>['update']>[1],
+    );
   }
 
   async stop(id: number): Promise<void> {

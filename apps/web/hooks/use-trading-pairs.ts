@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { TradingPair } from '@/lib/exchanges';
+import { TradingPair, type ExchangeId } from '@/lib/exchanges';
+
+type TradingPairResponse = {
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  name?: string | null;
+  type: 'spot' | 'perpetual';
+  exchange: ExchangeId;
+};
 
 export function useTradingPairs(exchangeId?: string) {
   const [pairs, setPairs] = useState<TradingPair[]>([]);
@@ -17,26 +26,28 @@ export function useTradingPairs(exchangeId?: string) {
         // Maybe I should have a public API for fetching active pairs.
 
         if (!response.ok) throw new Error('Failed to fetch trading pairs');
-        const data = await response.json();
+        const data: TradingPairResponse[] = await response.json();
 
         // Filter by exchange if provided
         let filtered = data;
         if (exchangeId) {
-          filtered = data.filter((p: any) => p.exchange === exchangeId);
+          filtered = data.filter((pair) => pair.exchange === exchangeId);
         }
 
         setPairs(
-          filtered.map((p: any) => ({
-            symbol: p.symbol,
-            base: p.baseAsset,
-            quote: p.quoteAsset,
-            name: p.name || p.symbol,
-            type: p.type,
-            exchange: p.exchange,
+          filtered.map((pair) => ({
+            symbol: pair.symbol,
+            base: pair.baseAsset,
+            quote: pair.quoteAsset,
+            name: pair.name || pair.symbol,
+            type: pair.type,
+            exchange: pair.exchange,
           })),
         );
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to load trading pairs';
+        setError(message);
       } finally {
         setLoading(false);
       }

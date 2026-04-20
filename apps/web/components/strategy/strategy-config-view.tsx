@@ -11,9 +11,9 @@ import { JsonEditor } from '@/components/json-editor';
 import { useTranslations } from 'next-intl';
 
 interface StrategyConfigViewProps {
-  parameters?: any;
-  subscription?: any;
-  initialDataConfig?: any;
+  parameters?: Record<string, unknown>;
+  subscription?: Record<string, unknown>;
+  initialDataConfig?: Record<string, unknown>;
 }
 
 export function StrategyConfigView({

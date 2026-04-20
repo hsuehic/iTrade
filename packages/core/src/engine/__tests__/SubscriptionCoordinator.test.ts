@@ -373,8 +373,8 @@ describe('SubscriptionCoordinator', () => {
     it('should emit data through exchange on REST poll', async () => {
       const mockTicker = {
         symbol: 'BTC/USDT',
-        price: Decimal(50000),
-        volume: Decimal(1000),
+        price: new Decimal(50000),
+        volume: new Decimal(1000),
         timestamp: new Date(),
       } as const;
       vi.mocked(mockExchange.getTicker).mockResolvedValue(mockTicker);

@@ -14,10 +14,10 @@ import {
   OrderType,
   Position,
   SignalType,
+  StrategyResult,
   Trade,
   TimeInForce,
   normalizeAnalyzeResult,
-  isHoldResult,
   isActionableResult,
   isCancelOrderResult,
   isUpdateOrderResult,
@@ -56,6 +56,26 @@ interface OpenPosition {
   /** Total net position immediately after this entry opened */
   entryNetPosition: Decimal;
 }
+
+type OrderFillEntry = {
+  type: 'entry';
+  entry: PendingEntry;
+  fillPrice: Decimal;
+};
+
+type OrderFillExit = {
+  type: 'tp' | 'sl';
+  exit: {
+    clientOrderId: string;
+    entrySide: OrderSide;
+    quantity: Decimal;
+    leverage: number;
+    parentCid: string;
+  };
+  fillPrice: Decimal;
+};
+
+type OrderFill = OrderFillEntry | OrderFillExit;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: build a synthetic Order object to feed back to strategy.analyze()
@@ -315,7 +335,7 @@ export class BacktestEngine implements IBacktestEngine {
       });
     };
 
-    const registerEntrySigs = async (sigs: any[], barIndex: number) => {
+    const registerEntrySigs = async (sigs: StrategyResult[], barIndex: number) => {
       const parameters = strategy.config?.parameters as
         | Record<string, unknown>
         | undefined;
@@ -394,7 +414,7 @@ export class BacktestEngine implements IBacktestEngine {
     };
 
     const processCancelSignals = async (
-      sigs: any[],
+      sigs: StrategyResult[],
       barPriceRef: Decimal,
       timestamp: Date,
     ) => {
@@ -447,7 +467,7 @@ export class BacktestEngine implements IBacktestEngine {
     for (let barIdx = 0; barIdx < klines.length; barIdx++) {
       const bar = klines[barIdx];
       const bullish = bar.close.gte(bar.open);
-      const fills: any[] = [];
+      const fills: OrderFill[] = [];
 
       // TTL handling
       const ttlExpired: PendingEntry[] = [];
@@ -538,6 +558,7 @@ export class BacktestEngine implements IBacktestEngine {
               entrySide: pos.side,
               quantity: totalQty,
               leverage: pos.leverage,
+              parentCid: trigger.parentCid,
             },
             fillPrice: this.applySlippage(fillPriceOrigin, fillSide, slippage),
           });
@@ -653,8 +674,12 @@ export class BacktestEngine implements IBacktestEngine {
             // This is needed for multi-cycle strategies (e.g. SpreadGrid) that place
             // new cycle orders in response to a TP/SL or entry fill.
             if (fillQty.isZero()) {
+              const closeOrderId =
+                fill.type === 'entry'
+                  ? fill.entry.clientOrderId
+                  : fill.exit.clientOrderId;
               const closeNotifyOrder = buildOrder(
-                entryCid,
+                closeOrderId,
                 symbol,
                 fillSide,
                 fillPrice,
@@ -682,10 +707,11 @@ export class BacktestEngine implements IBacktestEngine {
                 if (isCancelOrderResult(closeSig)) {
                   await processCancelSignals([closeSig], bar.close, bar.closeTime);
                   const cid =
-                    (closeSig as any).clientOrderId || (closeSig as any).orderId;
+                    closeSig.clientOrderId ||
+                    ('orderId' in closeSig ? closeSig.orderId : undefined);
                   if (cid) {
                     const idx = fills.findIndex(
-                      (f: any) =>
+                      (f) =>
                         (f.type === 'entry' && f.entry.clientOrderId === cid) ||
                         (f.type !== 'entry' && f.exit.clientOrderId === cid),
                     );
@@ -782,11 +808,11 @@ export class BacktestEngine implements IBacktestEngine {
                 // returns true for cancel signals too (action !== 'hold'), so cancel
                 // signals would otherwise be routed to registerEntrySigs and silently dropped.
                 await processCancelSignals([sig], bar.close, bar.closeTime);
-                const cancelSig = sig as any;
-                const targetCid = cancelSig.clientOrderId || cancelSig.orderId;
+                const targetCid =
+                  sig.clientOrderId || ('orderId' in sig ? sig.orderId : undefined);
                 if (targetCid) {
                   const fIdx = fills.findIndex(
-                    (f: any) =>
+                    (f) =>
                       (f.type === 'entry' && f.entry.clientOrderId === targetCid) ||
                       (f.type !== 'entry' && f.exit.clientOrderId === targetCid),
                   );
@@ -1015,7 +1041,7 @@ export class BacktestEngine implements IBacktestEngine {
       const price = new Decimal(100);
       yield {
         symbol,
-        interval: timeframe as any,
+        interval: timeframe as KlineInterval,
         openTime: ts,
         closeTime: new Date(ts.getTime() + intervalMs),
         open: price,

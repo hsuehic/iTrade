@@ -1,5 +1,7 @@
 'use client';
 
+/* eslint-disable react/prop-types */
+
 import * as React from 'react';
 import { Cell, Label, Pie, PieChart, ResponsiveContainer, Sector } from 'recharts';
 import { PieSectorDataItem } from 'recharts/types/polar/Pie';

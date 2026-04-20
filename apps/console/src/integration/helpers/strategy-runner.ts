@@ -1,4 +1,4 @@
-import { TradingEngine, IStrategy } from '@itrade/core';
+import { IExchange, IStrategy, TradingEngine } from '@itrade/core';
 
 import { RiskManager } from '@itrade/risk-manager';
 import { PortfolioManager } from '@itrade/portfolio-manager';
@@ -61,7 +61,7 @@ export async function run(strategies: Map<string, IStrategy>) {
   logger.info('✅ EventBus listeners set up successfully');
 
   // Initialize exchanges dynamically based on database strategies
-  const exchanges = new Map<string, any>();
+  const exchanges = new Map<string, IExchange>();
   const USE_MAINNET_FOR_DATA = true; // Use mainnet for market data
 
   if (process.env.BINANCE_API_KEY && process.env.BINANCE_SECRET_KEY) {
@@ -196,13 +196,13 @@ export async function run(strategies: Map<string, IStrategy>) {
 
   process.on('SIGTERM', async () => {
     logger.info('Received SIGTERM signal, shutting down...');
-    process.emit('SIGINT' as any);
+    process.emit('SIGINT');
   });
 
   // Handle uncaught errors
   process.on('uncaughtException', (error) => {
     logger.error('Uncaught exception:', error);
-    process.emit('SIGINT' as any);
+    process.emit('SIGINT');
   });
 
   process.on('unhandledRejection', (reason) => {

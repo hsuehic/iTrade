@@ -276,7 +276,9 @@ export async function GET(
           close: k[4],
           volume: k[5],
         }))
-        .filter((k) => k.openTime <= endDate && k.openTime >= targetStart)
+        .filter(
+          (k: { openTime: Date }) => k.openTime <= endDate && k.openTime >= targetStart,
+        )
         .reverse();
       return { data: parsed };
     };

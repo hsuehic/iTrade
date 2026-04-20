@@ -5,14 +5,12 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { BacktestResult } from '@itrade/core';
+import { BacktestResult, BacktestTrade } from '@itrade/core';
 
 import { decimalTransformer } from '../utils/transformers';
 import type { DryRunSessionEntity } from './DryRunSession';
-import type { DryRunTradeEntity } from './DryRunTrade';
 
 @Entity('dry_run_results')
 export class DryRunResultEntity implements BacktestResult {
@@ -84,7 +82,7 @@ export class DryRunResultEntity implements BacktestResult {
   equity!: Array<{ timestamp: Date; value: Decimal }>;
 
   @Column({ type: 'jsonb', nullable: true })
-  trades!: any[];
+  trades!: BacktestTrade[];
 
   @CreateDateColumn()
   createdAt!: Date;

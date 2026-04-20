@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { getDataManager } from '@/lib/data-manager';
 import { getPaperTradingManager } from '@/lib/services/paper-trading-manager-instance';
-import { DryRunSessionRepository } from '@itrade/data-manager';
+import { DryRunOrderEntity, DryRunSessionRepository } from '@itrade/data-manager';
 import { OrderSide, OrderType, TradeMode } from '@itrade/core';
 
 export const dynamic = 'force-dynamic';
@@ -73,15 +73,20 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== (session.user as any).id) {
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId || existing.user?.id !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     // Get orders for this session
-    const orders = (await dataManager.getDryRunOrders?.(sessionId)) || [];
+    const orders = await (
+      dataManager as unknown as {
+        getDryRunOrders: (sessionId: number) => Promise<DryRunOrderEntity[]>;
+      }
+    ).getDryRunOrders(sessionId);
 
     return NextResponse.json({
-      orders: orders.map((order) => ({
+      orders: orders.map((order: DryRunOrderEntity) => ({
         ...order,
         quantity: order.quantity?.toString(),
         price: order.price?.toString(),
@@ -137,7 +142,8 @@ export async function POST(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== (session.user as any).id) {
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId || existing.user?.id !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -151,7 +157,7 @@ export async function POST(
     }
 
     console.info('[Paper Trading] Manual order submission', {
-      userId: (session.user as any).id,
+      userId,
       sessionId,
       symbol: parsed.data.symbol,
       side: parsed.data.side,

@@ -13,7 +13,6 @@ import {
   Position,
   StrategyPerformance,
   OrderStatistics,
-  createEmptyPerformance,
   Trade,
 } from '../types';
 

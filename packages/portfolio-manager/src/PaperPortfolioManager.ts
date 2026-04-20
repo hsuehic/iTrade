@@ -314,7 +314,7 @@ export class PaperPortfolioManager implements IPortfolioManager {
     await this.persistPositionUpdate(symbol);
   }
 
-  async syncPositions(positions: Position[], exchangeName?: string): Promise<void> {
+  async syncPositions(_positions: Position[], _exchangeName?: string): Promise<void> {
     // For paper trading, we don't sync with external positions
     // This is a no-op since we manage our own positions
   }
@@ -327,22 +327,22 @@ export class PaperPortfolioManager implements IPortfolioManager {
     return totalUnrealizedPnl;
   }
 
-  async getRealizedPnl(period?: { start: Date; end: Date }): Promise<Decimal> {
+  async getRealizedPnl(_period?: { start: Date; end: Date }): Promise<Decimal> {
     // TODO: Calculate from trade history
     return new Decimal(0);
   }
 
-  async calculateSharpeRatio(period: { start: Date; end: Date }): Promise<Decimal> {
+  async calculateSharpeRatio(_period: { start: Date; end: Date }): Promise<Decimal> {
     // TODO: Calculate from returns
     return new Decimal(0);
   }
 
-  calculateMaxDrawdown(period: { start: Date; end: Date }): Decimal {
+  calculateMaxDrawdown(_period: { start: Date; end: Date }): Decimal {
     // TODO: Calculate from equity curve
     return new Decimal(0);
   }
 
-  async getPerformanceMetrics(period: { start: Date; end: Date }): Promise<{
+  async getPerformanceMetrics(_period: { start: Date; end: Date }): Promise<{
     totalReturn: Decimal;
     annualizedReturn: Decimal;
     volatility: Decimal;
@@ -387,7 +387,7 @@ export class PaperPortfolioManager implements IPortfolioManager {
    */
   private async persistPositionUpdate(symbol: string): Promise<void> {
     try {
-      const position = this.paperPositions.get(symbol);
+      const _position = this.paperPositions.get(symbol);
 
       // Save position snapshot to dry run session
       // TODO: Add saveDryRunPosition method to IDataManager

@@ -12,6 +12,16 @@ import {
   BalanceMinEntity,
 } from '../entities/BalanceHistory';
 
+type BalanceHistoryEntity =
+  | BalanceMonthEntity
+  | BalanceWeekEntity
+  | BalanceDayEntity
+  | BalanceHourEntity
+  | Balance30MinEntity
+  | Balance15MinEntity
+  | Balance5MinEntity
+  | BalanceMinEntity;
+
 const MAX_ROWS_PER_ACCOUNT: Record<string, number> = {
   balance_min: 100,
   balance_5min: 100,
@@ -137,7 +147,7 @@ export class BalanceHistoryRepository {
    * across all history tables.
    */
   private async enforceRetention(accountInfoId: number): Promise<void> {
-    const tableRepoMap: [string, Repository<any>][] = [
+    const tableRepoMap: [string, Repository<BalanceHistoryEntity>][] = [
       ['balance_min', this.minRepo],
       ['balance_5min', this.min5Repo],
       ['balance_15min', this.min15Repo],
@@ -155,7 +165,7 @@ export class BalanceHistoryRepository {
   }
 
   private async trimTable(
-    repo: Repository<any>,
+    repo: Repository<BalanceHistoryEntity>,
     tableName: string,
     accountInfoId: number,
     maxRows: number,
@@ -218,7 +228,7 @@ export class BalanceHistoryRepository {
   }
 
   private async upsert(
-    repo: Repository<any>,
+    repo: Repository<BalanceHistoryEntity>,
     accountInfo: AccountInfoEntity,
     free: Decimal,
     locked: Decimal,
@@ -250,7 +260,7 @@ export class BalanceHistoryRepository {
             saving,
             total,
             period,
-          } as any,
+          } as Record<string, unknown>,
           ['account_info_id', 'period'],
         );
       } catch (innerError) {
@@ -299,8 +309,15 @@ export class BalanceHistoryRepository {
     endTime: Date,
     interval: 'minute' | '5min' | 'hour' | 'day' | 'week',
     userId?: string,
-  ): Promise<any[]> {
-    let repo: Repository<any>;
+  ): Promise<
+    Array<{
+      timestamp: Date;
+      balance: Decimal;
+      free: Decimal;
+      locked: Decimal;
+    }>
+  > {
+    let repo: Repository<BalanceHistoryEntity>;
 
     // Choose appropriate table based on interval
     switch (interval) {

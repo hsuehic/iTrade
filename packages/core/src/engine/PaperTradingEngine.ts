@@ -3,8 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 import {
   ITradingEngine,
-  IStrategy,
-  IExchange,
   IRiskManager,
   IPortfolioManager,
   ILogger,
@@ -17,10 +15,10 @@ import {
   OrderType,
   OrderStatus,
   TimeInForce,
-  Position,
-  Balance,
   Trade,
   SymbolInfo,
+  Ticker,
+  Kline,
 } from '../types';
 import { TradingEngine } from './TradingEngine';
 import { PrecisionUtils } from '../utils/PrecisionUtils';
@@ -50,6 +48,17 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
   private readonly paperTrades: Trade[] = [];
   private currentMarketPrices = new Map<string, Decimal>(); // symbol -> current price
 
+  private readonly paperPortfolio: {
+    updateBalanceForAsset: (asset: string, delta: Decimal) => Promise<void>;
+    updatePaperPosition?: (
+      symbol: string,
+      quantityChange: Decimal,
+      price: Decimal,
+    ) => Promise<void>;
+    getSummary?: () => Promise<unknown>;
+    reset?: () => Promise<void>;
+  };
+
   constructor(
     riskManager: IRiskManager,
     portfolioManager: IPortfolioManager, // Should be PaperPortfolioManager
@@ -60,6 +69,16 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
   ) {
     super(riskManager, portfolioManager, logger, userId, dataManager);
     this.paperConfig = paperConfig;
+    this.paperPortfolio = portfolioManager as unknown as {
+      updateBalanceForAsset: (asset: string, delta: Decimal) => Promise<void>;
+      updatePaperPosition?: (
+        symbol: string,
+        quantityChange: Decimal,
+        price: Decimal,
+      ) => Promise<void>;
+      getSummary?: () => Promise<unknown>;
+      reset?: () => Promise<void>;
+    };
 
     this.logger.info(
       `🎯 [PAPER_ENGINE] Initialized for session ${paperConfig.sessionId} with ${paperConfig.initialBalance.toString()} initial balance`,
@@ -78,8 +97,6 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
       quantity,
       type,
       price,
-      tradeMode,
-      leverage,
       clientOrderId: providedClientOrderId,
     } = params;
 
@@ -310,19 +327,20 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
     const totalCost = executionPrice.mul(quantity);
 
     // Cast to access PaperPortfolioManager specific methods
-    const paperPortfolio = this.portfolioManager as any;
-
     if (side === OrderSide.BUY) {
       // Buy: Decrease quote currency, increase base currency
-      await paperPortfolio.updateBalanceForAsset(quote, totalCost.add(commission).neg());
-      await paperPortfolio.updateBalanceForAsset(base, quantity);
+      await this.paperPortfolio.updateBalanceForAsset(
+        quote,
+        totalCost.add(commission).neg(),
+      );
+      await this.paperPortfolio.updateBalanceForAsset(base, quantity);
 
       // Update position
       await this.updatePaperPosition(symbol, quantity, executionPrice);
     } else {
       // Sell: Increase quote currency, decrease base currency
-      await paperPortfolio.updateBalanceForAsset(quote, totalCost.sub(commission));
-      await paperPortfolio.updateBalanceForAsset(base, quantity.neg());
+      await this.paperPortfolio.updateBalanceForAsset(quote, totalCost.sub(commission));
+      await this.paperPortfolio.updateBalanceForAsset(base, quantity.neg());
 
       // Update position
       await this.updatePaperPosition(symbol, quantity.neg(), executionPrice);
@@ -338,9 +356,8 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
     price: Decimal,
   ): Promise<void> {
     // Cast to access PaperPortfolioManager specific methods
-    const paperPortfolio = this.portfolioManager as any;
-    if (paperPortfolio.updatePaperPosition) {
-      await paperPortfolio.updatePaperPosition(symbol, quantityChange, price);
+    if (this.paperPortfolio.updatePaperPosition) {
+      await this.paperPortfolio.updatePaperPosition(symbol, quantityChange, price);
     }
   }
 
@@ -363,7 +380,7 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
    */
   public async onTicker(
     symbol: string,
-    ticker: any,
+    ticker: Ticker,
     exchangeName?: string,
   ): Promise<void> {
     // Update current price
@@ -375,7 +392,11 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
     await super.onTicker(symbol, ticker, exchangeName);
   }
 
-  public async onKline(symbol: string, kline: any, exchangeName?: string): Promise<void> {
+  public async onKline(
+    symbol: string,
+    kline: Kline,
+    exchangeName?: string,
+  ): Promise<void> {
     // Update current price from kline close
     if (kline.close) {
       this.updateMarketPrice(symbol, new Decimal(kline.close));
@@ -438,7 +459,7 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
   /**
    * Persist paper order to database
    */
-  private async persistPaperOrder(order: Order): Promise<void> {
+  private async persistPaperOrder(_order: Order): Promise<void> {
     try {
       // TODO: Add saveDryRunOrders method to IDataManager
       // if (this._dataManager?.saveDryRunOrders) {
@@ -468,7 +489,7 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
   /**
    * Persist paper trade to database
    */
-  private async persistPaperTrade(trade: Trade): Promise<void> {
+  private async persistPaperTrade(_trade: Trade): Promise<void> {
     try {
       // TODO: Add saveDryRunTrades method to IDataManager
       // if (this._dataManager?.saveDryRunTrades) {
@@ -500,10 +521,11 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
     totalTrades: number;
     totalVolume: Decimal;
     totalCommission: Decimal;
-    portfolio: any;
+    portfolio: unknown;
   }> {
-    const portfolio = this.portfolioManager as any;
-    const summary = portfolio.getSummary ? await portfolio.getSummary() : null;
+    const summary = this.paperPortfolio.getSummary
+      ? await this.paperPortfolio.getSummary()
+      : null;
 
     const totalVolume = this.paperTrades.reduce(
       (sum, trade) => sum.add(trade.price.mul(trade.quantity)),
@@ -533,9 +555,8 @@ export class PaperTradingEngine extends TradingEngine implements ITradingEngine 
     this.currentMarketPrices.clear();
 
     // Reset portfolio
-    const portfolio = this.portfolioManager as any;
-    if (portfolio.reset) {
-      await portfolio.reset();
+    if (this.paperPortfolio.reset) {
+      await this.paperPortfolio.reset();
     }
 
     this.logger.info(

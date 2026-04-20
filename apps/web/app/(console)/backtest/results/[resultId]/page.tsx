@@ -81,6 +81,8 @@ interface BacktestResult {
     id: number;
     name: string;
     type: string;
+    marketType?: string;
+    exchange?: string;
     symbol?: string | null;
     parameters?: Record<string, unknown>;
   };
@@ -597,7 +599,7 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
     };
   }, [klineData]);
 
-  const orderMarkers: OrderMarkerData[] = useMemo(() => {
+  const orderMarkers = useMemo<OrderMarkerData[]>(() => {
     const intervalMs = klineInterval ? getIntervalMs(klineInterval) : null;
     const rangeStart = klineTimeRange?.start ?? null;
     const clusterBuckets = new Map<number, OrderClusterData>();
@@ -609,7 +611,7 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
         const time = order.fillTime.getTime();
         return time >= klineTimeRange.start && time <= klineTimeRange.end;
       })
-      .map((order) => {
+      .map<OrderMarkerData | null>((order) => {
         const price = parseFloat(order.price);
         if (!Number.isFinite(price)) return null;
         const time = order.fillTime.getTime();
@@ -659,10 +661,11 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
       .filter((order): order is OrderMarkerData => order !== null);
 
     if (intervalMs && rangeStart !== null) {
-      const clustered = Array.from(clusterBuckets.values())
+      const clustered: OrderMarkerData[] = Array.from(clusterBuckets.values())
         .filter((cluster) => cluster.count > 0)
         .map((cluster) => {
-          const side = cluster.buyCount >= cluster.sellCount ? 'BUY' : 'SELL';
+          const side: 'BUY' | 'SELL' =
+            cluster.buyCount >= cluster.sellCount ? 'BUY' : 'SELL';
           return {
             time: cluster.time,
             price: cluster.avgPrice,
@@ -691,26 +694,37 @@ export default function BacktestResultDetailPage(props: { params: Params }) {
     return filtered.filter((_, index) => index % step === 0);
   }, [klineInterval, klineSymbol, klineTimeRange, orderFills, tradeById]);
 
-  const isOrderPayload = (payload: Record<string, unknown>): payload is OrderMarkerData =>
-    payload.isOrder === true;
+  const isOrderPayload = (payload: unknown): payload is OrderMarkerData =>
+    typeof payload === 'object' &&
+    payload !== null &&
+    'isOrder' in payload &&
+    (payload as { isOrder?: boolean }).isOrder === true;
 
-  const isKlinePayload = (payload: Record<string, unknown>): payload is KlineChartPoint =>
-    typeof payload.open === 'number' &&
-    typeof payload.high === 'number' &&
-    typeof payload.low === 'number' &&
-    typeof payload.close === 'number' &&
-    typeof payload.time === 'number';
+  const isKlinePayload = (payload: unknown): payload is KlineChartPoint =>
+    typeof payload === 'object' &&
+    payload !== null &&
+    'open' in payload &&
+    'high' in payload &&
+    'low' in payload &&
+    'close' in payload &&
+    'time' in payload &&
+    typeof (payload as KlineChartPoint).open === 'number' &&
+    typeof (payload as KlineChartPoint).high === 'number' &&
+    typeof (payload as KlineChartPoint).low === 'number' &&
+    typeof (payload as KlineChartPoint).close === 'number' &&
+    typeof (payload as KlineChartPoint).time === 'number';
 
-  const renderOrderMarker = ({
-    cx,
-    cy,
-    payload,
-  }: {
+  type RenderOrderMarkerProps = {
     cx?: number;
     cy?: number;
     payload?: OrderMarkerData;
-  }) => {
-    if (cx === undefined || cy === undefined || !payload) return null;
+  };
+
+  const renderOrderMarker = (props: unknown) => {
+    const { cx, cy, payload } = props as RenderOrderMarkerProps;
+    if (cx === undefined || cy === undefined || !payload) {
+      return <g />;
+    }
     const color = payload.side === 'BUY' ? '#22c55e' : '#ef4444';
     if (payload.cluster && payload.cluster.count > 1) {
       const radius = Math.min(10, 3 + payload.cluster.count * 0.5);

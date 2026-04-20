@@ -231,7 +231,9 @@ export async function POST(
               break;
             }
 
-            const raw: any[][] = await res.json();
+            const raw: Array<
+              [number, string, string, string, string, string, number, string, number]
+            > = await res.json();
             if (!Array.isArray(raw) || raw.length === 0) break;
 
             const batch: Kline[] = raw.map((k) => ({
@@ -344,7 +346,7 @@ export async function POST(
             k.openTime < end,
         );
       },
-    } as any as IDataManager;
+    } as unknown as IDataManager;
 
     const result = await engine.runBacktest(
       strategyFactory,

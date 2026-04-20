@@ -194,37 +194,6 @@ export default function DryRunPage() {
     });
   };
 
-  const updateSessionStatus = async (id: number, action: string) => {
-    if (isUpdatingId === id) return;
-
-    setIsUpdatingId(id);
-    try {
-      const response = await fetch(`/api/dry-run/${id}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || t('errors.updateStatus'));
-      }
-
-      const result = await response.json();
-      toast.success(
-        result.message ||
-          (action === 'stop'
-            ? t('messages.stopped')
-            : t('messages.statusUpdated', { action })),
-      );
-      fetchSessions();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('errors.updateStatus'));
-    } finally {
-      setIsUpdatingId(null);
-    }
-  };
-
   const startSession = async (id: number) => {
     if (isUpdatingId === id) return;
 

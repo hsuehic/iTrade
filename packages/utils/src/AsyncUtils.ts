@@ -4,7 +4,7 @@ export async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function retry<T, Args extends any[]>(
+export function retry<T, Args extends unknown[]>(
   fn: (...args: Args) => Promise<T>,
   options: {
     maxAttempts?: number;
@@ -81,7 +81,7 @@ export function retry<T, Args extends any[]>(
   };
 }
 
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number,
   immediate = false,
@@ -108,7 +108,7 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number,
 ): (...args: Parameters<T>) => void {
@@ -199,8 +199,8 @@ export async function sequential<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
 }
 
 export async function waterfall<T>(
-  tasks: ((prev: any) => Promise<T>)[],
-  initialValue: any = undefined,
+  tasks: ((prev: T) => Promise<T>)[],
+  initialValue: T,
 ): Promise<T> {
   let result = initialValue;
 
@@ -211,14 +211,14 @@ export async function waterfall<T>(
   return result;
 }
 
-export function memoize<T extends (...args: any[]) => Promise<any>>(
+export function memoize<T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   keyGenerator?: (...args: Parameters<T>) => string,
   ttl?: number,
 ): T {
-  const cache = new Map<string, { value: any; timestamp: number }>();
+  const cache = new Map<string, { value: unknown; timestamp: number }>();
 
-  const defaultKeyGenerator = (...args: any[]) => JSON.stringify(args);
+  const defaultKeyGenerator = (...args: unknown[]) => JSON.stringify(args);
   const getKey = keyGenerator || defaultKeyGenerator;
 
   return (async (...args: Parameters<T>) => {
@@ -321,8 +321,11 @@ export function deepClone<T>(obj: T): T {
 }
 
 // Deep merge utility
-export function deepMerge<T>(target: T, source: Partial<T>): T {
-  const result = deepClone(target);
+export function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = deepClone(target) as Record<string, unknown>;
 
   for (const key in source) {
     if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -339,9 +342,12 @@ export function deepMerge<T>(target: T, source: Partial<T>): T {
         !Array.isArray(result[key]) &&
         result[key] !== null
       ) {
-        result[key] = deepMerge(result[key], sourceValue as any);
+        result[key] = deepMerge(
+          result[key] as Record<string, unknown>,
+          sourceValue as Record<string, unknown>,
+        );
       } else {
-        result[key] = deepClone(sourceValue) as any;
+        result[key] = deepClone(sourceValue) as Record<string, unknown>[string];
       }
     }
   }
@@ -351,16 +357,16 @@ export function deepMerge<T>(target: T, source: Partial<T>): T {
 
 // Event emitter with async support
 export class AsyncEventEmitter {
-  private events = new Map<string, ((...args: any[]) => Promise<void>)[]>();
+  private events = new Map<string, ((...args: unknown[]) => Promise<void>)[]>();
 
-  on(event: string, listener: (...args: any[]) => Promise<void>): void {
+  on(event: string, listener: (...args: unknown[]) => Promise<void>): void {
     if (!this.events.has(event)) {
       this.events.set(event, []);
     }
     this.events.get(event)!.push(listener);
   }
 
-  off(event: string, listener: (...args: any[]) => Promise<void>): void {
+  off(event: string, listener: (...args: unknown[]) => Promise<void>): void {
     const listeners = this.events.get(event);
     if (listeners) {
       const index = listeners.indexOf(listener);
@@ -370,7 +376,7 @@ export class AsyncEventEmitter {
     }
   }
 
-  async emit(event: string, ...args: any[]): Promise<void> {
+  async emit(event: string, ...args: unknown[]): Promise<void> {
     const listeners = this.events.get(event);
     if (listeners) {
       await Promise.all(listeners.map((listener) => listener(...args)));

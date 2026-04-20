@@ -1,4 +1,4 @@
-import moment from 'moment';
+import moment, { type MomentInput } from 'moment';
 import 'moment-timezone';
 
 export class DateUtils {
@@ -62,8 +62,8 @@ export class DateUtils {
   }
 
   // Date Validation
-  static isValidDate(date: any): boolean {
-    return moment(date).isValid();
+  static isValidDate(date: unknown): boolean {
+    return moment(date as MomentInput).isValid();
   }
 
   static isBefore(date1: Date, date2: Date): boolean {

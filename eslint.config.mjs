@@ -70,6 +70,20 @@ export default defineConfig(
     },
   },
 
+  // Relax no-explicit-any in tests and exchange connectors
+  {
+    files: ['**/*.{test,spec}.{ts,tsx,js,jsx}', '**/__tests__/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
+    files: ['packages/exchange-connectors/**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+
   // React + Next.js 前端应用
   {
     files: ['apps/web/**/*.{ts,tsx,js,jsx}'],

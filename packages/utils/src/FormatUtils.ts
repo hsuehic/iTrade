@@ -271,7 +271,7 @@ export class FormatUtils {
   }
 
   // JSON Formatting
-  static formatJSON(obj: any, indent: number = 2): string {
+  static formatJSON(obj: unknown, indent: number = 2): string {
     try {
       return JSON.stringify(obj, this.decimalReplacer, indent);
     } catch {
@@ -279,7 +279,7 @@ export class FormatUtils {
     }
   }
 
-  static formatCompactJSON(obj: any): string {
+  static formatCompactJSON(obj: unknown): string {
     try {
       return JSON.stringify(obj, this.decimalReplacer);
     } catch {
@@ -287,7 +287,7 @@ export class FormatUtils {
     }
   }
 
-  private static decimalReplacer(_key: string, value: any): any {
+  private static decimalReplacer(_key: string, value: unknown): unknown {
     if (value instanceof Decimal) {
       return value.toString();
     }

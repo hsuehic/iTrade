@@ -8,7 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { BacktestResult } from '@itrade/core';
+import { BacktestResult, BacktestTrade } from '@itrade/core';
 
 import { decimalTransformer } from '../utils/transformers';
 import { StrategyEntity } from './Strategy';
@@ -99,6 +99,6 @@ export class BacktestResultEntity implements BacktestResult {
   // but are intentionally omitted from TypeORM decorators (@OneToMany)
   // to avoid cyclical dependencies that crash the Next.js production build.
   // They are populated manually when fetching detailed results.
-  trades!: any[];
-  equity!: any[];
+  trades!: BacktestTrade[];
+  equity!: Array<{ timestamp: Date; value: Decimal }>;
 }

@@ -43,8 +43,9 @@ export async function GET(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
+    const userId = (session.user as { id?: string } | undefined)?.id;
     // Verify ownership through the user relation
-    if (dryRunSession.user?.id !== (session.user as any).id) {
+    if (!userId || dryRunSession.user?.id !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -114,7 +115,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== (session.user as any).id) {
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId || existing.user?.id !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
@@ -161,7 +163,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
-    if (existing.user?.id !== (session.user as any).id) {
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId || existing.user?.id !== userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 

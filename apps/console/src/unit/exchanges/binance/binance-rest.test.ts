@@ -25,7 +25,7 @@ class BinanceRESTTest extends BaseRESTTest {
   protected async testMarketData(
     exchange: IExchange,
     spotSymbol: string,
-    futuresSymbol: string,
+    _futuresSymbol: string,
   ): Promise<void> {
     const binance = exchange as BinanceExchange;
 

@@ -20,10 +20,13 @@ export class PositionRepository {
   async save(position: Partial<PositionEntity>): Promise<PositionEntity> {
     // Use upsert to handle duplicate positions elegantly
     // If position with same user+exchange+symbol exists, update it; otherwise insert new one
-    await this.repository.upsert(position as any, {
-      conflictPaths: ['userId', 'exchange', 'symbol', 'side'],
-      skipUpdateIfNoValuesChanged: true,
-    });
+    await this.repository.upsert(
+      position as Parameters<Repository<PositionEntity>['upsert']>[0],
+      {
+        conflictPaths: ['userId', 'exchange', 'symbol', 'side'],
+        skipUpdateIfNoValuesChanged: true,
+      },
+    );
 
     // Fetch and return the upserted position
     return (await this.repository.findOne({
@@ -37,7 +40,10 @@ export class PositionRepository {
   }
 
   async update(id: number, updates: Partial<PositionEntity>): Promise<void> {
-    await this.repository.update({ id }, updates as any);
+    await this.repository.update(
+      { id },
+      updates as Parameters<Repository<PositionEntity>['update']>[1],
+    );
   }
 
   async findById(id: number): Promise<PositionEntity | null> {

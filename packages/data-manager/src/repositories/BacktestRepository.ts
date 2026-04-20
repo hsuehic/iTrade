@@ -73,7 +73,7 @@ export class BacktestRepository {
       symbols: data.symbols ?? [],
       timeframe: data.timeframe ?? '1h',
       user: { id: data.userId },
-    } as any);
+    } as Parameters<Repository<BacktestConfigEntity>['insert']>[0]);
 
     const insertedId = result.identifiers[0]?.id;
     if (!insertedId) {
@@ -176,7 +176,7 @@ export class BacktestRepository {
     const latestResults = new Map<number, BacktestResultEntity>();
 
     for (const res of allResults) {
-      const configId = (res as any).configId;
+      const configId = (res as { configId?: number }).configId;
       if (!configId) continue;
 
       // First one we see is the best (due to ORDER BY totalReturn DESC)
@@ -200,7 +200,12 @@ export class BacktestRepository {
   }
 
   async updateConfig(id: number, updates: Partial<BacktestConfigEntity>): Promise<void> {
-    await this.configRepository.update({ id }, updates as any);
+    const updateData: Partial<BacktestConfigEntity> = { ...updates };
+    delete updateData.results;
+    await this.configRepository.update(
+      { id },
+      updateData as Parameters<Repository<BacktestConfigEntity>['update']>[1],
+    );
   }
 
   async deleteConfig(id: number): Promise<void> {
@@ -233,7 +238,7 @@ export class BacktestRepository {
       profitFactor: new Decimal(data.profitFactor),
       totalTrades: data.totalTrades,
       avgTradeDuration: data.avgTradeDuration,
-    } as any);
+    } as Parameters<Repository<BacktestResultEntity>['insert']>[0]);
 
     const insertedId = result.identifiers[0]?.id;
     if (!insertedId) {

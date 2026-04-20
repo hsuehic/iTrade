@@ -1,7 +1,13 @@
 import 'reflect-metadata';
-import type { DataSource, Repository } from 'typeorm';
+import type { DataSource, Repository, EntitySchema } from 'typeorm';
 import { Decimal } from 'decimal.js';
-import { IDataManager, Kline, KlineInterval, StrategyPerformance } from '@itrade/core';
+import {
+  IDataManager,
+  Kline,
+  KlineInterval,
+  StrategyPerformance,
+  Trade,
+} from '@itrade/core';
 
 import { KlineEntity } from './entities/Kline';
 import { SymbolEntity } from './entities/Symbol';
@@ -10,7 +16,7 @@ import { TradeEntity } from './entities/Trade';
 import { OrderEntity } from './entities/Order';
 import { OrderFillEntity } from './entities/OrderFill';
 import { PositionEntity } from './entities/Position';
-import { StrategyEntity } from './entities/Strategy';
+import { StrategyEntity, StrategyStatus } from './entities/Strategy';
 import { StrategyPerformanceEntity } from './entities/StrategyPerformance';
 import { StrategyStateEntity } from './entities/StrategyState';
 import { AccountInfoEntity } from './entities/AccountInfo';
@@ -73,7 +79,7 @@ export interface TypeOrmDataManagerConfig {
     | ('query' | 'schema' | 'error' | 'warn' | 'info' | 'log' | 'migration')[];
   synchronize?: boolean;
   migrationsRun?: boolean;
-  extra?: any;
+  extra?: Record<string, unknown>;
   // Performance optimization options
   poolSize?: number;
   cache?:
@@ -81,7 +87,7 @@ export interface TypeOrmDataManagerConfig {
     | {
         type?: 'database' | 'redis';
         duration?: number;
-        options?: any;
+        options?: Record<string, unknown>;
       };
   maxQueryExecutionTime?: number;
 }
@@ -89,7 +95,7 @@ export interface TypeOrmDataManagerConfig {
 /// The difference isn’t the entities array itself — it’s ensuring the class is loaded before TypeORM processes relations.
 
 /// EntityMap guarantees that all referenced entities exist as classes, so string relations ('account', 'strategies') can resolve.
-export const EntityMap: Record<string, any> = {
+export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   user: User,
   account: Account,
   session: Session,
@@ -129,7 +135,9 @@ export const EntityMap: Record<string, any> = {
   push_notification_logs: PushNotificationLogEntity,
 };
 
-export function resolveEntities(entities: any[]) {
+export function resolveEntities(
+  entities: Array<string | Function | EntitySchema<unknown>>,
+): Array<Function | EntitySchema<unknown>> {
   const resolved = entities
     .map((e) => {
       if (typeof e === 'string') {
@@ -142,7 +150,7 @@ export function resolveEntities(entities: any[]) {
       }
       return e;
     })
-    .filter((e) => !!e);
+    .filter((e): e is Function | EntitySchema<unknown> => !!e);
 
   // Use a Set to ensure unique class constructors, then convert back to array
   return Array.from(new Set(resolved));
@@ -399,7 +407,7 @@ export class TypeOrmDataManager implements IDataManager {
     quoteAssetPrecision?: number;
     orderTypes?: string[];
     timeInForces?: string[];
-    filters?: any;
+    filters?: Record<string, unknown>;
   }): Promise<void> {
     this.ensureInitialized();
 
@@ -459,7 +467,7 @@ export class TypeOrmDataManager implements IDataManager {
     };
   }
 
-  async saveTrades(symbol: string, trades: any[]): Promise<void> {
+  async saveTrades(symbol: string, trades: Trade[]): Promise<void> {
     // TODO: Implement trades storage with TypeORM entity
     console.warn(
       `saveTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, trades: ${trades.length}`,
@@ -471,7 +479,7 @@ export class TypeOrmDataManager implements IDataManager {
     startTime: Date,
     endTime: Date,
     limit?: number,
-  ): Promise<any[]> {
+  ): Promise<Trade[]> {
     // TODO: Implement trades retrieval with TypeORM entity
     console.warn(
       `getTrades not yet implemented for TypeOrmDataManager. Symbol: ${symbol}, range: ${startTime} - ${endTime}, limit: ${limit}`,
@@ -532,9 +540,9 @@ export class TypeOrmDataManager implements IDataManager {
     }
 
     // Associate required user
-    (entity as any).user = {
+    entity.user = {
       id: session.userId,
-    } as unknown as import('./entities/User').User;
+    } as import('./entities/User').User;
 
     return await sessionRepo.save(entity);
   }
@@ -611,7 +619,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.ensureInitialized();
     const repo = this.dataSource.getRepository(DryRunOrderEntity);
     return await repo.find({
-      where: { session: { id: sessionId } as any },
+      where: { session: { id: sessionId } } as { session: { id: number } },
       order: { createdAt: 'DESC' },
     });
   }
@@ -846,7 +854,7 @@ export class TypeOrmDataManager implements IDataManager {
     status?: string;
     exchange?: string;
     symbol?: string;
-    parameters?: any;
+    parameters?: Record<string, unknown>;
     initialDataConfig?: Record<string, unknown>;
     subscription?: Record<string, unknown>;
     userId: string;
@@ -887,7 +895,7 @@ export class TypeOrmDataManager implements IDataManager {
       await manager
         .createQueryBuilder()
         .update(OrderEntity)
-        .set({ strategyId: () => 'NULL' } as any)
+        .set({ strategyId: () => 'NULL' } as { strategyId: () => string })
         .where('"strategyId" = :id', { id })
         .execute();
 
@@ -911,7 +919,7 @@ export class TypeOrmDataManager implements IDataManager {
 
   async updateStrategyStatus(
     id: number,
-    status: string,
+    status: StrategyStatus,
     errorMessage?: string,
   ): Promise<void> {
     this.ensureInitialized();

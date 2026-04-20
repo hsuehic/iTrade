@@ -52,14 +52,39 @@ import { SUPPORTED_EXCHANGES } from '@/lib/exchanges';
 import { authClient } from '@/lib/auth-client';
 import { useRouter } from 'next/navigation';
 
+type TradingPair = {
+  id: number;
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  exchange: string;
+  type: 'spot' | 'perpetual';
+  name?: string | null;
+  isActive: boolean;
+  baseAssetPrecision: number;
+  quoteAssetPrecision: number;
+};
+
+type TradingPairFormData = {
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  exchange: string;
+  type: TradingPair['type'];
+  name: string;
+  isActive: boolean;
+  baseAssetPrecision: number;
+  quoteAssetPrecision: number;
+};
+
 export default function AdminTradingPairsPage() {
   const router = useRouter();
   const { data: session, isPending: sessionPending } = authClient.useSession();
-  const [pairs, setPairs] = useState<any[]>([]);
+  const [pairs, setPairs] = useState<TradingPair[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [selectedPair, setSelectedPair] = useState<any | null>(null);
+  const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter states
@@ -68,7 +93,7 @@ export default function AdminTradingPairsPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<TradingPairFormData>({
     symbol: '',
     baseAsset: '',
     quoteAsset: '',
@@ -85,9 +110,10 @@ export default function AdminTradingPairsPage() {
     try {
       const response = await fetch('/api/admin/trading-pairs');
       if (!response.ok) throw new Error('Failed to fetch pairs');
-      const data = await response.json();
+      const data: TradingPair[] = await response.json();
       setPairs(data);
     } catch (error) {
+      console.error('Failed to load trading pairs:', error);
       toast.error('Failed to load trading pairs');
     } finally {
       setLoading(false);
@@ -109,7 +135,8 @@ export default function AdminTradingPairsPage() {
 
   useEffect(() => {
     if (!sessionPending) {
-      if (!session || (session.user as any).role !== 'admin') {
+      const role = (session?.user as { role?: string } | undefined)?.role;
+      if (!session || role !== 'admin') {
         router.push('/dashboard');
       } else {
         fetchPairs();
@@ -117,7 +144,7 @@ export default function AdminTradingPairsPage() {
     }
   }, [session, sessionPending, router, fetchPairs]);
 
-  const handleOpenDialog = (pair?: any) => {
+  const handleOpenDialog = (pair?: TradingPair) => {
     if (pair) {
       setIsEditing(true);
       setSelectedPair(pair);
@@ -154,9 +181,14 @@ export default function AdminTradingPairsPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const url = isEditing
-        ? `/api/admin/trading-pairs/${selectedPair.id}`
-        : '/api/admin/trading-pairs';
+      if (isEditing && !selectedPair) {
+        throw new Error('No trading pair selected for editing.');
+      }
+
+      const url =
+        isEditing && selectedPair
+          ? `/api/admin/trading-pairs/${selectedPair.id}`
+          : '/api/admin/trading-pairs';
       const method = isEditing ? 'PATCH' : 'POST';
 
       const response = await fetch(url, {
@@ -171,6 +203,7 @@ export default function AdminTradingPairsPage() {
       setIsDialogOpen(false);
       fetchPairs();
     } catch (error) {
+      console.error('Failed to save trading pair:', error);
       toast.error('Failed to save trading pair');
     } finally {
       setIsSubmitting(false);
@@ -188,11 +221,12 @@ export default function AdminTradingPairsPage() {
       toast.success('Trading pair deleted successfully');
       fetchPairs();
     } catch (error) {
+      console.error('Failed to delete trading pair:', error);
       toast.error('Failed to delete trading pair');
     }
   };
 
-  const handleToggleStatus = async (pair: any) => {
+  const handleToggleStatus = async (pair: TradingPair) => {
     try {
       const response = await fetch(`/api/admin/trading-pairs/${pair.id}`, {
         method: 'PATCH',
@@ -205,11 +239,13 @@ export default function AdminTradingPairsPage() {
       toast.success(`Pair ${!pair.isActive ? 'activated' : 'deactivated'} successfully`);
       fetchPairs();
     } catch (error) {
+      console.error('Failed to update trading pair status:', error);
       toast.error('Failed to update status');
     }
   };
 
-  if (sessionPending || (session && (session.user as any).role !== 'admin')) {
+  const role = (session?.user as { role?: string } | undefined)?.role;
+  if (sessionPending || (session && role !== 'admin')) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <IconLoader2 className="h-8 w-8 animate-spin text-primary" />
@@ -457,7 +493,9 @@ export default function AdminTradingPairsPage() {
               </Label>
               <Select
                 value={formData.type}
-                onValueChange={(value: any) => setFormData({ ...formData, type: value })}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, type: value as TradingPair['type'] })
+                }
               >
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Select type" />

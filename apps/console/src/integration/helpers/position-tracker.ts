@@ -128,7 +128,7 @@ export class PositionTracker {
 
     const enrichedUpdates = await this.enrichOkxPositionsIfNeeded(updates);
 
-    const toUpsert: any[] = [];
+    const toUpsert: Array<Partial<PositionEntity>> = [];
     const toDelete: DebouncedPositionUpdate[] = [];
 
     for (const update of enrichedUpdates) {
@@ -166,7 +166,7 @@ export class PositionTracker {
       // 2. Handle Upserts
       if (toUpsert.length > 0) {
         // Use the correct conflict target - TypeORM will map 'user' to 'userId' column
-        await repo.upsert(toUpsert, {
+        await repo.upsert(toUpsert as Parameters<typeof repo.upsert>[0], {
           conflictPaths: ['userId', 'exchange', 'symbol', 'side'],
           skipUpdateIfNoValuesChanged: true,
         });

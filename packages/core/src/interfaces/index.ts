@@ -328,7 +328,7 @@ export interface IDataManager {
   }>;
 
   // Dry Run
-  getDryRunOrders?(sessionId: number): Promise<any[]>;
+  getDryRunOrders?(sessionId: number): Promise<Order[]>;
 }
 
 // Backtesting Engine Interface

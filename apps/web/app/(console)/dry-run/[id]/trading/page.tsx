@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import {
@@ -126,7 +126,6 @@ export default function PaperTradingPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const t = useTranslations('dryRun');
   const locale = useLocale();
   const router = useRouter();
   const { id } = use(params);

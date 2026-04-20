@@ -18,6 +18,10 @@ export async function GET(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get('status') as DryRunStatus | null;
@@ -31,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const sessions = await dryRunRepo.findWithStats(
       {
-        userId: (session.user as any).id,
+        userId,
         status: status || undefined,
         strategyId: strategyId ? parseInt(strategyId, 10) : undefined,
       },
@@ -39,7 +43,7 @@ export async function GET(request: NextRequest) {
     );
 
     const total = await dryRunRepo.count({
-      userId: (session.user as any).id,
+      userId,
       status: status || undefined,
     });
 
@@ -85,6 +89,10 @@ export async function POST(request: NextRequest) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = (session.user as { id?: string } | undefined)?.id;
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const body = await request.json();
     const {
@@ -121,7 +129,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Verify ownership
-      if (strategy.userId !== (session.user as any).id) {
+      if (strategy.userId !== userId) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
       }
 
@@ -147,7 +155,7 @@ export async function POST(request: NextRequest) {
       commission: commission || 0.001, // Default 0.1%
       slippage: slippage || 0.0005, // Default 0.05%
       notes,
-      userId: (session.user as any).id,
+      userId,
     });
 
     return NextResponse.json({

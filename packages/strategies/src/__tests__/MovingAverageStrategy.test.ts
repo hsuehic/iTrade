@@ -141,11 +141,6 @@ function findBySignalType(result: StrategyAnalyzeResult, type: SignalType) {
   return result.filter((r: any) => r.metadata?.signalType === type) as any[];
 }
 
-function findCancels(result: StrategyAnalyzeResult) {
-  if (!Array.isArray(result)) return [];
-  return result.filter((r: any) => r.action === 'cancel') as any[];
-}
-
 async function triggerBullishCrossover(
   strategy: MovingAverageStrategy,
   baseClose: number = 50,

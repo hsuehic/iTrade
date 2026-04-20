@@ -2,11 +2,14 @@ import { Decimal } from 'decimal.js';
 import {
   IStrategy,
   Kline,
-  StrategyResult,
   isOrderResult,
   normalizeAnalyzeResult,
   OrderSide,
+  OrderStatus,
+  OrderType,
+  TimeInForce,
   BacktestResult,
+  BacktestTrade,
 } from '@itrade/core';
 import {
   DryRunOrderEntity,
@@ -66,11 +69,15 @@ export class DryRunEngine {
       { timestamp: params.startDate, value: balance },
     ];
 
-    const trades: any[] = [];
+    const trades: BacktestTrade[] = [];
+    const ordersToSave: Array<
+      Omit<DryRunOrderEntity, 'internalId' | 'session' | 'createdAt' | 'updatedAt'>
+    > = [];
+    const tradesToSave: Array<Omit<DryRunTradeEntity, 'id' | 'session'>> = [];
 
     // Iterate symbols and klines
     for (const symbol of params.symbols) {
-      const klines: Kline[] = await (this.dataManager as any).getKlines(
+      const klines: Kline[] = await this.dataManager.getKlines(
         symbol,
         params.timeframe,
         params.startDate,
@@ -90,27 +97,27 @@ export class DryRunEngine {
           const commission = price.mul(result.quantity).mul(params.commission);
 
           // Persist order
-          const order: Partial<DryRunOrderEntity> = {
+          const order: Omit<
+            DryRunOrderEntity,
+            'internalId' | 'session' | 'createdAt' | 'updatedAt'
+          > = {
             id: `${symbol}_${k.closeTime.getTime()}_${side}`, // Added side to uniqueness to avoid collision if mulitple orders
             clientOrderId: undefined,
-            session,
             symbol,
-            side: side as any,
-            type: 'MARKET' as any,
-            quantity: result.quantity as any,
-            price: price as any,
+            side,
+            type: OrderType.MARKET,
+            quantity: result.quantity,
+            price,
             stopPrice: undefined,
-            status: 'FILLED' as any,
-            timeInForce: 'GTC' as any,
+            status: OrderStatus.FILLED,
+            timeInForce: TimeInForce.GTC,
             timestamp: k.closeTime,
             updateTime: k.closeTime,
-            executedQuantity: result.quantity as any,
-            cummulativeQuoteQuantity: price.mul(result.quantity) as any,
+            executedQuantity: result.quantity,
+            cummulativeQuoteQuantity: price.mul(result.quantity),
             fills: [],
           };
-          await (this.dataManager as any).dataSource
-            .getRepository(DryRunOrderEntity)
-            .save(order as DryRunOrderEntity);
+          ordersToSave.push(order);
 
           // Update equity
           if (side === OrderSide.BUY) {
@@ -124,23 +131,20 @@ export class DryRunEngine {
           // Persist trade if sell (close)
           if (side === OrderSide.SELL) {
             const pnl = price.mul(result.quantity).sub(commission);
-            const trade: Partial<DryRunTradeEntity> = {
-              session,
+            const trade: BacktestTrade = {
               symbol,
-              side: OrderSide.SELL as any,
-              entryPrice: price as any,
-              exitPrice: price as any,
-              quantity: result.quantity as any,
+              side: OrderSide.SELL,
+              entryPrice: price,
+              exitPrice: price,
+              quantity: result.quantity,
               entryTime: k.openTime,
               exitTime: k.closeTime,
-              pnl: pnl as any,
-              commission: commission as any,
+              pnl,
+              commission,
               duration: 1,
             };
-            await (this.dataManager as any).dataSource
-              .getRepository(DryRunTradeEntity)
-              .save(trade as DryRunTradeEntity);
             trades.push(trade);
+            tradesToSave.push(trade);
           }
         }
 
@@ -159,14 +163,15 @@ export class DryRunEngine {
       profitFactor: new Decimal(0),
       totalTrades: trades.length,
       avgTradeDuration:
-        trades.reduce((sum, t) => sum + (t as any).duration || 0, 0) /
-        (trades.length || 1),
+        trades.reduce((sum, trade) => sum + trade.duration, 0) / (trades.length || 1),
       equity,
-      trades: trades as any,
+      trades,
     } as BacktestResult;
 
     // Persist result
-    await (this.dataManager as any).saveDryRunResult(session.id, result as any);
+    await this.dataManager.saveDryRunOrders(session.id, ordersToSave);
+    await this.dataManager.saveDryRunTrades(session.id, tradesToSave);
+    await this.dataManager.saveDryRunResult(session.id, result);
 
     await this.dataManager.close();
     return result;

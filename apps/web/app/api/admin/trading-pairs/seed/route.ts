@@ -10,8 +10,9 @@ import { COMMON_TRADING_PAIRS } from '@/lib/exchanges';
  */
 export async function POST(request: NextRequest) {
   const session = await getSession(request);
+  const role = (session?.user as { role?: string } | undefined)?.role;
 
-  if (!session || (session.user as any).role !== 'admin') {
+  if (!session || role !== 'admin') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

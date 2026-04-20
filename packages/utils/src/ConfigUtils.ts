@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 export class ConfigUtils {
-  private static configCache = new Map<string, any>();
+  private static configCache = new Map<string, unknown>();
 
   // Environment Variables
   static getEnv(key: string, defaultValue?: string): string | undefined {
@@ -56,9 +56,9 @@ export class ConfigUtils {
   }
 
   // JSON Configuration Files
-  static loadConfig<T = any>(configPath: string, useCache: boolean = true): T {
+  static loadConfig<T = unknown>(configPath: string, useCache: boolean = true): T {
     if (useCache && this.configCache.has(configPath)) {
-      return this.configCache.get(configPath);
+      return this.configCache.get(configPath) as T;
     }
 
     if (!existsSync(configPath)) {
@@ -67,7 +67,7 @@ export class ConfigUtils {
 
     try {
       const content = readFileSync(configPath, 'utf8');
-      const config = JSON.parse(content);
+      const config = JSON.parse(content) as T;
 
       if (useCache) {
         this.configCache.set(configPath, config);
@@ -79,7 +79,7 @@ export class ConfigUtils {
     }
   }
 
-  static saveConfig(configPath: string, config: any): void {
+  static saveConfig<T = unknown>(configPath: string, config: T): void {
     try {
       const content = JSON.stringify(config, null, 2);
       writeFileSync(configPath, content, 'utf8');
@@ -104,15 +104,21 @@ export class ConfigUtils {
   }
 
   // Configuration Merging
-  static mergeConfigs<T extends object>(...configs: Partial<T>[]): T {
+  static mergeConfigs<T extends Record<string, unknown>>(...configs: Partial<T>[]): T {
     const merged = {} as T;
     for (const config of configs) {
-      this.deepMerge(merged, config);
+      this.deepMerge(
+        merged as Record<string, unknown>,
+        config as Record<string, unknown>,
+      );
     }
     return merged;
   }
 
-  private static deepMerge(target: any, source: any): any {
+  private static deepMerge(
+    target: Record<string, unknown>,
+    source: Record<string, unknown>,
+  ): Record<string, unknown> {
     if (source === null || source === undefined) {
       return target;
     }
@@ -121,21 +127,25 @@ export class ConfigUtils {
       return source;
     }
 
-    const result = { ...target };
+    const result: Record<string, unknown> = { ...target };
 
     for (const key in source) {
       if (source.hasOwnProperty(key)) {
+        const sourceValue = source[key];
         if (
-          typeof source[key] === 'object' &&
-          source[key] !== null &&
-          !Array.isArray(source[key]) &&
+          typeof sourceValue === 'object' &&
+          sourceValue !== null &&
+          !Array.isArray(sourceValue) &&
           typeof result[key] === 'object' &&
           result[key] !== null &&
           !Array.isArray(result[key])
         ) {
-          result[key] = this.deepMerge(result[key], source[key]);
+          result[key] = this.deepMerge(
+            result[key] as Record<string, unknown>,
+            sourceValue as Record<string, unknown>,
+          );
         } else {
-          result[key] = source[key];
+          result[key] = sourceValue;
         }
       }
     }
@@ -145,8 +155,8 @@ export class ConfigUtils {
 
   // Configuration Validation
   static validateConfig<T extends object>(
-    config: any,
-    schema: Record<keyof T, (value: any) => boolean>,
+    config: Record<string, unknown>,
+    schema: Record<keyof T, (value: unknown) => boolean>,
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
@@ -165,28 +175,33 @@ export class ConfigUtils {
     return { valid: errors.length === 0, errors };
   }
 
-  static getRequiredConfig<T>(config: any, key: keyof T): T[keyof T] {
+  static getRequiredConfig<T>(config: Record<string, unknown>, key: keyof T): T[keyof T] {
     if (!config.hasOwnProperty(key)) {
       throw new Error(`Required configuration key not found: ${String(key)}`);
     }
-    return config[key];
+    return config[key as string] as T[keyof T];
   }
 
   static getOptionalConfig<T>(
-    config: any,
+    config: Record<string, unknown>,
     key: keyof T,
     defaultValue: T[keyof T],
   ): T[keyof T] {
-    return config.hasOwnProperty(key) ? config[key] : defaultValue;
+    return config.hasOwnProperty(key)
+      ? (config[key as string] as T[keyof T])
+      : defaultValue;
   }
 
   // Exchange Configuration Helpers
-  static loadExchangeConfig(exchangeName: string, configDir: string = './config'): any {
+  static loadExchangeConfig(
+    exchangeName: string,
+    configDir: string = './config',
+  ): Record<string, unknown> {
     const configPath = join(configDir, `${exchangeName.toLowerCase()}.json`);
-    return this.loadConfig(configPath);
+    return this.loadConfig<Record<string, unknown>>(configPath);
   }
 
-  static validateExchangeConfig(config: any): {
+  static validateExchangeConfig(config: Record<string, unknown>): {
     valid: boolean;
     errors: string[];
   } {
@@ -194,7 +209,8 @@ export class ConfigUtils {
     const errors: string[] = [];
 
     for (const key of requiredKeys) {
-      if (!config[key] || typeof config[key] !== 'string' || config[key].trim() === '') {
+      const value = config[key];
+      if (!value || typeof value !== 'string' || value.trim() === '') {
         errors.push(`Missing or invalid ${key}`);
       }
     }
@@ -205,19 +221,21 @@ export class ConfigUtils {
     }
 
     // Validate timeout
-    if (
-      config.hasOwnProperty('timeout') &&
-      (!Number.isInteger(config.timeout) || config.timeout <= 0)
-    ) {
-      errors.push('timeout must be a positive integer');
+    if (config.hasOwnProperty('timeout')) {
+      const timeout = config.timeout;
+      if (typeof timeout !== 'number' || !Number.isInteger(timeout) || timeout <= 0) {
+        errors.push('timeout must be a positive integer');
+      }
     }
 
     return { valid: errors.length === 0, errors };
   }
 
   // Trading Configuration Helpers
-  static loadTradingConfig(configPath: string = './config/trading.json'): any {
-    const config = this.loadConfig(configPath);
+  static loadTradingConfig(
+    configPath: string = './config/trading.json',
+  ): Record<string, unknown> {
+    const config = this.loadConfig<Record<string, unknown>>(configPath);
 
     // Apply environment variable overrides
     const envOverrides = {
@@ -235,24 +253,28 @@ export class ConfigUtils {
     return this.mergeConfigs(config, cleanOverrides);
   }
 
-  static validateTradingConfig(config: any): {
+  static validateTradingConfig(config: Record<string, unknown>): {
     valid: boolean;
     errors: string[];
   } {
     const schema = {
-      maxPositionSize: (value: any) =>
+      maxPositionSize: (value: unknown) =>
         typeof value === 'number' && value > 0 && value <= 100,
-      maxDailyLoss: (value: any) => typeof value === 'number' && value > 0 && value <= 50,
-      riskPerTrade: (value: any) => typeof value === 'number' && value > 0 && value <= 10,
-      enableTrading: (value: any) => typeof value === 'boolean',
-      symbols: (value: any) => Array.isArray(value) && value.length > 0,
+      maxDailyLoss: (value: unknown) =>
+        typeof value === 'number' && value > 0 && value <= 50,
+      riskPerTrade: (value: unknown) =>
+        typeof value === 'number' && value > 0 && value <= 10,
+      enableTrading: (value: unknown) => typeof value === 'boolean',
+      symbols: (value: unknown) => Array.isArray(value) && value.length > 0,
     };
 
     return this.validateConfig(config, schema);
   }
 
   // Database Configuration
-  static getDatabaseConfig(type: 'sqlite' | 'postgres' | 'mysql' = 'sqlite'): any {
+  static getDatabaseConfig(
+    type: 'sqlite' | 'postgres' | 'mysql' = 'sqlite',
+  ): Record<string, unknown> {
     switch (type) {
       case 'sqlite':
         return {
@@ -286,7 +308,7 @@ export class ConfigUtils {
   }
 
   // Logging Configuration
-  static getLoggingConfig(): any {
+  static getLoggingConfig(): Record<string, unknown> {
     return {
       level: this.getEnv('LOG_LEVEL', 'info'),
       logDir: this.getEnv('LOG_DIR', './logs'),
@@ -299,7 +321,7 @@ export class ConfigUtils {
   }
 
   // Application Configuration
-  static getAppConfig(): any {
+  static getAppConfig(): Record<string, unknown> {
     return {
       env: this.getEnv('NODE_ENV', 'development'),
       port: this.getEnvAsNumber('PORT', 3000),
@@ -322,7 +344,9 @@ export class ConfigUtils {
   }
 
   // Configuration Templates
-  static createDefaultConfig(type: 'exchange' | 'trading' | 'logging'): any {
+  static createDefaultConfig(
+    type: 'exchange' | 'trading' | 'logging',
+  ): Record<string, unknown> {
     switch (type) {
       case 'exchange':
         return {

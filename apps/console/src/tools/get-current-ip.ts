@@ -49,15 +49,16 @@ async function getCurrentIP() {
           console.log('\n⚠️  或者临时选择 "Unrestricted" 进行测试');
           return;
         }
-      } catch (error) {
+      } catch {
         console.log(`❌ ${service.name} 失败`);
       }
     }
 
     console.log('❌ 无法获取 IP 地址，请手动查询');
     console.log('💡 您可以访问 https://whatismyipaddress.com/ 查看您的 IP');
-  } catch (error: any) {
-    console.error('❌ 获取 IP 时出错:', error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ 获取 IP 时出错:', message);
   }
 }
 

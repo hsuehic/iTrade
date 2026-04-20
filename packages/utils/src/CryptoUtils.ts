@@ -95,7 +95,7 @@ export class CryptoUtils {
 
   // Generic query string signing
   static signQueryString(
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     secretKey: string,
     algorithm: 'sha256' | 'sha512' = 'sha256',
   ): string {
@@ -125,7 +125,7 @@ export class CryptoUtils {
   }
 
   // URL and Query String Utilities
-  static buildQueryString(params: Record<string, any>): string {
+  static buildQueryString(params: Record<string, unknown>): string {
     return Object.keys(params)
       .sort()
       .map((key) => {
@@ -233,7 +233,7 @@ export class CryptoUtils {
     method: string,
     hostname: string,
     path: string,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     secretKey: string,
   ): string {
     const sortedParams = Object.keys(params)
@@ -243,7 +243,7 @@ export class CryptoUtils {
           acc[key] = params[key];
           return acc;
         },
-        {} as Record<string, any>,
+        {} as Record<string, unknown>,
       );
 
     const queryString = this.buildQueryString(sortedParams);
@@ -299,7 +299,7 @@ export class CryptoUtils {
   }
 
   // URL Encoding for API calls
-  static encodeURIParameter(value: any): string {
+  static encodeURIParameter(value: unknown): string {
     if (value === null || value === undefined) {
       return '';
     }
@@ -310,7 +310,7 @@ export class CryptoUtils {
   static buildApiUrl(
     baseUrl: string,
     endpoint: string,
-    params?: Record<string, any>,
+    params?: Record<string, unknown>,
   ): string {
     const url = new URL(endpoint, baseUrl);
 
@@ -331,7 +331,7 @@ export class CryptoUtils {
   }
 
   // Data Serialization for Signing
-  static serializeForSigning(data: any): string {
+  static serializeForSigning(data: unknown): string {
     if (typeof data === 'string') {
       return data;
     }

@@ -178,7 +178,7 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
           url,
           token: _token,
         }: {
-          user: any;
+          user: { email: string };
           url: string;
           token: string;
         }) => {

@@ -40,7 +40,6 @@ import {
   DataUpdate,
   Kline,
   KlineInterval,
-  Order,
   OrderSide,
   OrderStatus,
   BacktestConfig,
