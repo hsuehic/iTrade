@@ -256,12 +256,19 @@
         "decreased": "Balance decreased"
       },
       "balanceChangeDescription": {
-        "noDataAll": "Daily comparison requires more historical data across exchanges",
-        "noDataSingle": "Insufficient data for daily comparison",
-        "lastDay": "Change in the last 24 hours",
-        "lastWeek": "Change in the last week",
-        "lastMonth": "Change in the last month",
-        "lastYear": "Change in the last year"
+        "noDataAll": "No closing balance found for the previous period across exchanges",
+        "noDataSingle": "No closing balance found for the previous period",
+        "lastDay": "Change since midnight today",
+        "lastWeek": "Change since this Monday",
+        "lastMonth": "Change since the 1st of this month",
+        "lastYear": "Change since Jan 1 this year"
+      },
+      "rollingChangeTitle": "Rolling Change",
+      "rollingChangeDescription": {
+        "lastDay": "Change over the last 24 hours",
+        "lastWeek": "Change over the last 7 days",
+        "lastMonth": "Change over the last 30 days",
+        "lastYear": "Change over the last 365 days"
       },
       "period": {
         "day": "Day",

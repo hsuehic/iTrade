@@ -27,38 +27,103 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const exchange = searchParams.get('exchange') || 'all';
     const period = searchParams.get('period') || '30d';
+    // 'calendar' (default): period starts at the calendar boundary (midnight, Monday, 1st, Jan 1).
+    // 'rolling':            period is a fixed-length window ending now.
+    const align = searchParams.get('align') || 'calendar';
 
     const dm = await getDataManager();
 
     // Calculate date range
-    const endTime = new Date(Date.now() + 5 * 60 * 1000); // Add 5 minutes buffer for clock skew
-    const startTime = new Date();
+    const now = new Date();
+    const endTime = new Date(now.getTime() + 5 * 60 * 1000); // 5 min buffer for clock skew
+    const startTime = new Date(now);
+    // baselineStartTime/baselineEndTime bracket the previous period (calendar mode only).
+    let baselineStartTime = new Date(now);
+    let baselineEndTime = new Date(now);
 
-    switch (period) {
-      case '1h':
-        startTime.setHours(startTime.getHours() - 1);
-        break;
-      case '1d':
-        startTime.setDate(startTime.getDate() - 1);
-        break;
-      case '7d':
-        startTime.setDate(startTime.getDate() - 7);
-        break;
-      case '1w':
-        startTime.setDate(startTime.getDate() - 7);
-        break;
-      case '1m':
-        startTime.setMonth(startTime.getMonth() - 1);
-        break;
-      case '1y':
-        startTime.setFullYear(startTime.getFullYear() - 1);
-        break;
-      case '90d':
-        startTime.setDate(startTime.getDate() - 90);
-        break;
-      case '30d':
-      default:
-        startTime.setDate(startTime.getDate() - 30);
+    if (align === 'rolling') {
+      // Rolling window: look back N units from now
+      switch (period) {
+        case '1h':
+          startTime.setHours(startTime.getHours() - 1);
+          break;
+        case '1d':
+          startTime.setDate(startTime.getDate() - 1);
+          break;
+        case '7d':
+        case '1w':
+          startTime.setDate(startTime.getDate() - 7);
+          break;
+        case '1m':
+          startTime.setMonth(startTime.getMonth() - 1);
+          break;
+        case '1y':
+          startTime.setFullYear(startTime.getFullYear() - 1);
+          break;
+        case '90d':
+          startTime.setDate(startTime.getDate() - 90);
+          break;
+        case '30d':
+        default:
+          startTime.setDate(startTime.getDate() - 30);
+      }
+    } else {
+      // Calendar-aligned periods
+      switch (period) {
+        case '1h':
+          // Start of current hour
+          startTime.setMinutes(0, 0, 0);
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setHours(baselineStartTime.getHours() - 1);
+          break;
+        case '1d':
+          // Start of today (midnight)
+          startTime.setHours(0, 0, 0, 0);
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setDate(baselineStartTime.getDate() - 1);
+          break;
+        case '7d':
+        case '1w': {
+          // Start of current ISO week (Monday 00:00)
+          startTime.setHours(0, 0, 0, 0);
+          const dow = startTime.getDay(); // 0 = Sun
+          startTime.setDate(startTime.getDate() + (dow === 0 ? -6 : 1 - dow));
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setDate(baselineStartTime.getDate() - 7);
+          break;
+        }
+        case '1m':
+          // Start of current month (1st at midnight)
+          startTime.setDate(1);
+          startTime.setHours(0, 0, 0, 0);
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setMonth(baselineStartTime.getMonth() - 1);
+          break;
+        case '1y':
+          // Start of current year (Jan 1 at midnight)
+          startTime.setMonth(0, 1);
+          startTime.setHours(0, 0, 0, 0);
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setFullYear(baselineStartTime.getFullYear() - 1);
+          break;
+        case '90d':
+          startTime.setDate(startTime.getDate() - 90);
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setDate(baselineStartTime.getDate() - 1);
+          break;
+        case '30d':
+        default:
+          startTime.setDate(startTime.getDate() - 30);
+          baselineEndTime = new Date(startTime);
+          baselineStartTime = new Date(startTime);
+          baselineStartTime.setDate(baselineStartTime.getDate() - 1);
+      }
     }
 
     // Fetch accounts (and their aggregate fields for position/unrealizedPnl)
@@ -122,6 +187,42 @@ export async function GET(request: Request) {
     // Get historical data for chart
     const exchangesToQuery =
       exchange === 'all' ? latestSnapshots.map((s) => s.exchange) : [exchange];
+
+    // Calendar mode: fetch the last non-zero balance at the end of the previous
+    // calendar period — this is the "opening balance" baseline.
+    // Rolling mode: baseline is computed later from the first non-zero point in chartDataArray.
+    let totalBaselineBalance = 0;
+    if (align !== 'rolling') {
+      const baselinePromises = exchangesToQuery.map(async (exchangeName) => ({
+        exchange: exchangeName,
+        history: await dm.getBalanceTimeSeries(
+          exchangeName,
+          baselineStartTime,
+          baselineEndTime,
+          'day',
+          userId,
+        ),
+      }));
+      const baselineData = await Promise.all(baselinePromises);
+
+      const baselineBalances: Record<string, number> = {};
+      baselineData.forEach(({ exchange: exName, history }) => {
+        let lastBalance = 0;
+        for (let i = history.length - 1; i >= 0; i--) {
+          const bal = parseFloat(history[i].balance.toString());
+          if (bal > 0) {
+            lastBalance = bal;
+            break;
+          }
+        }
+        baselineBalances[exName] = lastBalance;
+      });
+
+      totalBaselineBalance = exchangesToQuery.reduce(
+        (sum, ex) => sum + (baselineBalances[ex] ?? 0),
+        0,
+      );
+    }
 
     const historyPromises = exchangesToQuery.map(async (exchangeName) => {
       return {
@@ -194,30 +295,27 @@ export async function GET(request: Request) {
       });
     });
 
-    // Calculate percentage change vs. beginning of period
-    const calculateChange = (current: number, history: typeof chartDataArray) => {
-      if (history.length < 2) return 0;
-
-      let firstMeaningfulBalance = 0;
-      for (let i = 0; i < history.length; i++) {
-        const periodTotal = Object.values(history[i])
+    // Rolling mode: first non-zero aggregate snapshot within the window.
+    // Calendar mode: last non-zero snapshot at the end of the previous period (already computed).
+    let baselineBalance = totalBaselineBalance;
+    if (align === 'rolling') {
+      for (const point of chartDataArray) {
+        const total = Object.values(point)
           .filter((v) => typeof v === 'number' && !isNaN(v))
           .reduce((sum: number, v) => sum + (v as number), 0);
-        if (periodTotal > 0) {
-          firstMeaningfulBalance = periodTotal;
+        if (total > 0) {
+          baselineBalance = total;
           break;
         }
       }
+    }
 
-      if (firstMeaningfulBalance === 0) return 0;
-
-      const changePercent =
-        ((current - firstMeaningfulBalance) / firstMeaningfulBalance) * 100;
-      if (period === '1d' && Math.abs(changePercent) > 50) return 0;
-      return changePercent;
+    const calculateChange = (current: number, baseline: number): number => {
+      if (baseline === 0) return 0;
+      return ((current - baseline) / baseline) * 100;
     };
 
-    const balanceChange = calculateChange(totalBalance, chartDataArray);
+    const balanceChange = calculateChange(totalBalance, baselineBalance);
     const totalEquity = totalBalance + totalPositionValue;
 
     return NextResponse.json({

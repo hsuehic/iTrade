@@ -78,6 +78,10 @@ export function TradingDashboardCards({
     null,
   );
   const [balanceChangePeriod, setBalanceChangePeriod] = useState<string>('1m');
+  const [rollingChangeData, setRollingChangeData] = useState<BalanceChangeData | null>(
+    null,
+  );
+  const [rollingChangePeriod, setRollingChangePeriod] = useState<string>('1m');
 
   // Main account and strategy data
   useEffect(() => {
@@ -124,59 +128,68 @@ export function TradingDashboardCards({
     return () => clearInterval(interval);
   }, [selectedExchange, refreshInterval]);
 
-  // Balance change data (separate effect to avoid unnecessary calls)
+  // Calendar-aligned balance change
   useEffect(() => {
     const fetchBalanceChangeData = async () => {
       try {
-        const balanceChangeRes = await fetch(
-          `/api/analytics/account?period=${balanceChangePeriod}&exchange=${selectedExchange}`,
+        const res = await fetch(
+          `/api/analytics/account?period=${balanceChangePeriod}&align=calendar&exchange=${selectedExchange}`,
         );
-
-        if (balanceChangeRes.ok) {
-          const balanceChangeJson = await balanceChangeRes.json();
-          const summary = balanceChangeJson.summary;
-
-          // Calculate balance change value
-          const currentBalance = summary.totalBalance;
-          const changePercentage = summary.balanceChange;
-
-          // Debug log for 1d period issues
-          if (balanceChangePeriod === '1d' && changePercentage === 0) {
-            console.log('1d period data:', {
-              currentBalance,
-              changePercentage,
-              chartDataLength: balanceChangeJson.chartData?.length || 0,
-              selectedExchange,
-              summary: balanceChangeJson.summary,
-            });
-          }
-
-          // Correct formula: if current = 1000 and change = +5%,
-          // then previous = 1000/1.05 = 952.38, changeValue = 1000 - 952.38 = 47.62
+        if (res.ok) {
+          const json = await res.json();
+          const currentBalance = json.summary.totalBalance;
+          const changePercentage = json.summary.balanceChange;
           let changeValue = 0;
           if (changePercentage !== 0) {
             const previousBalance = currentBalance / (1 + changePercentage / 100);
             changeValue = currentBalance - previousBalance;
           }
-
           setBalanceChangeData({
             change: changePercentage,
-            changeValue: changeValue,
+            changeValue,
             period: balanceChangePeriod,
           });
         }
       } catch (error) {
-        console.error('Failed to fetch balance change data:', error);
+        console.error('Failed to fetch calendar balance change data:', error);
       }
     };
-
     fetchBalanceChangeData();
   }, [selectedExchange, balanceChangePeriod]);
 
+  // Rolling-window balance change
+  useEffect(() => {
+    const fetchRollingChangeData = async () => {
+      try {
+        const res = await fetch(
+          `/api/analytics/account?period=${rollingChangePeriod}&align=rolling&exchange=${selectedExchange}`,
+        );
+        if (res.ok) {
+          const json = await res.json();
+          const currentBalance = json.summary.totalBalance;
+          const changePercentage = json.summary.balanceChange;
+          let changeValue = 0;
+          if (changePercentage !== 0) {
+            const previousBalance = currentBalance / (1 + changePercentage / 100);
+            changeValue = currentBalance - previousBalance;
+          }
+          setRollingChangeData({
+            change: changePercentage,
+            changeValue,
+            period: rollingChangePeriod,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch rolling balance change data:', error);
+      }
+    };
+    fetchRollingChangeData();
+  }, [selectedExchange, rollingChangePeriod]);
+
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-        {[1, 2, 3, 4].map((i) => (
+      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-5">
+        {[1, 2, 3, 4, 5].map((i) => (
           <Card key={i} className="@container/card">
             <CardHeader>
               <Skeleton className="h-4 w-24" />
@@ -216,7 +229,7 @@ export function TradingDashboardCards({
   };
 
   return (
-    <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+    <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-5">
       {/* Balance Card */}
       <Card className="@container/card">
         <CardHeader className="space-y-2">
@@ -350,6 +363,92 @@ export function TradingDashboardCards({
                   : balanceChangePeriod === '1m'
                     ? t('balanceChangeDescription.lastMonth')
                     : t('balanceChangeDescription.lastYear')}
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* Rolling Change Card */}
+      <Card className="@container/card">
+        <CardHeader className="space-y-2">
+          <div className="flex items-center justify-between">
+            <CardDescription className="flex items-center gap-2">
+              <IconChartLine className="size-4" />
+              {t('rollingChangeTitle')}
+            </CardDescription>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  (rollingChangeData?.change || 0) >= 0
+                    ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
+                    : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
+                }
+              >
+                {(rollingChangeData?.change || 0) >= 0 ? (
+                  <IconTrendingUp className="size-3" />
+                ) : (
+                  <IconTrendingDown className="size-3" />
+                )}
+                {formatPercentage(rollingChangeData?.change || 0)}
+              </Badge>
+            </div>
+          </div>
+          <CardTitle
+            className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
+              (rollingChangeData?.changeValue || 0) >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            {formatCurrency(rollingChangeData?.changeValue || 0)}
+          </CardTitle>
+        </CardHeader>
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
+          <div className="line-clamp-1 flex gap-2 font-medium items-center">
+            {rollingChangeData?.change === 0 && rollingChangeData?.changeValue === 0
+              ? t('balanceChangeStatus.none')
+              : (rollingChangeData?.changeValue || 0) >= 0
+                ? t('balanceChangeStatus.increased')
+                : t('balanceChangeStatus.decreased')}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-6 px-2 text-xs bg-muted/50 hover:bg-muted border border-transparent hover:border-border data-[state=open]:border-primary data-[state=open]:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/5 focus-visible:outline-none focus-visible:ring-0 focus:outline-none focus:ring-0 transition-colors"
+                >
+                  <span className="mr-1">
+                    {periodLabels[rollingChangePeriod] || rollingChangePeriod}
+                  </span>
+                  <IconChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-20" align="start">
+                {[
+                  { value: '1d', label: periodLabels['1d'] },
+                  { value: '1w', label: periodLabels['1w'] },
+                  { value: '1m', label: periodLabels['1m'] },
+                  { value: '1y', label: periodLabels['1y'] },
+                ].map((period) => (
+                  <DropdownMenuItem
+                    key={period.value}
+                    onClick={() => setRollingChangePeriod(period.value)}
+                    className="cursor-pointer text-sm"
+                  >
+                    {period.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          <div className="text-muted-foreground">
+            {rollingChangePeriod === '1d'
+              ? t('rollingChangeDescription.lastDay')
+              : rollingChangePeriod === '1w'
+                ? t('rollingChangeDescription.lastWeek')
+                : rollingChangePeriod === '1m'
+                  ? t('rollingChangeDescription.lastMonth')
+                  : t('rollingChangeDescription.lastYear')}
           </div>
         </CardFooter>
       </Card>

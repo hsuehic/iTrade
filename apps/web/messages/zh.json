@@ -256,12 +256,19 @@
         "decreased": "余额减少"
       },
       "balanceChangeDescription": {
-        "noDataAll": "跨交易所日度对比需要更多历史数据",
-        "noDataSingle": "日度对比数据不足",
+        "noDataAll": "未找到上期末余额（跨交易所）",
+        "noDataSingle": "未找到上期末余额",
+        "lastDay": "今日变化（自零点起）",
+        "lastWeek": "本周变化（自周一起）",
+        "lastMonth": "本月变化（自1日起）",
+        "lastYear": "本年变化（自元旦起）"
+      },
+      "rollingChangeTitle": "滚动变化",
+      "rollingChangeDescription": {
         "lastDay": "过去 24 小时变化",
-        "lastWeek": "过去一周变化",
-        "lastMonth": "过去一月变化",
-        "lastYear": "过去一年变化"
+        "lastWeek": "过去 7 天变化",
+        "lastMonth": "过去 30 天变化",
+        "lastYear": "过去 365 天变化"
       },
       "period": {
         "day": "日",
