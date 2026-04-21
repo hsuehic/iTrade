@@ -341,7 +341,7 @@ export class BalanceHistoryRepository {
 
     const query = repo
       .createQueryBuilder('balance')
-      .leftJoin('balance.accountInfo', 'account')
+      .leftJoinAndSelect('balance.accountInfo', 'account')
       .where('LOWER(account.exchange::text) = LOWER(:exchange)', { exchange })
       .andWhere('balance.period >= :start', { start: startTime })
       .andWhere('balance.period <= :end', { end: endTime });
@@ -354,9 +354,10 @@ export class BalanceHistoryRepository {
 
     return results.map((r) => ({
       timestamp: r.period,
-      balance: r.total, // Return total balance
+      balance: r.total,
       free: r.free,
       locked: r.locked,
+      accountId: r.accountInfo.id,
     }));
   }
 }

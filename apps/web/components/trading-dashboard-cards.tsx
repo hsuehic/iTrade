@@ -137,13 +137,8 @@ export function TradingDashboardCards({
         );
         if (res.ok) {
           const json = await res.json();
-          const currentBalance = json.summary.totalBalance;
           const changePercentage = json.summary.balanceChange;
-          let changeValue = 0;
-          if (changePercentage !== 0) {
-            const previousBalance = currentBalance / (1 + changePercentage / 100);
-            changeValue = currentBalance - previousBalance;
-          }
+          const changeValue = json.summary.balanceChangeValue ?? 0;
           setBalanceChangeData({
             change: changePercentage,
             changeValue,
@@ -166,13 +161,8 @@ export function TradingDashboardCards({
         );
         if (res.ok) {
           const json = await res.json();
-          const currentBalance = json.summary.totalBalance;
           const changePercentage = json.summary.balanceChange;
-          let changeValue = 0;
-          if (changePercentage !== 0) {
-            const previousBalance = currentBalance / (1 + changePercentage / 100);
-            changeValue = currentBalance - previousBalance;
-          }
+          const changeValue = json.summary.balanceChangeValue ?? 0;
           setRollingChangeData({
             change: changePercentage,
             changeValue,
@@ -234,8 +224,8 @@ export function TradingDashboardCards({
       <Card className="@container/card">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
-            <CardDescription className="flex items-center gap-2">
-              <IconWallet className="size-4" />
+            <CardDescription className="flex items-center gap-2 whitespace-nowrap">
+              <IconWallet className="size-4 shrink-0" />
               {t('balanceTitle')}
             </CardDescription>
             <Badge
@@ -279,8 +269,8 @@ export function TradingDashboardCards({
       <Card className="@container/card">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
-            <CardDescription className="flex items-center gap-2">
-              <IconChartLine className="size-4" />
+            <CardDescription className="flex items-center gap-2 whitespace-nowrap">
+              <IconChartLine className="size-4 shrink-0" />
               {t('balanceChangeTitle')}
             </CardDescription>
             <div className="flex items-center gap-2">
@@ -313,11 +303,13 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium items-center">
-            {balanceChangeData?.change === 0 && balanceChangeData?.changeValue === 0
-              ? t('balanceChangeStatus.none')
-              : (balanceChangeData?.changeValue || 0) >= 0
-                ? t('balanceChangeStatus.increased')
-                : t('balanceChangeStatus.decreased')}
+            <span className="whitespace-nowrap">
+              {balanceChangeData?.change === 0 && balanceChangeData?.changeValue === 0
+                ? t('balanceChangeStatus.none')
+                : (balanceChangeData?.changeValue || 0) >= 0
+                  ? t('balanceChangeStatus.increased')
+                  : t('balanceChangeStatus.decreased')}
+            </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -371,8 +363,8 @@ export function TradingDashboardCards({
       <Card className="@container/card">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
-            <CardDescription className="flex items-center gap-2">
-              <IconChartLine className="size-4" />
+            <CardDescription className="flex items-center gap-2 whitespace-nowrap">
+              <IconChartLine className="size-4 shrink-0" />
               {t('rollingChangeTitle')}
             </CardDescription>
             <div className="flex items-center gap-2">
@@ -405,11 +397,13 @@ export function TradingDashboardCards({
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium items-center">
-            {rollingChangeData?.change === 0 && rollingChangeData?.changeValue === 0
-              ? t('balanceChangeStatus.none')
-              : (rollingChangeData?.changeValue || 0) >= 0
-                ? t('balanceChangeStatus.increased')
-                : t('balanceChangeStatus.decreased')}
+            <span className="whitespace-nowrap">
+              {rollingChangeData?.change === 0 && rollingChangeData?.changeValue === 0
+                ? t('balanceChangeStatus.none')
+                : (rollingChangeData?.changeValue || 0) >= 0
+                  ? t('balanceChangeStatus.increased')
+                  : t('balanceChangeStatus.decreased')}
+            </span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

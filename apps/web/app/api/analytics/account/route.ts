@@ -73,14 +73,14 @@ export async function GET(request: Request) {
         case '1h':
           // Start of current hour
           startTime.setMinutes(0, 0, 0);
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setHours(baselineStartTime.getHours() - 1);
           break;
         case '1d':
           // Start of today (midnight)
           startTime.setHours(0, 0, 0, 0);
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setDate(baselineStartTime.getDate() - 1);
           break;
@@ -90,7 +90,7 @@ export async function GET(request: Request) {
           startTime.setHours(0, 0, 0, 0);
           const dow = startTime.getDay(); // 0 = Sun
           startTime.setDate(startTime.getDate() + (dow === 0 ? -6 : 1 - dow));
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setDate(baselineStartTime.getDate() - 7);
           break;
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
           // Start of current month (1st at midnight)
           startTime.setDate(1);
           startTime.setHours(0, 0, 0, 0);
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setMonth(baselineStartTime.getMonth() - 1);
           break;
@@ -107,20 +107,20 @@ export async function GET(request: Request) {
           // Start of current year (Jan 1 at midnight)
           startTime.setMonth(0, 1);
           startTime.setHours(0, 0, 0, 0);
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setFullYear(baselineStartTime.getFullYear() - 1);
           break;
         case '90d':
           startTime.setDate(startTime.getDate() - 90);
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setDate(baselineStartTime.getDate() - 1);
           break;
         case '30d':
         default:
           startTime.setDate(startTime.getDate() - 30);
-          baselineEndTime = new Date(startTime);
+          baselineEndTime = new Date(startTime.getTime() - 1);
           baselineStartTime = new Date(startTime);
           baselineStartTime.setDate(baselineStartTime.getDate() - 1);
       }
@@ -199,7 +199,7 @@ export async function GET(request: Request) {
           exchangeName,
           baselineStartTime,
           baselineEndTime,
-          'day',
+          period === '1h' ? 'minute' : 'day',
           userId,
         ),
       }));
@@ -207,15 +207,22 @@ export async function GET(request: Request) {
 
       const baselineBalances: Record<string, number> = {};
       baselineData.forEach(({ exchange: exName, history }) => {
-        let lastBalance = 0;
+        // Sum the latest non-zero balance for EACH account belonging to this exchange
+        const latestPerAccount: Record<number, number> = {};
         for (let i = history.length - 1; i >= 0; i--) {
-          const bal = parseFloat(history[i].balance.toString());
-          if (bal > 0) {
-            lastBalance = bal;
-            break;
+          const point = history[i] as any;
+          const accountId = point.accountId;
+          if (accountId && latestPerAccount[accountId] === undefined) {
+            const bal = parseFloat(point.balance.toString());
+            if (bal > 0) {
+              latestPerAccount[accountId] = bal;
+            }
           }
         }
-        baselineBalances[exName] = lastBalance;
+        baselineBalances[exName] = Object.values(latestPerAccount).reduce(
+          (sum, b) => sum + b,
+          0,
+        );
       });
 
       totalBaselineBalance = exchangesToQuery.reduce(
@@ -270,7 +277,10 @@ export async function GET(request: Request) {
         if (!chartData[dateKey]) {
           chartData[dateKey] = { date: dateKey };
         }
-        chartData[dateKey][exName] = parseFloat(point.balance.toString());
+        // Use addition to aggregate multiple accounts on the same exchange
+        const currentVal = chartData[dateKey][exName];
+        const val = typeof currentVal === 'number' ? currentVal : 0;
+        chartData[dateKey][exName] = val + parseFloat(point.balance.toString());
       });
     });
 
@@ -295,10 +305,10 @@ export async function GET(request: Request) {
       });
     });
 
-    // Rolling mode: first non-zero aggregate snapshot within the window.
-    // Calendar mode: last non-zero snapshot at the end of the previous period (already computed).
+    // Rolling mode or fallback for Calendar mode (if previous period has no data):
+    // find the first non-zero aggregate snapshot within the current window.
     let baselineBalance = totalBaselineBalance;
-    if (align === 'rolling') {
+    if (align === 'rolling' || baselineBalance === 0) {
       for (const point of chartDataArray) {
         const total = Object.values(point)
           .filter((v) => typeof v === 'number' && !isNaN(v))
@@ -316,6 +326,7 @@ export async function GET(request: Request) {
     };
 
     const balanceChange = calculateChange(totalBalance, baselineBalance);
+    const balanceChangeValue = totalBalance - baselineBalance;
     const totalEquity = totalBalance + totalPositionValue;
 
     return NextResponse.json({
@@ -326,6 +337,7 @@ export async function GET(request: Request) {
         totalUnrealizedPnl,
         totalPositions,
         balanceChange,
+        balanceChangeValue,
         period,
       },
       exchanges: exchangeData,
