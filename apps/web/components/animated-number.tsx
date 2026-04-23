@@ -63,6 +63,7 @@ export function AnimatedCurrency({
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: currency,
+      currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     }).format(current);

@@ -96,6 +96,7 @@ export function BalanceOverviewCards({
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value);

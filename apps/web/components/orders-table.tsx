@@ -114,6 +114,7 @@ const formatCurrency = (value: string | number | undefined) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
+    currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: 2,
     maximumFractionDigits: 8,
   }).format(num);

@@ -170,6 +170,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(num);
@@ -181,6 +182,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
     const abs = new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(Math.abs(num));

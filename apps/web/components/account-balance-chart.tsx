@@ -171,6 +171,7 @@ export function AccountBalanceChart({
       return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'USD',
+        currencyDisplay: 'narrowSymbol',
         minimumFractionDigits: 1,
         maximumFractionDigits: 1,
         notation: 'compact',
@@ -180,6 +181,7 @@ export function AccountBalanceChart({
       return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'USD',
+        currencyDisplay: 'narrowSymbol',
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }).format(value);
@@ -187,6 +189,7 @@ export function AccountBalanceChart({
       return new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'USD',
+        currencyDisplay: 'narrowSymbol',
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }).format(value);
@@ -197,6 +200,7 @@ export function AccountBalanceChart({
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value);
