@@ -17,6 +17,7 @@ import {
   StrategyEntity,
 } from '@itrade/data-manager';
 import { BinanceExchange, OKXExchange } from '@itrade/exchange-connectors';
+import { createStrategyInstance, StrategyTypeKey } from '@itrade/strategies';
 
 export interface ManualOrderParams {
   symbol: string;
@@ -49,16 +50,53 @@ export class PaperTradingSessionManager {
   constructor(private readonly dataManager: TypeOrmDataManager) {}
 
   /**
+   * Restore all active sessions from database
+   */
+  async restoreActiveSessions(): Promise<void> {
+    try {
+      const sessionRepo = this.dataManager.dataSource.getRepository(DryRunSessionEntity);
+      const activeSessions = await sessionRepo.find({
+        where: { status: DryRunStatus.RUNNING },
+        relations: ['strategy'],
+      });
+
+      this.logger.info(
+        `🔄 [PAPER_SESSION] Found ${activeSessions.length} active sessions to restore`,
+      );
+
+      for (const session of activeSessions) {
+        if (!this.activeSessions.has(session.id)) {
+          try {
+            this.logger.info(`🔄 [PAPER_SESSION] Restoring session ${session.id}...`);
+            await this.startSession(session.id, session.userId, true);
+            this.logger.info(
+              `✅ [PAPER_SESSION] Successfully restored session ${session.id}`,
+            );
+          } catch (err) {
+            this.logger.error(`Failed to restore session ${session.id}`, err as Error);
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.error('Failed to query active sessions for restore', err as Error);
+    }
+  }
+
+  /**
    * Start a paper trading session
    */
-  async startSession(sessionId: number, userId: string): Promise<void> {
+  async startSession(
+    sessionId: number,
+    userId: string,
+    isRestore = false,
+  ): Promise<void> {
     if (this.activeSessions.has(sessionId)) {
       throw new Error(`Session ${sessionId} is already running`);
     }
 
     try {
       // Load session configuration from database
-      const session = await this.loadSession(sessionId, userId);
+      const session = await this.loadSession(sessionId, userId, isRestore);
 
       // Create paper portfolio manager
       const paperPortfolio = new PaperPortfolioManager(
@@ -133,19 +171,22 @@ export class PaperTradingSessionManager {
    */
   async stopSession(sessionId: number): Promise<void> {
     const engine = this.activeSessions.get(sessionId);
-    if (!engine) {
-      throw new Error(`Session ${sessionId} is not running`);
-    }
 
     try {
-      // Stop the engine
-      await engine.stop();
+      if (engine) {
+        // Stop the engine
+        await engine.stop();
 
-      // Calculate final results
-      await this.calculateAndSaveResults(sessionId, engine);
+        // Calculate final results
+        await this.calculateAndSaveResults(sessionId, engine);
 
-      // Remove from active sessions
-      this.activeSessions.delete(sessionId);
+        // Remove from active sessions
+        this.activeSessions.delete(sessionId);
+      } else {
+        this.logger.warn(
+          `Session ${sessionId} is not running in memory, updating status to completed anyway`,
+        );
+      }
 
       // Update session status to completed
       await this.updateSessionStatus(sessionId, DryRunStatus.COMPLETED);
@@ -281,6 +322,7 @@ export class PaperTradingSessionManager {
   private async loadSession(
     sessionId: number,
     userId: string,
+    isRestore = false,
   ): Promise<DryRunSessionEntity> {
     const sessionRepo = this.dataManager.dataSource.getRepository(DryRunSessionEntity);
     const session = await sessionRepo.findOne({
@@ -292,7 +334,7 @@ export class PaperTradingSessionManager {
       throw new Error(`Session ${sessionId} not found for user ${userId}`);
     }
 
-    if (session.status === DryRunStatus.RUNNING) {
+    if (!isRestore && session.status === DryRunStatus.RUNNING) {
       throw new Error(`Session ${sessionId} is already running`);
     }
 
@@ -339,18 +381,36 @@ export class PaperTradingSessionManager {
     session: DryRunSessionEntity,
   ): Promise<void> {
     try {
-      // TODO: Implement strategy loading based on strategy type
-      // This would require importing the actual strategy classes
-      // For now, we'll just log that a strategy should be loaded
+      if (!strategy.type) {
+        throw new Error(`Strategy type is missing for strategy ${strategy.name}`);
+      }
 
       this.logger.info(
-        `📋 [PAPER_SESSION] Strategy ${strategy.name} (${strategy.type}) should be loaded for session ${session.id}`,
+        `📋 [PAPER_SESSION] Loading strategy ${strategy.name} (${strategy.type}) for session ${session.id}`,
       );
 
-      // In a full implementation, you would:
-      // 1. Import the strategy class based on strategy.type
-      // 2. Create strategy instance with strategy.parameters
-      // 3. Add strategy to engine: await engine.addStrategy(strategy.name, strategyInstance)
+      const strategyConfig = {
+        parameters: strategy.parameters as any,
+        symbol: strategy.symbol || 'BTC/USDT',
+        exchange: strategy.exchange || 'binance',
+        subscription: strategy.subscription as any,
+        initialDataConfig: strategy.initialDataConfig as any,
+      };
+
+      const strategyInstance = createStrategyInstance(
+        strategy.type as StrategyTypeKey,
+        strategyConfig,
+        strategy.id,
+        strategy.name,
+      );
+
+      // Add strategy to the engine. We use a unique name that includes the session ID to avoid collisions
+      const engineStrategyName = `dryrun-${session.id}-${strategy.name}`;
+      await engine.addStrategy(engineStrategyName, strategyInstance);
+
+      this.logger.info(
+        `✅ [PAPER_SESSION] Strategy ${strategy.name} successfully loaded for session ${session.id}`,
+      );
     } catch (error) {
       this.logger.error(`Failed to load strategy ${strategy.name}`, error as Error);
       throw error;

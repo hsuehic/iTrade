@@ -1,25 +1,34 @@
 import { PaperTradingSessionManager } from './paper-trading-session-manager';
 import { getDataManager } from '@/lib/data-manager';
 
-let paperTradingManager: PaperTradingSessionManager | null = null;
+const globalForPaperTrading = globalThis as unknown as {
+  paperTradingManager: PaperTradingSessionManager | undefined;
+};
 
 /**
  * Get singleton instance of PaperTradingSessionManager
  */
 export async function getPaperTradingManager(): Promise<PaperTradingSessionManager> {
-  if (!paperTradingManager) {
+  if (!globalForPaperTrading.paperTradingManager) {
     const dataManager = await getDataManager();
-    paperTradingManager = new PaperTradingSessionManager(dataManager);
+    globalForPaperTrading.paperTradingManager = new PaperTradingSessionManager(
+      dataManager,
+    );
+
+    // Fire and forget restore process so it doesn't block initialization indefinitely
+    globalForPaperTrading.paperTradingManager
+      .restoreActiveSessions()
+      .catch(console.error);
   }
-  return paperTradingManager;
+  return globalForPaperTrading.paperTradingManager;
 }
 
 /**
  * Cleanup function for graceful shutdown
  */
 export async function cleanupPaperTradingManager(): Promise<void> {
-  if (paperTradingManager) {
-    await paperTradingManager.stopAllSessions();
-    paperTradingManager = null;
+  if (globalForPaperTrading.paperTradingManager) {
+    await globalForPaperTrading.paperTradingManager.stopAllSessions();
+    globalForPaperTrading.paperTradingManager = undefined;
   }
 }
