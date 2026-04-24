@@ -54,23 +54,8 @@ export class OrderTracker {
   }
 
   async start(): Promise<void> {
-    // 🆕 Load existing OPEN orders from database to prevent duplicate notifications on restart
-    // Only open orders need to be tracked - closed orders are cleaned up automatically
-    try {
-      const existingOrders = await this.dataManager.getOrders({
-        userId: this.userId,
-      });
-      for (const order of existingOrders) {
-        this.orderManager.addOrder(order);
-        // 🔥 Mark as already notified to prevent duplicate notifications
-        // when status updates arrive via WebSocket after app restart
-        this.notifiedOrderIds.add(order.id);
-      }
-    } catch {
-      return;
-    }
-
-    // Listen for order events
+    // Register EventBus listeners first — this must always happen regardless of
+    // whether the DB pre-load succeeds, so that real-time order events are never missed.
     this.eventBus.onOrderCreated((data: OrderEventData) => {
       this.handleOrderCreated(data.order);
     });
@@ -90,6 +75,24 @@ export class OrderTracker {
     this.eventBus.onOrderRejected((data: OrderEventData) => {
       this.handleOrderRejected(data.order);
     });
+
+    // 🆕 Load existing OPEN orders from database to prevent duplicate notifications on restart.
+    // Done AFTER listener registration so that events are never dropped even if this fails.
+    try {
+      const existingOrders = await this.dataManager.getOrders({
+        userId: this.userId,
+      });
+      for (const order of existingOrders) {
+        this.orderManager.addOrder(order);
+        // 🔥 Mark as already notified to prevent duplicate notifications
+        // when status updates arrive via WebSocket after app restart
+        this.notifiedOrderIds.add(order.id);
+      }
+    } catch {
+      // Non-fatal: listeners are already registered above; we just won't
+      // pre-populate notifiedOrderIds, which may cause a one-time re-notification
+      // of existing open orders after a restart.
+    }
   }
 
   async stop(): Promise<void> {

@@ -117,9 +117,11 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
           ? `wss://testnet.binance.vision/ws/${listenKey}`
           : `wss://stream.binance.com/ws/${listenKey}`;
       else
+        // Updated April 2026: Use new /private endpoint with explicit events subscription.
+        // The old wss://fstream.binance.com/ws/<listenKey> was decommissioned on 2026-04-23.
         return net === 'testnet'
           ? `wss://stream.binancefuture.com/ws/${listenKey}`
-          : `wss://fstream.binance.com/ws/${listenKey}`;
+          : `wss://fstream.binance.com/private/ws?listenKey=${listenKey}&events=ORDER_TRADE_UPDATE/ACCOUNT_UPDATE/MARGIN_CALL/ACCOUNT_CONFIG_UPDATE/STRATEGY_UPDATE/GRID_UPDATE/CONDITIONAL_ORDER_TRIGGER_REJECT/listenKeyExpired`;
     }
 
     if (isSpot)
@@ -128,10 +130,12 @@ export class BinanceWebsocket extends EventEmitter<BinanceWebsocketEventMap> {
         : // 'wss://itrade.ihsueh.com/spots/stream';
           'wss://stream.binance.com/stream';
     else
+      // Updated April 2026: Use new /market endpoint for regular market data streams.
+      // The old wss://fstream.binance.com/stream was decommissioned on 2026-04-23.
       return net === 'testnet'
         ? 'wss://stream.binancefuture.com/stream'
         : // 'wss://itrade.ihsueh.com/futures/stream';
-          'wss://fstream.binance.com/stream';
+          'wss://fstream.binance.com/market/stream';
   }
 
   /** ==================== User Data Stream ==================== */

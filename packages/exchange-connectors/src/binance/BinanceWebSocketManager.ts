@@ -3,8 +3,10 @@ import { EventEmitter } from 'events';
 
 /**
  * Binance market type
+ * 'futures-public' is used internally for high-frequency public streams (depth, bookTicker)
+ * that must route to wss://fstream.binance.com/public/stream (new April 2026 endpoints).
  */
-export type BinanceMarketType = 'spot' | 'futures';
+export type BinanceMarketType = 'spot' | 'futures' | 'futures-public';
 
 /**
  * WebSocket connection state
@@ -20,10 +22,13 @@ interface WebSocketState {
 
 /**
  * Configuration for Binance WebSocket Manager
+ * April 2026: futuresUrl should point to /market/stream, futuresPublicUrl to /public/stream.
  */
 export interface BinanceWebSocketConfig {
   spotUrl: string;
   futuresUrl: string;
+  /** New April 2026: for depth/@bookTicker streams that belong to the /public endpoint */
+  futuresPublicUrl?: string;
   maxReconnectAttempts?: number;
   reconnectDelay?: number;
   heartbeatInterval?: number;
@@ -35,7 +40,8 @@ export interface BinanceWebSocketConfig {
  */
 export class BinanceWebSocketManager extends EventEmitter {
   private connections = new Map<BinanceMarketType, WebSocketState>();
-  private config: Required<BinanceWebSocketConfig>;
+  private config: Required<Omit<BinanceWebSocketConfig, 'futuresPublicUrl'>> &
+    Pick<BinanceWebSocketConfig, 'futuresPublicUrl'>;
   private subscriptionIdCounter = 0;
   private symbolToMarketType = new Map<string, BinanceMarketType>();
 
@@ -50,10 +56,26 @@ export class BinanceWebSocketManager extends EventEmitter {
   }
 
   /**
+   * Determine whether a futures stream belongs to the /public endpoint.
+   * Depth and bookTicker are high-frequency and must use /public (April 2026 routing).
+   */
+  private isFuturesPublicStream(streamName: string): boolean {
+    // @depth, @depth5, @depth10, @depth20, @depth@100ms, @depth@500ms, @bookTicker, !bookTicker
+    return (
+      streamName.includes('@depth') ||
+      streamName.includes('@bookTicker') ||
+      streamName === '!bookTicker'
+    );
+  }
+
+  /**
    * Get WebSocket URL for market type
    */
   private getUrl(marketType: BinanceMarketType): string {
-    return marketType === 'spot' ? this.config.spotUrl : this.config.futuresUrl;
+    if (marketType === 'spot') return this.config.spotUrl;
+    if (marketType === 'futures-public')
+      return this.config.futuresPublicUrl ?? this.config.futuresUrl;
+    return this.config.futuresUrl;
   }
 
   /**
@@ -183,6 +205,8 @@ export class BinanceWebSocketManager extends EventEmitter {
 
   /**
    * Subscribe to a stream
+   * For futures, depth/@bookTicker streams are automatically routed to the
+   * 'futures-public' connection (/public/stream) per Binance's April 2026 endpoint split.
    */
   public async subscribe(
     marketType: BinanceMarketType,
@@ -190,6 +214,11 @@ export class BinanceWebSocketManager extends EventEmitter {
     symbol: string,
     streamName: string,
   ): Promise<void> {
+    // Route futures depth/bookTicker streams to the dedicated public endpoint
+    if (marketType === 'futures' && this.isFuturesPublicStream(streamName)) {
+      marketType = 'futures-public';
+    }
+
     // Ensure connection exists
     if (!this.connections.has(marketType)) {
       await this.createConnection(marketType);
@@ -227,6 +256,7 @@ export class BinanceWebSocketManager extends EventEmitter {
 
   /**
    * Unsubscribe from a stream
+   * Mirrors the same routing logic as subscribe().
    */
   public async unsubscribe(
     marketType: BinanceMarketType,
@@ -234,6 +264,10 @@ export class BinanceWebSocketManager extends EventEmitter {
     symbol: string,
     streamName: string,
   ): Promise<void> {
+    if (marketType === 'futures' && this.isFuturesPublicStream(streamName)) {
+      marketType = 'futures-public';
+    }
+
     const state = this.connections.get(marketType);
     if (!state) {
       return;

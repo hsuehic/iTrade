@@ -38,9 +38,13 @@ export class BinanceExchange extends BaseExchange {
   // USDT-M Futures API URLs (Perpetual)
   private static readonly FUTURES_MAINNET_URL = 'https://fapi.binance.com';
   private static readonly FUTURES_TESTNET_URL = 'https://testnet.binancefuture.com';
-  // WebSocket URLs for futures (reserved for future use)
-  private static readonly _FUTURES_MAINNET_WS = 'wss://fstream.binance.com/ws';
-  private static readonly _FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/ws';
+  // Updated April 2026: Binance decommissioned the legacy /ws endpoint on 2026-04-23.
+  // Market data now splits across /market (regular) and /public (high-frequency depth/ticker).
+  // User data moved to /private (see BinanceWebsocket.ts).
+  private static readonly _FUTURES_MAINNET_WS = 'wss://fstream.binance.com/market/stream';
+  private static readonly _FUTURES_MAINNET_WS_PUBLIC =
+    'wss://fstream.binance.com/public/stream';
+  private static readonly _FUTURES_TESTNET_WS = 'wss://stream.binancefuture.com/stream';
 
   private spotClient: AxiosInstance;
   private futuresClient: AxiosInstance;
@@ -69,11 +73,16 @@ export class BinanceExchange extends BaseExchange {
     this._isTestnet = isTestnet;
 
     // Initialize WebSocket Manager
+    // futuresUrl → /market/stream (regular: ticker, klines, trades)
+    // futuresPublicUrl → /public/stream (high-frequency: depth, bookTicker)
     this.wsManager = new BinanceWebSocketManager({
       spotUrl: wsBaseUrl,
       futuresUrl: isTestnet
         ? BinanceExchange._FUTURES_TESTNET_WS
         : BinanceExchange._FUTURES_MAINNET_WS,
+      futuresPublicUrl: isTestnet
+        ? undefined
+        : BinanceExchange._FUTURES_MAINNET_WS_PUBLIC,
     });
 
     // Setup WebSocket Manager event handlers
@@ -1022,8 +1031,15 @@ export class BinanceExchange extends BaseExchange {
       const symbol = message.s; // Normalized symbol from Binance
       const normalizedSymbol = symbol.toLowerCase();
 
+      // Normalize 'futures-public' → 'futures' for symbol map lookup:
+      // symbols are registered under 'futures' but depth/bookTicker events now arrive
+      // from the separate 'futures-public' connection (April 2026 endpoint split).
+      const lookupMarketType = marketType === 'futures-public' ? 'futures' : marketType;
+
       // Look up original symbol format using market type
-      const mapKey = marketType ? `${normalizedSymbol}_${marketType}` : normalizedSymbol;
+      const mapKey = lookupMarketType
+        ? `${normalizedSymbol}_${lookupMarketType}`
+        : normalizedSymbol;
       let originalSymbol = this.symbolMap.get(mapKey) || symbol.toUpperCase();
 
       switch (eventType) {
