@@ -10,14 +10,15 @@ This document details the market data subscription capabilities for each exchang
 
 ### Data Type Support
 
-| Data Type | Binance | OKX | Coinbase | Description |
-|-----------|---------|-----|----------|-------------|
-| **Ticker** | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | 24hr ticker data (price, volume, etc.) |
-| **Order Book** | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | Bid/ask levels and depths |
-| **Trades** | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | Recent trade executions |
-| **Klines** | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | OHLCV candlestick data |
+| Data Type      | Binance    | OKX        | Coinbase   | Description                            |
+| -------------- | ---------- | ---------- | ---------- | -------------------------------------- |
+| **Ticker**     | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | 24hr ticker data (price, volume, etc.) |
+| **Order Book** | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | Bid/ask levels and depths              |
+| **Trades**     | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | Recent trade executions                |
+| **Klines**     | ✅ WS/REST | ✅ WS/REST | ✅ WS/REST | OHLCV candlestick data                 |
 
 **Legend:**
+
 - **WS** = WebSocket (real-time streaming)
 - **REST** = REST API (polling-based)
 
@@ -30,9 +31,10 @@ This document details the market data subscription capabilities for each exchang
 **Supported by:** All exchanges (Binance, OKX, Coinbase)
 
 **Configuration:**
+
 ```typescript
 {
-  ticker: true  // Boolean or object
+  ticker: true; // Boolean or object
 }
 ```
 
@@ -40,6 +42,7 @@ This document details the market data subscription capabilities for each exchang
 **REST Polling:** Every 5 seconds (default)
 
 **Data Provided:**
+
 - Current price
 - 24hr high/low
 - 24hr volume
@@ -52,6 +55,7 @@ This document details the market data subscription capabilities for each exchang
 **Supported by:** All exchanges (Binance, OKX, Coinbase)
 
 **Configuration:**
+
 ```typescript
 {
   orderbook: {
@@ -63,18 +67,20 @@ This document details the market data subscription capabilities for each exchang
 
 #### Depth Options by Exchange
 
-| Exchange | WebSocket Depth Options | REST Depth Options | Default |
-|----------|-------------------------|-------------------|---------|
-| **Binance** | `5`, `10`, `20`, Full | Any (1-5000) | Full |
-| **OKX** | `5` (books5), `400` (books) | Any (1-400) | `5` |
-| **Coinbase** | ❌ Full only | Any (1-10000) | Full |
+| Exchange     | WebSocket Depth Options     | REST Depth Options | Default |
+| ------------ | --------------------------- | ------------------ | ------- |
+| **Binance**  | `5`, `10`, `20`, Full       | Any (1-5000)       | Full    |
+| **OKX**      | `5` (books5), `400` (books) | Any (1-400)        | `5`     |
+| **Coinbase** | ❌ Full only                | Any (1-10000)      | Full    |
 
 **Notes:**
+
 - **Binance WebSocket:** Supports `@depth5`, `@depth10`, `@depth20` streams
 - **OKX WebSocket:** Uses `books5` for depth ≤5, `books` for depth >5
 - **Coinbase WebSocket:** `level2` channel provides full order book (depth not configurable)
 
 **WebSocket Update Frequency:**
+
 - Binance: 100ms or 1000ms depending on stream
 - OKX: Real-time updates
 - Coinbase: Real-time updates
@@ -88,6 +94,7 @@ This document details the market data subscription capabilities for each exchang
 **Supported by:** All exchanges (Binance, OKX, Coinbase)
 
 **Configuration:**
+
 ```typescript
 {
   trades: {
@@ -101,6 +108,7 @@ This document details the market data subscription capabilities for each exchang
 **REST Polling:** Every 5 seconds, returns last N trades
 
 **Data Provided:**
+
 - Trade ID
 - Price
 - Quantity
@@ -115,6 +123,7 @@ This document details the market data subscription capabilities for each exchang
 **Supported by:** All exchanges (Binance, OKX, Coinbase)
 
 **Configuration:**
+
 ```typescript
 {
   klines: {
@@ -128,6 +137,7 @@ This document details the market data subscription capabilities for each exchang
 #### Interval Options
 
 **Standard Intervals (All Exchanges):**
+
 - `1m`, `3m`, `5m`, `15m`, `30m` - Minutes
 - `1h`, `2h`, `4h`, `6h`, `8h`, `12h` - Hours
 - `1d`, `3d` - Days
@@ -137,22 +147,23 @@ This document details the market data subscription capabilities for each exchang
 **Exchange-Specific Intervals:**
 
 | Interval | Binance | OKX | Coinbase |
-|----------|---------|-----|----------|
-| `1s` | ❌ | ❌ | ✅ |
-| `1m` | ✅ | ✅ | ✅ |
-| `3m` | ✅ | ✅ | ❌ |
-| `5m` | ✅ | ✅ | ✅ |
-| `15m` | ✅ | ✅ | ✅ |
-| `30m` | ✅ | ✅ | ✅ |
-| `1h` | ✅ | ✅ | ✅ |
-| `2h` | ✅ | ✅ | ✅ |
-| `4h` | ✅ | ✅ | ✅ |
-| `6h` | ✅ | ✅ | ✅ |
-| `12h` | ✅ | ✅ | ❌ |
-| `1d` | ✅ | ✅ | ✅ |
-| `1w` | ✅ | ✅ | ✅ |
+| -------- | ------- | --- | -------- |
+| `1s`     | ❌      | ❌  | ✅       |
+| `1m`     | ✅      | ✅  | ✅       |
+| `3m`     | ✅      | ✅  | ❌       |
+| `5m`     | ✅      | ✅  | ✅       |
+| `15m`    | ✅      | ✅  | ✅       |
+| `30m`    | ✅      | ✅  | ✅       |
+| `1h`     | ✅      | ✅  | ✅       |
+| `2h`     | ✅      | ✅  | ✅       |
+| `4h`     | ✅      | ✅  | ✅       |
+| `6h`     | ✅      | ✅  | ✅       |
+| `12h`    | ✅      | ✅  | ❌       |
+| `1d`     | ✅      | ✅  | ✅       |
+| `1w`     | ✅      | ✅  | ✅       |
 
 **Data Provided:**
+
 - Open price
 - High price
 - Low price
@@ -162,6 +173,7 @@ This document details the market data subscription capabilities for each exchang
 - **`isClosed`** - Whether the candlestick is complete (true) or still forming (false)
 
 **WebSocket Update Frequency:**
+
 - Updates on every trade within the interval
 - Final update when kline closes
 
@@ -174,16 +186,19 @@ This document details the market data subscription capabilities for each exchang
 ### WebSocket (Recommended)
 
 **Pros:**
+
 - ✅ Real-time updates
 - ✅ Lower latency
 - ✅ More efficient (no polling)
 - ✅ Push-based updates
 
 **Cons:**
+
 - ❌ Requires persistent connection
 - ❌ More complex error handling
 
 **Usage:**
+
 ```typescript
 {
   subscription: {
@@ -199,16 +214,19 @@ This document details the market data subscription capabilities for each exchang
 ### REST Polling
 
 **Pros:**
+
 - ✅ Simpler implementation
 - ✅ No connection management
 - ✅ Works behind restrictive firewalls
 
 **Cons:**
+
 - ❌ Higher latency
 - ❌ More API calls
 - ❌ Poll-based (not real-time)
 
 **Usage:**
+
 ```typescript
 {
   subscription: {
@@ -222,6 +240,7 @@ This document details the market data subscription capabilities for each exchang
 ```
 
 **Default Polling Intervals:**
+
 - Ticker: 5000ms (5 seconds)
 - Order Book: 500ms (0.5 seconds)
 - Trades: 5000ms (5 seconds)
@@ -236,16 +255,19 @@ This document details the market data subscription capabilities for each exchang
 #### WebSocket Streams
 
 **Base URL:**
-- Spot: `wss://stream.binance.com:9443/ws`
-- Futures: `wss://fstream.binance.com/ws`
+
+- Spot: `wss://stream.binance.com/stream`
+- Futures: `wss://fstream.binance.com/market/stream` (April 2026 refactor)
 
 **Stream Formats:**
+
 - Ticker: `<symbol>@ticker`
 - Order Book: `<symbol>@depth` (full), `<symbol>@depth5`, `<symbol>@depth10`, `<symbol>@depth20`
 - Trades: `<symbol>@trade`
 - Klines: `<symbol>@kline_<interval>`
 
 **Example:**
+
 ```
 btcusdt@ticker         # Ticker
 btcusdt@depth20        # Top 20 levels
@@ -256,12 +278,14 @@ btcusdt@kline_5m       # 5-minute klines
 #### REST API
 
 **Endpoints:**
+
 - Ticker: `GET /api/v3/ticker/24hr`
 - Order Book: `GET /api/v3/depth`
 - Trades: `GET /api/v3/trades`
 - Klines: `GET /api/v3/klines`
 
 **Rate Limits:**
+
 - Weight-based system
 - 1200 weight per minute
 - 6000 weight per 5 minutes
@@ -273,39 +297,47 @@ btcusdt@kline_5m       # 5-minute klines
 #### WebSocket Channels
 
 **Base URLs:**
+
 - Public: `wss://ws.okx.com/ws/v5/public`
 - Business: `wss://ws.okx.com/ws/v5/business`
 
 **Channels:**
+
 - Ticker: `tickers`
 - Order Book: `books5` (5 levels), `books` (400 levels)
 - Trades: `trades`
 - Klines: `candle1m`, `candle5m`, `candle1h`, etc.
 
 **Subscription Format:**
+
 ```json
 {
   "op": "subscribe",
-  "args": [{
-    "channel": "books5",
-    "instId": "BTC-USDT"
-  }]
+  "args": [
+    {
+      "channel": "books5",
+      "instId": "BTC-USDT"
+    }
+  ]
 }
 ```
 
 **Channel Selection Logic:**
+
 - `depth ≤ 5` → `books5` (most efficient)
 - `depth > 5` → `books` (up to 400 levels)
 
 #### REST API
 
 **Endpoints:**
+
 - Ticker: `GET /api/v5/market/ticker`
 - Order Book: `GET /api/v5/market/books`
 - Trades: `GET /api/v5/market/trades`
 - Klines: `GET /api/v5/market/candles`
 
 **Rate Limits:**
+
 - 20 requests per 2 seconds per IP
 - Public endpoints have higher limits
 
@@ -318,12 +350,14 @@ btcusdt@kline_5m       # 5-minute klines
 **Base URL:** `wss://advanced-trade-ws.coinbase.com`
 
 **Channels:**
+
 - Ticker: `ticker`
 - Order Book: `level2`
 - Trades: `market_trades`
 - Klines: `candles`
 
 **Subscription Format:**
+
 ```json
 {
   "type": "subscribe",
@@ -333,18 +367,21 @@ btcusdt@kline_5m       # 5-minute klines
 ```
 
 **Limitations:**
+
 - **Order Book depth is NOT configurable** - always returns full book
 - Level2 channel provides complete order book snapshots and incremental updates
 
 #### REST API
 
 **Endpoints:**
+
 - Ticker: `GET /api/v3/brokerage/products/{product_id}/ticker`
 - Order Book: `GET /api/v3/brokerage/products/{product_id}/book`
 - Trades: `GET /api/v3/brokerage/products/{product_id}/trades`
 - Klines: `GET /api/v3/brokerage/products/{product_id}/candles`
 
 **Rate Limits:**
+
 - 10 requests per second per endpoint
 - Requires authentication for ALL endpoints (including public data)
 
@@ -357,37 +394,37 @@ btcusdt@kline_5m       # 5-minute klines
 ```typescript
 // Subscribe to multiple data types across multiple exchanges
 const strategyConfig = {
-  name: "Multi-Exchange Strategy",
-  type: "custom",
-  exchange: "binance",  // Primary execution exchange
-  symbol: "BTC/USDT",
+  name: 'Multi-Exchange Strategy',
+  type: 'custom',
+  exchange: 'binance', // Primary execution exchange
+  symbol: 'BTC/USDT',
   parameters: {
     subscription: {
       // Subscription method
-      method: "websocket",  // or "rest"
-      
+      method: 'websocket', // or "rest"
+
       // Ticker data
       ticker: true,
-      
+
       // Order book with depth
       orderbook: {
         enabled: true,
-        depth: 20  // Top 20 levels
+        depth: 20, // Top 20 levels
       },
-      
+
       // Recent trades
       trades: true,
-      
+
       // Kline data
       klines: {
         enabled: true,
-        interval: "5m"  // 5-minute candles
+        interval: '5m', // 5-minute candles
       },
-      
+
       // Subscribe to multiple exchanges
-      exchange: ["binance", "okx", "coinbase"]
-    }
-  }
+      exchange: ['binance', 'okx', 'coinbase'],
+    },
+  },
 };
 ```
 
@@ -439,23 +476,26 @@ const strategyConfig = {
 
 1. **Multiple Exchange Subscriptions:** You can subscribe to the same symbol across multiple exchanges simultaneously
 2. **Method Selection:** Choose `websocket` for real-time data, `rest` for simplicity
-3. **Exchange Field:** 
+3. **Exchange Field:**
    - Primary `exchange` in strategy config: execution exchange
    - `exchange` in subscription config: data source exchanges (can be multiple)
 
 ### Exchange-Specific Limitations
 
 **Binance:**
+
 - ✅ Full WebSocket depth support (5, 10, 20 levels)
 - ✅ All intervals supported
 - ⚠️ Weight-based rate limiting
 
 **OKX:**
+
 - ✅ Efficient `books5` for small depths
 - ✅ All standard intervals
 - ⚠️ Klines use business endpoint (separate connection)
 
 **Coinbase:**
+
 - ❌ **WebSocket order book depth NOT configurable** (always full)
 - ✅ REST API supports depth parameter
 - ⚠️ **Authentication required for ALL REST endpoints** (including public data)
@@ -464,11 +504,13 @@ const strategyConfig = {
 ### Performance Considerations
 
 **WebSocket:**
+
 - Most efficient for high-frequency strategies
 - Single persistent connection per exchange
 - Automatic reconnection on disconnect
 
 **REST Polling:**
+
 - Suitable for lower-frequency strategies
 - Higher API usage (watch rate limits)
 - More predictable behavior
@@ -508,17 +550,20 @@ console.log(stats);
 ### Common Issues
 
 **Issue: No data received**
+
 - ✅ Check exchange connection status
 - ✅ Verify symbol format (use normalized format)
 - ✅ Check WebSocket connection state
 - ✅ Verify API credentials (for Coinbase)
 
 **Issue: High latency**
+
 - ✅ Switch from REST to WebSocket
 - ✅ Reduce order book depth
 - ✅ Increase polling intervals
 
 **Issue: Rate limit errors**
+
 - ✅ Switch to WebSocket (recommended)
 - ✅ Increase polling intervals
 - ✅ Reduce number of subscriptions
@@ -549,4 +594,3 @@ console.log(stats);
 
 Author: xiaoweihsueh@gmail.com  
 Date: October 24, 2025
-

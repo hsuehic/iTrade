@@ -301,8 +301,8 @@ export function TickerGrid() {
         (coin) => `${coin.symbol.toLowerCase()}@ticker`,
       ).join('/');
       const endpoints = [
-        `wss://fstream.binance.com/stream?streams=${streams}`,
-        `wss://itrade.ihsueh.com/ws/binance/perp/stream?streams=${streams}`,
+        `wss://fstream.binance.com/market/stream?streams=${streams}`,
+        `wss://itrade.ihsueh.com/ws/binance/perp/market/stream?streams=${streams}`,
       ];
       const ws = new WebSocket(endpoints[endpointIndex]);
       binanceWsRef.current = ws;

@@ -11,8 +11,8 @@ class BinanceWsService {
     'wss://itrade.ihsueh.com/ws/binance/spot/ws',
   ];
   static const List<String> _perpBaseUrls = [
-    'wss://fstream.binance.com/ws',
-    'wss://itrade.ihsueh.com/ws/binance/perp/ws',
+    'wss://fstream.binance.com/market/ws',
+    'wss://itrade.ihsueh.com/ws/binance/perp/market/ws',
   ];
   static const int _maxRetriesPerBase = 2;
 

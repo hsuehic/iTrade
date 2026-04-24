@@ -12,8 +12,8 @@ This document describes the implementation of real-time user data streams for ex
 
 **Endpoints**:
 
-- **Spot**: `wss://stream.binance.com:9443/stream` with listenKey
-- **Futures**: `wss://fstream.binance.com/stream` with listenKey
+- **Spot**: `wss://stream.binance.com/ws` with listenKey
+- **Futures**: `wss://fstream.binance.com/private/ws?listenKey=${listenKey}&events=...` (April 2026 refactor)
 
 **Subscription Process**:
 
@@ -92,18 +92,18 @@ All exchanges normalize incoming user data into standard formats:
 
 ```typescript
 interface Order {
-  id: string;                    // Exchange-specific order ID
-  clientOrderId?: string;        // Client-provided order ID
-  symbol: string;                // Trading pair (e.g., "BTC-USDT")
-  type: OrderType;              // MARKET, LIMIT, STOP_LOSS, etc.
-  side: OrderSide;              // BUY or SELL
-  status: OrderStatus;          // NEW, FILLED, CANCELED, etc.
-  price: Decimal;               // Order price
-  quantity: Decimal;            // Order quantity
-  executedQuantity: Decimal;    // Filled quantity
-  timestamp: Date;              // Order creation time
-  updateTime?: Date;            // Last update time
-  timeInForce?: TimeInForce;    // GTC, IOC, FOK
+  id: string; // Exchange-specific order ID
+  clientOrderId?: string; // Client-provided order ID
+  symbol: string; // Trading pair (e.g., "BTC-USDT")
+  type: OrderType; // MARKET, LIMIT, STOP_LOSS, etc.
+  side: OrderSide; // BUY or SELL
+  status: OrderStatus; // NEW, FILLED, CANCELED, etc.
+  price: Decimal; // Order price
+  quantity: Decimal; // Order quantity
+  executedQuantity: Decimal; // Filled quantity
+  timestamp: Date; // Order creation time
+  updateTime?: Date; // Last update time
+  timeInForce?: TimeInForce; // GTC, IOC, FOK
 }
 ```
 
@@ -111,11 +111,11 @@ interface Order {
 
 ```typescript
 interface Balance {
-  asset: string;                // Asset symbol (e.g., "BTC", "USDT")
-  free: Decimal;               // Available balance
-  locked: Decimal;             // Locked balance
-  total: Decimal;              // Total balance
-  timestamp: Date;             // Update timestamp
+  asset: string; // Asset symbol (e.g., "BTC", "USDT")
+  free: Decimal; // Available balance
+  locked: Decimal; // Locked balance
+  total: Decimal; // Total balance
+  timestamp: Date; // Update timestamp
 }
 ```
 
@@ -123,16 +123,16 @@ interface Balance {
 
 ```typescript
 interface Position {
-  symbol: string;               // Trading pair
-  side: 'LONG' | 'SHORT';      // Position side
-  size: Decimal;               // Position size
-  entryPrice: Decimal;         // Average entry price
-  markPrice?: Decimal;         // Current mark price
-  liquidationPrice?: Decimal;  // Liquidation price
-  unrealizedPnL?: Decimal;     // Unrealized profit/loss
-  leverage?: number;           // Position leverage
-  margin?: Decimal;            // Position margin
-  timestamp: Date;             // Update timestamp
+  symbol: string; // Trading pair
+  side: 'LONG' | 'SHORT'; // Position side
+  size: Decimal; // Position size
+  entryPrice: Decimal; // Average entry price
+  markPrice?: Decimal; // Current mark price
+  liquidationPrice?: Decimal; // Liquidation price
+  unrealizedPnL?: Decimal; // Unrealized profit/loss
+  leverage?: number; // Position leverage
+  margin?: Decimal; // Position margin
+  timestamp: Date; // Update timestamp
 }
 ```
 
