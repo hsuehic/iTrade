@@ -66,6 +66,10 @@ export function AccountBalanceChart({
       label: t('exchange.coinbase'),
       color: '#2463EB',
     },
+    total: {
+      label: t('total'),
+      color: 'hsl(var(--primary))',
+    },
   } satisfies ChartConfig;
 
   React.useEffect(() => {
@@ -89,7 +93,18 @@ export function AccountBalanceChart({
         );
         if (response.ok) {
           const data = await response.json();
-          const newChartData = data.chartData || [];
+          const rawChartData = data.chartData || [];
+
+          // Calculate total for each data point
+          const processData = (points: ChartDataPoint[]) =>
+            points.map((point) => {
+              const total = Object.keys(point)
+                .filter((key) => key !== 'date' && key !== 'total')
+                .reduce((sum, key) => sum + (Number(point[key]) || 0), 0);
+              return { ...point, total };
+            });
+
+          const newChartData = processData(rawChartData);
 
           if (isFirstLoad || timeRange !== '1h') {
             // For first load or non-realtime views, replace all data
@@ -136,9 +151,9 @@ export function AccountBalanceChart({
           }
 
           // Extract exchange names from data
-          if (data.chartData && data.chartData.length > 0) {
-            const exchangeNames = Object.keys(data.chartData[0]).filter(
-              (key) => key !== 'date',
+          if (rawChartData.length > 0) {
+            const exchangeNames = Object.keys(rawChartData[0]).filter(
+              (key) => key !== 'date' && key !== 'total',
             );
             setExchanges(exchangeNames);
           }
@@ -230,6 +245,7 @@ export function AccountBalanceChart({
     let max = -Infinity;
 
     chartData.forEach((item) => {
+      // Include individual exchanges
       exchanges.forEach((exchange) => {
         const value = item[exchange];
         if (typeof value === 'number' && !isNaN(value)) {
@@ -237,6 +253,11 @@ export function AccountBalanceChart({
           max = Math.max(max, value);
         }
       });
+      // Include total if it's being displayed (when multiple exchanges are present)
+      if (selectedExchange === 'all' && typeof item.total === 'number') {
+        min = Math.min(min, item.total);
+        max = Math.max(max, item.total);
+      }
     });
 
     if (min === Infinity || max === -Infinity) return ['auto', 'auto'];
@@ -456,46 +477,61 @@ export function AccountBalanceChart({
                         {formattedDate}
                       </div>
                       <div className="space-y-1">
-                        {payload.map((entry, index) => {
-                          const exchangeName = entry.dataKey as string;
-                          const displayName =
-                            chartConfig[exchangeName as keyof typeof chartConfig]
-                              ?.label ||
-                            exchangeName.charAt(0).toUpperCase() + exchangeName.slice(1);
+                        {payload
+                          .filter((entry) => entry.dataKey !== 'total')
+                          .map((entry, index) => {
+                            const exchangeName = entry.dataKey as string;
+                            const displayName =
+                              chartConfig[exchangeName as keyof typeof chartConfig]
+                                ?.label ||
+                              exchangeName.charAt(0).toUpperCase() +
+                                exchangeName.slice(1);
 
-                          return (
-                            <div
-                              key={index}
-                              className="flex items-center justify-between gap-3"
-                            >
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-3 h-3 rounded-sm"
-                                  style={{ backgroundColor: entry.color }}
-                                />
-                                <span className="text-sm font-medium text-muted-foreground">
-                                  {displayName}
+                            return (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between gap-3"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-3 h-3 rounded-sm"
+                                    style={{ backgroundColor: entry.color }}
+                                  />
+                                  <span className="text-sm font-medium text-muted-foreground">
+                                    {displayName}
+                                  </span>
+                                </div>
+                                <span className="text-sm font-semibold text-foreground tabular-nums">
+                                  {formatTooltipCurrency(entry.value as number)}
                                 </span>
                               </div>
-                              <span className="text-sm font-semibold text-foreground tabular-nums">
-                                {formatTooltipCurrency(entry.value as number)}
-                              </span>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                       {payload.length > 1 && (
                         <div className="mt-2 pt-2 border-t border-border/50">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-muted-foreground">
-                              {t('total')}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-sm"
+                                style={{ backgroundColor: chartConfig.total.color }}
+                              />
+                              <span className="text-sm font-medium text-muted-foreground">
+                                {t('total')}
+                              </span>
+                            </div>
                             <span className="text-sm font-semibold text-foreground tabular-nums">
                               {formatTooltipCurrency(
-                                payload.reduce(
-                                  (sum, entry) => sum + (entry.value as number),
-                                  0,
-                                ),
+                                (payload.find((p) => p.dataKey === 'total')
+                                  ?.value as number) ||
+                                  payload.reduce(
+                                    (sum, entry) =>
+                                      sum +
+                                      (entry.dataKey === 'total'
+                                        ? 0
+                                        : (entry.value as number)),
+                                    0,
+                                  ),
                               )}
                             </span>
                           </div>
@@ -540,6 +576,30 @@ export function AccountBalanceChart({
                   strokeLinejoin="round"
                 />
               ))}
+
+              {selectedExchange === 'all' && (
+                <Area
+                  key="total"
+                  type="monotone"
+                  dataKey="total"
+                  stroke={chartConfig.total.color}
+                  strokeWidth={2.5}
+                  fill="transparent"
+                  dot={false}
+                  activeDot={{
+                    r: 6,
+                    strokeWidth: 2,
+                    fill: chartConfig.total.color,
+                    stroke: 'hsl(var(--background))',
+                    filter: 'drop-shadow(0 4px 8px rgb(0 0 0 / 0.3))',
+                  }}
+                  animationDuration={timeRange === '1h' ? 1000 : 600}
+                  animationEasing="ease-out"
+                  connectNulls
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )}
 
               <ChartLegend content={<ChartLegendContent />} />
             </AreaChart>
