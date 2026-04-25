@@ -68,7 +68,7 @@ export function AccountBalanceChart({
     },
     total: {
       label: t('total'),
-      color: 'hsl(var(--primary))',
+      color: '#60a5fa',
     },
   } satisfies ChartConfig;
 
@@ -385,6 +385,18 @@ export function AccountBalanceChart({
                     />
                   </linearGradient>
                 ))}
+                <linearGradient id="gradient-total" x1="0" y1="0" x2="0" y2="1">
+                  <stop
+                    offset="0%"
+                    stopColor={chartConfig.total.color}
+                    stopOpacity={0.1}
+                  />
+                  <stop
+                    offset="100%"
+                    stopColor={chartConfig.total.color}
+                    stopOpacity={0}
+                  />
+                </linearGradient>
               </defs>
               <CartesianGrid
                 horizontal={true}
@@ -583,8 +595,9 @@ export function AccountBalanceChart({
                   type="monotone"
                   dataKey="total"
                   stroke={chartConfig.total.color}
-                  strokeWidth={2.5}
-                  fill="transparent"
+                  strokeWidth={1.5}
+                  fill="url(#gradient-total)"
+                  fillOpacity={1}
                   dot={false}
                   activeDot={{
                     r: 6,
