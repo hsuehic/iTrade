@@ -15,6 +15,7 @@ import '../utils/responsive_layout.dart';
 import '../widgets/quick_menu_drawer.dart';
 import '../widgets/portfolio/portfolio_summary_card.dart';
 import '../widgets/portfolio/asset_allocation_chart.dart';
+import '../widgets/portfolio/balance_history_chart.dart';
 import '../widgets/portfolio/positions_list.dart';
 import '../widgets/portfolio/assets_list.dart';
 import '../widgets/portfolio/exchange_filter.dart';
@@ -483,6 +484,21 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                     orderCount: _orderCount,
                     selectedBalancePeriod: _balanceChangePeriod,
                     onBalancePeriodSelected: _updateBalancePeriod,
+                    totalBalance: balanceBase,
+                  ),
+                ),
+
+                // Balance History Chart
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: 16,
+                      left: 16.w,
+                      right: 16.w,
+                    ),
+                    child: BalanceHistoryChart(
+                      selectedExchange: _selectedExchange,
+                    ),
                   ),
                 ),
 

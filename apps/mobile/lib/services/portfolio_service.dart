@@ -152,6 +152,37 @@ class PortfolioService {
     }
   }
 
+  /// Fetch balance chart data (time-series per exchange)
+  Future<List<Map<String, dynamic>>> fetchBalanceChartData({
+    String exchange = 'all',
+    String period = '30d',
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'period': period,
+        if (exchange != 'all') 'exchange': exchange.trim().toLowerCase(),
+      };
+
+      final response = await ApiClient.instance.getJson<Map<String, dynamic>>(
+        '/api/analytics/account',
+        queryParameters: queryParams,
+      );
+
+      if (response.data == null) {
+        throw Exception('No data received from account analytics API');
+      }
+
+      final raw = response.data!['chartData'];
+      if (raw is List) {
+        return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+      return [];
+    } catch (e, stackTrace) {
+      _logger.e('Failed to fetch balance chart data', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
   /// Fetch complete portfolio overview (assets, positions, PnL)
   Future<PortfolioOverview> fetchPortfolioOverview({
     String exchange = 'all',

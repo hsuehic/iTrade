@@ -97,6 +97,13 @@ Future<void> main() async {
   // Wrap entire initialization in try-catch to prevent white screen
   try {
     WidgetsFlutterBinding.ensureInitialized();
+    // Lock the app to portrait by default.  Specific screens (e.g. the
+    // fullscreen balance chart) temporarily unlock landscape and restore
+    // portrait when they close.
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     // Load environment variables based on build target.

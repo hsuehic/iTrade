@@ -1007,6 +1007,7 @@ class _OrderItem extends StatelessWidget {
                 children: [
                   Row(
                     children: [
+                      // BUY / SELL badge
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 8.w,
@@ -1037,10 +1038,11 @@ class _OrderItem extends StatelessWidget {
                           ],
                         ),
                       ),
-                      SizedBox(width: 8.w),
+                      SizedBox(width: 6.w),
+                      // Full trading pair symbol e.g. BTC/USDT
                       Expanded(
                         child: Text(
-                          order.displaySymbol,
+                          order.pairSymbol,
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 13.sp,
@@ -1049,7 +1051,33 @@ class _OrderItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      SizedBox(width: 6.w),
+                      SizedBox(width: 4.w),
+                      // SPOT / PERP badge
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 5.w,
+                          vertical: 2.w,
+                        ),
+                        decoration: BoxDecoration(
+                          color: order.isPerpetual
+                              ? const Color(0xFFF59E0B).withValues(alpha: 0.15)
+                              : const Color(0xFF3B82F6).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          order.contractTypeLabel,
+                          style: TextStyle(
+                            fontSize: 9.sp,
+                            fontWeight: FontWeight.w700,
+                            color: order.isPerpetual
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF3B82F6),
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      // Exchange label
                       Container(
                         padding: EdgeInsets.symmetric(
                           horizontal: 6.w,

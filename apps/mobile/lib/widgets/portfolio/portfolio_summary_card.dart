@@ -16,6 +16,9 @@ class PortfolioSummaryCard extends StatefulWidget {
   final int orderCount;
   final String selectedBalancePeriod;
   final ValueChanged<String> onBalancePeriodSelected;
+  /// Primary balance value sourced from account analytics (matches web dashboard).
+  /// Falls back to portfolio.summary.totalValue when null.
+  final double? totalBalance;
 
   const PortfolioSummaryCard({
     super.key,
@@ -26,6 +29,7 @@ class PortfolioSummaryCard extends StatefulWidget {
     required this.orderCount,
     required this.selectedBalancePeriod,
     required this.onBalancePeriodSelected,
+    this.totalBalance,
   });
 
   @override
@@ -62,7 +66,11 @@ class _PortfolioSummaryCardState extends State<PortfolioSummaryCard>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final totalValue = widget.portfolio.summary.totalValue;
+    // Use account analytics totalBalance (matches web dashboard) if available;
+    // fall back to computed asset sum when not yet loaded.
+    final totalValue = (widget.totalBalance != null && widget.totalBalance! > 0)
+        ? widget.totalBalance!
+        : widget.portfolio.summary.totalValue;
     final balanceChangePercent = widget.balanceChangePercent;
     final balanceChangeValue = widget.balanceChangeValue;
     final isProfitable = balanceChangeValue >= 0;

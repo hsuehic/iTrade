@@ -130,6 +130,37 @@ class Order {
     }
     return base;
   }
+
+  /// Returns the BASE/QUOTE pair without settlement suffix.
+  /// e.g. "BTC/USDT:USDT" → "BTC/USDT"
+  ///      "BTCUSDT"       → "BTC/USDT"
+  ///      "WLD-USDT-SWAP" → "WLD/USDT"
+  String get pairSymbol {
+    var s = symbol;
+
+    // Strip settlement: "BTC/USDT:USDT" → "BTC/USDT"
+    if (s.contains(':')) s = s.split(':')[0];
+
+    // Normalise dashes to slashes: "WLD-USDT" → "WLD/USDT"
+    // But only convert the first dash (keep format BASE/QUOTE)
+    if (!s.contains('/') && s.contains('-')) {
+      // e.g. "WLD-USDT-SWAP" — take first two segments
+      final parts = s.split('-');
+      s = '${parts[0]}/${parts[1]}';
+    }
+
+    // Already BASE/QUOTE
+    if (s.contains('/')) return s.toUpperCase();
+
+    // Legacy no-separator format e.g. "BTCUSDT"
+    final base = baseCurrency.toUpperCase();
+    final rest = s.toUpperCase().substring(base.length);
+    if (rest.isEmpty) return base;
+    return '$base/$rest';
+  }
+
+  /// Short type label: "SPOT" or "PERP"
+  String get contractTypeLabel => isPerpetual ? 'PERP' : 'SPOT';
 }
 
 /// Paginated result for orders

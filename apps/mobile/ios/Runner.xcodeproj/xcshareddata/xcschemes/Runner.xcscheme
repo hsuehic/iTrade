@@ -110,16 +110,6 @@
          </ExecutionAction>
       </PreActions>
       <PostActions>
-         <ExecutionAction
-            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.SendEmailAction">
-            <ActionContent
-               title = "Send Email"
-               emailRecipient = "xiaoweihsueh@gmail.com"
-               emailSubject = "test"
-               emailBody = "test"
-               attachLogToEmail = "NO">
-            </ActionContent>
-         </ExecutionAction>
       </PostActions>
    </ArchiveAction>
 </Scheme>
