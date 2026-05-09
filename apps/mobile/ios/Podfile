@@ -52,4 +52,37 @@ post_install do |installer|
       end
     end
   end
+
+  privacy_manifest_path = File.expand_path(
+    File.join(
+      __dir__,
+      '.symlinks',
+      'plugins',
+      'flutter_app_badger',
+      'ios',
+      'PrivacyInfo.xcprivacy'
+    )
+  )
+
+  if File.exist?(privacy_manifest_path)
+    File.write(
+      privacy_manifest_path,
+      <<~PLIST
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+        	<key>NSPrivacyAccessedAPITypes</key>
+        	<array/>
+        	<key>NSPrivacyCollectedDataTypes</key>
+        	<array/>
+        	<key>NSPrivacyTracking</key>
+        	<false/>
+        	<key>NSPrivacyTrackingDomains</key>
+        	<array/>
+        </dict>
+        </plist>
+      PLIST
+    )
+  end
 end
