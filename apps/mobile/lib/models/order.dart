@@ -118,8 +118,11 @@ class Order {
   /// Check if this is a perpetual/swap contract
   bool get isPerpetual {
     return symbol.contains('SWAP') ||
-        symbol.contains(':USDT') ||
-        symbol.contains('PERP');
+        symbol.contains('PERP') ||
+        // ccxt convention: BASE/QUOTE:SETTLE indicates a perpetual/futures
+        // contract regardless of settlement currency (e.g. BTC/USDT:USDT,
+        // BTC/USDC:USDC, BTC/USD:BTC …)
+        RegExp(r'[^/]+/[^:]+:.+').hasMatch(symbol);
   }
 
   /// Get a display-friendly symbol with contract type indicator
