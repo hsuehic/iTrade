@@ -20,6 +20,8 @@ flutter precache --ios
 
 cd "$MOBILE_APP_DIR"
 flutter pub get
+# Generate ios/Flutter/Generated.xcconfig for Xcode build settings.
+flutter build ios --config-only
 
 cd "$IOS_DIR"
 
