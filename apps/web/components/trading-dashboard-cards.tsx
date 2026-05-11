@@ -211,7 +211,9 @@ export function TradingDashboardCards({
   const totalEquity = accountData?.totalEquity || 0;
   const totalRealizedPnl = accountData?.totalRealizedPnl || 0;
   const totalUnrealizedPnl = accountData?.totalUnrealizedPnl || 0;
-  const balanceChange = accountData?.balanceChange || 0;
+  // Use the calendar MTD figure (same source as Card 2) so Card 1's badge is
+  // consistent and not a spurious near-duplicate of Card 3's rolling figure.
+  const balanceChange = balanceChangeData?.change ?? accountData?.balanceChange ?? 0;
   const periodLabels: Record<string, string> = {
     '1d': t('period.day'),
     '1w': t('period.week'),
