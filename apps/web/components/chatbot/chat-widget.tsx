@@ -123,7 +123,7 @@ export function ChatWidget() {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm leading-none">iTrade AI</p>
               <p className="text-[11px] text-primary-foreground/70 mt-0.5">
-                Powered by Gemini 2.5 Flash
+                Powered by Gemini 2.0 Flash
               </p>
             </div>
             <div className="flex items-center gap-1">

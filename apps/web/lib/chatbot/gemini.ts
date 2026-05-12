@@ -29,7 +29,7 @@ export function getGeminiClient(): GoogleGenerativeAI {
 export function createChatModel(tools: Tool[]): GenerativeModel {
   const genAI = getGeminiClient();
   return genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-2.0-flash',
     tools,
     systemInstruction: `You are iTrade AI, a smart trading assistant for the iTrade platform.
 You help users understand their trading performance, portfolio, strategies, orders, AND create new trading strategies.
