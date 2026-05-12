@@ -167,7 +167,9 @@ export function createChatbotTools(
     get_account_balance: tool({
       description:
         'Get the current account balance summary and historical balance data. ' +
-        'Use this for questions about current balance, earnings over a period, or balance changes. ' +
+        'Use this for questions about current balance, earnings over a period, balance changes, OR to chart balance history. ' +
+        'Returns: summary (totalBalance, balanceChange), exchanges[], and chartData[] ready for line chart rendering. ' +
+        'chartData format: [{date: "YYYY-MM-DD", binance: number, okx: number, ...}]. ' +
         'Supports periods: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y.',
       parameters: nullSafe({
         exchange: z
