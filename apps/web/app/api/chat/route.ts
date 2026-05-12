@@ -1,89 +1,152 @@
 /**
  * POST /api/chat
  *
- * Main chatbot API route. Handles multi-turn conversations with Gemini 2.5 Flash,
- * using function calling to fetch real trading data from iTrade APIs.
+ * Main chatbot API route — Vercel AI SDK + Zod.
+ *
+ * Uses generateText() with maxSteps to drive a multi-turn agentic loop:
+ * the model can call up to 5 rounds of tools before producing its final answer.
+ * No manual tool-dispatch loop needed — the AI SDK handles it automatically.
+ *
+ * Provider fallback: tries each configured provider in priority order
+ * (Groq → Cerebras → OpenRouter → Gemini). On rate-limit (429) or
+ * request-too-large (413) errors the next provider is tried automatically.
+ *
+ * Provider selection is done in lib/chatbot/provider.ts.
+ * Tool definitions (with Zod schemas) are in lib/chatbot/tools.ts.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { generateText, type CoreMessage, type LanguageModel } from 'ai';
 
 import { getSession } from '@/lib/auth';
-import { createChatModel } from '@/lib/chatbot/gemini';
-import { CHATBOT_TOOLS, executeToolCall, type ToolName } from '@/lib/chatbot/tools';
-import type { Content } from '@google/generative-ai';
+import { getAIModels, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
+import { createChatbotTools } from '@/lib/chatbot/tools';
 
-export const maxDuration = 120; // Allow up to 120s for multi-tool calls + retry backoff
+export const maxDuration = 120; // Allow up to 120s for multi-tool calls
 
-// ── Gemini retry helper ────────────────────────────────────────────────────
-const RETRY_ATTEMPTS = 3; // Total attempts (1 original + 2 retries)
-const MIN_RETRY_DELAY_MS = 8_000; // Always wait at least 8s between per-minute retries
-const MAX_RETRY_DELAY_MS = 30_000; // Cap per-minute retry wait at 30s
+// ── Error helpers ─────────────────────────────────────────────────────────────
 
-type QuotaViolation = { quotaId?: string };
-type ErrorDetail = {
-  '@type': string;
-  retryDelay?: string;
-  violations?: QuotaViolation[];
-};
-
-function getErrorDetails(error: unknown): ErrorDetail[] {
-  try {
-    return (error as { errorDetails?: ErrorDetail[] }).errorDetails ?? [];
-  } catch {
-    return [];
-  }
+/** Extract the HTTP status from an AI SDK error (handles AI_RetryError wrapper). */
+function extractStatus(error: unknown): number {
+  if (!error || typeof error !== 'object') return 0;
+  const e = error as Record<string, unknown>;
+  // AI_RetryError wraps the last attempt inside `.lastError`
+  const inner =
+    e.name === 'AI_RetryError' && e.lastError && typeof e.lastError === 'object'
+      ? (e.lastError as Record<string, unknown>)
+      : e;
+  return typeof inner.status === 'number'
+    ? inner.status
+    : typeof inner.statusCode === 'number'
+      ? inner.statusCode
+      : 0;
 }
 
-function extractRetryDelayMs(error: unknown): number | null {
-  const details = getErrorDetails(error);
-  const retryInfo = details.find((d) => d['@type']?.includes('RetryInfo'));
-  if (retryInfo?.retryDelay) {
-    return Math.ceil(parseFloat(retryInfo.retryDelay) * 1000);
+/** True if this error should trigger a fallback to the next provider. */
+function isRateLimitOrTooLarge(error: unknown): boolean {
+  const status = extractStatus(error);
+  // 429 = rate limited, 413 = request too large, 404 = model deprecated/unavailable
+  return status === 429 || status === 413 || status === 404;
+}
+
+/** Normalise provider errors to a plain { status, message } shape. */
+function parseProviderError(error: unknown): { status: number; message: string } | null {
+  const status = extractStatus(error);
+  if (!status) return null;
+
+  const e = error as Record<string, unknown>;
+  const inner =
+    e.name === 'AI_RetryError' && e.lastError && typeof e.lastError === 'object'
+      ? (e.lastError as Record<string, unknown>)
+      : e;
+  const raw = (inner.message as string | undefined) ?? '';
+
+  if (status === 429) {
+    if (raw.includes('PerDay') || raw.includes('daily') || raw.includes('quota')) {
+      return {
+        status: 429,
+        message:
+          "Today's AI quota has been reached across all providers. The chatbot will be available again shortly.",
+      };
+    }
+    return {
+      status: 429,
+      message:
+        'All AI providers are currently rate-limited. Please try again in a moment.',
+    };
   }
+
+  if (status === 413) {
+    return {
+      status: 429,
+      message:
+        'Your request is too large for the available AI providers. Try a shorter message or clear the conversation history.',
+    };
+  }
+
+  if (status === 503 || status === 529) {
+    return {
+      status: 503,
+      message: 'The AI service is temporarily unavailable. Please try again in a moment.',
+    };
+  }
+
   return null;
 }
 
-function isDailyQuotaExhausted(error: unknown): boolean {
-  const details = getErrorDetails(error);
-  const quotaFailure = details.find((d) => d['@type']?.includes('QuotaFailure'));
-  return quotaFailure?.violations?.some((v) => v.quotaId?.includes('PerDay')) ?? false;
-}
-
-function isGemini429(error: unknown): boolean {
+function isMissingKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const msg = ((error as Record<string, unknown>).message as string | undefined) ?? '';
   return (
-    error !== null &&
-    typeof error === 'object' &&
-    'status' in error &&
-    (error as { status: number }).status === 429
+    msg.includes('GROQ_API_KEY') ||
+    msg.includes('GEMINI_API_KEY') ||
+    msg.includes('OPENROUTER_API_KEY') ||
+    msg.includes('CEREBRAS_API_KEY') ||
+    msg.includes('No AI provider configured') ||
+    msg.includes('API key')
   );
 }
 
-async function sendWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+// ── Core generate helper ──────────────────────────────────────────────────────
+
+/**
+ * Run generateText with automatic provider fallback.
+ *
+ * Tries each model in `models` in order. If a model responds with HTTP 429
+ * (rate-limited) or 413 (request too large) the next provider is tried.
+ * Any other error is re-thrown immediately.
+ */
+async function generateWithFallback(
+  models: LanguageModel[],
+  params: Omit<Parameters<typeof generateText>[0], 'model'>,
+): Promise<string> {
   let lastError: unknown;
 
-  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     try {
-      return await fn();
+      const { text } = await generateText({ model, ...params });
+      return text;
     } catch (err) {
-      lastError = err;
-      if (!isGemini429(err)) throw err; // Non-rate-limit error — bail immediately
-
-      // Daily quota is exhausted — retrying won't help until midnight; fail fast
-      if (isDailyQuotaExhausted(err)) throw err;
-
-      if (attempt < RETRY_ATTEMPTS - 1) {
-        // Per-minute rate limit — honour the suggested delay, clamped to [MIN, MAX]
-        const suggestedMs = extractRetryDelayMs(err) ?? 0;
-        const delayMs = Math.min(
-          Math.max(suggestedMs, MIN_RETRY_DELAY_MS),
-          MAX_RETRY_DELAY_MS,
+      if (isRateLimitOrTooLarge(err)) {
+        const status = extractStatus(err);
+        const modelId =
+          typeof (model as unknown as Record<string, unknown>).modelId === 'string'
+            ? (model as unknown as Record<string, unknown>).modelId
+            : `provider ${i + 1}`;
+        console.warn(
+          `[Chat API] ${status} from ${modelId}${i + 1 < models.length ? ', trying next provider' : ', no more providers'}`,
         );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        lastError = err;
+        continue; // try next provider
       }
+      throw err; // non-rate-limit error — surface immediately
     }
   }
 
-  throw lastError;
+  throw lastError; // all providers exhausted
 }
+
+// ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
@@ -96,6 +159,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { message, history = [] } = body as {
       message: string;
+      // Client sends role as 'user' | 'model' (Gemini legacy format)
       history: Array<{ role: 'user' | 'model'; content: string }>;
     };
 
@@ -103,90 +167,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Build the base URL for internal API calls
+    // Build base URL for internal API calls
     const requestUrl = new URL(request.url);
     const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    const cookie = request.headers.get('cookie') ?? '';
 
-    // Pass session cookie for authenticated API calls
-    const cookie = request.headers.get('cookie') || '';
+    // Convert history: 'model' (Gemini) → 'assistant' (AI SDK standard)
+    const messages: CoreMessage[] = [
+      ...history.map((m) => ({
+        role: (m.role === 'model' ? 'assistant' : m.role) as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user' as const, content: message },
+    ];
 
-    // Create Gemini model with tools
-    const model = createChatModel(CHATBOT_TOOLS);
+    // Run the agentic loop with automatic provider fallback
+    const rawText = await generateWithFallback(getAIModels(), {
+      system: SYSTEM_PROMPT,
+      messages,
+      tools: createChatbotTools(baseUrl, cookie),
+      maxSteps: 5, // Allow up to 5 rounds of tool calls before final answer
+      maxTokens: 2000, // Cap output to reduce TPM footprint on free-tier models
+    });
 
-    // Convert chat history to Gemini Content format
-    const geminiHistory: Content[] = history.map((msg) => ({
-      role: msg.role,
-      parts: [{ text: msg.content }],
-    }));
-
-    // Start chat session
-    const chat = model.startChat({ history: geminiHistory });
-
-    // Send user message (with automatic retry on 429)
-    let response = await sendWithRetry(() => chat.sendMessage(message));
-    let candidate = response.response;
-
-    // Agentic loop: keep executing tool calls until Gemini stops asking for them
-    const MAX_TOOL_ROUNDS = 5;
-    let toolRound = 0;
-
-    while (toolRound < MAX_TOOL_ROUNDS) {
-      const functionCalls = candidate.functionCalls();
-      if (!functionCalls || functionCalls.length === 0) break;
-
-      toolRound++;
-
-      // Execute all requested tool calls in parallel
-      const toolResults = await Promise.allSettled(
-        functionCalls.map(async (fc) => {
-          try {
-            const result = await executeToolCall(
-              fc.name as ToolName,
-              (fc.args as Record<string, unknown>) || {},
-              baseUrl,
-              cookie,
-            );
-            return {
-              functionResponse: {
-                name: fc.name,
-                response: { result },
-              },
-            };
-          } catch (err) {
-            return {
-              functionResponse: {
-                name: fc.name,
-                response: {
-                  error: err instanceof Error ? err.message : 'Tool execution failed',
-                },
-              },
-            };
-          }
-        }),
-      );
-
-      // Feed tool results back to Gemini
-      const toolResponseParts = toolResults.map((r) =>
-        r.status === 'fulfilled'
-          ? r.value
-          : {
-              functionResponse: {
-                name: 'unknown',
-                response: { error: 'Tool call failed' },
-              },
-            },
-      );
-
-      response = await sendWithRetry(() => chat.sendMessage(toolResponseParts));
-      candidate = response.response;
-    }
-
-    // Extract the final text response
-    const rawText = candidate.text();
-
-    // Parse structured render hints from the response (```json ... ```)
+    // ── Parse structured render hints from the response (```json … ```) ──────
     let renderData: {
-      renderAs?: 'table' | 'chart' | 'text';
+      renderAs?: 'table' | 'chart' | 'text' | 'strategy_proposal';
       title?: string;
       data?: unknown;
       chartConfig?: unknown;
@@ -197,68 +203,34 @@ export async function POST(request: NextRequest) {
     if (jsonBlockMatch) {
       try {
         renderData = JSON.parse(jsonBlockMatch[1]);
-        // Remove the json block from the displayed text
         cleanText = rawText.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
       } catch {
-        // If parsing fails, just use the raw text
+        // Malformed JSON block — fall through and show raw text
       }
     }
 
-    return NextResponse.json({
-      message: cleanText,
-      renderData,
-    });
+    return NextResponse.json({ message: cleanText, renderData });
   } catch (error) {
     console.error('[Chat API] Error:', error);
 
-    // ── Gemini API key not configured ─────────────────────────────────────
-    if (error instanceof Error && error.message.includes('GEMINI_API_KEY')) {
+    // Missing API key
+    if (isMissingKeyError(error)) {
       return NextResponse.json(
         {
           error:
-            'AI service not configured. Please add GEMINI_API_KEY to your environment. Get a free key at https://aistudio.google.com/apikey',
+            'AI service not configured. Set GROQ_API_KEY for the best free-tier experience. ' +
+            'Get a free key at https://console.groq.com/keys',
         },
         { status: 503 },
       );
     }
 
-    // ── GoogleGenerativeAI HTTP errors (status field on the thrown object) ─
-    const geminiStatus =
-      error !== null && typeof error === 'object' && 'status' in error
-        ? (error as { status: number }).status
-        : null;
-
-    if (geminiStatus === 503) {
+    // Provider HTTP errors (429, 503, etc.)
+    const providerError = parseProviderError(error);
+    if (providerError) {
       return NextResponse.json(
-        {
-          error:
-            'The AI service is temporarily unavailable due to high demand. Please try again in a moment.',
-        },
-        { status: 503 },
-      );
-    }
-
-    if (geminiStatus === 429) {
-      // Distinguish daily quota exhaustion from per-minute rate limiting
-      if (isDailyQuotaExhausted(error)) {
-        return NextResponse.json(
-          {
-            error:
-              "Today's AI quota has been reached. The chatbot will be available again tomorrow. Consider upgrading to a paid Gemini API key for unlimited access.",
-          },
-          { status: 429 },
-        );
-      }
-
-      // Per-minute rate limit — extract suggested retry delay
-      const delayMs = extractRetryDelayMs(error);
-      const retryMsg =
-        delayMs != null && delayMs > 0
-          ? `Please try again in ${Math.ceil(delayMs / 1000)} second(s).`
-          : 'Please try again in a moment.';
-      return NextResponse.json(
-        { error: `AI is busy right now. ${retryMsg}` },
-        { status: 429 },
+        { error: providerError.message },
+        { status: providerError.status },
       );
     }
 

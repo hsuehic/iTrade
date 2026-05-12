@@ -1,256 +1,25 @@
 /**
- * Chatbot tool definitions for Gemini function calling.
+ * Chatbot tool definitions — Vercel AI SDK + Zod.
  *
- * Each tool corresponds to an existing iTrade API endpoint or an external exchange API.
- * The handler functions fetch real user data server-side (already authenticated via cookie).
+ * Each tool corresponds to an iTrade API endpoint or an external exchange API.
+ * Use createChatbotTools(baseUrl, cookie) to get a tools object ready for generateText().
  */
-import { SchemaType, type Tool } from '@google/generative-ai';
+import { tool } from 'ai';
+import { z } from 'zod';
 
-// ─── Tool schema definitions (sent to Gemini) ────────────────────────────────
+// ─── Null-safe parameter helper ────────────────────────────────────────────────
+//
+// Some LLMs (especially smaller/open-source models) send `null` as the args for
+// tools that have no required parameters, rather than an empty object `{}`.
+// Zod's z.object() rejects null, causing AI_InvalidToolArgumentsError at runtime.
+//
+// This helper coerces null → {} before Zod validates, so the tool still executes.
 
-export const CHATBOT_TOOLS: Tool[] = [
-  {
-    functionDeclarations: [
-      // ── Performance & portfolio tools ────────────────────────────────────
-      {
-        name: 'get_account_balance',
-        description:
-          'Get the current account balance summary and historical balance data. ' +
-          'Use this for questions about current balance, earnings over a period, or balance changes. ' +
-          'Supports periods: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            exchange: {
-              type: SchemaType.STRING,
-              description:
-                'Exchange name (e.g. "binance", "okx", "coinbase"). Use "all" for all exchanges.',
-            },
-            period: {
-              type: SchemaType.STRING,
-              description:
-                'Time period: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y. Default: 1m for monthly.',
-            },
-            align: {
-              type: SchemaType.STRING,
-              description:
-                '"calendar" for calendar-aligned periods (default), "rolling" for rolling windows.',
-            },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'get_pnl_summary',
-        description:
-          'Get PnL (profit and loss) data. For overall PnL or for a specific strategy. ' +
-          'Returns realizedPnl, unrealizedPnl, totalPnl.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            strategyId: {
-              type: SchemaType.NUMBER,
-              description:
-                'Optional strategy ID. Omit to get overall PnL across all strategies.',
-            },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'get_strategy_analytics',
-        description:
-          'Get analytics and performance rankings for all trading strategies. ' +
-          'Use this for questions about most/least profitable strategies, strategy rankings, ' +
-          'or performance grouped by exchange or symbol.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            limit: {
-              type: SchemaType.NUMBER,
-              description: 'Number of top strategies to return. Default: 10.',
-            },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'get_top_tokens',
-        description:
-          'Get the most profitable trading tokens/symbols ranked by PnL. ' +
-          'Use this for questions about most profitable crypto, best performing assets, or token ranking.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            limit: {
-              type: SchemaType.NUMBER,
-              description: 'Number of top tokens to return. Default: 10.',
-            },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'get_orders',
-        description:
-          'Get recent trading orders. Useful for reviewing trade history, filled orders, ' +
-          'or orders for a specific token/exchange.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            exchange: {
-              type: SchemaType.STRING,
-              description: 'Filter by exchange name.',
-            },
-            symbol: {
-              type: SchemaType.STRING,
-              description: 'Filter by trading symbol (e.g., "BTC/USDT").',
-            },
-            status: {
-              type: SchemaType.STRING,
-              description: 'Filter by status: filled, open, canceled.',
-            },
-            startDate: {
-              type: SchemaType.STRING,
-              description: 'Start date in ISO format (e.g., "2025-04-01").',
-            },
-            endDate: {
-              type: SchemaType.STRING,
-              description: 'End date in ISO format (e.g., "2025-04-30").',
-            },
-            pageSize: {
-              type: SchemaType.NUMBER,
-              description: 'Number of orders to return. Default: 20.',
-            },
-          },
-          required: [],
-        },
-      },
-
-      // ── Strategy management tools ─────────────────────────────────────────
-      {
-        name: 'list_strategies',
-        description:
-          "Get the user's existing trading strategies. Use this before creating a new strategy " +
-          'to check for duplicates, or when the user asks to see their strategies.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            status: {
-              type: SchemaType.STRING,
-              description: 'Filter by status: running, stopped, paused. Omit for all.',
-            },
-            exchange: {
-              type: SchemaType.STRING,
-              description: 'Filter by exchange name.',
-            },
-          },
-          required: [],
-        },
-      },
-      {
-        name: 'get_strategy_types',
-        description:
-          'Get all available strategy types with their parameter definitions and default values. ' +
-          'ALWAYS call this before proposing any strategy so you have accurate parameter schemas and defaults. ' +
-          'Returns types like SpreadGridStrategy, MovingAverageStrategy, etc.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {},
-          required: [],
-        },
-      },
-
-      // ── Market data tools ─────────────────────────────────────────────────
-      {
-        name: 'get_market_data',
-        description:
-          'Get live market ticker data for a trading symbol from OKX, Binance, or both. ' +
-          'Returns current price, 24h change, 24h high/low/volume, and volatility metrics. ' +
-          'Also returns suggested strategy parameters derived from the market data (suggestedBasePrice, suggestedStepPercent). ' +
-          'ALWAYS call this when creating a strategy so parameters reflect the current market price.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            symbol: {
-              type: SchemaType.STRING,
-              description:
-                'Trading pair in standard format, e.g. "BTC/USDT", "ETH/USDT". ' +
-                'For futures use "BTC/USDT:USDT".',
-            },
-            exchange: {
-              type: SchemaType.STRING,
-              description:
-                'Which exchange to fetch from: "binance", "okx", or "all" (default). ' +
-                '"all" returns data from both exchanges for comparison.',
-            },
-          },
-          required: ['symbol'],
-        },
-      },
-      {
-        name: 'get_available_symbols',
-        description:
-          'Get available trading pairs from the iTrade database (seeded symbols). ' +
-          'Use this to validate whether a symbol/exchange combination is supported, ' +
-          'or to suggest symbols when the user is unsure what to trade.',
-        parameters: {
-          type: SchemaType.OBJECT,
-          properties: {
-            exchange: {
-              type: SchemaType.STRING,
-              description:
-                'Filter by exchange: "binance", "okx", "coinbase". Omit for all.',
-            },
-            query: {
-              type: SchemaType.STRING,
-              description: 'Search term to filter symbols (e.g., "BTC", "ETH").',
-            },
-            type: {
-              type: SchemaType.STRING,
-              description: 'Filter by type: "spot" or "futures". Omit for all.',
-            },
-          },
-          required: [],
-        },
-      },
-    ],
-  },
-];
-
-// ─── Tool handler types ────────────────────────────────────────────────────────
-
-export type ToolName =
-  | 'get_account_balance'
-  | 'get_pnl_summary'
-  | 'get_strategy_analytics'
-  | 'get_top_tokens'
-  | 'get_orders'
-  | 'list_strategies'
-  | 'get_strategy_types'
-  | 'get_market_data'
-  | 'get_available_symbols';
-
-export interface ToolArgs {
-  get_account_balance: { exchange?: string; period?: string; align?: string };
-  get_pnl_summary: { strategyId?: number };
-  get_strategy_analytics: { limit?: number };
-  get_top_tokens: { limit?: number };
-  get_orders: {
-    exchange?: string;
-    symbol?: string;
-    status?: string;
-    startDate?: string;
-    endDate?: string;
-    pageSize?: number;
-  };
-  list_strategies: { status?: string; exchange?: string };
-  get_strategy_types: Record<string, never>;
-  get_market_data: { symbol: string; exchange?: string };
-  get_available_symbols: { exchange?: string; query?: string; type?: string };
+function nullSafe<T extends z.ZodRawShape>(shape: T) {
+  return z.preprocess((v) => (v == null ? {} : v), z.object(shape));
 }
 
-// ─── Tool handlers (call internal APIs with the user's session cookie) ─────────
+// ─── Internal fetch helper ─────────────────────────────────────────────────────
 
 async function fetchInternal(
   baseUrl: string,
@@ -275,18 +44,17 @@ async function fetchInternal(
   return res.json();
 }
 
-// ─── Market data helpers ──────────────────────────────────────────────────────
+// ─── Market data helpers ───────────────────────────────────────────────────────
 
 /** Convert "BTC/USDT" → "BTCUSDT" for Binance spot, "BTC/USDT:USDT" → "BTCUSDT" */
 function toBinanceSymbol(symbol: string): string {
-  const base = symbol.split(':')[0]; // strip ":USDT" futures suffix
+  const base = symbol.split(':')[0];
   return base.replace('/', '');
 }
 
 /** Convert "BTC/USDT" → "BTC-USDT" for OKX spot, "BTC/USDT:USDT" → "BTC-USDT-SWAP" */
 function toOKXSymbol(symbol: string): string {
   if (symbol.includes(':')) {
-    // Futures/perpetual: BTC/USDT:USDT → BTC-USDT-SWAP
     const base = symbol.split(':')[0];
     return base.replace('/', '-') + '-SWAP';
   }
@@ -319,7 +87,6 @@ async function fetchBinanceTicker(symbol: string): Promise<TickerResult | null> 
     const high = parseFloat(d.highPrice);
     const low = parseFloat(d.lowPrice);
     const volatility = high > 0 ? ((high - low) / price) * 100 : 2;
-    // Suggest step = 30% of daily range, clamped to [1, 5]
     const suggestedStep =
       Math.round(Math.max(1, Math.min(5, volatility * 0.3)) * 10) / 10;
     return {
@@ -376,196 +143,318 @@ async function fetchOKXTicker(symbol: string): Promise<TickerResult | null> {
   }
 }
 
-// ─── Main executeToolCall ──────────────────────────────────────────────────────
+// ─── Tool factory ──────────────────────────────────────────────────────────────
 
-export async function executeToolCall(
-  toolName: ToolName,
-  args: Record<string, unknown>,
-  baseUrl: string,
-  cookie: string,
-): Promise<unknown> {
-  switch (toolName) {
-    case 'get_account_balance': {
-      const typedArgs = args as ToolArgs['get_account_balance'];
-      return fetchInternal(
-        baseUrl,
-        '/api/analytics/account',
-        {
-          exchange: typedArgs.exchange || 'all',
-          period: typedArgs.period || '1m',
-          align: typedArgs.align || 'calendar',
-        },
-        cookie,
-      );
-    }
+/**
+ * Create all chatbot tools with the user's session context injected.
+ * Pass the result directly to generateText({ tools }).
+ */
+export function createChatbotTools(baseUrl: string, cookie: string) {
+  return {
+    // ── Performance & portfolio ──────────────────────────────────────────────
 
-    case 'get_pnl_summary': {
-      const typedArgs = args as ToolArgs['get_pnl_summary'];
-      return fetchInternal(
-        baseUrl,
-        '/api/analytics/pnl',
-        { strategyId: typedArgs.strategyId },
-        cookie,
-      );
-    }
+    get_account_balance: tool({
+      description:
+        'Get the current account balance summary and historical balance data. ' +
+        'Use this for questions about current balance, earnings over a period, or balance changes. ' +
+        'Supports periods: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y.',
+      parameters: nullSafe({
+        exchange: z
+          .string()
+          .optional()
+          .describe(
+            'Exchange name (e.g. "binance", "okx"). Use "all" for all exchanges.',
+          ),
+        period: z
+          .string()
+          .optional()
+          .describe('Time period: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y. Default: 1m.'),
+        align: z
+          .string()
+          .optional()
+          .describe(
+            '"calendar" for calendar-aligned periods (default), "rolling" for rolling windows.',
+          ),
+      }),
+      execute: async ({ exchange, period, align }) =>
+        fetchInternal(
+          baseUrl,
+          '/api/analytics/account',
+          {
+            exchange: exchange ?? 'all',
+            period: period ?? '1m',
+            align: align ?? 'calendar',
+          },
+          cookie,
+        ),
+    }),
 
-    case 'get_strategy_analytics': {
-      const typedArgs = args as ToolArgs['get_strategy_analytics'];
-      return fetchInternal(
-        baseUrl,
-        '/api/analytics/strategies',
-        { limit: typedArgs.limit || 10 },
-        cookie,
-      );
-    }
+    get_pnl_summary: tool({
+      description:
+        'Get PnL (profit and loss) data. For overall PnL or for a specific strategy. ' +
+        'Returns realizedPnl, unrealizedPnl, totalPnl.',
+      parameters: nullSafe({
+        strategyId: z
+          .number()
+          .optional()
+          .describe(
+            'Optional strategy ID. Omit to get overall PnL across all strategies.',
+          ),
+      }),
+      execute: async ({ strategyId }) =>
+        fetchInternal(baseUrl, '/api/analytics/pnl', { strategyId }, cookie),
+    }),
 
-    case 'get_top_tokens': {
-      const typedArgs = args as ToolArgs['get_top_tokens'];
-      const data = (await fetchInternal(
-        baseUrl,
-        '/api/analytics/strategies',
-        { limit: 50 },
-        cookie,
-      )) as { bySymbol?: unknown[] };
-      const limit = typedArgs.limit || 10;
-      return {
-        topTokens: (data.bySymbol || []).slice(0, limit),
-      };
-    }
+    get_strategy_analytics: tool({
+      description:
+        'Get analytics and performance rankings for all trading strategies. ' +
+        'Use this for questions about most/least profitable strategies, strategy rankings, ' +
+        'or performance grouped by exchange or symbol.',
+      parameters: nullSafe({
+        limit: z
+          .number()
+          .optional()
+          .describe('Number of top strategies to return. Default: 10.'),
+      }),
+      execute: async ({ limit }) =>
+        fetchInternal(
+          baseUrl,
+          '/api/analytics/strategies',
+          { limit: limit ?? 10 },
+          cookie,
+        ),
+    }),
 
-    case 'get_orders': {
-      const typedArgs = args as ToolArgs['get_orders'];
-      return fetchInternal(
-        baseUrl,
-        '/api/orders',
-        {
-          exchange: typedArgs.exchange,
-          symbol: typedArgs.symbol,
-          status: typedArgs.status,
-          startDate: typedArgs.startDate,
-          endDate: typedArgs.endDate,
-          pageSize: typedArgs.pageSize || 20,
-          sortBy: 'timestamp',
-          sortOrder: 'DESC',
-        },
-        cookie,
-      );
-    }
+    get_top_tokens: tool({
+      description:
+        'Get the most profitable trading tokens/symbols ranked by PnL. ' +
+        'Use this for questions about most profitable crypto, best performing assets, or token ranking.',
+      parameters: nullSafe({
+        limit: z
+          .number()
+          .optional()
+          .describe('Number of top tokens to return. Default: 10.'),
+      }),
+      execute: async ({ limit }) => {
+        const data = (await fetchInternal(
+          baseUrl,
+          '/api/analytics/strategies',
+          { limit: 50 },
+          cookie,
+        )) as { bySymbol?: unknown[] };
+        return { topTokens: (data.bySymbol ?? []).slice(0, limit ?? 10) };
+      },
+    }),
 
-    case 'list_strategies': {
-      const typedArgs = args as ToolArgs['list_strategies'];
-      return fetchInternal(
-        baseUrl,
-        '/api/strategies',
-        {
-          status: typedArgs.status,
-          exchange: typedArgs.exchange,
-        },
-        cookie,
-      );
-    }
+    get_orders: tool({
+      description:
+        'Get recent trading orders. Useful for reviewing trade history, filled orders, ' +
+        'or orders for a specific token/exchange.',
+      parameters: nullSafe({
+        exchange: z.string().optional().describe('Filter by exchange name.'),
+        symbol: z
+          .string()
+          .optional()
+          .describe('Filter by trading symbol (e.g., "BTC/USDT").'),
+        status: z
+          .string()
+          .optional()
+          .describe('Filter by status: filled, open, canceled.'),
+        startDate: z
+          .string()
+          .optional()
+          .describe('Start date in ISO format (e.g., "2025-04-01").'),
+        endDate: z
+          .string()
+          .optional()
+          .describe('End date in ISO format (e.g., "2025-04-30").'),
+        pageSize: z
+          .number()
+          .optional()
+          .describe('Number of orders to return. Default: 20.'),
+      }),
+      execute: async ({ exchange, symbol, status, startDate, endDate, pageSize }) =>
+        fetchInternal(
+          baseUrl,
+          '/api/orders',
+          {
+            exchange,
+            symbol,
+            status,
+            startDate,
+            endDate,
+            pageSize: pageSize ?? 20,
+            sortBy: 'timestamp',
+            sortOrder: 'DESC',
+          },
+          cookie,
+        ),
+    }),
 
-    case 'get_strategy_types': {
-      return fetchInternal(baseUrl, '/api/strategies/config', {}, cookie);
-    }
+    // ── Strategy management ──────────────────────────────────────────────────
 
-    case 'get_market_data': {
-      const typedArgs = args as ToolArgs['get_market_data'];
-      const { symbol, exchange = 'all' } = typedArgs;
+    list_strategies: tool({
+      description:
+        "Get the user's existing trading strategies. Use this before creating a new strategy " +
+        'to check for duplicates, or when the user asks to see their strategies.',
+      parameters: nullSafe({
+        status: z
+          .string()
+          .optional()
+          .describe('Filter by status: running, stopped, paused. Omit for all.'),
+        exchange: z.string().optional().describe('Filter by exchange name.'),
+      }),
+      execute: async ({ status, exchange }) =>
+        fetchInternal(baseUrl, '/api/strategies', { status, exchange }, cookie),
+    }),
 
-      if (exchange === 'binance') {
-        const result = await fetchBinanceTicker(symbol);
-        if (!result) throw new Error(`No data found for ${symbol} on Binance`);
-        return result;
-      }
+    get_strategy_types: tool({
+      description:
+        'Get all available strategy types with their parameter definitions and default values. ' +
+        'ALWAYS call this before proposing any strategy so you have accurate parameter schemas and defaults. ' +
+        'Returns types like SpreadGridStrategy, MovingAverageStrategy, etc.',
+      parameters: nullSafe({}),
+      execute: async () => fetchInternal(baseUrl, '/api/strategies/config', {}, cookie),
+    }),
 
-      if (exchange === 'okx') {
-        const result = await fetchOKXTicker(symbol);
-        if (!result) throw new Error(`No data found for ${symbol} on OKX`);
-        return result;
-      }
+    // ── Market data ──────────────────────────────────────────────────────────
 
-      // "all" — fetch from both in parallel, return whichever succeeds
-      const [binance, okx] = await Promise.all([
-        fetchBinanceTicker(symbol),
-        fetchOKXTicker(symbol),
-      ]);
+    get_market_data: tool({
+      description:
+        'Get live market ticker data for a trading symbol from OKX, Binance, or both. ' +
+        'Returns current price, 24h change, 24h high/low/volume, and volatility metrics. ' +
+        'Also returns suggested strategy parameters derived from the market data (suggestedBasePrice, suggestedStepPercent). ' +
+        'ALWAYS call this when creating a strategy so parameters reflect the current market price.',
+      parameters: z.object({
+        symbol: z
+          .string()
+          .describe(
+            'Trading pair in standard format, e.g. "BTC/USDT", "ETH/USDT". ' +
+              'For futures use "BTC/USDT:USDT".',
+          ),
+        exchange: z
+          .string()
+          .optional()
+          .describe(
+            'Which exchange to fetch from: "binance", "okx", or "all" (default). ' +
+              '"all" returns data from both exchanges for comparison.',
+          ),
+      }),
+      execute: async ({ symbol, exchange = 'all' }) => {
+        // Always fetch both exchanges in parallel regardless of the requested exchange.
+        // Cloud hosts (GCE, AWS, etc.) are often IP-blocked by Binance, so we fall back
+        // to OKX transparently rather than failing hard on the requested exchange.
+        const [binance, okx] = await Promise.all([
+          fetchBinanceTicker(symbol),
+          fetchOKXTicker(symbol),
+        ]);
 
-      const results = [binance, okx].filter(Boolean);
-      if (results.length === 0) {
-        throw new Error(
-          `Could not fetch market data for ${symbol} from any exchange. ` +
-            `Try a different symbol format (e.g., "BTC/USDT" for spot).`,
-        );
-      }
+        // Pick the preferred result, fall back to whichever is available
+        let preferred: TickerResult | null = null;
+        if (exchange === 'binance') {
+          preferred = binance ?? okx;
+        } else if (exchange === 'okx') {
+          preferred = okx ?? binance;
+        } else {
+          preferred = binance ?? okx;
+        }
 
-      // Return combined result; use the first successful one as the primary
-      const primary = results[0]!;
-      return {
-        primary,
-        all: results,
-        // Cross-exchange price comparison
-        priceComparison:
-          results.length > 1
-            ? {
-                binancePrice: binance?.price,
-                okxPrice: okx?.price,
-                spreadPct:
-                  binance && okx
-                    ? Math.abs(((binance.price - okx.price) / okx.price) * 100).toFixed(4)
-                    : null,
-              }
-            : null,
-      };
-    }
+        if (!preferred) {
+          throw new Error(
+            `Could not fetch market data for ${symbol} from any exchange. ` +
+              `Try a different symbol format (e.g., "BTC/USDT" for spot).`,
+          );
+        }
 
-    case 'get_available_symbols': {
-      const typedArgs = args as ToolArgs['get_available_symbols'];
-      const data = (await fetchInternal(
-        baseUrl,
-        '/api/trading-pairs',
-        {},
-        cookie,
-      )) as Array<{
-        symbol: string;
-        exchange: string;
-        name: string;
-        type: string;
-        baseAsset: string;
-        quoteAsset: string;
-      }>;
+        const results = [binance, okx].filter(Boolean) as TickerResult[];
 
-      let filtered = data;
+        return {
+          primary: preferred,
+          // Surface which exchange actually responded so the model knows
+          note:
+            exchange !== 'all' && preferred.exchange !== exchange
+              ? `${exchange} was unreachable from the server; data is from ${preferred.exchange} instead.`
+              : undefined,
+          all: results,
+          priceComparison:
+            results.length > 1
+              ? {
+                  binancePrice: binance?.price,
+                  okxPrice: okx?.price,
+                  spreadPct:
+                    binance && okx
+                      ? Math.abs(((binance.price - okx.price) / okx.price) * 100).toFixed(
+                          4,
+                        )
+                      : null,
+                }
+              : null,
+        };
+      },
+    }),
 
-      if (typedArgs.exchange) {
-        filtered = filtered.filter(
-          (s) => s.exchange.toLowerCase() === typedArgs.exchange!.toLowerCase(),
-        );
-      }
+    get_available_symbols: tool({
+      description:
+        'Get available trading pairs from the iTrade database (seeded symbols). ' +
+        'Use this to validate whether a symbol/exchange combination is supported, ' +
+        'or to suggest symbols when the user is unsure what to trade.',
+      parameters: nullSafe({
+        exchange: z
+          .string()
+          .optional()
+          .describe('Filter by exchange: "binance", "okx", "coinbase". Omit for all.'),
+        query: z
+          .string()
+          .optional()
+          .describe('Search term to filter symbols (e.g., "BTC", "ETH").'),
+        type: z
+          .string()
+          .optional()
+          .describe('Filter by type: "spot" or "futures". Omit for all.'),
+      }),
+      execute: async ({ exchange, query, type }) => {
+        const data = (await fetchInternal(
+          baseUrl,
+          '/api/trading-pairs',
+          {},
+          cookie,
+        )) as Array<{
+          symbol: string;
+          exchange: string;
+          name: string;
+          type: string;
+          baseAsset: string;
+          quoteAsset: string;
+        }>;
 
-      if (typedArgs.type) {
-        filtered = filtered.filter(
-          (s) => s.type?.toLowerCase() === typedArgs.type!.toLowerCase(),
-        );
-      }
+        let filtered = data;
 
-      if (typedArgs.query) {
-        const q = typedArgs.query.toLowerCase();
-        filtered = filtered.filter(
-          (s) =>
-            s.symbol.toLowerCase().includes(q) ||
-            s.name?.toLowerCase().includes(q) ||
-            s.baseAsset?.toLowerCase().includes(q),
-        );
-      }
+        if (exchange) {
+          filtered = filtered.filter(
+            (s) => s.exchange.toLowerCase() === exchange.toLowerCase(),
+          );
+        }
+        if (type) {
+          filtered = filtered.filter((s) => s.type?.toLowerCase() === type.toLowerCase());
+        }
+        if (query) {
+          const q = query.toLowerCase();
+          filtered = filtered.filter(
+            (s) =>
+              s.symbol.toLowerCase().includes(q) ||
+              s.name?.toLowerCase().includes(q) ||
+              s.baseAsset?.toLowerCase().includes(q),
+          );
+        }
 
-      return {
-        symbols: filtered.slice(0, 50), // cap at 50 to keep context manageable
-        total: filtered.length,
-      };
-    }
-
-    default:
-      throw new Error(`Unknown tool: ${toolName}`);
-  }
+        return {
+          symbols: filtered.slice(0, 50),
+          total: filtered.length,
+        };
+      },
+    }),
+  };
 }
+
+// Infer the tools type for use elsewhere
+export type ChatbotTools = ReturnType<typeof createChatbotTools>;

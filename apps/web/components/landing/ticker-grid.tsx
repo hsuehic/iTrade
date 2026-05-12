@@ -301,7 +301,7 @@ export function TickerGrid() {
         (coin) => `${coin.symbol.toLowerCase()}@ticker`,
       ).join('/');
       const endpoints = [
-        `wss://fstream.binance.com/market/stream?streams=${streams}`,
+        `wss://fstream.binance.com:443/market/stream?streams=${streams}`,
         `wss://itrade.ihsueh.com/ws/binance/perp/market/stream?streams=${streams}`,
       ];
       const ws = new WebSocket(endpoints[endpointIndex]);
@@ -375,7 +375,8 @@ export function TickerGrid() {
     const connectOKX = (endpointIndex = 0, retryCount = 0) => {
       if (okxRestFallbackRef.current) return;
       const endpoints = [
-        'wss://ws.okx.com:8443/ws/v5/public',
+        'wss://ws.okx.com:443/ws/v5/public',
+        'wss://wsaws.okx.com:443/ws/v5/public',
         'wss://itrade.ihsueh.com/ws/okx/ws/v5/public',
       ];
       const ws = new WebSocket(endpoints[endpointIndex]);
