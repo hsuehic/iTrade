@@ -5,6 +5,7 @@ import { Bot, User } from 'lucide-react';
 
 import { ChatChart } from './chat-chart';
 import { ChatTable } from './chat-table';
+import { StrategyProposalCard, type StrategyProposal } from './strategy-proposal-card';
 import type { ChatMessage } from './use-chat';
 
 // ── Minimal markdown renderer (bold, italic, list) ────────────────────────────
@@ -104,11 +105,7 @@ export function ChatMessageBubble({ message }: ChatMessageProps) {
     >
       {/* Avatar */}
       <div
-        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5 ${
-          isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white'
-        }`}
+        className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5 ${isUser ? 'bg-primary text-primary-foreground' : 'bg-primary/15 text-primary'}`}
       >
         {isUser ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
       </div>
@@ -131,26 +128,26 @@ export function ChatMessageBubble({ message }: ChatMessageProps) {
           )}
         </div>
 
-        {/* Visualization (chart or table) — only for assistant messages */}
+        {/* Visualization — only for assistant messages */}
         {!isUser && !message.isLoading && message.renderData && (
           <div className="w-full max-w-full">
-            {(message.renderData.renderAs === 'chart' ||
-              message.renderData.renderAs === 'table') && (
-              <>
-                {message.renderData.renderAs === 'chart' && (
-                  <ChatChart
-                    data={message.renderData.data}
-                    chartConfig={message.renderData.chartConfig}
-                    title={message.renderData.title}
-                  />
-                )}
-                {message.renderData.renderAs === 'table' && (
-                  <ChatTable
-                    data={message.renderData.data}
-                    title={message.renderData.title}
-                  />
-                )}
-              </>
+            {message.renderData.renderAs === 'chart' && (
+              <ChatChart
+                data={message.renderData.data}
+                chartConfig={message.renderData.chartConfig}
+                title={message.renderData.title}
+              />
+            )}
+            {message.renderData.renderAs === 'table' && (
+              <ChatTable
+                data={message.renderData.data}
+                title={message.renderData.title}
+              />
+            )}
+            {message.renderData.renderAs === 'strategy_proposal' && (
+              <StrategyProposalCard
+                proposal={message.renderData.data as StrategyProposal}
+              />
             )}
           </div>
         )}

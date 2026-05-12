@@ -7,7 +7,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   renderData?: {
-    renderAs?: 'table' | 'chart' | 'text';
+    renderAs?: 'table' | 'chart' | 'text' | 'strategy_proposal';
     title?: string;
     data?: unknown;
     chartConfig?: unknown;
@@ -22,7 +22,7 @@ export function useChat() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "Hi! I'm **iTrade AI** 👋\n\nI can help you analyze your trading performance. Try asking me:\n- *How much did I earn last month?*\n- *What's my most profitable strategy?*\n- *Which token made me the most money?*\n- *Show my recent orders*",
+        "Hi! I'm **iTrade AI** 👋\n\nI can analyze your trading performance **and create new strategies** for you. Try:\n- *How much did I earn last month?*\n- *What's my most profitable strategy?*\n- *Create a SpreadGrid strategy for BTC/USDT on Binance*\n- *Set up a MovingAverage strategy for ETH on OKX*",
       renderData: null,
       timestamp: new Date(),
     },
@@ -112,7 +112,7 @@ export function useChat() {
         id: 'welcome',
         role: 'assistant',
         content:
-          "Hi! I'm **iTrade AI** 👋\n\nI can help you analyze your trading performance. Try asking me:\n- *How much did I earn last month?*\n- *What's my most profitable strategy?*\n- *Which token made me the most money?*\n- *Show my recent orders*",
+          "Hi! I'm **iTrade AI** 👋\n\nI can analyze your trading performance **and create new strategies** for you. Try:\n- *How much did I earn last month?*\n- *What's my most profitable strategy?*\n- *Create a SpreadGrid strategy for BTC/USDT on Binance*\n- *Set up a MovingAverage strategy for ETH on OKX*",
         renderData: null,
         timestamp: new Date(),
       },

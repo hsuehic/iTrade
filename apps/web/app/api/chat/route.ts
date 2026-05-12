@@ -11,7 +11,79 @@ import { createChatModel } from '@/lib/chatbot/gemini';
 import { CHATBOT_TOOLS, executeToolCall, type ToolName } from '@/lib/chatbot/tools';
 import type { Content } from '@google/generative-ai';
 
-export const maxDuration = 30; // Allow up to 30s for multi-tool calls
+export const maxDuration = 120; // Allow up to 120s for multi-tool calls + retry backoff
+
+// ── Gemini retry helper ────────────────────────────────────────────────────
+const RETRY_ATTEMPTS = 3; // Total attempts (1 original + 2 retries)
+const MIN_RETRY_DELAY_MS = 8_000; // Always wait at least 8s between per-minute retries
+const MAX_RETRY_DELAY_MS = 30_000; // Cap per-minute retry wait at 30s
+
+type QuotaViolation = { quotaId?: string };
+type ErrorDetail = {
+  '@type': string;
+  retryDelay?: string;
+  violations?: QuotaViolation[];
+};
+
+function getErrorDetails(error: unknown): ErrorDetail[] {
+  try {
+    return (error as { errorDetails?: ErrorDetail[] }).errorDetails ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function extractRetryDelayMs(error: unknown): number | null {
+  const details = getErrorDetails(error);
+  const retryInfo = details.find((d) => d['@type']?.includes('RetryInfo'));
+  if (retryInfo?.retryDelay) {
+    return Math.ceil(parseFloat(retryInfo.retryDelay) * 1000);
+  }
+  return null;
+}
+
+function isDailyQuotaExhausted(error: unknown): boolean {
+  const details = getErrorDetails(error);
+  const quotaFailure = details.find((d) => d['@type']?.includes('QuotaFailure'));
+  return quotaFailure?.violations?.some((v) => v.quotaId?.includes('PerDay')) ?? false;
+}
+
+function isGemini429(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'status' in error &&
+    (error as { status: number }).status === 429
+  );
+}
+
+async function sendWithRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (!isGemini429(err)) throw err; // Non-rate-limit error — bail immediately
+
+      // Daily quota is exhausted — retrying won't help until midnight; fail fast
+      if (isDailyQuotaExhausted(err)) throw err;
+
+      if (attempt < RETRY_ATTEMPTS - 1) {
+        // Per-minute rate limit — honour the suggested delay, clamped to [MIN, MAX]
+        const suggestedMs = extractRetryDelayMs(err) ?? 0;
+        const delayMs = Math.min(
+          Math.max(suggestedMs, MIN_RETRY_DELAY_MS),
+          MAX_RETRY_DELAY_MS,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,8 +122,8 @@ export async function POST(request: NextRequest) {
     // Start chat session
     const chat = model.startChat({ history: geminiHistory });
 
-    // Send user message
-    let response = await chat.sendMessage(message);
+    // Send user message (with automatic retry on 429)
+    let response = await sendWithRetry(() => chat.sendMessage(message));
     let candidate = response.response;
 
     // Agentic loop: keep executing tool calls until Gemini stops asking for them
@@ -105,7 +177,7 @@ export async function POST(request: NextRequest) {
             },
       );
 
-      response = await chat.sendMessage(toolResponseParts);
+      response = await sendWithRetry(() => chat.sendMessage(toolResponseParts));
       candidate = response.response;
     }
 
@@ -139,6 +211,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Chat API] Error:', error);
 
+    // ── Gemini API key not configured ─────────────────────────────────────
     if (error instanceof Error && error.message.includes('GEMINI_API_KEY')) {
       return NextResponse.json(
         {
@@ -146,6 +219,46 @@ export async function POST(request: NextRequest) {
             'AI service not configured. Please add GEMINI_API_KEY to your environment. Get a free key at https://aistudio.google.com/apikey',
         },
         { status: 503 },
+      );
+    }
+
+    // ── GoogleGenerativeAI HTTP errors (status field on the thrown object) ─
+    const geminiStatus =
+      error !== null && typeof error === 'object' && 'status' in error
+        ? (error as { status: number }).status
+        : null;
+
+    if (geminiStatus === 503) {
+      return NextResponse.json(
+        {
+          error:
+            'The AI service is temporarily unavailable due to high demand. Please try again in a moment.',
+        },
+        { status: 503 },
+      );
+    }
+
+    if (geminiStatus === 429) {
+      // Distinguish daily quota exhaustion from per-minute rate limiting
+      if (isDailyQuotaExhausted(error)) {
+        return NextResponse.json(
+          {
+            error:
+              "Today's AI quota has been reached. The chatbot will be available again tomorrow. Consider upgrading to a paid Gemini API key for unlimited access.",
+          },
+          { status: 429 },
+        );
+      }
+
+      // Per-minute rate limit — extract suggested retry delay
+      const delayMs = extractRetryDelayMs(error);
+      const retryMsg =
+        delayMs != null && delayMs > 0
+          ? `Please try again in ${Math.ceil(delayMs / 1000)} second(s).`
+          : 'Please try again in a moment.';
+      return NextResponse.json(
+        { error: `AI is busy right now. ${retryMsg}` },
+        { status: 429 },
       );
     }
 
