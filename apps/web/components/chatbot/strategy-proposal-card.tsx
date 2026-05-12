@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   CheckCircle2,
   Loader2,
@@ -136,12 +137,12 @@ export function StrategyProposalCard({ proposal }: StrategyProposalCardProps) {
             <strong>{name}</strong> ({strategyLabel} · {proposal.symbol})
           </p>
           {createdId && (
-            <a
+            <Link
               href={`/strategy/${createdId}`}
               className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400 hover:underline mt-2"
             >
               View Strategy <ExternalLink className="w-3 h-3" />
-            </a>
+            </Link>
           )}
         </div>
       </div>
