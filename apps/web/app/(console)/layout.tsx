@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 
 import { AppSidebar } from '@/components/app-sidebar';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { ChatWidget } from '@/components/chatbot/chat-widget';
 
 export const metadata: Metadata = {
   title: {
@@ -34,6 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     >
       <AppSidebar variant="inset" />
       <main className="flex-1">{children}</main>
+      <ChatWidget />
     </SidebarProvider>
   );
 }
