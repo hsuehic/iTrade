@@ -167,10 +167,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Build base URL for internal API calls
-    const requestUrl = new URL(request.url);
-    const baseUrl = `${requestUrl.protocol}//${requestUrl.host}`;
+    // Build base URL for internal API calls.
+    // Always use localhost + PORT so server-side tool fetches stay on the internal
+    // Docker network and avoid the SSL termination layer (nginx strips TLS before
+    // forwarding to this container, so https:// from request.url would cause
+    // ERR_SSL_WRONG_VERSION_NUMBER inside Docker).
+    const baseUrl = `http://localhost:${process.env.PORT ?? 3002}`;
     const cookie = request.headers.get('cookie') ?? '';
+
+    // Forward the original host/proto headers so that auth middleware inside the
+    // tool API calls sees the production origin (itrade.ihsueh.com / https) rather
+    // than localhost:3002.  Without these, getRequestBaseURL() returns
+    // http://localhost:3002 and better-auth rejects the session as unauthorised.
+    const forwardedHeaders: Record<string, string> = {};
+    const fwdHost = request.headers.get('x-forwarded-host');
+    const fwdProto = request.headers.get('x-forwarded-proto');
+    const origHost = request.headers.get('host');
+    if (fwdHost) forwardedHeaders['x-forwarded-host'] = fwdHost;
+    if (fwdProto) forwardedHeaders['x-forwarded-proto'] = fwdProto;
+    else if (origHost && !origHost.startsWith('localhost'))
+      forwardedHeaders['x-forwarded-proto'] = 'https';
+    if (origHost)
+      forwardedHeaders['x-forwarded-host'] =
+        forwardedHeaders['x-forwarded-host'] ?? origHost;
 
     // Convert history: 'model' (Gemini) → 'assistant' (AI SDK standard)
     const messages: CoreMessage[] = [
@@ -185,7 +204,7 @@ export async function POST(request: NextRequest) {
     const rawText = await generateWithFallback(getAIModels(), {
       system: SYSTEM_PROMPT,
       messages,
-      tools: createChatbotTools(baseUrl, cookie),
+      tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
       maxSteps: 5, // Allow up to 5 rounds of tool calls before final answer
       maxTokens: 2000, // Cap output to reduce TPM footprint on free-tier models
     });

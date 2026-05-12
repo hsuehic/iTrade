@@ -137,10 +137,10 @@ export function StrategyProposalCard({ proposal }: StrategyProposalCardProps) {
           </p>
           {createdId && (
             <a
-              href="/strategy"
+              href={`/strategy/${createdId}`}
               className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400 hover:underline mt-2"
             >
-              View in Strategies <ExternalLink className="w-3 h-3" />
+              View Strategy <ExternalLink className="w-3 h-3" />
             </a>
           )}
         </div>

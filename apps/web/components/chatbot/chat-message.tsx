@@ -8,30 +8,128 @@ import { ChatTable } from './chat-table';
 import { StrategyProposalCard, type StrategyProposal } from './strategy-proposal-card';
 import type { ChatMessage } from './use-chat';
 
-// ── Minimal markdown renderer (bold, italic, list) ────────────────────────────
+// ── Minimal markdown renderer (bold, italic, list, table, heading) ────────────
+
+/** True if a line looks like a markdown table separator: |---|---| */
+function isTableSeparator(line: string): boolean {
+  return /^\|[\s\-:|]+\|/.test(line);
+}
+
+/** True if a line is a table row: starts and ends with | */
+function isTableRow(line: string): boolean {
+  return line.trim().startsWith('|') && line.trim().endsWith('|');
+}
+
+/** Parse a table row into cell strings */
+function parseTableCells(line: string): string[] {
+  return line
+    .trim()
+    .slice(1, -1) // strip leading/trailing |
+    .split('|')
+    .map((c) => c.trim());
+}
+
 function renderMarkdown(text: string): React.ReactNode {
   const lines = text.split('\n');
   const nodes: React.ReactNode[] = [];
+  let i = 0;
 
-  for (let i = 0; i < lines.length; i++) {
+  while (i < lines.length) {
     const line = lines[i];
 
+    // ── Heading (##, ###)
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const cls =
+        level === 1
+          ? 'text-base font-bold mt-2 mb-1'
+          : level === 2
+            ? 'text-sm font-bold mt-2 mb-0.5'
+            : 'text-sm font-semibold mt-1';
+      nodes.push(
+        <p key={i} className={cls}>
+          {renderInline(headingMatch[2])}
+        </p>,
+      );
+      i++;
+      continue;
+    }
+
+    // ── Table: collect all consecutive table rows
+    if (isTableRow(line)) {
+      const tableLines: string[] = [];
+      while (i < lines.length && (isTableRow(lines[i]) || isTableSeparator(lines[i]))) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+
+      // First row = header, skip separator, rest = body
+      const [headerRow, , ...bodyRows] = tableLines;
+      if (!headerRow) continue;
+      const headers = parseTableCells(headerRow);
+      const rows = bodyRows.filter((r) => !isTableSeparator(r)).map(parseTableCells);
+
+      nodes.push(
+        <div
+          key={`table-${i}`}
+          className="overflow-x-auto my-2 rounded-lg border border-border/40"
+        >
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50">
+              <tr>
+                {headers.map((h, hi) => (
+                  <th
+                    key={hi}
+                    className="px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap"
+                  >
+                    {renderInline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} className={ri % 2 === 0 ? 'bg-background' : 'bg-muted/20'}>
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-3 py-1.5 text-foreground">
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
+    // ── List item
     if (line.startsWith('- ') || line.startsWith('* ')) {
-      // list item
       nodes.push(
         <li key={i} className="ml-4 list-disc">
           {renderInline(line.slice(2))}
         </li>,
       );
-    } else if (line.trim() === '') {
-      nodes.push(<br key={i} />);
-    } else {
-      nodes.push(
-        <p key={i} className="leading-relaxed">
-          {renderInline(line)}
-        </p>,
-      );
+      i++;
+      continue;
     }
+
+    // ── Blank line
+    if (line.trim() === '') {
+      nodes.push(<br key={i} />);
+      i++;
+      continue;
+    }
+
+    // ── Regular paragraph
+    nodes.push(
+      <p key={i} className="leading-relaxed">
+        {renderInline(line)}
+      </p>,
+    );
+    i++;
   }
 
   return <>{nodes}</>;

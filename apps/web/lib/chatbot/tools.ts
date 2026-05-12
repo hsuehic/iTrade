@@ -26,6 +26,7 @@ async function fetchInternal(
   path: string,
   params: Record<string, string | number | boolean | undefined>,
   cookie: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<unknown> {
   const url = new URL(path, baseUrl);
   for (const [key, value] of Object.entries(params)) {
@@ -34,7 +35,7 @@ async function fetchInternal(
     }
   }
   const res = await fetch(url.toString(), {
-    headers: { cookie },
+    headers: { cookie, ...extraHeaders },
     cache: 'no-store',
   });
   if (!res.ok) {
@@ -149,7 +150,17 @@ async function fetchOKXTicker(symbol: string): Promise<TickerResult | null> {
  * Create all chatbot tools with the user's session context injected.
  * Pass the result directly to generateText({ tools }).
  */
-export function createChatbotTools(baseUrl: string, cookie: string) {
+export function createChatbotTools(
+  baseUrl: string,
+  cookie: string,
+  extraHeaders?: Record<string, string>,
+) {
+  // Partial helper so every fetchInternal call gets the forwarded host headers
+  const fetch = (
+    path: string,
+    params: Record<string, string | number | boolean | undefined>,
+  ) => fetchInternal(baseUrl, path, params, cookie, extraHeaders);
+
   return {
     // ── Performance & portfolio ──────────────────────────────────────────────
 
@@ -177,16 +188,11 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
           ),
       }),
       execute: async ({ exchange, period, align }) =>
-        fetchInternal(
-          baseUrl,
-          '/api/analytics/account',
-          {
-            exchange: exchange ?? 'all',
-            period: period ?? '1m',
-            align: align ?? 'calendar',
-          },
-          cookie,
-        ),
+        fetch('/api/analytics/account', {
+          exchange: exchange ?? 'all',
+          period: period ?? '1m',
+          align: align ?? 'calendar',
+        }),
     }),
 
     get_pnl_summary: tool({
@@ -201,8 +207,7 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
             'Optional strategy ID. Omit to get overall PnL across all strategies.',
           ),
       }),
-      execute: async ({ strategyId }) =>
-        fetchInternal(baseUrl, '/api/analytics/pnl', { strategyId }, cookie),
+      execute: async ({ strategyId }) => fetch('/api/analytics/pnl', { strategyId }),
     }),
 
     get_strategy_analytics: tool({
@@ -217,12 +222,7 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
           .describe('Number of top strategies to return. Default: 10.'),
       }),
       execute: async ({ limit }) =>
-        fetchInternal(
-          baseUrl,
-          '/api/analytics/strategies',
-          { limit: limit ?? 10 },
-          cookie,
-        ),
+        fetch('/api/analytics/strategies', { limit: limit ?? 10 }),
     }),
 
     get_top_tokens: tool({
@@ -236,12 +236,9 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
           .describe('Number of top tokens to return. Default: 10.'),
       }),
       execute: async ({ limit }) => {
-        const data = (await fetchInternal(
-          baseUrl,
-          '/api/analytics/strategies',
-          { limit: 50 },
-          cookie,
-        )) as { bySymbol?: unknown[] };
+        const data = (await fetch('/api/analytics/strategies', { limit: 50 })) as {
+          bySymbol?: unknown[];
+        };
         return { topTokens: (data.bySymbol ?? []).slice(0, limit ?? 10) };
       },
     }),
@@ -274,21 +271,16 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
           .describe('Number of orders to return. Default: 20.'),
       }),
       execute: async ({ exchange, symbol, status, startDate, endDate, pageSize }) =>
-        fetchInternal(
-          baseUrl,
-          '/api/orders',
-          {
-            exchange,
-            symbol,
-            status,
-            startDate,
-            endDate,
-            pageSize: pageSize ?? 20,
-            sortBy: 'timestamp',
-            sortOrder: 'DESC',
-          },
-          cookie,
-        ),
+        fetch('/api/orders', {
+          exchange,
+          symbol,
+          status,
+          startDate,
+          endDate,
+          pageSize: pageSize ?? 20,
+          sortBy: 'timestamp',
+          sortOrder: 'DESC',
+        }),
     }),
 
     // ── Strategy management ──────────────────────────────────────────────────
@@ -305,7 +297,7 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
         exchange: z.string().optional().describe('Filter by exchange name.'),
       }),
       execute: async ({ status, exchange }) =>
-        fetchInternal(baseUrl, '/api/strategies', { status, exchange }, cookie),
+        fetch('/api/strategies', { status, exchange }),
     }),
 
     get_strategy_types: tool({
@@ -314,7 +306,7 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
         'ALWAYS call this before proposing any strategy so you have accurate parameter schemas and defaults. ' +
         'Returns types like SpreadGridStrategy, MovingAverageStrategy, etc.',
       parameters: nullSafe({}),
-      execute: async () => fetchInternal(baseUrl, '/api/strategies/config', {}, cookie),
+      execute: async () => fetch('/api/strategies/config', {}),
     }),
 
     // ── Market data ──────────────────────────────────────────────────────────
@@ -413,12 +405,7 @@ export function createChatbotTools(baseUrl: string, cookie: string) {
           .describe('Filter by type: "spot" or "futures". Omit for all.'),
       }),
       execute: async ({ exchange, query, type }) => {
-        const data = (await fetchInternal(
-          baseUrl,
-          '/api/trading-pairs',
-          {},
-          cookie,
-        )) as Array<{
+        const data = (await fetch('/api/trading-pairs', {})) as Array<{
           symbol: string;
           exchange: string;
           name: string;
