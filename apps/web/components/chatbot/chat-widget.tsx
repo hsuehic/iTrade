@@ -25,7 +25,7 @@ const SUGGESTED_QUESTIONS = [
   'Show my recent orders',
 ];
 
-const DEFAULT_CHAT_TITLE = 'Powered by Gemini 3.1 Flash Lite';
+const DEFAULT_CHAT_TITLE = 'Powered by Gemini 2.0 Flash';
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);

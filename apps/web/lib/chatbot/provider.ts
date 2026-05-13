@@ -111,10 +111,19 @@ export async function getAIModels(): Promise<LanguageModel[]> {
 
   // 4. Google Gemini — DB settings take priority over env vars
   //    API key: DB gemini_api_key → env GEMINI_API_KEY
-  //    Model:   DB gemini_model   → env GEMINI_MODEL → 'gemini-3.1-flash-lite'
+  //    Model:   DB gemini_model   → env GEMINI_MODEL → 'gemini-2.0-flash'
+  //
+  //    NOTE: Default is gemini-2.0-flash (NOT a thinking model).
+  //    Gemini 3.x thinking models (e.g. gemini-3.1-flash-lite) attach a
+  //    thought_signature to functionCall parts in the response. The
+  //    @ai-sdk/google v1.x Zod schema silently strips this field when parsing
+  //    the model response, so multi-turn tool calls (step 2+) fail with
+  //    "Function call is missing a thought_signature". Using gemini-2.0-flash
+  //    avoids this entirely. Upgrade @ai-sdk/google first if you want to use
+  //    thinking models with tool calling.
   const geminiApiKey = dbSettings.gemini_api_key || process.env.GEMINI_API_KEY;
   const geminiModel =
-    dbSettings.gemini_model || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+    dbSettings.gemini_model || process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
   if (geminiApiKey) {
     const google = createGoogleGenerativeAI({ apiKey: geminiApiKey });

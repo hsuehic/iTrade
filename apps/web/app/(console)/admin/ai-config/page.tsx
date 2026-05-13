@@ -44,11 +44,12 @@ type AiConfigResponse = {
 // ── Known Gemini models (user can still type a custom value) ──────────────────
 
 const KNOWN_GEMINI_MODELS = [
-  { value: 'gemini-3.1-flash-lite', label: 'gemini-3.1-flash-lite (default)' },
-  { value: 'gemini-3.1-flash', label: 'gemini-3.1-flash' },
-  { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash' },
-  { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro' },
-  { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
+  { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash (default)' },
+  { value: 'gemini-2.0-flash-lite', label: 'gemini-2.0-flash-lite' },
+  { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash ⚠ thinking model' },
+  { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro ⚠ thinking model' },
+  { value: 'gemini-3.1-flash-lite', label: 'gemini-3.1-flash-lite ⚠ thinking model' },
+  { value: 'gemini-3.1-flash', label: 'gemini-3.1-flash ⚠ thinking model' },
   { value: '__custom__', label: 'Custom model name…' },
 ];
 
@@ -63,7 +64,7 @@ export default function AdminAiConfigPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
   const [maskedApiKey, setMaskedApiKey] = useState('');
-  const [modelSelectValue, setModelSelectValue] = useState('gemini-3.1-flash-lite');
+  const [modelSelectValue, setModelSelectValue] = useState('gemini-2.0-flash');
   const [form, setForm] = useState<AiConfigForm>({
     gemini_api_key: '',
     gemini_model: '',
@@ -99,11 +100,7 @@ export default function AdminAiConfigPage() {
       const isKnown = storedModel === '' || knownValues.includes(storedModel);
 
       setModelSelectValue(
-        storedModel === ''
-          ? 'gemini-3.1-flash-lite'
-          : isKnown
-            ? storedModel
-            : '__custom__',
+        storedModel === '' ? 'gemini-2.0-flash' : isKnown ? storedModel : '__custom__',
       );
 
       setForm({
@@ -136,7 +133,7 @@ export default function AdminAiConfigPage() {
   const handleModelSelectChange = (value: string) => {
     setModelSelectValue(value);
     if (value !== '__custom__') {
-      set('gemini_model', value === 'gemini-3.1-flash-lite' ? '' : value);
+      set('gemini_model', value === 'gemini-2.0-flash' ? '' : value);
     }
     // For __custom__ we leave gemini_model as-is so the text input is editable
   };
@@ -333,7 +330,8 @@ export default function AdminAiConfigPage() {
                 <CardDescription>
                   The model used for all chatbot responses. DB value takes priority over
                   the <code className="text-xs">GEMINI_MODEL</code> env var. Defaults to{' '}
-                  <code className="text-xs">gemini-3.1-flash-lite</code>.
+                  <code className="text-xs">gemini-2.0-flash</code>. Thinking models (⚠)
+                  require a newer SDK version for multi-turn tool calling.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -374,7 +372,7 @@ export default function AdminAiConfigPage() {
                 <p className="text-xs text-muted-foreground">
                   Active:{' '}
                   <code className="bg-muted px-1 py-0.5 rounded text-xs">
-                    {form.gemini_model || 'gemini-3.1-flash-lite'}
+                    {form.gemini_model || 'gemini-2.0-flash'}
                   </code>{' '}
                   {!form.gemini_model && (
                     <span className="text-muted-foreground">(default)</span>
@@ -400,7 +398,7 @@ export default function AdminAiConfigPage() {
                   <Label htmlFor="chat_title">Chatbot subtitle / powered-by label</Label>
                   <Input
                     id="chat_title"
-                    placeholder="Powered by Gemini 3.1 Flash Lite"
+                    placeholder="Powered by Gemini 2.0 Flash"
                     value={form.chat_title}
                     onChange={(e) => set('chat_title', e.target.value)}
                     maxLength={80}
@@ -438,7 +436,7 @@ export default function AdminAiConfigPage() {
                         iTrade AI
                       </p>
                       <p className="text-[11px] text-primary-foreground/70 mt-0.5">
-                        {form.chat_title || 'Powered by Gemini 3.1 Flash Lite'}
+                        {form.chat_title || 'Powered by Gemini 2.0 Flash'}
                       </p>
                     </div>
                   </div>
