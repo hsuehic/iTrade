@@ -126,9 +126,11 @@ class _BalanceHistoryChartState extends State<BalanceHistoryChart> {
   }
 
   Future<void> _openFullscreen() async {
-    // Lock landscape BEFORE the route transition starts so the screen
-    // is already in landscape when it appears.
+    // Allow all orientations so the fullscreen view works in both portrait
+    // and landscape — the user can rotate freely without being forced.
     await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
@@ -146,8 +148,7 @@ class _BalanceHistoryChartState extends State<BalanceHistoryChart> {
       ),
     );
 
-    // Restore portrait (+ landscape) after the fullscreen closes,
-    // in case _FullscreenChartState.dispose() ran before this await returned.
+    // Restore portrait-only orientation when returning to the normal view.
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -337,9 +338,11 @@ class _FullscreenChartState extends State<_FullscreenChart> {
   void initState() {
     super.initState();
     _period = widget.initialPeriod;
-    // Re-apply landscape lock in case the orientation changed between the
-    // setPreferredOrientations call in _openFullscreen and this initState.
+    // Ensure all orientations are unlocked inside the fullscreen view so the
+    // user can rotate freely between portrait and landscape.
     SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
@@ -548,8 +551,18 @@ class _LineChart extends StatelessWidget {
     }
     final yRange = (yMax - yMin).abs();
     final yPad = yRange * 0.05;
-    final domainMin = math.max(0.0, yMin - yPad);
-    final domainMax = yMax + yPad;
+    double domainMin = math.max(0.0, yMin - yPad);
+    double domainMax = yMax + yPad;
+
+    // Guard against a zero-span Y domain (all values identical).
+    // fl_chart cannot position a line when minY == maxY, so enforce a
+    // minimum visible range centred on the value.
+    if (domainMax - domainMin < 0.001) {
+      final center = (domainMin + domainMax) / 2;
+      final half = math.max(center * 0.05, 1.0);
+      domainMin = math.max(0.0, center - half);
+      domainMax = center + half;
+    }
 
     final gridColor = isDark
         ? Colors.white.withValues(alpha: 0.07)
@@ -564,7 +577,11 @@ class _LineChart extends StatelessWidget {
         spots: spotsMap[k]!,
         isCurved: true,
         curveSmoothness: 0.35,
-        color: color,
+        // Use a solid gradient so the stroke is always rendered regardless of
+        // how the installed fl_chart version resolves the color/gradient
+        // precedence.  This guarantees a visible line even when all data
+        // points share the same Y value.
+        gradient: LinearGradient(colors: [color, color]),
         barWidth: isTotal ? 2 : 1.5,
         isStrokeCapRound: true,
         dotData: const FlDotData(show: false),
@@ -596,7 +613,7 @@ class _LineChart extends StatelessWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          horizontalInterval: (domainMax - domainMin) / 5,
+          horizontalInterval: math.max((domainMax - domainMin) / 5, 0.001),
           getDrawingHorizontalLine: (_) => FlLine(
             color: gridColor,
             strokeWidth: 1,
@@ -609,7 +626,7 @@ class _LineChart extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: compact ? 56.w : 72.w,
-              interval: (domainMax - domainMin) / 4,
+              interval: math.max((domainMax - domainMin) / 4, 0.001),
               getTitlesWidget: (v, _) => Padding(
                 padding: EdgeInsets.only(right: 4.w),
                 child: Text(
@@ -667,7 +684,9 @@ class _LineChart extends StatelessWidget {
                 show: true,
                 getDotPainter: (spot, _, bar, __) => FlDotCirclePainter(
                   radius: 4,
-                  color: bar.color ?? Colors.blue,
+                  color: (bar.gradient is LinearGradient)
+                      ? (bar.gradient as LinearGradient).colors.first
+                      : (bar.color ?? Colors.blue),
                   strokeWidth: 1.5,
                   strokeColor: isDark ? Colors.white : Colors.white,
                 ),
