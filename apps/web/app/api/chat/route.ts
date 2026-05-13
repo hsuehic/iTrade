@@ -215,7 +215,10 @@ export async function POST(request: NextRequest) {
       maxOutputTokens: 4000, // Generous cap for thinking models that need more tokens
     });
 
-    // ── Parse structured render hints from the response (```json … ```) ──────
+    // ── Parse structured render hints from the response ──────────────────────
+    // The model should wrap renderData in ```json ... ``` fences, but thinking
+    // models sometimes emit bare JSON objects. We try both patterns so charts
+    // and tables render regardless of which format the model chose.
     let renderData: {
       renderAs?: 'table' | 'chart' | 'text' | 'strategy_proposal';
       title?: string;
@@ -224,13 +227,30 @@ export async function POST(request: NextRequest) {
     } | null = null;
     let cleanText = rawText;
 
+    // Strategy 1: fenced ```json … ``` block (preferred format)
     const jsonBlockMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
     if (jsonBlockMatch) {
       try {
         renderData = JSON.parse(jsonBlockMatch[1]);
         cleanText = rawText.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
       } catch {
-        // Malformed JSON block — fall through and show raw text
+        // Malformed JSON — fall through to next strategy
+      }
+    }
+
+    // Strategy 2: bare JSON starting with {"renderAs": anywhere in the response.
+    // Find the LAST occurrence (model typically appends it at the end) and parse
+    // from that index to the end of the string.
+    if (!renderData) {
+      const renderAsIdx = rawText.lastIndexOf('{"renderAs":');
+      if (renderAsIdx !== -1) {
+        const candidate = rawText.slice(renderAsIdx).trim();
+        try {
+          renderData = JSON.parse(candidate);
+          cleanText = rawText.slice(0, renderAsIdx).trim();
+        } catch {
+          // JSON is truncated or malformed — fall through and show raw text
+        }
       }
     }
 
