@@ -21,17 +21,19 @@ interface ChatChartProps {
   title?: string;
 }
 
+// Plain hex colors — CSS variables don't resolve in SVG stroke/fill attributes
+// (Recharts sets these as SVG presentation attributes, not inline CSS styles)
 const COLORS = [
-  'hsl(var(--chart-1, 220 70% 60%))',
-  'hsl(var(--chart-2, 160 60% 45%))',
-  'hsl(var(--chart-3, 30 80% 55%))',
-  'hsl(var(--chart-4, 280 65% 60%))',
-  'hsl(var(--chart-5, 0 65% 55%))',
-  '#6366f1',
-  '#22d3ee',
-  '#f59e0b',
-  '#ec4899',
-  '#10b981',
+  '#6366f1', // indigo
+  '#22d3ee', // cyan
+  '#f59e0b', // amber
+  '#10b981', // emerald
+  '#ec4899', // pink
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#f97316', // orange
+  '#14b8a6', // teal
+  '#84cc16', // lime
 ];
 
 const formatCurrency = (value: number) =>
@@ -109,22 +111,24 @@ export function ChatChart({ data, title }: ChatChartProps) {
           </p>
         )}
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={items} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+          <BarChart data={items} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#888" strokeOpacity={0.15} />
             <XAxis
               dataKey="name"
-              tick={{ fontSize: 11 }}
-              className="fill-muted-foreground"
+              tick={{ fontSize: 11, fill: '#888' }}
               interval={0}
               angle={-30}
               textAnchor="end"
               height={40}
+              tickLine={false}
+              axisLine={false}
             />
             <YAxis
               tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`}
-              tick={{ fontSize: 10 }}
-              className="fill-muted-foreground"
+              tick={{ fontSize: 10, fill: '#888' }}
               width={50}
+              tickLine={false}
+              axisLine={false}
             />
             <Tooltip content={<CustomTooltip />} />
             <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
@@ -164,32 +168,35 @@ export function ChatChart({ data, title }: ChatChartProps) {
             {title}
           </p>
         )}
-        <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={formatted} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={formatted} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#888" strokeOpacity={0.15} />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 10 }}
-              className="fill-muted-foreground"
+              tick={{ fontSize: 10, fill: '#888' }}
               tickFormatter={(v) => String(v).slice(5)} // "MM-DD"
+              tickLine={false}
+              axisLine={false}
             />
             <YAxis
               tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-              tick={{ fontSize: 10 }}
-              className="fill-muted-foreground"
+              tick={{ fontSize: 10, fill: '#888' }}
               width={46}
+              tickLine={false}
+              axisLine={false}
             />
             <Tooltip
               formatter={(value: number) => [formatCurrency(value)]}
-              labelClassName="text-xs font-semibold"
               contentStyle={{
                 background: 'hsl(var(--background))',
                 border: '1px solid hsl(var(--border))',
                 borderRadius: '8px',
                 fontSize: '11px',
+                padding: '6px 10px',
               }}
+              labelStyle={{ fontWeight: 600, marginBottom: 2 }}
             />
-            <Legend wrapperStyle={{ fontSize: '11px' }} />
+            <Legend wrapperStyle={{ fontSize: '11px', color: '#888' }} />
             {seriesKeys.map((key, i) => (
               <Line
                 key={key}
