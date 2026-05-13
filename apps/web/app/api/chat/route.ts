@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
     ];
 
     // Run the agentic loop with automatic provider fallback
-    const rawText = await generateWithFallback(getAIModels(), {
+    const rawText = await generateWithFallback(await getAIModels(), {
       system: SYSTEM_PROMPT,
       messages,
       tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),

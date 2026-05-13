@@ -1,6 +1,11 @@
 'use client';
 
-import { IconSettings, IconChartInfographic, IconUsers } from '@tabler/icons-react';
+import {
+  IconSettings,
+  IconChartInfographic,
+  IconUsers,
+  IconBrain,
+} from '@tabler/icons-react';
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -31,6 +36,11 @@ export function NavAdmin() {
       title: 'Users & Roles',
       url: '/admin/users',
       icon: IconUsers,
+    },
+    {
+      title: 'AI Config',
+      url: '/admin/ai-config',
+      icon: IconBrain,
     },
     {
       title: 'System Settings',

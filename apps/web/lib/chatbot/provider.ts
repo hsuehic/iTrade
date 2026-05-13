@@ -31,8 +31,8 @@
  * │  OpenRouter    │ llama-3.3-70b       │ Varies       │ ✅ Good            │
  * │                │ deepseek-v3         │ by model     │                   │
  * ├────────────────┼─────────────────────┼──────────────┼───────────────────┤
- * │  Google Gemini │ gemini-2.0-flash    │ 1,500/day    │ ✅ Good            │
- * │  (fallback)    │ gemini-2.5-flash    │ Very limited │                   │
+ * │  Google Gemini │ gemini-3.1-flash-lite│ 1,500/day   │ ✅ Good            │
+ * │  (fallback)    │ gemini-3.1-flash    │ Very limited │                   │
  * └────────────────┴─────────────────────┴──────────────┴───────────────────┘
  *
  * Get free API keys:
@@ -45,6 +45,7 @@ import { createGroq } from '@ai-sdk/groq';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
+import { getAllSettings } from '@/lib/settings';
 
 // ── Model selector ────────────────────────────────────────────────────────────
 
@@ -53,12 +54,28 @@ import type { LanguageModel } from 'ai';
  *
  * Priority: Groq → Cerebras → OpenRouter → Google Gemini
  *
+ * Gemini API key and model are read from the DB-backed settings store first
+ * (managed via Admin → AI Config), then fall back to environment variables.
+ * This means you can update the key or model at runtime without a restart.
+ *
  * The route handler tries each model in sequence and moves to the next on
  * rate-limit (429) or request-too-large (413) errors, so adding more API keys
  * automatically increases capacity without any code changes.
  */
-export function getAIModels(): LanguageModel[] {
+export async function getAIModels(): Promise<LanguageModel[]> {
   const models: LanguageModel[] = [];
+
+  // Read runtime-configurable Gemini settings from DB (cached, 30s TTL)
+  let dbSettings: Partial<Record<'gemini_api_key' | 'gemini_model', string>> = {};
+  try {
+    const all = await getAllSettings();
+    dbSettings = {
+      gemini_api_key: all.gemini_api_key,
+      gemini_model: all.gemini_model,
+    };
+  } catch {
+    // DB unavailable — fall back to env vars silently
+  }
 
   // 1. Groq — 14,400 req/day; free TPM varies by org (can be low, ~6k)
   if (process.env.GROQ_API_KEY) {
@@ -92,12 +109,16 @@ export function getAIModels(): LanguageModel[] {
     );
   }
 
-  // 4. Google Gemini — paid tier, generous limits
-  //    Default: gemini-2.5-flash (fast, cost-effective, excellent tool calling)
-  //    Override via GEMINI_MODEL env var (e.g. "gemini-2.5-pro" for higher quality)
-  if (process.env.GEMINI_API_KEY) {
-    const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
-    models.push(google(process.env.GEMINI_MODEL ?? 'gemini-2.5-flash'));
+  // 4. Google Gemini — DB settings take priority over env vars
+  //    API key: DB gemini_api_key → env GEMINI_API_KEY
+  //    Model:   DB gemini_model   → env GEMINI_MODEL → 'gemini-3.1-flash-lite'
+  const geminiApiKey = dbSettings.gemini_api_key || process.env.GEMINI_API_KEY;
+  const geminiModel =
+    dbSettings.gemini_model || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
+
+  if (geminiApiKey) {
+    const google = createGoogleGenerativeAI({ apiKey: geminiApiKey });
+    models.push(google(geminiModel));
   }
 
   if (models.length === 0) {
@@ -111,8 +132,8 @@ export function getAIModels(): LanguageModel[] {
 }
 
 /** Convenience: returns the highest-priority configured model (no fallback). */
-export function getAIModel(): LanguageModel {
-  return getAIModels()[0];
+export async function getAIModel(): Promise<LanguageModel> {
+  return (await getAIModels())[0];
 }
 
 // ── System prompt ─────────────────────────────────────────────────────────────

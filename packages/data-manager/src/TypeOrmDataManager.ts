@@ -48,6 +48,7 @@ import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
 import { Verification } from './entities/Verification';
+import { AppSettingEntity } from './entities/AppSetting';
 import {
   StrategyRepository,
   OrderRepository,
@@ -133,6 +134,7 @@ export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   email_preferences: EmailPreferencesEntity,
   push_devices: PushDeviceEntity,
   push_notification_logs: PushNotificationLogEntity,
+  app_settings: AppSettingEntity,
 };
 
 export function resolveEntities(

@@ -82,6 +82,7 @@ export {
   PushProvider,
 } from './entities/PushDevice';
 export { PushNotificationLogEntity } from './entities/PushNotificationLog';
+export { AppSettingEntity } from './entities/AppSetting';
 export type {
   PushNotificationCategory,
   PushTargetType,

@@ -15,14 +15,29 @@ const SUGGESTED_QUESTIONS = [
   'Show my recent orders',
 ];
 
+const DEFAULT_CHAT_TITLE = 'Powered by Gemini 3.1 Flash Lite';
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [chatTitle, setChatTitle] = useState(DEFAULT_CHAT_TITLE);
   const { messages, isLoading, sendMessage, clearMessages } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fetch runtime-configurable chat title from the server
+  useEffect(() => {
+    fetch('/api/config/chat')
+      .then((res) => res.json())
+      .then((data: { chat_title?: string }) => {
+        if (data.chat_title) setChatTitle(data.chat_title);
+      })
+      .catch(() => {
+        // Silently keep the default on error
+      });
+  }, []);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -122,9 +137,7 @@ export function ChatWidget() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm leading-none">iTrade AI</p>
-              <p className="text-[11px] text-primary-foreground/70 mt-0.5">
-                Powered by Gemini 2.0 Flash
-              </p>
+              <p className="text-[11px] text-primary-foreground/70 mt-0.5">{chatTitle}</p>
             </div>
             <div className="flex items-center gap-1">
               {userMessageCount > 0 && (
