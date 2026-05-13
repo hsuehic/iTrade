@@ -15,7 +15,7 @@
  * Tool definitions (with Zod schemas) are in lib/chatbot/tools.ts.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { generateText, type CoreMessage, type LanguageModel } from 'ai';
+import { generateText, stepCountIs, type CoreMessage, type LanguageModel } from 'ai';
 
 import { getSession } from '@/lib/auth';
 import { getAIModels, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
@@ -124,7 +124,11 @@ async function generateWithFallback(
   for (let i = 0; i < models.length; i++) {
     const model = models[i];
     try {
-      const { text } = await generateText({ model, ...params });
+      // Type assertion needed because ai@5 uses complex generics on generateText
+
+      const { text } = await generateText({ model, ...params } as Parameters<
+        typeof generateText
+      >[0]);
       return text;
     } catch (err) {
       if (isRateLimitOrTooLarge(err)) {
@@ -200,23 +204,15 @@ export async function POST(request: NextRequest) {
       { role: 'user' as const, content: message },
     ];
 
-    // Run the agentic loop with automatic provider fallback
+    // Run the agentic loop with automatic provider fallback.
+    // @ai-sdk/google v2.x properly preserves thoughtSignature in providerMetadata,
+    // so thinking models (gemini-2.5-flash etc.) work correctly across tool-call steps.
     const rawText = await generateWithFallback(await getAIModels(), {
       system: SYSTEM_PROMPT,
       messages,
       tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
-      maxSteps: 5, // Allow up to 5 rounds of tool calls before final answer
-      maxTokens: 2000, // Cap output to reduce TPM footprint on free-tier models
-      // Disable Gemini "thinking" for function-calling flows.
-      // Gemini 3.x thinking models attach a thought_signature to each function
-      // call part. The @ai-sdk/google SDK strips it when replaying history in
-      // subsequent steps, causing AI_APICallError on step 2+. Setting
-      // thinkingBudget: 0 disables the reasoning pass entirely — function
-      // calling quality is unaffected, and the error is gone.
-      // Non-Google providers ignore this namespace silently.
-      providerOptions: {
-        google: { thinkingConfig: { thinkingBudget: 0 } },
-      },
+      stopWhen: stepCountIs(5), // Allow up to 5 rounds of tool calls before final answer
+      maxOutputTokens: 4000, // Generous cap for thinking models that need more tokens
     });
 
     // ── Parse structured render hints from the response (```json … ```) ──────

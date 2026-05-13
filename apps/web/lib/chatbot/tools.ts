@@ -15,8 +15,14 @@ import { z } from 'zod';
 //
 // This helper coerces null → {} before Zod validates, so the tool still executes.
 
-function nullSafe<T extends z.ZodRawShape>(shape: T) {
-  return z.preprocess((v) => (v == null ? {} : v), z.object(shape));
+function nullSafe<T extends z.ZodRawShape>(shape: T): z.ZodObject<T> {
+  // Coerce null/undefined → {} so models that send null args don't break.
+  // Cast to ZodObject<T> so ai@5's tool() can infer execute parameter types.
+
+  return z.preprocess(
+    (v) => (v == null ? {} : v),
+    z.object(shape),
+  ) as unknown as z.ZodObject<T>;
 }
 
 // ─── Internal fetch helper ─────────────────────────────────────────────────────
@@ -171,7 +177,7 @@ export function createChatbotTools(
         'Returns: summary (totalBalance, balanceChange), exchanges[], and chartData[] ready for line chart rendering. ' +
         'chartData format: [{date: "YYYY-MM-DD", binance: number, okx: number, ...}]. ' +
         'Supports periods: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         exchange: z
           .string()
           .optional()
@@ -201,7 +207,7 @@ export function createChatbotTools(
       description:
         'Get PnL (profit and loss) data. For overall PnL or for a specific strategy. ' +
         'Returns realizedPnl, unrealizedPnl, totalPnl.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         strategyId: z
           .number()
           .optional()
@@ -217,7 +223,7 @@ export function createChatbotTools(
         'Get analytics and performance rankings for all trading strategies. ' +
         'Use this for questions about most/least profitable strategies, strategy rankings, ' +
         'or performance grouped by exchange or symbol.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         limit: z
           .number()
           .optional()
@@ -231,7 +237,7 @@ export function createChatbotTools(
       description:
         'Get the most profitable trading tokens/symbols ranked by PnL. ' +
         'Use this for questions about most profitable crypto, best performing assets, or token ranking.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         limit: z
           .number()
           .optional()
@@ -249,7 +255,7 @@ export function createChatbotTools(
       description:
         'Get recent trading orders. Useful for reviewing trade history, filled orders, ' +
         'or orders for a specific token/exchange.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         exchange: z.string().optional().describe('Filter by exchange name.'),
         symbol: z
           .string()
@@ -291,7 +297,7 @@ export function createChatbotTools(
       description:
         "Get the user's existing trading strategies. Use this before creating a new strategy " +
         'to check for duplicates, or when the user asks to see their strategies.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         status: z
           .string()
           .optional()
@@ -307,7 +313,7 @@ export function createChatbotTools(
         'Get all available strategy types with their parameter definitions and default values. ' +
         'ALWAYS call this before proposing any strategy so you have accurate parameter schemas and defaults. ' +
         'Returns types like SpreadGridStrategy, MovingAverageStrategy, etc.',
-      parameters: nullSafe({}),
+      inputSchema: nullSafe({}),
       execute: async () => fetch('/api/strategies/config', {}),
     }),
 
@@ -319,7 +325,7 @@ export function createChatbotTools(
         'Returns current price, 24h change, 24h high/low/volume, and volatility metrics. ' +
         'Also returns suggested strategy parameters derived from the market data (suggestedBasePrice, suggestedStepPercent). ' +
         'ALWAYS call this when creating a strategy so parameters reflect the current market price.',
-      parameters: z.object({
+      inputSchema: z.object({
         symbol: z
           .string()
           .describe(
@@ -392,7 +398,7 @@ export function createChatbotTools(
         'Get available trading pairs from the iTrade database (seeded symbols). ' +
         'Use this to validate whether a symbol/exchange combination is supported, ' +
         'or to suggest symbols when the user is unsure what to trade.',
-      parameters: nullSafe({
+      inputSchema: nullSafe({
         exchange: z
           .string()
           .optional()
