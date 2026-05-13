@@ -1,7 +1,17 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Bot, X, Send, Trash2, Minimize2, Sparkles, ChevronDown } from 'lucide-react';
+import {
+  Bot,
+  X,
+  Send,
+  Trash2,
+  Minimize2,
+  Sparkles,
+  ChevronDown,
+  Maximize2,
+  Minimize,
+} from 'lucide-react';
 
 import { useChat } from './use-chat';
 import { ChatMessageBubble } from './chat-message';
@@ -20,6 +30,7 @@ const DEFAULT_CHAT_TITLE = 'Powered by Gemini 3.1 Flash Lite';
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [chatTitle, setChatTitle] = useState(DEFAULT_CHAT_TITLE);
@@ -86,6 +97,7 @@ export function ChatWidget() {
         onClick={() => {
           setIsOpen((prev) => !prev);
           setIsMinimized(false);
+          setIsFullscreen(false);
         }}
         aria-label="Open AI Chat"
         className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 group ${
@@ -115,7 +127,11 @@ export function ChatWidget() {
 
       {/* ── Chat panel ──────────────────────────────────────────────────── */}
       <div
-        className={`fixed bottom-24 right-6 z-50 w-[380px] max-w-[calc(100vw-24px)] transition-all duration-300 origin-bottom-right ${
+        className={`fixed z-50 transition-all duration-300 ${
+          isFullscreen
+            ? 'inset-0 bottom-0 right-0 w-full h-full'
+            : 'bottom-24 right-6 w-[380px] max-w-[calc(100vw-24px)] origin-bottom-right'
+        } ${
           isOpen && !isMinimized
             ? 'opacity-100 scale-100 pointer-events-auto'
             : isOpen && isMinimized
@@ -124,7 +140,9 @@ export function ChatWidget() {
         }`}
       >
         <div
-          className="rounded-2xl border border-border/60 shadow-2xl shadow-black/20 overflow-hidden flex flex-col"
+          className={`border border-border/60 shadow-2xl shadow-black/20 overflow-hidden flex flex-col ${
+            isFullscreen ? 'rounded-none h-full' : 'rounded-2xl'
+          }`}
           style={{
             background: 'hsl(var(--background))',
             backdropFilter: 'blur(20px)',
@@ -150,6 +168,20 @@ export function ChatWidget() {
                 </button>
               )}
               <button
+                onClick={() => {
+                  setIsFullscreen((prev) => !prev);
+                  setIsMinimized(false);
+                }}
+                title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                {isFullscreen ? (
+                  <Minimize className="w-3.5 h-3.5" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <button
                 onClick={() => setIsMinimized((prev) => !prev)}
                 title={isMinimized ? 'Expand' : 'Minimize'}
                 className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
@@ -161,7 +193,10 @@ export function ChatWidget() {
                 )}
               </button>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  setIsFullscreen(false);
+                }}
                 title="Close"
                 className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
               >
@@ -177,7 +212,11 @@ export function ChatWidget() {
               <div
                 id="chat-messages"
                 className="flex-1 overflow-y-auto px-3 py-4 space-y-4 scroll-smooth"
-                style={{ maxHeight: '420px', minHeight: '200px' }}
+                style={
+                  isFullscreen
+                    ? { flex: '1 1 0', minHeight: 0 }
+                    : { maxHeight: '420px', minHeight: '200px' }
+                }
               >
                 {messages.map((message) => (
                   <ChatMessageBubble key={message.id} message={message} />

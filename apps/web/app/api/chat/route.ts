@@ -207,6 +207,16 @@ export async function POST(request: NextRequest) {
       tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
       maxSteps: 5, // Allow up to 5 rounds of tool calls before final answer
       maxTokens: 2000, // Cap output to reduce TPM footprint on free-tier models
+      // Disable Gemini "thinking" for function-calling flows.
+      // Gemini 3.x thinking models attach a thought_signature to each function
+      // call part. The @ai-sdk/google SDK strips it when replaying history in
+      // subsequent steps, causing AI_APICallError on step 2+. Setting
+      // thinkingBudget: 0 disables the reasoning pass entirely — function
+      // calling quality is unaffected, and the error is gone.
+      // Non-Google providers ignore this namespace silently.
+      providerOptions: {
+        google: { thinkingConfig: { thinkingBudget: 0 } },
+      },
     });
 
     // ── Parse structured render hints from the response (```json … ```) ──────
