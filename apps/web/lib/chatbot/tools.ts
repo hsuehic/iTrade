@@ -176,7 +176,8 @@ export function createChatbotTools(
         'Use this for questions about current balance, earnings over a period, balance changes, OR to chart balance history. ' +
         'Returns: summary (totalBalance, balanceChange), exchanges[], and chartData[] ready for line chart rendering. ' +
         'chartData format: [{date: "YYYY-MM-DD", binance: number, okx: number, ...}]. ' +
-        'Supports periods: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y.',
+        'Supports preset periods (1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y) OR arbitrary date windows via startDate/endDate. ' +
+        'When the user says things like "in April 2026", "last March", "from Jan to Mar", use startDate/endDate instead of period.',
       inputSchema: nullSafe({
         exchange: z
           .string()
@@ -187,19 +188,39 @@ export function createChatbotTools(
         period: z
           .string()
           .optional()
-          .describe('Time period: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y. Default: 1m.'),
+          .describe(
+            'Preset time period: 1h, 1d, 7d, 1w, 1m, 30d, 90d, 1y. Default: 1m. ' +
+              'Ignored when startDate is provided.',
+          ),
         align: z
           .string()
           .optional()
           .describe(
-            '"calendar" for calendar-aligned periods (default), "rolling" for rolling windows.',
+            '"calendar" for calendar-aligned periods (default), "rolling" for rolling windows. ' +
+              'Ignored when startDate is provided.',
+          ),
+        startDate: z
+          .string()
+          .optional()
+          .describe(
+            'Start of an arbitrary date window in YYYY-MM-DD format (e.g. "2026-04-01"). ' +
+              'When provided, overrides period/align. Use for queries like "April 2026" or "last March".',
+          ),
+        endDate: z
+          .string()
+          .optional()
+          .describe(
+            'End of the arbitrary date window in YYYY-MM-DD format (e.g. "2026-04-30"), inclusive. ' +
+              'Defaults to today when omitted. Must be paired with startDate.',
           ),
       }),
-      execute: async ({ exchange, period, align }) =>
+      execute: async ({ exchange, period, align, startDate, endDate }) =>
         fetch('/api/analytics/account', {
           exchange: exchange ?? 'all',
           period: period ?? '1m',
           align: align ?? 'calendar',
+          startDate,
+          endDate,
         }),
     }),
 

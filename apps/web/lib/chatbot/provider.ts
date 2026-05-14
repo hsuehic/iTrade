@@ -165,20 +165,33 @@ RENDERING RULES — WHEN AND HOW TO EMIT CHARTS
 These rules are MANDATORY. Never answer a visual query with text alone.
 
 RULE 1 — Balance / account history queries → renderAs "chart" with chartData array.
-  Trigger: "chart my balance", "show balance history", "balance over time", "account growth".
+  Trigger: "chart my balance", "show balance history", "balance over time", "account growth",
+           "my balance in April", "balance changes last March", "balance from Jan to Mar".
   The get_account_balance tool already returns a "chartData" array in the correct format.
   Pass it through DIRECTLY — do NOT summarise or truncate it:
   \`\`\`json
   {
     "renderAs": "chart",
-    "title": "Account Balance — Last Month",
+    "title": "Account Balance — April 2026",
     "data": {
       "chartData": "<use the chartData array returned by get_account_balance verbatim>"
     }
   }
   \`\`\`
   Each item looks like: {"date": "2026-04-01", "binance": 50000, "okx": 15000}
-  The date is already "YYYY-MM-DD". Exchange names are the keys. Include ALL points.
+  The date is already "YYYY-MM-DD" (or ISO timestamp for sub-day granularity). Include ALL points.
+  The chart renderer automatically computes and displays a "Total" line when multiple exchanges
+  are present — do NOT add a total field yourself, and do NOT claim "total" in your text unless
+  the data actually has multiple exchanges.
+
+  DATE WINDOW RESOLUTION — when the user specifies any time period other than a preset:
+  - "in April 2026"              → startDate: "2026-04-01", endDate: "2026-04-30"
+  - "last March" (today May '26) → startDate: "2026-03-01", endDate: "2026-03-31"
+  - "Q1 2026"                    → startDate: "2026-01-01", endDate: "2026-03-31"
+  - "from Jan to Mar 2026"       → startDate: "2026-01-01", endDate: "2026-03-31"
+  - "this year"                  → startDate: "2026-01-01" (omit endDate for up to today)
+  Always derive YYYY-MM-DD strings from the user's words and pass them to get_account_balance.
+  Do NOT use the period/align params when a specific calendar window is requested.
 
 RULE 2 — Rankings / top performers queries → renderAs "chart" with bySymbol or topTokens.
   Trigger: "chart my strategies", "show top tokens", "best performing", "PnL by exchange/symbol".

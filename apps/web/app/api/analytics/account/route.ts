@@ -14,8 +14,20 @@ export interface ChartDataPoint {
  *
  * Query params:
  * - exchange?: string - 交易所名称
- * - period?: '7d' | '30d' | '90d' - 时间周期
+ * - period?: '7d' | '30d' | '90d' - 时间周期 (ignored when startDate/endDate provided)
+ * - startDate?: string - ISO date string e.g. "2026-04-01" (arbitrary window start)
+ * - endDate?: string   - ISO date string e.g. "2026-04-30" (arbitrary window end, inclusive)
  */
+
+/** Pick chart granularity based on window length in milliseconds. */
+function intervalForRange(rangeMs: number): 'minute' | '5min' | 'hour' | 'day' {
+  const hours = rangeMs / (1000 * 60 * 60);
+  if (hours <= 2) return 'minute';
+  if (hours <= 72) return '5min';
+  if (hours <= 14 * 24) return 'hour';
+  return 'day';
+}
+
 export async function GET(request: Request) {
   try {
     const session = await getSession(request);
@@ -31,17 +43,53 @@ export async function GET(request: Request) {
     // 'rolling':            period is a fixed-length window ending now.
     const align = searchParams.get('align') || 'calendar';
 
+    // Arbitrary time-window parameters (take priority over period/align).
+    const startDateParam = searchParams.get('startDate');
+    const endDateParam = searchParams.get('endDate');
+
     const dm = await getDataManager();
 
     // Calculate date range
     const now = new Date();
-    const endTime = new Date(now.getTime() + 5 * 60 * 1000); // 5 min buffer for clock skew
+    let endTime = new Date(now.getTime() + 5 * 60 * 1000); // 5 min buffer for clock skew
     const startTime = new Date(now);
     // baselineStartTime/baselineEndTime bracket the previous period (calendar mode only).
     let baselineStartTime = new Date(now);
     let baselineEndTime = new Date(now);
 
-    if (align === 'rolling') {
+    // ── Arbitrary window (startDate / endDate params) ────────────────────────
+    // When explicit dates are supplied we bypass the period/align logic entirely.
+    let useCustomWindow = false;
+    if (startDateParam) {
+      useCustomWindow = true;
+      const parsed = new Date(startDateParam);
+      if (isNaN(parsed.getTime())) {
+        return NextResponse.json(
+          { error: `Invalid startDate: ${startDateParam}` },
+          { status: 400 },
+        );
+      }
+      // Treat supplied dates as UTC midnight so "2026-04-01" means start of April 1
+      parsed.setUTCHours(0, 0, 0, 0);
+      startTime.setTime(parsed.getTime());
+
+      if (endDateParam) {
+        const parsedEnd = new Date(endDateParam);
+        if (isNaN(parsedEnd.getTime())) {
+          return NextResponse.json(
+            { error: `Invalid endDate: ${endDateParam}` },
+            { status: 400 },
+          );
+        }
+        // End of the supplied day (23:59:59.999 UTC)
+        parsedEnd.setUTCHours(23, 59, 59, 999);
+        endTime = parsedEnd;
+      }
+      // Baseline = day just before the window start
+      baselineEndTime = new Date(startTime.getTime() - 1);
+      baselineStartTime = new Date(startTime);
+      baselineStartTime.setDate(baselineStartTime.getDate() - 1);
+    } else if (align === 'rolling') {
       // Rolling window: look back N units from now
       switch (period) {
         case '1h':
@@ -188,18 +236,30 @@ export async function GET(request: Request) {
     const exchangesToQuery =
       exchange === 'all' ? latestSnapshots.map((s) => s.exchange) : [exchange];
 
-    // Calendar mode: fetch the last non-zero balance at the end of the previous
-    // calendar period — this is the "opening balance" baseline.
+    // Determine chart granularity.
+    // For custom windows derive it from the actual range length; otherwise use period.
+    const historyInterval: 'minute' | '5min' | 'hour' | 'day' = useCustomWindow
+      ? intervalForRange(endTime.getTime() - startTime.getTime())
+      : period === '1h'
+        ? 'minute'
+        : period === '1d'
+          ? '5min'
+          : period === '7d'
+            ? 'hour'
+            : 'day';
+
+    // Calendar / custom-window mode: fetch the last non-zero balance at the end of the
+    // previous period — this is the "opening balance" baseline.
     // Rolling mode: baseline is computed later from the first non-zero point in chartDataArray.
     let totalBaselineBalance = 0;
-    if (align !== 'rolling') {
+    if (useCustomWindow || align !== 'rolling') {
       const baselinePromises = exchangesToQuery.map(async (exchangeName) => ({
         exchange: exchangeName,
         history: await dm.getBalanceTimeSeries(
           exchangeName,
           baselineStartTime,
           baselineEndTime,
-          period === '1h' ? 'minute' : 'day',
+          historyInterval === 'minute' ? 'minute' : 'day',
           userId,
         ),
       }));
@@ -238,13 +298,7 @@ export async function GET(request: Request) {
           exchangeName,
           startTime,
           endTime,
-          period === '1h'
-            ? 'minute'
-            : period === '1d'
-              ? '5min'
-              : period === '7d'
-                ? 'hour'
-                : 'day',
+          historyInterval,
           userId,
         ),
       };
@@ -257,16 +311,16 @@ export async function GET(request: Request) {
     historicalData.forEach(({ exchange: exName, history }) => {
       history.forEach((point) => {
         let dateKey: string;
-        if (period === '1h') {
+        if (historyInterval === 'minute') {
           const roundedTime = new Date(point.timestamp);
           roundedTime.setSeconds(0, 0);
           dateKey = roundedTime.toISOString();
-        } else if (period === '1d') {
+        } else if (historyInterval === '5min') {
           const roundedTime = new Date(point.timestamp);
           const minutes = roundedTime.getMinutes();
           roundedTime.setMinutes(Math.floor(minutes / 5) * 5, 0, 0);
           dateKey = roundedTime.toISOString();
-        } else if (period === '7d') {
+        } else if (historyInterval === 'hour') {
           const roundedTime = new Date(point.timestamp);
           roundedTime.setMinutes(0, 0, 0);
           dateKey = roundedTime.toISOString();
@@ -305,10 +359,12 @@ export async function GET(request: Request) {
       });
     });
 
-    // Rolling mode or fallback for Calendar mode (if previous period has no data):
+    // Rolling mode or fallback (if previous period has no data):
     // find the first non-zero aggregate snapshot within the current window.
+    // Custom windows always have a baseline already set, so skip the fallback only
+    // when align === 'rolling' (and we haven't overridden with a custom window).
     let baselineBalance = totalBaselineBalance;
-    if (align === 'rolling' || baselineBalance === 0) {
+    if ((!useCustomWindow && align === 'rolling') || baselineBalance === 0) {
       for (const point of chartDataArray) {
         const total = Object.values(point)
           .filter((v) => typeof v === 'number' && !isNaN(v))
@@ -329,6 +385,11 @@ export async function GET(request: Request) {
     const balanceChangeValue = totalBalance - baselineBalance;
     const totalEquity = totalBalance + totalPositionValue;
 
+    // Build a human-readable period label for the response
+    const periodLabel = useCustomWindow
+      ? `${startDateParam}${endDateParam ? ` to ${endDateParam}` : '+'}`
+      : period;
+
     return NextResponse.json({
       summary: {
         totalBalance,
@@ -338,7 +399,7 @@ export async function GET(request: Request) {
         totalPositions,
         balanceChange,
         balanceChangeValue,
-        period,
+        period: periodLabel,
       },
       exchanges: exchangeData,
       chartData: chartDataArray,

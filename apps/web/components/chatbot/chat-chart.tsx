@@ -150,16 +150,31 @@ export function ChatChart({ data, title }: ChatChartProps) {
   const chartDataArray = dataObj.chartData as unknown[];
   if (chartDataArray && Array.isArray(chartDataArray) && chartDataArray.length > 1) {
     const sample = chartDataArray[0] as Record<string, unknown>;
-    const seriesKeys = Object.keys(sample).filter((k) => k !== 'date');
+    // Exchange series keys — everything except 'date' and any pre-existing 'total'
+    const exchangeKeys = Object.keys(sample).filter((k) => k !== 'date' && k !== 'total');
+    const showTotal = exchangeKeys.length > 1; // only add total when multiple exchanges present
+    const seriesKeys = showTotal ? [...exchangeKeys, 'total'] : exchangeKeys;
+
     const sliced = chartDataArray.slice(-30); // Show last 30 points max
 
     const formatted = sliced.map((point) => {
       const p = point as Record<string, unknown>;
-      return {
+      const computed: Record<string, unknown> = {
         ...p,
         date: String(p.date || '').slice(0, 10),
       };
+      // Compute total as sum of all exchange values for this point
+      if (showTotal) {
+        computed.total = exchangeKeys.reduce(
+          (sum, key) => sum + (Number(p[key]) || 0),
+          0,
+        );
+      }
+      return computed;
     });
+
+    // Total line gets a fixed colour; exchange lines use the COLORS palette
+    const TOTAL_COLOR = '#60a5fa'; // blue-400 — matches dashboard total line
 
     return (
       <div className="mt-3 rounded-xl border bg-muted/30 p-4">
@@ -197,17 +212,21 @@ export function ChatChart({ data, title }: ChatChartProps) {
               labelStyle={{ fontWeight: 600, marginBottom: 2 }}
             />
             <Legend wrapperStyle={{ fontSize: '11px', color: '#888' }} />
-            {seriesKeys.map((key, i) => (
-              <Line
-                key={key}
-                type="monotone"
-                dataKey={key}
-                stroke={COLORS[i % COLORS.length]}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            ))}
+            {seriesKeys.map((key, i) => {
+              const isTotal = key === 'total';
+              return (
+                <Line
+                  key={key}
+                  type="monotone"
+                  dataKey={key}
+                  stroke={isTotal ? TOTAL_COLOR : COLORS[i % COLORS.length]}
+                  strokeWidth={isTotal ? 2.5 : 1.5}
+                  strokeDasharray={isTotal ? undefined : undefined}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>
