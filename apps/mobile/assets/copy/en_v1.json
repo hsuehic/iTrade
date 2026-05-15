@@ -490,6 +490,7 @@
     "screen.profile.rate_app_subtitle": "Share your feedback",
     "screen.profile.about": "About",
     "screen.profile.about_subtitle": "Version info",
-    "screen.profile.about_legalese": "© 2026 iTrade. All rights reserved."
+    "screen.profile.about_legalese": "© 2026 iTrade. All rights reserved.",
+    "nav_chat": "AI Chat"
   }
 }

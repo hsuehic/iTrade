@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:ihsueh_itrade/screens/chat_screen.dart';
 import 'package:ihsueh_itrade/screens/portfolio.dart';
 import 'package:ihsueh_itrade/screens/qr_scan.dart';
 import 'package:ihsueh_itrade/services/auth_service.dart';
@@ -476,6 +477,7 @@ class _MyHomePageState extends State<MyHomePage> {
           return Scaffold(
             resizeToAvoidBottomInset: false,
             appBar: null,
+            floatingActionButton: _buildChatFab(context),
             body: Row(
               children: [
                 // Modern Sidebar
@@ -507,6 +509,7 @@ class _MyHomePageState extends State<MyHomePage> {
         return Scaffold(
           resizeToAvoidBottomInset: false,
           appBar: null,
+          floatingActionButton: _buildChatFab(context),
           body: IndexedStack(index: _pageIndex, children: _pages),
           bottomNavigationBar: DesignBottomNavBar(
             currentIndex: _pageIndex,
@@ -523,6 +526,29 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         );
       },
+    );
+  }
+
+  /// Floating AI Chat button shown on all main screens.
+  Widget _buildChatFab(BuildContext context) {
+    final theme = Theme.of(context);
+    return FloatingActionButton(
+      onPressed: () => _openChat(context),
+      backgroundColor: theme.colorScheme.primary,
+      foregroundColor: theme.colorScheme.onPrimary,
+      tooltip: 'iTrade AI',
+      child: const Icon(Icons.smart_toy_outlined, size: 26),
+    );
+  }
+
+  /// Open the AI chat as a full-screen modal bottom sheet.
+  void _openChat(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _ChatModal(),
     );
   }
 
@@ -580,4 +606,45 @@ class _NavItem {
   final String labelKey;
 
   const _NavItem({required this.icon, required this.labelKey});
+}
+
+/// Full-screen modal that wraps [ChatScreen].
+///
+/// Displayed via [showModalBottomSheet] so it slides up from the bottom and
+/// can be dismissed by swiping down.  The drag handle and rounded top corners
+/// give clear affordance that it is a sheet.
+class _ChatModal extends StatelessWidget {
+  const _ChatModal();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      // Near-full-screen: leaves a small gap at the top for context.
+      height: MediaQuery.of(context).size.height * 0.93,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Column(
+        children: [
+          // Drag handle
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // Full chat UI fills the rest
+          const Expanded(child: ChatScreen()),
+        ],
+      ),
+    );
+  }
 }

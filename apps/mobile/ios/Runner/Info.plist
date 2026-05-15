@@ -72,6 +72,8 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>iTrade AI uses the microphone to let you dictate trading queries by voice</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to scan QR codes</string>
 	<key>NSFaceIDUsageDescription</key>

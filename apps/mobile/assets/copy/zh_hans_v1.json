@@ -490,6 +490,7 @@
     "screen.profile.rate_app_subtitle": "分享你的反馈",
     "screen.profile.about": "关于",
     "screen.profile.about_subtitle": "版本信息",
-    "screen.profile.about_legalese": "© 2026 iTrade. 保留所有权利。"
+    "screen.profile.about_legalese": "© 2026 iTrade. 保留所有权利。",
+    "nav_chat": "AI助手"
   }
 }

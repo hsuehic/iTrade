@@ -331,7 +331,10 @@ class BinanceDataService {
           return await request(dio);
         } on DioException catch (error) {
           if (!_shouldRetry(error)) {
-            rethrow;
+            // Non-retryable error (e.g. 4xx) — don't retry on this client,
+            // but still fall through to the next base URL.
+            lastDioError = error;
+            break;
           }
           lastDioError = error;
           await _delayForRetry(attempt);
