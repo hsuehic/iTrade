@@ -57,7 +57,8 @@ export function ChatTable({ data, title }: ChatTableProps) {
 
   const dataObj = data as Record<string, unknown>;
 
-  // Detect the primary array to display
+  // Detect the primary array to display.
+  // `rows` is the generic key used by the AI for order/trade lists.
   const arrayData: unknown[] =
     (dataObj.topTokens as unknown[]) ||
     (dataObj.topPerformers as unknown[]) ||
@@ -65,6 +66,7 @@ export function ChatTable({ data, title }: ChatTableProps) {
     (dataObj.byExchange as unknown[]) ||
     (dataObj.orders as unknown[]) ||
     (dataObj.allStrategies as unknown[]) ||
+    (dataObj.rows as unknown[]) ||
     (Array.isArray(data) ? (data as unknown[]) : null) ||
     [];
 
@@ -73,7 +75,10 @@ export function ChatTable({ data, title }: ChatTableProps) {
   const rows = arrayData.slice(0, 15); // cap at 15 rows
   const firstRow = rows[0] as Record<string, unknown>;
 
-  // Select which columns to show (exclude noisy internal fields)
+  // Select which columns to show.
+  // If the payload ships an explicit `columns` list (e.g. from the orders tool)
+  // use it directly — it already reflects exactly what the AI wants to surface.
+  // Otherwise fall back to heuristic exclusion + priority ordering.
   const EXCLUDED_KEYS = new Set([
     'id',
     'userId',
@@ -92,9 +97,6 @@ export function ChatTable({ data, title }: ChatTableProps) {
     'count',
   ]);
 
-  const allKeys = Object.keys(firstRow).filter((k) => !EXCLUDED_KEYS.has(k));
-
-  // Prioritize important columns
   const PRIORITY = [
     'name',
     'symbol',
@@ -105,9 +107,21 @@ export function ChatTable({ data, title }: ChatTableProps) {
     'balance',
     'pnl',
   ];
-  const priorityKeys = PRIORITY.filter((k) => allKeys.includes(k));
-  const otherKeys = allKeys.filter((k) => !PRIORITY.includes(k));
-  const columns = [...priorityKeys, ...otherKeys].slice(0, 6);
+
+  let columns: string[];
+  const explicitColumns = Array.isArray(dataObj.columns)
+    ? (dataObj.columns as string[]).filter((k) => k in firstRow)
+    : null;
+
+  if (explicitColumns && explicitColumns.length > 0) {
+    // Honour explicit column list (max 8 to keep the table readable)
+    columns = explicitColumns.slice(0, 8);
+  } else {
+    const allKeys = Object.keys(firstRow).filter((k) => !EXCLUDED_KEYS.has(k));
+    const priorityKeys = PRIORITY.filter((k) => allKeys.includes(k));
+    const otherKeys = allKeys.filter((k) => !PRIORITY.includes(k));
+    columns = [...priorityKeys, ...otherKeys].slice(0, 6);
+  }
 
   return (
     <div className="mt-3 rounded-xl border bg-muted/20 overflow-hidden">

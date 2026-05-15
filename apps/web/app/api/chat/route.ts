@@ -238,18 +238,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Strategy 2: bare JSON starting with {"renderAs": anywhere in the response.
-    // Find the LAST occurrence (model typically appends it at the end) and parse
-    // from that index to the end of the string.
+    // Strategy 2: bare JSON containing "renderAs" anywhere in the response.
+    // The model sometimes emits pretty-printed JSON so { and "renderAs": land on
+    // different lines, making a literal '{"renderAs":' search miss. Instead find
+    // the last occurrence of the key, backtrack to its enclosing {, then parse
+    // from there to the end of the string.
     if (!renderData) {
-      const renderAsIdx = rawText.lastIndexOf('{"renderAs":');
+      const renderAsIdx = rawText.lastIndexOf('"renderAs":');
       if (renderAsIdx !== -1) {
-        const candidate = rawText.slice(renderAsIdx).trim();
-        try {
-          renderData = JSON.parse(candidate);
-          cleanText = rawText.slice(0, renderAsIdx).trim();
-        } catch {
-          // JSON is truncated or malformed — fall through and show raw text
+        // Walk backwards to find the opening brace of the JSON object
+        const openBraceIdx = rawText.lastIndexOf('{', renderAsIdx);
+        if (openBraceIdx !== -1) {
+          const candidate = rawText.slice(openBraceIdx);
+          try {
+            renderData = JSON.parse(candidate);
+            cleanText = rawText.slice(0, openBraceIdx).trim();
+          } catch {
+            // JSON is truncated or malformed — fall through and show raw text
+          }
         }
       }
     }
