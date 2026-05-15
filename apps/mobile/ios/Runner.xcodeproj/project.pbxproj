@@ -209,6 +209,9 @@
 				D3A0B0C1D2E3F4A5B6C7D8E9 /* Strip Objective-C Simulator Slice */,
 				A1B2C3D4E5F60718293A4B5C /* Re-sign native frameworks */,
 				B9A0C0D8F1A64F5BAE7D0123 /* Generate objective_c dSYM */,
+				C1D2E3F4A5B6C7D8E9F0A1B2 /* Strip sherpa_onnx Simulator Slice */,
+				E5F60718293A4B5CD1E2F3A4 /* Re-sign sherpa_onnx framework */,
+				F6071829A3B4C5D6E7F80912 /* Generate sherpa_onnx dSYM */,
 				5F0171FF4458B397D9066B25 /* [CP] Copy Pods Resources */,
 				0574E54F4470F092891E84C4 /* [CP] Embed Pods Frameworks */,
 			);
@@ -438,6 +441,54 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nif [ \"${PLATFORM_NAME}\" != \"iphoneos\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_BINARY=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/objective_c.framework/objective_c\"\n\nif [ ! -f \"${FRAMEWORK_BINARY}\" ]; then\n  exit 0\nfi\n\nDEVICE_ARCHS=()\nSIM_ARCHS=()\n\nfor ARCH in $(/usr/bin/lipo -archs \"${FRAMEWORK_BINARY}\"); do\n  PLATFORM=$(/usr/bin/xcrun vtool -show-build -arch \"${ARCH}\" \"${FRAMEWORK_BINARY}\" 2>/dev/null | /usr/bin/awk '/platform/ {print $2; exit}')\n  if [ \"${PLATFORM}\" = \"iOS\" ]; then\n    DEVICE_ARCHS+=(\"${ARCH}\")\n  elif [ \"${PLATFORM}\" = \"iOS Simulator\" ]; then\n    SIM_ARCHS+=(\"${ARCH}\")\n  fi\n done\n\nif [ ${#SIM_ARCHS[@]} -eq 0 ]; then\n  exit 0\nfi\n\nif [ ${#DEVICE_ARCHS[@]} -eq 0 ]; then\n  echo \"error: objective_c.framework only contains iOS Simulator slices; cannot upload to App Store.\" >&2\n  exit 1\nfi\n\nfor ARCH in \"${SIM_ARCHS[@]}\"; do\n  /usr/bin/lipo -remove \"${ARCH}\" -output \"${FRAMEWORK_BINARY}\" \"${FRAMEWORK_BINARY}\"\ndone\n";
+			showEnvVarsInLog = 0;
+		};
+		C1D2E3F4A5B6C7D8E9F0A1B2 /* Strip sherpa_onnx Simulator Slice */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Strip sherpa_onnx Simulator Slice";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\nif [ \"${PLATFORM_NAME}\" != \"iphoneos\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_BINARY=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/sherpa_onnx.framework/sherpa_onnx\"\n\nif [ ! -f \"${FRAMEWORK_BINARY}\" ]; then\n  exit 0\nfi\n\nDEVICE_ARCHS=()\nSIM_ARCHS=()\n\nfor ARCH in $(/usr/bin/lipo -archs \"${FRAMEWORK_BINARY}\"); do\n  PLATFORM=$(/usr/bin/xcrun vtool -show-build -arch \"${ARCH}\" \"${FRAMEWORK_BINARY}\" 2>/dev/null | /usr/bin/awk '/platform/ {print $2; exit}')\n  if [ \"${PLATFORM}\" = \"iOS\" ]; then\n    DEVICE_ARCHS+=(\"${ARCH}\")\n  elif [ \"${PLATFORM}\" = \"iOS Simulator\" ]; then\n    SIM_ARCHS+=(\"${ARCH}\")\n  fi\ndone\n\nif [ ${#SIM_ARCHS[@]} -eq 0 ]; then\n  exit 0\nfi\n\nif [ ${#DEVICE_ARCHS[@]} -eq 0 ]; then\n  echo \"error: sherpa_onnx.framework only contains iOS Simulator slices; cannot upload to App Store.\" >&2\n  exit 1\nfi\n\nfor ARCH in \"${SIM_ARCHS[@]}\"; do\n  /usr/bin/lipo -remove \"${ARCH}\" -output \"${FRAMEWORK_BINARY}\" \"${FRAMEWORK_BINARY}\"\ndone\n";
+			showEnvVarsInLog = 0;
+		};
+		E5F60718293A4B5CD1E2F3A4 /* Re-sign sherpa_onnx framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Re-sign sherpa_onnx framework";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\nif [ \"${PLATFORM_NAME}\" != \"iphoneos\" ]; then\n  exit 0\nfi\n\nif [ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/sherpa_onnx.framework\"\n\nif [ -d \"${FRAMEWORK_PATH}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --preserve-metadata=identifier,entitlements \"${FRAMEWORK_PATH}\"\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		F6071829A3B4C5D6E7F80912 /* Generate sherpa_onnx dSYM */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Generate sherpa_onnx dSYM";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/sherpa_onnx.framework/sherpa_onnx\"\nDSYM_PATH=\"${DWARF_DSYM_FOLDER_PATH}/sherpa_onnx.framework.dSYM\"\n\nif [ -f \"${FRAMEWORK_PATH}\" ]; then\n  /usr/bin/dsymutil \"${FRAMEWORK_PATH}\" -o \"${DSYM_PATH}\"\nfi\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
