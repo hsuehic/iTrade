@@ -95,25 +95,10 @@ export async function GET(request: Request) {
     // Some installs of @itrade/data-manager may not expose getTransfersSummary
     // (e.g. if the dist is from an older build). Fall back to client-side
     // aggregation in that case rather than 500ing.
-    const dmAny = dm as unknown as {
-      getTransfersSummary?: (
-        userId: string,
-        startTime?: Date,
-        endTime?: Date,
-        filters?: typeof filters,
-      ) => Promise<{
-        totalCount: number;
-        perAsset: Array<{
-          asset: string;
-          deposit: string;
-          withdrawal: string;
-          net: string;
-        }>;
-      }>;
-    };
+    const dmAny = dm as any;
 
     const [transfers, summary] = await Promise.all([
-      dm.getTransfers(userId, startTime, endTime, filters),
+      dmAny.getTransfers(userId, startTime, endTime, filters),
       dmAny.getTransfersSummary
         ? dmAny.getTransfersSummary(userId, startTime, endTime, filters)
         : Promise.resolve(undefined),

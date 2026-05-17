@@ -364,6 +364,7 @@ export async function GET(request: Request) {
     // Custom windows always have a baseline already set, so skip the fallback only
     // when align === 'rolling' (and we haven't overridden with a custom window).
     let baselineBalance = totalBaselineBalance;
+    let transferStartTime = startTime;
     if ((!useCustomWindow && align === 'rolling') || baselineBalance === 0) {
       for (const point of chartDataArray) {
         const total = Object.values(point)
@@ -371,6 +372,19 @@ export async function GET(request: Request) {
           .reduce((sum: number, v) => sum + (v as number), 0);
         if (total > 0) {
           baselineBalance = total;
+
+          // Only count transfers that occurred AFTER the baseline snapshot was recorded.
+          // The baseline snapshot's period/interval has a duration we must add to exclude
+          // the transfers already reflected within that baseline period.
+          let intervalMs = 24 * 60 * 60 * 1000; // default to day
+          if (historyInterval === 'minute') {
+            intervalMs = 60 * 1000;
+          } else if (historyInterval === '5min') {
+            intervalMs = 5 * 60 * 1000;
+          } else if (historyInterval === 'hour') {
+            intervalMs = 60 * 60 * 1000;
+          }
+          transferStartTime = new Date(new Date(point.date).getTime() + intervalMs);
           break;
         }
       }
@@ -386,7 +400,7 @@ export async function GET(request: Request) {
     // because they're already reflected in the baseline balance.
     let netDeposits = 0;
     if (dm.getTransfers) {
-      const transfers = await dm.getTransfers(userId, startTime, endTime);
+      const transfers = await dm.getTransfers(userId, transferStartTime, endTime);
       for (const t of transfers) {
         if (exchange !== 'all' && t.exchange?.toLowerCase() !== exchange.toLowerCase())
           continue;
