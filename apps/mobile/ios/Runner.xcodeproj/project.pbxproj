@@ -56,6 +56,7 @@
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
+		7AFA3C8F1D35360C0083082F /* Profile.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Profile.xcconfig; path = Flutter/Profile.xcconfig; sourceTree = "<group>"; };
 		7F2C0F492B8C4D7A9E1F2B3C /* SceneDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
@@ -128,6 +129,7 @@
 				3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */,
 				9740EEB21CF90195004384FC /* Debug.xcconfig */,
 				7AFA3C8E1D35360C0083082E /* Release.xcconfig */,
+				7AFA3C8F1D35360C0083082F /* Profile.xcconfig */,
 				9740EEB31CF90195004384FC /* Generated.xcconfig */,
 			);
 			name = Flutter;
@@ -209,11 +211,11 @@
 				D3A0B0C1D2E3F4A5B6C7D8E9 /* Strip Objective-C Simulator Slice */,
 				A1B2C3D4E5F60718293A4B5C /* Re-sign native frameworks */,
 				B9A0C0D8F1A64F5BAE7D0123 /* Generate objective_c dSYM */,
+				5F0171FF4458B397D9066B25 /* [CP] Copy Pods Resources */,
+				0574E54F4470F092891E84C4 /* [CP] Embed Pods Frameworks */,
 				C1D2E3F4A5B6C7D8E9F0A1B2 /* Strip sherpa_onnx Simulator Slice */,
 				E5F60718293A4B5CD1E2F3A4 /* Re-sign sherpa_onnx framework */,
 				F6071829A3B4C5D6E7F80912 /* Generate sherpa_onnx dSYM */,
-				5F0171FF4458B397D9066B25 /* [CP] Copy Pods Resources */,
-				0574E54F4470F092891E84C4 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -488,7 +490,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" != \"Release\" ]; then\n  exit 0\nfi\n\nFRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/sherpa_onnx.framework/sherpa_onnx\"\nDSYM_PATH=\"${DWARF_DSYM_FOLDER_PATH}/sherpa_onnx.framework.dSYM\"\n\nif [ -f \"${FRAMEWORK_PATH}\" ]; then\n  /usr/bin/dsymutil \"${FRAMEWORK_PATH}\" -o \"${DSYM_PATH}\"\nfi\n";
+			shellScript = "set -euo pipefail\n\n# Skip non-Release builds (Debug). Archive uses Release/Profile, both treated as release.\nif [ \"${CONFIGURATION}\" = \"Debug\" ]; then\n  echo \"Generate sherpa_onnx dSYM: skipping (CONFIGURATION=${CONFIGURATION}).\"\n  exit 0\nfi\n\n# Only generate device-arch dSYMs (archive is always iphoneos).\nif [ \"${PLATFORM_NAME}\" != \"iphoneos\" ]; then\n  echo \"Generate sherpa_onnx dSYM: skipping (PLATFORM_NAME=${PLATFORM_NAME}).\"\n  exit 0\nfi\n\nFRAMEWORK_PATH=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/sherpa_onnx.framework/sherpa_onnx\"\nDSYM_PATH=\"${DWARF_DSYM_FOLDER_PATH}/sherpa_onnx.framework.dSYM\"\n\nif [ ! -f \"${FRAMEWORK_PATH}\" ]; then\n  echo \"error: sherpa_onnx framework binary not found at ${FRAMEWORK_PATH}; dSYM cannot be generated.\" >&2\n  exit 1\nfi\n\nmkdir -p \"${DWARF_DSYM_FOLDER_PATH}\"\nrm -rf \"${DSYM_PATH}\"\n\necho \"Generate sherpa_onnx dSYM: running dsymutil on ${FRAMEWORK_PATH}\"\n/usr/bin/dsymutil \"${FRAMEWORK_PATH}\" -o \"${DSYM_PATH}\"\n\nif [ ! -d \"${DSYM_PATH}\" ]; then\n  echo \"error: dsymutil did not produce ${DSYM_PATH}\" >&2\n  exit 1\nfi\n\n# Verify the dSYM contains every UUID from the framework binary so the archive validates.\nBIN_UUID_FILE=\"$(/usr/bin/mktemp -t sherpa_onnx_bin_uuids)\"\nDSYM_UUID_FILE=\"$(/usr/bin/mktemp -t sherpa_onnx_dsym_uuids)\"\ntrap 'rm -f \"${BIN_UUID_FILE}\" \"${DSYM_UUID_FILE}\"' EXIT\n\n/usr/bin/xcrun dwarfdump --uuid \"${FRAMEWORK_PATH}\" | /usr/bin/awk '{print $2}' | /usr/bin/sort > \"${BIN_UUID_FILE}\"\n/usr/bin/xcrun dwarfdump --uuid \"${DSYM_PATH}\" | /usr/bin/awk '{print $2}' | /usr/bin/sort > \"${DSYM_UUID_FILE}\"\n\necho \"Generate sherpa_onnx dSYM: framework UUIDs:\"\n/usr/bin/sed 's/^/  /' \"${BIN_UUID_FILE}\"\necho \"Generate sherpa_onnx dSYM: dSYM UUIDs:\"\n/usr/bin/sed 's/^/  /' \"${DSYM_UUID_FILE}\"\n\nMISSING=\"$(/usr/bin/comm -23 \"${BIN_UUID_FILE}\" \"${DSYM_UUID_FILE}\")\"\nif [ -n \"${MISSING}\" ]; then\n  echo \"error: dSYM is missing UUIDs that appear in the framework binary:\" >&2\n  echo \"${MISSING}\" | /usr/bin/sed 's/^/  /' >&2\n  exit 1\nfi\n\necho \"Generate sherpa_onnx dSYM: success — UUIDs match.\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -596,7 +598,7 @@
 		};
 		249021D4217E4FDB00AE95B9 /* Profile */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			baseConfigurationReference = 7AFA3C8F1D35360C0083082F /* Profile.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
