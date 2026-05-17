@@ -216,6 +216,7 @@
       "assets": "Assets",
       "position": "Position",
       "transaction": "Transaction",
+      "transfers": "Transfers",
       "filterOrders": "Filter Orders",
       "byStatus": "By Status",
       "byExchange": "By Exchange",
@@ -1301,6 +1302,63 @@
         "errors": {
           "submitFailed": "Failed to place order"
         }
+      }
+    },
+    "transfers": {
+      "title": "Transfers",
+      "summary": {
+        "assetSummary": "{asset} Summary",
+        "in": "In: {amount}",
+        "out": "Out: {amount}"
+      },
+      "history": {
+        "title": "Transfer History",
+        "empty": "No transfers found for the selected exchange.",
+        "emptyFiltered": "No transfers match the current filters."
+      },
+      "filters": {
+        "direction": "Direction",
+        "directionAll": "All directions",
+        "status": "Status",
+        "statusAll": "All statuses",
+        "keyword": "Search",
+        "keywordPlaceholder": "Asset, network, tx hash…",
+        "minAmount": "Min amount",
+        "maxAmount": "Max amount",
+        "reset": "Reset",
+        "resultCount": "Showing {shown} of {total}"
+      },
+      "timeRange": {
+        "all": "All",
+        "allLong": "All time",
+        "90d": "90d",
+        "90dLong": "90 days",
+        "30d": "30d",
+        "30dLong": "30 days",
+        "7d": "7d",
+        "7dLong": "7 days",
+        "1d": "1d",
+        "1dLong": "24 hours",
+        "placeholder": "30d"
+      },
+      "columns": {
+        "time": "Time",
+        "exchange": "Exchange",
+        "type": "Type",
+        "asset": "Asset",
+        "amount": "Amount",
+        "status": "Status",
+        "networkTxId": "Network / TxId"
+      },
+      "type": {
+        "DEPOSIT": "Deposit",
+        "WITHDRAW": "Withdraw"
+      },
+      "status": {
+        "COMPLETED": "Completed",
+        "PENDING": "Pending",
+        "FAILED": "Failed",
+        "CANCELED": "Canceled"
       }
     }
   },

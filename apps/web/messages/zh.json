@@ -216,6 +216,7 @@
       "assets": "资产",
       "position": "持仓",
       "transaction": "交易",
+      "transfers": "充值提现",
       "filterOrders": "筛选订单",
       "byStatus": "按状态",
       "byExchange": "按交易所",
@@ -1301,6 +1302,63 @@
         "errors": {
           "submitFailed": "下单失败"
         }
+      }
+    },
+    "transfers": {
+      "title": "充值提现",
+      "summary": {
+        "assetSummary": "{asset} 汇总",
+        "in": "充值：{amount}",
+        "out": "提现：{amount}"
+      },
+      "history": {
+        "title": "充值提现记录",
+        "empty": "所选交易所暂无充值提现记录。",
+        "emptyFiltered": "当前筛选条件下无匹配记录。"
+      },
+      "filters": {
+        "direction": "方向",
+        "directionAll": "全部方向",
+        "status": "状态",
+        "statusAll": "全部状态",
+        "keyword": "搜索",
+        "keywordPlaceholder": "资产、网络、交易号…",
+        "minAmount": "最小金额",
+        "maxAmount": "最大金额",
+        "reset": "重置",
+        "resultCount": "显示 {shown} / {total} 条"
+      },
+      "timeRange": {
+        "all": "全部",
+        "allLong": "全部时间",
+        "90d": "90 天",
+        "90dLong": "近 90 天",
+        "30d": "30 天",
+        "30dLong": "近 30 天",
+        "7d": "7 天",
+        "7dLong": "近 7 天",
+        "1d": "1 天",
+        "1dLong": "近 24 小时",
+        "placeholder": "30 天"
+      },
+      "columns": {
+        "time": "时间",
+        "exchange": "交易所",
+        "type": "类型",
+        "asset": "资产",
+        "amount": "数量",
+        "status": "状态",
+        "networkTxId": "网络 / 交易号"
+      },
+      "type": {
+        "DEPOSIT": "充值",
+        "WITHDRAW": "提现"
+      },
+      "status": {
+        "COMPLETED": "已完成",
+        "PENDING": "处理中",
+        "FAILED": "失败",
+        "CANCELED": "已取消"
       }
     }
   },

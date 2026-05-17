@@ -78,7 +78,7 @@ export function NavPortfolio() {
       hasFilters: true,
     },
     {
-      name: t('transfers') || 'Transfers',
+      name: t('transfers'),
       url: '/portfolio/transfers',
       icon: IconArrowsRightLeft,
     },

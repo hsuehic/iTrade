@@ -540,16 +540,27 @@ export class TypeOrmDataManager implements IDataManager {
     });
   }
 
-  async getTransfers(
+  /**
+   * Optional filter set accepted by getTransfers / getTransfersSummary.
+   * Every field is independent — undefined means "no constraint on this dimension".
+   */
+  private buildTransferQuery(
     userId: string,
     startTime?: Date,
     endTime?: Date,
-  ): Promise<import('@itrade/core').Transfer[]> {
+    filters?: {
+      exchange?: string; // single exchange (case-insensitive); 'all' / undefined → no filter
+      direction?: 'DEPOSIT' | 'WITHDRAW'; // matches Transfer.type
+      status?: 'COMPLETED' | 'PENDING' | 'FAILED' | 'CANCELED';
+      keyword?: string; // matches asset / exchange / network / txId (case-insensitive substring)
+      minAmount?: number | string;
+      maxAmount?: number | string;
+    },
+  ) {
     this.ensureInitialized();
     const query = this.transferRepository
       .createQueryBuilder('t')
-      .where('t.userId = :userId', { userId })
-      .orderBy('t.timestamp', 'DESC');
+      .where('t.userId = :userId', { userId });
 
     if (startTime) {
       query.andWhere('t.timestamp >= :startTime', { startTime });
@@ -557,6 +568,48 @@ export class TypeOrmDataManager implements IDataManager {
     if (endTime) {
       query.andWhere('t.timestamp <= :endTime', { endTime });
     }
+    if (filters?.exchange && filters.exchange.toLowerCase() !== 'all') {
+      query.andWhere('LOWER(t.exchange) = LOWER(:exchange)', {
+        exchange: filters.exchange,
+      });
+    }
+    if (filters?.direction) {
+      query.andWhere('t.type = :direction', { direction: filters.direction });
+    }
+    if (filters?.status) {
+      query.andWhere('t.status = :status', { status: filters.status });
+    }
+    if (filters?.keyword && filters.keyword.trim() !== '') {
+      // ILIKE concat to keep this one parameter binding instead of 4
+      query.andWhere(
+        '(t.asset ILIKE :kw OR t.exchange ILIKE :kw OR t."network" ILIKE :kw OR t."txId" ILIKE :kw)',
+        { kw: `%${filters.keyword.trim()}%` },
+      );
+    }
+    if (filters?.minAmount !== undefined && filters.minAmount !== null) {
+      query.andWhere('t.amount >= :minAmount', {
+        minAmount: filters.minAmount.toString(),
+      });
+    }
+    if (filters?.maxAmount !== undefined && filters.maxAmount !== null) {
+      query.andWhere('t.amount <= :maxAmount', {
+        maxAmount: filters.maxAmount.toString(),
+      });
+    }
+
+    return query;
+  }
+
+  async getTransfers(
+    userId: string,
+    startTime?: Date,
+    endTime?: Date,
+    filters?: Parameters<TypeOrmDataManager['buildTransferQuery']>[3],
+  ): Promise<import('@itrade/core').Transfer[]> {
+    const query = this.buildTransferQuery(userId, startTime, endTime, filters).orderBy(
+      't.timestamp',
+      'DESC',
+    );
 
     const entities = await query.getMany();
     return entities.map((e) => ({
@@ -571,6 +624,59 @@ export class TypeOrmDataManager implements IDataManager {
       exchange: e.exchange,
       fee: e.fee,
     }));
+  }
+
+  /**
+   * Aggregate summary across the same filter set used by getTransfers.
+   * Counts only COMPLETED rows for the deposit/withdrawal totals (failed and
+   * pending shouldn't move the running balance), but reports the full row
+   * count for the table footer.
+   */
+  async getTransfersSummary(
+    userId: string,
+    startTime?: Date,
+    endTime?: Date,
+    filters?: Parameters<TypeOrmDataManager['buildTransferQuery']>[3],
+  ): Promise<{
+    totalCount: number;
+    perAsset: Array<{
+      asset: string;
+      deposit: string;
+      withdrawal: string;
+      net: string;
+    }>;
+  }> {
+    const baseQuery = this.buildTransferQuery(userId, startTime, endTime, filters);
+
+    // Total row count (respects every filter, including status if applied)
+    const totalCount = await baseQuery.clone().getCount();
+
+    // Sum deposits and withdrawals per asset for COMPLETED rows only
+    const rows = await baseQuery
+      .clone()
+      .andWhere('t.status = :completedForSum', { completedForSum: 'COMPLETED' })
+      .select('t.asset', 'asset')
+      .addSelect("SUM(CASE WHEN t.type = 'DEPOSIT' THEN t.amount ELSE 0 END)", 'deposit')
+      .addSelect(
+        "SUM(CASE WHEN t.type = 'WITHDRAW' THEN t.amount ELSE 0 END)",
+        'withdrawal',
+      )
+      .groupBy('t.asset')
+      .orderBy('t.asset', 'ASC')
+      .getRawMany<{ asset: string; deposit: string; withdrawal: string }>();
+
+    const perAsset = rows.map((r) => {
+      const dep = parseFloat(r.deposit ?? '0') || 0;
+      const wd = parseFloat(r.withdrawal ?? '0') || 0;
+      return {
+        asset: r.asset,
+        deposit: dep.toString(),
+        withdrawal: wd.toString(),
+        net: (dep - wd).toString(),
+      };
+    });
+
+    return { totalCount, perAsset };
   }
 
   // -------------------- Dry Run helpers --------------------

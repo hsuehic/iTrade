@@ -15,7 +15,7 @@ const toExchangeId = (value: string): ExchangeId | null =>
     : null;
 
 export default function TransfersPage() {
-  const t = useTranslations('portfolio');
+  const t = useTranslations('portfolio.transfers');
   const [selectedExchange, setSelectedExchange] = useState('all');
   const [availableExchanges, setAvailableExchanges] = useState<string[]>([]);
 
@@ -55,7 +55,7 @@ export default function TransfersPage() {
   return (
     <SidebarInset>
       <SiteHeader
-        title={t('transfers') || 'Transfers'}
+        title={t('title')}
         links={
           <ExchangeSelector
             value={selectedExchange}

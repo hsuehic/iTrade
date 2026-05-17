@@ -381,10 +381,12 @@ export async function GET(request: Request) {
       return ((current - baseline) / baseline) * 100;
     };
 
+    // Net deposits = transfers (deposits − withdrawals) that occurred WITHIN the
+    // current period only. The previous period's transfers must NOT be included
+    // because they're already reflected in the baseline balance.
     let netDeposits = 0;
     if (dm.getTransfers) {
-      const startT = align === 'rolling' ? startTime : baselineStartTime;
-      const transfers = await dm.getTransfers(userId, startT, endTime);
+      const transfers = await dm.getTransfers(userId, startTime, endTime);
       for (const t of transfers) {
         if (exchange !== 'all' && t.exchange?.toLowerCase() !== exchange.toLowerCase())
           continue;
