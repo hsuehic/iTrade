@@ -50,6 +50,11 @@ export interface IAccountDataManager {
     startTime: Date,
     endTime: Date,
   ): Promise<AccountSnapshotData[]>;
+  saveTransfers?(
+    transfers: import('../types').Transfer[],
+    userId: string,
+    exchange: string,
+  ): Promise<void>;
 }
 
 /**
@@ -87,7 +92,8 @@ export class AccountPollingService extends EventEmitter {
     });
   }
 
-  private exchangeMetadata: Map<string, { accountInfoId?: number }> = new Map();
+  private exchangeMetadata: Map<string, { accountInfoId?: number; userId?: string }> =
+    new Map();
 
   /**
    * 注册交易所
@@ -95,7 +101,7 @@ export class AccountPollingService extends EventEmitter {
   registerExchange(
     name: string,
     exchange: IExchange,
-    metadata: { accountInfoId?: number } = {},
+    metadata: { accountInfoId?: number; userId?: string } = {},
   ): void {
     const key = name.toLowerCase();
     this.exchanges.set(key, exchange);
@@ -226,10 +232,13 @@ export class AccountPollingService extends EventEmitter {
           attempt: attempt + 1,
         });
 
-        // 并行获取 accountInfo 和 positions
-        const [accountInfo, positions] = await Promise.all([
+        // 并行获取 accountInfo 和 positions (和 transfers)
+        const [accountInfo, positions, transfers] = await Promise.all([
           exchange.getAccountInfo(),
           exchange.getPositions(),
+          exchange.getTransfers
+            ? exchange.getTransfers(new Date(Date.now() - 24 * 60 * 60 * 1000))
+            : Promise.resolve([]),
         ]);
         const balances = accountInfo.balances;
 
@@ -237,7 +246,20 @@ export class AccountPollingService extends EventEmitter {
           exchange: exchangeName,
           balanceCount: balances.length,
           positionCount: positions.length,
+          transferCount: transfers.length,
         });
+
+        // Save transfers if available
+        if (transfers.length > 0 && this.dataManager?.saveTransfers) {
+          const metadata = this.exchangeMetadata.get(exchangeName.toLowerCase());
+          if (metadata?.userId) {
+            await this.dataManager.saveTransfers(
+              transfers,
+              metadata.userId,
+              exchangeName,
+            );
+          }
+        }
 
         // 发出事件
         this.emit('exchangePolled', {

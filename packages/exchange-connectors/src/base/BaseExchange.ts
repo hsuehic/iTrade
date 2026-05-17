@@ -20,6 +20,7 @@ import {
   ExchangeInfo,
   SymbolInfo,
   TradeMode,
+  Transfer,
 } from '@itrade/core';
 
 export abstract class BaseExchange extends EventEmitter implements IExchange {
@@ -117,6 +118,11 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
   public abstract getAccountInfo(): Promise<AccountInfo>;
   public abstract getBalances(): Promise<Balance[]>;
   public abstract getPositions(): Promise<Position[]>;
+  public abstract getTransfers(
+    startTime?: Date,
+    endTime?: Date,
+    limit?: number,
+  ): Promise<Transfer[]>;
 
   public abstract getExchangeInfo(): Promise<ExchangeInfo>;
   public abstract getSymbols(): Promise<string[]>;

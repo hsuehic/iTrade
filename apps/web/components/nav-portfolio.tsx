@@ -14,6 +14,7 @@ import {
   IconFilter,
   IconBrandBinance,
   IconCurrencyBitcoin,
+  IconArrowsRightLeft,
 } from '@tabler/icons-react';
 import { usePathname } from 'next/navigation';
 
@@ -75,6 +76,11 @@ export function NavPortfolio() {
       url: '/portfolio/transaction',
       icon: IconReceiptDollar,
       hasFilters: true,
+    },
+    {
+      name: t('transfers') || 'Transfers',
+      url: '/portfolio/transfers',
+      icon: IconArrowsRightLeft,
     },
   ];
 

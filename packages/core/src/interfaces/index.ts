@@ -31,6 +31,7 @@ import {
   StrategyPerformance,
   InitialDataConfig,
   SubscriptionConfig,
+  Transfer,
 } from '../types';
 
 // Exchange Interface
@@ -92,6 +93,7 @@ export interface IExchange extends EventEmitter {
   getAccountInfo(): Promise<AccountInfo>;
   getBalances(): Promise<Balance[]>;
   getPositions(): Promise<Position[]>;
+  getTransfers?(startTime?: Date, endTime?: Date, limit?: number): Promise<Transfer[]>;
 
   // Exchange Info
   getExchangeInfo(): Promise<ExchangeInfo>;
@@ -287,6 +289,10 @@ export interface IDataManager {
 
   cacheOrderBook?(symbol: string, orderbook: OrderBook): Promise<void>;
   getCachedOrderBook?(symbol: string): Promise<OrderBook | undefined>;
+
+  // Transfers
+  saveTransfers?(transfers: Transfer[], userId: string, exchange: string): Promise<void>;
+  getTransfers?(userId: string, startTime?: Date, endTime?: Date): Promise<Transfer[]>;
 
   // Data Quality
   validateData(symbol: string, interval: string): Promise<boolean>;

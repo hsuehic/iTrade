@@ -336,6 +336,7 @@ export class BotInstance {
     // Add to polling service
     this.pollingService.registerExchange(exchangeName, exchange, {
       accountInfoId: account.id,
+      userId: this.userId,
     });
 
     this.exchanges.set(exchangeName, exchange);
@@ -377,6 +378,7 @@ export class BotInstance {
     for (const [exchangeName, exchange] of this.exchanges) {
       this.pollingService.registerExchange(exchangeName, exchange, {
         accountInfoId: this.exchangeAccountIds.get(exchangeName),
+        userId: this.userId,
       });
     }
 

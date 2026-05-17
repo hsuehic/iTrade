@@ -19,6 +19,7 @@ import {
   ExchangeInfo,
   SymbolInfo,
   TradeMode,
+  Transfer,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -433,6 +434,24 @@ export class CoinbaseExchange extends BaseExchange {
       canDeposit: true,
       updateTime: new Date(),
     };
+  }
+
+  public async getTransfers(
+    startTime?: Date,
+    endTime?: Date,
+    limit?: number,
+  ): Promise<Transfer[]> {
+    try {
+      // Coinbase Advanced Trade API for transfers
+      const params: any = {};
+      if (limit) params.limit = limit;
+      // Depending on actual Coinbase API parameters, might need cursor-based pagination
+      // For now, return empty array if endpoints are not strictly mapped.
+      return [];
+    } catch (error) {
+      console.warn(`Coinbase getTransfers failed: ${error}`);
+      return [];
+    }
   }
 
   public async getBalances(): Promise<Balance[]> {

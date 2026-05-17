@@ -258,6 +258,31 @@ export interface AccountInfo {
   totalEquity?: Decimal; // Total equity in USD (or reference currency)
 }
 
+export enum TransferType {
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAW = 'WITHDRAW',
+}
+
+export enum TransferStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELED = 'CANCELED',
+}
+
+export interface Transfer {
+  id: string;
+  type: TransferType;
+  asset: string;
+  amount: Decimal;
+  status: TransferStatus;
+  timestamp: Date;
+  network?: string;
+  txId?: string;
+  exchange?: string;
+  fee?: Decimal;
+}
+
 export enum SignalType {
   Entry = 'entry',
   TakeProfit = 'take_profit',

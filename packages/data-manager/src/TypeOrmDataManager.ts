@@ -21,6 +21,7 @@ import { StrategyPerformanceEntity } from './entities/StrategyPerformance';
 import { StrategyStateEntity } from './entities/StrategyState';
 import { AccountInfoEntity } from './entities/AccountInfo';
 import { BalanceEntity } from './entities/Balance';
+import { TransferEntity } from './entities/Transfer';
 import {
   BalanceMonthEntity,
   BalanceWeekEntity,
@@ -135,6 +136,7 @@ export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   push_devices: PushDeviceEntity,
   push_notification_logs: PushNotificationLogEntity,
   app_settings: AppSettingEntity,
+  transfers: TransferEntity,
 };
 
 export function resolveEntities(
@@ -176,6 +178,7 @@ export class TypeOrmDataManager implements IDataManager {
   private balanceHistoryRepository!: BalanceHistoryRepository;
   private balanceRepository!: BalanceRepository;
   private accountInfoRepository!: Repository<AccountInfoEntity>;
+  private transferRepository!: Repository<TransferEntity>;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -225,6 +228,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.balanceHistoryRepository = new BalanceHistoryRepository(this.dataSource);
     this.balanceRepository = new BalanceRepository(this.dataSource);
     this.accountInfoRepository = this.dataSource.getRepository(AccountInfoEntity);
+    this.transferRepository = this.dataSource.getRepository(TransferEntity);
 
     this.isInitialized = true;
   }
@@ -506,6 +510,67 @@ export class TypeOrmDataManager implements IDataManager {
       total,
       timestamp,
     );
+  }
+
+  async saveTransfers(
+    transfers: import('@itrade/core').Transfer[],
+    userId: string,
+    exchange: string,
+  ): Promise<void> {
+    if (transfers.length === 0) return;
+    this.ensureInitialized();
+    const entities = transfers.map((t) =>
+      this.transferRepository.create({
+        id: t.id,
+        userId,
+        exchange,
+        type: t.type,
+        asset: t.asset,
+        amount: t.amount,
+        status: t.status,
+        timestamp: t.timestamp,
+        network: t.network,
+        txId: t.txId,
+        fee: t.fee,
+      }),
+    );
+    await this.transferRepository.upsert(entities, {
+      conflictPaths: ['id'],
+      skipUpdateIfNoValuesChanged: true,
+    });
+  }
+
+  async getTransfers(
+    userId: string,
+    startTime?: Date,
+    endTime?: Date,
+  ): Promise<import('@itrade/core').Transfer[]> {
+    this.ensureInitialized();
+    const query = this.transferRepository
+      .createQueryBuilder('t')
+      .where('t.userId = :userId', { userId })
+      .orderBy('t.timestamp', 'DESC');
+
+    if (startTime) {
+      query.andWhere('t.timestamp >= :startTime', { startTime });
+    }
+    if (endTime) {
+      query.andWhere('t.timestamp <= :endTime', { endTime });
+    }
+
+    const entities = await query.getMany();
+    return entities.map((e) => ({
+      id: e.id,
+      type: e.type,
+      asset: e.asset,
+      amount: e.amount,
+      status: e.status,
+      timestamp: e.timestamp,
+      network: e.network,
+      txId: e.txId,
+      exchange: e.exchange,
+      fee: e.fee,
+    }));
   }
 
   // -------------------- Dry Run helpers --------------------

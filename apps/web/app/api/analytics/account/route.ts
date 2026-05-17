@@ -381,8 +381,27 @@ export async function GET(request: Request) {
       return ((current - baseline) / baseline) * 100;
     };
 
-    const balanceChange = calculateChange(totalBalance, baselineBalance);
-    const balanceChangeValue = totalBalance - baselineBalance;
+    let netDeposits = 0;
+    if (dm.getTransfers) {
+      const startT = align === 'rolling' ? startTime : baselineStartTime;
+      const transfers = await dm.getTransfers(userId, startT, endTime);
+      for (const t of transfers) {
+        if (exchange !== 'all' && t.exchange?.toLowerCase() !== exchange.toLowerCase())
+          continue;
+        if (t.status === 'COMPLETED') {
+          const amt = parseFloat(t.amount.toString());
+          if (t.type === 'DEPOSIT') {
+            netDeposits += amt;
+          } else if (t.type === 'WITHDRAW') {
+            netDeposits -= amt;
+          }
+        }
+      }
+    }
+
+    const adjustedTotalBalance = totalBalance - netDeposits;
+    const balanceChange = calculateChange(adjustedTotalBalance, baselineBalance);
+    const balanceChangeValue = adjustedTotalBalance - baselineBalance;
     const totalEquity = totalBalance + totalPositionValue;
 
     // Build a human-readable period label for the response
@@ -399,6 +418,7 @@ export async function GET(request: Request) {
         totalPositions,
         balanceChange,
         balanceChangeValue,
+        netDeposits,
         period: periodLabel,
       },
       exchanges: exchangeData,

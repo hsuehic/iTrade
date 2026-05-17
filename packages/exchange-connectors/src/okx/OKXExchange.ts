@@ -21,6 +21,9 @@ import {
   SymbolInfo,
   ExchangeCredentials,
   TradeMode,
+  Transfer,
+  TransferType,
+  TransferStatus,
 } from '@itrade/core';
 
 export type OkxWsType = 'public' | 'private' | 'business';
@@ -726,6 +729,96 @@ export class OKXExchange extends BaseExchange {
   public async getBalances(): Promise<Balance[]> {
     const accountInfo = await this.getAccountInfo();
     return accountInfo.balances;
+  }
+
+  public async getTransfers(
+    startTime?: Date,
+    endTime?: Date,
+    limit = 100, // OKX max is 100 per page
+  ): Promise<Transfer[]> {
+    const params: any = { limit: limit.toString() };
+    if (startTime) params.after = startTime.getTime().toString();
+    if (endTime) params.before = endTime.getTime().toString();
+
+    const signedDepositParams = this.signOKXRequest(
+      'GET',
+      '/api/v5/asset/deposit-history',
+      params,
+    );
+    const signedWithdrawParams = this.signOKXRequest(
+      'GET',
+      '/api/v5/asset/withdrawal-history',
+      params,
+    );
+
+    const [depositRes, withdrawRes] = await Promise.allSettled([
+      this.httpClient.get(signedDepositParams.endpoint, {
+        headers: signedDepositParams.headers,
+      }),
+      this.httpClient.get(signedWithdrawParams.endpoint, {
+        headers: signedWithdrawParams.headers,
+      }),
+    ]);
+
+    const transfers: Transfer[] = [];
+
+    if (
+      depositRes.status === 'fulfilled' &&
+      depositRes.value.data.code === '0' &&
+      Array.isArray(depositRes.value.data.data)
+    ) {
+      transfers.push(
+        ...depositRes.value.data.data.map((d: any) => ({
+          id: d.depId || d.txId || uuidv4(),
+          type: TransferType.DEPOSIT,
+          asset: d.ccy,
+          amount: new Decimal(d.amt),
+          status:
+            d.state === '2'
+              ? TransferStatus.COMPLETED
+              : d.state === '0' || d.state === '1'
+                ? TransferStatus.PENDING
+                : TransferStatus.FAILED,
+          timestamp: new Date(parseInt(d.ts)),
+          network: d.chain,
+          txId: d.txId,
+          exchange: this.name,
+        })),
+      );
+    }
+
+    if (
+      withdrawRes.status === 'fulfilled' &&
+      withdrawRes.value.data.code === '0' &&
+      Array.isArray(withdrawRes.value.data.data)
+    ) {
+      transfers.push(
+        ...withdrawRes.value.data.data.map((w: any) => ({
+          id: w.wdId || w.txId || uuidv4(),
+          type: TransferType.WITHDRAW,
+          asset: w.ccy,
+          amount: new Decimal(w.amt),
+          status:
+            w.state === '2'
+              ? TransferStatus.COMPLETED
+              : w.state === '0' || w.state === '1'
+                ? TransferStatus.PENDING
+                : w.state === '-1'
+                  ? TransferStatus.FAILED
+                  : TransferStatus.CANCELED,
+          timestamp: new Date(parseInt(w.ts)),
+          network: w.chain,
+          txId: w.txId,
+          exchange: this.name,
+          fee: new Decimal(w.fee || 0),
+        })),
+      );
+    }
+
+    // Sort by timestamp desc
+    transfers.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    return transfers;
   }
 
   public async getTradingBalances(): Promise<Balance[]> {

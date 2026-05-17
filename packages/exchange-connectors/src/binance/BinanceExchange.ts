@@ -19,6 +19,9 @@ import {
   ExchangeInfo,
   SymbolInfo,
   TradeMode,
+  Transfer,
+  TransferType,
+  TransferStatus,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -682,6 +685,80 @@ export class BinanceExchange extends BaseExchange {
   public async getBalances(): Promise<Balance[]> {
     const accountInfo = await this.getAccountInfo();
     return accountInfo.balances;
+  }
+
+  public async getTransfers(
+    startTime?: Date,
+    endTime?: Date,
+    limit = 1000,
+  ): Promise<Transfer[]> {
+    const params: any = { timestamp: Date.now() };
+    if (startTime) params.startTime = startTime.getTime();
+    if (endTime) params.endTime = endTime.getTime();
+
+    const signedDepositParams = this.signRequest({ ...params, limit });
+    const signedWithdrawParams = this.signRequest({ ...params, limit });
+
+    const [depositRes, withdrawRes] = await Promise.allSettled([
+      this.httpClient.get('/sapi/v1/capital/deposit/hisrec', {
+        params: signedDepositParams,
+      }),
+      this.httpClient.get('/sapi/v1/capital/withdraw/history', {
+        params: signedWithdrawParams,
+      }),
+    ]);
+
+    const transfers: Transfer[] = [];
+
+    if (depositRes.status === 'fulfilled' && Array.isArray(depositRes.value.data)) {
+      transfers.push(
+        ...depositRes.value.data.map((d: any) => ({
+          id: d.id || d.txId || uuidv4(),
+          type: TransferType.DEPOSIT,
+          asset: d.coin,
+          amount: new Decimal(d.amount),
+          status:
+            d.status === 1
+              ? TransferStatus.COMPLETED
+              : d.status === 0 || d.status === 6
+                ? TransferStatus.PENDING
+                : TransferStatus.FAILED,
+          timestamp: new Date(d.insertTime),
+          network: d.network,
+          txId: d.txId,
+          exchange: this.name,
+        })),
+      );
+    }
+
+    if (withdrawRes.status === 'fulfilled' && Array.isArray(withdrawRes.value.data)) {
+      transfers.push(
+        ...withdrawRes.value.data.map((w: any) => ({
+          id: w.id || w.txId || uuidv4(),
+          type: TransferType.WITHDRAW,
+          asset: w.coin,
+          amount: new Decimal(w.amount),
+          status:
+            w.status === 6
+              ? TransferStatus.COMPLETED
+              : w.status === 4 || w.status === 5
+                ? TransferStatus.FAILED
+                : w.status === 3
+                  ? TransferStatus.CANCELED
+                  : TransferStatus.PENDING,
+          timestamp: new Date(w.applyTime),
+          network: w.network,
+          txId: w.txId,
+          exchange: this.name,
+          fee: new Decimal(w.transactionFee || 0),
+        })),
+      );
+    }
+
+    // Sort by timestamp desc
+    transfers.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    return transfers;
   }
 
   public async getPositions(): Promise<Position[]> {
