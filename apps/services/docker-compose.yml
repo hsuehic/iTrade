@@ -1,14 +1,27 @@
 services:
   db:
-    image: postgres:18-alpine
+    # pgvector-bundled image — required for the help-KB chatbot (vector(768)
+    # column on help_articles).
+    image: pgvector/pgvector:pg18
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # PostgreSQL 18 changed the data-dir convention: the official image now
+      # stores data under /var/lib/postgresql/<MAJOR>/docker/ instead of
+      # /var/lib/postgresql/data. Mount the parent dir so the entrypoint can
+      # manage that subdirectory itself. Mounting the old /var/lib/postgresql/data
+      # path causes the pg18 entrypoint to abort with "appears to be PostgreSQL
+      # data in /var/lib/postgresql/data (unused mount/volume)".
+      - postgres_data:/var/lib/postgresql
     ports:
       - 5432:5432
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      # Matches DB_DB in apps/console/.env and the rest of the iTrade app.
+      # NOTE: POSTGRES_DB is only honoured on first init (when the data
+      # directory is empty). For pre-existing volumes, run
+      # `scripts/setup-local-dev.sh` once — it creates the `itrade` DB if
+      # it doesn't already exist.
+      POSTGRES_DB: itrade
   adminer:
     image: adminer
     restart: always

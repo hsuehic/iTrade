@@ -1719,5 +1719,16 @@
     "errors": {
       "fetchPositions": "Failed to fetch positions"
     }
+  },
+  "helpBot": {
+    "title": "iTrade Help",
+    "subtitle": "Ask anything about iTrade",
+    "open": "Open help assistant",
+    "close": "Close",
+    "minimize": "Minimize",
+    "clear": "Clear conversation",
+    "placeholder": "Ask about iTrade…",
+    "trySuggestions": "Try asking:",
+    "inputHint": "Press Enter to send · Shift+Enter for new line"
   }
 }

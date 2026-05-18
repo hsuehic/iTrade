@@ -4,6 +4,7 @@ import { HeroSection } from '@/components/landing/hero-section';
 import { TickerGrid } from '@/components/landing/ticker-grid';
 import { MobileDownload } from '@/components/landing/mobile-download';
 import { ChartBackground } from '@/components/landing/chart-background';
+import { HelpWidget } from '@/components/help-bot/help-widget';
 import { auth } from '@/lib/auth';
 import { getTranslations } from 'next-intl/server';
 
@@ -68,6 +69,9 @@ export default async function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Public help bot — landing page only */}
+      <HelpWidget />
     </div>
   );
 }

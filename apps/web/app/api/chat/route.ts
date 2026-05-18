@@ -7,18 +7,17 @@
  * the model can call up to 5 rounds of tools before producing its final answer.
  * No manual tool-dispatch loop needed — the AI SDK handles it automatically.
  *
- * Provider fallback: tries each configured provider in priority order
- * (Groq → Cerebras → OpenRouter → Gemini). On rate-limit (429) or
- * request-too-large (413) errors the next provider is tried automatically.
+ * iTrade uses Google Gemini exclusively. The API key + model are configured
+ * via Admin → AI Config (DB-backed, runtime-editable) with env-var fallback.
  *
  * Provider selection is done in lib/chatbot/provider.ts.
  * Tool definitions (with Zod schemas) are in lib/chatbot/tools.ts.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { generateText, stepCountIs, type CoreMessage, type LanguageModel } from 'ai';
+import { generateText, stepCountIs, type CoreMessage } from 'ai';
 
 import { getSession } from '@/lib/auth';
-import { getAIModels, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
+import { getAIModel, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
 import { createChatbotTools } from '@/lib/chatbot/tools';
 
 export const maxDuration = 120; // Allow up to 120s for multi-tool calls
@@ -41,14 +40,7 @@ function extractStatus(error: unknown): number {
       : 0;
 }
 
-/** True if this error should trigger a fallback to the next provider. */
-function isRateLimitOrTooLarge(error: unknown): boolean {
-  const status = extractStatus(error);
-  // 429 = rate limited, 413 = request too large, 404 = model deprecated/unavailable
-  return status === 429 || status === 413 || status === 404;
-}
-
-/** Normalise provider errors to a plain { status, message } shape. */
+/** Normalise Gemini errors to a plain { status, message } shape. */
 function parseProviderError(error: unknown): { status: number; message: string } | null {
   const status = extractStatus(error);
   if (!status) return null;
@@ -65,13 +57,12 @@ function parseProviderError(error: unknown): { status: number; message: string }
       return {
         status: 429,
         message:
-          "Today's AI quota has been reached across all providers. The chatbot will be available again shortly.",
+          "Today's Gemini quota has been reached. The chatbot will be available again shortly.",
       };
     }
     return {
       status: 429,
-      message:
-        'All AI providers are currently rate-limited. Please try again in a moment.',
+      message: 'Gemini is currently rate-limited. Please try again in a moment.',
     };
   }
 
@@ -79,14 +70,14 @@ function parseProviderError(error: unknown): { status: number; message: string }
     return {
       status: 429,
       message:
-        'Your request is too large for the available AI providers. Try a shorter message or clear the conversation history.',
+        'Your request is too large for Gemini. Try a shorter message or clear the conversation history.',
     };
   }
 
   if (status === 503 || status === 529) {
     return {
       status: 503,
-      message: 'The AI service is temporarily unavailable. Please try again in a moment.',
+      message: 'Gemini is temporarily unavailable. Please try again in a moment.',
     };
   }
 
@@ -97,57 +88,10 @@ function isMissingKeyError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const msg = ((error as Record<string, unknown>).message as string | undefined) ?? '';
   return (
-    msg.includes('GROQ_API_KEY') ||
     msg.includes('GEMINI_API_KEY') ||
-    msg.includes('OPENROUTER_API_KEY') ||
-    msg.includes('CEREBRAS_API_KEY') ||
-    msg.includes('No AI provider configured') ||
+    msg.includes('No Gemini API key configured') ||
     msg.includes('API key')
   );
-}
-
-// ── Core generate helper ──────────────────────────────────────────────────────
-
-/**
- * Run generateText with automatic provider fallback.
- *
- * Tries each model in `models` in order. If a model responds with HTTP 429
- * (rate-limited) or 413 (request too large) the next provider is tried.
- * Any other error is re-thrown immediately.
- */
-async function generateWithFallback(
-  models: LanguageModel[],
-  params: Omit<Parameters<typeof generateText>[0], 'model'>,
-): Promise<string> {
-  let lastError: unknown;
-
-  for (let i = 0; i < models.length; i++) {
-    const model = models[i];
-    try {
-      // Type assertion needed because ai@5 uses complex generics on generateText
-
-      const { text } = await generateText({ model, ...params } as Parameters<
-        typeof generateText
-      >[0]);
-      return text;
-    } catch (err) {
-      if (isRateLimitOrTooLarge(err)) {
-        const status = extractStatus(err);
-        const modelId =
-          typeof (model as unknown as Record<string, unknown>).modelId === 'string'
-            ? (model as unknown as Record<string, unknown>).modelId
-            : `provider ${i + 1}`;
-        console.warn(
-          `[Chat API] ${status} from ${modelId}${i + 1 < models.length ? ', trying next provider' : ', no more providers'}`,
-        );
-        lastError = err;
-        continue; // try next provider
-      }
-      throw err; // non-rate-limit error — surface immediately
-    }
-  }
-
-  throw lastError; // all providers exhausted
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
@@ -204,16 +148,18 @@ export async function POST(request: NextRequest) {
       { role: 'user' as const, content: message },
     ];
 
-    // Run the agentic loop with automatic provider fallback.
+    // Run the agentic loop on Gemini.
     // @ai-sdk/google v2.x properly preserves thoughtSignature in providerMetadata,
     // so thinking models (gemini-2.5-flash etc.) work correctly across tool-call steps.
-    const rawText = await generateWithFallback(await getAIModels(), {
+    const model = await getAIModel();
+    const { text: rawText } = await generateText({
+      model,
       system: SYSTEM_PROMPT,
       messages,
       tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
       stopWhen: stepCountIs(5), // Allow up to 5 rounds of tool calls before final answer
       maxOutputTokens: 4000, // Generous cap for thinking models that need more tokens
-    });
+    } as Parameters<typeof generateText>[0]);
 
     // ── Parse structured render hints from the response ──────────────────────
     // The model should wrap renderData in ```json ... ``` fences, but thinking
@@ -269,14 +215,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'AI service not configured. Set GROQ_API_KEY for the best free-tier experience. ' +
-            'Get a free key at https://console.groq.com/keys',
+            'Gemini is not configured. Set GEMINI_API_KEY or add a key via Admin → AI Config. ' +
+            'Get a free key at https://aistudio.google.com/apikey',
         },
         { status: 503 },
       );
     }
 
-    // Provider HTTP errors (429, 503, etc.)
+    // Gemini HTTP errors (429, 503, etc.)
     const providerError = parseProviderError(error);
     if (providerError) {
       return NextResponse.json(

@@ -83,6 +83,7 @@ export {
 } from './entities/PushDevice';
 export { PushNotificationLogEntity } from './entities/PushNotificationLog';
 export { AppSettingEntity } from './entities/AppSetting';
+export { HelpArticleEntity } from './entities/HelpArticle';
 export { TransferEntity } from './entities/Transfer';
 export type {
   PushNotificationCategory,

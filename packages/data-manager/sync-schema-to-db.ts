@@ -82,6 +82,32 @@ async function main() {
     console.log('🔄 Initializing database connection...');
     await dataManager.initialize();
     console.log('✅ Database schema synchronized successfully.');
+
+    // ── Help-KB pgvector bootstrap ─────────────────────────────────────────
+    // TypeORM doesn't know the pgvector `vector` type, so the embedding
+    // column + index are managed here with raw SQL. All statements are
+    // idempotent so it is safe to run on every deploy.
+    console.log('🔄 Bootstrapping pgvector for help_articles…');
+    await dataManager.dataSource.query(`CREATE EXTENSION IF NOT EXISTS vector`);
+    await dataManager.dataSource.query(
+      `ALTER TABLE help_articles ADD COLUMN IF NOT EXISTS embedding vector(768)`,
+    );
+    await dataManager.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_indexes
+          WHERE schemaname = current_schema()
+            AND indexname = 'help_articles_embedding_idx'
+        ) THEN
+          CREATE INDEX help_articles_embedding_idx
+            ON help_articles
+            USING ivfflat (embedding vector_cosine_ops)
+            WITH (lists = 100);
+        END IF;
+      END$$;
+    `);
+    console.log('✅ pgvector ready (extension + embedding column + index).');
   } catch (err) {
     console.error('❌ Failed to synchronize schema:');
     if (err instanceof Error) {

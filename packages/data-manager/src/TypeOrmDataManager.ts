@@ -50,6 +50,7 @@ import { Account } from './entities/Account';
 import { Session } from './entities/Session';
 import { Verification } from './entities/Verification';
 import { AppSettingEntity } from './entities/AppSetting';
+import { HelpArticleEntity } from './entities/HelpArticle';
 import {
   StrategyRepository,
   OrderRepository,
@@ -136,6 +137,7 @@ export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   push_devices: PushDeviceEntity,
   push_notification_logs: PushNotificationLogEntity,
   app_settings: AppSettingEntity,
+  help_articles: HelpArticleEntity,
   transfers: TransferEntity,
 };
 

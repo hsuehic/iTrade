@@ -1709,5 +1709,16 @@
     "errors": {
       "fetchPositions": "获取持仓失败"
     }
+  },
+  "helpBot": {
+    "title": "iTrade 帮助",
+    "subtitle": "关于 iTrade 的任何问题",
+    "open": "打开帮助助手",
+    "close": "关闭",
+    "minimize": "最小化",
+    "clear": "清除对话",
+    "placeholder": "询问 iTrade…",
+    "trySuggestions": "试试问：",
+    "inputHint": "按 Enter 发送 · Shift+Enter 换行"
   }
 }

@@ -38,8 +38,15 @@ services:
   # ----------------------------------------------------------
   # PostgreSQL database
   # ----------------------------------------------------------
+  # NOTE: We use the pgvector-bundled image (pgvector/pgvector:pg18) rather
+  # than vanilla postgres:18-alpine because the help-KB chatbot relies on
+  # the `vector` extension. The image is built on top of the official
+  # postgres:18 (Debian-slim) and remains volume-compatible with previous
+  # postgres:18 data directories.
+  # See: https://hub.docker.com/r/pgvector/pgvector
+  # ----------------------------------------------------------
   db:
-    image: postgres:18-alpine
+    image: pgvector/pgvector:pg18
     container_name: itrade-db
     ports:
       - '5432:5432'

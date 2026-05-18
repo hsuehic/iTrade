@@ -5,6 +5,7 @@ import {
   IconChartInfographic,
   IconUsers,
   IconBrain,
+  IconBook,
 } from '@tabler/icons-react';
 import {
   SidebarGroup,
@@ -41,6 +42,11 @@ export function NavAdmin() {
       title: 'AI Config',
       url: '/admin/ai-config',
       icon: IconBrain,
+    },
+    {
+      title: 'Help Knowledge Base',
+      url: '/admin/help-kb',
+      icon: IconBook,
     },
     {
       title: 'System Settings',
