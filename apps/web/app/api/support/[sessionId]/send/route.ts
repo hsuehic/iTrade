@@ -6,12 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 
 import { checkRateLimit, getClientIp } from '@/lib/help-kb/rate-limit';
-import {
-  getSession,
-  addMessage,
-  getAllMessages,
-  setSlackThread,
-} from '@/lib/support/repository';
+import { getSession, addMessage, setSlackThread } from '@/lib/support/repository';
 import { openSupportThread, postUserMessage } from '@/lib/support/slack';
 
 export async function POST(
@@ -44,19 +39,16 @@ export async function POST(
   const messageId = randomUUID();
   await addMessage(messageId, sessionId, 'user', content);
 
-  // If no Slack thread yet, open one now.
   if (!session.slack_thread_ts) {
+    // Fallback: thread should have been opened at session creation, but open
+    // it now if that failed for any reason.
     const thread = await openSupportThread(sessionId, content);
     if (thread) {
       await setSlackThread(sessionId, thread.channelId, thread.threadTs);
     }
   } else {
-    // Subsequent messages go as replies in the existing thread.
-    const existing = await getAllMessages(sessionId);
-    const userMsgCount = existing.filter((m) => m.role === 'user').length;
-    if (userMsgCount > 1 && session.slack_channel_id && session.slack_thread_ts) {
-      await postUserMessage(session.slack_channel_id, session.slack_thread_ts, content);
-    }
+    // Forward every user message as a reply in the existing thread.
+    await postUserMessage(session.slack_channel_id!, session.slack_thread_ts, content);
   }
 
   return NextResponse.json({ messageId });

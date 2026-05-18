@@ -6,7 +6,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 
 import { checkRateLimit, getClientIp } from '@/lib/help-kb/rate-limit';
-import { createSession } from '@/lib/support/repository';
+import { createSession, setSlackThread } from '@/lib/support/repository';
+import { notifyNewSession } from '@/lib/support/slack';
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -24,5 +25,13 @@ export async function POST(request: NextRequest) {
 
   const sessionId = randomUUID();
   await createSession(sessionId, locale);
+
+  // Open the Slack thread immediately so the support team is notified
+  // the moment a user connects — before they type anything.
+  const thread = await notifyNewSession(sessionId);
+  if (thread) {
+    await setSlackThread(sessionId, thread.channelId, thread.threadTs);
+  }
+
   return NextResponse.json({ sessionId });
 }

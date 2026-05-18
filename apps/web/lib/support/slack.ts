@@ -24,7 +24,36 @@ interface SlackPostResult {
 }
 
 /**
- * Post the opening message for a new support session.
+ * Open a Slack thread the moment a user connects to live support
+ * (before they send any message).
+ * Returns { channelId, threadTs } that should be stored on the session.
+ */
+export async function notifyNewSession(
+  sessionId: string,
+): Promise<{ channelId: string; threadTs: string } | null> {
+  if (!isConfigured()) return null;
+
+  const channelId = process.env.SLACK_CHANNEL_ID!;
+  const text =
+    `🆕 *New Support Request* | Session \`${sessionId.slice(0, 8)}\`\n\n` +
+    `_A user has connected and is waiting to describe their issue._\n\n` +
+    `_Reply in this thread to respond inside the chat widget._`;
+
+  const result = await slackPost('chat.postMessage', {
+    channel: channelId,
+    text,
+    mrkdwn: true,
+  });
+  if (!result.ok || !result.ts) {
+    console.error('[Support/Slack] Failed to open thread:', result.error);
+    return null;
+  }
+  return { channelId, threadTs: result.ts };
+}
+
+/**
+ * Post the opening message for a new support session (fallback — used when the
+ * thread was not pre-opened at session creation).
  * Returns { channelId, threadTs } that should be stored on the session.
  */
 export async function openSupportThread(

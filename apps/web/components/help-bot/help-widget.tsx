@@ -231,7 +231,7 @@ export function HelpWidget() {
   const [connectingSupport, setConnectingSupport] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
-  const [lastPolledAt, setLastPolledAt] = useState<Date>(new Date(0));
+  const lastPolledAtRef = useRef<Date>(new Date(0));
   const [sessionClosed, setSessionClosed] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
@@ -256,7 +256,7 @@ export function HelpWidget() {
   const pollMessages = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const url = `/api/support/${sessionId}/messages?since=${lastPolledAt.toISOString()}`;
+      const url = `/api/support/${sessionId}/messages?since=${lastPolledAtRef.current.toISOString()}`;
       const res = await fetch(url);
       if (!res.ok) return;
       const data = (await res.json()) as {
@@ -264,8 +264,23 @@ export function HelpWidget() {
         sessionStatus: string;
       };
       if (data.messages.length > 0) {
-        setSupportMessages((prev) => [...prev, ...data.messages]);
-        setLastPolledAt(new Date());
+        lastPolledAtRef.current = new Date();
+        setSupportMessages((prev) => {
+          // IDs already present from previous polls (exclude optimistic)
+          const existingIds = new Set(
+            prev.filter((m) => !m.id.startsWith('opt-')).map((m) => m.id),
+          );
+          const newMsgs = data.messages.filter((m) => !existingIds.has(m.id));
+          if (newMsgs.length === 0) return prev;
+          // Drop optimistic user messages whose content was confirmed by the server
+          const confirmedContents = new Set(
+            newMsgs.filter((m) => m.role === 'user').map((m) => m.content),
+          );
+          const dedupedPrev = prev.filter(
+            (m) => !m.id.startsWith('opt-') || !confirmedContents.has(m.content),
+          );
+          return [...dedupedPrev, ...newMsgs];
+        });
       }
       if (data.sessionStatus === 'closed') {
         setSessionClosed(true);
@@ -274,7 +289,7 @@ export function HelpWidget() {
     } catch {
       /* ignore */
     }
-  }, [sessionId, lastPolledAt]);
+  }, [sessionId]); // lastPolledAtRef is a ref — no need to list as dependency
 
   useEffect(() => {
     if (supportMode && sessionId && !sessionClosed) {
@@ -299,7 +314,18 @@ export function HelpWidget() {
       if (data.sessionId) {
         setSessionId(data.sessionId);
         setSupportMode(true);
-        setLastPolledAt(new Date());
+        lastPolledAtRef.current = new Date();
+        setSupportMessages([
+          {
+            id: 'system-greeting',
+            role: 'supporter',
+            content:
+              locale === 'zh'
+                ? '您好！感谢您联系我们。请问有什么可以帮助您？'
+                : 'Hi there! Thanks for reaching out. A support agent will be with you shortly — go ahead and describe your issue.',
+            created_at: new Date().toISOString(),
+          },
+        ]);
       }
     } catch {
       /* keep in AI mode */
@@ -319,7 +345,7 @@ export function HelpWidget() {
     setSessionId(null);
     setSupportMessages([]);
     setSessionClosed(false);
-    setLastPolledAt(new Date(0));
+    lastPolledAtRef.current = new Date(0);
   }, [sessionId]);
 
   const handleSend = useCallback(async () => {
@@ -343,7 +369,7 @@ export function HelpWidget() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: text }),
         });
-        setLastPolledAt(new Date());
+        lastPolledAtRef.current = new Date();
       } catch {
         /* optimistic message stays */
       }
@@ -408,8 +434,7 @@ export function HelpWidget() {
         } ${isOpen ? 'pointer-events-auto scale-100 opacity-100' : 'pointer-events-none scale-90 opacity-0'}`}
       >
         <div
-          className={`flex flex-col overflow-hidden border border-border/60 shadow-2xl shadow-black/20 ${isFullscreen ? 'h-full rounded-none' : 'rounded-2xl'}`}
-          style={{ backgroundColor: 'hsl(var(--background))' }}
+          className={`flex flex-col overflow-hidden border border-border/60 shadow-2xl shadow-black/20 bg-white dark:bg-neutral-900 ${isFullscreen ? 'h-full rounded-none' : 'rounded-2xl'}`}
         >
           {/* Header */}
           <div
@@ -550,10 +575,10 @@ export function HelpWidget() {
                 {supportMode &&
                   supportMessages.map((m) => <SupportBubble key={m.id} message={m} />)}
 
-                {/* Waiting indicator */}
+                {/* Waiting indicator — shown when last message is from user (awaiting reply) */}
                 {supportMode &&
                   !sessionClosed &&
-                  supportMessages.filter((m) => m.role === 'supporter').length === 0 && (
+                  supportMessages.at(-1)?.role === 'user' && (
                     <div className="flex gap-2">
                       <div className="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
                         <UserRound className="size-3.5" />
