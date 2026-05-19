@@ -100,6 +100,7 @@ class _BarChartSectionState extends State<_BarChartSection> {
                         fontWeight: FontWeight.bold,
                         color: theme.colorScheme.onSurface,
                       ),
+                      textAlign: TextAlign.left,
                       children: [
                         TextSpan(
                           text: _fmtFull(rod.toY),
@@ -414,6 +415,7 @@ class _LineChartSectionState extends State<_LineChartSection> {
                           fontWeight:
                               isTotal ? FontWeight.bold : FontWeight.normal,
                         ),
+                        textAlign: TextAlign.left,
                       );
                     }).toList();
                   },

@@ -139,7 +139,7 @@ class ChatMessageBubble extends StatelessWidget {
                                 .withValues(alpha: 0.2),
                           ),
                   ),
-                  child: message.isLoading
+                  child: (message.isLoading || message.isStreaming)
                       ? const SizedBox(
                           height: 24,
                           child: Center(child: _LoadingDots()),
@@ -152,9 +152,10 @@ class ChatMessageBubble extends StatelessWidget {
                         ),
                 ),
 
-                // Visualisation — only for non-loading assistant messages
+                // Visualisation — only for fully received assistant messages
                 if (!isUser &&
                     !message.isLoading &&
+                    !message.isStreaming &&
                     message.renderData != null) ...[
                   const SizedBox(height: 4),
                   ConstrainedBox(

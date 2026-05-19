@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useLocale } from 'next-intl';
 import {
   Bot,
   X,
@@ -11,6 +12,8 @@ import {
   ChevronDown,
   Maximize2,
   Minimize,
+  UserRound,
+  PhoneOff,
 } from 'lucide-react';
 
 import { useChat } from './use-chat';
@@ -27,19 +30,85 @@ const SUGGESTED_QUESTIONS = [
 
 const DEFAULT_CHAT_TITLE = 'Powered by Gemini 2.5 Flash';
 
+// ── Support types ─────────────────────────────────────────────────────────────
+
+interface SupportMessage {
+  id: string;
+  role: 'user' | 'supporter';
+  content: string;
+  created_at: string;
+}
+
+// ── Support message bubble ────────────────────────────────────────────────────
+
+function SupportBubble({ message }: { message: SupportMessage }) {
+  const isUser = message.role === 'user';
+  return (
+    <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
+      <div className="flex flex-col items-center gap-0.5">
+        <div
+          className={`flex size-7 flex-shrink-0 items-center justify-center rounded-full ${
+            isUser
+              ? 'bg-muted text-muted-foreground'
+              : 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white'
+          }`}
+        >
+          {isUser ? (
+            <span className="text-xs font-medium">You</span>
+          ) : (
+            <UserRound className="size-3.5" />
+          )}
+        </div>
+        <span
+          className={`text-[9px] font-medium leading-none ${isUser ? 'text-muted-foreground' : 'text-emerald-600'}`}
+        >
+          {isUser ? 'You' : 'Agent'}
+        </span>
+      </div>
+      <div
+        className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs ${
+          isUser
+            ? 'rounded-tr-sm bg-primary text-primary-foreground'
+            : 'rounded-tl-sm bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100'
+        }`}
+      >
+        <p className="leading-relaxed">{message.content}</p>
+      </div>
+    </div>
+  );
+}
+
+// ── Widget ────────────────────────────────────────────────────────────────────
+
 export function ChatWidget() {
+  const locale = useLocale();
+
+  // ── UI state ───────────────────────────────────────────────────────────────
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [chatTitle, setChatTitle] = useState(DEFAULT_CHAT_TITLE);
-  const { messages, isLoading, sendMessage, clearMessages } = useChat();
+
+  // ── AI chat ────────────────────────────────────────────────────────────────
+  const { messages, isLoading: aiLoading, sendMessage, clearMessages } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Draggable trigger position — null means default bottom-right corner.
-  // Lazy initializer reads localStorage once on mount (client-only; no-ops on SSR).
+  // ── Support state ──────────────────────────────────────────────────────────
+  const [supportMode, setSupportMode] = useState(false);
+  const [connectingSupport, setConnectingSupport] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
+  const [sessionClosed, setSessionClosed] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
+
+  // Combined loading flag
+  const isLoading = supportMode ? isSending : aiLoading;
+
+  // ── Draggable trigger position ─────────────────────────────────────────────
   const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
@@ -57,7 +126,7 @@ export function ChatWidget() {
     moved: boolean;
   } | null>(null);
 
-  // Fetch runtime-configurable chat title from the server
+  // ── Fetch configurable title ───────────────────────────────────────────────
   useEffect(() => {
     fetch('/api/config/chat')
       .then((res) => res.json())
@@ -69,25 +138,137 @@ export function ChatWidget() {
       });
   }, []);
 
-  // Auto-scroll to latest message
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, supportMessages]);
 
-  // Focus input when opened
+  // ── Focus input when opened ────────────────────────────────────────────────
   useEffect(() => {
     if (isOpen && !isMinimized) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen, isMinimized]);
 
+  // ── SSE subscription (live support) ───────────────────────────────────────
+  useEffect(() => {
+    if (!supportMode || !sessionId || sessionClosed) return;
+
+    const sse = new EventSource(`/api/support/${sessionId}/stream`);
+    sseRef.current = sse;
+
+    sse.addEventListener('message', (e: MessageEvent<string>) => {
+      try {
+        const msg = JSON.parse(e.data) as SupportMessage;
+        setSupportMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          const withoutOptimistic = prev.filter(
+            (m) =>
+              !(
+                m.id.startsWith('opt-') &&
+                m.role === msg.role &&
+                m.content === msg.content
+              ),
+          );
+          return [...withoutOptimistic, msg];
+        });
+      } catch {
+        /* malformed event — ignore */
+      }
+    });
+
+    sse.addEventListener('session_closed', () => {
+      setSessionClosed(true);
+      sse.close();
+      sseRef.current = null;
+    });
+
+    sse.onerror = () => {
+      // EventSource auto-reconnects on network errors; nothing to do here.
+    };
+
+    return () => {
+      sse.close();
+      sseRef.current = null;
+    };
+  }, [supportMode, sessionId, sessionClosed]);
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
+  const handleStartSupport = useCallback(async () => {
+    setConnectingSupport(true);
+    try {
+      const res = await fetch('/api/support/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locale }),
+      });
+      const data = (await res.json()) as { sessionId?: string };
+      if (data.sessionId) {
+        setSessionId(data.sessionId);
+        setSupportMode(true);
+        setSupportMessages([
+          {
+            id: 'system-greeting',
+            role: 'supporter',
+            content:
+              locale === 'zh'
+                ? '您好！感谢您联系我们。请问有什么可以帮助您？'
+                : 'Hi there! Thanks for reaching out. A support agent will be with you shortly — go ahead and describe your issue.',
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      }
+    } catch {
+      /* keep in AI mode */
+    }
+    setConnectingSupport(false);
+  }, [locale]);
+
+  const handleEndSupport = useCallback(async () => {
+    if (!sessionId) return;
+    sseRef.current?.close();
+    sseRef.current = null;
+    try {
+      await fetch(`/api/support/${sessionId}/close`, { method: 'POST' });
+    } catch {
+      /* ignore */
+    }
+    setSupportMode(false);
+    setSessionId(null);
+    setSessionClosed(false);
+    // Keep supportMessages so the user can see the conversation history
+  }, [sessionId]);
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || isLoading) return;
     setInputValue('');
-    setShowSuggestions(false);
-    await sendMessage(text);
-  }, [inputValue, isLoading, sendMessage]);
+
+    if (supportMode && sessionId) {
+      setIsSending(true);
+      const optimistic: SupportMessage = {
+        id: `opt-${Date.now()}`,
+        role: 'user',
+        content: text,
+        created_at: new Date().toISOString(),
+      };
+      setSupportMessages((prev) => [...prev, optimistic]);
+      try {
+        await fetch(`/api/support/${sessionId}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text }),
+        });
+      } catch {
+        /* optimistic message stays */
+      }
+      setIsSending(false);
+    } else {
+      setShowSuggestions(false);
+      await sendMessage(text);
+    }
+  }, [inputValue, isLoading, supportMode, sessionId, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -106,7 +287,7 @@ export function ChatWidget() {
     setShowSuggestions(true);
   };
 
-  // ── Drag handlers ────────────────────────────────────────────────────────────
+  // ── Drag handlers ──────────────────────────────────────────────────────────
 
   const handleTriggerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -128,10 +309,9 @@ export function ChatWidget() {
       if (!dragState.current) return;
       const dx = e.clientX - dragState.current.startX;
       const dy = e.clientY - dragState.current.startY;
-      // Ignore tiny jitter so accidental drags don't prevent clicks
       if (!dragState.current.moved && Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
       dragState.current.moved = true;
-      const size = 56; // w-14 h-14 = 3.5rem = 56px
+      const size = 56;
       const x = Math.max(
         0,
         Math.min(window.innerWidth - size, dragState.current.origX + dx),
@@ -151,12 +331,10 @@ export function ChatWidget() {
       const wasDrag = dragState.current.moved;
       dragState.current = null;
       if (!wasDrag) {
-        // Short tap — toggle the panel
         setIsOpen((prev) => !prev);
         setIsMinimized(false);
         setIsFullscreen(false);
       } else {
-        // Persist new position
         setBtnPos((prev) => {
           if (prev) {
             try {
@@ -172,21 +350,28 @@ export function ChatWidget() {
     [],
   );
 
-  const userMessageCount = messages.filter((m) => m.role === 'user').length;
+  // ── Derived values ─────────────────────────────────────────────────────────
 
-  // Wrapper sits at the dragged position, or default bottom-right
+  const userMessageCount = messages.filter((m) => m.role === 'user').length;
+  const placeholder = supportMode
+    ? locale === 'zh'
+      ? '发送消息给客服…'
+      : 'Message support agent…'
+    : 'Ask about your trading performance…';
+
   const wrapperStyle: React.CSSProperties = btnPos
     ? { left: btnPos.x, top: btnPos.y, bottom: 'auto', right: 'auto' }
     : { bottom: '24px', right: '24px' };
 
-  // Panel right-aligns to the button; prevent overflow on the right edge
   const panelRightOffset = btnPos ? Math.max(0, window.innerWidth - (btnPos.x + 56)) : 0;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
-      {/* Draggable wrapper — contains both trigger and panel */}
+      {/* Draggable wrapper */}
       <div className="fixed z-50" style={wrapperStyle}>
-        {/* ── Floating button ───────────────────────────────────────────── */}
+        {/* Floating button */}
         <button
           id="chat-widget-trigger"
           onPointerDown={handleTriggerPointerDown}
@@ -196,18 +381,28 @@ export function ChatWidget() {
           className={`relative flex h-14 w-14 cursor-grab select-none items-center justify-center rounded-full shadow-2xl transition-colors duration-200 active:cursor-grabbing group ${
             isOpen
               ? 'bg-foreground text-background'
-              : 'bg-primary text-primary-foreground hover:shadow-primary/30'
+              : supportMode
+                ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white hover:shadow-emerald-500/30'
+                : 'bg-primary text-primary-foreground hover:shadow-primary/30'
           }`}
         >
           <span
             className={`transition-all duration-300 ${isOpen ? 'rotate-90 scale-90' : 'rotate-0'}`}
           >
-            {isOpen ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+            {isOpen ? (
+              <X className="h-5 w-5" />
+            ) : supportMode ? (
+              <UserRound className="h-6 w-6" />
+            ) : (
+              <Bot className="h-6 w-6" />
+            )}
           </span>
 
           {/* Pulse ring when closed */}
           {!isOpen && (
-            <span className="absolute inset-0 animate-ping rounded-full bg-primary opacity-20 group-hover:opacity-0" />
+            <span
+              className={`absolute inset-0 animate-ping rounded-full opacity-20 group-hover:opacity-0 ${supportMode ? 'bg-emerald-500' : 'bg-primary'}`}
+            />
           )}
 
           {/* Unread indicator */}
@@ -218,7 +413,7 @@ export function ChatWidget() {
           )}
         </button>
 
-        {/* ── Chat panel ────────────────────────────────────────────────── */}
+        {/* Chat panel */}
         <div
           className={`transition-all duration-300 ${
             isFullscreen
@@ -238,19 +433,64 @@ export function ChatWidget() {
               isFullscreen ? 'h-full rounded-none' : 'rounded-2xl'
             }`}
           >
-            {/* ── Header ────────────────────────────────────────────────── */}
-            <div className="flex items-center gap-3 bg-primary px-4 py-3 text-primary-foreground">
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-foreground/20">
-                <Sparkles className="h-4 w-4" />
+            {/* Header */}
+            <div
+              className={`flex items-center gap-3 px-4 py-3 text-white transition-all duration-300 ${
+                supportMode
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600'
+                  : 'bg-primary'
+              }`}
+            >
+              <div
+                className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${
+                  supportMode ? 'bg-white/20' : 'bg-primary-foreground/20'
+                }`}
+              >
+                {supportMode ? (
+                  <UserRound className="h-4 w-4" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold leading-none">iTrade AI</p>
-                <p className="mt-0.5 text-[11px] text-primary-foreground/70">
-                  {chatTitle}
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold leading-none">
+                    {supportMode
+                      ? locale === 'zh'
+                        ? '人工客服'
+                        : 'Live Support'
+                      : 'iTrade AI'}
+                  </p>
+                  {supportMode && (
+                    <span className="flex items-center gap-1 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">
+                      <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" />
+                      {locale === 'zh' ? '在线' : 'Online'}
+                    </span>
+                  )}
+                </div>
+                <p
+                  className={`mt-0.5 text-[11px] ${supportMode ? 'text-white/70' : 'text-primary-foreground/70'}`}
+                >
+                  {supportMode
+                    ? locale === 'zh'
+                      ? '通过 Slack 与客服实时聊天'
+                      : 'Connected via Slack'
+                    : chatTitle}
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                {userMessageCount > 0 && (
+                {/* End live chat */}
+                {supportMode && (
+                  <button
+                    onClick={handleEndSupport}
+                    title={locale === 'zh' ? '结束对话' : 'End chat'}
+                    className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
+                  >
+                    <PhoneOff className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {/* Clear AI chat */}
+                {!supportMode && userMessageCount > 0 && (
                   <button
                     onClick={handleClear}
                     title="Clear conversation"
@@ -297,25 +537,26 @@ export function ChatWidget() {
               </div>
             </div>
 
-            {/* ── Body ──────────────────────────────────────────────────── */}
+            {/* Body */}
             {!isMinimized && (
               <>
                 {/* Messages area */}
                 <div
                   id="chat-messages"
-                  className="scroll-smooth flex-1 space-y-4 overflow-y-auto px-3 py-4"
+                  className="scroll-smooth space-y-4 overflow-y-auto px-3 py-4"
                   style={
                     isFullscreen
                       ? { flex: '1 1 0', minHeight: 0 }
                       : { maxHeight: '420px', minHeight: '200px' }
                   }
                 >
+                  {/* AI messages — always shown so history is preserved when switching modes */}
                   {messages.map((message) => (
                     <ChatMessageBubble key={message.id} message={message} />
                   ))}
 
-                  {/* Suggested questions (only shown initially) */}
-                  {showSuggestions && userMessageCount === 0 && (
+                  {/* Suggested questions (AI mode only, initial state) */}
+                  {!supportMode && showSuggestions && userMessageCount === 0 && (
                     <div className="mt-2 flex flex-col gap-1.5">
                       <p className="px-1 text-[11px] text-muted-foreground">
                         Try asking:
@@ -332,28 +573,100 @@ export function ChatWidget() {
                     </div>
                   )}
 
+                  {/* Divider when support mode is active */}
+                  {(supportMode || supportMessages.length > 0) && (
+                    <div className="flex items-center gap-2 py-1">
+                      <div className="h-px flex-1 bg-border/50" />
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
+                        {locale === 'zh' ? '已连接人工客服' : 'Connected to agent'}
+                      </span>
+                      <div className="h-px flex-1 bg-border/50" />
+                    </div>
+                  )}
+
+                  {/* Support messages — always rendered once the session starts so history persists */}
+                  {supportMessages.map((m) => (
+                    <SupportBubble key={m.id} message={m} />
+                  ))}
+
+                  {/* Waiting indicator when agent hasn't replied yet */}
+                  {supportMode &&
+                    !sessionClosed &&
+                    supportMessages.at(-1)?.role === 'user' && (
+                      <div className="flex gap-2">
+                        <div className="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                          <UserRound className="size-3.5" />
+                        </div>
+                        <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-emerald-50 px-3 py-2 text-xs dark:bg-emerald-950/40">
+                          <div className="flex items-center gap-1.5 py-0.5">
+                            <span className="size-1.5 animate-bounce rounded-full bg-emerald-500 opacity-60 [animation-delay:-0.3s]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-emerald-500 opacity-60 [animation-delay:-0.15s]" />
+                            <span className="size-1.5 animate-bounce rounded-full bg-emerald-500 opacity-60" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Session closed notice */}
+                  {sessionClosed && (
+                    <div className="rounded-xl border border-border/50 bg-muted/40 px-3 py-2 text-center text-[11px] text-muted-foreground">
+                      {locale === 'zh' ? '对话已结束。' : 'This chat session has ended.'}
+                    </div>
+                  )}
+
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* Divider */}
+                {/* "Talk to a human agent" strip — only in AI mode */}
+                {!supportMode && (
+                  <div className="border-t border-border/30 px-3 py-2">
+                    <button
+                      onClick={handleStartSupport}
+                      disabled={connectingSupport}
+                      className="flex w-full items-center gap-2 rounded-xl border border-border/50 bg-muted/30 px-3 py-2 text-left text-xs text-muted-foreground transition-all duration-150 hover:border-emerald-400/50 hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {connectingSupport ? (
+                        <span className="size-3.5 animate-spin rounded-full border-2 border-emerald-400/40 border-t-emerald-500 flex-shrink-0" />
+                      ) : (
+                        <UserRound className="size-3.5 flex-shrink-0 text-emerald-600" />
+                      )}
+                      <span>
+                        {connectingSupport
+                          ? locale === 'zh'
+                            ? '正在连接人工客服…'
+                            : 'Connecting to agent…'
+                          : locale === 'zh'
+                            ? '与人工客服交谈'
+                            : 'Talk to a human agent'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Divider above input */}
                 <div className="border-t border-border/40" />
 
-                {/* ── Input area ────────────────────────────────────────── */}
+                {/* Input area */}
                 <div className="p-3">
-                  <div className="flex items-end gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 transition-all duration-200 focus-within:border-primary/60 focus-within:bg-background">
+                  <div
+                    className={`flex items-end gap-2 rounded-xl border bg-muted/30 px-3 py-2 transition-all duration-200 ${
+                      supportMode
+                        ? 'border-border/60 focus-within:border-emerald-500/60 focus-within:bg-background'
+                        : 'border-border/60 focus-within:border-primary/60 focus-within:bg-background'
+                    }`}
+                  >
                     <textarea
                       ref={inputRef}
                       id="chat-input"
                       value={inputValue}
                       onChange={(e) => {
                         setInputValue(e.target.value);
-                        // Auto-resize
                         e.target.style.height = 'auto';
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
                       }}
                       onKeyDown={handleKeyDown}
-                      placeholder="Ask about your trading performance…"
-                      disabled={isLoading}
+                      placeholder={placeholder}
+                      disabled={isLoading || sessionClosed}
                       rows={1}
                       className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
                       style={{ maxHeight: '100px' }}
@@ -361,27 +674,31 @@ export function ChatWidget() {
                     <button
                       id="chat-send-btn"
                       onClick={handleSend}
-                      disabled={!inputValue.trim() || isLoading}
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all duration-150 hover:scale-105 hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!inputValue.trim() || isLoading || sessionClosed}
+                      className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white transition-all duration-150 hover:scale-105 hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+                        supportMode
+                          ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                          : 'bg-primary'
+                      }`}
                     >
                       {isLoading ? (
-                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
                       ) : (
                         <Send className="h-3.5 w-3.5" />
                       )}
                     </button>
                   </div>
                   <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-                    Press Enter to send · Shift+Enter for new line
+                    {locale === 'zh'
+                      ? '按 Enter 发送 · Shift+Enter 换行'
+                      : 'Press Enter to send · Shift+Enter for new line'}
                   </p>
                 </div>
               </>
             )}
           </div>
         </div>
-        {/* end panel */}
       </div>
-      {/* end draggable wrapper */}
     </>
   );
 }

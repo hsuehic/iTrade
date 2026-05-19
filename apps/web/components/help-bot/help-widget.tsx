@@ -728,11 +728,11 @@ export function HelpWidget() {
                       <span>
                         {connectingSupport
                           ? locale === 'zh'
-                            ? '正在连接客服…'
-                            : 'Connecting to support…'
+                            ? '正在连接人工客服…'
+                            : 'Connecting to agent…'
                           : locale === 'zh'
-                            ? '转接人工客服'
-                            : 'Talk to a human'}
+                            ? '与人工客服交谈'
+                            : 'Talk to a human agent'}
                       </span>
                     </button>
                   </div>

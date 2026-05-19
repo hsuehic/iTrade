@@ -189,21 +189,19 @@ function LoadingDots() {
   );
 }
 
-// ── Streaming cursor ───────────────────────────────────────────────────────────
-/** Blinking block cursor shown while tokens are actively streaming in. */
-function StreamingCursor() {
+// ── Thinking skeleton ──────────────────────────────────────────────────────────
+/** Pulsing skeleton bars shown while the AI is actively streaming a response. */
+function ThinkingSkeleton() {
   return (
-    <span
-      className="inline-block w-[2px] h-[1em] bg-primary/70 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]"
-      style={{
-        // Keyframe defined inline to avoid a global CSS dependency
-        animationName: 'blink',
-        animationDuration: '1s',
-        animationTimingFunction: 'step-end',
-        animationIterationCount: 'infinite',
-      }}
-      aria-hidden
-    />
+    <div className="space-y-2 py-1 min-w-[140px]">
+      {[75, 55, 35].map((w, i) => (
+        <div
+          key={i}
+          className="h-2 rounded-full bg-primary/20 animate-pulse"
+          style={{ width: `${w}%`, animationDelay: `${i * 0.12}s` }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -239,16 +237,15 @@ export function ChatMessageBubble({ message }: ChatMessageProps) {
         >
           {message.isLoading ? (
             <LoadingDots />
+          ) : message.isStreaming ? (
+            <ThinkingSkeleton />
           ) : (
-            <div className="space-y-0.5">
-              {renderMarkdown(message.content)}
-              {message.isStreaming && <StreamingCursor />}
-            </div>
+            <div className="space-y-0.5">{renderMarkdown(message.content)}</div>
           )}
         </div>
 
-        {/* Visualization — only for assistant messages */}
-        {!isUser && !message.isLoading && message.renderData && (
+        {/* Visualization — only for assistant messages once fully received */}
+        {!isUser && !message.isLoading && !message.isStreaming && message.renderData && (
           <div className="w-full max-w-full">
             {message.renderData.renderAs === 'chart' && (
               <ChatChart
