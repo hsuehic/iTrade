@@ -405,6 +405,9 @@ export async function GET(request: Request) {
         if (exchange !== 'all' && t.exchange?.toLowerCase() !== exchange.toLowerCase())
           continue;
         if (t.status === 'COMPLETED') {
+          if (t.network === 'internal') {
+            continue;
+          }
           const amt = parseFloat(t.amount.toString());
           if (t.type === 'DEPOSIT') {
             netDeposits += amt;

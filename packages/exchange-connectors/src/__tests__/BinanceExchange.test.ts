@@ -166,6 +166,9 @@ describe('BinanceExchange getTransfers', () => {
           ],
         });
       }
+      if (url.includes('pay/transactions')) {
+        return Promise.resolve({ data: { code: '000000', data: [] } });
+      }
       return Promise.resolve({ data: [] });
     });
 

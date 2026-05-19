@@ -692,72 +692,121 @@ export class BinanceExchange extends BaseExchange {
     endTime?: Date,
     limit = 1000,
   ): Promise<Transfer[]> {
-    const params: any = { timestamp: Date.now() };
+    const params: any = { timestamp: Date.now(), recvWindow: 60000 };
     if (startTime) params.startTime = startTime.getTime();
     if (endTime) params.endTime = endTime.getTime();
 
     const signedDepositParams = this.signRequest({ ...params, limit });
     const signedWithdrawParams = this.signRequest({ ...params, limit });
+    const signedPayParams = this.signRequest({ ...params, limit: Math.min(limit, 100) });
 
-    const [depositRes, withdrawRes] = await Promise.allSettled([
+    const [depositRes, withdrawRes, payRes] = await Promise.allSettled([
       this.httpClient.get('/sapi/v1/capital/deposit/hisrec', {
         params: signedDepositParams,
       }),
       this.httpClient.get('/sapi/v1/capital/withdraw/history', {
         params: signedWithdrawParams,
       }),
+      this.httpClient.get('/sapi/v1/pay/transactions', {
+        params: signedPayParams,
+      }),
     ]);
 
     const transfers: Transfer[] = [];
 
-    if (depositRes.status === 'fulfilled' && Array.isArray(depositRes.value.data)) {
-      transfers.push(
-        ...depositRes.value.data.map((d: any) => ({
-          id: d.id || d.txId || uuidv4(),
-          type: TransferType.DEPOSIT,
-          asset: d.coin,
-          amount: new Decimal(d.amount),
-          status:
-            d.status === 1
-              ? TransferStatus.COMPLETED
-              : d.status === 0 || d.status === 6
-                ? TransferStatus.PENDING
-                : TransferStatus.FAILED,
-          timestamp: new Date(d.insertTime),
-          network: d.network,
-          txId: d.txId,
-          exchange: this.name,
-        })),
+    if (depositRes.status === 'fulfilled') {
+      if (Array.isArray(depositRes.value.data)) {
+        transfers.push(
+          ...depositRes.value.data.map((d: any) => ({
+            id: String(d.id || d.txId || uuidv4()),
+            type: TransferType.DEPOSIT,
+            asset: d.coin,
+            amount: new Decimal(d.amount),
+            status:
+              d.status === 1
+                ? TransferStatus.COMPLETED
+                : d.status === 0 || d.status === 6
+                  ? TransferStatus.PENDING
+                  : TransferStatus.FAILED,
+            timestamp: new Date(d.insertTime),
+            network: d.network,
+            txId: d.txId,
+            exchange: this.name,
+          })),
+        );
+      }
+    } else {
+      console.error(
+        `[BinanceExchange] Failed to fetch deposits:`,
+        depositRes.reason?.response?.data ||
+          depositRes.reason?.message ||
+          depositRes.reason,
       );
     }
 
-    if (withdrawRes.status === 'fulfilled' && Array.isArray(withdrawRes.value.data)) {
-      transfers.push(
-        ...withdrawRes.value.data.map((w: any) => ({
-          id: w.id || w.txId || uuidv4(),
-          type: TransferType.WITHDRAW,
-          asset: w.coin,
-          amount: new Decimal(w.amount),
-          status:
-            w.status === 6
-              ? TransferStatus.COMPLETED
-              : w.status === 4 || w.status === 5
-                ? TransferStatus.FAILED
-                : w.status === 3
-                  ? TransferStatus.CANCELED
-                  : TransferStatus.PENDING,
-          timestamp: new Date(
-            typeof w.applyTime === 'string' &&
-            !w.applyTime.includes('Z') &&
-            !w.applyTime.includes('+')
-              ? w.applyTime.replace(' ', 'T') + 'Z'
-              : w.applyTime,
-          ),
-          network: w.network,
-          txId: w.txId,
-          exchange: this.name,
-          fee: new Decimal(w.transactionFee || 0),
-        })),
+    if (withdrawRes.status === 'fulfilled') {
+      if (Array.isArray(withdrawRes.value.data)) {
+        transfers.push(
+          ...withdrawRes.value.data.map((w: any) => ({
+            id: String(w.id || w.txId || uuidv4()),
+            type: TransferType.WITHDRAW,
+            asset: w.coin,
+            amount: new Decimal(w.amount),
+            status:
+              w.status === 6
+                ? TransferStatus.COMPLETED
+                : w.status === 4 || w.status === 5
+                  ? TransferStatus.FAILED
+                  : w.status === 3
+                    ? TransferStatus.CANCELED
+                    : TransferStatus.PENDING,
+            timestamp: new Date(
+              typeof w.applyTime === 'string' &&
+              !w.applyTime.includes('Z') &&
+              !w.applyTime.includes('+')
+                ? w.applyTime.replace(' ', 'T') + 'Z'
+                : w.applyTime,
+            ),
+            network: w.network,
+            txId: w.txId,
+            exchange: this.name,
+            fee: new Decimal(w.transactionFee || 0),
+          })),
+        );
+      }
+    } else {
+      console.error(
+        `[BinanceExchange] Failed to fetch withdrawals:`,
+        withdrawRes.reason?.response?.data ||
+          withdrawRes.reason?.message ||
+          withdrawRes.reason,
+      );
+    }
+
+    if (payRes.status === 'fulfilled') {
+      if (payRes.value.data && Array.isArray(payRes.value.data.data)) {
+        transfers.push(
+          ...payRes.value.data.data.map((p: any) => {
+            const amt = parseFloat(p.amount);
+            return {
+              id: String(p.transactionId || p.orderId || uuidv4()),
+              type: amt < 0 ? TransferType.WITHDRAW : TransferType.DEPOSIT,
+              asset: p.currency,
+              amount: new Decimal(Math.abs(amt)),
+              status: TransferStatus.COMPLETED,
+              timestamp: new Date(p.transactionTime),
+              network: 'BinancePay',
+              txId: p.transactionId,
+              exchange: this.name,
+              fee: new Decimal(p.totalPaymentFee || 0),
+            };
+          }),
+        );
+      }
+    } else {
+      console.error(
+        `[BinanceExchange] Failed to fetch Binance Pay transactions:`,
+        payRes.reason?.response?.data || payRes.reason?.message || payRes.reason,
       );
     }
 
