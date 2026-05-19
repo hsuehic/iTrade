@@ -10,11 +10,26 @@
  *   2. Embed the user's question with Gemini text-embedding-004.
  *   3. Cosine-similarity search the top-5 published KB articles.
  *   4. Build a strict on-topic system prompt with the retrieved passages.
- *   5. Generate with Gemini (model configured via Admin → AI Config).
- *   6. Return { message, citations: [{ slug, title }] }.
+ *   5. Stream response tokens to client via Server-Sent Events.
+ *   6. After stream completes, send citations event then done event.
+ *
+ * SSE event protocol
+ * ──────────────────
+ *   event: token      data: { text: string }
+ *     Incremental text delta (may include [slug] citation markers).
+ *
+ *   event: citations  data: Array<{ slug: string, title: string }>
+ *     Citation list resolved from [slug] markers in the full response.
+ *     Arrives immediately after all tokens have been sent.
+ *
+ *   event: done       data: { cleanText: string }
+ *     Stream finished. cleanText equals the full response text (citation
+ *     markers are rendered inline by the UI, not stripped server-side).
+ *
+ *   event: error      data: { message: string, status?: number }
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { generateText, type CoreMessage } from 'ai';
+import { NextRequest } from 'next/server';
+import { streamText, type CoreMessage } from 'ai';
 
 import { getAIModel } from '@/lib/chatbot/provider';
 import { embed } from '@/lib/help-kb/embeddings';
@@ -24,7 +39,36 @@ import { checkRateLimit, getClientIp } from '@/lib/help-kb/rate-limit';
 
 export const maxDuration = 60;
 
-// ── Validation ────────────────────────────────────────────────────────────────
+// ── SSE helpers ───────────────────────────────────────────────────────────────
+
+const enc = new TextEncoder();
+
+const SSE_HEADERS: HeadersInit = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  Connection: 'keep-alive',
+  'X-Accel-Buffering': 'no',
+};
+
+function sseFrame(event: string, data: unknown): Uint8Array {
+  return enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+function sseErrorResponse(
+  message: string,
+  httpStatus: number,
+  extra?: Record<string, unknown>,
+): Response {
+  const body = new ReadableStream({
+    start(c) {
+      c.enqueue(sseFrame('error', { message, status: httpStatus, ...extra }));
+      c.close();
+    },
+  });
+  return new Response(body, { status: httpStatus, headers: SSE_HEADERS });
+}
+
+// ── Validation constants ──────────────────────────────────────────────────────
 
 const MAX_MESSAGE_LEN = 1000;
 const MAX_HISTORY_ENTRIES = 10;
@@ -63,15 +107,10 @@ export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
   const rl = checkRateLimit(ip);
   if (!rl.allowed) {
-    return NextResponse.json(
-      {
-        error: 'Too many questions. Please wait a moment and try again.',
-        retryAfterMs: rl.resetMs,
-      },
-      {
-        status: 429,
-        headers: { 'Retry-After': Math.ceil(rl.resetMs / 1000).toString() },
-      },
+    return sseErrorResponse(
+      'Too many questions. Please wait a moment and try again.',
+      429,
+      { retryAfterMs: rl.resetMs },
     );
   }
 
@@ -80,18 +119,13 @@ export async function POST(request: NextRequest) {
   try {
     body = (await request.json()) as HelpChatRequest;
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    return sseErrorResponse('Invalid JSON body', 400);
   }
 
   const message = body.message?.trim();
-  if (!message) {
-    return NextResponse.json({ error: 'Message is required' }, { status: 400 });
-  }
+  if (!message) return sseErrorResponse('Message is required', 400);
   if (message.length > MAX_MESSAGE_LEN) {
-    return NextResponse.json(
-      { error: `Message too long (max ${MAX_MESSAGE_LEN} characters)` },
-      { status: 400 },
-    );
+    return sseErrorResponse(`Message too long (max ${MAX_MESSAGE_LEN} characters)`, 400);
   }
 
   const locale = body.locale && /^[a-z]{2}$/i.test(body.locale) ? body.locale : 'en';
@@ -99,74 +133,104 @@ export async function POST(request: NextRequest) {
     ? body.history.slice(-MAX_HISTORY_ENTRIES)
     : [];
 
-  try {
-    // 3. Embed the question
-    const queryVector = await embed(message, 'RETRIEVAL_QUERY');
+  // ── SSE stream ──────────────────────────────────────────────────────────────
+  const responseStream = new ReadableStream({
+    async start(controller) {
+      let done = false;
 
-    // 4. Retrieve top-5
-    const passages = await searchSimilar(queryVector, { locale, topK: 5 });
+      const send = (event: string, data: unknown) => {
+        if (done) return;
+        try {
+          controller.enqueue(sseFrame(event, data));
+        } catch {
+          // Client disconnected
+        }
+      };
 
-    // 5. Build prompt + call Gemini
-    const system = buildHelpSystemPrompt(passages);
-    const messages: CoreMessage[] = [
-      ...history.map(
-        (m): CoreMessage => ({
-          role: m.role === 'model' ? 'assistant' : (m.role as 'user' | 'assistant'),
-          content: m.content,
-        }),
-      ),
-      { role: 'user', content: message },
-    ];
+      try {
+        // 3. Embed the question
+        const queryVector = await embed(message, 'RETRIEVAL_QUERY');
 
-    const model = await getAIModel();
-    const { text } = await generateText({
-      model,
-      system,
-      messages,
-      maxOutputTokens: 4000,
-    } as Parameters<typeof generateText>[0]);
+        // 4. Retrieve top-5
+        const passages = await searchSimilar(queryVector, { locale, topK: 5 });
 
-    // 6. Extract citation slugs and return alongside the message
-    const citationSlugs = Array.from(new Set(text.match(/\[([a-z0-9-]+)\]/g) ?? []))
-      .map((s) => s.slice(1, -1))
-      .filter((slug) => passages.some((p) => p.slug === slug));
+        // 5. Build prompt + stream Gemini response
+        const system = buildHelpSystemPrompt(passages);
+        const messages: CoreMessage[] = [
+          ...history.map(
+            (m): CoreMessage => ({
+              role: m.role === 'model' ? 'assistant' : (m.role as 'user' | 'assistant'),
+              content: m.content,
+            }),
+          ),
+          { role: 'user', content: message },
+        ];
 
-    const citations = citationSlugs.map((slug) => {
-      const p = passages.find((x) => x.slug === slug)!;
-      return { slug: p.slug, title: p.title };
-    });
+        const model = await getAIModel();
+        const result = streamText({
+          model,
+          system,
+          messages,
+          maxOutputTokens: 4000,
+        } as Parameters<typeof streamText>[0]);
 
-    return NextResponse.json({ message: text, citations });
-  } catch (error) {
-    console.error('[Help Chat] Error:', error);
+        // Stream text tokens
+        let fullText = '';
+        for await (const chunk of result.textStream) {
+          fullText += chunk;
+          send('token', { text: chunk });
+        }
 
-    const errMsg = (error as Error)?.message ?? '';
-    if (
-      errMsg.includes('Gemini API key not configured') ||
-      errMsg.includes('No Gemini API key configured')
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            'The help bot is temporarily unavailable. An administrator needs to configure the Gemini API key.',
-        },
-        { status: 503 },
-      );
-    }
+        // 6. Extract citation slugs from the completed response
+        const citationSlugs = Array.from(
+          new Set(fullText.match(/\[([a-z0-9-]+)\]/g) ?? []),
+        )
+          .map((s) => s.slice(1, -1))
+          .filter((slug) => passages.some((p) => p.slug === slug));
 
-    const status = extractStatus(error);
-    if (status === 429 || status === 413) {
-      return NextResponse.json(
-        {
-          error: 'The help bot is busy right now. Please try again in a few seconds.',
-        },
-        { status: 429 },
-      );
-    }
+        const citations = citationSlugs.map((slug) => {
+          const p = passages.find((x) => x.slug === slug)!;
+          return { slug: p.slug, title: p.title };
+        });
 
-    return NextResponse.json(
-      { error: 'Something went wrong while answering your question. Please try again.' },
-      { status: 500 },
-    );
-  }
+        // Send citations before done so the client can attach them to the message
+        if (citations.length > 0) send('citations', citations);
+        send('done', { cleanText: fullText });
+      } catch (error) {
+        console.error('[Help Chat SSE] Error:', error);
+
+        const errMsg = (error as Error)?.message ?? '';
+        if (
+          errMsg.includes('Gemini API key not configured') ||
+          errMsg.includes('No Gemini API key configured')
+        ) {
+          send('error', {
+            message:
+              'The help bot is temporarily unavailable. An administrator needs to configure the Gemini API key.',
+            status: 503,
+          });
+        } else {
+          const status = extractStatus(error);
+          if (status === 429 || status === 413) {
+            send('error', {
+              message:
+                'The help bot is busy right now. Please try again in a few seconds.',
+              status: 429,
+            });
+          } else {
+            send('error', {
+              message:
+                'Something went wrong while answering your question. Please try again.',
+              status: 500,
+            });
+          }
+        }
+      } finally {
+        done = true;
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(responseStream, { headers: SSE_HEADERS });
 }

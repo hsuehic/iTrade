@@ -1,98 +1,174 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
+
 import '../models/chat_message.dart';
 import 'api_client.dart';
 
-/// Response returned by POST /api/chat
-class ChatResponse {
-  final String message;
-  final RenderData? renderData;
+// ── SSE event model ───────────────────────────────────────────────────────────
 
-  const ChatResponse({required this.message, this.renderData});
+/// A parsed Server-Sent Event from the /api/chat stream.
+class ChatStreamEvent {
+  final String type;
+  final Map<String, dynamic> data;
+
+  const ChatStreamEvent({required this.type, required this.data});
 }
 
-/// Service for sending messages to the AI chatbot API.
+// ── Service ───────────────────────────────────────────────────────────────────
+
+/// Service for sending messages to the AI chatbot API via Server-Sent Events.
 ///
-/// Wraps POST /api/chat with:
-///   { message: string, history: Array<{role, content}> }
+/// Call [sendMessageStream] to obtain a [Stream<ChatStreamEvent>] and listen to:
 ///
-/// Returns ChatResponse with optional structured renderData for
-/// charts, tables, and strategy proposals.
+///   type: "token"       — { "text": "…" }  incremental text delta
+///   type: "render_data" — RenderData JSON  chart / table / strategy_proposal
+///   type: "done"        — { "cleanText": "…" }  final clean text (JSON stripped)
+///   type: "error"       — { "message": "…", "status": int? }
 class ChatService {
   ChatService._internal();
   static final ChatService instance = ChatService._internal();
 
   final ApiClient _apiClient = ApiClient.instance;
 
-  /// Send [message] with the current [history] to the AI chatbot.
+  /// Stream the AI response for [message] with the given [history].
   ///
-  /// [history] should exclude the current message and any loading placeholders.
-  /// Roles must be 'user' or 'model' (server expects Gemini-legacy format).
-  Future<ChatResponse> sendMessage({
+  /// The stream emits [ChatStreamEvent] objects as SSE frames arrive and closes
+  /// when the server sends the "done" or "error" event (or on connection error).
+  ///
+  /// Pass a [CancelToken] to cancel mid-stream (e.g. when the user navigates away).
+  Stream<ChatStreamEvent> sendMessageStream({
     required String message,
     required List<ChatMessage> history,
-  }) async {
+    CancelToken? cancelToken,
+  }) {
     // Convert history to the wire format the API expects.
-    // The API maps role='model' → 'assistant' internally, so we send 'model'
-    // for assistant messages to match the existing web client contract.
     final historyPayload = history
-        .where((m) => !m.isLoading && m.id != 'welcome')
+        .where((m) => !m.isLoading && !m.isStreaming && m.id != 'welcome')
         .map((m) => {
               'role': m.role == MessageRole.assistant ? 'model' : 'user',
               'content': m.content,
             })
         .toList();
 
-    try {
-      final Response response = await _apiClient.postJson(
-        '/api/chat',
-        data: {
-          'message': message,
-          'history': historyPayload,
-        },
-        options: Options(
-          // Chat can take up to 120 s on the server side (agentic loop).
-          receiveTimeout: const Duration(seconds: 130),
-          sendTimeout: const Duration(seconds: 30),
-        ),
-      );
+    // Use a StreamController so we can push events asynchronously.
+    late StreamController<ChatStreamEvent> controller;
 
-      final body = response.data as Map<String, dynamic>;
+    Future<void> startStream() async {
+      try {
+        final response = await _apiClient.dio.post<ResponseBody>(
+          '/api/chat',
+          data: {
+            'message': message,
+            'history': historyPayload,
+          },
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: {'Accept': 'text/event-stream'},
+            // Agentic loops may take up to 120 s on the server; give 130 s here.
+            receiveTimeout: const Duration(seconds: 130),
+            sendTimeout: const Duration(seconds: 30),
+          ),
+          cancelToken: cancelToken,
+        );
 
-      // Server returned an error payload with 200 status (rare, but handle it).
-      if (body['error'] != null) {
-        throw Exception(body['error'] as String);
-      }
+        final stream = response.data!.stream;
+        String buffer = '';
 
-      RenderData? renderData;
-      if (body['renderData'] is Map<String, dynamic>) {
-        renderData =
-            RenderData.fromJson(body['renderData'] as Map<String, dynamic>);
-      }
+        await for (final chunk in stream) {
+          if (controller.isClosed) break;
 
-      return ChatResponse(
-        message: (body['message'] as String?) ?? '',
-        renderData: renderData,
-      );
-    } on DioException catch (e) {
-      // Dio throws for 4xx/5xx — extract the server's JSON error message.
-      final body = e.response?.data;
-      final serverMsg = (body is Map ? body['error'] : null) as String?;
-      if (serverMsg != null) throw Exception(serverMsg);
+          buffer += utf8.decode(chunk);
 
-      // Fall back to connection-level messages.
-      switch (e.type) {
-        case DioExceptionType.connectionTimeout:
-        case DioExceptionType.sendTimeout:
-        case DioExceptionType.receiveTimeout:
-          throw Exception('Request timed out. Please try again.');
-        case DioExceptionType.connectionError:
-          throw Exception('No connection. Please check your network.');
-        default:
-          final code = e.response?.statusCode;
-          throw Exception(
-            code != null ? 'Chat request failed (HTTP $code).' : 'Something went wrong.',
-          );
+          // SSE events are separated by double newlines.
+          final parts = buffer.split('\n\n');
+          buffer = parts.removeLast(); // keep trailing incomplete event
+
+          for (final part in parts) {
+            if (part.trim().isEmpty) continue;
+
+            String eventType = 'message';
+            String dataStr = '';
+
+            for (final line in part.split('\n')) {
+              if (line.startsWith('event: ')) {
+                eventType = line.substring(7).trim();
+              } else if (line.startsWith('data: ')) {
+                dataStr = line.substring(6);
+              }
+            }
+
+            if (dataStr.isEmpty) continue;
+
+            late Map<String, dynamic> parsedData;
+            try {
+              parsedData = jsonDecode(dataStr) as Map<String, dynamic>;
+            } catch (_) {
+              continue; // Skip malformed frames
+            }
+
+            controller.add(ChatStreamEvent(type: eventType, data: parsedData));
+
+            // Close the stream after terminal events
+            if (eventType == 'done' || eventType == 'error') {
+              await controller.close();
+              return;
+            }
+          }
+        }
+
+        // Stream ended without a done/error event — close gracefully
+        if (!controller.isClosed) await controller.close();
+      } on DioException catch (e) {
+        if (controller.isClosed) return;
+
+        final body = e.response?.data;
+        final serverMsg = (body is Map ? body['error'] : null) as String?;
+
+        String errorMsg;
+        switch (e.type) {
+          case DioExceptionType.connectionTimeout:
+          case DioExceptionType.sendTimeout:
+          case DioExceptionType.receiveTimeout:
+            errorMsg = 'Request timed out. Please try again.';
+            break;
+          case DioExceptionType.connectionError:
+            errorMsg = 'No connection. Please check your network.';
+            break;
+          case DioExceptionType.cancel:
+            // Intentional cancellation — close silently
+            await controller.close();
+            return;
+          default:
+            final code = e.response?.statusCode;
+            errorMsg = serverMsg ??
+                (code != null ? 'Chat request failed (HTTP $code).' : 'Something went wrong.');
+        }
+
+        controller.add(ChatStreamEvent(
+          type: 'error',
+          data: {'message': errorMsg},
+        ));
+        await controller.close();
+      } catch (e) {
+        if (!controller.isClosed) {
+          controller.add(ChatStreamEvent(
+            type: 'error',
+            data: {'message': 'Unexpected error: ${e.toString()}'},
+          ));
+          await controller.close();
+        }
       }
     }
+
+    controller = StreamController<ChatStreamEvent>(
+      onListen: () => startStream(),
+      onCancel: () {
+        cancelToken?.cancel('Stream cancelled by listener');
+      },
+    );
+
+    return controller.stream;
   }
 }

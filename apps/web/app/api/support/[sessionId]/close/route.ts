@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSession, closeSession } from '@/lib/support/repository';
 import { postSystemMessage } from '@/lib/support/slack';
+import { emitSessionClosed } from '@/lib/support/emitter';
 
 export async function POST(
   _request: NextRequest,
@@ -17,6 +18,9 @@ export async function POST(
     return NextResponse.json({ error: 'Session not found.' }, { status: 404 });
 
   await closeSession(sessionId);
+
+  // Push session_closed to any open SSE stream before notifying Slack
+  emitSessionClosed(sessionId);
 
   if (session.slack_channel_id && session.slack_thread_ts) {
     await postSystemMessage(

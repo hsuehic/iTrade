@@ -13,7 +13,10 @@ export interface HelpMessage {
   content: string;
   citations?: HelpCitation[];
   timestamp: Date;
+  /** True while waiting for the first token (shows loading dots). */
   isLoading?: boolean;
+  /** True while tokens are streaming in (shows blinking cursor). */
+  isStreaming?: boolean;
 }
 
 const WELCOME_MESSAGE = (locale: string): HelpMessage => ({
@@ -25,6 +28,31 @@ const WELCOME_MESSAGE = (locale: string): HelpMessage => ({
       : "Hi! I'm the **iTrade Help Assistant** 👋\n\nI can answer questions about iTrade features, the mobile app, installation, accounts, and troubleshooting. Try:\n- *What is iTrade?*\n- *How do I install the Android app?*\n- *How do I connect my Binance account?*",
   timestamp: new Date(),
 });
+
+// ── SSE parser ────────────────────────────────────────────────────────────────
+
+function parseSSEChunk(buffer: string): {
+  events: Array<{ event: string; data: string }>;
+  remaining: string;
+} {
+  const parts = buffer.split('\n\n');
+  const remaining = parts.pop() ?? '';
+  const events: Array<{ event: string; data: string }> = [];
+
+  for (const part of parts) {
+    let event = 'message';
+    let data = '';
+    for (const line of part.split('\n')) {
+      if (line.startsWith('event: ')) event = line.slice(7).trim();
+      else if (line.startsWith('data: ')) data = line.slice(6);
+    }
+    if (data) events.push({ event, data });
+  }
+
+  return { events, remaining };
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useHelpChat(locale: string = 'en') {
   const [messages, setMessages] = useState<HelpMessage[]>([WELCOME_MESSAGE(locale)]);
@@ -41,62 +69,122 @@ export function useHelpChat(locale: string = 'en') {
         content: trimmed,
         timestamp: new Date(),
       };
-      const loadingMessage: HelpMessage = {
-        id: `loading-${Date.now()}`,
+
+      const placeholderId = `assistant-${Date.now()}`;
+      const placeholder: HelpMessage = {
+        id: placeholderId,
         role: 'assistant',
         content: '',
         timestamp: new Date(),
         isLoading: true,
       };
 
-      setMessages((prev) => [...prev, userMessage, loadingMessage]);
+      // Build history snapshot before updating state
+      const history = messages
+        .filter((m) => !m.isLoading && !m.isStreaming && m.id !== 'welcome')
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      setMessages((prev) => [...prev, userMessage, placeholder]);
       setIsLoading(true);
 
-      // Build the history snapshot from the current messages, omitting the
-      // welcome banner and the in-flight loading placeholder.
-      setMessages((prev) => {
-        const history = prev
-          .filter((m) => !m.isLoading && m.id !== 'welcome')
-          .map((m) => ({ role: m.role, content: m.content }));
-
-        fetch('/api/help-chat', {
+      try {
+        const res = await fetch('/api/help-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: trimmed, history, locale }),
-        })
-          .then(async (res) => {
-            const data = (await res.json()) as {
-              message?: string;
-              citations?: HelpCitation[];
-              error?: string;
-            };
-            const assistantMessage: HelpMessage = {
-              id: `assistant-${Date.now()}`,
-              role: 'assistant',
-              content: data.error
-                ? `Sorry, I ran into a problem: ${data.error}`
-                : data.message || 'No response received.',
-              citations: data.citations ?? [],
-              timestamp: new Date(),
-            };
-            setMessages((curr) => curr.map((m) => (m.isLoading ? assistantMessage : m)));
-          })
-          .catch(() => {
-            const errorMessage: HelpMessage = {
-              id: `error-${Date.now()}`,
-              role: 'assistant',
-              content:
-                "Sorry, I couldn't connect. Please check your network and try again.",
-              timestamp: new Date(),
-            };
-            setMessages((curr) => curr.map((m) => (m.isLoading ? errorMessage : m)));
-          })
-          .finally(() => setIsLoading(false));
+        });
 
-        return prev;
-      });
+        if (!res.body) throw new Error('No response body');
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let pendingCitations: HelpCitation[] = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const { events, remaining } = parseSSEChunk(buffer);
+          buffer = remaining;
+
+          for (const { event, data } of events) {
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(data);
+            } catch {
+              continue;
+            }
+
+            if (event === 'token') {
+              const text = (parsed as { text: string }).text ?? '';
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderId
+                    ? {
+                        ...m,
+                        content: m.content + text,
+                        isLoading: false,
+                        isStreaming: true,
+                      }
+                    : m,
+                ),
+              );
+            } else if (event === 'citations') {
+              pendingCitations = parsed as HelpCitation[];
+            } else if (event === 'done') {
+              const { cleanText } = parsed as { cleanText: string };
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderId
+                    ? {
+                        ...m,
+                        content: cleanText,
+                        citations: pendingCitations,
+                        isLoading: false,
+                        isStreaming: false,
+                      }
+                    : m,
+                ),
+              );
+              setIsLoading(false);
+            } else if (event === 'error') {
+              const { message: errMsg } = parsed as { message: string };
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === placeholderId
+                    ? {
+                        ...m,
+                        content: `Sorry, I ran into a problem: ${errMsg}`,
+                        isLoading: false,
+                        isStreaming: false,
+                      }
+                    : m,
+                ),
+              );
+              setIsLoading(false);
+            }
+          }
+        }
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === placeholderId
+              ? {
+                  ...m,
+                  content:
+                    "Sorry, I couldn't connect. Please check your network and try again.",
+                  isLoading: false,
+                  isStreaming: false,
+                }
+              : m,
+          ),
+        );
+        setIsLoading(false);
+      }
     },
-    [locale],
+    [locale, messages],
   );
 
   const clearMessages = useCallback(() => {

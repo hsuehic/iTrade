@@ -264,12 +264,11 @@ export function HelpWidget() {
   const [connectingSupport, setConnectingSupport] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
-  const lastPolledAtRef = useRef<Date>(new Date(0));
   const [sessionClosed, setSessionClosed] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
 
   const suggested = locale === 'zh' ? SUGGESTED_ZH : SUGGESTED_EN;
   const isLoading = supportMode ? isSending : aiLoading;
@@ -284,54 +283,51 @@ export function HelpWidget() {
     if (isOpen && !isMinimized) setTimeout(() => inputRef.current?.focus(), 100);
   }, [isOpen, isMinimized]);
 
-  // ── Polling (when in support mode) ─────────────────────────────────────────
-
-  const pollMessages = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const url = `/api/support/${sessionId}/messages?since=${lastPolledAtRef.current.toISOString()}`;
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        messages: SupportMessage[];
-        sessionStatus: string;
-      };
-      if (data.messages.length > 0) {
-        lastPolledAtRef.current = new Date();
-        setSupportMessages((prev) => {
-          // IDs already present from previous polls (exclude optimistic)
-          const existingIds = new Set(
-            prev.filter((m) => !m.id.startsWith('opt-')).map((m) => m.id),
-          );
-          const newMsgs = data.messages.filter((m) => !existingIds.has(m.id));
-          if (newMsgs.length === 0) return prev;
-          // Drop optimistic user messages whose content was confirmed by the server
-          const confirmedContents = new Set(
-            newMsgs.filter((m) => m.role === 'user').map((m) => m.content),
-          );
-          const dedupedPrev = prev.filter(
-            (m) => !m.id.startsWith('opt-') || !confirmedContents.has(m.content),
-          );
-          return [...dedupedPrev, ...newMsgs];
-        });
-      }
-      if (data.sessionStatus === 'closed') {
-        setSessionClosed(true);
-        if (pollingRef.current) clearInterval(pollingRef.current);
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [sessionId]); // lastPolledAtRef is a ref — no need to list as dependency
+  // ── SSE subscription (when in support mode) ────────────────────────────────
 
   useEffect(() => {
-    if (supportMode && sessionId && !sessionClosed) {
-      pollingRef.current = setInterval(pollMessages, 2000);
-      return () => {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-      };
-    }
-  }, [supportMode, sessionId, sessionClosed, pollMessages]);
+    if (!supportMode || !sessionId || sessionClosed) return;
+
+    const sse = new EventSource(`/api/support/${sessionId}/stream`);
+    sseRef.current = sse;
+
+    sse.addEventListener('message', (e: MessageEvent<string>) => {
+      try {
+        const msg = JSON.parse(e.data) as SupportMessage;
+        setSupportMessages((prev) => {
+          // Deduplicate by ID (catch-up replay may re-send messages we added optimistically)
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          // Drop matching optimistic placeholder if present
+          const withoutOptimistic = prev.filter(
+            (m) =>
+              !(
+                m.id.startsWith('opt-') &&
+                m.role === msg.role &&
+                m.content === msg.content
+              ),
+          );
+          return [...withoutOptimistic, msg];
+        });
+      } catch {
+        /* malformed event — ignore */
+      }
+    });
+
+    sse.addEventListener('session_closed', () => {
+      setSessionClosed(true);
+      sse.close();
+      sseRef.current = null;
+    });
+
+    sse.onerror = () => {
+      // EventSource auto-reconnects on network errors; nothing to do here.
+    };
+
+    return () => {
+      sse.close();
+      sseRef.current = null;
+    };
+  }, [supportMode, sessionId, sessionClosed]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -347,7 +343,6 @@ export function HelpWidget() {
       if (data.sessionId) {
         setSessionId(data.sessionId);
         setSupportMode(true);
-        lastPolledAtRef.current = new Date();
         setSupportMessages([
           {
             id: 'system-greeting',
@@ -368,17 +363,18 @@ export function HelpWidget() {
 
   const handleEndSupport = useCallback(async () => {
     if (!sessionId) return;
+    // Close the SSE connection immediately (the server will also emit session_closed)
+    sseRef.current?.close();
+    sseRef.current = null;
     try {
       await fetch(`/api/support/${sessionId}/close`, { method: 'POST' });
     } catch {
       /* ignore */
     }
-    if (pollingRef.current) clearInterval(pollingRef.current);
     setSupportMode(false);
     setSessionId(null);
     setSupportMessages([]);
     setSessionClosed(false);
-    lastPolledAtRef.current = new Date(0);
   }, [sessionId]);
 
   const handleSend = useCallback(async () => {
@@ -402,7 +398,6 @@ export function HelpWidget() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content: text }),
         });
-        lastPolledAtRef.current = new Date();
       } catch {
         /* optimistic message stays */
       }

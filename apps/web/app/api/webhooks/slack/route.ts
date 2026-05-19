@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 
 import { verifySlackSignature } from '@/lib/support/slack';
 import { getSessionBySlackThread, addMessage } from '@/lib/support/repository';
+import { emitSupportMessage } from '@/lib/support/emitter';
 
 // Slack expects a response within 3 seconds — keep this fast.
 export const maxDuration = 10;
@@ -76,7 +77,14 @@ export async function POST(request: NextRequest) {
       try {
         const session = await getSessionBySlackThread(event.thread_ts);
         if (session && session.status === 'active') {
-          await addMessage(randomUUID(), session.id, 'supporter', event.text ?? '');
+          const msg = await addMessage(
+            randomUUID(),
+            session.id,
+            'supporter',
+            event.text ?? '',
+          );
+          // Push the new message to any open SSE stream for this session
+          emitSupportMessage(session.id, msg);
         }
       } catch (err) {
         console.error('[Slack Webhook] Error storing reply:', err);

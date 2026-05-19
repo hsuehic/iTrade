@@ -3,32 +3,121 @@
  *
  * Main chatbot API route — Vercel AI SDK + Zod.
  *
- * Uses generateText() with maxSteps to drive a multi-turn agentic loop:
+ * Uses streamText() with stopWhen to drive a multi-turn agentic loop:
  * the model can call up to 5 rounds of tools before producing its final answer.
- * No manual tool-dispatch loop needed — the AI SDK handles it automatically.
+ * Tokens are streamed to the client as Server-Sent Events.
  *
  * iTrade uses Google Gemini exclusively. The API key + model are configured
  * via Admin → AI Config (DB-backed, runtime-editable) with env-var fallback.
  *
- * Provider selection is done in lib/chatbot/provider.ts.
- * Tool definitions (with Zod schemas) are in lib/chatbot/tools.ts.
+ * SSE event protocol
+ * ──────────────────
+ *   event: token       data: { text: string }
+ *     Incremental text delta — append to the in-progress bubble.
+ *
+ *   event: render_data data: RenderData
+ *     Structured chart / table / strategy_proposal payload.
+ *     Arrives after all tokens if the model produced a renderData block.
+ *
+ *   event: done        data: { cleanText: string }
+ *     Stream is finished. Replace the accumulated bubble content with cleanText
+ *     (the full response with any embedded JSON block stripped).
+ *
+ *   event: error       data: { message: string, status?: number }
+ *     A fatal error occurred. Display message to the user.
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { generateText, stepCountIs, type CoreMessage } from 'ai';
+import { NextRequest } from 'next/server';
+import { streamText, stepCountIs, type CoreMessage } from 'ai';
 
 import { getSession } from '@/lib/auth';
 import { getAIModel, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
 import { createChatbotTools } from '@/lib/chatbot/tools';
 
-export const maxDuration = 120; // Allow up to 120s for multi-tool calls
+export const maxDuration = 120; // Allow up to 120 s for multi-tool agentic loops
 
-// ── Error helpers ─────────────────────────────────────────────────────────────
+// ── SSE helpers ───────────────────────────────────────────────────────────────
 
-/** Extract the HTTP status from an AI SDK error (handles AI_RetryError wrapper). */
+const enc = new TextEncoder();
+
+const SSE_HEADERS: HeadersInit = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  Connection: 'keep-alive',
+  'X-Accel-Buffering': 'no', // prevent nginx from buffering SSE frames
+};
+
+function sseFrame(event: string, data: unknown): Uint8Array {
+  return enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/** Return an immediate single-event SSE stream (used for early error exits). */
+function sseErrorResponse(message: string, httpStatus: number): Response {
+  const body = new ReadableStream({
+    start(c) {
+      c.enqueue(sseFrame('error', { message, status: httpStatus }));
+      c.close();
+    },
+  });
+  return new Response(body, { status: httpStatus, headers: SSE_HEADERS });
+}
+
+// ── renderData extraction ─────────────────────────────────────────────────────
+
+type RenderData = {
+  renderAs?: 'table' | 'chart' | 'text' | 'strategy_proposal';
+  title?: string;
+  data?: unknown;
+  chartConfig?: unknown;
+};
+
+/**
+ * Parse an optional renderData JSON block out of the raw model output.
+ * Supports both fenced ```json … ``` blocks and bare embedded JSON objects.
+ * Returns cleanText (with the JSON block stripped) + the parsed renderData.
+ */
+function parseRenderData(rawText: string): {
+  cleanText: string;
+  renderData: RenderData | null;
+} {
+  let renderData: RenderData | null = null;
+  let cleanText = rawText;
+
+  // Strategy 1: fenced ```json … ``` block (preferred model output format)
+  const jsonBlockMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
+  if (jsonBlockMatch) {
+    try {
+      renderData = JSON.parse(jsonBlockMatch[1]) as RenderData;
+      cleanText = rawText.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
+    } catch {
+      // Malformed JSON — fall through to Strategy 2
+    }
+  }
+
+  // Strategy 2: bare JSON object containing "renderAs" anywhere in the response.
+  // Walk backwards from the last "renderAs": to find the enclosing { then parse.
+  if (!renderData) {
+    const renderAsIdx = rawText.lastIndexOf('"renderAs":');
+    if (renderAsIdx !== -1) {
+      const openBraceIdx = rawText.lastIndexOf('{', renderAsIdx);
+      if (openBraceIdx !== -1) {
+        try {
+          renderData = JSON.parse(rawText.slice(openBraceIdx)) as RenderData;
+          cleanText = rawText.slice(0, openBraceIdx).trim();
+        } catch {
+          // Truncated / malformed — show raw text
+        }
+      }
+    }
+  }
+
+  return { cleanText, renderData };
+}
+
+// ── Gemini error normalisation ────────────────────────────────────────────────
+
 function extractStatus(error: unknown): number {
   if (!error || typeof error !== 'object') return 0;
   const e = error as Record<string, unknown>;
-  // AI_RetryError wraps the last attempt inside `.lastError`
   const inner =
     e.name === 'AI_RetryError' && e.lastError && typeof e.lastError === 'object'
       ? (e.lastError as Record<string, unknown>)
@@ -40,7 +129,6 @@ function extractStatus(error: unknown): number {
       : 0;
 }
 
-/** Normalise Gemini errors to a plain { status, message } shape. */
 function parseProviderError(error: unknown): { status: number; message: string } | null {
   const status = extractStatus(error);
   if (!status) return null;
@@ -65,7 +153,6 @@ function parseProviderError(error: unknown): { status: number; message: string }
       message: 'Gemini is currently rate-limited. Please try again in a moment.',
     };
   }
-
   if (status === 413) {
     return {
       status: 429,
@@ -73,14 +160,12 @@ function parseProviderError(error: unknown): { status: number; message: string }
         'Your request is too large for Gemini. Try a shorter message or clear the conversation history.',
     };
   }
-
   if (status === 503 || status === 529) {
     return {
       status: 503,
       message: 'Gemini is temporarily unavailable. Please try again in a moment.',
     };
   }
-
   return null;
 }
 
@@ -97,143 +182,114 @@ function isMissingKeyError(error: unknown): boolean {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  const session = await getSession(request);
+  if (!session?.user) return sseErrorResponse('Unauthorized', 401);
+
+  // ── Parse body ────────────────────────────────────────────────────────────
+  let message: string;
+  let history: Array<{ role: 'user' | 'model'; content: string }>;
   try {
-    // Auth check
-    const session = await getSession(request);
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { message, history = [] } = body as {
+    const body = (await request.json()) as {
       message: string;
-      // Client sends role as 'user' | 'model' (Gemini legacy format)
-      history: Array<{ role: 'user' | 'model'; content: string }>;
+      history?: Array<{ role: 'user' | 'model'; content: string }>;
     };
+    message = body.message?.trim() ?? '';
+    history = body.history ?? [];
+  } catch {
+    return sseErrorResponse('Invalid JSON body', 400);
+  }
 
-    if (!message?.trim()) {
-      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
-    }
+  if (!message) return sseErrorResponse('Message is required', 400);
 
-    // Build base URL for internal API calls.
-    // Always use localhost + PORT so server-side tool fetches stay on the internal
-    // Docker network and avoid the SSL termination layer (nginx strips TLS before
-    // forwarding to this container, so https:// from request.url would cause
-    // ERR_SSL_WRONG_VERSION_NUMBER inside Docker).
-    const baseUrl = `http://localhost:${process.env.PORT ?? 3002}`;
-    const cookie = request.headers.get('cookie') ?? '';
+  // ── Build tool context (same as original) ─────────────────────────────────
+  const baseUrl = `http://localhost:${process.env.PORT ?? 3002}`;
+  const cookie = request.headers.get('cookie') ?? '';
 
-    // Forward the original host/proto headers so that auth middleware inside the
-    // tool API calls sees the production origin (itrade.ihsueh.com / https) rather
-    // than localhost:3002.  Without these, getRequestBaseURL() returns
-    // http://localhost:3002 and better-auth rejects the session as unauthorised.
-    const forwardedHeaders: Record<string, string> = {};
-    const fwdHost = request.headers.get('x-forwarded-host');
-    const fwdProto = request.headers.get('x-forwarded-proto');
-    const origHost = request.headers.get('host');
-    if (fwdHost) forwardedHeaders['x-forwarded-host'] = fwdHost;
-    if (fwdProto) forwardedHeaders['x-forwarded-proto'] = fwdProto;
-    else if (origHost && !origHost.startsWith('localhost'))
-      forwardedHeaders['x-forwarded-proto'] = 'https';
-    if (origHost)
-      forwardedHeaders['x-forwarded-host'] =
-        forwardedHeaders['x-forwarded-host'] ?? origHost;
+  const forwardedHeaders: Record<string, string> = {};
+  const fwdHost = request.headers.get('x-forwarded-host');
+  const fwdProto = request.headers.get('x-forwarded-proto');
+  const origHost = request.headers.get('host');
+  if (fwdHost) forwardedHeaders['x-forwarded-host'] = fwdHost;
+  if (fwdProto) forwardedHeaders['x-forwarded-proto'] = fwdProto;
+  else if (origHost && !origHost.startsWith('localhost'))
+    forwardedHeaders['x-forwarded-proto'] = 'https';
+  if (origHost)
+    forwardedHeaders['x-forwarded-host'] =
+      forwardedHeaders['x-forwarded-host'] ?? origHost;
 
-    // Convert history: 'model' (Gemini) → 'assistant' (AI SDK standard)
-    const messages: CoreMessage[] = [
-      ...history.map((m) => ({
-        role: (m.role === 'model' ? 'assistant' : m.role) as 'user' | 'assistant',
-        content: m.content,
-      })),
-      { role: 'user' as const, content: message },
-    ];
+  // Convert history: 'model' (Gemini legacy) → 'assistant' (AI SDK standard)
+  const messages: CoreMessage[] = [
+    ...history.map((m) => ({
+      role: (m.role === 'model' ? 'assistant' : m.role) as 'user' | 'assistant',
+      content: m.content,
+    })),
+    { role: 'user' as const, content: message },
+  ];
 
-    // Run the agentic loop on Gemini.
-    // @ai-sdk/google v2.x properly preserves thoughtSignature in providerMetadata,
-    // so thinking models (gemini-2.5-flash etc.) work correctly across tool-call steps.
-    const model = await getAIModel();
-    const { text: rawText } = await generateText({
-      model,
-      system: SYSTEM_PROMPT,
-      messages,
-      tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
-      stopWhen: stepCountIs(5), // Allow up to 5 rounds of tool calls before final answer
-      maxOutputTokens: 4000, // Generous cap for thinking models that need more tokens
-    } as Parameters<typeof generateText>[0]);
+  // ── SSE stream ────────────────────────────────────────────────────────────
+  const responseStream = new ReadableStream({
+    async start(controller) {
+      let done = false;
 
-    // ── Parse structured render hints from the response ──────────────────────
-    // The model should wrap renderData in ```json ... ``` fences, but thinking
-    // models sometimes emit bare JSON objects. We try both patterns so charts
-    // and tables render regardless of which format the model chose.
-    let renderData: {
-      renderAs?: 'table' | 'chart' | 'text' | 'strategy_proposal';
-      title?: string;
-      data?: unknown;
-      chartConfig?: unknown;
-    } | null = null;
-    let cleanText = rawText;
+      const send = (event: string, data: unknown) => {
+        if (done) return;
+        try {
+          controller.enqueue(sseFrame(event, data));
+        } catch {
+          // Client disconnected — subsequent sends will silently no-op
+        }
+      };
 
-    // Strategy 1: fenced ```json … ``` block (preferred format)
-    const jsonBlockMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonBlockMatch) {
       try {
-        renderData = JSON.parse(jsonBlockMatch[1]);
-        cleanText = rawText.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
-      } catch {
-        // Malformed JSON — fall through to next strategy
-      }
-    }
+        const model = await getAIModel();
 
-    // Strategy 2: bare JSON containing "renderAs" anywhere in the response.
-    // The model sometimes emits pretty-printed JSON so { and "renderAs": land on
-    // different lines, making a literal '{"renderAs":' search miss. Instead find
-    // the last occurrence of the key, backtrack to its enclosing {, then parse
-    // from there to the end of the string.
-    if (!renderData) {
-      const renderAsIdx = rawText.lastIndexOf('"renderAs":');
-      if (renderAsIdx !== -1) {
-        // Walk backwards to find the opening brace of the JSON object
-        const openBraceIdx = rawText.lastIndexOf('{', renderAsIdx);
-        if (openBraceIdx !== -1) {
-          const candidate = rawText.slice(openBraceIdx);
-          try {
-            renderData = JSON.parse(candidate);
-            cleanText = rawText.slice(0, openBraceIdx).trim();
-          } catch {
-            // JSON is truncated or malformed — fall through and show raw text
+        // @ai-sdk/google v2.x preserves thoughtSignature in providerMetadata
+        // so thinking models (gemini-2.5-flash etc.) work correctly across steps.
+        const result = streamText({
+          model,
+          system: SYSTEM_PROMPT,
+          messages,
+          tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
+          stopWhen: stepCountIs(5),
+          maxOutputTokens: 4000,
+        } as Parameters<typeof streamText>[0]);
+
+        // Stream each text delta to the client immediately
+        let fullText = '';
+        for await (const chunk of result.textStream) {
+          fullText += chunk;
+          send('token', { text: chunk });
+        }
+
+        // After the agentic loop completes, parse out any renderData block
+        const { cleanText, renderData } = parseRenderData(fullText);
+        if (renderData) send('render_data', renderData);
+        send('done', { cleanText });
+      } catch (error) {
+        console.error('[Chat SSE] Error:', error);
+
+        if (isMissingKeyError(error)) {
+          send('error', {
+            message:
+              'Gemini is not configured. Set GEMINI_API_KEY or add a key via Admin → AI Config. ' +
+              'Get a free key at https://aistudio.google.com/apikey',
+            status: 503,
+          });
+        } else {
+          const providerErr = parseProviderError(error);
+          if (providerErr) {
+            send('error', { message: providerErr.message, status: providerErr.status });
+          } else {
+            send('error', { message: 'Failed to process your message', status: 500 });
           }
         }
+      } finally {
+        done = true;
+        controller.close();
       }
-    }
+    },
+  });
 
-    return NextResponse.json({ message: cleanText, renderData });
-  } catch (error) {
-    console.error('[Chat API] Error:', error);
-
-    // Missing API key
-    if (isMissingKeyError(error)) {
-      return NextResponse.json(
-        {
-          error:
-            'Gemini is not configured. Set GEMINI_API_KEY or add a key via Admin → AI Config. ' +
-            'Get a free key at https://aistudio.google.com/apikey',
-        },
-        { status: 503 },
-      );
-    }
-
-    // Gemini HTTP errors (429, 503, etc.)
-    const providerError = parseProviderError(error);
-    if (providerError) {
-      return NextResponse.json(
-        { error: providerError.message },
-        { status: providerError.status },
-      );
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to process your message' },
-      { status: 500 },
-    );
-  }
+  return new Response(responseStream, { headers: SSE_HEADERS });
 }

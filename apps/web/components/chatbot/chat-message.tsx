@@ -189,6 +189,24 @@ function LoadingDots() {
   );
 }
 
+// ── Streaming cursor ───────────────────────────────────────────────────────────
+/** Blinking block cursor shown while tokens are actively streaming in. */
+function StreamingCursor() {
+  return (
+    <span
+      className="inline-block w-[2px] h-[1em] bg-primary/70 ml-0.5 align-middle animate-[blink_1s_step-end_infinite]"
+      style={{
+        // Keyframe defined inline to avoid a global CSS dependency
+        animationName: 'blink',
+        animationDuration: '1s',
+        animationTimingFunction: 'step-end',
+        animationIterationCount: 'infinite',
+      }}
+      aria-hidden
+    />
+  );
+}
+
 // ── Individual message bubble ──────────────────────────────────────────────────
 interface ChatMessageProps {
   message: ChatMessage;
@@ -222,7 +240,10 @@ export function ChatMessageBubble({ message }: ChatMessageProps) {
           {message.isLoading ? (
             <LoadingDots />
           ) : (
-            <div className="space-y-0.5">{renderMarkdown(message.content)}</div>
+            <div className="space-y-0.5">
+              {renderMarkdown(message.content)}
+              {message.isStreaming && <StreamingCursor />}
+            </div>
           )}
         </div>
 
