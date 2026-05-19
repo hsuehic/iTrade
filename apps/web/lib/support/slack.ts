@@ -81,6 +81,76 @@ export async function openSupportThread(
 }
 
 /**
+ * Upload a base64-encoded image to Slack and share it in the support thread.
+ * Uses the Files v2 API: getUploadURLExternal → upload → completeUploadExternal.
+ */
+export async function postUserImage(
+  channelId: string,
+  threadTs: string,
+  dataUrl: string,
+): Promise<void> {
+  if (!isConfigured()) return;
+
+  // Parse the data URL: data:<mimeType>;base64,<data>
+  const match = dataUrl.match(/^data:(image\/(\w+));base64,(.+)$/);
+  if (!match) return;
+  const [, mimeType, ext, b64] = match;
+  const filename = `image.${ext}`;
+  const bytes = Buffer.from(b64, 'base64');
+  const length = bytes.byteLength;
+
+  // Step 1: Get an upload URL
+  const urlRes = await slackPost('files.getUploadURLExternal', {
+    filename,
+    length,
+  });
+  if (!urlRes.ok || !(urlRes as unknown as Record<string, unknown>).upload_url) {
+    console.error('[Support/Slack] getUploadURLExternal failed:', urlRes.error);
+    return;
+  }
+  const { upload_url: uploadUrl, file_id: fileId } = urlRes as unknown as {
+    upload_url: string;
+    file_id: string;
+  };
+
+  // Step 2: Upload the raw bytes to the pre-signed URL.
+  // Use the actual MIME type — Slack rejects uploads with application/octet-stream.
+  try {
+    const uploadResp = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': mimeType },
+      body: bytes,
+    });
+    if (!uploadResp.ok) {
+      console.error('[Support/Slack] Image upload failed:', await uploadResp.text());
+      return;
+    }
+  } catch (err) {
+    console.error('[Support/Slack] Image upload error:', err);
+    return;
+  }
+
+  // Step 3: Complete the upload and share in the thread
+  const token = process.env.SLACK_BOT_TOKEN!;
+  const completeRes = await fetch('https://slack.com/api/files.completeUploadExternal', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      files: [{ id: fileId }],
+      channel_id: channelId,
+      thread_ts: threadTs,
+      initial_comment: '*User shared an image*',
+    }),
+  });
+  const result = (await completeRes.json()) as SlackPostResult;
+  if (!result.ok)
+    console.error('[Support/Slack] completeUploadExternal failed:', result.error);
+}
+
+/**
  * Post a follow-up user message as a reply in the existing thread.
  */
 export async function postUserMessage(

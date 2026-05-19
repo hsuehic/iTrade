@@ -11,6 +11,8 @@ export interface HelpMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** Base64 dataURLs attached by the user (only present on user messages). */
+  images?: string[];
   citations?: HelpCitation[];
   timestamp: Date;
   /** True while waiting for the first token (shows loading dots). */
@@ -59,14 +61,15 @@ export function useHelpChat(locale: string = 'en') {
   const [isLoading, setIsLoading] = useState(false);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, images?: string[]) => {
       const trimmed = content.trim();
-      if (!trimmed) return;
+      if (!trimmed && (!images || images.length === 0)) return;
 
       const userMessage: HelpMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
         content: trimmed,
+        images,
         timestamp: new Date(),
       };
 
@@ -91,7 +94,7 @@ export function useHelpChat(locale: string = 'en') {
         const res = await fetch('/api/help-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: trimmed, history, locale }),
+          body: JSON.stringify({ message: trimmed, history, locale, images }),
         });
 
         if (!res.body) throw new Error('No response body');

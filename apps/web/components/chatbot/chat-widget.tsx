@@ -14,6 +14,7 @@ import {
   Minimize,
   UserRound,
   PhoneOff,
+  Paperclip,
 } from 'lucide-react';
 
 import { useChat } from './use-chat';
@@ -72,7 +73,15 @@ function SupportBubble({ message }: { message: SupportMessage }) {
             : 'rounded-tl-sm bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100'
         }`}
       >
-        <p className="leading-relaxed">{message.content}</p>
+        {message.content.startsWith('data:image/') ? (
+          <img
+            src={message.content}
+            alt="attachment"
+            className="max-h-48 max-w-full rounded-lg object-contain"
+          />
+        ) : (
+          <p className="leading-relaxed">{message.content}</p>
+        )}
       </div>
     </div>
   );
@@ -95,6 +104,10 @@ export function ChatWidget() {
   const { messages, isLoading: aiLoading, sendMessage, clearMessages } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Pending image attachments ──────────────────────────────────────────────
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
 
   // ── Support state ──────────────────────────────────────────────────────────
   const [supportMode, setSupportMode] = useState(false);
@@ -240,40 +253,87 @@ export function ChatWidget() {
     // Keep supportMessages so the user can see the conversation history
   }, [sessionId]);
 
+  /** Convert a File/Blob to a base64 dataURL and add to pending list. */
+  const addImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 5 * 1024 * 1024) return; // 5 MB cap
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setPendingImages((prev) => (prev.length < 5 ? [...prev, dataUrl] : prev));
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      Array.from(e.target.files ?? []).forEach(addImageFile);
+      e.target.value = '';
+    },
+    [addImageFile],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      Array.from(e.clipboardData.items)
+        .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+        .forEach((item) => {
+          const file = item.getAsFile();
+          if (file) addImageFile(file);
+        });
+    },
+    [addImageFile],
+  );
+
   const handleSend = useCallback(async () => {
     const text = inputValue.trim();
-    if (!text || isLoading) return;
+    if (!text && pendingImages.length === 0) return;
+    if (isLoading) return;
     setInputValue('');
+    const imagesToSend = pendingImages;
+    setPendingImages([]);
 
     if (supportMode && sessionId) {
       setIsSending(true);
-      const optimistic: SupportMessage = {
-        id: `opt-${Date.now()}`,
-        role: 'user',
-        content: text,
-        created_at: new Date().toISOString(),
-      };
-      setSupportMessages((prev) => [...prev, optimistic]);
+      // Add optimistic bubbles for text and each image separately
+      const optimisticMsgs: SupportMessage[] = [];
+      if (text) {
+        optimisticMsgs.push({
+          id: `opt-${Date.now()}`,
+          role: 'user',
+          content: text,
+          created_at: new Date().toISOString(),
+        });
+      }
+      imagesToSend.forEach((img, i) => {
+        optimisticMsgs.push({
+          id: `opt-img-${Date.now()}-${i}`,
+          role: 'user',
+          content: img,
+          created_at: new Date().toISOString(),
+        });
+      });
+      setSupportMessages((prev) => [...prev, ...optimisticMsgs]);
       try {
         await fetch(`/api/support/${sessionId}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text }),
+          body: JSON.stringify({ content: text, images: imagesToSend }),
         });
       } catch {
-        /* optimistic message stays */
+        /* optimistic messages stay */
       }
       setIsSending(false);
     } else {
       setShowSuggestions(false);
-      await sendMessage(text);
+      await sendMessage(text, imagesToSend.length > 0 ? imagesToSend : undefined);
     }
-  }, [inputValue, isLoading, supportMode, sessionId, sendMessage]);
+  }, [inputValue, pendingImages, isLoading, supportMode, sessionId, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
@@ -648,6 +708,39 @@ export function ChatWidget() {
 
                 {/* Input area */}
                 <div className="p-3">
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+
+                  {/* Pending image previews */}
+                  {pendingImages.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {pendingImages.map((src, i) => (
+                        <div key={i} className="relative">
+                          <img
+                            src={src}
+                            alt={`preview-${i}`}
+                            className="h-16 w-16 rounded-lg object-cover"
+                          />
+                          <button
+                            onClick={() =>
+                              setPendingImages((prev) => prev.filter((_, j) => j !== i))
+                            }
+                            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-foreground/80 text-background hover:bg-foreground"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div
                     className={`flex items-end gap-2 rounded-xl border bg-muted/30 px-3 py-2 transition-all duration-200 ${
                       supportMode
@@ -655,6 +748,16 @@ export function ChatWidget() {
                         : 'border-border/60 focus-within:border-primary/60 focus-within:bg-background'
                     }`}
                   >
+                    {/* Paperclip / image upload button */}
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading || sessionClosed || pendingImages.length >= 5}
+                      title={locale === 'zh' ? '上传图片' : 'Attach image'}
+                      className="flex-shrink-0 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </button>
+
                     <textarea
                       ref={inputRef}
                       id="chat-input"
@@ -665,6 +768,7 @@ export function ChatWidget() {
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
                       }}
                       onKeyDown={handleKeyDown}
+                      onPaste={handlePaste}
                       placeholder={placeholder}
                       disabled={isLoading || sessionClosed}
                       rows={1}
@@ -673,8 +777,12 @@ export function ChatWidget() {
                     />
                     <button
                       id="chat-send-btn"
-                      onClick={handleSend}
-                      disabled={!inputValue.trim() || isLoading || sessionClosed}
+                      onClick={() => void handleSend()}
+                      disabled={
+                        (!inputValue.trim() && pendingImages.length === 0) ||
+                        isLoading ||
+                        sessionClosed
+                      }
                       className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white transition-all duration-150 hover:scale-105 hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
                         supportMode
                           ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
@@ -690,8 +798,8 @@ export function ChatWidget() {
                   </div>
                   <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
                     {locale === 'zh'
-                      ? '按 Enter 发送 · Shift+Enter 换行'
-                      : 'Press Enter to send · Shift+Enter for new line'}
+                      ? '按 Enter 发送 · 支持粘贴图片'
+                      : 'Enter to send · paste or attach images'}
                   </p>
                 </div>
               </>

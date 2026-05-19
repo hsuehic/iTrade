@@ -29,7 +29,13 @@
  *   event: error      data: { message: string, status?: number }
  */
 import { NextRequest } from 'next/server';
-import { streamText, type CoreMessage } from 'ai';
+import {
+  streamText,
+  type CoreMessage,
+  type ImagePart,
+  type TextPart,
+  type UserContent,
+} from 'ai';
 
 import { getAIModel } from '@/lib/chatbot/provider';
 import { embed } from '@/lib/help-kb/embeddings';
@@ -82,6 +88,7 @@ interface HelpChatRequest {
   message: string;
   history?: HistoryEntry[];
   locale?: string;
+  images?: string[];
 }
 
 // ── Error helpers ─────────────────────────────────────────────────────────────
@@ -122,8 +129,10 @@ export async function POST(request: NextRequest) {
     return sseErrorResponse('Invalid JSON body', 400);
   }
 
-  const message = body.message?.trim();
-  if (!message) return sseErrorResponse('Message is required', 400);
+  const message = body.message?.trim() ?? '';
+  const images = (body.images ?? []).slice(0, 3); // cap at 3 for the help bot
+  if (!message && images.length === 0)
+    return sseErrorResponse('Message is required', 400);
   if (message.length > MAX_MESSAGE_LEN) {
     return sseErrorResponse(`Message too long (max ${MAX_MESSAGE_LEN} characters)`, 400);
   }
@@ -156,6 +165,24 @@ export async function POST(request: NextRequest) {
 
         // 5. Build prompt + stream Gemini response
         const system = buildHelpSystemPrompt(passages);
+        const imageParts: ImagePart[] = images.flatMap((dataUrl) => {
+          const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+          if (!match) return [];
+          return [
+            { type: 'image' as const, image: match[2], mediaType: match[1] } as ImagePart,
+          ];
+        });
+
+        const userContent: UserContent =
+          imageParts.length === 0
+            ? message // text-only → plain string
+            : [
+                ...imageParts,
+                ...(message
+                  ? [{ type: 'text' as const, text: message } satisfies TextPart]
+                  : []),
+              ];
+
         const messages: CoreMessage[] = [
           ...history.map(
             (m): CoreMessage => ({
@@ -163,7 +190,7 @@ export async function POST(request: NextRequest) {
               content: m.content,
             }),
           ),
-          { role: 'user', content: message },
+          { role: 'user' as const, content: userContent },
         ];
 
         const model = await getAIModel();

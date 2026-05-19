@@ -6,6 +6,8 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** Base64 dataURLs attached by the user (only present on user messages). */
+  images?: string[];
   renderData?: {
     renderAs?: 'table' | 'chart' | 'text' | 'strategy_proposal';
     title?: string;
@@ -63,11 +65,12 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, images?: string[]) => {
       const userMessage: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
         content,
+        images,
         renderData: null,
         timestamp: new Date(),
       };
@@ -98,7 +101,7 @@ export function useChat() {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: content, history }),
+          body: JSON.stringify({ message: content, history, images }),
         });
 
         if (!res.body) throw new Error('No response body');

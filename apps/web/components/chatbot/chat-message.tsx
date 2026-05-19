@@ -235,13 +235,26 @@ export function ChatMessageBubble({ message }: ChatMessageProps) {
               : 'bg-muted/60 text-foreground rounded-tl-sm border border-border/40'
           }`}
         >
+          {/* Images attached by the user */}
+          {isUser && message.images && message.images.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {message.images.map((src, i) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`attachment-${i + 1}`}
+                  className="max-h-40 max-w-[200px] rounded-lg object-contain"
+                />
+              ))}
+            </div>
+          )}
           {message.isLoading ? (
             <LoadingDots />
           ) : message.isStreaming ? (
             <ThinkingSkeleton />
-          ) : (
+          ) : message.content ? (
             <div className="space-y-0.5">{renderMarkdown(message.content)}</div>
-          )}
+          ) : null}
         </div>
 
         {/* Visualization — only for assistant messages once fully received */}

@@ -24,7 +24,29 @@ import {
 } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { formatDate } from '@/lib/utils';
-import { Transfer } from '@itrade/core';
+
+// Local mirror of core types — keeps this file working while core dist is stale.
+enum TransferType {
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAW = 'WITHDRAW',
+}
+enum TransferStatus {
+  PENDING = 'PENDING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELED = 'CANCELED',
+}
+interface Transfer {
+  id: string;
+  type: TransferType;
+  asset: string;
+  amount: { toString(): string };
+  status: TransferStatus;
+  timestamp: Date;
+  network?: string;
+  txId?: string;
+  exchange?: string;
+}
 
 interface TransfersTableProps {
   selectedExchange: string;

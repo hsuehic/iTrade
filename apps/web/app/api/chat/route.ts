@@ -27,7 +27,14 @@
  *     A fatal error occurred. Display message to the user.
  */
 import { NextRequest } from 'next/server';
-import { streamText, stepCountIs, type CoreMessage } from 'ai';
+import {
+  streamText,
+  stepCountIs,
+  type CoreMessage,
+  type ImagePart,
+  type TextPart,
+  type UserContent,
+} from 'ai';
 
 import { getSession } from '@/lib/auth';
 import { getAIModel, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
@@ -189,18 +196,22 @@ export async function POST(request: NextRequest) {
   // ── Parse body ────────────────────────────────────────────────────────────
   let message: string;
   let history: Array<{ role: 'user' | 'model'; content: string }>;
+  let images: string[];
   try {
     const body = (await request.json()) as {
       message: string;
       history?: Array<{ role: 'user' | 'model'; content: string }>;
+      images?: string[];
     };
     message = body.message?.trim() ?? '';
     history = body.history ?? [];
+    images = (body.images ?? []).slice(0, 5); // cap at 5 images
   } catch {
     return sseErrorResponse('Invalid JSON body', 400);
   }
 
-  if (!message) return sseErrorResponse('Message is required', 400);
+  if (!message && images.length === 0)
+    return sseErrorResponse('Message is required', 400);
 
   // ── Build tool context (same as original) ─────────────────────────────────
   const baseUrl = `http://localhost:${process.env.PORT ?? 3002}`;
@@ -219,12 +230,32 @@ export async function POST(request: NextRequest) {
       forwardedHeaders['x-forwarded-host'] ?? origHost;
 
   // Convert history: 'model' (Gemini legacy) → 'assistant' (AI SDK standard)
+  // Build a multimodal user message if images were attached.
+  // flatMap drops unmatched data-URLs without a filter type-predicate.
+  const imageParts: ImagePart[] = images.flatMap((dataUrl) => {
+    const m = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!m) return [];
+    return [{ type: 'image' as const, image: m[2], mediaType: m[1] } as ImagePart];
+  });
+
+  const userContent: UserContent =
+    imageParts.length === 0
+      ? message // text-only → plain string
+      : [
+          ...imageParts,
+          ...(message
+            ? [{ type: 'text' as const, text: message } satisfies TextPart]
+            : []),
+        ];
+
   const messages: CoreMessage[] = [
-    ...history.map((m) => ({
-      role: (m.role === 'model' ? 'assistant' : m.role) as 'user' | 'assistant',
-      content: m.content,
-    })),
-    { role: 'user' as const, content: message },
+    ...history.map(
+      (m): CoreMessage => ({
+        role: m.role === 'model' ? 'assistant' : (m.role as 'user' | 'assistant'),
+        content: m.content,
+      }),
+    ),
+    { role: 'user' as const, content: userContent },
   ];
 
   // ── SSE stream ────────────────────────────────────────────────────────────

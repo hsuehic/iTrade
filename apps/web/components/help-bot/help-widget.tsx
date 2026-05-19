@@ -7,6 +7,7 @@ import {
   Maximize2,
   MessageCircleQuestion,
   Minimize2,
+  Paperclip,
   PhoneOff,
   Send,
   Sparkles,
@@ -152,6 +153,19 @@ function AiBubble({ message }: { message: HelpMessage }) {
             : 'rounded-tl-sm bg-muted text-foreground'
         }`}
       >
+        {/* Images attached by the user */}
+        {isUser && message.images && message.images.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
+            {message.images.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt={`attachment-${i + 1}`}
+                className="max-h-36 max-w-[180px] rounded-lg object-contain"
+              />
+            ))}
+          </div>
+        )}
         {message.isLoading ? (
           <div className="flex items-center gap-1.5 py-0.5">
             <span className="size-1.5 animate-bounce rounded-full bg-current opacity-60 [animation-delay:-0.3s]" />
@@ -160,7 +174,7 @@ function AiBubble({ message }: { message: HelpMessage }) {
           </div>
         ) : (
           <>
-            {renderMarkdown(message.content)}
+            {message.content && renderMarkdown(message.content)}
             {message.citations && message.citations.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1 border-t border-foreground/10 pt-2">
                 {message.citations.map((c) => (
@@ -183,6 +197,7 @@ function AiBubble({ message }: { message: HelpMessage }) {
 
 function SupportBubble({ message }: { message: SupportMessage }) {
   const isUser = message.role === 'user';
+  const isImage = message.content.startsWith('data:image/');
   return (
     <div className={`flex gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div className="flex flex-col items-center gap-0.5">
@@ -206,13 +221,23 @@ function SupportBubble({ message }: { message: SupportMessage }) {
         </span>
       </div>
       <div
-        className={`max-w-[85%] rounded-2xl px-3 py-2 text-xs ${
-          isUser
-            ? 'rounded-tr-sm bg-primary text-primary-foreground'
-            : 'rounded-tl-sm bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100'
+        className={`max-w-[85%] rounded-2xl text-xs ${
+          isImage
+            ? 'overflow-hidden p-0'
+            : isUser
+              ? 'rounded-tr-sm bg-primary px-3 py-2 text-primary-foreground'
+              : 'rounded-tl-sm bg-emerald-50 px-3 py-2 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100'
         }`}
       >
-        <p className="leading-relaxed">{message.content}</p>
+        {isImage ? (
+          <img
+            src={message.content}
+            alt="attachment"
+            className="max-h-48 max-w-full rounded-2xl object-contain"
+          />
+        ) : (
+          <p className="leading-relaxed">{message.content}</p>
+        )}
       </div>
     </div>
   );
@@ -266,8 +291,11 @@ export function HelpWidget() {
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
   const [sessionClosed, setSessionClosed] = useState(false);
 
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const sseRef = useRef<EventSource | null>(null);
 
   const suggested = locale === 'zh' ? SUGGESTED_ZH : SUGGESTED_EN;
@@ -377,36 +405,88 @@ export function HelpWidget() {
     setSessionClosed(false);
   }, [sessionId]);
 
+  // ── Image helpers ────────────────────────────────────────────────────────
+
+  const addImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 5 * 1024 * 1024) return; // 5 MB cap
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setPendingImages((prev) => (prev.length < 5 ? [...prev, dataUrl] : prev));
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      Array.from(e.target.files ?? []).forEach(addImageFile);
+      e.target.value = '';
+    },
+    [addImageFile],
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = Array.from(e.clipboardData.items);
+      const imageItems = items.filter(
+        (item) => item.kind === 'file' && item.type.startsWith('image/'),
+      );
+      imageItems.forEach((item) => {
+        const file = item.getAsFile();
+        if (file) addImageFile(file);
+      });
+    },
+    [addImageFile],
+  );
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (!text && pendingImages.length === 0) return;
+    if (isLoading) return;
     setInput('');
+    const imagesToSend = pendingImages;
+    setPendingImages([]);
 
     if (supportMode && sessionId) {
       setIsSending(true);
-      // Optimistically add the user message
-      const optimistic: SupportMessage = {
-        id: `opt-${Date.now()}`,
-        role: 'user',
-        content: text,
-        created_at: new Date().toISOString(),
-      };
-      setSupportMessages((prev) => [...prev, optimistic]);
+      // Optimistically add the text message
+      const optimisticMsgs: SupportMessage[] = [];
+      if (text) {
+        optimisticMsgs.push({
+          id: `opt-${Date.now()}`,
+          role: 'user',
+          content: text,
+          created_at: new Date().toISOString(),
+        });
+      }
+      // Optimistically add each image as its own message
+      imagesToSend.forEach((dataUrl, idx) => {
+        optimisticMsgs.push({
+          id: `opt-img-${Date.now()}-${idx}`,
+          role: 'user',
+          content: dataUrl,
+          created_at: new Date().toISOString(),
+        });
+      });
+      if (optimisticMsgs.length > 0) {
+        setSupportMessages((prev) => [...prev, ...optimisticMsgs]);
+      }
       try {
         await fetch(`/api/support/${sessionId}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text }),
+          body: JSON.stringify({ content: text, images: imagesToSend }),
         });
       } catch {
-        /* optimistic message stays */
+        /* optimistic messages stay */
       }
       setIsSending(false);
     } else {
       setShowSuggestions(false);
-      await sendMessage(text);
+      await sendMessage(text, imagesToSend.length > 0 ? imagesToSend : undefined);
     }
-  }, [input, isLoading, supportMode, sessionId, sendMessage]);
+  }, [input, pendingImages, isLoading, supportMode, sessionId, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -417,6 +497,7 @@ export function HelpWidget() {
 
   const handleSuggestion = (q: string) => {
     setShowSuggestions(false);
+    setPendingImages([]);
     sendMessage(q);
   };
   const handleClear = () => {
@@ -740,6 +821,39 @@ export function HelpWidget() {
 
                 {/* Input */}
                 <div className="border-t border-border/40 p-3">
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+
+                  {/* Pending image previews */}
+                  {pendingImages.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {pendingImages.map((src, i) => (
+                        <div key={i} className="group relative">
+                          <img
+                            src={src}
+                            alt={`pending-${i}`}
+                            className="size-14 rounded-lg object-cover"
+                          />
+                          <button
+                            onClick={() =>
+                              setPendingImages((prev) => prev.filter((_, j) => j !== i))
+                            }
+                            className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-foreground/80 text-background opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <X className="size-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div
                     className={`flex items-end gap-2 rounded-xl border px-3 py-2 transition-all duration-200 ${
                       supportMode
@@ -747,6 +861,17 @@ export function HelpWidget() {
                         : 'border-border/60 bg-muted/30 focus-within:border-violet-500/60 focus-within:bg-background'
                     }`}
                   >
+                    {/* Paperclip button */}
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isLoading || sessionClosed}
+                      title={locale === 'zh' ? '附加图片' : 'Attach image'}
+                      className="flex-shrink-0 text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:opacity-40"
+                    >
+                      <Paperclip className="size-3.5" />
+                    </button>
+
                     <textarea
                       ref={inputRef}
                       value={input}
@@ -756,6 +881,7 @@ export function HelpWidget() {
                         e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
                       }}
                       onKeyDown={handleKeyDown}
+                      onPaste={handlePaste}
                       placeholder={placeholder}
                       disabled={isLoading || sessionClosed}
                       rows={1}
@@ -764,7 +890,11 @@ export function HelpWidget() {
                     />
                     <button
                       onClick={handleSend}
-                      disabled={!input.trim() || isLoading || sessionClosed}
+                      disabled={
+                        (!input.trim() && pendingImages.length === 0) ||
+                        isLoading ||
+                        sessionClosed
+                      }
                       className={`flex size-8 flex-shrink-0 items-center justify-center rounded-lg text-white transition-all duration-150 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
                         supportMode
                           ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
@@ -781,8 +911,8 @@ export function HelpWidget() {
                   <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
                     {supportMode
                       ? locale === 'zh'
-                        ? '按 Enter 发送 · Shift+Enter 换行'
-                        : 'Enter to send · Shift+Enter for new line'
+                        ? '按 Enter 发送 · 粘贴或附加图片'
+                        : 'Enter to send · paste or attach images'
                       : t('inputHint')}
                   </p>
                 </div>
