@@ -78,7 +78,6 @@ describe('SpreadGridStrategy', () => {
         basePrice: 2045,
         orderAmount: 3,
         stepPercent: 0.65,
-        checkMarketPrice: false,
       },
     };
 

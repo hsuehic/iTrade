@@ -38,8 +38,6 @@ export interface SpreadGridParameters extends StrategyParameters {
   maxSize: number;
   /** Leverage for futures trading */
   leverage?: number;
-  /** Whether to gate signals based on market (orderbook) prices */
-  checkMarketPrice?: boolean;
 }
 
 export const SpreadGridStrategyRegistryConfig: StrategyRegistryConfig<SpreadGridParameters> =
@@ -58,7 +56,6 @@ export const SpreadGridStrategyRegistryConfig: StrategyRegistryConfig<SpreadGrid
       minSize: 0,
       maxSize: 1000,
       leverage: 10,
-      checkMarketPrice: true,
     },
     parameterDefinitions: [
       {
@@ -129,16 +126,6 @@ export const SpreadGridStrategyRegistryConfig: StrategyRegistryConfig<SpreadGrid
         group: 'Risk Management',
         order: 7,
       },
-      {
-        name: 'checkMarketPrice',
-        type: 'boolean',
-        description:
-          'If true, only place signals when price is within current orderbook range',
-        defaultValue: true,
-        required: false,
-        group: 'Market Data',
-        order: 8,
-      },
     ],
     subscriptionRequirements: {
       orderbook: {
@@ -146,7 +133,7 @@ export const SpreadGridStrategyRegistryConfig: StrategyRegistryConfig<SpreadGrid
         editable: true,
         defaultDepth: 20,
         depthEditable: true,
-        description: 'Required when checkMarketPrice is enabled.',
+        description: 'Orderbook data for reference price auto-initialization.',
       },
     },
     initialDataRequirements: {
@@ -198,7 +185,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private stepPercent: number;
   private orderAmount: number;
   private leverage: number;
-  private checkMarketPrice: boolean;
   private minSize: number;
   private maxSize: number;
   private tradeMode: TradeMode = TradeMode.ISOLATED;
@@ -231,7 +217,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     this.minSize = parameters.minSize;
     this.maxSize = parameters.maxSize;
     this.leverage = parameters.leverage ?? 10;
-    this.checkMarketPrice = parameters.checkMarketPrice ?? true;
 
     this.referencePrice = new Decimal(this.basePrice);
 
@@ -268,39 +253,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     return Date.now() - this.lastOrderBookReceivedAt > this.orderBookStaleMs;
   }
 
-  private getBestBidAsk(): { bestBid?: Decimal; bestAsk?: Decimal } {
-    const bestBid = this.lastOrderBook?.bids?.[0]?.[0];
-    const bestAsk = this.lastOrderBook?.asks?.[0]?.[0];
-    if (bestBid?.gt(0) || bestAsk?.gt(0)) {
-      return { bestBid, bestAsk };
-    }
-    return {};
-  }
-
-  private ensureMakerPrice(price: Decimal, side: OrderSide): Decimal | null {
-    if (!this.checkMarketPrice) {
-      return price;
-    }
-    if (!this.lastOrderBook || this.isOrderBookStale()) {
-      return null;
-    }
-
-    const { bestBid, bestAsk } = this.getBestBidAsk();
-
-    if (side === OrderSide.BUY) {
-      if (bestAsk && bestAsk.gt(0)) {
-        return price.lt(bestAsk) ? price : null;
-      }
-      return price;
-    }
-
-    if (side === OrderSide.SELL) {
-      if (bestBid && bestBid.gt(0)) {
-        return price.gt(bestBid) ? price : null;
-      }
-      return price;
-    }
-
+  private ensureMakerPrice(price: Decimal, _side: OrderSide): Decimal | null {
     return price;
   }
 
@@ -473,13 +426,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     const allowSell = options?.allowSell ?? true;
     const positionOverride = options?.positionOverride;
     const includePendingInCheck = options?.includePendingInCheck ?? true;
-
-    if (this.checkMarketPrice && this.isOrderBookStale()) {
-      this._logger.warn(
-        `[SpreadGrid] Skipping entry signals: stale orderbook (${this.orderBookStaleMs}ms)`,
-      );
-      return signals;
-    }
 
     if (
       allowBuy &&

@@ -38,6 +38,25 @@ export function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Draggable trigger position — null means default bottom-right corner.
+  // Lazy initializer reads localStorage once on mount (client-only; no-ops on SSR).
+  const [btnPos, setBtnPos] = useState<{ x: number; y: number } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = localStorage.getItem('chat-widget-pos');
+      return saved ? (JSON.parse(saved) as { x: number; y: number }) : null;
+    } catch {
+      return null;
+    }
+  });
+  const dragState = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    moved: boolean;
+  } | null>(null);
+
   // Fetch runtime-configurable chat title from the server
   useEffect(() => {
     fetch('/api/config/chat')
@@ -87,204 +106,282 @@ export function ChatWidget() {
     setShowSuggestions(true);
   };
 
+  // ── Drag handlers ────────────────────────────────────────────────────────────
+
+  const handleTriggerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const rect = e.currentTarget.getBoundingClientRect();
+      dragState.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origX: rect.left,
+        origY: rect.top,
+        moved: false,
+      };
+    },
+    [],
+  );
+
+  const handleTriggerPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!dragState.current) return;
+      const dx = e.clientX - dragState.current.startX;
+      const dy = e.clientY - dragState.current.startY;
+      // Ignore tiny jitter so accidental drags don't prevent clicks
+      if (!dragState.current.moved && Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      dragState.current.moved = true;
+      const size = 56; // w-14 h-14 = 3.5rem = 56px
+      const x = Math.max(
+        0,
+        Math.min(window.innerWidth - size, dragState.current.origX + dx),
+      );
+      const y = Math.max(
+        0,
+        Math.min(window.innerHeight - size, dragState.current.origY + dy),
+      );
+      setBtnPos({ x, y });
+    },
+    [],
+  );
+
+  const handleTriggerPointerUp = useCallback(
+    (_e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!dragState.current) return;
+      const wasDrag = dragState.current.moved;
+      dragState.current = null;
+      if (!wasDrag) {
+        // Short tap — toggle the panel
+        setIsOpen((prev) => !prev);
+        setIsMinimized(false);
+        setIsFullscreen(false);
+      } else {
+        // Persist new position
+        setBtnPos((prev) => {
+          if (prev) {
+            try {
+              localStorage.setItem('chat-widget-pos', JSON.stringify(prev));
+            } catch {
+              /* ignore */
+            }
+          }
+          return prev;
+        });
+      }
+    },
+    [],
+  );
+
   const userMessageCount = messages.filter((m) => m.role === 'user').length;
+
+  // Wrapper sits at the dragged position, or default bottom-right
+  const wrapperStyle: React.CSSProperties = btnPos
+    ? { left: btnPos.x, top: btnPos.y, bottom: 'auto', right: 'auto' }
+    : { bottom: '24px', right: '24px' };
+
+  // Panel right-aligns to the button; prevent overflow on the right edge
+  const panelRightOffset = btnPos ? Math.max(0, window.innerWidth - (btnPos.x + 56)) : 0;
 
   return (
     <>
-      {/* ── Floating button ─────────────────────────────────────────────── */}
-      <button
-        id="chat-widget-trigger"
-        onClick={() => {
-          setIsOpen((prev) => !prev);
-          setIsMinimized(false);
-          setIsFullscreen(false);
-        }}
-        aria-label="Open AI Chat"
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 group ${
-          isOpen
-            ? 'bg-foreground text-background scale-95'
-            : 'bg-primary text-primary-foreground hover:scale-110 hover:shadow-primary/30'
-        }`}
-      >
-        <span
-          className={`transition-all duration-300 ${isOpen ? 'rotate-90 scale-90' : 'rotate-0'}`}
-        >
-          {isOpen ? <X className="w-5 h-5" /> : <Bot className="w-6 h-6" />}
-        </span>
-
-        {/* Pulse ring when closed */}
-        {!isOpen && (
-          <span className="absolute inset-0 rounded-full bg-primary animate-ping opacity-20 group-hover:opacity-0" />
-        )}
-
-        {/* Unread indicator */}
-        {!isOpen && userMessageCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-            {userMessageCount > 9 ? '9+' : userMessageCount}
-          </span>
-        )}
-      </button>
-
-      {/* ── Chat panel ──────────────────────────────────────────────────── */}
-      <div
-        className={`fixed z-50 transition-all duration-300 ${
-          isFullscreen
-            ? 'inset-0 bottom-0 right-0 w-full h-full'
-            : 'bottom-24 right-6 w-[380px] max-w-[calc(100vw-24px)] origin-bottom-right'
-        } ${
-          isOpen && !isMinimized
-            ? 'opacity-100 scale-100 pointer-events-auto'
-            : isOpen && isMinimized
-              ? 'opacity-100 scale-100 pointer-events-auto'
-              : 'opacity-0 scale-90 pointer-events-none'
-        }`}
-      >
-        <div
-          className={`border border-border/60 shadow-2xl shadow-black/20 overflow-hidden flex flex-col ${
-            isFullscreen ? 'rounded-none h-full' : 'rounded-2xl'
+      {/* Draggable wrapper — contains both trigger and panel */}
+      <div className="fixed z-50" style={wrapperStyle}>
+        {/* ── Floating button ───────────────────────────────────────────── */}
+        <button
+          id="chat-widget-trigger"
+          onPointerDown={handleTriggerPointerDown}
+          onPointerMove={handleTriggerPointerMove}
+          onPointerUp={handleTriggerPointerUp}
+          aria-label="Open AI Chat"
+          className={`relative flex h-14 w-14 cursor-grab select-none items-center justify-center rounded-full shadow-2xl transition-colors duration-200 active:cursor-grabbing group ${
+            isOpen
+              ? 'bg-foreground text-background'
+              : 'bg-primary text-primary-foreground hover:shadow-primary/30'
           }`}
-          style={{
-            background: 'hsl(var(--background))',
-            backdropFilter: 'blur(20px)',
-          }}
         >
-          {/* ── Header ──────────────────────────────────────────────────── */}
-          <div className="flex items-center gap-3 px-4 py-3 bg-primary text-primary-foreground">
-            <div className="w-8 h-8 rounded-full bg-primary-foreground/20 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm leading-none">iTrade AI</p>
-              <p className="text-[11px] text-primary-foreground/70 mt-0.5">{chatTitle}</p>
-            </div>
-            <div className="flex items-center gap-1">
-              {userMessageCount > 0 && (
-                <button
-                  onClick={handleClear}
-                  title="Clear conversation"
-                  className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setIsFullscreen((prev) => !prev);
-                  setIsMinimized(false);
-                }}
-                title={isFullscreen ? 'Exit full screen' : 'Full screen'}
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-              >
-                {isFullscreen ? (
-                  <Minimize className="w-3.5 h-3.5" />
-                ) : (
-                  <Maximize2 className="w-3.5 h-3.5" />
-                )}
-              </button>
-              <button
-                onClick={() => setIsMinimized((prev) => !prev)}
-                title={isMinimized ? 'Expand' : 'Minimize'}
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-              >
-                {isMinimized ? (
-                  <ChevronDown className="w-3.5 h-3.5 rotate-180" />
-                ) : (
-                  <Minimize2 className="w-3.5 h-3.5" />
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  setIsFullscreen(false);
-                }}
-                title="Close"
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
+          <span
+            className={`transition-all duration-300 ${isOpen ? 'rotate-90 scale-90' : 'rotate-0'}`}
+          >
+            {isOpen ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+          </span>
 
-          {/* ── Body ────────────────────────────────────────────────────── */}
-          {!isMinimized && (
-            <>
-              {/* Messages area */}
-              <div
-                id="chat-messages"
-                className="flex-1 overflow-y-auto px-3 py-4 space-y-4 scroll-smooth"
-                style={
-                  isFullscreen
-                    ? { flex: '1 1 0', minHeight: 0 }
-                    : { maxHeight: '420px', minHeight: '200px' }
-                }
-              >
-                {messages.map((message) => (
-                  <ChatMessageBubble key={message.id} message={message} />
-                ))}
+          {/* Pulse ring when closed */}
+          {!isOpen && (
+            <span className="absolute inset-0 animate-ping rounded-full bg-primary opacity-20 group-hover:opacity-0" />
+          )}
 
-                {/* Suggested questions (only shown initially) */}
-                {showSuggestions && userMessageCount === 0 && (
-                  <div className="flex flex-col gap-1.5 mt-2">
-                    <p className="text-[11px] text-muted-foreground px-1">Try asking:</p>
-                    {SUGGESTED_QUESTIONS.map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => handleSuggestion(q)}
-                        className="text-left text-xs px-3 py-2 rounded-xl border border-border/60 bg-muted/40 hover:bg-muted/80 hover:border-primary/50 text-foreground transition-all duration-150 hover:shadow-sm"
-                      >
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
+          {/* Unread indicator */}
+          {!isOpen && userMessageCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
+              {userMessageCount > 9 ? '9+' : userMessageCount}
+            </span>
+          )}
+        </button>
 
-                <div ref={messagesEndRef} />
+        {/* ── Chat panel ────────────────────────────────────────────────── */}
+        <div
+          className={`transition-all duration-300 ${
+            isFullscreen
+              ? 'fixed inset-0'
+              : 'absolute bottom-[70px] w-[380px] max-w-[calc(100vw-24px)] origin-bottom-right'
+          } ${
+            isOpen && !isMinimized
+              ? 'pointer-events-auto scale-100 opacity-100'
+              : isOpen && isMinimized
+                ? 'pointer-events-auto scale-100 opacity-100'
+                : 'pointer-events-none scale-90 opacity-0'
+          }`}
+          style={!isFullscreen ? { right: `-${panelRightOffset}px` } : undefined}
+        >
+          <div
+            className={`flex flex-col overflow-hidden border border-border/60 bg-white shadow-2xl shadow-black/20 dark:bg-neutral-900 ${
+              isFullscreen ? 'h-full rounded-none' : 'rounded-2xl'
+            }`}
+          >
+            {/* ── Header ────────────────────────────────────────────────── */}
+            <div className="flex items-center gap-3 bg-primary px-4 py-3 text-primary-foreground">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-foreground/20">
+                <Sparkles className="h-4 w-4" />
               </div>
-
-              {/* Divider */}
-              <div className="border-t border-border/40" />
-
-              {/* ── Input area ──────────────────────────────────────────── */}
-              <div className="p-3">
-                <div className="flex items-end gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 focus-within:border-primary/60 focus-within:bg-background transition-all duration-200">
-                  <textarea
-                    ref={inputRef}
-                    id="chat-input"
-                    value={inputValue}
-                    onChange={(e) => {
-                      setInputValue(e.target.value);
-                      // Auto-resize
-                      e.target.style.height = 'auto';
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Ask about your trading performance…"
-                    disabled={isLoading}
-                    rows={1}
-                    className="flex-1 bg-transparent text-sm resize-none outline-none text-foreground placeholder:text-muted-foreground/60 leading-relaxed disabled:opacity-50"
-                    style={{ maxHeight: '100px' }}
-                  />
-                  <button
-                    id="chat-send-btn"
-                    onClick={handleSend}
-                    disabled={!inputValue.trim() || isLoading}
-                    className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 hover:scale-105 active:scale-95"
-                  >
-                    {isLoading ? (
-                      <span className="w-3.5 h-3.5 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />
-                    ) : (
-                      <Send className="w-3.5 h-3.5" />
-                    )}
-                  </button>
-                </div>
-                <p className="text-[10px] text-muted-foreground text-center mt-1.5">
-                  Press Enter to send · Shift+Enter for new line
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-none">iTrade AI</p>
+                <p className="mt-0.5 text-[11px] text-primary-foreground/70">
+                  {chatTitle}
                 </p>
               </div>
-            </>
-          )}
+              <div className="flex items-center gap-1">
+                {userMessageCount > 0 && (
+                  <button
+                    onClick={handleClear}
+                    title="Clear conversation"
+                    className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setIsFullscreen((prev) => !prev);
+                    setIsMinimized(false);
+                  }}
+                  title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
+                >
+                  {isFullscreen ? (
+                    <Minimize className="h-3.5 w-3.5" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setIsMinimized((prev) => !prev)}
+                  title={isMinimized ? 'Expand' : 'Minimize'}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
+                >
+                  {isMinimized ? (
+                    <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+                  ) : (
+                    <Minimize2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    setIsFullscreen(false);
+                  }}
+                  title="Close"
+                  className="rounded-lg p-1.5 transition-colors hover:bg-white/20"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* ── Body ──────────────────────────────────────────────────── */}
+            {!isMinimized && (
+              <>
+                {/* Messages area */}
+                <div
+                  id="chat-messages"
+                  className="scroll-smooth flex-1 space-y-4 overflow-y-auto px-3 py-4"
+                  style={
+                    isFullscreen
+                      ? { flex: '1 1 0', minHeight: 0 }
+                      : { maxHeight: '420px', minHeight: '200px' }
+                  }
+                >
+                  {messages.map((message) => (
+                    <ChatMessageBubble key={message.id} message={message} />
+                  ))}
+
+                  {/* Suggested questions (only shown initially) */}
+                  {showSuggestions && userMessageCount === 0 && (
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      <p className="px-1 text-[11px] text-muted-foreground">
+                        Try asking:
+                      </p>
+                      {SUGGESTED_QUESTIONS.map((q) => (
+                        <button
+                          key={q}
+                          onClick={() => handleSuggestion(q)}
+                          className="rounded-xl border border-border/60 bg-muted/40 px-3 py-2 text-left text-xs text-foreground transition-all duration-150 hover:border-primary/50 hover:bg-muted/80 hover:shadow-sm"
+                        >
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Divider */}
+                <div className="border-t border-border/40" />
+
+                {/* ── Input area ────────────────────────────────────────── */}
+                <div className="p-3">
+                  <div className="flex items-end gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 transition-all duration-200 focus-within:border-primary/60 focus-within:bg-background">
+                    <textarea
+                      ref={inputRef}
+                      id="chat-input"
+                      value={inputValue}
+                      onChange={(e) => {
+                        setInputValue(e.target.value);
+                        // Auto-resize
+                        e.target.style.height = 'auto';
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+                      }}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Ask about your trading performance…"
+                      disabled={isLoading}
+                      rows={1}
+                      className="flex-1 resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/60 disabled:opacity-50"
+                      style={{ maxHeight: '100px' }}
+                    />
+                    <button
+                      id="chat-send-btn"
+                      onClick={handleSend}
+                      disabled={!inputValue.trim() || isLoading}
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-all duration-150 hover:scale-105 hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {isLoading ? (
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/40 border-t-primary-foreground" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
+                    Press Enter to send · Shift+Enter for new line
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
         </div>
+        {/* end panel */}
       </div>
+      {/* end draggable wrapper */}
     </>
   );
 }

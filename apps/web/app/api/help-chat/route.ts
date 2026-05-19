@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       model,
       system,
       messages,
-      maxOutputTokens: 1500,
+      maxOutputTokens: 4000,
     } as Parameters<typeof generateText>[0]);
 
     // 6. Extract citation slugs and return alongside the message

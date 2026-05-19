@@ -7,6 +7,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { embed } from '@/lib/help-kb/embeddings';
+import { searchSimilar } from '@/lib/help-kb/repository';
+
 // ─── Null-safe parameter helper ────────────────────────────────────────────────
 //
 // Some LLMs (especially smaller/open-source models) send `null` as the args for
@@ -467,6 +470,38 @@ export function createChatbotTools(
           symbols: filtered.slice(0, 50),
           total: filtered.length,
         };
+      },
+    }),
+
+    // ── Help knowledge base ──────────────────────────────────────────────────
+
+    search_help_kb: tool({
+      description:
+        'Search the iTrade help knowledge base for articles about product features, ' +
+        'the mobile app, installation, account setup, troubleshooting, and how-to guides. ' +
+        'Use this whenever the user asks a question about how iTrade works, ' +
+        'how to use a feature, or needs step-by-step guidance.',
+      inputSchema: nullSafe({
+        query: z.string().describe('The user question or topic to search for'),
+        locale: z
+          .string()
+          .optional()
+          .describe('Language preference: "en" or "zh". Defaults to "en".'),
+      }),
+      execute: async ({ query, locale = 'en' }) => {
+        try {
+          const vector = await embed(query, 'RETRIEVAL_QUERY');
+          const passages = await searchSimilar(vector, { locale, topK: 5 });
+          return {
+            articles: passages.map((p) => ({
+              title: p.title,
+              slug: p.slug,
+              excerpt: p.content.slice(0, 800),
+            })),
+          };
+        } catch {
+          return { articles: [], error: 'KB search temporarily unavailable.' };
+        }
       },
     }),
   };
