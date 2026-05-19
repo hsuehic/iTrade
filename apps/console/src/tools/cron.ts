@@ -192,7 +192,7 @@ async function initialize() {
       accountInfoId = accountInfo?.id;
     }
 
-    accountPollingService.registerExchange(name, exchange, { accountInfoId });
+    accountPollingService.registerExchange(name, exchange, { accountInfoId, userId });
   }
 
   // Setup event listeners

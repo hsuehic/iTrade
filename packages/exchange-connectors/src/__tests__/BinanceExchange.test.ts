@@ -133,3 +133,55 @@ describe('BinanceExchange Symbol Info Precision', () => {
     expect(info.pricePrecision).toBe(1);
   });
 });
+
+describe('BinanceExchange getTransfers', () => {
+  let exchange: BinanceExchange;
+  let getSpy: any;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+
+    // Mock credentials
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+    };
+
+    getSpy = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('deposit/hisrec')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.includes('withdraw/history')) {
+        return Promise.resolve({
+          data: [
+            {
+              id: 'test-withdraw-1',
+              coin: 'USDT',
+              amount: '100',
+              status: 6,
+              applyTime: '2026-05-19 17:02:25',
+              network: 'TRX',
+              txId: 'test-tx-id',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ data: [] });
+    });
+
+    (exchange as any).httpClient.get = getSpy;
+  });
+
+  it('should parse applyTime strictly as UTC time', async () => {
+    const transfers = await exchange.getTransfers();
+    expect(transfers).toHaveLength(1);
+
+    const withdrawal = transfers[0];
+    expect(withdrawal.type).toBe('WITHDRAW');
+
+    // 2026-05-19 17:02:25 in UTC is 1763485345000 in Unix timestamp milliseconds
+    expect(withdrawal.timestamp.getTime()).toBe(
+      new Date('2026-05-19T17:02:25.000Z').getTime(),
+    );
+  });
+});

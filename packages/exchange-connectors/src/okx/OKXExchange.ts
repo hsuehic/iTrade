@@ -737,8 +737,8 @@ export class OKXExchange extends BaseExchange {
     limit = 100, // OKX max is 100 per page
   ): Promise<Transfer[]> {
     const params: any = { limit: limit.toString() };
-    if (startTime) params.after = startTime.getTime().toString();
-    if (endTime) params.before = endTime.getTime().toString();
+    if (startTime) params.before = startTime.getTime().toString();
+    if (endTime) params.after = endTime.getTime().toString();
 
     const signedDepositParams = this.signOKXRequest(
       'GET',

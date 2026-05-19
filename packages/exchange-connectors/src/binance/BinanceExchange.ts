@@ -746,7 +746,13 @@ export class BinanceExchange extends BaseExchange {
                 : w.status === 3
                   ? TransferStatus.CANCELED
                   : TransferStatus.PENDING,
-          timestamp: new Date(w.applyTime),
+          timestamp: new Date(
+            typeof w.applyTime === 'string' &&
+            !w.applyTime.includes('Z') &&
+            !w.applyTime.includes('+')
+              ? w.applyTime.replace(' ', 'T') + 'Z'
+              : w.applyTime,
+          ),
           network: w.network,
           txId: w.txId,
           exchange: this.name,
