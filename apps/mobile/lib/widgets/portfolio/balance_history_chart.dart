@@ -706,7 +706,10 @@ class _LineChart extends StatelessWidget {
               final dateLabel = _formatDateFull(dateStr, period);
               return spots.asMap().entries.map((e) {
                 final spot = e.value;
-                final k = keys[e.key];
+                // Use spot.barIndex (not e.key) because fl_chart sorts
+                // touchedSpots by y-value, so the positional index in the
+                // list does not match the bar's index in lineBarsData.
+                final k = keys[spot.barIndex];
                 final label = k == 'total'
                     ? 'Total'
                     : k.substring(0, 1).toUpperCase() + k.substring(1);
@@ -717,6 +720,7 @@ class _LineChart extends StatelessWidget {
                     color: isDark ? Colors.white54 : Colors.black54,
                     fontWeight: FontWeight.w500,
                   ),
+                  textAlign: TextAlign.left,
                   children: [
                     TextSpan(
                       text: '$label: \$${_formatCompact(spot.y)}',
