@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getSession } from '@/lib/auth';
 import { deleteArticle, getArticleById, updateArticle } from '@/lib/help-kb/repository';
+import { invalidatePromptCache } from '@/lib/chatbot/dynamic';
 
 async function requireAdmin(request: NextRequest): Promise<NextResponse | null> {
   const session = await getSession(request);
@@ -59,6 +60,11 @@ export async function PATCH(
     const updated = await updateArticle(id, body);
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+    // If a prompt section was updated, the cached prompt may be stale
+    if (updated.category === 'prompt_section' || body.category === 'prompt_section') {
+      invalidatePromptCache();
+    }
+
     return NextResponse.json({ article: updated });
   } catch (err) {
     const msg = (err as Error)?.message ?? '';
@@ -81,7 +87,12 @@ export async function DELETE(
   if (guard) return guard;
   const { id } = await context.params;
 
+  // Check category before deleting so we can invalidate cache if needed
+  const existing = await getArticleById(id);
   const ok = await deleteArticle(id);
   if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  if (existing?.category === 'prompt_section') invalidatePromptCache();
+
   return NextResponse.json({ success: true });
 }

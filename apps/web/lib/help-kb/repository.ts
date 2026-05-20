@@ -292,6 +292,39 @@ export async function embedAllPending(): Promise<{
 // ── Retrieval ─────────────────────────────────────────────────────────────────
 
 /**
+ * Top-K cosine-similarity search filtered by a specific category.
+ * Used for dynamic chatbot tool selection and prompt-section retrieval.
+ * No locale filtering — chatbot KB articles are always locale-neutral.
+ *
+ * Distances are pgvector's cosine distance: lower = better.
+ */
+export async function searchSimilarByCategory(
+  queryVector: number[],
+  category: string,
+  options: { topK?: number } = {},
+): Promise<RetrievedHelpArticle[]> {
+  const dm = await getDataManager();
+  const literal = toPgVectorLiteral(queryVector);
+  const topK = Math.min(Math.max(options.topK ?? 5, 1), 20);
+
+  const rows = (await dm.dataSource.query(
+    `
+    SELECT id, title, slug, content, category, locale,
+           (embedding <=> $1::vector) AS distance
+    FROM help_articles
+    WHERE published = true
+      AND embedding IS NOT NULL
+      AND category = $2
+    ORDER BY embedding <=> $1::vector ASC
+    LIMIT $3
+    `,
+    [literal, category, topK],
+  )) as RetrievedHelpArticle[];
+
+  return rows.map((r) => ({ ...r, distance: Number(r.distance) }));
+}
+
+/**
  * Top-K cosine-similarity search over the published articles in `locale`.
  * Falls back to 'en' articles when the requested locale yields fewer hits.
  *

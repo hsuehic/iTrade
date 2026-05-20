@@ -509,3 +509,40 @@ export function createChatbotTools(
 
 // Infer the tools type for use elsewhere
 export type ChatbotTools = ReturnType<typeof createChatbotTools>;
+
+/**
+ * Alias for clarity when called from the dynamic context builder.
+ * Identical to createChatbotTools — creates the full tool set.
+ */
+export const createAllTools = createChatbotTools;
+
+/**
+ * Create a subset of chatbot tools by name.
+ * Names not present in the full registry are silently skipped.
+ *
+ * Used by the dynamic context builder: the vector KB returns a list of
+ * relevant tool names, and this function instantiates only those tools
+ * so the LLM receives a focused, query-appropriate tool set.
+ */
+export function createSelectedTools(
+  names: string[],
+  baseUrl: string,
+  cookie: string,
+  extraHeaders?: Record<string, string>,
+): Record<string, unknown> {
+  // Build the full tool set and pick only the requested names.
+  // We use Record<string, unknown> to avoid the overly-complex union type
+  // that TypeScript infers from Partial<ChatbotTools>; the AI SDK accepts
+  // any record of tool objects so this is safe at runtime.
+  const all = createChatbotTools(baseUrl, cookie, extraHeaders) as Record<
+    string,
+    unknown
+  >;
+  const selected: Record<string, unknown> = {};
+  for (const name of names) {
+    if (Object.prototype.hasOwnProperty.call(all, name)) {
+      selected[name] = all[name];
+    }
+  }
+  return selected;
+}

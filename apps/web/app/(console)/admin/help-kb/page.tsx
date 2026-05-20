@@ -91,6 +91,9 @@ const CATEGORIES = [
   'strategies',
   'troubleshooting',
   'faq',
+  // AI chatbot categories
+  'prompt_section',
+  'chatbot_tool',
 ];
 
 const LOCALES = ['en', 'zh'];

@@ -13,6 +13,7 @@ import {
   listArticles,
   type HelpArticleListFilter,
 } from '@/lib/help-kb/repository';
+import { invalidatePromptCache } from '@/lib/chatbot/dynamic';
 
 async function requireAdmin(request: NextRequest): Promise<NextResponse | null> {
   const session = await getSession(request);
@@ -102,6 +103,9 @@ export async function POST(request: NextRequest) {
       priority: body.priority,
       published: body.published,
     });
+
+    // If a prompt section was created, the cached prompt may be stale
+    if (body.category === 'prompt_section') invalidatePromptCache();
 
     return NextResponse.json({ article }, { status: 201 });
   } catch (err) {

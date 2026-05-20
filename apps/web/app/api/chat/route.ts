@@ -37,8 +37,8 @@ import {
 } from 'ai';
 
 import { getSession } from '@/lib/auth';
-import { getAIModel, SYSTEM_PROMPT } from '@/lib/chatbot/provider';
-import { createChatbotTools } from '@/lib/chatbot/tools';
+import { getAIModel } from '@/lib/chatbot/provider';
+import { buildDynamicContext } from '@/lib/chatbot/dynamic';
 
 export const maxDuration = 120; // Allow up to 120 s for multi-tool agentic loops
 
@@ -273,15 +273,21 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        const model = await getAIModel();
+        const [model, ctx] = await Promise.all([
+          getAIModel(),
+          // Embed the user's message and retrieve the most relevant tools +
+          // prompt sections from the vector KB. Falls back to the full static
+          // context when the KB is unavailable or not yet seeded.
+          buildDynamicContext(message, baseUrl, cookie, forwardedHeaders),
+        ]);
 
         // @ai-sdk/google v2.x preserves thoughtSignature in providerMetadata
         // so thinking models (gemini-2.5-flash etc.) work correctly across steps.
         const result = streamText({
           model,
-          system: SYSTEM_PROMPT,
+          system: ctx.systemPrompt,
           messages,
-          tools: createChatbotTools(baseUrl, cookie, forwardedHeaders),
+          tools: ctx.tools,
           stopWhen: stepCountIs(5),
           maxOutputTokens: 4000,
         } as Parameters<typeof streamText>[0]);
