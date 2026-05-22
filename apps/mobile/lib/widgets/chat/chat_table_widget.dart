@@ -92,6 +92,7 @@ class ChatTableWidget extends StatelessWidget {
     if (data is List) return data;
     if (data is Map<String, dynamic>) {
       for (final key in [
+        'rows',
         'topTokens',
         'topPerformers',
         'bySymbol',
@@ -112,7 +113,9 @@ class ChatTableWidget extends StatelessWidget {
     if (rows.isEmpty) return const SizedBox.shrink();
 
     final capped = rows.take(15).toList();
-    final firstRow = capped.first as Map<String, dynamic>;
+    final firstItem = capped.first;
+    if (firstItem is! Map<String, dynamic>) return const SizedBox.shrink();
+    final firstRow = firstItem;
     final allKeys = firstRow.keys.where((k) => !_excludedKeys.contains(k)).toList();
 
     final priority = _priorityKeys.where(allKeys.contains).toList();
@@ -184,7 +187,11 @@ class ChatTableWidget extends StatelessWidget {
                 ),
               ],
               rows: List.generate(capped.length, (rowIdx) {
-                final row = capped[rowIdx] as Map<String, dynamic>;
+                final rowItem = capped[rowIdx];
+                if (rowItem is! Map<String, dynamic>) {
+                  return DataRow(cells: [DataCell(const SizedBox.shrink())]);
+                }
+                final row = rowItem;
                 return DataRow(
                   color: WidgetStateProperty.resolveWith((states) {
                     return rowIdx.isOdd ? altRowBg : null;

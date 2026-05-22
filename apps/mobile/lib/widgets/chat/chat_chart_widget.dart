@@ -456,8 +456,7 @@ class ChatChartWidget extends StatelessWidget {
     ]) {
       final arr = data[key];
       if (arr is List && arr.isNotEmpty) {
-        final items = arr.take(10).map((item) {
-          final i = item as Map<String, dynamic>;
+        final items = arr.take(10).whereType<Map<String, dynamic>>().map((i) {
           final name = (i['symbol'] ??
                   i['normalizedSymbol'] ??
                   i['exchange'] ??
@@ -483,7 +482,9 @@ class ChatChartWidget extends StatelessWidget {
     if (chartContent == null) {
       final chartDataArr = data['chartData'];
       if (chartDataArr is List && chartDataArr.length > 1) {
-        final sample = chartDataArr.first as Map<String, dynamic>;
+        final firstItem = chartDataArr.first;
+        if (firstItem is! Map<String, dynamic>) return const SizedBox.shrink();
+        final sample = firstItem;
         final exchangeKeys =
             sample.keys.where((k) => k != 'date' && k != 'total').toList();
         final showTotal = exchangeKeys.length > 1;
@@ -491,7 +492,7 @@ class ChatChartWidget extends StatelessWidget {
             showTotal ? [...exchangeKeys, 'total'] : exchangeKeys;
 
         // Last 30 points + compute totals
-        final sliced = chartDataArr.cast<Map<String, dynamic>>().toList();
+        final sliced = chartDataArr.whereType<Map<String, dynamic>>().toList();
         final last30 = sliced.length > 30
             ? sliced.sublist(sliced.length - 30)
             : sliced;

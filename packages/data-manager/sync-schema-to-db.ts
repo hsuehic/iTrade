@@ -87,27 +87,46 @@ async function main() {
     // TypeORM doesn't know the pgvector `vector` type, so the embedding
     // column + index are managed here with raw SQL. All statements are
     // idempotent so it is safe to run on every deploy.
+    //
+    // Index choice: HNSW (not IVFFlat).
+    //
+    // IVFFlat clusters vectors into `lists` buckets at build time via k-means.
+    // It requires at least `lists` rows before it can build meaningful clusters;
+    // below that threshold every query falls back to a full sequential scan.
+    // With lists=100 and a KB table that only holds ~20-50 rows, the index is
+    // never engaged — which is exactly why queries became slow after seeding.
+    //
+    // HNSW builds a navigable graph that grows incrementally as rows are
+    // inserted. It works correctly regardless of when the index is created or
+    // how few rows exist, and it needs no per-session probe tuning.
     console.log('🔄 Bootstrapping pgvector for help_articles…');
     await dataManager.dataSource.query(`CREATE EXTENSION IF NOT EXISTS vector`);
     await dataManager.dataSource.query(
       `ALTER TABLE help_articles ADD COLUMN IF NOT EXISTS embedding vector(768)`,
     );
+
+    // Drop the old IVFFlat index if it exists — it was built on empty/sparse
+    // data and is ineffective for a small KB table.
+    await dataManager.dataSource.query(
+      `DROP INDEX IF EXISTS help_articles_embedding_idx`,
+    );
+
     await dataManager.dataSource.query(`
       DO $$
       BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_indexes
           WHERE schemaname = current_schema()
-            AND indexname = 'help_articles_embedding_idx'
+            AND indexname = 'help_articles_embedding_hnsw_idx'
         ) THEN
-          CREATE INDEX help_articles_embedding_idx
+          CREATE INDEX help_articles_embedding_hnsw_idx
             ON help_articles
-            USING ivfflat (embedding vector_cosine_ops)
-            WITH (lists = 100);
+            USING hnsw (embedding vector_cosine_ops)
+            WITH (m = 16, ef_construction = 64);
         END IF;
       END$$;
     `);
-    console.log('✅ pgvector ready (extension + embedding column + index).');
+    console.log('✅ pgvector ready (extension + embedding column + HNSW index).');
   } catch (err) {
     console.error('❌ Failed to synchronize schema:');
     if (err instanceof Error) {

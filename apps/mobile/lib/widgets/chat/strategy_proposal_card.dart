@@ -99,8 +99,10 @@ class _StrategyProposalCardState extends State<StrategyProposalCard> {
   bool _showAdvanced = false;
   late TextEditingController _nameController;
 
-  Map<String, dynamic> get _proposal =>
-      (widget.renderData.data as Map<String, dynamic>?) ?? {};
+  Map<String, dynamic> get _proposal {
+    final d = widget.renderData.data;
+    return (d is Map<String, dynamic>) ? d : {};
+  }
 
   @override
   void initState() {

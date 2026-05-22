@@ -307,6 +307,11 @@ export async function searchSimilarByCategory(
   const literal = toPgVectorLiteral(queryVector);
   const topK = Math.min(Math.max(options.topK ?? 5, 1), 20);
 
+  // Raise ef_search so HNSW explores a wider beam and returns better results.
+  // The default (40) is fine for large tables; bumping to 100 costs ~1 ms on a
+  // small KB table and noticeably improves recall.
+  await dm.dataSource.query(`SET LOCAL hnsw.ef_search = 100`);
+
   const rows = (await dm.dataSource.query(
     `
     SELECT id, title, slug, content, category, locale,
@@ -338,6 +343,8 @@ export async function searchSimilar(
   const literal = toPgVectorLiteral(queryVector);
   const locale = options.locale ?? 'en';
   const topK = Math.min(Math.max(options.topK ?? 5, 1), 10);
+
+  await dm.dataSource.query(`SET LOCAL hnsw.ef_search = 100`);
 
   // Primary search: requested locale only.
   const primary = (await dm.dataSource.query(
