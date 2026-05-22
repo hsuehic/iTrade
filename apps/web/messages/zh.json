@@ -1380,7 +1380,8 @@
       "starting": "启动中...",
       "stopping": "停止中...",
       "deleting": "删除中...",
-      "delete": "删除"
+      "delete": "删除",
+      "edit": "编辑"
     },
     "dialog": {
       "createTitle": "创建新策略",
@@ -1548,6 +1549,14 @@
       "showing": "显示 {start} 至 {end}，共 {total} 条",
       "perPage": "{count} 条/页",
       "page": "第 {current} / {total} 页"
+    },
+    "config": {
+      "parametersTitle": "参数",
+      "parametersDesc": "当前策略配置参数",
+      "subscriptionTitle": "市场数据订阅",
+      "subscriptionDesc": "活跃市场数据源",
+      "initialDataTitle": "初始数据配置",
+      "initialDataDesc": "启动时加载的历史数据"
     }
   },
   "orders": {
@@ -1648,7 +1657,8 @@
       "description": "修改 {symbol} {side} 限价订单。",
       "fields": {
         "quantity": "数量",
-        "price": "价格"
+        "price": "价格",
+        "stopPrice": "止损价"
       },
       "helper": "修改会撤销原订单并创建新订单。",
       "actions": {
