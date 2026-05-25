@@ -89,9 +89,18 @@ export function useChat() {
       setMessages((prev) => [...prev, userMessage, placeholder]);
       setIsLoading(true);
 
-      // Build history snapshot (exclude welcome + in-flight placeholders)
+      // Build history snapshot (exclude welcome, in-flight placeholders, and
+      // any turns that ended up with empty content — those arise when a previous
+      // request failed before the model produced any text, and sending them to
+      // Gemini causes an immediate 400 rejection on the next turn).
       const history = messages
-        .filter((m) => !m.isLoading && !m.isStreaming && m.id !== 'welcome')
+        .filter(
+          (m) =>
+            !m.isLoading &&
+            !m.isStreaming &&
+            m.id !== 'welcome' &&
+            m.content.trim() !== '',
+        )
         .map((m) => ({
           role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
           content: m.content,
@@ -112,6 +121,10 @@ export function useChat() {
 
         // Track accumulated renderData between events
         let pendingRenderData: ChatMessage['renderData'] = null;
+
+        // Track whether the server sent a proper `done` event so we can
+        // handle unexpected stream closes gracefully (e.g. network drop).
+        let streamFinished = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -152,6 +165,7 @@ export function useChat() {
                 ),
               );
             } else if (event === 'done') {
+              streamFinished = true;
               const { cleanText } = parsed as { cleanText: string };
               setMessages((prev) =>
                 prev.map((m) =>
@@ -168,6 +182,7 @@ export function useChat() {
               );
               setIsLoading(false);
             } else if (event === 'error') {
+              streamFinished = true;
               const { message: errMsg } = parsed as { message: string };
               setMessages((prev) =>
                 prev.map((m) =>
@@ -184,6 +199,25 @@ export function useChat() {
               setIsLoading(false);
             }
           }
+        }
+
+        // Stream closed without a proper `done`/`error` event (e.g. connection
+        // dropped or server crashed mid-stream). Clear loading state so the UI
+        // doesn't stay stuck, and replace any empty placeholder with an error note.
+        if (!streamFinished) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== placeholderId) return m;
+              return {
+                ...m,
+                content:
+                  m.content || 'Sorry, the response was interrupted. Please try again.',
+                isLoading: false,
+                isStreaming: false,
+              };
+            }),
+          );
+          setIsLoading(false);
         }
       } catch {
         setMessages((prev) =>

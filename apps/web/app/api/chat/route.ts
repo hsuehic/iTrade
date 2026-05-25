@@ -249,12 +249,16 @@ export async function POST(request: NextRequest) {
         ];
 
   const messages: CoreMessage[] = [
-    ...history.map(
-      (m): CoreMessage => ({
-        role: m.role === 'model' ? 'assistant' : (m.role as 'user' | 'assistant'),
-        content: m.content,
-      }),
-    ),
+    // Strip history entries with empty content — Gemini rejects them with a
+    // 400 and they can accumulate when a previous turn failed mid-stream.
+    ...history
+      .filter((m) => m.content.trim() !== '')
+      .map(
+        (m): CoreMessage => ({
+          role: m.role === 'model' ? 'assistant' : (m.role as 'user' | 'assistant'),
+          content: m.content,
+        }),
+      ),
     { role: 'user' as const, content: userContent },
   ];
 
@@ -290,13 +294,17 @@ export async function POST(request: NextRequest) {
           tools: ctx.tools,
           stopWhen: stepCountIs(5),
           maxOutputTokens: 4000,
-          // Disable Gemini's internal "thinking" phase (gemini-2.5-* models).
-          // By default the thinking budget is unconstrained and can silently add
-          // 5–30 s of latency before the first token. Setting it to 0 disables
-          // thinking entirely, which is appropriate for a data-retrieval chatbot
-          // that doesn't need extended chain-of-thought reasoning.
+          // Cap Gemini's internal "thinking" phase (gemini-2.5-* models).
+          // Without a budget, thinking is unconstrained and can silently add
+          // 5–30 s of latency before the first token.
+          //
+          // We use 1024 rather than 0 here: setting the budget to 0 disables
+          // thinking entirely which breaks multi-step tool-use — the model
+          // can't reason about which tool to call and returns empty text.
+          // 1024 tokens (~1–2 s) is enough for tool-call decisions while
+          // eliminating the "runaway thinking" that caused the original slowness.
           providerOptions: {
-            google: { thinkingConfig: { thinkingBudget: 0 } },
+            google: { thinkingConfig: { thinkingBudget: 1024 } },
           },
         } as Parameters<typeof streamText>[0]);
 
