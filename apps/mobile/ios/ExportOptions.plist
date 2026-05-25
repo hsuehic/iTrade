@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ExportOptions.plist — used by `flutter build ipa` in CI and locally.
+
+  method: "app-store"        → signs for App Store / TestFlight distribution.
+          Change to "ad-hoc" or "enterprise" if needed.
+
+  signingStyle: "manual"     → CI uses the explicit certificate + provisioning
+                               profile you installed in the keychain/Profiles dir.
+                               Change to "automatic" only if you have Xcode Cloud
+                               or an App Store Connect team with automatic signing.
+
+  uploadBitcode: false       → Bitcode was deprecated by Apple in Xcode 14.
+  uploadSymbols: true        → Include dSYM symbol files for crash reporting.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store</string>
+
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <key>uploadBitcode</key>
+    <false/>
+
+    <key>uploadSymbols</key>
+    <true/>
+
+    <key>compileBitcode</key>
+    <false/>
+
+    <!-- Optional: explicitly pin the bundle ID to a provisioning profile name.
+         Uncomment and fill in your profile name if automatic resolution fails.
+
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.ihsueh.itrade</key>
+        <string>iTrade App Store Distribution</string>
+    </dict>
+    -->
+</dict>
+</plist>
