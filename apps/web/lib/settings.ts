@@ -82,6 +82,9 @@ export async function setSetting(key: SettingKey, value: string): Promise<void> 
   await repo.save({ key, value });
 
   globalThis.__settingsCache = undefined;
+  // Also bust the AI model instance cache so a new API key or model ID
+  // takes effect without a server restart.
+  globalThis.__aiModelCache = undefined;
 }
 
 /**
@@ -95,9 +98,11 @@ export async function deleteSetting(key: SettingKey): Promise<void> {
   await repo.delete({ key });
 
   globalThis.__settingsCache = undefined;
+  globalThis.__aiModelCache = undefined;
 }
 
 /** Force the in-process cache to expire on the next read. */
 export function invalidateSettingsCache(): void {
   globalThis.__settingsCache = undefined;
+  globalThis.__aiModelCache = undefined;
 }

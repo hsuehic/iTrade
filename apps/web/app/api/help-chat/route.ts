@@ -157,8 +157,14 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        // 3. Embed the question
-        const queryVector = await embed(message, 'RETRIEVAL_QUERY');
+        // 3. Embed the question + fetch model config in parallel.
+        //    embed() makes a Gemini REST call (~200–500 ms); getAIModel() only
+        //    hits the in-process settings cache, so running them concurrently
+        //    avoids paying for the embedding round-trip twice in sequence.
+        const [queryVector, model] = await Promise.all([
+          embed(message, 'RETRIEVAL_QUERY'),
+          getAIModel(),
+        ]);
 
         // 4. Retrieve top-5
         const passages = await searchSimilar(queryVector, { locale, topK: 5 });
@@ -193,12 +199,18 @@ export async function POST(request: NextRequest) {
           { role: 'user' as const, content: userContent },
         ];
 
-        const model = await getAIModel();
         const result = streamText({
           model,
           system,
           messages,
           maxOutputTokens: 4000,
+          // Disable Gemini's internal "thinking" phase (gemini-2.5-* models).
+          // An unconstrained thinking budget can add 5–30 s of TTFT. For the
+          // help bot, fast retrieval-augmented answers matter more than deep
+          // chain-of-thought reasoning.
+          providerOptions: {
+            google: { thinkingConfig: { thinkingBudget: 0 } },
+          },
         } as Parameters<typeof streamText>[0]);
 
         // Stream text tokens

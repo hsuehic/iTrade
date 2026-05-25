@@ -290,6 +290,14 @@ export async function POST(request: NextRequest) {
           tools: ctx.tools,
           stopWhen: stepCountIs(5),
           maxOutputTokens: 4000,
+          // Disable Gemini's internal "thinking" phase (gemini-2.5-* models).
+          // By default the thinking budget is unconstrained and can silently add
+          // 5–30 s of latency before the first token. Setting it to 0 disables
+          // thinking entirely, which is appropriate for a data-retrieval chatbot
+          // that doesn't need extended chain-of-thought reasoning.
+          providerOptions: {
+            google: { thinkingConfig: { thinkingBudget: 0 } },
+          },
         } as Parameters<typeof streamText>[0]);
 
         // Stream each text delta to the client immediately

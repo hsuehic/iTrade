@@ -31,12 +31,35 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModel } from 'ai';
 import { getAllSettings } from '@/lib/settings';
 
+// ── Model instance cache ──────────────────────────────────────────────────────
+//
+// `getAIModel()` is called on every chat request. Without caching it recreates
+// the Google provider + model object each time — cheap but needlessly wasteful.
+// We cache the LanguageModel keyed by `apiKey|modelId` and bust the cache
+// whenever the admin saves new AI Config settings (invalidateSettingsCache()
+// already wipes __settingsCache; we piggyback on the same lifecycle here by
+// co-locating the model cache on the global object so HMR reloads don't reset it).
+
+interface ModelCache {
+  model: LanguageModel;
+  apiKey: string;
+  modelId: string;
+}
+
+declare global {
+  var __aiModelCache: ModelCache | undefined;
+}
+
 // ── Model selector ────────────────────────────────────────────────────────────
 
 /**
  * Returns the configured Gemini model. The DB-backed settings store takes
  * priority over environment variables so admins can rotate the key or model
  * at runtime without a redeploy.
+ *
+ * The resolved LanguageModel instance is cached in-process (keyed by
+ * apiKey + modelId) to avoid rebuilding the provider object on every request.
+ * The cache is invalidated whenever AI Config settings are saved.
  *
  * Throws if neither the DB setting nor the env var is configured.
  */
@@ -53,7 +76,8 @@ export async function getAIModel(): Promise<LanguageModel> {
   }
 
   const apiKey = dbSettings.gemini_api_key || process.env.GEMINI_API_KEY;
-  const model = dbSettings.gemini_model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelId =
+    dbSettings.gemini_model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
   if (!apiKey) {
     throw new Error(
@@ -62,8 +86,17 @@ export async function getAIModel(): Promise<LanguageModel> {
     );
   }
 
+  // Return the cached instance if the key + model haven't changed.
+  const cached = globalThis.__aiModelCache;
+  if (cached && cached.apiKey === apiKey && cached.modelId === modelId) {
+    return cached.model;
+  }
+
   const google = createGoogleGenerativeAI({ apiKey });
-  return google(model);
+  const model = google(modelId);
+
+  globalThis.__aiModelCache = { model, apiKey, modelId };
+  return model;
 }
 
 // ── Emergency fallback prompt ─────────────────────────────────────────────────
