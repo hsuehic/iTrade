@@ -473,6 +473,89 @@ export function createChatbotTools(
       },
     }),
 
+    // ── Transfers (deposits & withdrawals) ──────────────────────────────────
+
+    get_transfers: tool({
+      description:
+        'Get deposit and withdrawal transfer history. Use for any question about deposits, ' +
+        'withdrawals, or fund transfers — including totals, recent activity, and per-asset summaries. ' +
+        'Returns: transfers[] (individual records) and summary.perAsset[] ' +
+        '(totals per asset: deposit, withdrawal, net). ' +
+        'Filter by direction (DEPOSIT/WITHDRAW), status, date range, exchange, amount range, ' +
+        'or keyword (asset name, network, transaction ID). ' +
+        'Use this for: "show my deposits", "how much have I withdrawn?", ' +
+        '"deposit history for BTC", "transfer summary", "net inflows this month".',
+      inputSchema: nullSafe({
+        exchange: z
+          .string()
+          .optional()
+          .describe('Exchange name (e.g. "binance", "okx"), or "all" for all exchanges.'),
+        direction: z
+          .enum(['DEPOSIT', 'WITHDRAW'])
+          .optional()
+          .describe(
+            'Filter by transfer direction. "DEPOSIT" for inflows, "WITHDRAW" for outflows. ' +
+              'Omit to include both.',
+          ),
+        status: z
+          .enum(['COMPLETED', 'PENDING', 'FAILED', 'CANCELED'])
+          .optional()
+          .describe(
+            'Filter by transfer status. Omit to include all statuses. ' +
+              'Use "COMPLETED" for confirmed transfers only.',
+          ),
+        startDate: z
+          .string()
+          .optional()
+          .describe(
+            'Start of the date window in YYYY-MM-DD format (inclusive). ' +
+              'E.g. "2026-01-01" for queries like "this year" or "since January".',
+          ),
+        endDate: z
+          .string()
+          .optional()
+          .describe(
+            'End of the date window in YYYY-MM-DD format (inclusive). ' +
+              'Defaults to today when omitted.',
+          ),
+        keyword: z
+          .string()
+          .optional()
+          .describe(
+            'Case-insensitive search term matched against asset name, exchange, ' +
+              'network, or transaction ID. E.g. "BTC", "TRC20", "ERC20".',
+          ),
+        minAmount: z
+          .number()
+          .optional()
+          .describe("Minimum transfer amount filter (in the asset's native units)."),
+        maxAmount: z
+          .number()
+          .optional()
+          .describe("Maximum transfer amount filter (in the asset's native units)."),
+      }),
+      execute: async ({
+        exchange,
+        direction,
+        status,
+        startDate,
+        endDate,
+        keyword,
+        minAmount,
+        maxAmount,
+      }) =>
+        fetch('/api/analytics/transfers', {
+          exchange: exchange ?? 'all',
+          direction,
+          status,
+          startDate,
+          endDate,
+          keyword,
+          minAmount,
+          maxAmount,
+        }),
+    }),
+
     // ── Help knowledge base ──────────────────────────────────────────────────
 
     search_help_kb: tool({

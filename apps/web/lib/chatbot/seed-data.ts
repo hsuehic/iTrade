@@ -242,6 +242,40 @@ Use this tool when:
   },
 
   {
+    slug: 'tool-get_transfers',
+    title: 'get_transfers',
+    category: 'chatbot_tool',
+    locale: 'en',
+    published: true,
+    priority: 10,
+    content: `Tool: get_transfers
+
+API Endpoint: GET /api/analytics/transfers
+
+Description: Retrieves deposit and withdrawal transfer history for the user. Returns two key shapes:
+- transfers[]: individual transfer records (asset, amount, direction, status, exchange, network, txId, timestamp)
+- summary.perAsset[]: aggregated totals per asset with deposit total, withdrawal total, and net (deposit − withdrawal)
+
+Supports filtering by:
+- direction: DEPOSIT or WITHDRAW (or both if omitted)
+- status: COMPLETED, PENDING, FAILED, CANCELED
+- exchange: specific exchange or "all"
+- startDate / endDate: YYYY-MM-DD date window
+- minAmount / maxAmount: amount range filter
+- keyword: matches asset name, exchange, network, or txId
+
+Use this tool when the user asks about:
+- Deposits: "show my deposits", "how much have I deposited?", "deposit history", "what did I deposit this month?"
+- Withdrawals: "show my withdrawals", "how much have I withdrawn?", "withdrawal history"
+- Transfer summary: "net inflows", "total deposits vs withdrawals", "transfer summary by asset"
+- Specific asset: "how much BTC did I deposit?", "ETH deposits", "USDT withdrawals"
+- Recent activity: "latest transfers", "recent deposits", "transfers this week"
+- Status checks: "pending deposits", "failed withdrawals", "completed transfers"
+- Date-ranged queries: "deposits in January", "withdrawals last month", "transfers in Q1 2026"
+- "How much did I put in?", "How much money have I moved?", "Inflows and outflows"`,
+  },
+
+  {
     slug: 'tool-search_help_kb',
     title: 'search_help_kb',
     category: 'chatbot_tool',
@@ -381,7 +415,42 @@ RULE 3 — Strategy / order lists → renderAs "table".
 
 RULE 4 — Strategy creation → renderAs "strategy_proposal" (see STRATEGY CREATION FLOW).
 
-RULE 5 — Simple factual answers (single number, short explanation) → NO JSON block needed.`,
+RULE 5 — Simple factual answers (single number, short explanation) → NO JSON block needed.
+
+RULE 6 — Transfer / deposit / withdrawal queries → renderAs "table".
+  Trigger: "show deposits", "withdrawal history", "transfer summary", "how much did I deposit?"
+  The get_transfers tool returns two useful shapes — choose based on the query:
+
+  a) Per-asset summary (totals) — use summary.perAsset when the user wants totals or a summary:
+  \`\`\`json
+  {
+    "renderAs": "table",
+    "title": "Transfer Summary by Asset",
+    "data": {
+      "columns": ["Asset", "Deposited", "Withdrawn", "Net"],
+      "rows": [
+        ["BTC", "0.5 BTC", "0.1 BTC", "+0.4 BTC"],
+        ["USDT", "10,000", "3,000", "+7,000"]
+      ]
+    }
+  }
+  \`\`\`
+
+  b) Individual transfers — use transfers[] when the user wants recent history or a list:
+  \`\`\`json
+  {
+    "renderAs": "table",
+    "title": "Recent Deposits",
+    "data": {
+      "columns": ["Date", "Asset", "Amount", "Exchange", "Status"],
+      "rows": [
+        ["2026-05-01", "BTC", "0.25", "Binance", "COMPLETED"],
+        ["2026-04-28", "USDT", "5000", "OKX", "COMPLETED"]
+      ]
+    }
+  }
+  \`\`\`
+  Show the most recent 20 records max. Include all relevant columns — always show Status.`,
   },
 
   // ── Strategy creation (retrieved by similarity) ─────────────────────────────
