@@ -281,9 +281,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # ── Log Xcode version ─────────────────────────────────────
+      # ── Select and Log Xcode version ──────────────────────────
       # Apple requires iOS 26 SDK (Xcode 26+) for App Store uploads.
-      # This confirms the runner has the right Xcode before we proceed.
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
       - name: Log Xcode version
         run: xcodebuild -version
 
