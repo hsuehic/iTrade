@@ -108,36 +108,84 @@ The other three Android secrets come directly from your existing `key.properties
 
 ### 3.2 Create a Google Play service account
 
-The workflow uses the official Google Play Developer API to upload the AAB.
-You need a GCP service account with the right permissions.
+Uploading to Google Play from CI requires a GCP service account that has been
+granted access in Play Console. There are three parts: enable the API, create
+the service account, then grant it access.
 
-**Step 1 — Create the service account in Google Cloud Console**
+**Part A — Enable the Google Play Android Developer API**
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and open
-   (or create) the project linked to your Play Console account.
-2. Navigate to **IAM & Admin → Service Accounts → Create Service Account**.
-3. Give it a name like `github-play-publisher`.
-4. Grant the role **Service Account User** (the Play Console grants store-level
-   permissions separately in the next step).
-5. Click **Done**, then open the service account, go to the **Keys** tab, and
-   click **Add Key → Create new key → JSON**. Download the JSON file.
+This must be done first. Without it the API access page in Play Console will
+return a 400 error and the service account cannot talk to Google Play.
 
-**Step 2 — Grant access in Play Console**
+1. Go to the Google Play Android Developer API page in your GCP project:
+   `https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com`
+2. Make sure you are in the correct GCP project (check the project selector at the
+   top).
+3. Click **Enable**.
+
+**Part B — Create the service account in Google Cloud Console**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and select
+   the same GCP project.
+2. Navigate to **IAM & Admin → Service Accounts → + Create Service Account**.
+3. Give it a name like `github-play-publisher` and click **Create and Continue**.
+4. For the IAM role select **Service Account User**, then click **Continue → Done**.
+   Play Store permissions are granted separately in Part C.
+5. Click the service account to open it, go to the **Keys** tab, then
+   **Add Key → Create new key → JSON → Create**.
+   A `.json` file downloads automatically — this is your secret value. Note the
+   `client_email` field (e.g. `github-play-publisher@project-id.iam.gserviceaccount.com`);
+   you will need it in Part C.
+
+**Part C — Grant access in Play Console**
+
+> This step is easy to forget and causes a `403 Forbidden` error on upload.
+
+After enabling the API (Part A), the API access page becomes available. However
+you can also grant access directly through **Users and permissions**, which is
+always visible and works just as well.
+
+**Option 1 — via Users and permissions (simpler)**
+
+1. In Play Console go to **Users and permissions → Invite new users**.
+2. Enter the service account's `client_email` as the invitee address.
+3. Under **Account permissions**, assign **Release Manager**.
+4. Under **App permissions**, add your app.
+5. Click **Send invitation**. Service accounts accept automatically — no email
+   confirmation is needed.
+
+**Option 2 — via API access page (links the GCP project formally)**
 
 1. Open [play.google.com/console](https://play.google.com/console).
-2. Go to **Setup → API access** and link your Google Cloud project if it is not
-   already linked.
-3. Find the service account you just created under **Service accounts** and click
-   **Grant access**.
-4. Assign the **Release manager** permission (or a custom permission that includes
-   **Manage production releases** and **Manage testing track releases**).
-5. Click **Apply** and **Invite user**.
+2. Go to **Settings → API access**. If the page previously gave a 400 error,
+   try again now that the API is enabled (Part A). You can also use the direct
+   URL (replace `<DEVELOPER_ID>` with the numeric ID in your Play Console URL):
+   `https://play.google.com/console/u/0/developers/<DEVELOPER_ID>/api-access`
+3. Under **Link to a Google Cloud Project**, link the project from Part A.
+4. Under **Service accounts**, find your service account and click **Grant access**.
+5. Assign **Release Manager** and click **Invite user → Send invite**.
 
-**Step 3 — Store the JSON**
+**Part C — Store the JSON as a GitHub secret**
 
-Paste the entire contents of the downloaded JSON file as the
-`GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secret. Do not base64-encode it — the workflow
-reads it as plain text.
+Open the downloaded `.json` file in a text editor. It looks like:
+
+```json
+{
+  "type": "service_account",
+  "project_id": "your-project-id",
+  "private_key_id": "...",
+  "private_key": "-----BEGIN RSA PRIVATE KEY-----\n...",
+  "client_email": "github-play-publisher@your-project.iam.gserviceaccount.com",
+  ...
+}
+```
+
+Copy the **entire contents** and paste them as the `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
+secret in GitHub. Do **not** base64-encode it — the workflow reads it as plain text.
+
+> **Propagation delay** — Play Console permission changes can take up to 24 hours
+> to take effect. If you get a `403` immediately after granting access, wait and
+> re-run the workflow manually.
 
 ---
 
