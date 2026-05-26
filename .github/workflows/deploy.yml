@@ -42,7 +42,12 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+# ── Node.js 24 compatibility ──────────────────────────────────
+# GitHub Actions removes Node.js 20 on 2026-09-16 and forces
+# Node.js 24 by default from 2026-06-02. Opt in now to avoid
+# the forced migration breaking this workflow.
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
 
 jobs:
