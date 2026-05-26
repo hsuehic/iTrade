@@ -87,7 +87,7 @@ jobs:
 
     steps:
       - name: Checkout (last 2 commits for diff)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── Validate required secrets early ──────────────────────
       # Fail fast with a clear message instead of deep inside Gradle.
@@ -278,7 +278,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── Validate required secrets early ──────────────────────
       # Fail fast with a clear message instead of deep inside Xcode.
