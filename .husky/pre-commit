@@ -19,4 +19,32 @@ if ! command -v node >/dev/null 2>&1; then
   exit 127
 fi
 
-lint-staged
+# Some FUSE/network-mounted filesystems do not support unlink(). Git creates
+# *.lock files throughout .git/ and tries to clean them up with unlink() when
+# done; on these filesystems the cleanup silently fails, leaving stale lock
+# files that break subsequent git operations (they fail with "File exists").
+# The workaround: rename stale *.lock files (rename() works even when
+# unlink() doesn't) before and after lint-staged so each git sub-operation
+# starts with a clean lock state.
+_clear_stale_git_locks() {
+  GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)" || return 0
+  # Top-level .git/*.lock files (index.lock, MERGE_HEAD.lock, etc.)
+  for f in "$GIT_DIR"/*.lock; do
+    [ -f "$f" ] && mv "$f" "${f}.stale" 2>/dev/null || true
+  done
+  # refs/*.lock files (refs/stash.lock, refs/heads/*.lock, etc.)
+  find "$GIT_DIR/refs" -name "*.lock" 2>/dev/null | while read -r f; do
+    [ -f "$f" ] && mv "$f" "${f}.stale" 2>/dev/null || true
+  done
+}
+
+_clear_stale_git_locks
+# --no-stash: skip the backup/restore stash that lint-staged normally creates.
+# The stash mechanism requires unlink() for lock-file cleanup, which fails on
+# FUSE/network-mounted filesystems (EPERM). Since we only ever have fully-staged
+# files at commit time, skipping the stash is safe.
+lint-staged --no-stash
+STATUS=$?
+# Clean up any locks lint-staged's git sub-operations left behind.
+_clear_stale_git_locks
+exit $STATUS

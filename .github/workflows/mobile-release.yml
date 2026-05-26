@@ -168,6 +168,24 @@ jobs:
           channel: stable
           cache: true
 
+      # ── Environment config files ─────────────────────────────
+      # .env / .env.* are git-ignored (root .gitignore) but are
+      # declared as Flutter assets in pubspec.yaml. Create them
+      # before the build so Flutter can bundle them.
+      # Override the API URL via the MOBILE_API_BASE_URL secret;
+      # the production URL is used as the default fallback.
+      - name: Create Flutter env files
+        working-directory: apps/mobile
+        run: |
+          BASE_URL="${{ secrets.MOBILE_API_BASE_URL }}"
+          if [ -z "$BASE_URL" ]; then
+            BASE_URL="https://itrade.ihsueh.com"
+          fi
+          printf 'API_BASE_URL=%s\n' "$BASE_URL" > .env
+          cp .env .env.production
+          cp .env .env.development
+          echo "✅ Flutter env files created (API_BASE_URL=$BASE_URL)"
+
       - name: Flutter pub get
         working-directory: apps/mobile
         run: flutter pub get
@@ -281,6 +299,22 @@ jobs:
         with:
           channel: stable
           cache: true
+
+      # ── Environment config files ─────────────────────────────
+      # .env / .env.* are git-ignored (root .gitignore) but are
+      # declared as Flutter assets in pubspec.yaml. Create them
+      # before the build so Flutter can bundle them.
+      - name: Create Flutter env files
+        working-directory: apps/mobile
+        run: |
+          BASE_URL="${{ secrets.MOBILE_API_BASE_URL }}"
+          if [ -z "$BASE_URL" ]; then
+            BASE_URL="https://itrade.ihsueh.com"
+          fi
+          printf 'API_BASE_URL=%s\n' "$BASE_URL" > .env
+          cp .env .env.production
+          cp .env .env.development
+          echo "✅ Flutter env files created (API_BASE_URL=$BASE_URL)"
 
       - name: Flutter pub get
         working-directory: apps/mobile
