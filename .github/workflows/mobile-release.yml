@@ -268,9 +268,10 @@ jobs:
     needs: detect-version
     if: needs.detect-version.outputs.version_changed == 'true'
     # macOS runner — required for Xcode.
-    # macos-latest = macOS 14 (Sonoma, Apple Silicon M1) with Xcode 16.
-    # macos-13 is available if you need Intel x86_64.
-    runs-on: macos-latest
+    # Apple now requires the iOS 26 SDK (Xcode 26+) for all App Store uploads.
+    # macos-15 ships with Xcode 26; macos-latest is still on macOS 14 / Xcode 16
+    # which produces an iOS 18.x SDK binary that App Store Connect rejects.
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       VERSION: ${{ needs.detect-version.outputs.version }}
@@ -279,6 +280,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
+      # ── Log Xcode version ─────────────────────────────────────
+      # Apple requires iOS 26 SDK (Xcode 26+) for App Store uploads.
+      # This confirms the runner has the right Xcode before we proceed.
+      - name: Log Xcode version
+        run: xcodebuild -version
 
       # ── Validate required secrets early ──────────────────────
       # Fail fast with a clear message instead of deep inside Xcode.
