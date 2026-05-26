@@ -429,6 +429,18 @@ jobs:
 
           echo "✅ ExportOptions.plist generated"
 
+      # ── Disable Swift Package Manager ───────────────────────
+      # Flutter 3.22+ can add SPM integration automatically, but
+      # several plugins (sqflite_darwin, sign_in_with_apple, etc.)
+      # reference Flutter/Flutter.h in a way that breaks under SPM.
+      # Disable SPM so the build uses CocoaPods exclusively, which
+      # is fully supported by all plugins in this project.
+      - name: Disable Flutter Swift Package Manager
+        working-directory: apps/mobile
+        run: |
+          flutter config --no-enable-swift-package-manager
+          echo "✅ Swift Package Manager disabled — using CocoaPods only"
+
       # ── CocoaPods ────────────────────────────────────────────
       - name: Install CocoaPods dependencies
         working-directory: apps/mobile/ios
@@ -479,8 +491,9 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
         run: |
-          # Write the .p8 API key to a file (xcrun altool expects a file path)
-          KEYS_DIR="$RUNNER_TEMP/private_keys"
+          # Write the .p8 API key to one of the fixed paths that xcrun altool
+          # searches. $RUNNER_TEMP is NOT in altool's search list; ~/.appstoreconnect/private_keys is.
+          KEYS_DIR="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$KEYS_DIR"
           echo "$ASC_PRIVATE_KEY" > "$KEYS_DIR/AuthKey_${ASC_KEY_ID}.p8"
 
@@ -506,5 +519,5 @@ jobs:
           security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/certificate.p12"
           rm -f "$RUNNER_TEMP/profile.mobileprovision"
-          rm -rf "$RUNNER_TEMP/private_keys"
+          rm -rf "$HOME/.appstoreconnect/private_keys"
           echo "✅ Temporary secrets removed"
