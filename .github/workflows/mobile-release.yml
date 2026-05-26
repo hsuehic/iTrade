@@ -59,6 +59,13 @@ concurrency:
   group: mobile-release
   cancel-in-progress: false
 
+# ── Permissions ───────────────────────────────────────────────
+# Explicitly grant the GITHUB_TOKEN the minimum scopes needed.
+# Without this, repositories with restricted default token
+# permissions will get a 403 on checkout.
+permissions:
+  contents: read
+
 # ── Node.js 24 compatibility ──────────────────────────────────
 # GitHub Actions removes Node.js 20 on 2026-09-16 and forces
 # Node.js 24 by default from 2026-06-02. Opt in now to avoid
