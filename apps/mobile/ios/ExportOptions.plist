@@ -23,6 +23,12 @@
     <key>signingStyle</key>
     <string>manual</string>
 
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.ihsueh.itrade</key>
+        <string>iTrade_AppStore</string>
+    </dict>
+
     <key>uploadBitcode</key>
     <false/>
 

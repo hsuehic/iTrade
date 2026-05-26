@@ -437,6 +437,19 @@ jobs:
           sudo gem install cocoapods --no-document 2>/dev/null || gem install cocoapods --no-document
           pod install --repo-update
 
+      # ── Patch entitlements for production ───────────────────
+      # Runner.entitlements has aps-environment=development for local
+      # debug builds. App Store distribution requires 'production'.
+      # Patch it here so the archive is signed correctly without
+      # modifying the committed file.
+      - name: Patch aps-environment to production
+        working-directory: apps/mobile
+        run: |
+          /usr/libexec/PlistBuddy \
+            -c "Set :aps-environment production" \
+            ios/Runner/Runner.entitlements
+          echo "✅ aps-environment set to production"
+
       # ── Build ────────────────────────────────────────────────
       # ExportOptions.plist at apps/mobile/ios/ExportOptions.plist
       # controls the signing method and distribution type (app-store).
