@@ -59,6 +59,13 @@ concurrency:
   group: mobile-release
   cancel-in-progress: false
 
+# ── Node.js 24 compatibility ──────────────────────────────────
+# GitHub Actions removes Node.js 20 on 2026-09-16 and forces
+# Node.js 24 by default from 2026-06-02. Opt in now to avoid
+# the forced migration breaking this workflow.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # ══════════════════════════════════════════════════════════════
 # Job 1: Detect whether the `version:` field actually changed
 # ══════════════════════════════════════════════════════════════
@@ -129,6 +136,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── Validate required secrets early ──────────────────────
+      # Fail fast with a clear message instead of deep inside Gradle.
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]          && MISSING="${MISSING}\n  • ANDROID_KEYSTORE_BASE64"
+          [ -z "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ]        && MISSING="${MISSING}\n  • ANDROID_KEYSTORE_PASSWORD"
+          [ -z "${{ secrets.ANDROID_KEY_ALIAS }}" ]                && MISSING="${MISSING}\n  • ANDROID_KEY_ALIAS"
+          [ -z "${{ secrets.ANDROID_KEY_PASSWORD }}" ]             && MISSING="${MISSING}\n  • ANDROID_KEY_PASSWORD"
+          [ -z "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}" ] && MISSING="${MISSING}\n  • GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"
+          if [ -n "$MISSING" ]; then
+            printf "❌ Missing required secrets:%b\n" "$MISSING"
+            echo ""
+            echo "→ Configure them at: Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          echo "✅ All required Android secrets are present"
+
       # ── Java (required by Gradle) ────────────────────────────
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -158,6 +183,17 @@ jobs:
         run: |
           KEYSTORE_PATH="$(pwd)/android/app/release.keystore"
           echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+
+          # Verify the decoded keystore is valid (non-empty and readable)
+          if [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "❌ Decoded keystore is empty — check ANDROID_KEYSTORE_BASE64 secret"
+            exit 1
+          fi
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" \
+            -storetype PKCS12 2>/dev/null \
+            || keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" \
+            -storetype JKS 2>/dev/null \
+            || { echo "❌ Invalid keystore — check ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD"; exit 1; }
 
           cat > android/key.properties <<EOF
           storePassword=${KEYSTORE_PASSWORD}
@@ -219,6 +255,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── Validate required secrets early ──────────────────────
+      # Fail fast with a clear message instead of deep inside Xcode.
+      - name: Validate required secrets
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.IOS_CERTIFICATE_BASE64 }}" ]            && MISSING="${MISSING}\n  • IOS_CERTIFICATE_BASE64"
+          [ -z "${{ secrets.IOS_CERTIFICATE_PASSWORD }}" ]          && MISSING="${MISSING}\n  • IOS_CERTIFICATE_PASSWORD"
+          [ -z "${{ secrets.IOS_KEYCHAIN_PASSWORD }}" ]             && MISSING="${MISSING}\n  • IOS_KEYCHAIN_PASSWORD"
+          [ -z "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" ]   && MISSING="${MISSING}\n  • IOS_PROVISIONING_PROFILE_BASE64"
+          [ -z "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" ]          && MISSING="${MISSING}\n  • APP_STORE_CONNECT_KEY_ID"
+          [ -z "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" ]       && MISSING="${MISSING}\n  • APP_STORE_CONNECT_ISSUER_ID"
+          [ -z "${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}" ]     && MISSING="${MISSING}\n  • APP_STORE_CONNECT_PRIVATE_KEY"
+          if [ -n "$MISSING" ]; then
+            printf "❌ Missing required secrets:%b\n" "$MISSING"
+            echo ""
+            echo "→ Configure them at: Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          echo "✅ All required iOS secrets are present"
+
       # ── Flutter ──────────────────────────────────────────────
       - name: Set up Flutter (stable)
         uses: subosito/flutter-action@v2
@@ -252,6 +308,11 @@ jobs:
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
 
+          if [ ! -s "$CERT_PATH" ]; then
+            echo "❌ Decoded certificate is empty — check IOS_CERTIFICATE_BASE64 secret"
+            exit 1
+          fi
+
           security import "$CERT_PATH" \
             -k "$KEYCHAIN_PATH" \
             -P "$CERTIFICATE_PASSWORD" \
@@ -271,6 +332,11 @@ jobs:
           PP_PATH="$RUNNER_TEMP/profile.mobileprovision"
           echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PP_PATH"
 
+          if [ ! -s "$PP_PATH" ]; then
+            echo "❌ Decoded provisioning profile is empty — check IOS_PROVISIONING_PROFILE_BASE64 secret"
+            exit 1
+          fi
+
           # Extract UUID so we can store the profile under its canonical name
           PROFILE_UUID=$(security cms -D -i "$PP_PATH" \
             | plutil -extract UUID raw -)
@@ -279,6 +345,55 @@ jobs:
           mkdir -p "$PROFILES_DIR"
           cp "$PP_PATH" "$PROFILES_DIR/${PROFILE_UUID}.mobileprovision"
           echo "✅ Provisioning profile installed: ${PROFILE_UUID}"
+
+      # ── FIX: Complete ExportOptions.plist at runtime ──────────
+      # apps/mobile/ios/ExportOptions.plist exists in the repo but is
+      # intentionally incomplete: it omits `teamID` (required by Xcode
+      # for manual signing) and leaves `provisioningProfiles` commented
+      # out. This step overwrites it with a fully populated version
+      # derived from the provisioning profile secret — no extra secrets
+      # needed.
+      - name: Generate ExportOptions.plist
+        run: |
+          PP_PATH="$RUNNER_TEMP/profile.mobileprovision"
+
+          TEAM_ID=$(security cms -D -i "$PP_PATH" | plutil -extract TeamIdentifier.0 raw -)
+          APP_ID=$(security cms -D -i "$PP_PATH" | plutil -extract Entitlements.application-identifier raw -)
+          BUNDLE_ID="${APP_ID#*.}"   # strip the TEAMID. prefix
+          PROFILE_NAME=$(security cms -D -i "$PP_PATH" | plutil -extract Name raw -)
+
+          echo "📦 Team ID:   $TEAM_ID"
+          echo "📦 Bundle ID: $BUNDLE_ID"
+          echo "📦 Profile:   $PROFILE_NAME"
+
+          mkdir -p apps/mobile/ios
+          cat > apps/mobile/ios/ExportOptions.plist << PLISTEOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>$TEAM_ID</string>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+          </dict>
+          </plist>
+          PLISTEOF
+
+          echo "✅ ExportOptions.plist generated"
 
       # ── CocoaPods ────────────────────────────────────────────
       - name: Install CocoaPods dependencies
