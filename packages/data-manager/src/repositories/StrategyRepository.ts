@@ -128,7 +128,6 @@ export class StrategyRepository {
       });
     }
 
-    // Use cache for frequently accessed queries
     return await query.orderBy('strategy.createdAt', 'DESC').getMany();
   }
 

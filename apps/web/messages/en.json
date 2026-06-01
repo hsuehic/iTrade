@@ -1551,6 +1551,7 @@
         "symbol": "Symbol",
         "pnl": "PnL",
         "created": "Created",
+        "updated": "Updated",
         "actions": "Actions"
       },
       "noResults": "No strategies found matching your filters.",

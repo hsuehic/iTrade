@@ -124,8 +124,8 @@ export default function StrategyPage() {
   const [filterExchange, setFilterExchange] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    field: 'status',
-    direction: 'asc',
+    field: 'createdAt',
+    direction: 'desc',
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);

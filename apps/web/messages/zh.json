@@ -1543,6 +1543,7 @@
         "symbol": "交易对",
         "pnl": "盈亏",
         "created": "创建时间",
+        "updated": "更新时间",
         "actions": "操作"
       },
       "noResults": "未找到符合条件的策略。",

@@ -1178,6 +1178,7 @@ export class TypeOrmDataManager implements IDataManager {
     startDate?: Date;
     endDate?: Date;
     userId?: string;
+    search?: string;
     includeStrategy?: boolean;
     includeFills?: boolean;
     page?: number;

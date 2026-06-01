@@ -183,6 +183,7 @@ export async function GET(request: NextRequest) {
     const pageSize = searchParams.get('pageSize');
     const sortBy = searchParams.get('sortBy');
     const sortOrder = searchParams.get('sortOrder');
+    const search = searchParams.get('search');
 
     interface OrderFilters {
       strategyId?: number;
@@ -194,6 +195,7 @@ export async function GET(request: NextRequest) {
       startDate?: Date;
       endDate?: Date;
       userId?: string;
+      search?: string;
       page?: number;
       pageSize?: number;
       sortBy?: string;
@@ -219,6 +221,7 @@ export async function GET(request: NextRequest) {
     if (pageSize) filters.pageSize = parseInt(pageSize);
     if (sortBy) filters.sortBy = sortBy;
     if (sortOrder) filters.sortOrder = sortOrder as 'ASC' | 'DESC';
+    if (search) filters.search = search;
     filters.userId = session.user.id;
 
     const dataManager = await getDataManager();

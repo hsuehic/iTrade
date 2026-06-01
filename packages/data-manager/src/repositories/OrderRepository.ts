@@ -59,6 +59,7 @@ export class OrderRepository {
     startDate?: Date;
     endDate?: Date;
     userId?: string;
+    search?: string;
     includeStrategy?: boolean;
     includeFills?: boolean;
     page?: number;
@@ -71,6 +72,9 @@ export class OrderRepository {
     // Only join if explicitly requested (performance optimization)
     if (filters?.includeStrategy) {
       query.leftJoinAndSelect('order.strategy', 'strategy');
+    } else if (filters?.search) {
+      // Need strategy join for strategy name search
+      query.leftJoin('order.strategy', 'strategy');
     }
     if (filters?.includeFills) {
       query.leftJoinAndSelect('order.fills', 'fills');
@@ -113,9 +117,21 @@ export class OrderRepository {
       });
     }
 
+    if (filters?.search) {
+      const searchTerm = `%${filters.search}%`;
+      query.andWhere(
+        new Brackets((qb) => {
+          qb.where('order.symbol ILIKE :search', { search: searchTerm })
+            .orWhere('order.id ILIKE :search', { search: searchTerm })
+            .orWhere('order.clientOrderId ILIKE :search', { search: searchTerm })
+            .orWhere('strategy.name ILIKE :search', { search: searchTerm });
+        }),
+      );
+    }
+
     if (filters?.userId) {
       // Must join strategy or position to filter by legacy orders without userId
-      if (!filters.includeStrategy) {
+      if (!filters.includeStrategy && !filters.search) {
         query.leftJoin('order.strategy', 'strategy');
       }
       query.leftJoin('order.position', 'position');

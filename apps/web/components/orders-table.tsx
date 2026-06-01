@@ -23,11 +23,8 @@ import {
 } from '@tabler/icons-react';
 import {
   ColumnDef,
-  ColumnFiltersState,
   flexRender,
   getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
   SortingState,
   useReactTable,
 } from '@tanstack/react-table';
@@ -276,7 +273,6 @@ export function OrdersTable({
   const [sorting, setSorting] = React.useState<SortingState>([
     { id: 'timestamp', desc: true },
   ]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = React.useState('');
   const [exchanges, setExchanges] = React.useState<string[]>([]);
   const [selectedFilterExchange, setSelectedFilterExchange] = React.useState('all');
@@ -363,12 +359,21 @@ export function OrdersTable({
     [t],
   );
 
+  const debouncedSearch = useDebouncedValue(globalFilter, 400);
+
   const fetchData = React.useCallback(async () => {
     try {
       const params = new URLSearchParams();
-      if (selectedExchange !== 'all') {
-        params.set('exchange', selectedExchange);
-      }
+
+      // Exchange: internal filter takes precedence over prop
+      const effectiveExchange =
+        selectedFilterExchange !== 'all'
+          ? selectedFilterExchange
+          : selectedExchange !== 'all'
+            ? selectedExchange
+            : null;
+      if (effectiveExchange) params.set('exchange', effectiveExchange);
+
       if (selectedStrategy) {
         params.set('strategyId', selectedStrategy.toString());
       }
@@ -384,6 +389,7 @@ export function OrdersTable({
       if (selectedStatus !== 'all') params.set('status', selectedStatus);
       if (selectedSide !== 'all') params.set('side', selectedSide);
       if (selectedType !== 'all') params.set('type', selectedType);
+      if (debouncedSearch) params.set('search', debouncedSearch);
 
       // Sorting
       const sort = sorting[0];
@@ -427,12 +433,14 @@ export function OrdersTable({
   }, [
     datePreset,
     selectedExchange,
+    selectedFilterExchange,
     selectedStrategy,
     pageIndex,
     pageSize,
     selectedStatus,
     selectedSide,
     selectedType,
+    debouncedSearch,
     sorting,
     t,
   ]);
@@ -444,6 +452,11 @@ export function OrdersTable({
     },
     [],
   );
+
+  // Reset page when search changes
+  React.useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [debouncedSearch]);
 
   const debouncedEditForm = useDebouncedValue(editForm, 500);
 
@@ -660,10 +673,6 @@ export function OrdersTable({
             </div>
           );
         },
-        filterFn: (row, id, value) => {
-          if (value === 'all') return true;
-          return row.getValue(id) === value;
-        },
       },
       {
         accessorKey: 'side',
@@ -676,10 +685,6 @@ export function OrdersTable({
             {getSideLabel(row.original.side)}
           </Badge>
         ),
-        filterFn: (row, id, value) => {
-          if (value === 'all') return true;
-          return row.getValue(id) === value;
-        },
       },
       {
         accessorKey: 'type',
@@ -689,10 +694,6 @@ export function OrdersTable({
             {getTypeLabel(row.original.type)}
           </Badge>
         ),
-        filterFn: (row, id, value) => {
-          if (value === 'all') return true;
-          return row.getValue(id) === value;
-        },
       },
       {
         accessorKey: 'quantity',
@@ -802,10 +803,6 @@ export function OrdersTable({
           const a = statusPriority[rowA.original.status.toUpperCase()] ?? 10;
           const b = statusPriority[rowB.original.status.toUpperCase()] ?? 10;
           return a - b;
-        },
-        filterFn: (row, id, value) => {
-          if (value === 'all') return true;
-          return row.getValue(id) === value;
         },
       },
       {
@@ -964,8 +961,6 @@ export function OrdersTable({
     pageCount: Math.ceil(totalCount / pageSize),
     state: {
       sorting,
-      columnFilters,
-      globalFilter,
       pagination: {
         pageIndex,
         pageSize,
@@ -975,32 +970,9 @@ export function OrdersTable({
     manualPagination: true,
     onSortingChange: handleSortingChange,
     manualSorting: true,
-    onColumnFiltersChange: setColumnFilters,
-    onGlobalFilterChange: setGlobalFilter,
+    manualFiltering: true,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   });
-
-  // Apply column filters
-  React.useEffect(() => {
-    const newFilters: ColumnFiltersState = [];
-
-    if (selectedFilterExchange !== 'all') {
-      newFilters.push({ id: 'exchange', value: selectedFilterExchange });
-    }
-    if (selectedStatus !== 'all') {
-      newFilters.push({ id: 'status', value: selectedStatus });
-    }
-    if (selectedSide !== 'all') {
-      newFilters.push({ id: 'side', value: selectedSide });
-    }
-    if (selectedType !== 'all') {
-      newFilters.push({ id: 'type', value: selectedType });
-    }
-
-    setColumnFilters(newFilters);
-  }, [selectedFilterExchange, selectedStatus, selectedSide, selectedType]);
 
   const hasFilters =
     globalFilter ||
@@ -1015,61 +987,33 @@ export function OrdersTable({
     setSelectedStatus('all');
     setSelectedSide('all');
     setSelectedType('all');
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   };
 
-  // Calculate statistics from raw orders data (not filtered table model)
+  // Reset page when dropdown filters change
+  React.useEffect(() => {
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+  }, [selectedFilterExchange, selectedStatus, selectedSide, selectedType]);
+
+  // Statistics are computed from the current page's server-filtered data.
+  // totalCount reflects the full server-side filtered total.
   const stats = React.useMemo(() => {
-    // Apply the same filters as the column filters
-    let filteredOrders = orders;
-
-    if (selectedFilterExchange !== 'all') {
-      filteredOrders = filteredOrders.filter(
-        (o) => o.exchange === selectedFilterExchange,
-      );
-    }
-    if (selectedStatus !== 'all') {
-      filteredOrders = filteredOrders.filter((o) => o.status === selectedStatus);
-    }
-    if (selectedSide !== 'all') {
-      filteredOrders = filteredOrders.filter((o) => o.side === selectedSide);
-    }
-    if (selectedType !== 'all') {
-      filteredOrders = filteredOrders.filter((o) => o.type === selectedType);
-    }
-    if (globalFilter) {
-      const lowerFilter = globalFilter.toLowerCase();
-      filteredOrders = filteredOrders.filter(
-        (o) =>
-          o.symbol.toLowerCase().includes(lowerFilter) ||
-          o.id.toLowerCase().includes(lowerFilter) ||
-          o.clientOrderId?.toLowerCase().includes(lowerFilter) ||
-          o.strategyName?.toLowerCase().includes(lowerFilter),
-      );
-    }
-
-    const filledOrders = filteredOrders.filter((o) => o.status === 'FILLED');
+    const filledOrders = orders.filter((o) => o.status === 'FILLED');
     const totalPnl = filledOrders.reduce(
       (sum, o) => sum + parseFloat(o.realizedPnl || '0'),
       0,
     );
-    const buyOrders = filteredOrders.filter((o) => o.side === 'BUY').length;
-    const sellOrders = filteredOrders.filter((o) => o.side === 'SELL').length;
+    const buyOrders = orders.filter((o) => o.side === 'BUY').length;
+    const sellOrders = orders.filter((o) => o.side === 'SELL').length;
 
     return {
-      total: filteredOrders.length,
+      total: totalCount,
       filled: filledOrders.length,
       totalPnl,
       buyOrders,
       sellOrders,
     };
-  }, [
-    orders,
-    selectedFilterExchange,
-    selectedStatus,
-    selectedSide,
-    selectedType,
-    globalFilter,
-  ]);
+  }, [orders, totalCount]);
 
   if (loading) {
     return (
