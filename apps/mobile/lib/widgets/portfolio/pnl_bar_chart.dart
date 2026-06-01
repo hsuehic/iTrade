@@ -195,13 +195,11 @@ class _PnlBarChartState extends State<PnlBarChart> {
     const barKey = 'total';
 
     // Build bar groups
-    double yMin = 0;
-    double yMax = 0;
+    double absMax = 0;
     final groups = <BarChartGroupData>[];
     for (int i = 0; i < _data.length; i++) {
       final val = (double.tryParse(_data[i][barKey]?.toString() ?? '0') ?? 0);
-      yMin = math.min(yMin, val);
-      yMax = math.max(yMax, val);
+      absMax = math.max(absMax, val.abs());
       groups.add(BarChartGroupData(
         x: i,
         barRods: [
@@ -219,9 +217,10 @@ class _PnlBarChartState extends State<PnlBarChart> {
       ));
     }
 
-    final pad = math.max((yMax - yMin).abs() * 0.12, 1.0);
-    final domainMin = yMin - pad;
-    final domainMax = yMax + pad;
+    // Symmetric domain around 0 with a nice round max (1/2/5 × 10^n)
+    final domainMax = _niceMax(absMax * 1.1);
+    final domainMin = -domainMax;
+    final yInterval = domainMax / 2; // 5 ticks: -max, -max/2, 0, +max/2, +max
 
     final labelColor = isDark ? Colors.white54 : Colors.black38;
     final gridColor = isDark
@@ -240,7 +239,7 @@ class _PnlBarChartState extends State<PnlBarChart> {
             gridData: FlGridData(
               show: true,
               drawVerticalLine: false,
-              horizontalInterval: math.max((domainMax - domainMin) / 5, 0.001),
+              horizontalInterval: yInterval,
               getDrawingHorizontalLine: (_) => FlLine(
                 color: gridColor,
                 strokeWidth: 1,
@@ -262,7 +261,7 @@ class _PnlBarChartState extends State<PnlBarChart> {
                 sideTitles: SideTitles(
                   showTitles: true,
                   reservedSize: 56.w,
-                  interval: math.max((domainMax - domainMin) / 4, 0.001),
+                  interval: yInterval,
                   getTitlesWidget: (v, _) => Padding(
                     padding: EdgeInsets.only(right: 4.w),
                     child: Text(
@@ -400,6 +399,17 @@ class _PnlBarChartState extends State<PnlBarChart> {
         ],
       ),
     );
+  }
+
+  /// Round [raw] up to the nearest 1/2/5 × 10^n value.
+  double _niceMax(double raw) {
+    if (raw <= 0) return 1;
+    final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
+    final norm = raw / mag;
+    if (norm <= 1) return mag;
+    if (norm <= 2) return 2 * mag;
+    if (norm <= 5) return 5 * mag;
+    return 10 * mag;
   }
 
   double _barWidth() {

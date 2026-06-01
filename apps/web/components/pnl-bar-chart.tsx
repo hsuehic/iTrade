@@ -392,13 +392,13 @@ export function PnlBarChart({
               <ReferenceLine
                 y={0}
                 stroke="#888888"
-                strokeWidth={1}
+                strokeWidth={0.8}
                 ifOverflow="extendDomain"
                 label={{
-                  value: '$0',
+                  value: '',
                   position: 'insideLeft',
                   fontSize: 10,
-                  fill: '#888888',
+                  fill: '#999999',
                   dy: -6,
                 }}
               />
