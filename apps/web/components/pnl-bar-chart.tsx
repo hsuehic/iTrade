@@ -183,20 +183,27 @@ export function PnlBarChart({
   // Always use 'total' for the bar — per-exchange breakdown is in tooltip only.
   // This ensures correct bar positioning when exchanges have mixed positive/negative P&L.
 
-  // Calculate Y-axis domain with padding
-  const calculateYDomain = () => {
-    if (!chartData.length) return ['auto', 'auto'];
-    let min = 0;
-    let max = 0;
+  // Round up to the nearest "nice" number: 1/2/5 × 10^n
+  const niceMax = (raw: number): number => {
+    if (raw <= 0) return 1;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / mag;
+    if (norm <= 1) return mag;
+    if (norm <= 2) return 2 * mag;
+    if (norm <= 5) return 5 * mag;
+    return 10 * mag;
+  };
+
+  // Symmetric domain around 0 with a nice round max value
+  const calculateYDomain = (): [number, number] => {
+    if (!chartData.length) return [-1, 1];
+    let absMax = 0;
     chartData.forEach((d) => {
       const v = d['total'] as number;
-      if (typeof v === 'number') {
-        min = Math.min(min, v);
-        max = Math.max(max, v);
-      }
+      if (typeof v === 'number') absMax = Math.max(absMax, Math.abs(v));
     });
-    const pad = Math.max(Math.abs(max - min) * 0.1, 1);
-    return [min - pad, max + pad];
+    const nice = niceMax(absMax * 1.1); // 10% headroom then round up
+    return [-nice, nice];
   };
 
   return (
@@ -292,6 +299,7 @@ export function PnlBarChart({
                 tick={{ fill: 'hsl(var(--muted-foreground))' }}
                 tickFormatter={formatCurrency}
                 domain={calculateYDomain()}
+                tickCount={5}
               />
               <ChartTooltip
                 cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
