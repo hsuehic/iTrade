@@ -281,6 +281,8 @@ class _PnlBarChartState extends State<PnlBarChart> {
                   interval: _xLabelInterval(),
                   getTitlesWidget: (v, _) {
                     final idx = v.round();
+                    final intervalInt = _xLabelInterval().round();
+                    if (idx % intervalInt != 0) return const SizedBox.shrink();
                     if (idx < 0 || idx >= _data.length) return const SizedBox.shrink();
                     final label = _formatDateLabel(_data[idx]['date']?.toString() ?? '');
                     return Padding(
