@@ -28,6 +28,7 @@ class PnlBarChart extends StatefulWidget {
 class _PnlBarChartState extends State<PnlBarChart> {
   String _granularity = 'day'; // 'hour' | 'day' | 'month'
   List<Map<String, dynamic>> _data = [];
+  List<String> _exchanges = [];
   bool _loading = true;
   bool _hasError = false;
   Timer? _timer;
@@ -69,6 +70,11 @@ class _PnlBarChartState extends State<PnlBarChart> {
       if (!mounted) return;
       setState(() {
         _data = data;
+        _exchanges = data.isNotEmpty
+            ? data[0].keys
+                .where((k) => k != 'date' && k != 'total')
+                .toList()
+            : [];
         _loading = false;
         _hasError = false;
         _touchedIndex = null;
@@ -88,6 +94,7 @@ class _PnlBarChartState extends State<PnlBarChart> {
       _granularity = g;
       _loading = true;
       _data = [];
+      _exchanges = [];
       _touchedIndex = null;
     });
     _fetchData();
