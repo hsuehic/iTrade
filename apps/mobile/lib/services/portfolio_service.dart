@@ -152,6 +152,36 @@ class PortfolioService {
     }
   }
 
+  /// Fetch P&L chart data (bar chart: hour / day / month granularity).
+  /// P&L excludes the impact of deposits and withdrawals.
+  Future<List<Map<String, dynamic>>> fetchPnlChartData({
+    String exchange = 'all',
+    String granularity = 'day',
+  }) async {
+    try {
+      final response = await ApiClient.instance.getJson<Map<String, dynamic>>(
+        '/api/analytics/pnl-chart',
+        queryParameters: {
+          'granularity': granularity,
+          if (exchange != 'all') 'exchange': exchange.trim().toLowerCase(),
+        },
+      );
+
+      if (response.data == null) {
+        throw Exception('No data received from P&L chart API');
+      }
+
+      final raw = response.data!['chartData'];
+      if (raw is List) {
+        return raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+      return [];
+    } catch (e, stackTrace) {
+      _logger.e('Failed to fetch P&L chart data', error: e, stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
   /// Fetch balance chart data (time-series per exchange)
   Future<List<Map<String, dynamic>>> fetchBalanceChartData({
     String exchange = 'all',

@@ -307,7 +307,7 @@ export class BalanceHistoryRepository {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'minute' | '5min' | 'hour' | 'day' | 'week',
+    interval: 'minute' | '5min' | 'hour' | 'day' | 'week' | 'month',
     userId?: string,
   ): Promise<
     Array<{
@@ -332,6 +332,9 @@ export class BalanceHistoryRepository {
         break;
       case 'week':
         repo = this.weekRepo;
+        break;
+      case 'month':
+        repo = this.monthRepo;
         break;
       case 'day':
       default:

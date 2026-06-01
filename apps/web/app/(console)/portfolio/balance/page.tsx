@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 
 import { BalanceOverviewCards } from '@/components/balance-overview-cards';
 import { AccountBalanceChart } from '@/components/account-balance-chart';
+import { PnlBarChart } from '@/components/pnl-bar-chart';
 import { ExchangeBalanceBreakdown } from '@/components/exchange-balance-breakdown';
 import { ExchangeSelector } from '@/components/exchange-selector';
 import { SiteHeader } from '@/components/site-header';
@@ -66,6 +67,14 @@ export default function BalancePage() {
             {/* Balance History Chart */}
             <div className="px-4 lg:px-6">
               <AccountBalanceChart
+                selectedExchange={selectedExchange}
+                refreshInterval={REFRESH_INTERVAL}
+              />
+            </div>
+
+            {/* P&L Bar Chart */}
+            <div className="px-4 lg:px-6">
+              <PnlBarChart
                 selectedExchange={selectedExchange}
                 refreshInterval={REFRESH_INTERVAL}
               />

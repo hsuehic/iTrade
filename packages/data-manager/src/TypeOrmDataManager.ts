@@ -1390,7 +1390,7 @@ export class TypeOrmDataManager implements IDataManager {
     exchange: string,
     startTime: Date,
     endTime: Date,
-    interval: 'minute' | '5min' | 'hour' | 'day' | 'week' = 'day',
+    interval: 'minute' | '5min' | 'hour' | 'day' | 'week' | 'month' = 'day',
     userId?: string,
   ) {
     this.ensureInitialized();
