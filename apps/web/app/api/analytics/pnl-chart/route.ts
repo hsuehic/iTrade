@@ -186,6 +186,11 @@ export async function GET(request: Request) {
       const key = visibleKeys[i];
       const prevKey = sortedKeys[sortedKeys.indexOf(key) - 1] ?? null;
 
+      // Skip the first period if there is no prior balance to diff against.
+      // Without an opening balance the P&L would be meaningless (full account
+      // value appears as profit). This happens when historical data was pruned.
+      if (prevKey === null) continue;
+
       const point: Record<string, number | string> = {
         date: keyToIso(key, granularity),
       };
@@ -194,9 +199,7 @@ export async function GET(request: Request) {
 
       for (const ex of exchangesToQuery) {
         const closingBal = balByExAndPeriod[ex]?.[key] ?? 0;
-        // When no prior period exists (first record), use 0 as the opening balance so
-        // P&L = closing_balance - net_transfers (i.e. total earned since tracking began).
-        const openingBal = prevKey != null ? (balByExAndPeriod[ex]?.[prevKey] ?? 0) : 0;
+        const openingBal = balByExAndPeriod[ex]?.[prevKey] ?? 0;
         const netTransfer = netTransferByExAndPeriod[ex.toLowerCase()]?.[key] ?? 0;
 
         const exPnl = closingBal - openingBal - netTransfer;
