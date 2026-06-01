@@ -204,14 +204,7 @@ export async function POST(request: NextRequest) {
           system,
           messages,
           maxOutputTokens: 4000,
-          // Disable Gemini's internal "thinking" phase (gemini-2.5-* models).
-          // An unconstrained thinking budget can add 5–30 s of TTFT. For the
-          // help bot, fast retrieval-augmented answers matter more than deep
-          // chain-of-thought reasoning.
-          providerOptions: {
-            google: { thinkingConfig: { thinkingBudget: 0 } },
-          },
-        } as Parameters<typeof streamText>[0]);
+        });
 
         // Stream text tokens
         let fullText = '';
