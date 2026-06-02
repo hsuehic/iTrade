@@ -186,9 +186,10 @@ export async function GET(request: Request) {
       const key = visibleKeys[i];
       const prevKey = sortedKeys[sortedKeys.indexOf(key) - 1] ?? null;
 
-      // Skip the first period if there is no prior balance to diff against.
-      // Without an opening balance the P&L would be meaningless (full account
-      // value appears as profit). This happens when historical data was pruned.
+      // Skip periods with no prior balance snapshot — the P&L would be meaningless
+      // (full account value appears as profit). A synthetic reference record should
+      // be inserted for the period immediately before the first real data period so
+      // that period shows correctly while this one is still skipped.
       if (prevKey === null) continue;
 
       const point: Record<string, number | string> = {
