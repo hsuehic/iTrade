@@ -713,6 +713,7 @@ class _LineChart extends StatelessWidget {
                 final label = k == 'total'
                     ? 'Total'
                     : k.substring(0, 1).toUpperCase() + k.substring(1);
+
                 return LineTooltipItem(
                   e.key == 0 ? '$dateLabel\n' : '',
                   TextStyle(

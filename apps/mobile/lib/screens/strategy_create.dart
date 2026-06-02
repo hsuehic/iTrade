@@ -205,6 +205,12 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     }
 
     setState(() {});
+
+    // Eagerly load tickers for the pre-filled exchange so the symbol picker
+    // is ready without an extra round-trip when the user taps the field.
+    if (_selectedExchange.trim().isNotEmpty) {
+      _loadTickersForExchange();
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -244,17 +250,17 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       _loadingTickers = true;
       _tickersError = null;
     });
-    final raw = await _strategyService.getMarketTickers();
+    final raw = await _strategyService.getTradingPairs();
     if (!mounted) return;
-    final normalized = raw.map((item) => _SymbolTicker.fromJson(item)).toList();
-    final exchangeName = SupportedExchanges.getName(_selectedExchange);
-    final filtered = normalized
-        .where((t) => t.exchange?.toLowerCase() == exchangeName.toLowerCase())
+    final filtered = raw
+        .map((item) => _SymbolTicker.fromJson(item))
+        .where((t) =>
+            t.exchange?.toLowerCase() == _selectedExchange.toLowerCase())
         .toList();
     setState(() {
       _tickers = filtered;
       _loadingTickers = false;
-      _tickersError = filtered.isEmpty ? 'No market data available' : null;
+      _tickersError = filtered.isEmpty ? 'No trading pairs available' : null;
     });
   }
 
@@ -536,17 +542,6 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     });
   }
 
-  List<String> _getDefaultSymbols() {
-    switch (_selectedExchange) {
-      case 'binance':
-        return ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT'];
-      case 'okx':
-        return ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 'DOGE/USDT'];
-      default:
-        return ['BTC/USDC', 'ETH/USDC', 'SOL/USDC', 'XRP/USDC', 'DOGE/USDC'];
-    }
-  }
-
   Future<void> _openSymbolPicker() async {
     if (_selectedExchange.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -568,7 +563,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => _SymbolPickerSheet(
         title: 'Select Trading Pair',
-        defaultSymbols: _getDefaultSymbols(),
+        exchange: _selectedExchange,
         tickers: _tickers,
         loading: _loadingTickers,
         errorMessage: _tickersError,
@@ -1964,12 +1959,15 @@ class _SymbolTicker {
   final double? price;
   final double? change24h;
   final String? exchange;
+  /// 'spot' or 'perpetual'
+  final String marketType;
 
   const _SymbolTicker({
     required this.symbol,
     this.price,
     this.change24h,
     this.exchange,
+    this.marketType = 'spot',
   });
 
   factory _SymbolTicker.fromJson(Map<String, dynamic> json) {
@@ -1978,6 +1976,7 @@ class _SymbolTicker {
       price: (json['price'] as num?)?.toDouble(),
       change24h: (json['change24h'] as num?)?.toDouble(),
       exchange: json['exchange'] as String?,
+      marketType: json['type'] as String? ?? 'spot',
     );
   }
 }
@@ -2136,7 +2135,7 @@ class _CoinAvatar extends StatelessWidget {
 
 class _SymbolPickerSheet extends StatefulWidget {
   final String title;
-  final List<String> defaultSymbols;
+  final String exchange;
   final List<_SymbolTicker> tickers;
   final bool loading;
   final String? errorMessage;
@@ -2144,7 +2143,7 @@ class _SymbolPickerSheet extends StatefulWidget {
 
   const _SymbolPickerSheet({
     required this.title,
-    required this.defaultSymbols,
+    required this.exchange,
     required this.tickers,
     required this.loading,
     required this.errorMessage,
@@ -2158,6 +2157,8 @@ class _SymbolPickerSheet extends StatefulWidget {
 class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
   late final TextEditingController _searchController;
   String _query = '';
+  /// 'all', 'spot', or 'perpetual'
+  String _marketFilter = 'all';
 
   @override
   void initState() {
@@ -2172,16 +2173,27 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
     super.dispose();
   }
 
+  /// Convert a CCXT-format symbol (e.g. BTC/USDT) to the exchange-native
+  /// display format (e.g. BTCUSDT for Binance, BTC-USDT for OKX).
+  String _nativeSymbol(String ccxtSymbol) =>
+      SupportedExchanges.normalizeSymbol(ccxtSymbol, widget.exchange);
+
   List<_SymbolTicker> get _filtered {
-    final all = widget.tickers.isNotEmpty
-        ? widget.tickers
-        : widget.defaultSymbols
-            .map((s) => _SymbolTicker(symbol: s))
-            .toList();
-    if (_query.trim().isEmpty) return all;
+    var list = widget.tickers;
+    // Apply market type filter
+    if (_marketFilter != 'all') {
+      list = list.where((t) => t.marketType == _marketFilter).toList();
+    }
+    if (_query.trim().isEmpty) return list;
     final lower = _query.trim().toLowerCase();
-    return all.where((t) => t.symbol.toLowerCase().contains(lower)).toList();
+    return list.where((t) {
+      return t.symbol.toLowerCase().contains(lower) ||
+          _nativeSymbol(t.symbol).toLowerCase().contains(lower);
+    }).toList();
   }
+
+  bool get _hasPerp => widget.tickers.any((t) => t.marketType == 'perpetual');
+  bool get _hasSpot => widget.tickers.any((t) => t.marketType == 'spot');
 
   @override
   Widget build(BuildContext context) {
@@ -2249,6 +2261,33 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
                   ),
                 ),
 
+                // ── Market Type Filter ───────────────────────────────────
+                if (_hasSpot && _hasPerp)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: Row(
+                      children: [
+                        _MarketFilterChip(
+                          label: 'All',
+                          selected: _marketFilter == 'all',
+                          onTap: () => setState(() => _marketFilter = 'all'),
+                        ),
+                        const SizedBox(width: 8),
+                        _MarketFilterChip(
+                          label: 'Spot',
+                          selected: _marketFilter == 'spot',
+                          onTap: () => setState(() => _marketFilter = 'spot'),
+                        ),
+                        const SizedBox(width: 8),
+                        _MarketFilterChip(
+                          label: 'Perp',
+                          selected: _marketFilter == 'perpetual',
+                          onTap: () => setState(() => _marketFilter = 'perpetual'),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // ── Search ───────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -2312,10 +2351,14 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       itemCount: list.length,
-      itemBuilder: (_, i) => _SymbolListTile(
-        ticker: list[i],
-        onTap: () => Navigator.pop(context, list[i].symbol),
-      ),
+      itemBuilder: (_, i) {
+        final native = _nativeSymbol(list[i].symbol);
+        return _SymbolListTile(
+          ticker: list[i],
+          displaySymbol: native,
+          onTap: () => Navigator.pop(context, native),
+        );
+      },
     );
   }
 }
@@ -2326,16 +2369,19 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
 
 class _SymbolListTile extends StatelessWidget {
   final _SymbolTicker ticker;
+  /// Exchange-native display string, e.g. "BTCUSDT" or "BTC-USDT".
+  final String displaySymbol;
   final VoidCallback onTap;
 
-  const _SymbolListTile({required this.ticker, required this.onTap});
+  const _SymbolListTile({
+    required this.ticker,
+    required this.displaySymbol,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final parts = ticker.symbol.split('/');
-    final base = parts.first;
-    final quote = parts.length > 1 ? parts[1] : '';
     final price = ticker.price;
     final change = ticker.change24h;
     final isPositive = (change ?? 0) >= 0;
@@ -2360,22 +2406,14 @@ class _SymbolListTile extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        base,
+                        displaySymbol,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                               fontWeight: FontWeight.w700,
                               fontSize: 15,
                             ),
                       ),
-                      if (quote.isNotEmpty) ...[
-                        const SizedBox(width: 3),
-                        Text(
-                          '/ $quote',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).hintColor,
-                                fontWeight: FontWeight.w500,
-                              ),
-                        ),
-                      ],
+                      const SizedBox(width: 6),
+                      _MarketTypeBadge(marketType: ticker.marketType),
                     ],
                   ),
                   if (change != null) ...[
@@ -2435,5 +2473,87 @@ class _SymbolListTile extends StatelessWidget {
     if (p >= 1) return p.toStringAsFixed(4);
     if (p >= 0.001) return p.toStringAsFixed(6);
     return p.toStringAsFixed(8);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Market Type Badge — small pill showing "Spot" or "Perp"
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MarketTypeBadge extends StatelessWidget {
+  final String marketType;
+  const _MarketTypeBadge({required this.marketType});
+
+  @override
+  Widget build(BuildContext context) {
+    final isPerp = marketType == 'perpetual';
+    final label = isPerp ? 'Perp' : 'Spot';
+    final bg = isPerp
+        ? const Color(0xFF6366F1).withValues(alpha: 0.15)
+        : const Color(0xFF10B981).withValues(alpha: 0.15);
+    final fg = isPerp ? const Color(0xFF6366F1) : const Color(0xFF10B981);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: fg,
+          letterSpacing: 0.2,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Market Filter Chip — pill button for All / Spot / Perp tabs
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MarketFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MarketFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primary = Theme.of(context).colorScheme.primary;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? primary
+              : (isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.1)),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected
+                ? Colors.white
+                : Theme.of(context).textTheme.bodyMedium?.color,
+          ),
+        ),
+      ),
+    );
   }
 }

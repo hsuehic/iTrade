@@ -40,7 +40,7 @@ export default async function Home() {
       <LandingHeader isAuthenticated={isAuthenticated} />
       <main className="relative flex-1">
         <HeroSection isAuthenticated={isAuthenticated} />
-        <TickerGrid />
+        {!isAuthenticated && <TickerGrid />}
         <MobileDownload />
       </main>
       {/* Footer */}

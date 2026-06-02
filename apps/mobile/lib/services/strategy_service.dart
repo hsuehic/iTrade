@@ -205,6 +205,19 @@ class StrategyService {
     }
   }
 
+  /// Fetch active trading pairs from the iTrade API for the symbol picker.
+  Future<List<Map<String, dynamic>>> getTradingPairs() async {
+    try {
+      final Response response = await _apiClient.getJson('/api/trading-pairs');
+      if (response.statusCode == 200 && response.data is List) {
+        return (response.data as List).whereType<Map<String, dynamic>>().toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   /// Update strategy status
   Future<Strategy?> updateStrategyStatus(int id, String status) async {
     try {

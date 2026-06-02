@@ -234,6 +234,16 @@ export async function GET(request: Request) {
       }
 
       point['total'] = Math.round(totalPnl * 100) / 100;
+
+      // Include opening balances so the frontend can compute P&L as % of balance
+      let totalOpeningBal = 0;
+      for (const ex of exchangesToQuery) {
+        const openingBal = balByExAndPeriod[ex]?.[prevKey] ?? 0;
+        point[`${ex.toLowerCase()}_opening`] = Math.round(openingBal * 100) / 100;
+        totalOpeningBal += openingBal;
+      }
+      point['total_opening'] = Math.round(totalOpeningBal * 100) / 100;
+
       chartData.push(point);
     }
 

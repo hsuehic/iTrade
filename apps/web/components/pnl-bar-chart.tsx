@@ -79,7 +79,7 @@ export function PnlBarChart({
           setChartData(raw);
           if (raw.length > 0) {
             const exKeys = Object.keys(raw[0]).filter(
-              (k) => k !== 'date' && k !== 'total',
+              (k) => k !== 'date' && k !== 'total' && !k.endsWith('_opening'),
             );
             setExchanges(exKeys);
           }
@@ -315,71 +315,72 @@ export function PnlBarChart({
                   const showBreakdown =
                     selectedExchange === 'all' && exchanges.length > 1;
 
+                  const formatPct = (val: number, openingBal: number) => {
+                    if (openingBal === 0) return '';
+                    const pct = (val / openingBal) * 100;
+                    const sign = pct >= 0 ? '+' : '';
+                    return ` (${sign}${pct.toFixed(2)}%)`;
+                  };
+
+                  const totalOpening = (dataPoint?.['total_opening'] as number) ?? 0;
+
                   return (
-                    <div className="rounded-lg border bg-background/95 backdrop-blur-sm shadow-lg p-3 min-w-[180px]">
+                    <div className="rounded-lg border bg-background/95 backdrop-blur-sm shadow-lg p-3 min-w-[200px]">
                       <p className="text-sm font-medium text-foreground mb-2">
                         {formatTooltipDate(label)}
                       </p>
-                      <div className="space-y-1">
-                        {showBreakdown && dataPoint
-                          ? exchanges.map((ex, i) => {
-                              const val = (dataPoint[ex.toLowerCase()] as number) ?? 0;
-                              const displayName =
-                                chartConfig[ex.toLowerCase() as keyof typeof chartConfig]
-                                  ?.label || ex.charAt(0).toUpperCase() + ex.slice(1);
-                              return (
-                                <div
-                                  key={i}
-                                  className="flex items-center justify-between gap-3"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <div
-                                      className="w-2.5 h-2.5 rounded-sm"
-                                      style={{
-                                        backgroundColor:
-                                          val >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR,
-                                      }}
-                                    />
-                                    <span className="text-xs text-muted-foreground">
-                                      {displayName}
-                                    </span>
-                                  </div>
-                                  <span
-                                    className="text-xs font-semibold tabular-nums"
-                                    style={{
-                                      color: val >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR,
-                                    }}
-                                  >
-                                    {formatCurrency(val)}
-                                  </span>
-                                </div>
-                              );
-                            })
-                          : null}
-                      </div>
                       <div
-                        className={
-                          showBreakdown && exchanges.length > 1
-                            ? 'mt-2 pt-2 border-t border-border/50 flex items-center justify-between'
-                            : 'flex items-center justify-between'
-                        }
+                        className="grid gap-x-2 gap-y-1"
+                        style={{ gridTemplateColumns: 'auto 1fr' }}
                       >
-                        <span className="text-xs font-medium text-muted-foreground">
+                        {showBreakdown &&
+                          dataPoint &&
+                          exchanges.map((ex, i) => {
+                            const val = (dataPoint[ex.toLowerCase()] as number) ?? 0;
+                            const opening =
+                              (dataPoint[`${ex.toLowerCase()}_opening`] as number) ?? 0;
+                            const displayName =
+                              chartConfig[ex.toLowerCase() as keyof typeof chartConfig]
+                                ?.label || ex.charAt(0).toUpperCase() + ex.slice(1);
+                            return (
+                              <React.Fragment key={i}>
+                                <span className="text-xs text-muted-foreground text-right self-center">
+                                  {displayName}:
+                                </span>
+                                <span
+                                  className="text-xs font-semibold tabular-nums text-left"
+                                  style={{
+                                    color: val >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR,
+                                  }}
+                                >
+                                  {formatCurrency(val)}
+                                  {formatPct(val, opening)}
+                                </span>
+                              </React.Fragment>
+                            );
+                          })}
+                        {showBreakdown && exchanges.length > 1 && (
+                          <div className="col-span-2 border-t border-border/50 my-1" />
+                        )}
+                        <span className="text-xs font-medium text-muted-foreground text-right self-center">
                           {showBreakdown
-                            ? 'Total'
-                            : exchanges[0]
-                              ? chartConfig[
-                                  exchanges[0].toLowerCase() as keyof typeof chartConfig
-                                ]?.label || exchanges[0]
-                              : 'P&L'}
+                            ? 'Total:'
+                            : `${
+                                exchanges[0]
+                                  ? chartConfig[
+                                      exchanges[0].toLowerCase() as keyof typeof chartConfig
+                                    ]?.label || exchanges[0]
+                                  : 'P&L'
+                              }:`}
                         </span>
                         <span
-                          className="text-xs font-bold tabular-nums"
+                          className="text-xs font-bold tabular-nums text-left"
                           style={{
                             color: totalVal >= 0 ? POSITIVE_COLOR : NEGATIVE_COLOR,
                           }}
                         >
                           {formatCurrency(totalVal)}
+                          {formatPct(totalVal, totalOpening)}
                         </span>
                       </div>
                     </div>

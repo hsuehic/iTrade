@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_app_badger/flutter_app_badger.dart';
+import 'package:flutter_native_badge/flutter_native_badge.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'auth_service.dart';
 import 'package:flutter/foundation.dart';
@@ -419,15 +419,15 @@ class NotificationService with WidgetsBindingObserver {
     _unreadCountNotifier.value = normalized;
 
     try {
-      final supported = await FlutterAppBadger.isAppBadgeSupported();
+      final supported = FlutterNativeBadge.isSupported;
       _log('updateBadgeCount supported=$supported');
       if (!supported) return;
       if (normalized <= 0) {
         _log('updateBadgeCount removing badge');
-        await FlutterAppBadger.removeBadge();
+        await FlutterNativeBadge.clearBadgeCount();
       } else {
         _log('updateBadgeCount setting badge to $normalized');
-        await FlutterAppBadger.updateBadgeCount(normalized);
+        await FlutterNativeBadge.setBadgeCount(normalized);
       }
     } catch (e) {
       _log('updateBadgeCount error: $e');

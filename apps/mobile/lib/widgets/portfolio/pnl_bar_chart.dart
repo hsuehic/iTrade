@@ -72,7 +72,7 @@ class _PnlBarChartState extends State<PnlBarChart> {
         _data = data;
         _exchanges = data.isNotEmpty
             ? data[0].keys
-                .where((k) => k != 'date' && k != 'total')
+                .where((k) => k != 'date' && k != 'total' && !k.endsWith('_opening'))
                 .toList()
             : [];
         _loading = false;
@@ -229,7 +229,9 @@ class _PnlBarChartState extends State<PnlBarChart> {
 
     return SizedBox(
       height: 180.w,
-      child: Padding(
+      child: Stack(
+        children: [
+          Padding(
         padding: EdgeInsets.only(left: 4.w, right: 16.w, top: 8.w, bottom: 4.w),
         child: BarChart(
           BarChartData(
@@ -305,61 +307,128 @@ class _PnlBarChartState extends State<PnlBarChart> {
                 }
               },
               touchTooltipData: BarTouchTooltipData(
-                getTooltipColor: (_) => isDark ? const Color(0xFF1A2231) : Colors.white,
-                tooltipBorder: BorderSide(
-                  color: isDark ? Colors.white12 : Colors.black12,
-                ),
-                tooltipBorderRadius: BorderRadius.circular(8),
-                getTooltipItem: (group, _, rod, __) {
-                  final idx = group.x;
-                  if (idx < 0 || idx >= _data.length) return null;
-                  final point = _data[idx];
-                  final dateLabel = _formatDateFull(point['date']?.toString() ?? '');
-                  final totalVal = rod.toY;
-                  final totalColor = totalVal >= 0 ? _kPositiveColor : _kNegativeColor;
-                  final totalSign = totalVal >= 0 ? '+' : '';
-
-                  // Build per-exchange breakdown lines
-                  final exchangeLines = <TextSpan>[];
-                  for (final ex in _exchanges) {
-                    final exVal = double.tryParse(point[ex.toLowerCase()]?.toString() ?? '0') ?? 0;
-                    final exColor = exVal >= 0 ? _kPositiveColor : _kNegativeColor;
-                    final exSign = exVal >= 0 ? '+' : '';
-                    final exLabel = '${ex[0].toUpperCase()}${ex.substring(1)}';
-                    exchangeLines.add(TextSpan(
-                      text: '$exLabel: $exSign\$${_formatCompactAbs(exVal.abs())}\n',
-                      style: TextStyle(
-                        fontSize: 10.sp,
-                        color: exColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ));
-                  }
-
-                  return BarTooltipItem(
-                    '$dateLabel\n',
-                    TextStyle(
-                      fontSize: 10.sp,
-                      color: isDark ? Colors.white54 : Colors.black54,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    children: [
-                      ...exchangeLines,
-                      TextSpan(
-                        text: 'Total: $totalSign\$${_formatCompactAbs(totalVal.abs())}',
-                        style: TextStyle(
-                          fontSize: 12.sp,
-                          color: totalColor,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  );
-                },
+                getTooltipItem: (_, __, ___, ____) => null,
               ),
             ),
           ),
         ),
+      ),
+      if (_touchedIndex != null &&
+          _touchedIndex! >= 0 &&
+          _touchedIndex! < _data.length)
+        _buildTooltipOverlay(isDark),
+        ],  // closes Stack children
+      ),    // closes Stack
+    );      // closes SizedBox
+  }
+
+  Widget _buildTooltipOverlay(bool isDark) {
+    final idx = _touchedIndex!;
+    final point = _data[idx];
+    final dateLabel = _formatDateFull(point['date']?.toString() ?? '');
+    final totalVal = double.tryParse(point['total']?.toString() ?? '0') ?? 0;
+    final totalOpening =
+        double.tryParse(point['total_opening']?.toString() ?? '0') ?? 0;
+    final totalPct = totalOpening != 0 ? totalVal / totalOpening * 100 : null;
+
+    return Positioned(
+      top: 4.w,
+      right: 16.w,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.w),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A2231) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDark ? Colors.white12 : Colors.black12,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              dateLabel,
+              style: TextStyle(
+                fontSize: 10.sp,
+                color: isDark ? Colors.white54 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            SizedBox(height: 4.w),
+            ..._exchanges.map((ex) {
+              final exVal =
+                  double.tryParse(point[ex.toLowerCase()]?.toString() ?? '0') ?? 0;
+              final exOpening =
+                  double.tryParse(point['${ex.toLowerCase()}_opening']?.toString() ?? '0') ?? 0;
+              final pct = exOpening != 0 ? exVal / exOpening * 100 : null;
+              final exLabel = '${ex[0].toUpperCase()}${ex.substring(1)}';
+              return _buildTooltipRow(exLabel, exVal, pct, isDark);
+            }),
+            if (_exchanges.length > 1) ...[
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 3.w),
+                child: Divider(
+                  height: 1,
+                  color: isDark ? Colors.white12 : Colors.black12,
+                ),
+              ),
+            ],
+            _buildTooltipRow('Total', totalVal, totalPct, isDark, isTotal: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTooltipRow(
+    String label,
+    double val,
+    double? pct,
+    bool isDark, {
+    bool isTotal = false,
+  }) {
+    final color = val >= 0 ? _kPositiveColor : _kNegativeColor;
+    final sign = val >= 0 ? '+' : '';
+    final valStr = '$sign\$${_formatCompactAbs(val.abs())}';
+    final pctSign = pct != null && pct >= 0 ? '+' : '';
+    final pctStr = pct != null ? ' ($pctSign${pct.toStringAsFixed(2)}%)' : '';
+    final labelColor = isDark ? Colors.white70 : Colors.black54;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 1.5.w),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 52.w,
+            child: Text(
+              '$label:',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: isTotal ? 11.sp : 10.sp,
+                fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+                color: labelColor,
+              ),
+            ),
+          ),
+          SizedBox(width: 6.w),
+          Text(
+            '$valStr$pctStr',
+            style: TextStyle(
+              fontSize: isTotal ? 12.sp : 10.sp,
+              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

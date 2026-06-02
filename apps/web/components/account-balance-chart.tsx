@@ -488,67 +488,59 @@ export function AccountBalanceChart({
                       <div className="text-sm font-medium text-foreground mb-2">
                         {formattedDate}
                       </div>
-                      <div className="space-y-1">
-                        {payload
-                          .filter((entry) => entry.dataKey !== 'total')
-                          .map((entry, index) => {
-                            const exchangeName = entry.dataKey as string;
-                            const displayName =
-                              chartConfig[exchangeName as keyof typeof chartConfig]
-                                ?.label ||
-                              exchangeName.charAt(0).toUpperCase() +
-                                exchangeName.slice(1);
-
-                            return (
-                              <div
-                                key={index}
-                                className="flex items-center justify-between gap-3"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="w-3 h-3 rounded-sm"
-                                    style={{ backgroundColor: entry.color }}
-                                  />
-                                  <span className="text-sm font-medium text-muted-foreground">
-                                    {displayName}
+                      {(() => {
+                        const exchangeEntries = payload.filter(
+                          (e) => e.dataKey !== 'total',
+                        );
+                        const totalEntry = payload.find((p) => p.dataKey === 'total');
+                        const totalVal =
+                          (totalEntry?.value as number) ||
+                          exchangeEntries.reduce((s, e) => s + (e.value as number), 0);
+                        return (
+                          <div
+                            className="grid gap-x-2 gap-y-1"
+                            style={{ gridTemplateColumns: 'auto 1fr' }}
+                          >
+                            {exchangeEntries.map((entry, index) => {
+                              const exchangeName = entry.dataKey as string;
+                              const displayName =
+                                chartConfig[exchangeName as keyof typeof chartConfig]
+                                  ?.label ||
+                                exchangeName.charAt(0).toUpperCase() +
+                                  exchangeName.slice(1);
+                              return (
+                                <React.Fragment key={index}>
+                                  <span className="text-xs font-medium text-muted-foreground text-right self-center flex items-center gap-1 justify-end">
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"
+                                      style={{ backgroundColor: entry.color }}
+                                    />
+                                    {displayName}:
                                   </span>
-                                </div>
-                                <span className="text-sm font-semibold text-foreground tabular-nums">
-                                  {formatTooltipCurrency(entry.value as number)}
+                                  <span className="text-xs font-semibold text-foreground tabular-nums text-left">
+                                    {formatTooltipCurrency(entry.value as number)}
+                                  </span>
+                                </React.Fragment>
+                              );
+                            })}
+                            {payload.length > 1 && (
+                              <>
+                                <div className="col-span-2 border-t border-border/50 my-1" />
+                                <span className="text-xs font-medium text-muted-foreground text-right self-center flex items-center gap-1 justify-end">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0"
+                                    style={{ backgroundColor: chartConfig.total.color }}
+                                  />
+                                  {t('total')}:
                                 </span>
-                              </div>
-                            );
-                          })}
-                      </div>
-                      {payload.length > 1 && (
-                        <div className="mt-2 pt-2 border-t border-border/50">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-sm"
-                                style={{ backgroundColor: chartConfig.total.color }}
-                              />
-                              <span className="text-sm font-medium text-muted-foreground">
-                                {t('total')}
-                              </span>
-                            </div>
-                            <span className="text-sm font-semibold text-foreground tabular-nums">
-                              {formatTooltipCurrency(
-                                (payload.find((p) => p.dataKey === 'total')
-                                  ?.value as number) ||
-                                  payload.reduce(
-                                    (sum, entry) =>
-                                      sum +
-                                      (entry.dataKey === 'total'
-                                        ? 0
-                                        : (entry.value as number)),
-                                    0,
-                                  ),
-                              )}
-                            </span>
+                                <span className="text-xs font-semibold text-foreground tabular-nums text-left">
+                                  {formatTooltipCurrency(totalVal)}
+                                </span>
+                              </>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
                   );
                 }}
