@@ -28,6 +28,31 @@ function periodKey(date: Date, granularity: Granularity): string {
   return `${y}-${mo}-${d}T${h}:00`;
 }
 
+/** Returns the period key one step before the given key. */
+function prevPeriodKey(key: string, granularity: Granularity): string {
+  if (granularity === 'month') {
+    const [y, mo] = key.split('-').map(Number);
+    const d = new Date(Date.UTC(y, mo - 2, 1)); // subtract 1 month
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+  if (granularity === 'day') {
+    const d = new Date(`${key}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    const y = d.getUTCFullYear();
+    const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${mo}-${day}`;
+  }
+  // hour: key format is YYYY-MM-DDTHH:00
+  const d = new Date(`${key}:00.000Z`);
+  d.setUTCHours(d.getUTCHours() - 1);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  return `${y}-${mo}-${day}T${h}:00`;
+}
+
 /** ISO string for the start of a period key (used as the chart date label). */
 function keyToIso(key: string, granularity: Granularity): string {
   if (granularity === 'month') return `${key}-01T00:00:00.000Z`;

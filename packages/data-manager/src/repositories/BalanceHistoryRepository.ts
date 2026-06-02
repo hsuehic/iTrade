@@ -62,6 +62,109 @@ export class BalanceHistoryRepository {
     total: Decimal,
     timestamp: Date = new Date(),
   ): Promise<void> {
+    const currentMonthStart = this.getStartOfMonth(timestamp);
+
+    // ── First-account bootstrap ──────────────────────────────────────────────
+    // When an account writes its very first balance record for a given table,
+    // insert a prior-period record using the CURRENT balance as the opening
+    // reference.  This prevents the first period's P&L from falsely showing
+    // the entire pre-existing balance as trading profit (which would happen
+    // with a $0 synthetic).  The tradeoff: the first period always shows ~$0
+    // P&L — iTrade has no baseline before its first sync.
+    // All inserts are idempotent (.orIgnore): subsequent calls skip on conflict.
+    const bootstrapTables: Array<{
+      repo: Repository<BalanceHistoryEntity>;
+      currentPeriod: Date;
+      getPriorPeriod: (d: Date) => Date;
+    }> = [
+      {
+        repo: this.monthRepo,
+        currentPeriod: currentMonthStart,
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCMonth(p.getUTCMonth() - 1);
+          return p;
+        },
+      },
+      {
+        repo: this.dayRepo,
+        currentPeriod: this.getStartOfDay(timestamp),
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCDate(p.getUTCDate() - 1);
+          return p;
+        },
+      },
+      {
+        repo: this.hourRepo,
+        currentPeriod: this.getStartOfHour(timestamp),
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCHours(p.getUTCHours() - 1);
+          return p;
+        },
+      },
+      {
+        repo: this.min30Repo,
+        currentPeriod: this.getStartOfMinuteInterval(timestamp, 30),
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCMinutes(p.getUTCMinutes() - 30);
+          return p;
+        },
+      },
+      {
+        repo: this.min15Repo,
+        currentPeriod: this.getStartOfMinuteInterval(timestamp, 15),
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCMinutes(p.getUTCMinutes() - 15);
+          return p;
+        },
+      },
+      {
+        repo: this.min5Repo,
+        currentPeriod: this.getStartOfMinuteInterval(timestamp, 5),
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCMinutes(p.getUTCMinutes() - 5);
+          return p;
+        },
+      },
+      {
+        repo: this.minRepo,
+        currentPeriod: this.getStartOfMinuteInterval(timestamp, 1),
+        getPriorPeriod: (d) => {
+          const p = new Date(d);
+          p.setUTCMinutes(p.getUTCMinutes() - 1);
+          return p;
+        },
+      },
+    ];
+
+    await Promise.all(
+      bootstrapTables.map(async ({ repo, currentPeriod, getPriorPeriod }) => {
+        const existingCount = await repo.count({
+          where: { accountInfo: { id: accountInfo.id } },
+        });
+        if (existingCount === 0) {
+          await repo
+            .createQueryBuilder()
+            .insert()
+            .values({
+              accountInfo: { id: accountInfo.id },
+              free,
+              locked,
+              saving,
+              total,
+              period: getPriorPeriod(currentPeriod),
+            })
+            .orIgnore()
+            .execute();
+        }
+      }),
+    );
+
     const jobs = [
       this.upsert(
         this.monthRepo,
@@ -70,7 +173,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
-        this.getStartOfMonth(timestamp),
+        currentMonthStart,
       ),
       this.upsert(
         this.weekRepo,
