@@ -13,21 +13,33 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
+/** Derive the public base URL from forwarded headers (works behind nginx/proxy). */
+function getPublicBaseURL(request: NextRequest): string {
+  // Prefer explicit env var (most reliable in production)
+  if (process.env.BETTER_AUTH_URL) {
+    return process.env.BETTER_AUTH_URL.replace(/\/$/, '');
+  }
+  // Fall back to x-forwarded-* headers set by the reverse proxy
+  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0] ?? 'https';
+  const host =
+    request.headers.get('x-forwarded-host') ?? request.headers.get('host') ?? 'localhost';
+  return `${proto}://${host}`;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get('code');
   const error = searchParams.get('error');
+  const baseURL = getPublicBaseURL(request);
 
   // User declined the installation
   if (error) {
     console.warn('[Slack Install] User declined or error:', error);
-    return NextResponse.redirect(new URL('/slack/install?error=cancelled', request.url));
+    return NextResponse.redirect(new URL(`${baseURL}/slack/install?error=cancelled`));
   }
 
   if (!code) {
-    return NextResponse.redirect(
-      new URL('/slack/install?error=missing_code', request.url),
-    );
+    return NextResponse.redirect(new URL(`${baseURL}/slack/install?error=missing_code`));
   }
 
   const clientId = process.env.SLACK_BOT_CLIENT_ID || process.env.SLACK_OAUTH_CLIENT_ID;
@@ -38,7 +50,7 @@ export async function GET(request: NextRequest) {
     console.error(
       '[Slack Install] Missing SLACK_BOT_CLIENT_ID / SLACK_BOT_CLIENT_SECRET env vars',
     );
-    return NextResponse.redirect(new URL('/slack/install?error=config', request.url));
+    return NextResponse.redirect(new URL(`${baseURL}/slack/install?error=config`));
   }
 
   // Exchange the code for a bot token via oauth.v2.access
@@ -55,7 +67,7 @@ export async function GET(request: NextRequest) {
   if (!tokenRes.ok) {
     console.error('[Slack Install] Token exchange HTTP error:', tokenRes.status);
     return NextResponse.redirect(
-      new URL('/slack/install?error=token_exchange', request.url),
+      new URL(`${baseURL}/slack/install?error=token_exchange`),
     );
   }
 
@@ -63,9 +75,7 @@ export async function GET(request: NextRequest) {
 
   if (!data.ok) {
     console.error('[Slack Install] Slack API error:', data.error);
-    return NextResponse.redirect(
-      new URL(`/slack/install?error=${data.error}`, request.url),
-    );
+    return NextResponse.redirect(new URL(`${baseURL}/slack/install?error=${data.error}`));
   }
 
   // Log the installation details (replace with DB storage for multi-workspace support)
@@ -79,7 +89,7 @@ export async function GET(request: NextRequest) {
   // TODO: For multi-workspace support, store data.access_token, data.team.id,
   // data.team.name, data.bot_user_id in your database here.
 
-  return NextResponse.redirect(new URL('/slack/install?success=true', request.url));
+  return NextResponse.redirect(new URL(`${baseURL}/slack/install?success=true`));
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
