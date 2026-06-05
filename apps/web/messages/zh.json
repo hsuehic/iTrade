@@ -87,7 +87,8 @@
       "social": {
         "apple": "使用 Apple 登录",
         "google": "使用 Google 登录",
-        "github": "使用 Github 登录"
+        "github": "使用 Github 登录",
+        "slack": "使用 Slack 登录"
       },
       "noAccount": "还没有账户？",
       "signUp": "注册",

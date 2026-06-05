@@ -87,7 +87,8 @@
       "social": {
         "apple": "Login with Apple",
         "google": "Login with Google",
-        "github": "Login with Github"
+        "github": "Login with Github",
+        "slack": "Login with Slack"
       },
       "noAccount": "Don't have an account?",
       "signUp": "Sign up",

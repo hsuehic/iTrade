@@ -8,7 +8,7 @@ import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { IconApple, IconGithub, IconGoogle } from '@/components/icons';
+import { IconApple, IconGithub, IconGoogle, IconSlack } from '@/components/icons';
 export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
   const t = useTranslations('auth.login');
   const router = useRouter();
@@ -88,7 +88,7 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
             {t('continueWith')}
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-4 center">
+        <div className="grid grid-cols-4 gap-4 center">
           <Button
             variant="outline"
             type="button"
@@ -115,6 +115,15 @@ export function LoginForm({ ...props }: React.ComponentProps<'form'>) {
           >
             <IconGithub />
             <span className="sr-only">{t('social.github')}</span>
+          </Button>
+          <Button
+            variant="outline"
+            type="button"
+            className="w-full"
+            onClick={() => signIn.social({ provider: 'slack', callbackURL: callback })}
+          >
+            <IconSlack />
+            <span className="sr-only">{t('social.slack')}</span>
           </Button>
         </div>
         <div className="text-center text-sm">

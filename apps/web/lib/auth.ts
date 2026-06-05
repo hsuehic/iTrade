@@ -242,6 +242,16 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
             },
           }
         : {}),
+      // Only include Slack provider when credentials are configured
+      ...(process.env.SLACK_OAUTH_CLIENT_ID && process.env.SLACK_OAUTH_CLIENT_SECRET
+        ? {
+            slack: {
+              clientId: process.env.SLACK_OAUTH_CLIENT_ID,
+              clientSecret: process.env.SLACK_OAUTH_CLIENT_SECRET,
+              disableImplicitSignUp: false,
+            },
+          }
+        : {}),
     },
     trustedOrigins,
     emailVerification: {
