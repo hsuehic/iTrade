@@ -2,13 +2,14 @@ import { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Slack Installation' };
 
-export default function SlackInstallPage({
+export default async function SlackInstallPage({
   searchParams,
 }: {
-  searchParams: { success?: string; error?: string };
+  searchParams: Promise<{ success?: string; error?: string }>;
 }) {
-  const success = searchParams.success === 'true';
-  const error = searchParams.error;
+  const params = await searchParams;
+  const success = params.success === 'true';
+  const error = params.error;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
@@ -18,8 +19,8 @@ export default function SlackInstallPage({
             <div className="text-5xl mb-4">✅</div>
             <h1 className="text-2xl font-bold mb-2">App installed successfully!</h1>
             <p className="text-muted-foreground mb-6">
-              hermes-itrade has been added to your Slack workspace. You can now close this
-              tab.
+              xiaowei&apos;s assistant has been added to your Slack workspace. You can now
+              close this tab.
             </p>
           </>
         ) : (
