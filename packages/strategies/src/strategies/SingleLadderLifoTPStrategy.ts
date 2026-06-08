@@ -773,16 +773,13 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
     // Generate up to 2 orders
     // 1. Lower Order (Buy Entry or Buy TP)
     if (this.tradedSize.lt(0)) {
+      // BUY TP closes a short position — it is intentionally placed BELOW the current market
+      // price. Do NOT apply isSignalPriceWithinOrderBookRange here: TP prices are by design
+      // outside the bid/ask spread and would always fail that check.
       if (!excludeTp && !lowerTpPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
-          if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.BUY)) {
-            signals.push(this.createTakeProfitSignal(tpPlan));
-          } else {
-            this._logger.warn(
-              `⏳ Skip TP signal below range: price=${tpPlan.tpPrice.toString()} orderbook=${this.lastOrderBookPrice?.toString() ?? 'n/a'}`,
-            );
-          }
+          signals.push(this.createTakeProfitSignal(tpPlan));
         }
       }
     } else if (canLong) {
@@ -800,12 +797,12 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
 
     // 2. Upper Order (Sell Entry or Sell TP)
     if (this.tradedSize.gt(0)) {
+      // SELL TP closes a long position — it is intentionally placed ABOVE the current market
+      // price. Do NOT apply isSignalPriceWithinOrderBookRange here for the same reason.
       if (!excludeTp && !upperTpPending) {
         const tpPlan = this.getTakeProfitPlan();
         if (tpPlan) {
-          if (this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.SELL)) {
-            signals.push(this.createTakeProfitSignal(tpPlan));
-          }
+          signals.push(this.createTakeProfitSignal(tpPlan));
         }
       }
     } else if (canShort) {
@@ -985,7 +982,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           tpPlan &&
           activeTp &&
           activeTpMetadata?.signalType === SignalType.TakeProfit &&
-          this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.SELL) &&
           this.shouldUpdateTakeProfitOrder(activeTp, tpPlan)
         ) {
           signals.push(this.createTakeProfitUpdateSignal(activeTp, tpPlan));
@@ -1024,7 +1020,6 @@ export class SingleLadderLifoTPStrategy extends BaseStrategy<SingleLadderLifoTPP
           tpPlan &&
           activeTp &&
           activeTpMetadata?.signalType === SignalType.TakeProfit &&
-          this.isSignalPriceWithinOrderBookRange(tpPlan.tpPrice, OrderSide.BUY) &&
           this.shouldUpdateTakeProfitOrder(activeTp, tpPlan)
         ) {
           signals.push(this.createTakeProfitUpdateSignal(activeTp, tpPlan));
