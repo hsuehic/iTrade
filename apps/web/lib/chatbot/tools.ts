@@ -556,6 +556,79 @@ export function createChatbotTools(
         }),
     }),
 
+    // ── Positions & assets ────────────────────────────────────────────────────
+
+    get_positions: tool({
+      description:
+        "Get the user's open trading positions. Use for any question about current positions, " +
+        'open long/short exposure, position PnL, leverage, or market value. ' +
+        'Returns: positions[] (symbol, exchange, side, quantity, avgPrice, markPrice, unrealizedPnl, ' +
+        'leverage, marketValue, pnlPercentage) and summary (totalPositions, exchanges[], symbols[], ' +
+        'totalUnrealizedPnl). Zero-quantity positions are always excluded. ' +
+        'Filter by exchange, symbol, side (long/short), or minimum quantity. ' +
+        'Use this for: "show my positions", "what positions do I have open?", ' +
+        '"my long positions on Binance", "BTC position", "positions with biggest unrealized PnL".',
+      inputSchema: nullSafe({
+        exchange: z
+          .string()
+          .optional()
+          .describe('Exchange name (e.g. "binance", "okx"), or "all" for all exchanges.'),
+        symbol: z
+          .string()
+          .optional()
+          .describe('Filter by trading symbol (e.g. "BTC/USDT", "ETH/USDT:USDT").'),
+        side: z
+          .enum(['long', 'short'])
+          .optional()
+          .describe('Filter by position side: "long" or "short". Omit for both.'),
+        minQuantity: z
+          .number()
+          .optional()
+          .describe(
+            'Minimum absolute position quantity filter (in base-token units). ' +
+              'Use to hide dust positions.',
+          ),
+      }),
+      execute: async ({ exchange, symbol, side, minQuantity }) =>
+        fetch('/api/portfolio/positions', {
+          exchange: exchange ?? 'all',
+          symbol,
+          side,
+          minQuantity,
+        }),
+    }),
+
+    get_portfolio_assets: tool({
+      description:
+        'Get the detailed asset/balance breakdown of the portfolio with live USD valuations. ' +
+        'Use for any question about asset holdings, how much of each coin the user owns, ' +
+        'portfolio allocation, or per-asset value. ' +
+        'Returns: summary (totalAssets, uniqueAssets, totalValue, exchanges[]), ' +
+        'assets[] (asset, exchange, free, locked, total, estimatedValue, percentage), ' +
+        'assetsByExchange{}, and aggregatedAssets[] (same asset summed across exchanges). ' +
+        'Filter by exchange or minimum USD value. ' +
+        'Use this for: "what assets do I hold?", "show my holdings", "how much BTC do I have?", ' +
+        '"portfolio allocation", "what is my biggest holding?", "assets on OKX".',
+      inputSchema: nullSafe({
+        exchange: z
+          .string()
+          .optional()
+          .describe('Exchange name (e.g. "binance", "okx"), or "all" for all exchanges.'),
+        minValue: z
+          .number()
+          .optional()
+          .describe(
+            'Minimum estimated USD value per asset to include. ' +
+              'Use to filter out dust (e.g. 1 to hide holdings worth under $1).',
+          ),
+      }),
+      execute: async ({ exchange, minValue }) =>
+        fetch('/api/portfolio/assets', {
+          exchange: exchange ?? 'all',
+          minValue,
+        }),
+    }),
+
     // ── Help knowledge base ──────────────────────────────────────────────────
 
     search_help_kb: tool({

@@ -276,6 +276,66 @@ Use this tool when the user asks about:
   },
 
   {
+    slug: 'tool-get_positions',
+    title: 'get_positions',
+    category: 'chatbot_tool',
+    locale: 'en',
+    published: true,
+    priority: 10,
+    content: `Tool: get_positions
+
+API Endpoint: GET /api/portfolio/positions
+
+Description: Retrieves the user's open trading positions (zero-quantity positions excluded). Returns:
+- positions[]: individual open positions (symbol, exchange, side long/short, quantity, avgPrice, markPrice, unrealizedPnl, leverage, marketValue, pnlPercentage)
+- summary: totalPositions, available exchanges[], available symbols[], totalUnrealizedPnl
+
+Supports filtering by:
+- exchange: specific exchange or "all"
+- symbol: a specific trading pair (e.g. "BTC/USDT", "ETH/USDT:USDT")
+- side: "long" or "short"
+- minQuantity: minimum absolute quantity (to hide dust positions)
+
+Use this tool when the user asks about:
+- Open positions: "show my positions", "what positions do I have open?", "current positions"
+- Directional exposure: "my long positions", "show my shorts", "long positions on Binance"
+- Position PnL: "which position is losing money?", "unrealized PnL on my positions", "biggest position by PnL"
+- A specific symbol: "my BTC position", "do I have an ETH position?"
+- Leverage / market value: "how much leverage am I using?", "market value of my positions"`,
+  },
+
+  {
+    slug: 'tool-get_portfolio_assets',
+    title: 'get_portfolio_assets',
+    category: 'chatbot_tool',
+    locale: 'en',
+    published: true,
+    priority: 10,
+    content: `Tool: get_portfolio_assets
+
+API Endpoint: GET /api/portfolio/assets
+
+Description: Retrieves the detailed asset/balance breakdown of the user's portfolio with live USD valuations. Returns:
+- summary: totalAssets, uniqueAssets, totalValue (USD), exchanges[]
+- assets[]: per-asset-per-exchange entries (asset, exchange, free, locked, total, estimatedValue, percentage)
+- assetsByExchange: assets grouped by exchange
+- aggregatedAssets[]: the same asset summed across all exchanges, with estimatedValue and percentage
+
+Supports filtering by:
+- exchange: specific exchange or "all"
+- minValue: minimum estimated USD value per asset (to filter out dust)
+
+Use this tool when the user asks about:
+- Holdings: "what assets do I hold?", "show my holdings", "what coins do I own?"
+- A specific asset balance: "how much BTC do I have?", "my USDT balance", "how much ETH do I hold?"
+- Allocation: "portfolio allocation", "asset breakdown", "what percentage is BTC?"
+- Largest holdings: "what is my biggest holding?", "top assets by value"
+- Per-exchange: "assets on OKX", "what do I hold on Binance?"
+
+Note: For total account balance or balance over time use get_account_balance. Use get_portfolio_assets for the per-asset / per-coin breakdown.`,
+  },
+
+  {
     slug: 'tool-search_help_kb',
     title: 'search_help_kb',
     category: 'chatbot_tool',
@@ -450,7 +510,41 @@ RULE 6 — Transfer / deposit / withdrawal queries → renderAs "table".
     }
   }
   \`\`\`
-  Show the most recent 20 records max. Include all relevant columns — always show Status.`,
+  Show the most recent 20 records max. Include all relevant columns — always show Status.
+
+RULE 7 — Positions / holdings / asset breakdown queries → renderAs "table".
+  Trigger: "show my positions", "what assets do I hold?", "how much BTC do I have?",
+           "portfolio allocation", "my long positions", "biggest holding".
+
+  a) Open positions — use the positions[] returned by get_positions:
+  \`\`\`json
+  {
+    "renderAs": "table",
+    "title": "Open Positions",
+    "data": {
+      "columns": ["Symbol", "Exchange", "Side", "Quantity", "Avg Price", "Mark Price", "Unrealized PnL", "PnL %"],
+      "rows": [
+        ["BTC/USDT:USDT", "Binance", "long", "0.5", "$95,000", "$97,200", "+$1,100.00", "+2.32%"]
+      ]
+    }
+  }
+  \`\`\`
+
+  b) Asset breakdown — use aggregatedAssets (or assets) from get_portfolio_assets:
+  \`\`\`json
+  {
+    "renderAs": "table",
+    "title": "Portfolio Assets",
+    "data": {
+      "columns": ["Asset", "Total", "Estimated Value", "Allocation"],
+      "rows": [
+        ["BTC", "0.85", "$82,620", "61.2%"],
+        ["USDT", "12,000", "$12,000", "8.9%"]
+      ]
+    }
+  }
+  \`\`\`
+  Sort by estimated value descending. Format USD values and percentages clearly.`,
   },
 
   // ── Strategy creation (retrieved by similarity) ─────────────────────────────
