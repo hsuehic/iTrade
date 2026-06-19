@@ -21,6 +21,7 @@
     "lint:fix": "eslint . --fix --ext .ts,.tsx",
     "generate-qr": "node scripts/generate-qr-codes.js",
     "typecheck": "tsc --noEmit",
+    "migrate-auth": "tsx ../../scripts/migrate-better-auth.ts",
     "test": "vitest run"
   },
   "dependencies": {

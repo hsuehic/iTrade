@@ -49,6 +49,7 @@ import { User } from './entities/User';
 import { Account } from './entities/Account';
 import { Session } from './entities/Session';
 import { Verification } from './entities/Verification';
+import { ApiKey } from './entities/ApiKey';
 import { AppSettingEntity } from './entities/AppSetting';
 import { HelpArticleEntity } from './entities/HelpArticle';
 import {
@@ -103,6 +104,7 @@ export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   account: Account,
   session: Session,
   verification: Verification,
+  apikey: ApiKey,
   strategies: StrategyEntity, // matches your decorator @OneToMany('strategies', ...)
   strategy_performance: StrategyPerformanceEntity,
   klines: KlineEntity,

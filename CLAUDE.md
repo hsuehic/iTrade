@@ -80,6 +80,29 @@ Use this to confirm UI behaviour, network responses, or console errors after a U
 
 ---
 
+## E2E Verification for New Features
+
+**Every new feature must be verified end-to-end after implementation.** Static checks (lint, typecheck, build) are necessary but not sufficient — runtime behaviour must also be confirmed.
+
+### What counts as E2E verification for a new feature
+
+For a feature to be considered complete, Claude must demonstrate it works at runtime by:
+
+1. **API-level check**: Call the new endpoint(s) with a real session (via browser JavaScript `fetch`, curl with session cookie, or `auth.api.*` from a server route) and confirm the correct HTTP status + response shape.
+2. **DB-level check**: Query the database to confirm the expected data was persisted:
+   ```bash
+   docker exec services-db-1 psql -U postgres -d itrade -c "<query>"
+   ```
+3. **UI-level check** (if the feature has a UI): Confirm the component renders and the user flow completes without errors, using the browser (osascript or Chrome MCP tools).
+
+### Required for every new feature
+
+- State the exact measured result (e.g. "POST /api/tokens returned 200, DB row shows permissions=`{\"read\":[\"portfolio\"]}`")
+- Never write "should work" or "looks correct" — always show the actual runtime evidence
+- If the dev server is not running, start it before testing
+
+---
+
 ## Tool & Terminal Hygiene
 
 **After every use of Terminal, browser tabs, or other external tools, close or quit them.** Leaving stale terminals or tabs open clutters the user's environment.

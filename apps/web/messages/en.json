@@ -426,7 +426,8 @@
       "security": "Security",
       "notifications": "Notifications",
       "appearance": "Appearance",
-      "danger": "Danger Zone"
+      "danger": "Danger Zone",
+      "apiTokens": "API Tokens"
     },
     "profile": {
       "title": "Profile Information",
@@ -608,6 +609,75 @@
           "irreversible": "This action cannot be undone"
         }
       }
+    },
+    "apiTokens": {
+      "title": "API Tokens",
+      "description": "Create and manage API tokens to access iTrade programmatically. Tokens authenticate via the Authorization header.",
+      "createButton": "Create Token",
+      "listTitle": "Your tokens",
+      "loading": "Loading tokens...",
+      "empty": "No API tokens yet. Create one to get started.",
+      "unnamedToken": "Unnamed token",
+      "disabled": "Disabled",
+      "expired": "Expired",
+      "usageHint": "Pass your token in the Authorization header with every API request:",
+      "createdAt": "Created {date}",
+      "expiresAt": "Expires {date}",
+      "lastUsed": "Last used {date}",
+      "createDialog": {
+        "title": "Create API Token",
+        "description": "Give your token a descriptive name so you can identify it later.",
+        "nameLabel": "Token name",
+        "namePlaceholder": "e.g. My trading bot",
+        "nameHint": "A friendly label to help you identify this token.",
+        "cancel": "Cancel",
+        "confirm": "Create Token",
+        "creating": "Creating...",
+        "ipLabel": "IP Whitelist",
+        "ipOptional": "optional",
+        "ipPlaceholder": "203.0.113.1\n198.51.100.42",
+        "ipHint": "One IP per line (or comma-separated). Leave empty to allow all IPs.",
+        "permissionsLabel": "Permissions",
+        "permissionsHint": "Choose what this token is allowed to access."
+      },
+      "permissions": {
+        "groups": {
+          "read": "Read",
+          "write": "Write",
+          "settings": "Settings"
+        }
+      },
+      "newToken": {
+        "warning": "Copy this token now. You will not be able to see it again.",
+        "tokenLabel": "Your new token",
+        "done": "Done, I've saved it"
+      },
+      "revokeDialog": {
+        "title": "Revoke token?",
+        "description": "Revoke \"{name}\"? Any scripts using this token will immediately lose access. This cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Revoke"
+      },
+      "catalogue": {
+        "title": "Available API endpoints",
+        "description": "All endpoints below can be called with a valid API token in the Authorization header.",
+        "toggle": "Browse API endpoints",
+        "endpoints": "endpoints",
+        "groups": {
+          "read": "Read",
+          "write": "Write",
+          "settings": "Settings"
+        }
+      },
+      "messages": {
+        "revoked": "Token revoked successfully"
+      },
+      "errors": {
+        "loadFailed": "Failed to load API tokens",
+        "createFailed": "Failed to create API token",
+        "revokeFailed": "Failed to revoke API token"
+      },
+      "ipWhitelist": "IP whitelist"
     }
   },
   "market": {

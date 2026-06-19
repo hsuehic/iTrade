@@ -1,12 +1,37 @@
 import { betterAuth } from 'better-auth';
 
-import { admin } from 'better-auth/plugins';
+import {
+  admin,
+  apiKey,
+  bearer,
+  defaultKeyHasher,
+  API_KEY_TABLE_NAME,
+} from 'better-auth/plugins';
 
 import { Pool } from 'pg';
 import * as jose from 'jose';
 
 import { sendEmail } from '@/lib/mailer';
 import { cleanupUserData } from '@/lib/init-user-data';
+
+/**
+ * Extract the real client IP from common proxy headers.
+ * Prefers x-real-ip, then the first entry in x-forwarded-for, then cf-connecting-ip.
+ */
+export function getClientIp(
+  headers: Headers | { get: (name: string) => string | null },
+): string | null {
+  const realIp = headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+
+  const forwarded = headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
+
+  const cfIp = headers.get('cf-connecting-ip');
+  if (cfIp) return cfIp.trim();
+
+  return null;
+}
 
 /**
  * Decode and verify Google ID Token
@@ -265,7 +290,88 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
       sendOnSignUp: true,
       autoSignInAfterVerification: true,
     },
-    plugins: [admin()],
+    plugins: [
+      admin(),
+      bearer(),
+      apiKey({
+        // Prefix helps users identify tokens, e.g. "itrade_..."
+        defaultPrefix: 'itrade_',
+        // Enable metadata so callers can label tokens (e.g. "My script")
+        enableMetadata: true,
+        // Permissions bucket that maps to our API categories
+        permissions: {
+          defaultPermissions: {
+            read: [
+              'portfolio',
+              'orders',
+              'strategies',
+              'backtests',
+              'tickers',
+              'analytics',
+            ],
+            write: ['orders', 'strategies', 'backtests'],
+            settings: ['profile', 'preferences'],
+          },
+        },
+        /**
+         * IP whitelist enforcement.
+         * If the token's metadata contains `allowedIps` (a non-empty string[]),
+         * only requests whose client IP appears in that list are allowed.
+         * Tokens without `allowedIps` (or with an empty array) are unrestricted.
+         */
+        customAPIKeyValidator: async ({ ctx, key }) => {
+          try {
+            // 1. Resolve client IP from standard proxy headers
+            const clientIp = getClientIp(ctx.request?.headers ?? new Headers()) ?? '';
+
+            // 2. Hash the raw key the same way better-auth stores it
+            const hashedKey = await defaultKeyHasher(key);
+
+            // 3. Look up the token record to read its metadata
+            const record = await ctx.context.adapter.findOne<{
+              metadata: string | Record<string, unknown> | null;
+            }>({
+              model: API_KEY_TABLE_NAME,
+              where: [{ field: 'key', value: hashedKey }],
+            });
+
+            if (!record) {
+              // Key not found — let the normal validation handle the rejection
+              return true;
+            }
+
+            // 4. Parse metadata (stored as JSON string or object depending on adapter)
+            const meta =
+              typeof record.metadata === 'string'
+                ? (JSON.parse(record.metadata) as Record<string, unknown>)
+                : (record.metadata ?? {});
+
+            const allowedIps = meta.allowedIps;
+            if (!Array.isArray(allowedIps) || allowedIps.length === 0) {
+              // No IP restriction configured — allow
+              return true;
+            }
+
+            // 5. Check if the client IP is whitelisted
+            const normalised = clientIp.trim();
+            const allowed = (allowedIps as string[]).some(
+              (ip) => ip.trim() === normalised,
+            );
+
+            if (!allowed) {
+              console.warn(
+                `[API Key] IP ${normalised} is not in the whitelist for key starting with "${key.slice(0, 8)}…"`,
+              );
+            }
+            return allowed;
+          } catch (err) {
+            console.error('[API Key] IP whitelist check error:', err);
+            // Fail open — don't block legitimate requests due to unexpected errors
+            return true;
+          }
+        },
+      }),
+    ],
   });
 
 export const auth: ReturnType<typeof betterAuth> = createAuth();

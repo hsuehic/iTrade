@@ -426,7 +426,8 @@
       "security": "安全",
       "notifications": "通知",
       "appearance": "外观",
-      "danger": "风险区域"
+      "danger": "风险区域",
+      "apiTokens": "API 令牌"
     },
     "profile": {
       "title": "个人信息",
@@ -608,6 +609,75 @@
           "irreversible": "此操作无法撤销"
         }
       }
+    },
+    "apiTokens": {
+      "title": "API 令牌",
+      "description": "创建并管理 API 令牌，以编程方式访问 iTrade。令牌通过 Authorization 请求头进行身份验证。",
+      "createButton": "创建令牌",
+      "listTitle": "您的令牌",
+      "loading": "加载令牌中...",
+      "empty": "暂无 API 令牌，立即创建一个吧。",
+      "unnamedToken": "未命名令牌",
+      "disabled": "已禁用",
+      "expired": "已过期",
+      "usageHint": "在每次 API 请求中通过 Authorization 请求头传递令牌：",
+      "createdAt": "创建于 {date}",
+      "expiresAt": "过期于 {date}",
+      "lastUsed": "上次使用 {date}",
+      "createDialog": {
+        "title": "创建 API 令牌",
+        "description": "为令牌取一个描述性名称，方便日后识别。",
+        "nameLabel": "令牌名称",
+        "namePlaceholder": "例如：我的交易机器人",
+        "nameHint": "一个帮助您识别此令牌的友好标签。",
+        "cancel": "取消",
+        "confirm": "创建令牌",
+        "creating": "创建中...",
+        "ipLabel": "IP 白名单",
+        "ipOptional": "可选",
+        "ipPlaceholder": "203.0.113.1\n198.51.100.42",
+        "ipHint": "每行一个 IP（或用逗号分隔）。留空则允许所有 IP。",
+        "permissionsLabel": "权限",
+        "permissionsHint": "选择此令牌可以访问的资源。"
+      },
+      "permissions": {
+        "groups": {
+          "read": "读取",
+          "write": "写入",
+          "settings": "设置"
+        }
+      },
+      "newToken": {
+        "warning": "请立即复制此令牌，之后将无法再次查看。",
+        "tokenLabel": "您的新令牌",
+        "done": "已保存，完成"
+      },
+      "revokeDialog": {
+        "title": "撤销令牌？",
+        "description": "撤销「{name}」？使用此令牌的任何脚本将立即失去访问权限，且此操作无法撤销。",
+        "cancel": "取消",
+        "confirm": "撤销"
+      },
+      "catalogue": {
+        "title": "可用 API 端点",
+        "description": "以下所有端点均可通过 Authorization 请求头中的有效 API 令牌调用。",
+        "toggle": "浏览 API 端点",
+        "endpoints": "个端点",
+        "groups": {
+          "read": "读取",
+          "write": "写入",
+          "settings": "设置"
+        }
+      },
+      "messages": {
+        "revoked": "令牌已成功撤销"
+      },
+      "errors": {
+        "loadFailed": "加载 API 令牌失败",
+        "createFailed": "创建 API 令牌失败",
+        "revokeFailed": "撤销 API 令牌失败"
+      },
+      "ipWhitelist": "IP 白名单"
     }
   },
   "market": {

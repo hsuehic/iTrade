@@ -9,12 +9,14 @@ import { SecuritySettings } from '@/components/settings/security-settings';
 import { EmailPreferencesSettings } from '@/components/settings/email-preferences-settings';
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
 import { DangerZone } from '@/components/settings/danger-zone';
+import { ApiTokensSettings } from '@/components/settings/api-tokens-settings';
 import {
   IconUser,
   IconLock,
   IconMail,
   IconPalette,
   IconAlertTriangle,
+  IconKey,
 } from '@tabler/icons-react';
 
 export default function SettingsPage() {
@@ -44,6 +46,10 @@ export default function SettingsPage() {
                   <IconPalette className="size-4" />
                   <span className="hidden sm:inline">{t('tabs.appearance')}</span>
                 </TabsTrigger>
+                <TabsTrigger value="api-tokens" className="gap-2">
+                  <IconKey className="size-4" />
+                  <span className="hidden sm:inline">{t('tabs.apiTokens')}</span>
+                </TabsTrigger>
                 <TabsTrigger value="danger" className="gap-2 text-destructive">
                   <IconAlertTriangle className="size-4" />
                   <span className="hidden sm:inline">{t('tabs.danger')}</span>
@@ -64,6 +70,10 @@ export default function SettingsPage() {
 
               <TabsContent value="appearance">
                 <AppearanceSettings />
+              </TabsContent>
+
+              <TabsContent value="api-tokens">
+                <ApiTokensSettings />
               </TabsContent>
 
               <TabsContent value="danger">
