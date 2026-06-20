@@ -374,12 +374,6 @@ A token may have an IP whitelist. If the token has `allowedIps` configured, requ
 
 ---
 
-## Rate limits
-
-Default per token: **10 requests per 24 hours** (configurable by the token owner). The `429` response includes a `Retry-After` header.
-
----
-
 ## Notes for agents
 
 - Always check the HTTP status code before parsing the response body.
