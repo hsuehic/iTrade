@@ -464,7 +464,7 @@ export const getAuthFromRequest = (request: Request): ReturnType<typeof betterAu
  * ```
  */
 export const getSession = async (request: Request) => {
-  const authInstance = createAuth(getRequestBaseURL(request));
+  const authInstance = getAuthFromRequest(request);
 
   // 1. Try cookie-based session first
   const session = await authInstance.api.getSession({ headers: request.headers });

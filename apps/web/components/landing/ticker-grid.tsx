@@ -143,25 +143,46 @@ export function TickerGrid() {
       }
     };
 
+    const fetchOkxTicker = async (instId: string) => {
+      try {
+        const res = await fetch(
+          `https://www.okx.com/api/v5/market/ticker?instId=${instId}`,
+        );
+        if (!res.ok) {
+          throw new Error(`OKX direct fetch failed: ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0) {
+          throw new Error('OKX direct payload invalid');
+        }
+        return data.data[0];
+      } catch (error) {
+        console.warn('OKX direct fetch failed, trying proxy fallback:', error);
+        try {
+          const proxyRes = await fetch(
+            `/api/proxy/okx/tickers?instId=${encodeURIComponent(instId)}`,
+            { cache: 'no-store' },
+          );
+          if (!proxyRes.ok) {
+            return null;
+          }
+          const data = await proxyRes.json();
+          if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0) {
+            return null;
+          }
+          return data.data[0];
+        } catch (proxyError) {
+          console.warn('OKX proxy fetch failed:', proxyError);
+          return null;
+        }
+      }
+    };
+
     const fetchOkxTickers = async () => {
       try {
         const responses = await Promise.all(
           OKX_COINS.flatMap((coin) =>
-            coin.instIds.map(async (instId) => {
-              const res = await fetch(
-                `https://www.okx.com/api/v5/market/ticker?instId=${instId}`,
-              );
-              if (!res.ok) return null;
-              const data = await res.json();
-              if (
-                data.code !== '0' ||
-                !Array.isArray(data.data) ||
-                data.data.length === 0
-              ) {
-                return null;
-              }
-              return data.data[0];
-            }),
+            coin.instIds.map((instId) => fetchOkxTicker(instId)),
           ),
         );
 
