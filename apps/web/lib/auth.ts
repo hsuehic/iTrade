@@ -448,7 +448,7 @@ export const getAuthFromRequest = (request: Request): ReturnType<typeof betterAu
 
 /**
  * Get session from request - the simplest way to get authenticated session in API routes.
- * This automatically handles the base URL detection for production compatibility.
+ * Supports both cookie-based sessions and API key bearer tokens (Authorization: Bearer itrade_xxx).
  *
  * Usage in API routes:
  * ```ts
@@ -464,6 +464,49 @@ export const getAuthFromRequest = (request: Request): ReturnType<typeof betterAu
  * ```
  */
 export const getSession = async (request: Request) => {
-  const auth = createAuth(getRequestBaseURL(request));
-  return auth.api.getSession({ headers: request.headers });
+  const authInstance = createAuth(getRequestBaseURL(request));
+
+  // 1. Try cookie-based session first
+  const session = await authInstance.api.getSession({ headers: request.headers });
+  if (session) return session;
+
+  // 2. Fall back to API key bearer token
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (token) {
+      try {
+        const result = await (authInstance.api as any).verifyApiKey({
+          body: { key: token },
+        });
+        if (result?.valid && result?.key?.userId) {
+          // Fetch the full user so the session shape matches cookie-based sessions
+          const ctx = await (authInstance as any).$context;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const user = await (ctx.adapter.findOne as any)({
+            model: 'user',
+            where: [{ field: 'id', value: result.key.userId }],
+          });
+          if (user) {
+            return {
+              user: user as {
+                id: string;
+                email: string;
+                emailVerified: boolean;
+                name: string;
+                image?: string | null;
+                createdAt: Date;
+                updatedAt: Date;
+              },
+              session: null,
+            };
+          }
+        }
+      } catch {
+        // Invalid API key — fall through to null
+      }
+    }
+  }
+
+  return null;
 };

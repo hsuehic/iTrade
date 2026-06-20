@@ -48,15 +48,15 @@ export class ApiKey {
   @Column('boolean', { name: 'enabled', default: true })
   enabled!: boolean;
 
-  @Column('boolean', { name: 'rateLimitEnabled', default: true })
+  @Column('boolean', { name: 'rateLimitEnabled', default: false })
   rateLimitEnabled!: boolean;
 
-  /** Rate-limit window in milliseconds (default 24 h) */
-  @Column('integer', { name: 'rateLimitTimeWindow', nullable: true, default: 86400000 })
+  /** Rate-limit window in milliseconds — null means no limit */
+  @Column('integer', { name: 'rateLimitTimeWindow', nullable: true })
   rateLimitTimeWindow?: number | null;
 
-  /** Maximum requests allowed within the rate-limit window */
-  @Column('integer', { name: 'rateLimitMax', nullable: true, default: 10 })
+  /** Maximum requests allowed within the rate-limit window — null means no limit */
+  @Column('integer', { name: 'rateLimitMax', nullable: true })
   rateLimitMax?: number | null;
 
   /** Total lifetime request count */
