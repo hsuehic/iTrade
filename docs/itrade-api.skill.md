@@ -89,7 +89,7 @@ Returns open positions with unrealised P&L.
 GET /api/orders
 ```
 
-Query params: `status` (open|filled|cancelled), `symbol`, `limit`, `offset`.
+Query params: `status` (`NEW`|`PARTIALLY_FILLED`|`FILLED`|`CANCELED`|`REJECTED`|`EXPIRED`), `symbol`, `exchange`, `side`, `type`, `startDate`, `endDate`, `page`, `pageSize`, `sortBy`, `sortOrder`, `search`. Status values are case-insensitive.
 
 ```
 GET /api/orders/:id
@@ -333,7 +333,7 @@ Returns app-level configuration (supported exchanges, feature flags).
 ### List open orders
 
 ```bash
-curl -s "https://xtrde.com/api/orders?status=open" \
+curl -s "https://xtrde.com/api/orders?status=NEW" \
   -H "Authorization: Bearer itrade_<token>"
 ```
 

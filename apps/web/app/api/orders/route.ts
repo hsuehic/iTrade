@@ -6,7 +6,9 @@ import { getSession } from '@/lib/auth';
 import { executeManualOrder } from '@/lib/services/order-execution-service';
 import { ExchangeId, SUPPORTED_QUOTE_CURRENCIES, parseSymbol } from '@/lib/exchanges';
 import { isValidExchange } from '@itrade/data-manager';
-import { OrderSide, OrderType, TradeMode } from '@itrade/core';
+import { OrderSide, OrderStatus, OrderType, TradeMode } from '@itrade/core';
+
+const VALID_ORDER_STATUSES = Object.values(OrderStatus) as string[];
 
 const splitCompactSymbol = (symbol: string, quotes: readonly string[]) => {
   const sortedQuotes = [...quotes].sort((a, b) => b.length - a.length);
@@ -212,7 +214,15 @@ export async function GET(request: NextRequest) {
     }
     if (symbol) filters.symbol = symbol;
     if (exchange) filters.exchange = exchange;
-    if (status) filters.status = status;
+    if (status) {
+      if (!VALID_ORDER_STATUSES.includes(status.toUpperCase())) {
+        return NextResponse.json(
+          { error: `Invalid status. Valid values: ${VALID_ORDER_STATUSES.join(', ')}` },
+          { status: 400 },
+        );
+      }
+      filters.status = status.toUpperCase();
+    }
     if (side) filters.side = side;
     if (type) filters.type = type;
     if (startDate) filters.startDate = new Date(startDate);
