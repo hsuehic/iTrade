@@ -14,7 +14,14 @@ import { getDataManager } from './data-manager';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type SettingKey = 'gemini_api_key' | 'gemini_model' | 'chat_title';
+export type SettingKey =
+  | 'ai_provider'
+  | 'ai_api_key'
+  | 'ai_base_url'
+  | 'ai_model'
+  | 'gemini_api_key'
+  | 'gemini_model'
+  | 'chat_title';
 
 interface SettingsCache {
   values: Partial<Record<SettingKey, string>>;

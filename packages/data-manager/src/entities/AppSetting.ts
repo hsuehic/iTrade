@@ -4,8 +4,12 @@ import { Column, Entity, UpdateDateColumn } from 'typeorm';
  * Runtime-configurable key-value settings managed via the admin UI.
  *
  * Known keys:
- *  - gemini_api_key  — Google Gemini API key (overrides GEMINI_API_KEY env var)
- *  - gemini_model    — Gemini model name (overrides GEMINI_MODEL env var)
+ *  - ai_provider     — Chat provider: `google` or `openai`
+ *  - ai_api_key      — Provider API key (overrides env vars)
+ *  - ai_base_url     — Provider base URL (OpenAI-compatible endpoints)
+ *  - ai_model        — Chat model ID
+ *  - gemini_api_key  — Legacy Gemini key fallback
+ *  - gemini_model    — Legacy Gemini model fallback
  *  - chat_title      — Chat widget subtitle shown in the header
  */
 @Entity('app_settings')

@@ -26,36 +26,53 @@ import {
 import { IconLoader2, IconEye, IconEyeOff, IconRefresh } from '@tabler/icons-react';
 import { authClient } from '@/lib/auth-client';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+type AIProvider = 'google' | 'openai';
 
 type AiConfigForm = {
-  gemini_api_key: string;
-  gemini_model: string;
+  ai_provider: AIProvider;
+  ai_api_key: string;
+  ai_base_url: string;
+  ai_model: string;
   chat_title: string;
+};
+
+type ListedModel = {
+  id: string;
+  label: string;
 };
 
 type AiConfigResponse = {
-  gemini_api_key: string; // masked value shown for display
-  gemini_api_key_set: boolean; // whether a key is stored in DB
-  gemini_model: string;
+  ai_provider: AIProvider;
+  ai_api_key: string;
+  ai_api_key_set: boolean;
+  ai_base_url: string;
+  ai_model: string;
   chat_title: string;
+  provider_label: string;
 };
 
-// ── Known Gemini models (user can still type a custom value) ──────────────────
-
-const KNOWN_GEMINI_MODELS = [
-  { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash (default, thinking)' },
-  { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro (thinking, best quality)' },
-  { value: 'gemini-2.5-flash-lite', label: 'gemini-2.5-flash-lite (thinking, fastest)' },
-  { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash (non-thinking, reliable)' },
+const PROVIDER_OPTIONS: Array<{ value: AIProvider; label: string; hint: string }> = [
   {
-    value: 'gemini-2.0-flash-lite',
-    label: 'gemini-2.0-flash-lite (non-thinking, fastest)',
+    value: 'google',
+    label: 'Google Gemini',
+    hint: 'Uses the Google Generative Language API.',
   },
-  { value: '__custom__', label: 'Custom model name…' },
+  {
+    value: 'openai',
+    label: 'OpenAI / Compatible',
+    hint: 'Works with OpenAI, Azure OpenAI proxies, Ollama OpenAI shim, etc.',
+  },
 ];
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+const DEFAULT_BASE_URLS: Record<AIProvider, string> = {
+  google: 'https://generativelanguage.googleapis.com/v1beta',
+  openai: 'https://api.openai.com/v1',
+};
+
+const DEFAULT_MODELS: Record<AIProvider, string> = {
+  google: 'gemini-2.5-flash',
+  openai: 'gpt-4o-mini',
+};
 
 export default function AdminAiConfigPage() {
   const router = useRouter();
@@ -63,17 +80,18 @@ export default function AdminAiConfigPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeySet, setApiKeySet] = useState(false);
   const [maskedApiKey, setMaskedApiKey] = useState('');
-  const [modelSelectValue, setModelSelectValue] = useState('gemini-2.5-flash');
+  const [availableModels, setAvailableModels] = useState<ListedModel[]>([]);
   const [form, setForm] = useState<AiConfigForm>({
-    gemini_api_key: '',
-    gemini_model: '',
+    ai_provider: 'google',
+    ai_api_key: '',
+    ai_base_url: DEFAULT_BASE_URLS.google,
+    ai_model: DEFAULT_MODELS.google,
     chat_title: '',
   });
-
-  // ── Auth guard ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (sessionPending) return;
@@ -82,7 +100,57 @@ export default function AdminAiConfigPage() {
     }
   }, [session, sessionPending, router]);
 
-  // ── Load current settings ───────────────────────────────────────────────────
+  const fetchModelsForConfig = useCallback(
+    async (input: {
+      provider: AIProvider;
+      baseUrl: string;
+      model: string;
+      apiKey?: string;
+      silent?: boolean;
+    }) => {
+      setIsFetchingModels(true);
+      try {
+        const res = await fetch('/api/admin/ai-config/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: input.provider,
+            api_key: input.apiKey?.trim() || undefined,
+            base_url: input.baseUrl.trim() || undefined,
+          }),
+        });
+        const data = (await res.json()) as { models?: ListedModel[]; error?: string };
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to fetch models');
+        }
+
+        const models = data.models ?? [];
+        setAvailableModels(models);
+
+        if (models.length === 0) {
+          if (!input.silent)
+            toast.warning('No chat models were returned by the provider.');
+        } else if (!input.silent) {
+          toast.success(`Loaded ${models.length} available models.`);
+        }
+
+        if (models.length > 0 && !models.some((m) => m.id === input.model)) {
+          setForm((prev) => ({ ...prev, ai_model: models[0].id }));
+        }
+      } catch (error) {
+        if (!input.silent) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Failed to fetch models from provider.',
+          );
+        }
+      } finally {
+        setIsFetchingModels(false);
+      }
+    },
+    [],
+  );
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
@@ -91,31 +159,31 @@ export default function AdminAiConfigPage() {
       if (!res.ok) throw new Error('Failed to load settings');
       const data = (await res.json()) as AiConfigResponse;
 
-      setApiKeySet(data.gemini_api_key_set);
-      setMaskedApiKey(data.gemini_api_key);
-
-      // Determine whether the stored model matches a known preset
-      const knownValues = KNOWN_GEMINI_MODELS.map((m) => m.value).filter(
-        (v) => v !== '__custom__',
-      );
-      const storedModel = data.gemini_model;
-      const isKnown = storedModel === '' || knownValues.includes(storedModel);
-
-      setModelSelectValue(
-        storedModel === '' ? 'gemini-2.5-flash' : isKnown ? storedModel : '__custom__',
-      );
-
+      setApiKeySet(data.ai_api_key_set);
+      setMaskedApiKey(data.ai_api_key);
       setForm({
-        gemini_api_key: '', // never pre-fill — user must re-enter to change
-        gemini_model: storedModel,
+        ai_provider: data.ai_provider,
+        ai_api_key: '',
+        ai_base_url: data.ai_base_url || DEFAULT_BASE_URLS[data.ai_provider],
+        ai_model: data.ai_model || DEFAULT_MODELS[data.ai_provider],
         chat_title: data.chat_title,
       });
+      setAvailableModels([]);
+
+      if (data.ai_api_key_set) {
+        void fetchModelsForConfig({
+          provider: data.ai_provider,
+          baseUrl: data.ai_base_url || DEFAULT_BASE_URLS[data.ai_provider],
+          model: data.ai_model || DEFAULT_MODELS[data.ai_provider],
+          silent: true,
+        });
+      }
     } catch {
       toast.error('Failed to load AI configuration.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchModelsForConfig]);
 
   useEffect(() => {
     if (
@@ -127,36 +195,51 @@ export default function AdminAiConfigPage() {
     }
   }, [session, sessionPending, loadSettings]);
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
-
-  const set = (field: keyof AiConfigForm, value: string) =>
+  const set = <K extends keyof AiConfigForm>(field: K, value: AiConfigForm[K]) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
-  const handleModelSelectChange = (value: string) => {
-    setModelSelectValue(value);
-    if (value !== '__custom__') {
-      set('gemini_model', value === 'gemini-2.5-flash' ? '' : value);
-    }
-    // For __custom__ we leave gemini_model as-is so the text input is editable
+  const handleProviderChange = (provider: AIProvider) => {
+    setForm((prev) => ({
+      ...prev,
+      ai_provider: provider,
+      ai_base_url: DEFAULT_BASE_URLS[provider],
+      ai_model: DEFAULT_MODELS[provider],
+    }));
+    setAvailableModels([]);
   };
 
-  // ── Save ────────────────────────────────────────────────────────────────────
+  const fetchModels = useCallback(
+    async (options?: { silent?: boolean }) => {
+      await fetchModelsForConfig({
+        provider: form.ai_provider,
+        baseUrl: form.ai_base_url,
+        model: form.ai_model,
+        apiKey: form.ai_api_key,
+        silent: options?.silent,
+      });
+    },
+    [
+      fetchModelsForConfig,
+      form.ai_api_key,
+      form.ai_base_url,
+      form.ai_model,
+      form.ai_provider,
+    ],
+  );
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const body: Partial<AiConfigForm> = {};
+      const body: Partial<AiConfigForm> = {
+        ai_provider: form.ai_provider,
+        ai_base_url: form.ai_base_url.trim(),
+        ai_model: form.ai_model.trim(),
+        chat_title: form.chat_title.trim(),
+      };
 
-      // Only include API key if the user typed something new
-      if (form.gemini_api_key.trim()) {
-        body.gemini_api_key = form.gemini_api_key.trim();
+      if (form.ai_api_key.trim()) {
+        body.ai_api_key = form.ai_api_key.trim();
       }
-
-      // Model: empty string clears DB value → falls back to default
-      body.gemini_model = form.gemini_model.trim();
-
-      // Chat title
-      body.chat_title = form.chat_title.trim();
 
       const res = await fetch('/api/admin/ai-config', {
         method: 'PUT',
@@ -167,7 +250,6 @@ export default function AdminAiConfigPage() {
       if (!res.ok) throw new Error('Save failed');
 
       toast.success('AI configuration saved. Changes take effect within 30 seconds.');
-      // Refresh the displayed masked key / status
       await loadSettings();
     } catch {
       toast.error('Failed to save AI configuration.');
@@ -176,23 +258,23 @@ export default function AdminAiConfigPage() {
     }
   };
 
-  // ── Clear a single field ────────────────────────────────────────────────────
-
   const handleClearApiKey = async () => {
     if (
       !window.confirm(
-        'Remove the stored Gemini API key? The server will fall back to the GEMINI_API_KEY environment variable.',
+        'Remove the stored API key? The server will fall back to environment variables.',
       )
-    )
+    ) {
       return;
+    }
+
     setIsSaving(true);
     try {
       await fetch('/api/admin/ai-config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gemini_api_key: '' }),
+        body: JSON.stringify({ ai_api_key: '' }),
       });
-      toast.success('Gemini API key cleared.');
+      toast.success('API key cleared.');
       await loadSettings();
     } catch {
       toast.error('Failed to clear API key.');
@@ -200,8 +282,6 @@ export default function AdminAiConfigPage() {
       setIsSaving(false);
     }
   };
-
-  // ── Loading / auth states ───────────────────────────────────────────────────
 
   if (
     sessionPending ||
@@ -214,19 +294,21 @@ export default function AdminAiConfigPage() {
     );
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  const activeProvider = PROVIDER_OPTIONS.find((p) => p.value === form.ai_provider);
+  const previewTitle =
+    form.chat_title ||
+    `Powered by ${activeProvider?.label ?? 'AI'} · ${form.ai_model || DEFAULT_MODELS[form.ai_provider]}`;
 
   return (
     <SidebarInset>
       <SiteHeader title="Admin - AI Config" />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
-        {/* Page header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-2xl font-bold tracking-tight">AI Configuration</h2>
             <p className="text-muted-foreground text-sm">
-              Update Gemini credentials and chatbot display settings at runtime — no
-              restart required. Changes take effect within 30 seconds.
+              Configure the chatbot provider, credentials, and model at runtime — no
+              restart required. Supports Google Gemini and OpenAI-compatible APIs.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -254,18 +336,49 @@ export default function AdminAiConfigPage() {
           </div>
         ) : (
           <div className="grid gap-6 lg:grid-cols-2">
-            {/* ── Gemini API Key ──────────────────────────────────────────── */}
-            <Card>
+            <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Gemini API Key</CardTitle>
+                <CardTitle>AI Provider</CardTitle>
                 <CardDescription>
-                  The key used to authenticate with Google Gemini. DB value takes priority
-                  over the <code className="text-xs">GEMINI_API_KEY</code> environment
-                  variable.
+                  Choose which API the chatbot uses for completions. Help KB embeddings
+                  still use Gemini separately when seeding the knowledge base.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Current key status */}
+                <div className="space-y-1.5">
+                  <Label>Provider</Label>
+                  <Select
+                    value={form.ai_provider}
+                    onValueChange={(value) => handleProviderChange(value as AIProvider)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROVIDER_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {activeProvider && (
+                    <p className="text-xs text-muted-foreground">{activeProvider.hint}</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>API Credentials</CardTitle>
+                <CardDescription>
+                  DB values take priority over <code className="text-xs">AI_API_KEY</code>
+                  , <code className="text-xs">GEMINI_API_KEY</code>, and{' '}
+                  <code className="text-xs">OPENAI_API_KEY</code>.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">Current key:</span>
                   {apiKeySet ? (
@@ -290,18 +403,17 @@ export default function AdminAiConfigPage() {
                   )}
                 </div>
 
-                {/* New key input */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="gemini_api_key">
+                  <Label htmlFor="ai_api_key">
                     {apiKeySet ? 'Replace with a new key' : 'Set API key'}
                   </Label>
                   <div className="relative">
                     <Input
-                      id="gemini_api_key"
+                      id="ai_api_key"
                       type={showApiKey ? 'text' : 'password'}
-                      placeholder={apiKeySet ? 'Enter new key to replace…' : 'AIzaSy…'}
-                      value={form.gemini_api_key}
-                      onChange={(e) => set('gemini_api_key', e.target.value)}
+                      placeholder={form.ai_provider === 'google' ? 'AIzaSy…' : 'sk-…'}
+                      value={form.ai_api_key}
+                      onChange={(e) => set('ai_api_key', e.target.value)}
                       autoComplete="off"
                       className="pr-10 font-mono"
                     />
@@ -322,72 +434,94 @@ export default function AdminAiConfigPage() {
                     Leave blank to keep the current key unchanged.
                   </p>
                 </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="ai_base_url">Base URL</Label>
+                  <Input
+                    id="ai_base_url"
+                    placeholder={DEFAULT_BASE_URLS[form.ai_provider]}
+                    value={form.ai_base_url}
+                    onChange={(e) => set('ai_base_url', e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {form.ai_provider === 'openai'
+                      ? 'Use your OpenAI-compatible endpoint, e.g. https://api.openai.com/v1 or a local proxy.'
+                      : 'Usually leave the default Google Generative Language API URL.'}
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
-            {/* ── Gemini Model ────────────────────────────────────────────── */}
             <Card>
               <CardHeader>
-                <CardTitle>Gemini Model</CardTitle>
+                <CardTitle>Chat Model</CardTitle>
                 <CardDescription>
-                  The model used for all chatbot responses. DB value takes priority over
-                  the <code className="text-xs">GEMINI_MODEL</code> env var. Defaults to{' '}
-                  <code className="text-xs">gemini-2.5-flash</code>. Thinking models are
-                  fully supported — multi-turn tool calling works correctly.
+                  Fetch available models from the provider after entering credentials,
+                  then choose the model used for chat responses.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Model preset</Label>
-                  <Select
-                    value={modelSelectValue}
-                    onValueChange={handleModelSelectChange}
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1.5">
+                    <Label>Available models</Label>
+                    <Select
+                      value={form.ai_model}
+                      onValueChange={(value) => set('ai_model', value)}
+                      disabled={availableModels.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            availableModels.length > 0
+                              ? 'Select a model'
+                              : 'Fetch models first'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fetchModels()}
+                    disabled={isFetchingModels || (!apiKeySet && !form.ai_api_key.trim())}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {KNOWN_GEMINI_MODELS.map((m) => (
-                        <SelectItem key={m.value} value={m.value}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    {isFetchingModels ? (
+                      <IconLoader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Fetch models'
+                    )}
+                  </Button>
                 </div>
 
-                {/* Custom model text input — shown when preset is __custom__ */}
-                {modelSelectValue === '__custom__' && (
-                  <div className="space-y-1.5">
-                    <Label htmlFor="gemini_model_custom">Custom model name</Label>
-                    <Input
-                      id="gemini_model_custom"
-                      placeholder="e.g. gemini-3.1-pro-exp"
-                      value={form.gemini_model}
-                      onChange={(e) => set('gemini_model', e.target.value)}
-                      className="font-mono"
-                    />
-                  </div>
-                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="ai_model_custom">Or enter model ID manually</Label>
+                  <Input
+                    id="ai_model_custom"
+                    placeholder={DEFAULT_MODELS[form.ai_provider]}
+                    value={form.ai_model}
+                    onChange={(e) => set('ai_model', e.target.value)}
+                    className="font-mono"
+                  />
+                </div>
 
-                {/* Active model display */}
                 <p className="text-xs text-muted-foreground">
                   Active:{' '}
                   <code className="bg-muted px-1 py-0.5 rounded text-xs">
-                    {form.gemini_model || 'gemini-2.5-flash'}
-                  </code>{' '}
-                  {!form.gemini_model && (
-                    <span className="text-muted-foreground">(default)</span>
-                  )}
-                </p>
-
-                <p className="text-xs text-muted-foreground">
-                  Leave blank to revert to the default model.
+                    {form.ai_model || DEFAULT_MODELS[form.ai_provider]}
+                  </code>
                 </p>
               </CardContent>
             </Card>
 
-            {/* ── Chat Widget Title ───────────────────────────────────────── */}
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Chatbot Display</CardTitle>
@@ -400,7 +534,7 @@ export default function AdminAiConfigPage() {
                   <Label htmlFor="chat_title">Chatbot subtitle / powered-by label</Label>
                   <Input
                     id="chat_title"
-                    placeholder="Powered by Gemini 2.5 Flash"
+                    placeholder={previewTitle}
                     value={form.chat_title}
                     onChange={(e) => set('chat_title', e.target.value)}
                     maxLength={80}
@@ -408,13 +542,12 @@ export default function AdminAiConfigPage() {
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>
                       Shown below &ldquo;iTrade AI&rdquo; in the chat widget header. Leave
-                      blank to use the default.
+                      blank to auto-generate from provider and model.
                     </span>
                     <span>{form.chat_title.length}/80</span>
                   </div>
                 </div>
 
-                {/* Live preview */}
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <p className="text-xs text-muted-foreground mb-2">Preview</p>
                   <div className="flex items-center gap-3 rounded-lg bg-primary px-3 py-2 w-fit">
@@ -438,7 +571,7 @@ export default function AdminAiConfigPage() {
                         iTrade AI
                       </p>
                       <p className="text-[11px] text-primary-foreground/70 mt-0.5">
-                        {form.chat_title || 'Powered by Gemini 2.5 Flash'}
+                        {previewTitle}
                       </p>
                     </div>
                   </div>

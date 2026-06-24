@@ -233,12 +233,12 @@ export async function POST(request: NextRequest) {
 
         const errMsg = (error as Error)?.message ?? '';
         if (
-          errMsg.includes('Gemini API key not configured') ||
-          errMsg.includes('No Gemini API key configured')
+          errMsg.includes('No AI API key configured') ||
+          errMsg.includes('Gemini API key not configured')
         ) {
           send('error', {
             message:
-              'The help bot is temporarily unavailable. An administrator needs to configure the Gemini API key.',
+              'The help bot is temporarily unavailable. An administrator needs to configure the AI provider API key.',
             status: 503,
           });
         } else {

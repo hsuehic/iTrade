@@ -7,8 +7,8 @@
  * the model can call up to 5 rounds of tools before producing its final answer.
  * Tokens are streamed to the client as Server-Sent Events.
  *
- * iTrade uses Google Gemini exclusively. The API key + model are configured
- * via Admin → AI Config (DB-backed, runtime-editable) with env-var fallback.
+ * iTrade supports Google Gemini and OpenAI-compatible providers. Credentials
+ * are configured via Admin → AI Config (DB-backed, runtime-editable).
  *
  * SSE event protocol
  * ──────────────────
@@ -37,7 +37,7 @@ import {
 } from 'ai';
 
 import { getSession } from '@/lib/auth';
-import { getAIModel } from '@/lib/chatbot/provider';
+import { getAIModel, getAIConfig } from '@/lib/chatbot/provider';
 import { buildDynamicContext } from '@/lib/chatbot/dynamic';
 
 export const maxDuration = 120; // Allow up to 120 s for multi-tool agentic loops
@@ -120,7 +120,7 @@ function parseRenderData(rawText: string): {
   return { cleanText, renderData };
 }
 
-// ── Gemini error normalisation ────────────────────────────────────────────────
+// ── Provider error normalisation ──────────────────────────────────────────────
 
 function extractStatus(error: unknown): number {
   if (!error || typeof error !== 'object') return 0;
@@ -152,25 +152,26 @@ function parseProviderError(error: unknown): { status: number; message: string }
       return {
         status: 429,
         message:
-          "Today's Gemini quota has been reached. The chatbot will be available again shortly.",
+          "Today's AI provider quota has been reached. The chatbot will be available again shortly.",
       };
     }
     return {
       status: 429,
-      message: 'Gemini is currently rate-limited. Please try again in a moment.',
+      message: 'The AI provider is currently rate-limited. Please try again in a moment.',
     };
   }
   if (status === 413) {
     return {
       status: 429,
       message:
-        'Your request is too large for Gemini. Try a shorter message or clear the conversation history.',
+        'Your request is too large for the selected model. Try a shorter message or clear the conversation history.',
     };
   }
   if (status === 503 || status === 529) {
     return {
       status: 503,
-      message: 'Gemini is temporarily unavailable. Please try again in a moment.',
+      message:
+        'The AI provider is temporarily unavailable. Please try again in a moment.',
     };
   }
   return null;
@@ -180,8 +181,8 @@ function isMissingKeyError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const msg = ((error as Record<string, unknown>).message as string | undefined) ?? '';
   return (
-    msg.includes('GEMINI_API_KEY') ||
-    msg.includes('No Gemini API key configured') ||
+    msg.includes('No AI API key configured') ||
+    msg.includes('API key is required') ||
     msg.includes('API key')
   );
 }
@@ -277,36 +278,32 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        const [model, ctx] = await Promise.all([
+        const [model, aiConfig, ctx] = await Promise.all([
           getAIModel(),
+          getAIConfig(),
           // Embed the user's message and retrieve the most relevant tools +
           // prompt sections from the vector KB. Falls back to the full static
           // context when the KB is unavailable or not yet seeded.
           buildDynamicContext(message, baseUrl, cookie, forwardedHeaders),
         ]);
 
-        // @ai-sdk/google v2.x preserves thoughtSignature in providerMetadata
-        // so thinking models (gemini-2.5-flash etc.) work correctly across steps.
-        const result = streamText({
+        const streamOptions: Parameters<typeof streamText>[0] = {
           model,
           system: ctx.systemPrompt,
           messages,
-          tools: ctx.tools,
+          tools: {}, // ctx.tools,
           stopWhen: stepCountIs(5),
           maxOutputTokens: 4000,
-          // Cap Gemini's internal "thinking" phase (gemini-2.5-* models).
-          // Without a budget, thinking is unconstrained and can silently add
-          // 5–30 s of latency before the first token.
-          //
-          // We use 1024 rather than 0 here: setting the budget to 0 disables
-          // thinking entirely which breaks multi-step tool-use — the model
-          // can't reason about which tool to call and returns empty text.
-          // 1024 tokens (~1–2 s) is enough for tool-call decisions while
-          // eliminating the "runaway thinking" that caused the original slowness.
-          providerOptions: {
+        };
+
+        // Gemini thinking models need a capped thinking budget for tool use.
+        if (aiConfig.provider === 'google') {
+          streamOptions.providerOptions = {
             google: { thinkingConfig: { thinkingBudget: 1024 } },
-          },
-        } as Parameters<typeof streamText>[0]);
+          };
+        }
+
+        const result = streamText(streamOptions);
 
         // Stream each text delta to the client immediately
         let fullText = '';
@@ -325,8 +322,7 @@ export async function POST(request: NextRequest) {
         if (isMissingKeyError(error)) {
           send('error', {
             message:
-              'Gemini is not configured. Set GEMINI_API_KEY or add a key via Admin → AI Config. ' +
-              'Get a free key at https://aistudio.google.com/apikey',
+              'AI provider is not configured. Add an API key via Admin → AI Config or set AI_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY.',
             status: 503,
           });
         } else {
