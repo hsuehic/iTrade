@@ -63,11 +63,8 @@ interface OKXTickerData {
 
 // Helper function to trim trailing zeros from price strings
 const trimTrailingZeros = (priceStr: string): string => {
-  // If it contains a decimal point, remove trailing zeros
   if (priceStr.includes('.')) {
-    // Remove trailing zeros after decimal point
     let trimmed = priceStr.replace(/(\.\d*?)0+$/, '$1');
-    // If only decimal point remains, remove it too
     trimmed = trimmed.replace(/\.$/, '');
     return trimmed;
   }
@@ -112,18 +109,17 @@ export function TickerGrid() {
   const okxReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const okxRestIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const okxRestFallbackRef = useRef(false);
+  const binanceRestIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const binanceRestFallbackRef = useRef(false);
 
   // Data buffers for throttling
   const latestBinanceDataRef = useRef<Map<string, TickerData>>(new Map());
   const latestOkxDataRef = useRef<Map<string, TickerData>>(new Map());
 
-  // Track visible cards (kept for potential future optimization or debugging)
+  // Track visible cards (kept for potential future use)
   const visibleCardsRef = useRef<Set<string>>(new Set());
 
-  // Handle visibility change for ticker cards
   const handleVisibilityChange = useCallback((tickerId: string, visible: boolean) => {
-    // With global throttling, individual visibility tracking for updates is less critical for performance
-    // but can still be kept if we want to pause purely rendering processing.
     if (visible) {
       visibleCardsRef.current.add(tickerId);
     } else {
@@ -134,7 +130,6 @@ export function TickerGrid() {
   useEffect(() => {
     let binanceConnected = false;
     let okxConnected = false;
-    const maxRetriesPerEndpoint = 2;
 
     const updateConnectionState = () => {
       if (binanceConnected || okxConnected) {
@@ -143,88 +138,11 @@ export function TickerGrid() {
       }
     };
 
-    const fetchOkxTicker = async (instId: string) => {
-      try {
-        const res = await fetch(
-          `https://www.okx.com/api/v5/market/ticker?instId=${instId}`,
-        );
-        if (!res.ok) {
-          throw new Error(`OKX direct fetch failed: ${res.status}`);
-        }
-        const data = await res.json();
-        if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0) {
-          throw new Error('OKX direct payload invalid');
-        }
-        return data.data[0];
-      } catch (error) {
-        console.warn('OKX direct fetch failed, trying proxy fallback:', error);
-        try {
-          const proxyRes = await fetch(
-            `/api/proxy/okx/tickers?instId=${encodeURIComponent(instId)}`,
-            { cache: 'no-store' },
-          );
-          if (!proxyRes.ok) {
-            return null;
-          }
-          const data = await proxyRes.json();
-          if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0) {
-            return null;
-          }
-          return data.data[0];
-        } catch (proxyError) {
-          console.warn('OKX proxy fetch failed:', proxyError);
-          return null;
-        }
-      }
-    };
-
-    const fetchOkxTickers = async () => {
-      try {
-        const responses = await Promise.all(
-          OKX_COINS.flatMap((coin) =>
-            coin.instIds.map((instId) => fetchOkxTicker(instId)),
-          ),
-        );
-
-        responses
-          .filter((item): item is OKXTickerData['data'][number] => item !== null)
-          .forEach((tickerData) => {
-            const open24h = parseFloat(tickerData.open24h);
-            const last = parseFloat(tickerData.last);
-            const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
-
-            updateTicker(
-              {
-                price: tickerData.last,
-                change24h: changePercent,
-                volume24h: parseFloat(tickerData.volCcy24h),
-                high24h: tickerData.high24h,
-                low24h: tickerData.low24h,
-              },
-              'OKX',
-              tickerData.instId,
-            );
-          });
-      } catch (error) {
-        console.warn('OKX REST ticker fetch failed:', error);
-      }
-    };
-
-    const startOkxRestFallback = () => {
-      if (okxRestIntervalRef.current) return;
-      okxRestFallbackRef.current = true;
-      okxConnected = true;
-      updateConnectionState();
-      fetchOkxTickers();
-      okxRestIntervalRef.current = setInterval(fetchOkxTickers, 15000);
-    };
-
     const updateTicker = (
       tickerData: Partial<TickerData>,
       exchange: 'Binance' | 'OKX',
       symbol: string,
     ) => {
-      // Resolve display symbol strictly using the map, with fallback parsing
       let displaySymbol = symbol;
 
       if (exchange === 'Binance') {
@@ -254,7 +172,6 @@ export function TickerGrid() {
         exchange,
       };
 
-      // Update the latest data refs immediately with the resolved display symbol
       if (exchange === 'Binance') {
         latestBinanceDataRef.current.set(displaySymbol, fullTickerData);
       } else {
@@ -262,77 +179,182 @@ export function TickerGrid() {
       }
     };
 
-    // Throttled update flush loop
+    // ─── Binance REST fallback ────────────────────────────────────────────
+    const fetchBinanceTickers = async () => {
+      try {
+        const symbols = BINANCE_COINS.map((c) => `"${c.symbol}"`).join(',');
+        const res = await fetch(
+          `https://fapi.binance.com/fapi/v1/ticker/24hr?symbols=[${symbols}]`,
+          { cache: 'no-store' },
+        );
+        if (!res.ok) throw new Error(`Binance REST failed: ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Unexpected Binance REST shape');
+
+        for (const ticker of data) {
+          const open = parseFloat(ticker.openPrice);
+          const last = parseFloat(ticker.lastPrice);
+          const change24h = open > 0 ? ((last - open) / open) * 100 : 0;
+          updateTicker(
+            {
+              price: trimTrailingZeros(ticker.lastPrice),
+              change24h,
+              volume24h: parseFloat(ticker.quoteVolume),
+              high24h: trimTrailingZeros(ticker.highPrice),
+              low24h: trimTrailingZeros(ticker.lowPrice),
+            },
+            'Binance',
+            ticker.symbol,
+          );
+        }
+      } catch (error) {
+        console.warn('[Binance] REST fallback failed:', error);
+      }
+    };
+
+    const startBinanceRestFallback = () => {
+      if (binanceRestIntervalRef.current) return;
+      binanceRestFallbackRef.current = true;
+      binanceConnected = true;
+      updateConnectionState();
+      fetchBinanceTickers();
+      binanceRestIntervalRef.current = setInterval(fetchBinanceTickers, 15000);
+    };
+
+    // ─── OKX REST fallback ────────────────────────────────────────────────
+    const fetchOkxTicker = async (instId: string) => {
+      try {
+        const res = await fetch(
+          `https://www.okx.com/api/v5/market/ticker?instId=${instId}`,
+          { cache: 'no-store' },
+        );
+        if (!res.ok) throw new Error(`OKX REST failed: ${res.status}`);
+        const data = await res.json();
+        if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0) {
+          throw new Error('OKX REST payload invalid');
+        }
+        return data.data[0];
+      } catch (error) {
+        console.warn('[OKX] REST fetch failed:', error);
+        // Try the Next.js proxy as final fallback
+        try {
+          const proxyRes = await fetch(
+            `/api/proxy/okx/tickers?instId=${encodeURIComponent(instId)}`,
+            { cache: 'no-store' },
+          );
+          if (!proxyRes.ok) return null;
+          const data = await proxyRes.json();
+          if (data.code !== '0' || !Array.isArray(data.data) || data.data.length === 0) {
+            return null;
+          }
+          return data.data[0];
+        } catch {
+          return null;
+        }
+      }
+    };
+
+    const fetchOkxTickers = async () => {
+      try {
+        const responses = await Promise.all(
+          OKX_COINS.flatMap((coin) => coin.instIds.map((id) => fetchOkxTicker(id))),
+        );
+        for (const tickerData of responses) {
+          if (!tickerData) continue;
+          const open24h = parseFloat(tickerData.open24h);
+          const last = parseFloat(tickerData.last);
+          const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
+          updateTicker(
+            {
+              price: tickerData.last,
+              change24h: changePercent,
+              volume24h: parseFloat(tickerData.volCcy24h),
+              high24h: tickerData.high24h,
+              low24h: tickerData.low24h,
+            },
+            'OKX',
+            tickerData.instId,
+          );
+        }
+      } catch (error) {
+        console.warn('[OKX] REST tickers fetch failed:', error);
+      }
+    };
+
+    const startOkxRestFallback = () => {
+      if (okxRestIntervalRef.current) return;
+      okxRestFallbackRef.current = true;
+      okxConnected = true;
+      updateConnectionState();
+      fetchOkxTickers();
+      okxRestIntervalRef.current = setInterval(fetchOkxTickers, 15000);
+    };
+
+    // ─── Throttled flush loop (1 s) ───────────────────────────────────────
     const flushUpdates = () => {
-      // Flush Binance updates if needed
       if (latestBinanceDataRef.current.size > 0) {
-        // Create a snapshot of the current updates to avoid race conditions with state updates
         const updates = new Map(latestBinanceDataRef.current);
         latestBinanceDataRef.current.clear();
-
         setBinanceTickers((prev) => {
-          let hasChanges = false;
+          let changed = false;
           const next = prev.map((t) => {
-            // Look up update using the display symbol (e.g., BTC/USDT)
-            const update = updates.get(t.symbol);
-            if (update) {
-              hasChanges = true;
-              return update;
+            const u = updates.get(t.symbol);
+            if (u) {
+              changed = true;
+              return u;
             }
             return t;
           });
-
-          if (hasChanges) {
-            return next;
-          }
-          return prev;
+          return changed ? next : prev;
         });
       }
 
-      // Flush OKX updates if needed
       if (latestOkxDataRef.current.size > 0) {
-        // Create a snapshot of the current updates
         const updates = new Map(latestOkxDataRef.current);
         latestOkxDataRef.current.clear();
-
         setOkxTickers((prev) => {
-          let hasChanges = false;
+          let changed = false;
           const next = prev.map((t) => {
-            const update = updates.get(t.symbol);
-            if (update) {
-              hasChanges = true;
-              return update;
+            const u = updates.get(t.symbol);
+            if (u) {
+              changed = true;
+              return u;
             }
             return t;
           });
-
-          if (hasChanges) {
-            return next;
-          }
-          return prev;
+          return changed ? next : prev;
         });
       }
     };
 
-    // Start the flush loop (every 1000ms = 1s)
     const intervalId = setInterval(flushUpdates, 1000);
 
+    // ─── Safety timeout: stop showing skeleton after 8 s ─────────────────
+    const loadingTimeoutId = setTimeout(() => {
+      setLoading(false);
+      setConnectionStatus('error');
+    }, 8000);
+
+    // ─── Binance Futures WebSocket ─────────────────────────────────────────
+    // Primary: direct exchange (port 443). Fallback: itrade proxy, then REST.
     const connectBinance = (endpointIndex = 0, retryCount = 0) => {
-      const streams = BINANCE_COINS.map(
-        (coin) => `${coin.symbol.toLowerCase()}@ticker`,
-      ).join('/');
-      const endpoints = [
+      if (binanceRestFallbackRef.current) return;
+
+      const streams = BINANCE_COINS.map((c) => `${c.symbol.toLowerCase()}@ticker`).join(
+        '/',
+      );
+      const BINANCE_WS_ENDPOINTS = [
         `wss://fstream.binance.com:443/market/stream?streams=${streams}`,
-        `wss://itrade.ihsueh.com/ws/binance/perp/market/stream?streams=${streams}`,
       ];
-      const ws = new WebSocket(endpoints[endpointIndex]);
+      const url = BINANCE_WS_ENDPOINTS[endpointIndex];
+      const ws = new WebSocket(url);
       binanceWsRef.current = ws;
       let opened = false;
 
       ws.onopen = () => {
         opened = true;
         console.log(
-          `✅ Binance Futures WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+          `✅ Binance Futures WebSocket connected (${endpointIndex === 0 ? 'direct' : 'proxy'})`,
         );
         binanceConnected = true;
         updateConnectionState();
@@ -340,87 +362,91 @@ export function TickerGrid() {
 
       ws.onmessage = (event) => {
         try {
-          const rawData = JSON.parse(event.data);
-          if (rawData.data) {
-            const ticker: BinanceTickerData = rawData.data;
-            const price = parseFloat(ticker.c);
-            const open = parseFloat(ticker.o);
-            const change24h = open > 0 ? ((price - open) / open) * 100 : 0;
-
-            console.log(`[Binance WS] ${ticker.s}: $${trimTrailingZeros(ticker.c)}`);
-
-            updateTicker(
-              {
-                price: trimTrailingZeros(ticker.c),
-                change24h,
-                volume24h: parseFloat(ticker.q),
-                high24h: trimTrailingZeros(ticker.h),
-                low24h: trimTrailingZeros(ticker.l),
-              },
-              'Binance',
-              ticker.s,
-            );
-          }
+          const rawData = JSON.parse(event.data as string);
+          if (!rawData.data) return;
+          const ticker: BinanceTickerData = rawData.data;
+          const price = parseFloat(ticker.c);
+          const open = parseFloat(ticker.o);
+          const change24h = open > 0 ? ((price - open) / open) * 100 : 0;
+          updateTicker(
+            {
+              price: trimTrailingZeros(ticker.c),
+              change24h,
+              volume24h: parseFloat(ticker.q),
+              high24h: trimTrailingZeros(ticker.h),
+              low24h: trimTrailingZeros(ticker.l),
+            },
+            'Binance',
+            ticker.s,
+          );
         } catch (error) {
-          console.error('Error parsing Binance message:', error);
+          console.error('[Binance] WS parse error:', error);
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('Binance WebSocket error:', error);
-        setConnectionStatus('error');
+      ws.onerror = () => {
+        console.warn(`[Binance] WebSocket error (endpoint ${endpointIndex})`);
       };
 
       ws.onclose = () => {
-        console.log('Binance WebSocket disconnected');
         binanceConnected = false;
-        if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
-          binanceReconnectTimeoutRef.current = setTimeout(() => {
-            connectBinance(endpointIndex, retryCount + 1);
-          }, 3000);
+        // Reconnect same endpoint on normal disconnect
+        if (opened) {
+          binanceReconnectTimeoutRef.current = setTimeout(
+            () => connectBinance(endpointIndex, 0),
+            3000,
+          );
           return;
         }
-        if (endpointIndex < endpoints.length - 1) {
-          binanceReconnectTimeoutRef.current = setTimeout(() => {
-            connectBinance(endpointIndex + 1, 0);
-          }, 3000);
+        // Retry same endpoint
+        if (retryCount < 2) {
+          binanceReconnectTimeoutRef.current = setTimeout(
+            () => connectBinance(endpointIndex, retryCount + 1),
+            3000,
+          );
           return;
         }
-        binanceReconnectTimeoutRef.current = setTimeout(() => {
-          connectBinance(0, 0);
-        }, 3000);
+        // Try next endpoint
+        if (endpointIndex < BINANCE_WS_ENDPOINTS.length - 1) {
+          binanceReconnectTimeoutRef.current = setTimeout(
+            () => connectBinance(endpointIndex + 1, 0),
+            3000,
+          );
+          return;
+        }
+        // All WS endpoints exhausted — switch to REST
+        console.warn('[Binance] All WS endpoints failed, falling back to REST');
+        startBinanceRestFallback();
       };
     };
 
-    // Connect to OKX WebSocket
+    // ─── OKX WebSocket ────────────────────────────────────────────────────
+    // Primary: direct exchange (port 443). Fallback: itrade proxy, then REST.
+    const OKX_WS_ENDPOINTS = [
+      'wss://ws.okx.com:443/ws/v5/public',
+      'wss://wsaws.okx.com:443/ws/v5/public',
+    ];
+
     const connectOKX = (endpointIndex = 0, retryCount = 0) => {
       if (okxRestFallbackRef.current) return;
-      const endpoints = [
-        'wss://ws.okx.com:443/ws/v5/public',
-        'wss://wsaws.okx.com:443/ws/v5/public',
-        'wss://itrade.ihsueh.com/ws/okx/ws/v5/public',
-      ];
-      const ws = new WebSocket(endpoints[endpointIndex]);
+
+      const url = OKX_WS_ENDPOINTS[endpointIndex];
+      const ws = new WebSocket(url);
       okxWsRef.current = ws;
       let opened = false;
 
       ws.onopen = () => {
         opened = true;
         console.log(
-          `✅ OKX WebSocket connected (${endpointIndex === 0 ? 'official' : 'fallback'})`,
+          `✅ OKX WebSocket connected (${endpointIndex === 0 ? 'primary' : 'AWS'})`,
         );
 
-        // Subscribe to ticker channels
         const subscribeMsg = {
           op: 'subscribe',
           args: OKX_COINS.flatMap((coin) =>
-            coin.instIds.map((instId) => ({
-              channel: 'tickers',
-              instId,
-            })),
+            coin.instIds.map((instId) => ({ channel: 'tickers', instId })),
           ),
         };
-
         ws.send(JSON.stringify(subscribeMsg));
         okxConnected = true;
         updateConnectionState();
@@ -428,89 +454,84 @@ export function TickerGrid() {
 
       ws.onmessage = (event) => {
         try {
-          const message: OKXTickerData = JSON.parse(event.data);
-          if (message.data && message.data.length > 0) {
-            const tickerData = message.data[0];
-            const open24h = parseFloat(tickerData.open24h);
-            const last = parseFloat(tickerData.last);
-            const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
-
-            console.log(`[OKX WS] ${tickerData.instId}: $${tickerData.last}`);
-
-            updateTicker(
-              {
-                price: tickerData.last,
-                change24h: changePercent,
-                volume24h: parseFloat(tickerData.volCcy24h),
-                high24h: tickerData.high24h,
-                low24h: tickerData.low24h,
-              },
-              'OKX',
-              tickerData.instId,
-            );
-          }
+          const message: OKXTickerData = JSON.parse(event.data as string);
+          if (!message.data || message.data.length === 0) return;
+          const tickerData = message.data[0];
+          const open24h = parseFloat(tickerData.open24h);
+          const last = parseFloat(tickerData.last);
+          const changePercent = open24h > 0 ? ((last - open24h) / open24h) * 100 : 0;
+          updateTicker(
+            {
+              price: tickerData.last,
+              change24h: changePercent,
+              volume24h: parseFloat(tickerData.volCcy24h),
+              high24h: tickerData.high24h,
+              low24h: tickerData.low24h,
+            },
+            'OKX',
+            tickerData.instId,
+          );
         } catch (error) {
-          console.error('Error parsing OKX message:', error);
+          console.error('[OKX] WS parse error:', error);
         }
       };
 
-      ws.onerror = (error) => {
-        console.warn('OKX WebSocket error:', error);
+      ws.onerror = () => {
+        console.warn('[OKX] WebSocket error');
         okxConnected = false;
-        if (
-          retryCount >= maxRetriesPerEndpoint - 1 &&
-          endpointIndex >= endpoints.length - 1
-        ) {
-          startOkxRestFallback();
-        }
       };
 
       ws.onclose = () => {
-        console.log('OKX WebSocket disconnected');
         okxConnected = false;
-        if (!opened && retryCount < maxRetriesPerEndpoint - 1) {
-          okxReconnectTimeoutRef.current = setTimeout(() => {
-            connectOKX(endpointIndex, retryCount + 1);
-          }, 3000);
+
+        // Reconnect same endpoint if it was open (normal disconnect)
+        if (opened) {
+          okxReconnectTimeoutRef.current = setTimeout(
+            () => connectOKX(endpointIndex, 0),
+            3000,
+          );
           return;
         }
-        if (endpointIndex < endpoints.length - 1) {
-          okxReconnectTimeoutRef.current = setTimeout(() => {
-            connectOKX(endpointIndex + 1, 0);
-          }, 3000);
+
+        // Retry same endpoint up to 2 times
+        if (retryCount < 2) {
+          okxReconnectTimeoutRef.current = setTimeout(
+            () => connectOKX(endpointIndex, retryCount + 1),
+            3000,
+          );
           return;
         }
-        if (!okxRestFallbackRef.current) {
-          okxReconnectTimeoutRef.current = setTimeout(() => {
-            connectOKX(0, 0);
-          }, 3000);
+
+        // Try next endpoint
+        if (endpointIndex < OKX_WS_ENDPOINTS.length - 1) {
+          okxReconnectTimeoutRef.current = setTimeout(
+            () => connectOKX(endpointIndex + 1, 0),
+            3000,
+          );
+          return;
         }
+
+        // All WS endpoints exhausted — switch to REST
+        console.warn('[OKX] All WS endpoints failed, falling back to REST');
+        startOkxRestFallback();
       };
     };
 
-    // Initialize connections
-    connectBinance();
-    connectOKX();
+    connectBinance(0);
+    connectOKX(0);
 
-    // Cleanup on unmount
     return () => {
-      if (binanceWsRef.current) {
-        binanceWsRef.current.close();
-      }
-      if (okxWsRef.current) {
-        okxWsRef.current.close();
-      }
-      if (binanceReconnectTimeoutRef.current) {
+      binanceWsRef.current?.close();
+      okxWsRef.current?.close();
+      if (binanceReconnectTimeoutRef.current)
         clearTimeout(binanceReconnectTimeoutRef.current);
-      }
-      if (okxReconnectTimeoutRef.current) {
-        clearTimeout(okxReconnectTimeoutRef.current);
-      }
-      if (okxRestIntervalRef.current) {
-        clearTimeout(okxRestIntervalRef.current);
-      }
+      if (okxReconnectTimeoutRef.current) clearTimeout(okxReconnectTimeoutRef.current);
+      if (okxRestIntervalRef.current) clearInterval(okxRestIntervalRef.current);
+      if (binanceRestIntervalRef.current) clearInterval(binanceRestIntervalRef.current);
       okxRestFallbackRef.current = false;
+      binanceRestFallbackRef.current = false;
       clearInterval(intervalId);
+      clearTimeout(loadingTimeoutId);
     };
   }, []);
 
