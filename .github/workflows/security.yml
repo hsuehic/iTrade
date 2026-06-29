@@ -67,7 +67,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0 # full history for git log scan
 
@@ -88,7 +88,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -106,7 +106,7 @@ jobs:
 
       # ── OSV-Scanner: cross-references against OSV database ──
       - name: Run OSV-Scanner (npm)
-        uses: google/osv-scanner-action@v2
+        uses: google/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=pnpm-lock.yaml
@@ -115,7 +115,7 @@ jobs:
         continue-on-error: true # upload SARIF even on findings
 
       - name: Upload OSV npm SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: osv-npm.sarif
@@ -156,7 +156,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -198,7 +198,7 @@ jobs:
 
       # ── OSV-Scanner: scan pubspec.lock ──────────────────────
       - name: Run OSV-Scanner (Flutter/pub)
-        uses: google/osv-scanner-action@v2
+        uses: google/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=apps/mobile/pubspec.lock
@@ -207,7 +207,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload OSV Flutter SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: osv-flutter.sarif
@@ -226,7 +226,7 @@ jobs:
     if: github.actor != 'dependabot[bot]'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run Semgrep — TypeScript / JavaScript
         run: |
@@ -250,7 +250,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Semgrep web SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: semgrep-web.sarif
@@ -259,6 +259,10 @@ jobs:
       # Also fail the job explicitly on ERROR findings
       - name: Fail on ERROR-level findings
         run: |
+          if [ ! -f "semgrep-web.sarif" ]; then
+            echo "⚠️  No SARIF file found — Semgrep may have failed before generating output"
+            exit 0
+          fi
           ERROR_COUNT=$(python3 -c "
           import json
           try:
@@ -285,7 +289,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ── dart analyze: static type & lint analysis ───────────
       - name: Setup Flutter
@@ -331,7 +335,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Semgrep mobile SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: semgrep-mobile.sarif

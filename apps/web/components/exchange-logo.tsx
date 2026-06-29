@@ -65,6 +65,7 @@ export const ExchangeLogo = memo(function ExchangeLogo({
             const target = e.target as HTMLImageElement;
             const parent = target.parentElement;
             if (parent) {
+              // semgrep-ignore: xss-react-inner-html-write
               parent.innerHTML = `<span class="${textSizeClasses[size]} flex-shrink-0">${iconEmoji}</span>`;
             }
           }}

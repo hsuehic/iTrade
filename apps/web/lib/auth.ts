@@ -215,7 +215,8 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
         },
       },
       sendResetPassword: async ({ user, url, token: _token }) => {
-        console.log('Reset Password:', user, url, _token);
+        // Log masked token for debugging (never log full token in production)
+        console.log('Reset Password:', user.email, url, '[MASKED]');
         await sendEmail(
           user.email,
           'Reset your password',
