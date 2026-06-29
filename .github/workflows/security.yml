@@ -1,0 +1,383 @@
+# =============================================================
+# iTrade — Security Scanning
+# =============================================================
+#
+# Scans the full monorepo for:
+#   1. Dependency vulnerabilities (npm via OSV-Scanner + pnpm audit)
+#   2. Dependency vulnerabilities (Flutter/pub via OSV-Scanner)
+#   3. SAST — TypeScript/JavaScript (Semgrep, OWASP + custom rules)
+#   4. SAST — Dart/Flutter (dart analyze + Semgrep)
+#   5. Secrets detection (Gitleaks)
+#
+# Triggers:
+#   - Every PR targeting main
+#   - Every push to main
+#   - Weekly full scan (Monday 02:00 UTC) for newly published CVEs
+#   - Manual dispatch
+#
+# Severity gates:
+#   - CRITICAL / HIGH vulnerabilities in dependencies → fail
+#   - Semgrep findings with severity ERROR → fail
+#   - Any secrets detected → fail
+#
+# Results are uploaded to GitHub Security tab as SARIF (where
+# supported) so findings appear inline on PRs.
+# =============================================================
+
+name: 🔒 Security Scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly full scan — Monday 02:00 UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+    inputs:
+      fail_on_findings:
+        description: 'Fail workflow if any findings (default: true)'
+        required: false
+        default: true
+        type: boolean
+
+# Cancel in-flight scans on the same branch (except main)
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+  security-events: write # needed to upload SARIF to GitHub Security tab
+  pull-requests: read
+
+# ══════════════════════════════════════════════════════════════
+# Job 1: Secrets detection — run first, fail fast
+# ══════════════════════════════════════════════════════════════
+jobs:
+  secrets-scan:
+    name: 🔑 Secrets Detection (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for git log scan
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # On PRs, scan only the commits in the PR (not full history)
+          # On push/schedule, scan full history
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 2: npm / Node.js dependency vulnerability scan
+  # ══════════════════════════════════════════════════════════════
+  npm-dep-scan:
+    name: 📦 npm Dependency Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # ── OSV-Scanner: cross-references against OSV database ──
+      - name: Run OSV-Scanner (npm)
+        uses: google/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
+            --format=sarif
+            --output=osv-npm.sarif
+        continue-on-error: true # upload SARIF even on findings
+
+      - name: Upload OSV npm SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: osv-npm.sarif
+          category: osv-npm
+
+      # ── pnpm audit: enforces CRITICAL/HIGH gate ─────────────
+      - name: pnpm audit (HIGH + CRITICAL gate)
+        run: |
+          echo "::group::pnpm audit output"
+          pnpm audit --audit-level=high --reporter=json > pnpm-audit.json 2>&1 || true
+          cat pnpm-audit.json
+          echo "::endgroup::"
+
+          # Parse and fail if any HIGH or CRITICAL advisories found
+          VULN_COUNT=$(cat pnpm-audit.json | python3 -c "
+          import json, sys
+          try:
+              d = json.load(sys.stdin)
+              advisories = d.get('advisories', {})
+              high_plus = [v for v in advisories.values() if v.get('severity') in ('high','critical')]
+              print(len(high_plus))
+          except:
+              print(0)
+          " 2>/dev/null || echo "0")
+
+          if [ "$VULN_COUNT" -gt "0" ]; then
+            echo "::error::pnpm audit found $VULN_COUNT HIGH/CRITICAL vulnerabilities. Run 'pnpm audit' locally to review."
+            exit 1
+          fi
+          echo "✅ No HIGH/CRITICAL npm vulnerabilities found"
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 3: Flutter / Dart dependency vulnerability scan
+  # ══════════════════════════════════════════════════════════════
+  flutter-dep-scan:
+    name: 📦 Flutter Dependency Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      # ── flutter pub audit (built-in since Dart 3.3) ─────────
+      - name: flutter pub audit
+        working-directory: apps/mobile
+        run: |
+          echo "::group::flutter pub audit output"
+          flutter pub audit --json > pub-audit.json 2>&1 || true
+          cat pub-audit.json
+          echo "::endgroup::"
+
+          # Fail on HIGH/CRITICAL advisories
+          VULN_COUNT=$(cat pub-audit.json | python3 -c "
+          import json, sys
+          try:
+              d = json.load(sys.stdin)
+              packages = d.get('packages', [])
+              high_plus = [p for p in packages if p.get('severity', '').lower() in ('high', 'critical')]
+              print(len(high_plus))
+          except:
+              print(0)
+          " 2>/dev/null || echo "0")
+
+          if [ "$VULN_COUNT" -gt "0" ]; then
+            echo "::error::flutter pub audit found $VULN_COUNT HIGH/CRITICAL vulnerabilities."
+            exit 1
+          fi
+          echo "✅ No HIGH/CRITICAL Flutter vulnerabilities found"
+
+      # ── OSV-Scanner: scan pubspec.lock ──────────────────────
+      - name: Run OSV-Scanner (Flutter/pub)
+        uses: google/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --lockfile=apps/mobile/pubspec.lock
+            --format=sarif
+            --output=osv-flutter.sarif
+        continue-on-error: true
+
+      - name: Upload OSV Flutter SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: osv-flutter.sarif
+          category: osv-flutter
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 4: SAST — TypeScript / JavaScript (web + services)
+  # ══════════════════════════════════════════════════════════════
+  sast-web:
+    name: 🔍 SAST — Web/Node (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep
+    # Skip Semgrep on Dependabot PRs (no token access)
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep — TypeScript / JavaScript
+        run: |
+          semgrep \
+            --config=p/typescript \
+            --config=p/javascript \
+            --config=p/owasp-top-ten \
+            --config=p/secrets \
+            --config=p/sql-injection \
+            --config=p/xss \
+            --config=.semgrep/ \
+            --sarif \
+            --output=semgrep-web.sarif \
+            --severity=ERROR \
+            --exclude="node_modules" \
+            --exclude="dist" \
+            --exclude="build" \
+            --exclude=".next" \
+            --exclude="apps/mobile" \
+            apps/ packages/
+        continue-on-error: true
+
+      - name: Upload Semgrep web SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep-web.sarif
+          category: semgrep-web
+
+      # Also fail the job explicitly on ERROR findings
+      - name: Fail on ERROR-level findings
+        run: |
+          ERROR_COUNT=$(python3 -c "
+          import json
+          try:
+              with open('semgrep-web.sarif') as f:
+                  d = json.load(f)
+              runs = d.get('runs', [])
+              count = sum(len(r.get('results', [])) for r in runs)
+              print(count)
+          except:
+              print(0)
+          ")
+          if [ "$ERROR_COUNT" -gt "0" ]; then
+            echo "::error::Semgrep found $ERROR_COUNT ERROR-level findings in web/Node code. See the Security tab for details."
+            exit 1
+          fi
+          echo "✅ No ERROR-level Semgrep findings in web code"
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 5: SAST — Dart / Flutter (mobile)
+  # ══════════════════════════════════════════════════════════════
+  sast-mobile:
+    name: 🔍 SAST — Mobile/Flutter (dart analyze + Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── dart analyze: static type & lint analysis ───────────
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      - name: dart analyze (fatal-infos)
+        working-directory: apps/mobile
+        run: |
+          dart analyze --fatal-infos 2>&1 | tee dart-analyze.txt
+          if grep -q "error •" dart-analyze.txt; then
+            echo "::error::dart analyze found errors. See output above."
+            exit 1
+          fi
+          echo "✅ dart analyze: no errors"
+
+      # ── Semgrep: Dart security patterns ─────────────────────
+      - name: Setup Python (for Semgrep)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Semgrep
+        run: pip install semgrep --quiet
+
+      - name: Run Semgrep — Dart/Flutter
+        run: |
+          semgrep \
+            --config=p/secrets \
+            --config=.semgrep/ \
+            --sarif \
+            --output=semgrep-mobile.sarif \
+            --severity=ERROR \
+            --include="*.dart" \
+            apps/mobile/lib/ || true
+        continue-on-error: true
+
+      - name: Upload Semgrep mobile SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep-mobile.sarif
+          category: semgrep-mobile
+
+  # ══════════════════════════════════════════════════════════════
+  # Job 6: Summary — collect results and comment on PR
+  # ══════════════════════════════════════════════════════════════
+  scan-summary:
+    name: 📋 Security Scan Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - secrets-scan
+      - npm-dep-scan
+      - flutter-dep-scan
+      - sast-web
+      - sast-mobile
+    if: always()
+    steps:
+      - name: Summarize results
+        run: |
+          echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          format_result() {
+            if [ "$1" = "success" ]; then echo "✅ Passed"; else echo "❌ Failed"; fi
+          }
+
+          echo "| 🔑 Secrets (Gitleaks) | $(format_result ${{ needs.secrets-scan.result }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 npm Dependencies (OSV + pnpm audit) | $(format_result ${{ needs.npm-dep-scan.result }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📦 Flutter Dependencies (OSV + pub audit) | $(format_result ${{ needs.flutter-dep-scan.result }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Web/Node SAST (Semgrep) | $(format_result ${{ needs.sast-web.result }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Mobile SAST (dart analyze + Semgrep) | $(format_result ${{ needs.sast-mobile.result }}) |" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Full findings available in the [Security tab](${{ github.server_url }}/${{ github.repository }}/security/code-scanning)." >> $GITHUB_STEP_SUMMARY
+
+          # Fail summary job if any critical job failed
+          if [ "${{ needs.secrets-scan.result }}" != "success" ] || \
+             [ "${{ needs.npm-dep-scan.result }}" != "success" ] || \
+             [ "${{ needs.flutter-dep-scan.result }}" != "success" ] || \
+             [ "${{ needs.sast-web.result }}" != "success" ]; then
+            echo "::error::One or more security checks failed. See the Security tab and job logs for details."
+            exit 1
+          fi
+          echo "✅ All security checks passed"

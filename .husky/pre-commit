@@ -39,6 +39,50 @@ _clear_stale_git_locks() {
 }
 
 _clear_stale_git_locks
+
+# ── Secret detection (Gitleaks) ───────────────────────────────
+# Scan only the staged diff, not the full history, to keep pre-commit fast.
+# Gitleaks is optional: if not installed, print a warning and skip.
+# To install: brew install gitleaks  OR  https://github.com/gitleaks/gitleaks
+_run_gitleaks() {
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "⚠️  gitleaks not found — secret scanning skipped."
+    echo "   Install with: brew install gitleaks"
+    echo "   Or: https://github.com/gitleaks/gitleaks/releases"
+    return 0
+  fi
+
+  # Protect runs: scan the git staged diff only (fast, no network)
+  gitleaks protect \
+    --staged \
+    --config=.gitleaks.toml \
+    --redact \
+    --no-banner \
+    --exit-code=1
+  local GL_STATUS=$?
+
+  if [ $GL_STATUS -ne 0 ]; then
+    echo ""
+    echo "❌ Gitleaks detected potential secrets in staged files."
+    echo "   Review the findings above before committing."
+    echo "   To bypass in an emergency: git commit --no-verify"
+    echo "   (But first confirm the detected value is NOT a real secret.)"
+    return 1
+  fi
+
+  echo "✅ Gitleaks: no secrets detected in staged files"
+  return 0
+}
+
+_run_gitleaks
+GITLEAKS_STATUS=$?
+
+if [ $GITLEAKS_STATUS -ne 0 ]; then
+  _clear_stale_git_locks
+  exit $GITLEAKS_STATUS
+fi
+
+# ── Lint-staged (eslint + prettier) ──────────────────────────
 # --no-stash: skip the backup/restore stash that lint-staged normally creates.
 # The stash mechanism requires unlink() for lock-file cleanup, which fails on
 # FUSE/network-mounted filesystems (EPERM). Since we only ever have fully-staged

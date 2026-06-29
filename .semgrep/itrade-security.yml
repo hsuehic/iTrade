@@ -1,0 +1,233 @@
+# =============================================================
+# iTrade — Custom Semgrep Security Rules
+# =============================================================
+# These rules are specific to iTrade's architecture and
+# supplement the standard rulesets (p/typescript, p/owasp-top-ten).
+#
+# Severity levels:
+#   ERROR   → always blocks CI
+#   WARNING → reported but does not block CI (review recommended)
+#   INFO    → informational only
+# =============================================================
+
+rules:
+  # ── API / Authentication ────────────────────────────────────
+
+  - id: itrade-hardcoded-api-token
+    patterns:
+      - pattern: |
+          const $VAR = "$TOKEN"
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '(?i)(token|secret|password|apikey|api_key|auth)'
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: '.{16,}'
+    message: |
+      Hardcoded secret found in variable '$VAR'. Use environment variables
+      (process.env.VAR_NAME) or a secrets manager instead.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: CWE-798
+      owasp: A02:2021
+
+  - id: itrade-process-env-fallback-hardcoded
+    pattern: process.env.$VAR || "$SECRET"
+    message: |
+      Hardcoded fallback value for process.env.$VAR. If this is a secret,
+      the hardcoded value will be used in production when the env var is
+      missing, leaking the secret. Remove the fallback or use a non-secret
+      default.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-798
+
+  # ── SQL / Database ──────────────────────────────────────────
+
+  - id: itrade-raw-sql-interpolation
+    patterns:
+      - pattern: |
+          $QUERY.query(`...${ $INPUT }...`)
+      - pattern: |
+          $QUERY.query("..." + $INPUT + "...")
+    message: |
+      Potential SQL injection: user input '$INPUT' is concatenated directly
+      into a SQL query. Use parameterized queries or prepared statements.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: CWE-89
+      owasp: A03:2021
+
+  - id: itrade-typeorm-raw-query-interpolation
+    pattern: |
+      $REPO.query(`$QUERY ${$INPUT}`)
+    message: |
+      Potential SQL injection via TypeORM raw query with string interpolation.
+      Use parameterized queries: manager.query('SELECT ...', [param]).
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: CWE-89
+      owasp: A03:2021
+
+  # ── Sensitive data in logs ──────────────────────────────────
+
+  - id: itrade-log-sensitive-fields
+    patterns:
+      - pattern: console.log(..., $OBJ, ...)
+      - pattern: logger.info(..., $OBJ, ...)
+      - pattern: logger.debug(..., $OBJ, ...)
+    message: |
+      Logging object '$OBJ' — ensure it does not contain passwords, tokens,
+      or PII. Use a log sanitizer or explicitly select fields to log.
+    languages: [typescript, javascript]
+    severity: INFO
+    metadata:
+      category: security
+      cwe: CWE-532
+
+  - id: itrade-log-password-field
+    patterns:
+      - pattern-either:
+          - pattern: 'console.log(..., { ..., password: ..., ... }, ...)'
+          - pattern: 'console.log(..., { ..., token: ..., ... }, ...)'
+          - pattern: 'console.log(..., { ..., secret: ..., ... }, ...)'
+          - pattern: 'logger.info(..., { ..., password: ..., ... }, ...)'
+    message: |
+      Logging an object that contains a password/token/secret field.
+      This will write credentials to log files.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: CWE-532
+      owasp: A09:2021
+
+  # ── Express / HTTP ──────────────────────────────────────────
+
+  - id: itrade-express-missing-auth-check
+    patterns:
+      - pattern: |
+          $APP.get($ROUTE, async ($REQ, $RES) => { ... })
+      - pattern-not: |
+          $APP.get($ROUTE, $AUTH_MIDDLEWARE, async ($REQ, $RES) => { ... })
+      - metavariable-regex:
+          metavariable: $ROUTE
+          regex: "'/api/'"
+    message: |
+      Route $ROUTE may be missing authentication middleware. Ensure all
+      /api/* routes are protected with auth.middleware or equivalent.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-306
+      owasp: A01:2021
+
+  - id: itrade-cors-wildcard
+    pattern: |
+      cors({ origin: "*" })
+    message: |
+      CORS is configured with a wildcard origin ('*'). This allows any
+      website to make credentialed requests. Restrict to known origins.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-942
+      owasp: A05:2021
+
+  # ── Cryptography ────────────────────────────────────────────
+
+  - id: itrade-weak-crypto-md5
+    patterns:
+      - pattern-either:
+          - pattern: crypto.createHash("md5")
+          - pattern: crypto.createHash('md5')
+    message: |
+      MD5 is a cryptographically broken algorithm. Use SHA-256 or stronger
+      for integrity checks, or bcrypt/argon2 for password hashing.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: CWE-327
+      owasp: A02:2021
+
+  - id: itrade-weak-crypto-sha1
+    patterns:
+      - pattern-either:
+          - pattern: crypto.createHash("sha1")
+          - pattern: crypto.createHash('sha1')
+    message: |
+      SHA-1 is deprecated for security use. Use SHA-256 or stronger.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-327
+      owasp: A02:2021
+
+  # ── Flutter / Dart specific ─────────────────────────────────
+
+  - id: itrade-dart-hardcoded-url-with-credentials
+    pattern: |
+      final $VAR = "https://$USER:$PASS@$HOST"
+    message: |
+      Hardcoded URL with embedded credentials. Store credentials separately
+      and construct the authenticated URL at runtime from env config.
+    languages: [dart]
+    severity: ERROR
+    metadata:
+      category: security
+      cwe: CWE-798
+
+  - id: itrade-dart-shared-prefs-sensitive
+    patterns:
+      - pattern: prefs.setString($KEY, $VALUE)
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: '(?i)(token|password|secret|key|auth)'
+    message: |
+      Storing potentially sensitive data ('$KEY') in SharedPreferences,
+      which is unencrypted on Android. Use flutter_secure_storage instead
+      for tokens, passwords, and other sensitive values.
+    languages: [dart]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-312
+      owasp: A02:2021
+
+  - id: itrade-dart-print-sensitive
+    patterns:
+      - pattern: print($MSG)
+      - metavariable-regex:
+          metavariable: $MSG
+          regex: '(?i)(token|password|secret|key|auth)'
+    message: |
+      Logging potentially sensitive variable '$MSG' with print().
+      Remove debug logging of credentials before shipping.
+    languages: [dart]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-532
+
+  - id: itrade-dart-debugprint-in-release
+    pattern: debugPrint($MSG)
+    message: |
+      debugPrint() calls are stripped in release mode but still appear in
+      profile builds. Prefer a structured logger that can be disabled by
+      log level rather than relying on Flutter's debug stripping.
+    languages: [dart]
+    severity: INFO
+    metadata:
+      category: best-practice

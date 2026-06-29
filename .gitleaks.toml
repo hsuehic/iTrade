@@ -1,0 +1,96 @@
+# =============================================================
+# Gitleaks Configuration for iTrade
+# =============================================================
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+#
+# Purpose: Detect secrets/credentials accidentally committed.
+# Allowlists below suppress known false positives specific to
+# this codebase (e.g. example env files, test fixtures).
+# =============================================================
+
+title = "iTrade Gitleaks Config"
+
+[extend]
+# Extend the official default ruleset
+useDefault = true
+
+# ── Global allowlist ──────────────────────────────────────────
+[allowlist]
+description = "Global allowlist for known false positives"
+
+# Paths to completely exclude from scanning
+paths = [
+  # Lock files contain package checksums that look like secrets
+  '''pnpm-lock\.yaml''',
+  '''pubspec\.lock''',
+  # Generated files
+  '''^\.next/''',
+  '''^dist/''',
+  '''^build/''',
+  # Example / template env files (contain placeholder values)
+  '''\.env\.example''',
+  '''\.env\.template''',
+  '''\.env\.sample''',
+  # Test fixtures and mocks
+  '''__tests__/''',
+  '''__mocks__/''',
+  '''\.test\.(ts|tsx|js)$''',
+  '''\.spec\.(ts|tsx|js)$''',
+  # Flutter test directory
+  '''apps/mobile/test/''',
+  # Documentation
+  '''docs/''',
+  '''README\.md''',
+]
+
+# Specific commit SHAs to ignore (add known clean commits here)
+# commits = []
+
+# Regex patterns to globally ignore
+regexes = [
+  # Placeholder values used in examples
+  '''your[-_]?(api|secret|key|token|password)[-_]?here''',
+  '''<YOUR[-_]?(API|SECRET|KEY|TOKEN)>''',
+  '''REPLACE[-_]?ME''',
+  # Base64 encoded public keys (not secrets)
+  '''-----BEGIN PUBLIC KEY-----''',
+  # JWT algorithm identifiers that look like secrets
+  '''HS256|HS384|HS512|RS256|RS384|RS512''',
+]
+
+# ── Rule overrides ─────────────────────────────────────────────
+# Adjust severity or disable specific default rules that generate
+# too many false positives in this project.
+
+[[rules]]
+id = "generic-api-key"
+# Override: reduce sensitivity for generic-api-key to avoid
+# false positives on non-sensitive configuration values
+description = "Generic API Key"
+regex = '''(?i)(api[_-]?key|apikey)\s*[=:]\s*['"]([a-zA-Z0-9_\-]{32,})['"]'''
+entropy = 3.5
+secretGroup = 2
+
+  [rules.allowlist]
+  regexes = [
+    # Firebase project IDs (not secret)
+    '''AIza[0-9A-Za-z_-]{35}''',
+  ]
+  paths = [
+    '''google-services\.json''',
+    '''GoogleService-Info\.plist''',
+  ]
+
+[[rules]]
+id = "jwt"
+description = "JWT Token"
+regex = '''eyJ[A-Za-z0-9+/]{20,}\.eyJ[A-Za-z0-9+/]{20,}\.[A-Za-z0-9+/._-]{10,}'''
+entropy = 4.0
+
+  [rules.allowlist]
+  # Ignore JWTs in test fixture files
+  paths = [
+    '''test/''',
+    '''__tests__/''',
+    '''fixtures/''',
+  ]
