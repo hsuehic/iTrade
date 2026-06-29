@@ -34,4 +34,5 @@ ENV HOSTNAME=0.0.0.0
 EXPOSE 3002
 
 # Use Next.js CLI for production start - simpler and more reliable
+USER appuser
 CMD ["pnpm", "start"]

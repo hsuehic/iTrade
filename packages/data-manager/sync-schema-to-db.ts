@@ -62,8 +62,12 @@ const configuration = {
 
 console.log('📋 Database configuration:');
 console.log({
-  ...configuration,
-  password: '[REDACTED]',
+  safeConfig: {
+    host: configuration.host,
+    port: configuration.port,
+    user: configuration.username,
+    database: configuration.database,
+  },
 });
 const dataManager = new TypeOrmDataManager(configuration);
 

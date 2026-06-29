@@ -23,6 +23,7 @@ COPY --chown=appuser:nodejs apps/ ./apps/
 # ============================================================
 FROM workspace AS schema-migrator
 
+USER appuser
 WORKDIR /app/packages/data-manager
 
 ENV NODE_ENV=production
@@ -34,6 +35,7 @@ CMD ["pnpm", "run", "sync-schema"]
 # ============================================================
 FROM workspace AS console
 
+USER appuser
 WORKDIR /app/apps/console
 
 ENV NODE_ENV=production

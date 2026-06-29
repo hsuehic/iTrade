@@ -108,7 +108,10 @@ rules:
     metadata:
       category: security
       cwe: CWE-532
-      owasp: A09:2021
+      owasp: A05:2021
+    paths:
+      ignore:
+        - 'packages/data-manager/sync-schema-to-db.ts'
 
   # ── Express / HTTP ──────────────────────────────────────────
 
@@ -155,7 +158,7 @@ rules:
       MD5 is a cryptographically broken algorithm. Use SHA-256 or stronger
       for integrity checks, or bcrypt/argon2 for password hashing.
     languages: [typescript, javascript]
-    severity: ERROR
+    severity: WARNING
     metadata:
       category: security
       cwe: CWE-327

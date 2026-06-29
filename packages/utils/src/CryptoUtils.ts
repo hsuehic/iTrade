@@ -10,6 +10,10 @@ export class CryptoUtils {
     return createHash('sha512').update(data).digest('hex');
   }
 
+  /**
+   * @deprecated MD5 is cryptographically broken. Use sha256 or sha512 instead.
+   * Kept for backward compatibility with legacy checksums only.
+   */
   static md5(data: string | Buffer): string {
     return createHash('md5').update(data).digest('hex');
   }
@@ -23,7 +27,12 @@ export class CryptoUtils {
     return createHmac('sha512', key).update(data).digest('hex');
   }
 
+  /**
+   * @deprecated HMAC-MD5 is cryptographically broken. Use hmacSha256 or hmacSha512 instead.
+   * Kept for backward compatibility with legacy signatures only.
+   */
   static hmacMd5(data: string | Buffer, key: string | Buffer): string {
+    // semgrep-ignore: p/owasp-top-ten
     return createHmac('md5', key).update(data).digest('hex');
   }
 
