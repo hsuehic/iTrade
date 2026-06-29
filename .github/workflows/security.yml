@@ -106,7 +106,7 @@ jobs:
 
       # ── OSV-Scanner: cross-references against OSV database ──
       - name: Run OSV-Scanner (npm)
-        uses: google/osv-scanner-action@v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=pnpm-lock.yaml
@@ -198,7 +198,7 @@ jobs:
 
       # ── OSV-Scanner: scan pubspec.lock ──────────────────────
       - name: Run OSV-Scanner (Flutter/pub)
-        uses: google/osv-scanner-action@v2.3.8
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=apps/mobile/pubspec.lock
