@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TypeOrmDataManager, type StrategyStatus } from '@itrade/data-manager';
+import {
+  TypeOrmDataManager,
+  entityToPerformance,
+  type StrategyStatus,
+} from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
@@ -49,23 +53,37 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Rebuild performance from orders for comparison
+    const shouldRebuild =
+      request.nextUrl.searchParams.get('rebuild') === 'true' ||
+      request.nextUrl.searchParams.get('rebuild') === '1';
+
+    // Prefer cached performance to avoid replaying all orders on every request.
     let rebuiltPerformance = null;
-    try {
-      if (
-        dataManagerWithRebuild.rebuildStrategyPerformance &&
-        strategy.symbol &&
-        strategy.exchange
-      ) {
-        rebuiltPerformance = await dataManagerWithRebuild.rebuildStrategyPerformance(
-          strategy.id,
-          strategy.symbol,
-          strategy.exchange,
-          strategy.name,
-        );
+    if (strategy.performance && strategy.symbol && strategy.exchange) {
+      rebuiltPerformance = entityToPerformance(
+        strategy.performance,
+        strategy.symbol,
+        strategy.exchange,
+      );
+    }
+
+    if (shouldRebuild) {
+      try {
+        if (
+          dataManagerWithRebuild.rebuildStrategyPerformance &&
+          strategy.symbol &&
+          strategy.exchange
+        ) {
+          rebuiltPerformance = await dataManagerWithRebuild.rebuildStrategyPerformance(
+            strategy.id,
+            strategy.symbol,
+            strategy.exchange,
+            strategy.name,
+          );
+        }
+      } catch (e) {
+        console.warn(`Failed to rebuild performance for strategy ${id}`, e);
       }
-    } catch (e) {
-      console.warn(`Failed to rebuild performance for strategy ${id}`, e);
     }
 
     // Calculate position summary: executed net position + pending buy/sell sizes + total bought/sold
