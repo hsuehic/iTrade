@@ -45,6 +45,8 @@ export interface DBOrder {
   quantity?: string;
   executedQuantity?: string;
   cummulativeQuoteQuantity?: string;
+  commission?: string;
+  commissionAsset?: string;
   price?: string;
   averagePrice?: string;
   type?: string;
@@ -444,6 +446,9 @@ export class OrderSyncService extends EventEmitter {
         status: exchangeOrder.status,
         executedQuantity: exchangeOrder.executedQuantity?.toString(),
         cummulativeQuoteQuantity: exchangeOrder.cummulativeQuoteQuantity?.toString(),
+        // 🆕 Persist trading fee so PnL rebuilds include it
+        commission: exchangeOrder.commission?.toString(),
+        commissionAsset: exchangeOrder.commissionAsset,
         updatedAt: exchangeOrder.updateTime || new Date(),
       });
 

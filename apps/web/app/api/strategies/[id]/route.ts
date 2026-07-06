@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  TypeOrmDataManager,
-  entityToPerformance,
-  type StrategyStatus,
-} from '@itrade/data-manager';
+import { TypeOrmDataManager, type StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { getCurrentPrice } from '@/lib/live-balance';
 import { StrategyParameters } from '@itrade/core';
 
 type RouteContext = {
@@ -36,6 +33,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         symbol: string,
         exchange: string,
         strategyName?: string,
+        currentPrice?: number,
       ) => Promise<unknown>;
     };
     // Include user for ownership check
@@ -53,32 +51,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const shouldRebuild =
-      request.nextUrl.searchParams.get('rebuild') === 'true' ||
-      request.nextUrl.searchParams.get('rebuild') === '1';
-
-    // Prefer cached performance to avoid replaying all orders on every request.
+    // Always compute performance live by replaying orders — no cached/stale
+    // performance row is trusted, so display always reflects the actual order
+    // history (see also: strategyId fill-routing fix that made cached rows
+    // untrustworthy for any strategy that predates it).
     let rebuiltPerformance = null;
-    if (strategy.performance && strategy.symbol && strategy.exchange) {
-      rebuiltPerformance = entityToPerformance(
-        strategy.performance,
-        strategy.symbol,
-        strategy.exchange,
-      );
-    }
-
-    if (shouldRebuild) {
+    if (strategy.symbol && strategy.exchange) {
       try {
-        if (
-          dataManagerWithRebuild.rebuildStrategyPerformance &&
-          strategy.symbol &&
-          strategy.exchange
-        ) {
+        if (dataManagerWithRebuild.rebuildStrategyPerformance) {
+          // Fetch a real-time market price so open positions get a live
+          // unrealized PnL instead of always showing 0.
+          const currentPrice = await getCurrentPrice(
+            strategy.symbol,
+            strategy.exchange,
+          ).catch(() => null);
+
           rebuiltPerformance = await dataManagerWithRebuild.rebuildStrategyPerformance(
             strategy.id,
             strategy.symbol,
             strategy.exchange,
             strategy.name,
+            currentPrice ?? undefined,
           );
         }
       } catch (e) {

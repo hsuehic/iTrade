@@ -197,6 +197,8 @@ export class OrderTracker {
         timestamp: order.timestamp,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
+        commission: order.commission, // 🆕 Persist trading fee so PnL rebuilds include it
+        commissionAsset: order.commissionAsset,
         exchange: exchange, // 🆕 Save exchange association
         strategyId: strategyId, // ✅ Set strategyId directly
         strategyType: order.strategyType, // ✅ Save strategy type
@@ -274,6 +276,8 @@ export class OrderTracker {
         updateTime: mergedOrder.updateTime,
         executedQuantity: mergedOrder.executedQuantity,
         cummulativeQuoteQuantity: mergedOrder.cummulativeQuoteQuantity,
+        commission: mergedOrder.commission, // 🆕 Persist trading fee so PnL rebuilds include it
+        commissionAsset: mergedOrder.commissionAsset,
         exchange: exchange,
         strategyId: strategyId,
         strategyType: mergedOrder.strategyType,
@@ -381,6 +385,8 @@ export class OrderTracker {
         updateTime: order.updateTime,
         executedQuantity: order.executedQuantity,
         cummulativeQuoteQuantity: order.cummulativeQuoteQuantity,
+        commission: order.commission, // 🆕 Persist trading fee so PnL rebuilds include it
+        commissionAsset: order.commissionAsset,
         exchange: exchange,
         strategyId: strategyId,
         strategyType: order.strategyType,

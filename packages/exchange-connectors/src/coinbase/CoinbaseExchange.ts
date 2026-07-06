@@ -1281,6 +1281,12 @@ export class CoinbaseExchange extends BaseExchange {
       cummulativeQuoteQuantity: orderData.filled_value
         ? this.formatDecimal(orderData.filled_value)
         : undefined,
+      // 🆕 `total_fees` is Coinbase's cumulative fee for the order so far (already a
+      // running total, like cumulative_quantity/filled_value above).
+      commission: orderData.total_fees
+        ? this.formatDecimal(orderData.total_fees)
+        : undefined,
+      commissionAsset: orderData.total_fees ? productId.split('-')[1] : undefined,
       fills: undefined,
     };
 
@@ -1820,6 +1826,12 @@ export class CoinbaseExchange extends BaseExchange {
       updateTime: o.completion_time ? new Date(o.completion_time) : undefined,
       executedQuantity: o.filled_size ? this.formatDecimal(o.filled_size) : undefined,
       cummulativeQuoteQuantity: undefined,
+      // 🆕 `total_fees` is Coinbase's cumulative fee for the order so far (same field
+      // used in the WS user channel transform).
+      commission: o.total_fees ? this.formatDecimal(o.total_fees) : undefined,
+      commissionAsset: o.total_fees
+        ? (o.product_id || 'UNKNOWN').split('-')[1]
+        : undefined,
       fills: undefined,
     };
   }

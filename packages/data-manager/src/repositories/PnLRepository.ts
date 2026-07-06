@@ -332,8 +332,10 @@ export class PnLRepository {
       const quantity = new Decimal(order.executedQuantity || 0);
       const price = new Decimal(order.averagePrice || order.price || 0); // Use averagePrice if available
       const value = quantity.times(price);
-      // Determine fee
-      const fee = new Decimal(0);
+      // 🆕 order.commission is the cumulative fee for this order (see Order.commission
+      // doc in @itrade/core types) — each order is visited exactly once in this replay,
+      // so the cumulative total IS the fee attributable to this order.
+      const fee = new Decimal(order.commission || 0);
 
       if (quantity.gt(0)) {
         totalVolume = totalVolume.plus(value);

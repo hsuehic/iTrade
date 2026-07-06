@@ -57,6 +57,15 @@ export class BinanceExchange extends BaseExchange {
   private orderbookDepthMap = new Map<string, number>(); // symbol_marketType -> depth
   private userWs?: BinanceWebsocket;
   private _messageDebugCount = 0;
+  // 🆕 Binance's execution report only reports the commission for THAT specific
+  // fill (not a running total), unlike executedQuantity/cumulativeQuoteQty which
+  // are cumulative. We accumulate per-order so downstream consumers (TradingEngine)
+  // can treat `Order.commission` uniformly as a cumulative total across exchanges.
+  // Cleared once an order reaches a terminal state to avoid unbounded growth.
+  private _cumulativeCommissionByOrderId = new Map<
+    string,
+    { total: Decimal; asset?: string }
+  >();
   private leverageCache = new Map<string, number>(); // symbol -> leverage mapping
   private futuresPositionModeCache?: {
     mode: 'oneway' | 'hedge';
@@ -478,6 +487,48 @@ export class BinanceExchange extends BaseExchange {
     });
 
     return this.transformBinanceOrder(response.data, isFutures ? 'futures' : 'spot');
+  }
+
+  /**
+   * 🆕 Look up the real trading fee(s) charged for a specific order via
+   * Binance's trade-history endpoints (`/api/v3/myTrades` for spot,
+   * `/fapi/v1/userTrades` for futures). Unlike `getOrder()`, these endpoints
+   * return each individual fill with its own `commission`/`commissionAsset`,
+   * which is exactly what's missing from historical orders that were saved
+   * before fee tracking existed. Sums across all fills belonging to the order.
+   */
+  public async getOrderCommission(
+    symbol: string,
+    orderId: string,
+  ): Promise<{ commission: Decimal; commissionAsset?: string } | null> {
+    const isFutures = this._isFuturesSymbol(symbol);
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    const params: any = {
+      symbol: normalizedSymbol,
+      orderId,
+      timestamp: Date.now(),
+    };
+
+    const signedParams = this.signRequest(params);
+    const path = isFutures ? '/fapi/v1/userTrades' : '/api/v3/myTrades';
+    const httpClient = isFutures ? this.futuresClient : this.httpClient;
+
+    const response = await httpClient.get(path, { params: signedParams });
+    const trades: any[] = Array.isArray(response.data) ? response.data : [];
+    if (trades.length === 0) return null;
+
+    let commission = new Decimal(0);
+    let commissionAsset: string | undefined;
+    for (const trade of trades) {
+      if (trade.commission) {
+        commission = commission.plus(this.formatDecimal(trade.commission));
+      }
+      if (trade.commissionAsset) {
+        commissionAsset = trade.commissionAsset;
+      }
+    }
+
+    return { commission, commissionAsset };
   }
 
   public async getOpenOrders(symbol?: string): Promise<Order[]> {
@@ -1397,6 +1448,45 @@ export class BinanceExchange extends BaseExchange {
     }
   }
 
+  /**
+   * 🆕 Binance's execution report only carries the fee for THAT specific fill
+   * (fields `n`/`N` for spot, `o.n`/`o.N` for futures) — not a running total.
+   * We accumulate it per orderId so `Order.commission` behaves the same way
+   * across exchanges (a cumulative total, like executedQuantity). The entry is
+   * removed once the order reaches a terminal state to bound memory usage.
+   */
+  private accumulateCommission(
+    orderId: string,
+    fillCommission: string | undefined,
+    fillCommissionAsset: string | null | undefined,
+    isTerminal: boolean,
+  ): { commission?: Decimal; commissionAsset?: string } {
+    const existing = this._cumulativeCommissionByOrderId.get(orderId) ?? {
+      total: new Decimal(0),
+      asset: undefined as string | undefined,
+    };
+
+    if (fillCommission) {
+      const delta = this.formatDecimal(fillCommission);
+      if (delta.gt(0)) {
+        existing.total = existing.total.plus(delta);
+      }
+    }
+    if (fillCommissionAsset) {
+      existing.asset = fillCommissionAsset;
+    }
+
+    const result = { commission: existing.total, commissionAsset: existing.asset };
+
+    if (isTerminal) {
+      this._cumulativeCommissionByOrderId.delete(orderId);
+    } else {
+      this._cumulativeCommissionByOrderId.set(orderId, existing);
+    }
+
+    return result;
+  }
+
   private normalizeBinanceOrderUpdate(data: any, market: 'spot' | 'futures'): Order {
     // Supports spot executionReport and futures ORDER_TRADE_UPDATE
     if (data.e === 'executionReport') {
@@ -1408,8 +1498,23 @@ export class BinanceExchange extends BaseExchange {
       const type = this.transformBinanceOrderType(data.o || 'LIMIT');
       const qty = this.formatDecimal(data.q || '0');
       const price = data.p ? this.formatDecimal(data.p) : undefined;
+      const orderId = (data.i ?? data.c ?? uuidv4()).toString();
+      const status = this.transformBinanceOrderStatus(data.X || data.x || 'NEW');
+      const isTerminal = [
+        OrderStatus.FILLED,
+        OrderStatus.CANCELED,
+        OrderStatus.REJECTED,
+        OrderStatus.EXPIRED,
+      ].includes(status);
+      // `n`/`N` are only meaningful on an actual execution (x === 'TRADE')
+      const { commission, commissionAsset } = this.accumulateCommission(
+        orderId,
+        data.x === 'TRADE' ? data.n : undefined,
+        data.x === 'TRADE' ? data.N : undefined,
+        isTerminal,
+      );
       return {
-        id: (data.i ?? data.c ?? uuidv4()).toString(),
+        id: orderId,
         clientOrderId: data.c,
         symbol,
         side,
@@ -1417,11 +1522,13 @@ export class BinanceExchange extends BaseExchange {
         quantity: qty,
         price,
         stopPrice: data.P ? this.formatDecimal(data.P) : undefined,
-        status: this.transformBinanceOrderStatus(data.X || data.x || 'NEW'),
+        status,
         timeInForce: (data.f as TimeInForce) || 'GTC',
         timestamp: this.formatTimestamp(data.T || Date.now()),
         updateTime: data.T ? this.formatTimestamp(data.T) : undefined,
         executedQuantity: data.z ? this.formatDecimal(data.z) : undefined,
+        commission,
+        commissionAsset,
       };
     }
     if (data.e === 'ORDER_TRADE_UPDATE' && data.o) {
@@ -1433,8 +1540,23 @@ export class BinanceExchange extends BaseExchange {
       const type = this.transformBinanceOrderType(o.o || 'LIMIT');
       const qty = this.formatDecimal(o.q || '0');
       const price = o.p ? this.formatDecimal(o.p) : undefined;
+      const orderId = (o.i ?? o.c ?? uuidv4()).toString();
+      const status = this.transformBinanceOrderStatus(o.X || 'NEW');
+      const isTerminal = [
+        OrderStatus.FILLED,
+        OrderStatus.CANCELED,
+        OrderStatus.REJECTED,
+        OrderStatus.EXPIRED,
+      ].includes(status);
+      // `o.x` is the execution type on futures user data stream too ("TRADE" on an actual fill)
+      const { commission, commissionAsset } = this.accumulateCommission(
+        orderId,
+        o.x === 'TRADE' ? o.n : undefined,
+        o.x === 'TRADE' ? o.N : undefined,
+        isTerminal,
+      );
       return {
-        id: (o.i ?? o.c ?? uuidv4()).toString(),
+        id: orderId,
         clientOrderId: o.c,
         symbol,
         side,
@@ -1442,11 +1564,13 @@ export class BinanceExchange extends BaseExchange {
         quantity: qty,
         price,
         stopPrice: o.sp ? this.formatDecimal(o.sp) : undefined,
-        status: this.transformBinanceOrderStatus(o.X || 'NEW'),
+        status,
         timeInForce: (o.f as TimeInForce) || 'GTC',
         timestamp: this.formatTimestamp(o.T || Date.now()),
         updateTime: o.T ? this.formatTimestamp(o.T) : undefined,
         executedQuantity: o.z ? this.formatDecimal(o.z) : undefined,
+        commission,
+        commissionAsset,
       };
     }
     // Fallback minimal

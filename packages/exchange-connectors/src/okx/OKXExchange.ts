@@ -1637,6 +1637,14 @@ export class OKXExchange extends BaseExchange {
       // keep generated UUID
     }
 
+    // 🆕 `fee` is OKX's accumulated fee for the whole order so far (negative when
+    // charged, positive = rebate) — same field used in the private WS orders channel.
+    const commission =
+      order.fee !== undefined && order.fee !== null && order.fee !== ''
+        ? this.formatDecimal(order.fee).abs()
+        : undefined;
+    const commissionAsset = order.feeCcy || undefined;
+
     return {
       id: derivedId,
       clientOrderId: order.clOrdId,
@@ -1655,6 +1663,8 @@ export class OKXExchange extends BaseExchange {
       updateTime: order.uTime ? new Date(parseInt(order.uTime)) : undefined,
       executedQuantity,
       cummulativeQuoteQuantity,
+      commission,
+      commissionAsset,
     };
   }
 
@@ -1761,6 +1771,15 @@ export class OKXExchange extends BaseExchange {
     // If uTime is not provided, use current time to ensure order updates are detected
     const updateTime = data.uTime ? new Date(parseInt(data.uTime)) : new Date();
 
+    // 🆕 `fee` is OKX's accumulated fee for the whole order so far (like accFillSz),
+    // reported as a negative number when a fee was charged (positive = rebate).
+    // Normalize to a positive "cost" so it composes with executedQuantity-style deltas.
+    const commission =
+      data.fee !== undefined && data.fee !== null && data.fee !== ''
+        ? this.formatDecimal(data.fee).abs()
+        : undefined;
+    const commissionAsset = data.feeCcy || undefined;
+
     return {
       id: (data.ordId || uuidv4()).toString().trim(),
       clientOrderId: data.clOrdId,
@@ -1776,6 +1795,8 @@ export class OKXExchange extends BaseExchange {
       executedQuantity,
       cummulativeQuoteQuantity,
       averagePrice, // 🆕 Include average execution price
+      commission, // 🆕 Cumulative trading fee for this order
+      commissionAsset,
       exchange: this.name, // 🔥 Ensure exchange is set
     };
   }

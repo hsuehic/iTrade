@@ -465,6 +465,8 @@ export class BotInstance {
       updateTime: normalizedOrder.updateTime ?? normalizedOrder.timestamp,
       executedQuantity: normalizedOrder.executedQuantity,
       cummulativeQuoteQuantity: normalizedOrder.cummulativeQuoteQuantity,
+      commission: normalizedOrder.commission, // 🆕 Persist trading fee so PnL rebuilds include it
+      commissionAsset: normalizedOrder.commissionAsset,
       exchange,
       strategyId: normalizedOrder.strategyId,
       strategyType: normalizedOrder.strategyType,
@@ -595,6 +597,8 @@ export class BotInstance {
         updateTime: normalizedOrder.updateTime ?? new Date(),
         executedQuantity: normalizedOrder.executedQuantity,
         cummulativeQuoteQuantity: normalizedOrder.cummulativeQuoteQuantity,
+        commission: normalizedOrder.commission, // 🆕 Persist trading fee so PnL rebuilds include it
+        commissionAsset: normalizedOrder.commissionAsset,
         exchange: normalizedOrder.exchange ?? exchangeName,
         strategyId: normalizedOrder.strategyId,
         strategyType: normalizedOrder.strategyType,

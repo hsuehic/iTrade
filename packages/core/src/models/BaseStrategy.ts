@@ -172,6 +172,14 @@ export abstract class BaseStrategy<
 
     // Only update performance counters (counts/status)
     // Volume/Fees/Position updates are handled in onTradeExecuted via partial fills
+    if (
+      order.strategyId !== undefined &&
+      this._strategyId !== undefined &&
+      order.strategyId !== this._strategyId
+    ) {
+      return;
+    }
+
     if (order.symbol === this._symbol && order.exchange === this._exchangeName) {
       this._context.performance = PerformanceTracker.updateWithOrder(
         this._context.performance,
@@ -186,6 +194,14 @@ export abstract class BaseStrategy<
    */
   public async onTradeExecuted(trade: Trade): Promise<void> {
     this.emit('tradeExecuted', trade);
+
+    if (
+      trade.strategyId !== undefined &&
+      this._strategyId !== undefined &&
+      trade.strategyId !== this._strategyId
+    ) {
+      return;
+    }
 
     if (trade.symbol === this._symbol && trade.exchange === this._exchangeName) {
       // Update internal position state incrementally

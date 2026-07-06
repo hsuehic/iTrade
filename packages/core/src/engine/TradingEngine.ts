@@ -1427,11 +1427,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       let trade: Trade | undefined;
       let previousExecutedQty = new Decimal(0);
       let previousCumQuoteQty = new Decimal(0);
+      let previousCommission = new Decimal(0);
 
       if (existingOrderIndex >= 0) {
         const existingOrder = orders[existingOrderIndex];
         previousExecutedQty = existingOrder.executedQuantity || new Decimal(0);
         previousCumQuoteQty = existingOrder.cummulativeQuoteQuantity || new Decimal(0);
+        previousCommission = existingOrder.commission || new Decimal(0);
 
         // 🆕 Safety: If incoming order has undefined executedQuantity, inherit from previous state
         // This prevents regression to 0 which would cause double-counting on next fill
@@ -1441,6 +1443,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         // Inherit cumulative quote qty if missing too
         if (order.cummulativeQuoteQuantity === undefined) {
           order.cummulativeQuoteQuantity = previousCumQuoteQty;
+        }
+        // Inherit cumulative commission if missing too (same double-counting guard as above)
+        if (order.commission === undefined) {
+          order.commission = previousCommission;
+        }
+        if (order.commissionAsset === undefined) {
+          order.commissionAsset = existingOrder.commissionAsset;
         }
 
         // Update existing order
@@ -1454,6 +1463,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // Calculate delta to detect if a trade occurred
       const currentExecutedQty = order.executedQuantity || new Decimal(0);
       const currentCumQuoteQty = order.cummulativeQuoteQuantity || new Decimal(0);
+      const currentCommission = order.commission || new Decimal(0);
       const deltaQty = currentExecutedQty.minus(previousExecutedQty);
 
       if (deltaQty.gt(0)) {
@@ -1461,6 +1471,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         const deltaQuote = currentCumQuoteQty.minus(previousCumQuoteQty);
         // Calculate average price of this chunk
         const fillPrice = deltaQty.isZero() ? new Decimal(0) : deltaQuote.div(deltaQty);
+        // 🆕 Fee for this specific chunk, derived from the (cumulative) commission delta.
+        // `order.commission` is expected to be a running total for the whole order
+        // (mirrors executedQuantity/cummulativeQuoteQuantity), so diffing gives the
+        // fee attributable to just this fill. Guard against negative deltas from
+        // out-of-order/duplicate updates.
+        const deltaFee = currentCommission.minus(previousCommission);
 
         trade = {
           id: `${order.id}-${Date.now()}`, // Generate unique trade ID for this fill
@@ -1470,8 +1486,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           side: order.side === OrderSide.BUY ? 'buy' : 'sell',
           timestamp: new Date(),
           exchange: exchangeName,
-          // Calculate fee for this chunk if possible (requires order fee info which might be cumulative or not)
-          // For now, we assume fees are handled in the order object or subsequent events
+          strategyId: order.strategyId,
+          fee: deltaFee.gt(0) ? deltaFee : new Decimal(0),
         };
 
         this.logger.info(
@@ -1719,6 +1735,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   ): Promise<void> {
     for (const [name, strategy] of this._strategies) {
       try {
+        const strategyId = strategy.getStrategyId?.() ?? strategy.config.strategyId;
+        if (
+          order.strategyId !== undefined &&
+          strategyId !== undefined &&
+          order.strategyId !== strategyId
+        ) {
+          continue;
+        }
         if (strategy.config.exchange === exchangeName) {
           await strategy.onOrderFilled(order);
           // 🆕 Trigger debounced performance save (updates counts)
@@ -1742,6 +1766,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   ): Promise<void> {
     for (const [name, strategy] of this._strategies) {
       try {
+        const strategyId = strategy.getStrategyId?.() ?? strategy.config.strategyId;
+        if (
+          trade.strategyId !== undefined &&
+          strategyId !== undefined &&
+          trade.strategyId !== strategyId
+        ) {
+          continue;
+        }
         if (strategy.config.exchange === exchangeName) {
           if (strategy.onTradeExecuted) {
             await strategy.onTradeExecuted(trade);

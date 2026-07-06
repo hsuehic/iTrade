@@ -395,6 +395,8 @@ class MockStrategy implements IStrategy {
   processInitialData = vi.fn().mockResolvedValue({ action: 'hold' });
   onOrderCreated = vi.fn();
   onOrderFilled = vi.fn();
+  onTradeExecuted = vi.fn();
+  getStrategyId = vi.fn().mockReturnValue(this.context.strategyId);
   getState = vi.fn().mockResolvedValue({});
   setState = vi.fn().mockResolvedValue(undefined);
 }
@@ -725,6 +727,55 @@ describe('TradingEngine - Order Event Emission', () => {
       // Should NOT emit duplicate OrderCreated
       expect(orderCreatedSpy).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('routes fills to the matching strategyId only', async () => {
+    await engine.addExchange('mockExchange', mockExchange);
+
+    const strategyA = new MockStrategy({
+      symbol: 'BTC/USDT',
+      exchange: 'mockExchange',
+      strategyId: 1,
+      strategyName: 'StrategyA',
+      performance: createEmptyPerformance('BTC/USDT', 'mockExchange', 1, 'StrategyA'),
+    });
+    const strategyB = new MockStrategy({
+      symbol: 'BTC/USDT',
+      exchange: 'mockExchange',
+      strategyId: 2,
+      strategyName: 'StrategyB',
+      performance: createEmptyPerformance('BTC/USDT', 'mockExchange', 2, 'StrategyB'),
+    });
+
+    await engine.addStrategy('StrategyA', strategyA);
+    await engine.addStrategy('StrategyB', strategyB);
+
+    const filledOrder: Order = {
+      id: 'order-456',
+      clientOrderId: 'client-456',
+      symbol: 'BTC/USDT',
+      side: OrderSide.BUY,
+      type: OrderType.LIMIT,
+      quantity: new Decimal(0.1),
+      price: new Decimal(50000),
+      status: OrderStatus.FILLED,
+      timeInForce: TimeInForce.GTC,
+      timestamp: new Date(),
+      executedQuantity: new Decimal(0.1),
+      cummulativeQuoteQuantity: new Decimal(5000),
+      updateTime: new Date(),
+      exchange: 'mockExchange',
+      strategyId: 1,
+    };
+
+    mockExchange.emit('orderUpdate', 'BTC/USDT', filledOrder);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(strategyA.onOrderFilled).toHaveBeenCalledTimes(1);
+    expect(strategyA.onTradeExecuted).toHaveBeenCalledTimes(1);
+    expect(strategyB.onOrderFilled).not.toHaveBeenCalled();
+    expect(strategyB.onTradeExecuted).not.toHaveBeenCalled();
   });
 
   describe('Order Status Transitions', () => {

@@ -128,6 +128,7 @@ export interface Trade {
   takerOrderId?: string;
   makerOrderId?: string;
   exchange?: string; // 交易所名称，用于区分多交易所数据
+  strategyId?: number; // Strategy ID for associating fills
   fee?: Decimal; // 🆕 Trading fee
 }
 
@@ -207,6 +208,10 @@ export interface Order {
   realizedPnl?: Decimal;
   unrealizedPnl?: Decimal;
   averagePrice?: Decimal;
+  // 🆕 Cumulative trading fee paid for this order so far (running total, like
+  // executedQuantity/cummulativeQuoteQuantity — NOT the fee for a single fill).
+  // Exchange connectors are responsible for accumulating this if the exchange's
+  // native event only reports a per-fill delta (e.g. Binance).
   commission?: Decimal;
   commissionAsset?: string;
 

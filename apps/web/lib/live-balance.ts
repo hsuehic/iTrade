@@ -94,6 +94,45 @@ export const fetchCoinbasePrices = async (
   return prices;
 };
 
+/**
+ * Get a single real-time price for a trading-pair symbol on a given exchange.
+ * Reuses the same per-exchange fetchers + 30s cache as `computeLiveBalances`.
+ *
+ * @param symbol - Trading pair symbol, e.g. "BTC/USDT" or "BTC/USDT:USDT" (base asset is
+ *   extracted from the part before the first "/" or ":").
+ * @param exchange - Exchange name (case-insensitive), e.g. "binance", "okx", "coinbase".
+ * @returns The current price, or null if it could not be determined.
+ */
+export async function getCurrentPrice(
+  symbol: string,
+  exchange: string,
+): Promise<number | null> {
+  const asset = symbol.split(/[/:]/)[0]?.toUpperCase();
+  if (!asset) return null;
+
+  if (STABLECOINS.has(asset)) return 1;
+
+  const exchangeLower = exchange.toLowerCase();
+  const cacheKey = `${exchangeLower}:${asset}`;
+  const cached = getCachedPrice(cacheKey);
+  if (cached !== null) return cached;
+
+  let fetched = new Map<string, number>();
+  if (exchangeLower === 'binance') {
+    fetched = await fetchBinancePrices([asset]);
+  } else if (exchangeLower === 'okx') {
+    fetched = await fetchOkxPrices([asset]);
+  } else if (exchangeLower === 'coinbase') {
+    fetched = await fetchCoinbasePrices([asset]);
+  }
+
+  const price = fetched.get(asset);
+  if (price === undefined) return null;
+
+  setCachedPrice(cacheKey, price);
+  return price;
+}
+
 export interface AssetWithExchange {
   asset: string;
   exchange: string;
