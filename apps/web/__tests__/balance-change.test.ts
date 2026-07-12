@@ -14,6 +14,10 @@ import { describe, it, expect } from 'vitest';
 // ─── Mirror the logic from route.ts ──────────────────────────────────────────
 
 type ChartDataPoint = { date: string; [exchange: string]: string | number };
+type BalanceHistoryPoint = {
+  timestamp: Date;
+  createdAt?: Date;
+};
 
 function computeDateRange(
   now: Date,
@@ -112,6 +116,36 @@ function calendarBaseline(history: { balance: string | number }[]): number {
     if (bal > 0) return bal;
   }
   return 0;
+}
+
+function transferStartAfterBaseline(
+  point: BalanceHistoryPoint,
+  defaultStart: Date,
+  intervalMs: number,
+): Date {
+  const bucketEnd = new Date(point.timestamp.getTime() + intervalMs);
+  if (point.createdAt && point.createdAt.getTime() > bucketEnd.getTime()) {
+    return point.createdAt;
+  }
+
+  return defaultStart;
+}
+
+function netDepositsAfterBaseline(
+  transfers: Array<{
+    amount: number;
+    timestamp: Date;
+    type: 'DEPOSIT' | 'WITHDRAW';
+  }>,
+  transferStart: Date,
+): number {
+  return transfers.reduce((sum, transfer) => {
+    if (transfer.timestamp.getTime() < transferStart.getTime()) {
+      return sum;
+    }
+
+    return transfer.type === 'DEPOSIT' ? sum + transfer.amount : sum - transfer.amount;
+  }, 0);
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -323,5 +357,36 @@ describe('End-to-end: rolling 24h change scenario', () => {
     const change = calculateChange(8400, baseline);
     expect(baseline).toBe(8000);
     expect(change).toBeCloseTo(5, 5);
+  });
+});
+
+describe('End-to-end: first-day bootstrap transfer scenario', () => {
+  it('does not subtract transfers already included in a synthetic baseline', () => {
+    const baseline = 2288.28;
+    const current = 2288.28;
+    const syntheticPriorDayPoint = {
+      timestamp: new Date('2026-07-12T00:00:00.000Z'),
+      createdAt: new Date('2026-07-13T01:05:00.000Z'),
+    };
+    const transferStart = transferStartAfterBaseline(
+      syntheticPriorDayPoint,
+      new Date('2026-07-13T00:00:00.000Z'),
+      24 * 60 * 60 * 1000,
+    );
+    const netDeposits = netDepositsAfterBaseline(
+      [
+        {
+          amount: 2288.28,
+          timestamp: new Date('2026-07-13T00:30:00.000Z'),
+          type: 'DEPOSIT',
+        },
+      ],
+      transferStart,
+    );
+    const adjustedCurrent = current - netDeposits;
+
+    expect(transferStart).toEqual(syntheticPriorDayPoint.createdAt);
+    expect(netDeposits).toBe(0);
+    expect(calculateChange(adjustedCurrent, baseline)).toBe(0);
   });
 });

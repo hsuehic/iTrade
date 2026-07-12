@@ -9,6 +9,15 @@ export interface ChartDataPoint {
   [exchange: string]: string | number; // exchange names as keys with balance values
 }
 
+interface BalanceHistoryPoint {
+  timestamp: Date;
+  balance: { toString(): string };
+  free: { toString(): string };
+  locked: { toString(): string };
+  createdAt?: Date;
+  accountId?: number;
+}
+
 /**
  * GET /api/analytics/account - 获取账户分析数据
  *
@@ -26,6 +35,46 @@ function intervalForRange(rangeMs: number): 'minute' | '5min' | 'hour' | 'day' {
   if (hours <= 72) return '5min';
   if (hours <= 14 * 24) return 'hour';
   return 'day';
+}
+
+function intervalMs(interval: 'minute' | '5min' | 'hour' | 'day'): number {
+  switch (interval) {
+    case 'minute':
+      return 60 * 1000;
+    case '5min':
+      return 5 * 60 * 1000;
+    case 'hour':
+      return 60 * 60 * 1000;
+    case 'day':
+    default:
+      return 24 * 60 * 60 * 1000;
+  }
+}
+
+function getDateKey(
+  timestamp: Date,
+  historyInterval: 'minute' | '5min' | 'hour' | 'day',
+): string {
+  if (historyInterval === 'minute') {
+    const roundedTime = new Date(timestamp);
+    roundedTime.setSeconds(0, 0);
+    return roundedTime.toISOString();
+  }
+
+  if (historyInterval === '5min') {
+    const roundedTime = new Date(timestamp);
+    const minutes = roundedTime.getMinutes();
+    roundedTime.setMinutes(Math.floor(minutes / 5) * 5, 0, 0);
+    return roundedTime.toISOString();
+  }
+
+  if (historyInterval === 'hour') {
+    const roundedTime = new Date(timestamp);
+    roundedTime.setMinutes(0, 0, 0);
+    return roundedTime.toISOString();
+  }
+
+  return timestamp.toISOString().split('T')[0];
 }
 
 export async function GET(request: Request) {
@@ -247,6 +296,28 @@ export async function GET(request: Request) {
           : period === '7d'
             ? 'hour'
             : 'day';
+    const bucketIntervalMs = intervalMs(historyInterval);
+    const transferStartByExchange: Record<string, Date> = {};
+    exchangesToQuery.forEach((ex) => {
+      transferStartByExchange[ex.toLowerCase()] = startTime;
+    });
+
+    const getTransferStartAfterBaseline = (
+      point: BalanceHistoryPoint,
+      defaultStart: Date,
+    ): Date => {
+      const bucketEnd = new Date(point.timestamp.getTime() + bucketIntervalMs);
+      const createdAt = point.createdAt ? new Date(point.createdAt) : null;
+
+      // First-account bootstrap rows are written after their synthetic period has
+      // already ended. Transfers before that write are already reflected in the
+      // baseline and must not be subtracted again.
+      if (createdAt && createdAt.getTime() > bucketEnd.getTime()) {
+        return createdAt;
+      }
+
+      return defaultStart;
+    };
 
     // Calendar / custom-window mode: fetch the last non-zero balance at the end of the
     // previous period — this is the "opening balance" baseline.
@@ -268,21 +339,31 @@ export async function GET(request: Request) {
       const baselineBalances: Record<string, number> = {};
       baselineData.forEach(({ exchange: exName, history }) => {
         // Sum the latest non-zero balance for EACH account belonging to this exchange
-        const latestPerAccount: Record<number, number> = {};
+        const latestPerAccount: Record<number, BalanceHistoryPoint> = {};
         for (let i = history.length - 1; i >= 0; i--) {
-          const point = history[i] as any;
+          const point = history[i] as BalanceHistoryPoint;
           const accountId = point.accountId;
           if (accountId && latestPerAccount[accountId] === undefined) {
             const bal = parseFloat(point.balance.toString());
             if (bal > 0) {
-              latestPerAccount[accountId] = bal;
+              latestPerAccount[accountId] = point;
             }
           }
         }
-        baselineBalances[exName] = Object.values(latestPerAccount).reduce(
-          (sum, b) => sum + b,
+        const baselinePoints = Object.values(latestPerAccount);
+        baselineBalances[exName] = baselinePoints.reduce(
+          (sum, point) => sum + parseFloat(point.balance.toString()),
           0,
         );
+
+        if (baselinePoints.length > 0) {
+          const exchangeTransferStart = baselinePoints
+            .map((point) => getTransferStartAfterBaseline(point, startTime))
+            .reduce((min, pointStart) =>
+              pointStart.getTime() < min.getTime() ? pointStart : min,
+            );
+          transferStartByExchange[exName.toLowerCase()] = exchangeTransferStart;
+        }
       });
 
       totalBaselineBalance = exchangesToQuery.reduce(
@@ -310,23 +391,7 @@ export async function GET(request: Request) {
 
     historicalData.forEach(({ exchange: exName, history }) => {
       history.forEach((point) => {
-        let dateKey: string;
-        if (historyInterval === 'minute') {
-          const roundedTime = new Date(point.timestamp);
-          roundedTime.setSeconds(0, 0);
-          dateKey = roundedTime.toISOString();
-        } else if (historyInterval === '5min') {
-          const roundedTime = new Date(point.timestamp);
-          const minutes = roundedTime.getMinutes();
-          roundedTime.setMinutes(Math.floor(minutes / 5) * 5, 0, 0);
-          dateKey = roundedTime.toISOString();
-        } else if (historyInterval === 'hour') {
-          const roundedTime = new Date(point.timestamp);
-          roundedTime.setMinutes(0, 0, 0);
-          dateKey = roundedTime.toISOString();
-        } else {
-          dateKey = point.timestamp.toISOString().split('T')[0];
-        }
+        const dateKey = getDateKey(point.timestamp, historyInterval);
 
         if (!chartData[dateKey]) {
           chartData[dateKey] = { date: dateKey };
@@ -364,7 +429,6 @@ export async function GET(request: Request) {
     // Custom windows always have a baseline already set, so skip the fallback only
     // when align === 'rolling' (and we haven't overridden with a custom window).
     let baselineBalance = totalBaselineBalance;
-    let transferStartTime = startTime;
     if ((!useCustomWindow && align === 'rolling') || baselineBalance === 0) {
       for (const point of chartDataArray) {
         const total = Object.values(point)
@@ -373,18 +437,25 @@ export async function GET(request: Request) {
         if (total > 0) {
           baselineBalance = total;
 
-          // Only count transfers that occurred AFTER the baseline snapshot was recorded.
-          // The baseline snapshot's period/interval has a duration we must add to exclude
-          // the transfers already reflected within that baseline period.
-          let intervalMs = 24 * 60 * 60 * 1000; // default to day
-          if (historyInterval === 'minute') {
-            intervalMs = 60 * 1000;
-          } else if (historyInterval === '5min') {
-            intervalMs = 5 * 60 * 1000;
-          } else if (historyInterval === 'hour') {
-            intervalMs = 60 * 60 * 1000;
-          }
-          transferStartTime = new Date(new Date(point.date).getTime() + intervalMs);
+          historicalData.forEach(({ exchange: exName, history }) => {
+            const exchangeBalance = point[exName];
+            if (typeof exchangeBalance !== 'number' || exchangeBalance <= 0) {
+              return;
+            }
+
+            const baselinePoint = history.find(
+              (historyPoint) =>
+                getDateKey(historyPoint.timestamp, historyInterval) === point.date,
+            ) as BalanceHistoryPoint | undefined;
+
+            if (baselinePoint) {
+              transferStartByExchange[exName.toLowerCase()] =
+                getTransferStartAfterBaseline(
+                  baselinePoint,
+                  new Date(new Date(point.date).getTime() + bucketIntervalMs),
+                );
+            }
+          });
           break;
         }
       }
@@ -400,10 +471,22 @@ export async function GET(request: Request) {
     // because they're already reflected in the baseline balance.
     let netDeposits = 0;
     if (dm.getTransfers) {
-      const transfers = await dm.getTransfers(userId, transferStartTime, endTime);
+      const transferStartTimes = Object.values(transferStartByExchange);
+      const earliestTransferStart =
+        transferStartTimes.length > 0
+          ? transferStartTimes.reduce((min, pointStart) =>
+              pointStart.getTime() < min.getTime() ? pointStart : min,
+            )
+          : startTime;
+      const transfers = await dm.getTransfers(userId, earliestTransferStart, endTime);
       for (const t of transfers) {
         if (exchange !== 'all' && t.exchange?.toLowerCase() !== exchange.toLowerCase())
           continue;
+        const exchangeTransferStart =
+          transferStartByExchange[t.exchange?.toLowerCase() || ''] ?? startTime;
+        if (new Date(t.timestamp).getTime() < exchangeTransferStart.getTime()) {
+          continue;
+        }
         if (t.status === 'COMPLETED') {
           if (t.network === 'internal') {
             continue;

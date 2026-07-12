@@ -418,6 +418,8 @@ export class BalanceHistoryRepository {
       balance: Decimal;
       free: Decimal;
       locked: Decimal;
+      createdAt: Date;
+      accountId: number;
     }>
   > {
     let repo: Repository<BalanceHistoryEntity>;
@@ -463,6 +465,7 @@ export class BalanceHistoryRepository {
       balance: r.total,
       free: r.free,
       locked: r.locked,
+      createdAt: r.createdAt,
       accountId: r.accountInfo.id,
     }));
   }
