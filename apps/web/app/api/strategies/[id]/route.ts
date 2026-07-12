@@ -3,6 +3,7 @@ import { TypeOrmDataManager, type StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { logIfImpersonating } from '@/lib/audit-log';
 import { getCurrentPrice } from '@/lib/live-balance';
 import { StrategyParameters } from '@itrade/core';
 
@@ -191,6 +192,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     await dataManager.updateStrategy(id, updates);
 
+    await logIfImpersonating({
+      request,
+      session,
+      action: 'strategy.update',
+      metadata: { strategyId: id, updates },
+    });
+
     // No need to include user in response
     const updatedStrategy = await dataManager.getStrategy(id);
     return NextResponse.json({ strategy: updatedStrategy });
@@ -238,6 +246,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
 
     await dataManager.deleteStrategy(id);
+
+    await logIfImpersonating({
+      request,
+      session,
+      action: 'strategy.delete',
+      metadata: { strategyId: id, name: strategy.name },
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting strategy:', error);

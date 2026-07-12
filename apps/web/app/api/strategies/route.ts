@@ -3,6 +3,7 @@ import { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { logIfImpersonating } from '@/lib/audit-log';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -77,6 +78,13 @@ export async function POST(request: NextRequest) {
       initialDataConfig,
       subscription,
       userId: session.user.id,
+    });
+
+    await logIfImpersonating({
+      request,
+      session,
+      action: 'strategy.create',
+      metadata: { strategyId: strategy.id, name: strategy.name, symbol: strategy.symbol },
     });
 
     return NextResponse.json({ strategy }, { status: 201 });

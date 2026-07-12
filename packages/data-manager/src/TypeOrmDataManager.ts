@@ -52,6 +52,7 @@ import { Verification } from './entities/Verification';
 import { ApiKey } from './entities/ApiKey';
 import { AppSettingEntity } from './entities/AppSetting';
 import { HelpArticleEntity } from './entities/HelpArticle';
+import { AuditLogEntity, AuditLogAction } from './entities/AuditLog';
 import {
   StrategyRepository,
   OrderRepository,
@@ -141,6 +142,7 @@ export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   app_settings: AppSettingEntity,
   help_articles: HelpArticleEntity,
   transfers: TransferEntity,
+  audit_logs: AuditLogEntity,
 };
 
 export function resolveEntities(
@@ -183,6 +185,7 @@ export class TypeOrmDataManager implements IDataManager {
   private balanceRepository!: BalanceRepository;
   private accountInfoRepository!: Repository<AccountInfoEntity>;
   private transferRepository!: Repository<TransferEntity>;
+  private auditLogRepository!: Repository<AuditLogEntity>;
 
   // Dry run repositories (initialized on demand via dataSource)
   // Using inline repository lookups to avoid expanding class members excessively
@@ -233,6 +236,7 @@ export class TypeOrmDataManager implements IDataManager {
     this.balanceRepository = new BalanceRepository(this.dataSource);
     this.accountInfoRepository = this.dataSource.getRepository(AccountInfoEntity);
     this.transferRepository = this.dataSource.getRepository(TransferEntity);
+    this.auditLogRepository = this.dataSource.getRepository(AuditLogEntity);
 
     this.isInitialized = true;
   }
@@ -240,6 +244,61 @@ export class TypeOrmDataManager implements IDataManager {
   getAccountInfoRepository(): Repository<AccountInfoEntity> {
     this.ensureInitialized();
     return this.accountInfoRepository;
+  }
+
+  getAuditLogRepository(): Repository<AuditLogEntity> {
+    this.ensureInitialized();
+    return this.auditLogRepository;
+  }
+
+  /**
+   * Record an admin action taken on/as another user's account.
+   * Used for impersonation start/stop and for write actions performed
+   * while impersonating (e.g. creating/updating a strategy or order).
+   */
+  async createAuditLog(data: {
+    actorId: string;
+    actorEmail?: string | null;
+    targetUserId: string;
+    targetEmail?: string | null;
+    action: AuditLogAction;
+    metadata?: Record<string, unknown> | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  }): Promise<AuditLogEntity> {
+    this.ensureInitialized();
+    const entry = this.auditLogRepository.create(data);
+    return this.auditLogRepository.save(entry);
+  }
+
+  /**
+   * List audit log entries, most recent first, optionally filtered by actor,
+   * target user, or action. Used by the admin audit log page.
+   */
+  async getAuditLogs(filters?: {
+    actorId?: string;
+    targetUserId?: string;
+    action?: AuditLogAction;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ logs: AuditLogEntity[]; total: number }> {
+    this.ensureInitialized();
+    const page = filters?.page && filters.page > 0 ? filters.page : 1;
+    const pageSize = filters?.pageSize && filters.pageSize > 0 ? filters.pageSize : 50;
+
+    const where: Record<string, unknown> = {};
+    if (filters?.actorId) where.actorId = filters.actorId;
+    if (filters?.targetUserId) where.targetUserId = filters.targetUserId;
+    if (filters?.action) where.action = filters.action;
+
+    const [logs, total] = await this.auditLogRepository.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+
+    return { logs, total };
   }
 
   async close(): Promise<void> {

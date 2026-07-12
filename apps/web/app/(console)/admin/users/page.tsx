@@ -45,11 +45,15 @@ import {
   IconRefresh,
   IconBan,
   IconCheck,
+  IconLogin,
 } from '@tabler/icons-react';
 import { authClient } from '@/lib/auth-client';
 import { toast } from 'sonner';
 
 export default function AdminUsersPage() {
+  const { data: currentSession } = authClient.useSession();
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+
   const [users, setUsers] = useState<
     {
       id: string;
@@ -150,6 +154,35 @@ export default function AdminUsersPage() {
     } catch (error) {
       console.error('Error unbanning user:', error);
       toast.error('An unexpected error occurred');
+    }
+  };
+
+  const handleImpersonate = async (userId: string) => {
+    setImpersonatingId(userId);
+    try {
+      const response = await fetch('/api/admin/impersonate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        toast.error(data.error || 'Failed to start impersonation');
+        setImpersonatingId(null);
+        return;
+      }
+
+      toast.success('Signed in as user');
+      // Force a full navigation (not client-side router.push) so Better
+      // Auth's client session store — used by the sidebar, this page, and
+      // the impersonation banner — refetches against the new cookie
+      // immediately instead of only after a manual refresh.
+      window.location.href = '/dashboard';
+    } catch (error) {
+      console.error('Error starting impersonation:', error);
+      toast.error('An unexpected error occurred while starting impersonation');
+      setImpersonatingId(null);
     }
   };
 
@@ -315,6 +348,22 @@ export default function AdminUsersPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  disabled={
+                                    user.role === 'admin' ||
+                                    user.id === currentSession?.user.id ||
+                                    impersonatingId !== null
+                                  }
+                                  onClick={() => handleImpersonate(user.id)}
+                                >
+                                  {impersonatingId === user.id ? (
+                                    <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <IconLogin className="mr-2 h-4 w-4" />
+                                  )}
+                                  <span>Login as user</span>
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={() =>

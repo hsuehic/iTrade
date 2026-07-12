@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { logIfImpersonating } from '@/lib/audit-log';
 import { cancelUserOrder, modifyUserOrder } from '@/lib/services/order-execution-service';
 
 type RouteContext = {
@@ -80,6 +81,14 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
     const order = await cancelUserOrder(session.user.id, id);
+
+    await logIfImpersonating({
+      request,
+      session,
+      action: 'order.cancel',
+      metadata: { orderId: id },
+    });
+
     return NextResponse.json({ order });
   } catch (error) {
     console.error('Failed to cancel order:', error);
@@ -132,6 +141,14 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
     const order = await modifyUserOrder(session.user.id, id, parsed.data);
+
+    await logIfImpersonating({
+      request,
+      session,
+      action: 'order.update',
+      metadata: { orderId: id, changes: parsed.data },
+    });
+
     return NextResponse.json({ order });
   } catch (error) {
     console.error('Failed to update order:', error);

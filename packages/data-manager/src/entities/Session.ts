@@ -28,6 +28,13 @@ export class Session {
   @Column('text', { name: 'userAgent', nullable: true })
   userAgent?: string | null;
 
+  /**
+   * Set by Better Auth's admin plugin while an admin is impersonating this
+   * session's user. Holds the impersonating admin's user id; null otherwise.
+   */
+  @Column('text', { name: 'impersonatedBy', nullable: true })
+  impersonatedBy?: string | null;
+
   @ManyToOne('user', 'sessions', {
     onDelete: 'CASCADE',
   })

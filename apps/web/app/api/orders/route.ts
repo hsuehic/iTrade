@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { logIfImpersonating } from '@/lib/audit-log';
 import { executeManualOrder } from '@/lib/services/order-execution-service';
 import { ExchangeId, SUPPORTED_QUOTE_CURRENCIES, parseSymbol } from '@/lib/exchanges';
 import { isValidExchange } from '@itrade/data-manager';
@@ -299,6 +300,18 @@ export async function POST(request: NextRequest) {
       tradeMode: parsed.data.tradeMode,
       leverage: parsed.data.leverage,
       positionAction: parsed.data.positionAction,
+    });
+
+    await logIfImpersonating({
+      request,
+      session,
+      action: 'order.create',
+      metadata: {
+        orderId: order.id,
+        symbol: normalizedSymbol,
+        side: parsed.data.side,
+        quantity: parsed.data.quantity,
+      },
     });
 
     return NextResponse.json({ order });

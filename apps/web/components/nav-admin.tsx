@@ -6,6 +6,7 @@ import {
   IconUsers,
   IconBrain,
   IconBook,
+  IconHistory,
 } from '@tabler/icons-react';
 import {
   SidebarGroup,
@@ -37,6 +38,11 @@ export function NavAdmin() {
       title: 'Users & Roles',
       url: '/admin/users',
       icon: IconUsers,
+    },
+    {
+      title: 'Audit Log',
+      url: '/admin/audit-log',
+      icon: IconHistory,
     },
     {
       title: 'AI Config',
