@@ -39,7 +39,11 @@ import {
 
 import { getAIModel } from '@/lib/chatbot/provider';
 import { embed } from '@/lib/help-kb/embeddings';
-import { searchSimilar } from '@/lib/help-kb/repository';
+import {
+  mergeRetrievedArticles,
+  searchByText,
+  searchSimilar,
+} from '@/lib/help-kb/repository';
 import { buildHelpSystemPrompt } from '@/lib/help-kb/prompt';
 import { checkRateLimit, getClientIp } from '@/lib/help-kb/rate-limit';
 
@@ -157,17 +161,22 @@ export async function POST(request: NextRequest) {
       };
 
       try {
-        // 3. Embed the question + fetch model config in parallel.
-        //    embed() makes a Gemini REST call (~200–500 ms); getAIModel() only
-        //    hits the in-process settings cache, so running them concurrently
-        //    avoids paying for the embedding round-trip twice in sequence.
-        const [queryVector, model] = await Promise.all([
-          embed(message, 'RETRIEVAL_QUERY'),
+        // 3. Fetch model config and retrieve relevant KB articles in parallel.
+        //    Vector search is preferred, but lexical search keeps freshly seeded
+        //    production KBs useful while embeddings are pending or degraded.
+        const [model, vectorPassages, textPassages] = await Promise.all([
           getAIModel(),
+          embed(message, 'RETRIEVAL_QUERY')
+            .then((queryVector) => searchSimilar(queryVector, { locale, topK: 5 }))
+            .catch((error) => {
+              console.warn('[Help Chat] Vector KB search failed:', error);
+              return [];
+            }),
+          searchByText(message, { locale, topK: 5 }),
         ]);
 
-        // 4. Retrieve top-5
-        const passages = await searchSimilar(queryVector, { locale, topK: 5 });
+        // 4. Merge vector and lexical hits, keeping best-ranked duplicates.
+        const passages = mergeRetrievedArticles(vectorPassages, textPassages).slice(0, 5);
 
         // 5. Build prompt + stream Gemini response
         const system = buildHelpSystemPrompt(passages);

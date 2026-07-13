@@ -61,6 +61,64 @@ function hashContent(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
+function normalizeQueryText(query: string): string {
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function extractSearchTerms(query: string): string[] {
+  const stopWords = new Set([
+    'what',
+    'is',
+    'are',
+    'the',
+    'a',
+    'an',
+    'how',
+    'do',
+    'does',
+    'can',
+    'i',
+    'me',
+    'my',
+    'to',
+    'for',
+    'of',
+    'in',
+    'on',
+    'and',
+    'or',
+  ]);
+
+  return Array.from(
+    new Set(
+      normalizeQueryText(query)
+        .split(' ')
+        .filter((term) => term.length > 2 && !stopWords.has(term)),
+    ),
+  ).slice(0, 8);
+}
+
+export function mergeRetrievedArticles(
+  ...groups: RetrievedHelpArticle[][]
+): RetrievedHelpArticle[] {
+  const merged = new Map<string, RetrievedHelpArticle>();
+
+  for (const group of groups) {
+    for (const article of group) {
+      const existing = merged.get(article.id);
+      if (!existing || article.distance < existing.distance) {
+        merged.set(article.id, article);
+      }
+    }
+  }
+
+  return Array.from(merged.values()).sort((a, b) => a.distance - b.distance);
+}
+
 // ── CRUD via TypeORM ──────────────────────────────────────────────────────────
 
 export async function listArticles(
@@ -330,6 +388,69 @@ export async function searchSimilarByCategory(
 }
 
 /**
+ * Lexical fallback search for the public help bot.
+ *
+ * This keeps the homepage bot useful when a fresh production deploy has seeded
+ * articles but their embeddings are still pending, or when the embedding API is
+ * temporarily unavailable. Vector search remains the primary ranking path.
+ */
+export async function searchByText(
+  query: string,
+  options: { locale?: string; topK?: number } = {},
+): Promise<RetrievedHelpArticle[]> {
+  const dm = await getDataManager();
+  const normalized = normalizeQueryText(query);
+  const terms = extractSearchTerms(query);
+  const locale = options.locale ?? 'en';
+  const topK = Math.min(Math.max(options.topK ?? 5, 1), 10);
+
+  if (!normalized && terms.length === 0) return [];
+
+  const rows = (await dm.dataSource.query(
+    `
+    WITH candidates AS (
+      SELECT id, title, slug, content, category, locale, priority,
+             updated_at,
+             lower(regexp_replace(title, '[^a-zA-Z0-9]+', ' ', 'g')) AS title_norm,
+             lower(coalesce(tags, '')) AS tags_norm
+      FROM help_articles
+      WHERE published = true
+        AND locale = $1
+        AND category NOT IN ('prompt_section', 'chatbot_tool')
+    )
+    SELECT id, title, slug, content, category, locale,
+           (
+             CASE
+               WHEN title_norm = $2 THEN 0
+               WHEN title_norm LIKE '%' || $2 || '%' THEN 0.05
+               WHEN slug = ANY($3::text[]) THEN 0.1
+               WHEN title ILIKE ANY($4::text[]) THEN 0.2
+               WHEN tags_norm LIKE ANY($4::text[]) THEN 0.35
+               WHEN content ILIKE ANY($4::text[]) THEN 0.6
+               ELSE 1.5
+             END
+             - LEAST(priority, 10) * 0.001
+           ) AS distance
+    FROM candidates
+    WHERE title_norm LIKE '%' || $2 || '%'
+       OR slug = ANY($3::text[])
+       OR title ILIKE ANY($4::text[])
+       OR tags_norm LIKE ANY($4::text[])
+       OR content ILIKE ANY($4::text[])
+    ORDER BY distance ASC, priority DESC, updated_at DESC
+    LIMIT $5
+    `,
+    [locale, normalized, terms, terms.map((term) => `%${term}%`), topK],
+  )) as RetrievedHelpArticle[];
+
+  if (rows.length > 0 || locale === 'en') {
+    return rows.map((r) => ({ ...r, distance: Number(r.distance) }));
+  }
+
+  return searchByText(query, { ...options, locale: 'en' });
+}
+
+/**
  * Top-K cosine-similarity search over the published articles in `locale`.
  * Falls back to 'en' articles when the requested locale yields fewer hits.
  *
@@ -355,6 +476,7 @@ export async function searchSimilar(
     WHERE published = true
       AND embedding IS NOT NULL
       AND locale = $2
+      AND category NOT IN ('prompt_section', 'chatbot_tool')
     ORDER BY embedding <=> $1::vector ASC
     LIMIT $3
     `,
@@ -373,6 +495,7 @@ export async function searchSimilar(
       WHERE published = true
         AND embedding IS NOT NULL
         AND locale = 'en'
+        AND category NOT IN ('prompt_section', 'chatbot_tool')
       ORDER BY embedding <=> $1::vector ASC
       LIMIT $2
       `,

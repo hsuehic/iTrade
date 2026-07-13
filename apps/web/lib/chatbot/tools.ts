@@ -8,7 +8,11 @@ import { tool } from 'ai';
 import { z } from 'zod';
 
 import { embed } from '@/lib/help-kb/embeddings';
-import { searchSimilar } from '@/lib/help-kb/repository';
+import {
+  mergeRetrievedArticles,
+  searchByText,
+  searchSimilar,
+} from '@/lib/help-kb/repository';
 
 // ─── Null-safe parameter helper ────────────────────────────────────────────────
 //
@@ -646,8 +650,16 @@ export function createChatbotTools(
       }),
       execute: async ({ query, locale = 'en' }) => {
         try {
-          const vector = await embed(query, 'RETRIEVAL_QUERY');
-          const passages = await searchSimilar(vector, { locale, topK: 5 });
+          const [vectorPassages, textPassages] = await Promise.all([
+            embed(query, 'RETRIEVAL_QUERY')
+              .then((vector) => searchSimilar(vector, { locale, topK: 5 }))
+              .catch(() => []),
+            searchByText(query, { locale, topK: 5 }),
+          ]);
+          const passages = mergeRetrievedArticles(vectorPassages, textPassages).slice(
+            0,
+            5,
+          );
           return {
             articles: passages.map((p) => ({
               title: p.title,
