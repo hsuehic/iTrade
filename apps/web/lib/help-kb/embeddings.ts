@@ -23,15 +23,22 @@ const EMBEDDING_DIMENSIONS = 768;
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
-/** Pull the Gemini key from DB settings first, then env. */
+/** Pull a Gemini-compatible key from DB settings first, then env. */
 async function getApiKey(): Promise<string> {
   try {
     const settings = await getAllSettings();
     if (settings.gemini_api_key) return settings.gemini_api_key;
+    const provider = settings.ai_provider === 'openai' ? 'openai' : 'google';
+    if (provider === 'google' && settings.ai_api_key) return settings.ai_api_key;
   } catch {
     // DB unavailable — fall through to env
   }
-  const envKey = process.env.GEMINI_API_KEY;
+
+  const envProvider = process.env.AI_PROVIDER === 'openai' ? 'openai' : 'google';
+  const envKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    (envProvider === 'google' ? process.env.AI_API_KEY : undefined);
   if (envKey) return envKey;
   throw new Error(
     'Gemini API key not configured. Set it via /admin/ai-config or GEMINI_API_KEY env var.',

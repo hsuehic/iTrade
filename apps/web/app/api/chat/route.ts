@@ -187,6 +187,15 @@ function isMissingKeyError(error: unknown): boolean {
   );
 }
 
+function getGoogleThinkingConfig(model: string): {
+  thinkingBudget?: number;
+  thinkingLevel?: 'low';
+} {
+  return model.startsWith('gemini-3')
+    ? { thinkingLevel: 'low' }
+    : { thinkingBudget: 1024 };
+}
+
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
@@ -291,15 +300,15 @@ export async function POST(request: NextRequest) {
           model,
           system: ctx.systemPrompt,
           messages,
-          tools: {}, // ctx.tools,
+          tools: ctx.tools,
           stopWhen: stepCountIs(5),
           maxOutputTokens: 4000,
         };
 
-        // Gemini thinking models need a capped thinking budget for tool use.
+        // Keep thinking modest so multi-tool loops remain responsive in prod.
         if (aiConfig.provider === 'google') {
           streamOptions.providerOptions = {
-            google: { thinkingConfig: { thinkingBudget: 1024 } },
+            google: { thinkingConfig: getGoogleThinkingConfig(aiConfig.model) },
           };
         }
 
