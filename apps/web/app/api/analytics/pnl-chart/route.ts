@@ -17,6 +17,14 @@ import { getSession } from '@/lib/auth';
  */
 
 type Granularity = 'hour' | 'day' | 'month';
+type HistoryInterval = 'hour' | 'day' | 'month';
+
+interface BalanceHistoryPoint {
+  timestamp: Date;
+  balance: { toString(): string };
+  createdAt?: Date;
+  accountId?: number;
+}
 
 function periodKey(date: Date, granularity: Granularity): string {
   const y = date.getUTCFullYear();
@@ -28,29 +36,50 @@ function periodKey(date: Date, granularity: Granularity): string {
   return `${y}-${mo}-${d}T${h}:00`;
 }
 
-/** Returns the period key one step before the given key. */
-function prevPeriodKey(key: string, granularity: Granularity): string {
+function periodStartFromKey(key: string, granularity: Granularity): Date {
   if (granularity === 'month') {
-    const [y, mo] = key.split('-').map(Number);
-    const d = new Date(Date.UTC(y, mo - 2, 1)); // subtract 1 month
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    return new Date(`${key}-01T00:00:00.000Z`);
   }
+
   if (granularity === 'day') {
-    const d = new Date(`${key}T00:00:00.000Z`);
-    d.setUTCDate(d.getUTCDate() - 1);
-    const y = d.getUTCFullYear();
-    const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    return `${y}-${mo}-${day}`;
+    return new Date(`${key}T00:00:00.000Z`);
   }
-  // hour: key format is YYYY-MM-DDTHH:00
-  const d = new Date(`${key}:00.000Z`);
-  d.setUTCHours(d.getUTCHours() - 1);
-  const y = d.getUTCFullYear();
-  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  const h = String(d.getUTCHours()).padStart(2, '0');
-  return `${y}-${mo}-${day}T${h}:00`;
+
+  return new Date(`${key}:00.000Z`);
+}
+
+function nextPeriodStartFromKey(key: string, granularity: Granularity): Date {
+  const next = periodStartFromKey(key, granularity);
+
+  if (granularity === 'month') {
+    next.setUTCMonth(next.getUTCMonth() + 1);
+  } else if (granularity === 'day') {
+    next.setUTCDate(next.getUTCDate() + 1);
+  } else {
+    next.setUTCHours(next.getUTCHours() + 1);
+  }
+
+  return next;
+}
+
+function transferStartForPeriod(
+  openingPoint: BalanceHistoryPoint | undefined,
+  openingKey: string,
+  currentKey: string,
+  granularity: Granularity,
+): Date {
+  const currentPeriodStart = periodStartFromKey(currentKey, granularity);
+  const openingPeriodEnd = nextPeriodStartFromKey(openingKey, granularity);
+  const createdAt = openingPoint?.createdAt ? new Date(openingPoint.createdAt) : null;
+
+  // First-account bootstrap rows are written after their synthetic period has
+  // ended. Transfers before that write are already reflected in the opening
+  // balance and must not be subtracted again.
+  if (createdAt && createdAt.getTime() > openingPeriodEnd.getTime()) {
+    return createdAt;
+  }
+
+  return currentPeriodStart;
 }
 
 /** ISO string for the start of a period key (used as the chart date label). */
@@ -105,9 +134,8 @@ export async function GET(request: Request) {
       fetchStart.setUTCMonth(fetchStart.getUTCMonth() - 12);
     }
 
-    const interval = (
-      granularity === 'hour' ? 'hour' : granularity === 'day' ? 'day' : 'month'
-    ) as 'hour' | 'day' | 'week' | 'minute' | '5min' | 'month';
+    const interval: HistoryInterval =
+      granularity === 'hour' ? 'hour' : granularity === 'day' ? 'day' : 'month';
 
     // ── Resolve exchanges ─────────────────────────────────────────────────────
     let accounts = await dm.getUserAccountsWithBalances(userId);
@@ -129,13 +157,7 @@ export async function GET(request: Request) {
         exchangesToQuery.map(async (ex) => ({
           exchange: ex,
 
-          history: await dm.getBalanceTimeSeries(
-            ex,
-            fetchStart,
-            now,
-            interval as any,
-            userId,
-          ),
+          history: await dm.getBalanceTimeSeries(ex, fetchStart, now, interval, userId),
         })),
       ),
       dm.getTransfers(userId, fetchStart, now),
@@ -145,54 +167,19 @@ export async function GET(request: Request) {
     // Each snapshot represents the closing balance for that period.
     // Multiple accounts on the same exchange are summed.
     const balByExAndPeriod: Record<string, Record<string, number>> = {};
+    const pointByExAndPeriod: Record<string, Record<string, BalanceHistoryPoint>> = {};
     // ordered set of period keys
     const allPeriodKeys = new Set<string>();
 
     for (const { exchange: ex, history } of historyResults) {
       if (!balByExAndPeriod[ex]) balByExAndPeriod[ex] = {};
+      if (!pointByExAndPeriod[ex]) pointByExAndPeriod[ex] = {};
       for (const snap of history) {
         const key = periodKey(snap.timestamp, granularity);
         allPeriodKeys.add(key);
         balByExAndPeriod[ex][key] =
           (balByExAndPeriod[ex][key] ?? 0) + parseFloat(snap.balance.toString());
-      }
-    }
-
-    // ── Aggregate transfers by (exchange, periodKey) ──────────────────────────
-    // net_transfer > 0 means net deposit; < 0 means net withdrawal.
-    const netTransferByExAndPeriod: Record<string, Record<string, number>> = {};
-
-    for (const t of transfers) {
-      if (t.status !== 'COMPLETED') continue;
-      if (t.network === 'internal') continue;
-
-      const tEx = t.exchange?.toLowerCase() ?? '';
-      // Skip if filtering by a specific exchange and this transfer doesn't match
-      if (exchange !== 'all' && tEx !== exchange.toLowerCase()) continue;
-
-      const key = periodKey(t.timestamp, granularity);
-      const exKey = exchange === 'all' ? '__total__' : tEx;
-
-      if (!netTransferByExAndPeriod[exKey]) netTransferByExAndPeriod[exKey] = {};
-
-      const amt = parseFloat(t.amount.toString());
-      const delta = t.type === 'DEPOSIT' ? amt : t.type === 'WITHDRAW' ? -amt : 0;
-      netTransferByExAndPeriod[exKey][key] =
-        (netTransferByExAndPeriod[exKey][key] ?? 0) + delta;
-    }
-
-    // Also bucket transfers per-exchange for individual exchange breakdown
-    if (exchange === 'all') {
-      for (const t of transfers) {
-        if (t.status !== 'COMPLETED') continue;
-        if (t.network === 'internal') continue;
-        const tEx = t.exchange?.toLowerCase() ?? '';
-        const key = periodKey(t.timestamp, granularity);
-        if (!netTransferByExAndPeriod[tEx]) netTransferByExAndPeriod[tEx] = {};
-        const amt = parseFloat(t.amount.toString());
-        const delta = t.type === 'DEPOSIT' ? amt : t.type === 'WITHDRAW' ? -amt : 0;
-        netTransferByExAndPeriod[tEx][key] =
-          (netTransferByExAndPeriod[tEx][key] ?? 0) + delta;
+        pointByExAndPeriod[ex][key] = snap as BalanceHistoryPoint;
       }
     }
 
@@ -226,7 +213,26 @@ export async function GET(request: Request) {
       for (const ex of exchangesToQuery) {
         const closingBal = balByExAndPeriod[ex]?.[key] ?? 0;
         const openingBal = balByExAndPeriod[ex]?.[prevKey] ?? 0;
-        const netTransfer = netTransferByExAndPeriod[ex.toLowerCase()]?.[key] ?? 0;
+        const transferStart = transferStartForPeriod(
+          pointByExAndPeriod[ex]?.[prevKey],
+          prevKey,
+          key,
+          granularity,
+        );
+        const netTransfer = transfers.reduce((sum, t) => {
+          if (t.status !== 'COMPLETED') return sum;
+          if (t.network === 'internal') return sum;
+
+          const tEx = t.exchange?.toLowerCase() ?? '';
+          if (tEx !== ex.toLowerCase()) return sum;
+
+          const transferTimestamp = new Date(t.timestamp);
+          if (periodKey(transferTimestamp, granularity) !== key) return sum;
+          if (transferTimestamp.getTime() < transferStart.getTime()) return sum;
+
+          const amt = parseFloat(t.amount.toString());
+          return sum + (t.type === 'DEPOSIT' ? amt : t.type === 'WITHDRAW' ? -amt : 0);
+        }, 0);
 
         const exPnl = closingBal - openingBal - netTransfer;
         point[ex.toLowerCase()] = Math.round(exPnl * 100) / 100;
