@@ -1529,6 +1529,20 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.balanceRepository.getBalances(accountInfoId);
   }
 
+  async updateAccountBalances(
+    accountInfoId: number,
+    balances: Array<{
+      asset: string;
+      free: Decimal | string;
+      locked: Decimal | string;
+      total: Decimal | string;
+    }>,
+    options: { allowEmptyPurge?: boolean } = {},
+  ): Promise<void> {
+    this.ensureInitialized();
+    await this.balanceRepository.updateBalances(accountInfoId, balances, options);
+  }
+
   async getBalancesForAccounts(accountInfoIds: number[]): Promise<BalanceEntity[]> {
     this.ensureInitialized();
     return await this.balanceRepository.getBalancesForAccounts(accountInfoIds);

@@ -19,15 +19,15 @@ export class BalanceRepository {
     }>,
     options: { allowEmptyPurge?: boolean } = {},
   ): Promise<void> {
-    const assets = balances.map((b) => b.asset);
+    const nonZeroBalances = balances.filter((balance) =>
+      new Decimal(balance.total).gt(0),
+    );
+    const assets = nonZeroBalances.map((b) => b.asset);
     const { allowEmptyPurge = false } = options;
 
-    // Perform bulk upsert
-    // Note: TypeORM upsert might be tricky with unique constraints on some DBs
-    // but here we use the composite unique index [accountInfoId, asset]
-    if (balances.length > 0) {
+    if (nonZeroBalances.length > 0) {
       await this.repository.upsert(
-        balances.map((b) => ({
+        nonZeroBalances.map((b) => ({
           accountInfoId,
           asset: b.asset,
           free: new Decimal(b.free),

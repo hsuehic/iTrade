@@ -1552,11 +1552,16 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       this.logger.debug(
         `💰 Account Update from ${exchangeName}: ${balances.length} balances`,
       );
+      const wallet =
+        exchangeId.toLowerCase() !== exchangeName.toLowerCase()
+          ? exchangeId.toLowerCase()
+          : undefined;
       // Store balances for this exchange
       this._balances.set(exchangeName, balances);
       this._eventBus.emitBalanceUpdate({
         userId: this._userId,
         exchange: exchangeName,
+        wallet,
         balances,
         timestamp: new Date(),
       });

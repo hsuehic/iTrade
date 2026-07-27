@@ -73,6 +73,8 @@ export interface OrderEventData {
 export interface BalanceUpdateEvent {
   userId?: string;
   exchange: string; // Exchange name where the balances are from
+  /** Sub-wallet identifier, e.g. 'spot' or 'futures' for Binance */
+  wallet?: string;
   balances: Balance[];
   timestamp: Date;
 }

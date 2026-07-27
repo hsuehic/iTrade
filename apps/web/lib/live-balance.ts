@@ -9,11 +9,26 @@
  * they both ultimately hit /api/analytics/account for the totalBalance.
  */
 
-export const STABLECOINS = new Set(['USDT', 'USDC', 'DAI', 'BUSD', 'TUSD', 'USDP']);
+export const STABLECOINS = new Set([
+  'USDT',
+  'USDC',
+  'DAI',
+  'BUSD',
+  'TUSD',
+  'USDP',
+  'FDUSD',
+]);
+
+/** Only refresh cached prices for holdings worth at least this much (USD). */
+export const PRICE_FETCH_MIN_USD = 10;
 
 /** Module-level price cache shared across all API routes in the same process. */
 const priceCache = new Map<string, { value: number; updatedAt: number }>();
 const PRICE_CACHE_TTL_MS = 30_000;
+
+/** Binance full-ticker cache (one HTTP call covers all symbols). */
+let binanceAllPricesCache: { prices: Map<string, number>; updatedAt: number } | null =
+  null;
 
 export const getCachedPrice = (key: string): number | null => {
   const cached = priceCache.get(key);
@@ -26,34 +41,73 @@ export const setCachedPrice = (key: string, value: number): void => {
   priceCache.set(key, { value, updatedAt: Date.now() });
 };
 
-export const fetchBinancePrices = async (
-  assets: string[],
-): Promise<Map<string, number>> => {
-  const symbols = assets.map((asset) => `${asset}USDT`);
+const shouldCachePrice = (total: number, price: number): boolean => {
+  return total * price >= PRICE_FETCH_MIN_USD;
+};
+
+/**
+ * Fetch all Binance spot prices in a single request, then pick the assets we need.
+ * Avoids 414 errors and rate limits from huge per-symbol query strings.
+ */
+export const fetchBinanceAllPrices = async (): Promise<Map<string, number>> => {
+  if (
+    binanceAllPricesCache &&
+    Date.now() - binanceAllPricesCache.updatedAt <= PRICE_CACHE_TTL_MS
+  ) {
+    return binanceAllPricesCache.prices;
+  }
+
   try {
-    const response = await fetch(
-      `https://api.binance.com/api/v3/ticker/price?symbols=${encodeURIComponent(
-        JSON.stringify(symbols),
-      )}`,
-      { next: { revalidate: 30 } },
-    );
-    if (!response.ok) return new Map();
+    const response = await fetch('https://api.binance.com/api/v3/ticker/price', {
+      next: { revalidate: 30 },
+    });
+    if (!response.ok) return binanceAllPricesCache?.prices ?? new Map();
+
     const data = (await response.json()) as Array<{ symbol: string; price: string }>;
     const prices = new Map<string, number>();
     for (const item of data) {
-      const asset = item.symbol.replace('USDT', '');
+      if (!item.symbol.endsWith('USDT')) continue;
+      const asset = item.symbol.slice(0, -4);
       prices.set(asset, parseFloat(item.price));
     }
+
+    binanceAllPricesCache = { prices, updatedAt: Date.now() };
     return prices;
   } catch {
-    return new Map();
+    return binanceAllPricesCache?.prices ?? new Map();
   }
+};
+
+export const fetchBinancePrices = async (
+  assets: string[],
+): Promise<Map<string, number>> => {
+  if (assets.length === 0) return new Map();
+
+  const allPrices = await fetchBinanceAllPrices();
+  const prices = new Map<string, number>();
+  for (const asset of assets) {
+    const price = allPrices.get(asset.toUpperCase());
+    if (price !== undefined) prices.set(asset, price);
+  }
+  return prices;
 };
 
 export const fetchOkxPrices = async (assets: string[]): Promise<Map<string, number>> => {
   const prices = new Map<string, number>();
+  const assetsToFetch: string[] = [];
+
+  for (const asset of assets) {
+    const cacheKey = `okx:${asset.toUpperCase()}`;
+    const cached = getCachedPrice(cacheKey);
+    if (cached !== null) {
+      prices.set(asset, cached);
+    } else {
+      assetsToFetch.push(asset);
+    }
+  }
+
   await Promise.all(
-    assets.map(async (asset) => {
+    assetsToFetch.map(async (asset) => {
       try {
         const response = await fetch(
           `https://www.okx.com/api/v5/market/ticker?instId=${asset}-USDT`,
@@ -75,8 +129,20 @@ export const fetchCoinbasePrices = async (
   assets: string[],
 ): Promise<Map<string, number>> => {
   const prices = new Map<string, number>();
+  const assetsToFetch: string[] = [];
+
+  for (const asset of assets) {
+    const cacheKey = `coinbase:${asset.toUpperCase()}`;
+    const cached = getCachedPrice(cacheKey);
+    if (cached !== null) {
+      prices.set(asset, cached);
+    } else {
+      assetsToFetch.push(asset);
+    }
+  }
+
   await Promise.all(
-    assets.map(async (asset) => {
+    assetsToFetch.map(async (asset) => {
       try {
         const response = await fetch(
           `https://api.exchange.coinbase.com/products/${asset}-USDC/ticker`,
@@ -97,11 +163,6 @@ export const fetchCoinbasePrices = async (
 /**
  * Get a single real-time price for a trading-pair symbol on a given exchange.
  * Reuses the same per-exchange fetchers + 30s cache as `computeLiveBalances`.
- *
- * @param symbol - Trading pair symbol, e.g. "BTC/USDT" or "BTC/USDT:USDT" (base asset is
- *   extracted from the part before the first "/" or ":").
- * @param exchange - Exchange name (case-insensitive), e.g. "binance", "okx", "coinbase".
- * @returns The current price, or null if it could not be determined.
  */
 export async function getCurrentPrice(
   symbol: string,
@@ -157,22 +218,33 @@ export interface LiveBalanceResult {
  * Non-stablecoin prices are fetched from the exchange's public price API,
  * with a 30-second in-process cache to limit external requests.
  *
- * @param assets  Flat list of {asset, exchange, total} entries.
- * @param minValue  Skip assets whose estimated value is below this threshold
- *                  (useful for the asset-list view; pass 0 to keep all).
+ * Price refresh policy:
+ * - Binance: one bulk ticker call, then filter locally (no per-asset rate-limit risk)
+ * - OKX / Coinbase: only fetch uncached tickers when stablecoin qty >= $10
+ * - Cache is updated only for holdings worth >= PRICE_FETCH_MIN_USD ($10)
  */
 export async function computeLiveBalances(
   assets: AssetWithExchange[],
   minValue = 0,
 ): Promise<LiveBalanceResult> {
-  // Group non-stablecoin assets by exchange so we can batch-fetch prices.
+  const holdingsByExchange = new Map<string, Map<string, number>>();
   const assetsByExchangeMap = new Map<string, Set<string>>();
-  for (const { asset, exchange } of assets) {
-    if (STABLECOINS.has(asset.toUpperCase())) continue;
-    const key = exchange.toLowerCase();
-    const set = assetsByExchangeMap.get(key) ?? new Set<string>();
-    set.add(asset.toUpperCase());
-    assetsByExchangeMap.set(key, set);
+
+  for (const { asset, exchange, total } of assets) {
+    if (total <= 0) continue;
+
+    const exchangeLower = exchange.toLowerCase();
+    const assetUpper = asset.toUpperCase();
+
+    const holdings = holdingsByExchange.get(exchangeLower) ?? new Map<string, number>();
+    holdings.set(assetUpper, total);
+    holdingsByExchange.set(exchangeLower, holdings);
+
+    if (STABLECOINS.has(assetUpper)) continue;
+
+    const set = assetsByExchangeMap.get(exchangeLower) ?? new Set<string>();
+    set.add(assetUpper);
+    assetsByExchangeMap.set(exchangeLower, set);
   }
 
   const priceByExchangeAsset = new Map<string, number>();
@@ -180,14 +252,15 @@ export async function computeLiveBalances(
 
   await Promise.all(
     Array.from(assetsByExchangeMap.entries()).map(async ([exchange, assetSet]) => {
-      const filteredAssets = Array.from(assetSet);
       const cacheKeyPrefix = `${exchange}:`;
+      const holdings = holdingsByExchange.get(exchange) ?? new Map<string, number>();
       const missingAssets: string[] = [];
 
-      for (const asset of filteredAssets) {
-        const cached = getCachedPrice(`${cacheKeyPrefix}${asset}`);
+      for (const asset of assetSet) {
+        const cacheKey = `${cacheKeyPrefix}${asset}`;
+        const cached = getCachedPrice(cacheKey);
         if (cached !== null) {
-          priceByExchangeAsset.set(`${cacheKeyPrefix}${asset}`, cached);
+          priceByExchangeAsset.set(cacheKey, cached);
           if (!priceByAsset.has(asset)) priceByAsset.set(asset, cached);
         } else {
           missingAssets.push(asset);
@@ -206,19 +279,25 @@ export async function computeLiveBalances(
       }
 
       for (const [asset, price] of fetched.entries()) {
-        const key = `${cacheKeyPrefix}${asset}`;
+        const assetUpper = asset.toUpperCase();
+        const key = `${cacheKeyPrefix}${assetUpper}`;
         priceByExchangeAsset.set(key, price);
-        if (!priceByAsset.has(asset)) priceByAsset.set(asset, price);
-        setCachedPrice(key, price);
+        if (!priceByAsset.has(assetUpper)) priceByAsset.set(assetUpper, price);
+
+        const total = holdings.get(assetUpper) ?? 0;
+        if (shouldCachePrice(total, price)) {
+          setCachedPrice(key, price);
+        }
       }
     }),
   );
 
-  // Compute USD values.
   let totalValue = 0;
   const valueByExchange = new Map<string, number>();
 
   for (const { asset, exchange, total } of assets) {
+    if (total <= 0) continue;
+
     const assetUpper = asset.toUpperCase();
     const exchangeLower = exchange.toLowerCase();
 

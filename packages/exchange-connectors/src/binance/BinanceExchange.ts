@@ -1402,7 +1402,9 @@ export class BinanceExchange extends BaseExchange {
     });
     this.userWs.on('spot:accountUpdate', (raw) => {
       const { balances } = this.normalizeBinanceAccountUpdate(raw, 'spot');
-      this.emit('accountUpdate', 'spot', balances);
+      if (balances.length) {
+        this.emit('accountUpdate', 'spot', balances);
+      }
     });
     this.userWs.on('futures:accountUpdate', (raw) => {
       const { balances, positions } = this.normalizeBinanceAccountUpdate(raw, 'futures');
@@ -1411,14 +1413,56 @@ export class BinanceExchange extends BaseExchange {
     });
     await this.userWs.start();
 
-    // Fetch and emit initial account state
-    // Note: Binance user data streams only push changes, not initial snapshots
-    // So we need to fetch initial state via REST API
+    // Fetch and emit initial account state per wallet (spot / futures)
+    // Binance user data streams only push changes, not initial snapshots
     try {
-      // Get spot account balances
-      const accountInfo = await this.getAccountInfo();
-      if (accountInfo.balances.length > 0) {
-        this.emit('accountUpdate', 'spot', accountInfo.balances);
+      const timestamp = Date.now();
+      const spotParams = this.signRequest({ timestamp });
+      const futuresParams = this.signRequest({ timestamp });
+
+      const [spotRes, futuresRes] = await Promise.allSettled([
+        this.httpClient.get('/api/v3/account', { params: spotParams }),
+        this.futuresClient.get('/fapi/v2/account', { params: futuresParams }),
+      ]);
+
+      if (spotRes.status === 'fulfilled') {
+        const spotBalances = spotRes.value.data.balances
+          .map((balance: { asset: string; free: string; locked: string }) => ({
+            asset: balance.asset,
+            free: this.formatDecimal(balance.free),
+            locked: this.formatDecimal(balance.locked),
+            total: this.formatDecimal(balance.free).add(
+              this.formatDecimal(balance.locked),
+            ),
+          }))
+          .filter((balance: Balance) => !balance.total.isZero());
+
+        if (spotBalances.length > 0) {
+          this.emit('accountUpdate', 'spot', spotBalances);
+        }
+      }
+
+      if (futuresRes.status === 'fulfilled') {
+        const futuresAssets = futuresRes.value.data.assets || [];
+        const futuresBalances: Balance[] = [];
+
+        for (const asset of futuresAssets) {
+          const total = this.formatDecimal(asset.walletBalance);
+          if (total.isZero()) continue;
+
+          const free = this.formatDecimal(asset.availableBalance);
+          const locked = total.sub(free);
+          futuresBalances.push({
+            asset: asset.asset,
+            free,
+            locked,
+            total,
+          });
+        }
+
+        if (futuresBalances.length > 0) {
+          this.emit('accountUpdate', 'futures', futuresBalances);
+        }
       }
 
       // Get open orders

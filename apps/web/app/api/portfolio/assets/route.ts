@@ -97,6 +97,8 @@ export async function GET(request: Request) {
         const locked = parseFloat(balance.locked.toString());
         const total = parseFloat(balance.total.toString());
 
+        if (total <= 0) continue;
+
         const assetData: AssetData = {
           asset: balance.asset,
           exchange,
