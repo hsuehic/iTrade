@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { refreshUserPositionsFromExchanges } from '@/lib/services/order-execution-service';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,6 +20,19 @@ export async function GET(request: NextRequest) {
 
     const dataManager = await getDataManager();
     const positionRepository = dataManager.getPositionRepository();
+
+    // Keep displayed fields (e.g. liquidation price) in sync with the exchange.
+    const allUserPositionsBeforeRefresh = await positionRepository.findAll({
+      userId: session.user.id,
+    });
+    const exchangesToRefresh = Array.from(
+      new Set(
+        allUserPositionsBeforeRefresh
+          .filter((pos) => !pos.quantity.isZero())
+          .map((pos) => pos.exchange),
+      ),
+    );
+    await refreshUserPositionsFromExchanges(session.user.id, exchangesToRefresh);
 
     // Fetch all user positions once for both data and metadata (exchanges/symbols)
     const allUserPositions = await positionRepository.findAll({

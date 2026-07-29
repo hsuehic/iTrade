@@ -11,10 +11,11 @@ import {
   OrderSide,
   OrderStatus,
   OrderType,
+  Position,
   TimeInForce,
   TradeMode,
 } from '@itrade/core';
-import { AccountInfoEntity, isValidExchange } from '@itrade/data-manager';
+import { AccountInfoEntity, isValidExchange, PositionEntity } from '@itrade/data-manager';
 import { CryptoUtils } from '@itrade/utils/CryptoUtils';
 
 import { getDataManager } from '@/lib/data-manager';
@@ -580,7 +581,13 @@ export async function adjustPositionMargin(
       }
     }
 
-    return result;
+    const refreshed = await syncPositionFromExchange(
+      userId,
+      positionId,
+      asExchange(connection.exchange),
+    );
+
+    return { result, refreshed };
   } finally {
     await connection.exchange.disconnect();
   }
@@ -646,4 +653,122 @@ export async function getPositionMarginLimits(userId: string, positionId: number
   } finally {
     await connection.exchange.disconnect();
   }
+}
+
+function findLivePosition(
+  livePositions: Position[],
+  position: Pick<PositionEntity, 'symbol' | 'side'>,
+): Position | undefined {
+  return livePositions.find(
+    (live) =>
+      live.symbol === position.symbol &&
+      live.side === position.side &&
+      live.quantity.abs().gt(0),
+  );
+}
+
+function buildPositionUpdates(live: Position): Partial<PositionEntity> {
+  return {
+    quantity: live.quantity,
+    avgPrice: live.avgPrice,
+    markPrice: live.markPrice,
+    unrealizedPnl: live.unrealizedPnl,
+    leverage: live.leverage,
+    liquidationPrice: live.liquidationPrice,
+    marginMode: live.marginMode,
+    timestamp: live.timestamp ?? new Date(),
+  };
+}
+
+/** Pull the latest position snapshot from the exchange and persist it to the DB. */
+export async function syncPositionFromExchange(
+  userId: string,
+  positionId: number,
+  exchange?: IExchange,
+): Promise<PositionEntity | null> {
+  const dataManager = await getDataManager();
+  const position = await dataManager.getPositionRepository().findById(positionId);
+
+  if (!position || position.userId !== userId) {
+    return null;
+  }
+
+  let connection: Awaited<ReturnType<typeof createExchangeConnection>> | undefined;
+  let ownsConnection = false;
+
+  try {
+    if (!exchange) {
+      const account = await getActiveAccount(userId, position.exchange);
+      connection = await createExchangeConnection(account);
+      ownsConnection = true;
+      exchange = connection.exchange;
+    }
+
+    const livePositions = await exchange.getPositions();
+    const live = findLivePosition(livePositions, position);
+    if (!live) {
+      return position;
+    }
+
+    await dataManager.updatePosition(position.id, buildPositionUpdates(live));
+    return dataManager.getPosition(position.id);
+  } finally {
+    if (ownsConnection && connection) {
+      await connection.exchange.disconnect();
+    }
+  }
+}
+
+/** Refresh open positions for the given exchanges from live exchange APIs. */
+export async function refreshUserPositionsFromExchanges(
+  userId: string,
+  exchanges: string[],
+): Promise<void> {
+  const uniqueExchanges = Array.from(
+    new Set(exchanges.map((exchange) => exchange.toLowerCase())),
+  );
+  if (uniqueExchanges.length === 0) {
+    return;
+  }
+
+  const dataManager = await getDataManager();
+  const dbPositions = await dataManager.getPositionRepository().findAll({ userId });
+  const activePositions = dbPositions.filter((pos) => !pos.quantity.isZero());
+
+  await Promise.all(
+    uniqueExchanges.map(async (exchangeName) => {
+      const exchangePositions = activePositions.filter(
+        (pos) => pos.exchange.toLowerCase() === exchangeName,
+      );
+      if (exchangePositions.length === 0) {
+        return;
+      }
+
+      let connection: Awaited<ReturnType<typeof createExchangeConnection>> | undefined;
+      try {
+        const account = await getActiveAccount(userId, exchangeName);
+        connection = await createExchangeConnection(account);
+        const livePositions = await connection.exchange.getPositions();
+
+        await Promise.all(
+          exchangePositions.map(async (dbPosition) => {
+            const live = findLivePosition(livePositions, dbPosition);
+            if (!live) {
+              return;
+            }
+            await dataManager.updatePosition(dbPosition.id, buildPositionUpdates(live));
+          }),
+        );
+      } catch (error) {
+        console.error(
+          `Failed to refresh ${exchangeName} positions from exchange:`,
+          error,
+        );
+      } finally {
+        if (connection) {
+          await connection.exchange.disconnect();
+        }
+      }
+    }),
+  );
 }

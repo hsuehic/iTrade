@@ -107,7 +107,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const result = await adjustPositionMargin(session.user.id, positionId, parsed.data);
+    const { result, refreshed } = await adjustPositionMargin(
+      session.user.id,
+      positionId,
+      parsed.data,
+    );
 
     await logIfImpersonating({
       request,
@@ -124,6 +128,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       newIsolatedMargin: result.newIsolatedMargin?.toString(),
       maxAmount: result.maxAmount?.toString() ?? null,
       minAmount: result.minAmount?.toString() ?? null,
+      liquidationPrice: refreshed?.liquidationPrice?.toString() ?? null,
+      markPrice: refreshed?.markPrice?.toString() ?? null,
+      unrealizedPnl: refreshed?.unrealizedPnl?.toString() ?? null,
+      leverage: refreshed?.leverage?.toString() ?? null,
     });
   } catch (error) {
     console.error('Failed to adjust position margin:', error);
