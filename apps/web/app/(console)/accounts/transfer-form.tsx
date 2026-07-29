@@ -63,8 +63,12 @@ export function TransferForm({
   const t = useTranslations('accounts.transfer');
 
   const [wallets, setWallets] = useState<AccountWalletType[]>([]);
-  const [from, setFrom] = useState<AccountWalletType | ''>('');
-  const [to, setTo] = useState<AccountWalletType | ''>('');
+  // 🆕 Must be `undefined` (not `''`) when unset — Radix's Select treats an
+  // empty-string controlled value as its own internal "no selection"
+  // sentinel, which breaks selection entirely (clicking an item never
+  // updates the trigger or fires onValueChange again for the same root).
+  const [from, setFrom] = useState<AccountWalletType | undefined>(undefined);
+  const [to, setTo] = useState<AccountWalletType | undefined>(undefined);
   const [asset, setAsset] = useState('');
   const [amount, setAmount] = useState('');
   const [available, setAvailable] = useState<string | null>(null);
@@ -75,8 +79,8 @@ export function TransferForm({
   useEffect(() => {
     if (!open || !account) return;
 
-    setFrom('');
-    setTo('');
+    setFrom(undefined);
+    setTo(undefined);
     setAsset('');
     setAmount('');
     setAvailable(null);

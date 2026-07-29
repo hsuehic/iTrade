@@ -23,6 +23,7 @@ import {
   TransferType,
   TransferStatus,
   MarginAdjustmentResult,
+  IsolatedMarginLimits,
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
@@ -436,6 +437,7 @@ export class BinanceExchange extends BaseExchange {
     positionSide?: 'long' | 'short',
   ): Promise<MarginAdjustmentResult> {
     const normalizedSymbol = this.normalizeSymbol(symbol);
+    const mode = await this.getFuturesPositionMode();
     const params: Record<string, any> = {
       symbol: normalizedSymbol,
       amount: amount.toString(),
@@ -443,9 +445,14 @@ export class BinanceExchange extends BaseExchange {
       timestamp: Date.now(),
     };
 
-    // Only needed in Hedge Mode; harmless to include in One-way Mode as Binance ignores it there.
-    if (positionSide) {
+    // One-way mode uses BOTH; hedge mode requires LONG/SHORT matching the open leg.
+    if (mode === 'hedge') {
+      if (!positionSide) {
+        throw new Error('Position side is required for hedge-mode margin adjustment');
+      }
       params.positionSide = positionSide === 'long' ? 'LONG' : 'SHORT';
+    } else {
+      params.positionSide = 'BOTH';
     }
 
     const signedParams = this.signRequest(params);
@@ -458,6 +465,58 @@ export class BinanceExchange extends BaseExchange {
       type,
       amount,
       marginMode: 'isolated',
+    };
+  }
+
+  /**
+   * 🆕 Derive max add/reduce bounds for an isolated futures position from live
+   * account + positionRisk snapshots. Max add = futures wallet available balance
+   * for the margin asset; max reduce = isolatedWallet − positionInitialMargin.
+   */
+  public async getIsolatedMarginLimits(
+    symbol: string,
+    positionSide?: 'long' | 'short',
+  ): Promise<IsolatedMarginLimits> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    const mode = await this.getFuturesPositionMode();
+    const apiPositionSide =
+      mode === 'hedge' ? (positionSide === 'short' ? 'SHORT' : 'LONG') : 'BOTH';
+
+    const timestamp = Date.now();
+    const signedParams = this.signRequest({ timestamp });
+    const [positionRiskRes, balanceRes] = await Promise.all([
+      this.futuresClient.get('/fapi/v2/positionRisk', { params: signedParams }),
+      this.futuresClient.get('/fapi/v2/balance', { params: signedParams }),
+    ]);
+
+    const position = (positionRiskRes.data as any[]).find(
+      (pos) =>
+        pos.symbol === normalizedSymbol &&
+        pos.positionSide === apiPositionSide &&
+        parseFloat(pos.positionAmt) !== 0,
+    );
+
+    if (!position) {
+      throw new Error('Position not found on exchange');
+    }
+
+    const marginAsset = (position.marginAsset as string) || 'USDT';
+    const isolatedWallet = this.formatDecimal(position.isolatedWallet ?? '0');
+    const initialMargin = this.formatDecimal(
+      position.positionInitialMargin ?? position.initialMargin ?? '0',
+    );
+    const maxReduce = Decimal.max(isolatedWallet.sub(initialMargin), 0);
+
+    const assetBalance = (balanceRes.data as any[]).find(
+      (asset) => asset.asset === marginAsset,
+    );
+    const maxAdd = this.formatDecimal(assetBalance?.availableBalance ?? '0');
+
+    return {
+      maxAdd,
+      maxReduce,
+      currentMargin: isolatedWallet,
+      marginAsset,
     };
   }
 

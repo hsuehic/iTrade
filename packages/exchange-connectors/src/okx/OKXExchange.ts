@@ -25,6 +25,7 @@ import {
   TransferType,
   TransferStatus,
   MarginAdjustmentResult,
+  IsolatedMarginLimits,
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
@@ -968,12 +969,13 @@ export class OKXExchange extends BaseExchange {
     symbol: string,
     amount: Decimal,
     type: 'add' | 'reduce',
-    positionSide?: 'long' | 'short',
+    _positionSide?: 'long' | 'short',
   ): Promise<MarginAdjustmentResult> {
     const instId = this.normalizeSymbol(symbol);
+    // This connector trades in net (one-way) mode — posSide must be `net`, not long/short.
     const payload = {
       instId,
-      posSide: positionSide ?? 'net',
+      posSide: 'net',
       type,
       amt: amount.toString(),
     };
@@ -996,6 +998,60 @@ export class OKXExchange extends BaseExchange {
       type,
       amount,
       marginMode: 'isolated',
+    };
+  }
+
+  /**
+   * 🆕 Derive max add/reduce bounds for an isolated position from live OKX
+   * account + position snapshots. Max add = trading-account available balance
+   * for the margin currency; max reduce = margin − initial margin requirement.
+   */
+  public async getIsolatedMarginLimits(
+    symbol: string,
+    _positionSide?: 'long' | 'short',
+  ): Promise<IsolatedMarginLimits> {
+    const instId = this.normalizeSymbol(symbol);
+    const posSide = 'net';
+
+    const positionsSigned = this.signOKXRequest('GET', '/api/v5/account/positions', {
+      instId,
+    });
+    const positionsRes = await this.httpClient.get(positionsSigned.endpoint, {
+      headers: positionsSigned.headers,
+      params: { instId },
+    });
+
+    if (positionsRes.data.code !== '0') {
+      throw new Error(`OKX API error: ${positionsRes.data.msg}`);
+    }
+
+    const position = (positionsRes.data.data as any[]).find(
+      (pos) =>
+        pos.instId === instId &&
+        (pos.posSide || 'net').toLowerCase() === posSide &&
+        this.formatDecimal((pos.pos ?? '0').toString())
+          .abs()
+          .gt(0),
+    );
+
+    if (!position) {
+      throw new Error('Position not found on exchange');
+    }
+
+    const marginAsset = ((position.ccy as string) || 'USDT').toUpperCase();
+    const currentMargin = this.formatDecimal(position.margin ?? position.isoEq ?? '0');
+    const initialMargin = this.formatDecimal(position.imr ?? '0');
+    const maxReduce = Decimal.max(currentMargin.sub(initialMargin), 0);
+
+    const { balancesMap } = await this.fetchTradingAccountBalances();
+    const assetBalance = balancesMap.get(marginAsset);
+    const maxAdd = assetBalance?.free ?? new Decimal(0);
+
+    return {
+      maxAdd,
+      maxReduce,
+      currentMargin,
+      marginAsset,
     };
   }
 

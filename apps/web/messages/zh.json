@@ -1892,7 +1892,12 @@
         "reduceTitle": "减少逐仓保证金",
         "description": "{exchange} 上的 {symbol}",
         "amountLabel": "金额（USDT）",
-        "boundsNotAvailable": "该交易所未提供此操作的最大或最小可调整金额。"
+        "amountLabelWithAsset": "金额（{asset}）",
+        "currentMargin": "当前保证金：{amount} {asset}",
+        "maxAdd": "最多可增加：{amount} {asset}",
+        "maxReduce": "最多可减少：{amount} {asset}",
+        "loadingLimits": "正在加载保证金限额…",
+        "boundsNotAvailable": "无法加载该持仓的保证金限额。"
       },
       "messages": {
         "increased": "保证金增加成功",
@@ -1900,6 +1905,8 @@
       },
       "errors": {
         "invalidAmount": "金额必须为正数",
+        "exceedsMaxAdd": "金额超过最多可增加保证金（{amount} {asset}）",
+        "exceedsMaxReduce": "金额超过最多可减少保证金（{amount} {asset}）",
         "adjustFailed": "调整保证金失败"
       }
     }

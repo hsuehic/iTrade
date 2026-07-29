@@ -14,6 +14,8 @@ import {
   IconTrendingDown,
   IconChevronLeft,
   IconChevronRight,
+  IconPlus,
+  IconMinus,
 } from '@tabler/icons-react';
 import {
   ColumnDef,
@@ -48,6 +50,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -145,6 +148,13 @@ export function PositionsTable({
   const [marginAmount, setMarginAmount] = React.useState('');
   const [marginError, setMarginError] = React.useState<string | null>(null);
   const [isSubmittingMargin, setIsSubmittingMargin] = React.useState(false);
+  const [marginLimits, setMarginLimits] = React.useState<{
+    maxAdd: string;
+    maxReduce: string;
+    currentMargin: string | null;
+    marginAsset: string;
+  } | null>(null);
+  const [isLoadingMarginLimits, setIsLoadingMarginLimits] = React.useState(false);
 
   const getSideLabel = React.useCallback(
     (side: string) =>
@@ -157,9 +167,49 @@ export function PositionsTable({
       setMarginDialog({ position, type });
       setMarginAmount('');
       setMarginError(null);
+      setMarginLimits(null);
     },
     [],
   );
+
+  React.useEffect(() => {
+    if (!marginDialog) {
+      setIsLoadingMarginLimits(false);
+      return;
+    }
+
+    let cancelled = false;
+    const loadLimits = async () => {
+      setIsLoadingMarginLimits(true);
+      try {
+        const response = await fetch(
+          `/api/portfolio/positions/${marginDialog.position.id}/margin`,
+        );
+        if (!response.ok) {
+          if (!cancelled) setMarginLimits(null);
+          return;
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          setMarginLimits({
+            maxAdd: data.maxAdd,
+            maxReduce: data.maxReduce,
+            currentMargin: data.currentMargin,
+            marginAsset: data.marginAsset || 'USDT',
+          });
+        }
+      } catch {
+        if (!cancelled) setMarginLimits(null);
+      } finally {
+        if (!cancelled) setIsLoadingMarginLimits(false);
+      }
+    };
+
+    void loadLimits();
+    return () => {
+      cancelled = true;
+    };
+  }, [marginDialog]);
 
   const closeMarginDialog = React.useCallback(() => {
     if (isSubmittingMargin) return;
@@ -449,24 +499,40 @@ export function PositionsTable({
             return <span className="text-muted-foreground">-</span>;
           }
 
+          // 🆕 Icon-only buttons (not full text labels) so this column stays
+          // narrow — with 11 columns, wide text buttons here were the main
+          // reason the table needed horizontal scrolling on normal desktop
+          // widths. Labels are still available via tooltip + aria-label.
           return (
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openMarginDialog(position, 'add')}
-                aria-label={t('margin.actions.increase')}
-              >
-                {t('margin.actions.increase')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openMarginDialog(position, 'reduce')}
-                aria-label={t('margin.actions.reduce')}
-              >
-                {t('margin.actions.reduce')}
-              </Button>
+            <div className="flex items-center justify-end gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => openMarginDialog(position, 'add')}
+                    aria-label={t('margin.actions.increase')}
+                  >
+                    <IconPlus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('margin.actions.increase')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => openMarginDialog(position, 'reduce')}
+                    aria-label={t('margin.actions.reduce')}
+                  >
+                    <IconMinus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t('margin.actions.reduce')}</TooltipContent>
+              </Tooltip>
             </div>
           );
         },
@@ -514,6 +580,26 @@ export function PositionsTable({
       return;
     }
 
+    if (marginLimits) {
+      const maxAmount = parseFloat(
+        marginDialog.type === 'add' ? marginLimits.maxAdd : marginLimits.maxReduce,
+      );
+      if (Number.isFinite(maxAmount) && amountNum > maxAmount) {
+        setMarginError(
+          marginDialog.type === 'add'
+            ? t('margin.errors.exceedsMaxAdd', {
+                amount: formatNumber(maxAmount, 8),
+                asset: marginLimits.marginAsset,
+              })
+            : t('margin.errors.exceedsMaxReduce', {
+                amount: formatNumber(maxAmount, 8),
+                asset: marginLimits.marginAsset,
+              }),
+        );
+        return;
+      }
+    }
+
     setMarginError(null);
     setIsSubmittingMargin(true);
     try {
@@ -546,7 +632,7 @@ export function PositionsTable({
     } finally {
       setIsSubmittingMargin(false);
     }
-  }, [fetchData, marginAmount, marginDialog, t]);
+  }, [fetchData, marginAmount, marginDialog, marginLimits, t]);
 
   const table = useReactTable({
     data: positions,
@@ -633,7 +719,13 @@ export function PositionsTable({
           </DialogHeader>
           <div className="grid gap-4">
             <div className="space-y-2">
-              <Label htmlFor="margin-amount">{t('margin.dialog.amountLabel')}</Label>
+              <Label htmlFor="margin-amount">
+                {marginLimits
+                  ? t('margin.dialog.amountLabelWithAsset', {
+                      asset: marginLimits.marginAsset,
+                    })
+                  : t('margin.dialog.amountLabel')}
+              </Label>
               <Input
                 id="margin-amount"
                 inputMode="decimal"
@@ -644,9 +736,37 @@ export function PositionsTable({
               />
               {marginError && <p className="text-sm text-rose-500">{marginError}</p>}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t('margin.dialog.boundsNotAvailable')}
-            </p>
+            {isLoadingMarginLimits ? (
+              <p className="text-xs text-muted-foreground">
+                {t('margin.dialog.loadingLimits')}
+              </p>
+            ) : marginLimits ? (
+              <div className="space-y-1 text-xs text-muted-foreground">
+                {marginLimits.currentMargin && (
+                  <p>
+                    {t('margin.dialog.currentMargin', {
+                      amount: formatNumber(marginLimits.currentMargin, 8),
+                      asset: marginLimits.marginAsset,
+                    })}
+                  </p>
+                )}
+                <p>
+                  {marginDialog?.type === 'add'
+                    ? t('margin.dialog.maxAdd', {
+                        amount: formatNumber(marginLimits.maxAdd, 8),
+                        asset: marginLimits.marginAsset,
+                      })
+                    : t('margin.dialog.maxReduce', {
+                        amount: formatNumber(marginLimits.maxReduce, 8),
+                        asset: marginLimits.marginAsset,
+                      })}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t('margin.dialog.boundsNotAvailable')}
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button

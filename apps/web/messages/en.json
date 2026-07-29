@@ -1892,7 +1892,12 @@
         "reduceTitle": "Reduce Isolated Margin",
         "description": "{symbol} on {exchange}",
         "amountLabel": "Amount (USDT)",
-        "boundsNotAvailable": "This exchange does not report a maximum or minimum adjustable amount for this action."
+        "amountLabelWithAsset": "Amount ({asset})",
+        "currentMargin": "Current margin: {amount} {asset}",
+        "maxAdd": "Maximum addable: {amount} {asset}",
+        "maxReduce": "Maximum reducible: {amount} {asset}",
+        "loadingLimits": "Loading margin limits…",
+        "boundsNotAvailable": "Unable to load margin limits for this position."
       },
       "messages": {
         "increased": "Margin increased successfully",
@@ -1900,6 +1905,8 @@
       },
       "errors": {
         "invalidAmount": "Amount must be a positive number",
+        "exceedsMaxAdd": "Amount exceeds the maximum addable margin ({amount} {asset})",
+        "exceedsMaxReduce": "Amount exceeds the maximum reducible margin ({amount} {asset})",
         "adjustFailed": "Failed to adjust margin"
       }
     }

@@ -91,6 +91,107 @@ describe('BinanceExchange Leverage & Margin', () => {
   */
 });
 
+describe('BinanceExchange adjustIsolatedMargin', () => {
+  let exchange: BinanceExchange;
+  let postSpy: ReturnType<typeof vi.fn>;
+  let getSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+    };
+
+    postSpy = vi.fn().mockResolvedValue({ data: { code: 200, msg: 'ok' } });
+    getSpy = vi.fn().mockResolvedValue({ data: { dualSidePosition: false } });
+
+    (exchange as any).futuresClient.post = postSpy;
+    (exchange as any).futuresClient.get = getSpy;
+  });
+
+  it('uses positionSide BOTH in one-way mode even when position is long', async () => {
+    await exchange.adjustIsolatedMargin(
+      'BTC/USDT:USDT',
+      new Decimal('10'),
+      'add',
+      'long',
+    );
+
+    expect(postSpy).toHaveBeenCalledWith(
+      '/fapi/v1/positionMargin',
+      null,
+      expect.objectContaining({
+        params: expect.objectContaining({
+          symbol: 'BTCUSDT',
+          positionSide: 'BOTH',
+          type: 1,
+          amount: '10',
+        }),
+      }),
+    );
+  });
+
+  it('uses LONG/SHORT in hedge mode', async () => {
+    getSpy.mockResolvedValue({ data: { dualSidePosition: true } });
+
+    await exchange.adjustIsolatedMargin(
+      'BTC/USDT:USDT',
+      new Decimal('5'),
+      'reduce',
+      'short',
+    );
+
+    expect(postSpy).toHaveBeenCalledWith(
+      '/fapi/v1/positionMargin',
+      null,
+      expect.objectContaining({
+        params: expect.objectContaining({
+          symbol: 'BTCUSDT',
+          positionSide: 'SHORT',
+          type: 2,
+          amount: '5',
+        }),
+      }),
+    );
+  });
+
+  it('derives max add/reduce from positionRisk and balance', async () => {
+    getSpy.mockImplementation((url: string) => {
+      if (url.includes('positionSide/dual')) {
+        return Promise.resolve({ data: { dualSidePosition: false } });
+      }
+      if (url.includes('positionRisk')) {
+        return Promise.resolve({
+          data: [
+            {
+              symbol: 'BTCUSDT',
+              positionSide: 'BOTH',
+              positionAmt: '0.01',
+              marginAsset: 'USDT',
+              isolatedWallet: '100',
+              positionInitialMargin: '30',
+            },
+          ],
+        });
+      }
+      if (url.includes('balance')) {
+        return Promise.resolve({
+          data: [{ asset: 'USDT', availableBalance: '250.5' }],
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    const limits = await exchange.getIsolatedMarginLimits('BTC/USDT:USDT', 'long');
+
+    expect(limits.maxAdd.toString()).toBe('250.5');
+    expect(limits.maxReduce.toString()).toBe('70');
+    expect(limits.currentMargin?.toString()).toBe('100');
+    expect(limits.marginAsset).toBe('USDT');
+  });
+});
+
 describe('BinanceExchange Symbol Info Precision', () => {
   let exchange: BinanceExchange;
 

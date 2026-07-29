@@ -585,3 +585,65 @@ export async function adjustPositionMargin(
     await connection.exchange.disconnect();
   }
 }
+
+/**
+ * 🆕 Fetch live max add/reduce bounds for an isolated-margin position.
+ */
+export async function getPositionMarginLimits(userId: string, positionId: number) {
+  const dataManager = await getDataManager();
+  const position = await dataManager.getPositionRepository().findById(positionId);
+
+  if (!position) {
+    throw new Error('Position not found');
+  }
+
+  if (position.userId !== userId) {
+    throw new Error('Unauthorized');
+  }
+
+  if (position.marginMode !== 'isolated') {
+    throw new Error('Margin can only be adjusted for isolated-margin positions');
+  }
+
+  const account = await getActiveAccount(userId, position.exchange);
+  let connection = await createExchangeConnection(account);
+  const asExchange = (exchange: typeof connection.exchange): IExchange => exchange;
+
+  try {
+    if (typeof asExchange(connection.exchange).getIsolatedMarginLimits !== 'function') {
+      throw new Error(`${position.exchange} does not support margin adjustment`);
+    }
+
+    let limits;
+    try {
+      limits = await asExchange(connection.exchange).getIsolatedMarginLimits!(
+        position.symbol,
+        position.side,
+      );
+    } catch (error) {
+      if (
+        account.exchange.toLowerCase() === 'okx' &&
+        !connection.isDemo &&
+        isUnauthorizedError(error)
+      ) {
+        await connection.exchange.disconnect();
+        connection = await createExchangeConnection(account, { forceDemo: true });
+        if (
+          typeof asExchange(connection.exchange).getIsolatedMarginLimits !== 'function'
+        ) {
+          throw new Error(`${position.exchange} does not support margin adjustment`);
+        }
+        limits = await asExchange(connection.exchange).getIsolatedMarginLimits!(
+          position.symbol,
+          position.side,
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    return limits;
+  } finally {
+    await connection.exchange.disconnect();
+  }
+}

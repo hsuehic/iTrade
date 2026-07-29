@@ -33,6 +33,7 @@ import {
   SubscriptionConfig,
   Transfer,
   MarginAdjustmentResult,
+  IsolatedMarginLimits,
   AccountWalletType,
   TransferFundsParams,
   TransferFundsResult,
@@ -110,6 +111,13 @@ export interface IExchange extends EventEmitter {
     type: 'add' | 'reduce',
     positionSide?: 'long' | 'short',
   ): Promise<MarginAdjustmentResult>;
+
+  // 🆕 Fetch live max add/reduce bounds for an isolated-margin position.
+  // Optional — implemented by exchanges that support adjustIsolatedMargin.
+  getIsolatedMarginLimits?(
+    symbol: string,
+    positionSide?: 'long' | 'short',
+  ): Promise<IsolatedMarginLimits>;
 
   // 🆕 Internal wallet-to-wallet transfer (Funding / Spot / Perpetual / unified
   // Trading wallet). Optional — only implemented by exchanges with a unified

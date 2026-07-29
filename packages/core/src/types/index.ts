@@ -274,6 +274,15 @@ export interface MarginAdjustmentResult {
   minAmount?: Decimal;
 }
 
+// 🆕 Live bounds for isolated-margin add/reduce, derived from account and
+// position snapshots rather than the adjust-margin endpoint itself.
+export interface IsolatedMarginLimits {
+  maxAdd: Decimal;
+  maxReduce: Decimal;
+  currentMargin?: Decimal;
+  marginAsset: string;
+}
+
 // Account Types
 export interface AccountInfo {
   balances: Balance[];
