@@ -1756,12 +1756,15 @@
       "quantity": "数量",
       "avgPrice": "均价",
       "markPrice": "标记价格",
+      "liquidationPrice": "强平价格",
       "marketValue": "市值",
       "unrealizedPnl": "未实现盈亏",
-      "updated": "更新"
+      "updated": "更新",
+      "actions": "操作"
     },
     "cells": {
-      "leverage": "{value}x 杠杆"
+      "leverage": "{value}x 杠杆",
+      "notAvailable": "不适用"
     },
     "filters": {
       "searchPlaceholder": "搜索持仓...",
@@ -1790,6 +1793,30 @@
     },
     "errors": {
       "fetchPositions": "获取持仓失败"
+    },
+    "margin": {
+      "actions": {
+        "increase": "增加保证金",
+        "reduce": "减少保证金",
+        "cancel": "取消",
+        "confirm": "确认",
+        "submitting": "提交中..."
+      },
+      "dialog": {
+        "increaseTitle": "增加逐仓保证金",
+        "reduceTitle": "减少逐仓保证金",
+        "description": "{exchange} 上的 {symbol}",
+        "amountLabel": "金额（USDT）",
+        "boundsNotAvailable": "该交易所未提供此操作的最大或最小可调整金额。"
+      },
+      "messages": {
+        "increased": "保证金增加成功",
+        "reduced": "保证金减少成功"
+      },
+      "errors": {
+        "invalidAmount": "金额必须为正数",
+        "adjustFailed": "调整保证金失败"
+      }
     }
   },
   "helpBot": {

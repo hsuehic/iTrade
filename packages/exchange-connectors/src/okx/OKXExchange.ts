@@ -24,6 +24,7 @@ import {
   Transfer,
   TransferType,
   TransferStatus,
+  MarginAdjustmentResult,
 } from '@itrade/core';
 
 export type OkxWsType = 'public' | 'private' | 'business';
@@ -876,6 +877,11 @@ export class OKXExchange extends BaseExchange {
       );
       const marketValue = quantity.abs().mul(markPrice);
       const leverage = this.getOkxLeverage(pos, quantity, avgPrice, markPrice);
+      // OKX omits `liqPx` entirely for cross-margin/no-liquidation-risk positions
+      // rather than sending "0", but guard against an empty string just in case.
+      const liqPxRaw = (pos.liqPx ?? '').toString().trim();
+      const marginMode: 'isolated' | 'cross' =
+        pos.mgnMode === 'isolated' ? 'isolated' : 'cross';
 
       positions.push({
         symbol: unifiedSymbol,
@@ -888,10 +894,56 @@ export class OKXExchange extends BaseExchange {
         timestamp: pos.uTime ? new Date(parseInt(pos.uTime)) : new Date(),
         marketValue,
         notionalUsd: pos.notionalUsd,
+        liquidationPrice: liqPxRaw ? this.formatDecimal(liqPxRaw) : undefined,
+        marginMode,
       });
     }
 
     return positions;
+  }
+
+  /**
+   * 🆕 Add or reduce collateral on an ISOLATED-margin position via
+   * `POST /api/v5/account/position/margin-balance`. OKX requires the
+   * position to already be in isolated mode (`mgnMode: 'isolated'`) —
+   * callers should only expose this when `Position.marginMode === 'isolated'`.
+   * OKX's response for this endpoint doesn't include an updated margin
+   * balance or a max/min bound, so `MarginAdjustmentResult` only echoes
+   * back what was requested.
+   */
+  public async adjustIsolatedMargin(
+    symbol: string,
+    amount: Decimal,
+    type: 'add' | 'reduce',
+    positionSide?: 'long' | 'short',
+  ): Promise<MarginAdjustmentResult> {
+    const instId = this.normalizeSymbol(symbol);
+    const payload = {
+      instId,
+      posSide: positionSide ?? 'net',
+      type,
+      amt: amount.toString(),
+    };
+
+    const signedData = this.signOKXRequest(
+      'POST',
+      '/api/v5/account/position/margin-balance',
+      payload,
+    );
+    const response = await this.httpClient.post(signedData.endpoint, signedData.body, {
+      headers: signedData.headers,
+    });
+
+    if (response.data.code !== '0') {
+      throw new Error(`OKX API error: ${response.data.msg}`);
+    }
+
+    return {
+      symbol,
+      type,
+      amount,
+      marginMode: 'isolated',
+    };
   }
 
   public async getExchangeInfo(): Promise<ExchangeInfo> {

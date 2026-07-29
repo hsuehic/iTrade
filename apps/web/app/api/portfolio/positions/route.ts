@@ -63,31 +63,51 @@ export async function GET(request: NextRequest) {
       ),
     ).sort();
 
+    // Exchanges whose adapter implements adjustIsolatedMargin() (see
+    // packages/exchange-connectors). Coinbase's INTX perpetuals are cross-margin
+    // only, so it's intentionally excluded here.
+    const MARGIN_ADJUSTABLE_EXCHANGES = new Set(['binance', 'okx']);
+
     // Convert Decimal to string for JSON serialization
-    const serializedPositions = filteredPositions.map((pos) => ({
-      id: pos.id,
-      symbol: pos.symbol,
-      exchange: pos.exchange,
-      side: pos.side,
-      quantity: pos.quantity.toString(),
-      avgPrice: pos.avgPrice.toString(),
-      markPrice: pos.markPrice.toString(),
-      unrealizedPnl: pos.unrealizedPnl.toString(),
-      leverage: pos.leverage.toString(),
-      timestamp: pos.timestamp,
-      createdAt: pos.createdAt,
-      updatedAt: pos.updatedAt,
-      // Calculate market value
-      marketValue: pos.quantity.mul(pos.markPrice).toString(),
-      // Calculate PnL percentage
-      pnlPercentage:
-        pos.avgPrice.gt(0) && pos.quantity.abs().gt(0)
-          ? pos.unrealizedPnl
-              .div(pos.avgPrice.mul(pos.quantity.abs()))
-              .mul(100)
-              .toFixed(2)
-          : '0.00',
-    }));
+    const serializedPositions = filteredPositions.map((pos) => {
+      const marginMode = pos.marginMode ?? null;
+      const canAdjustMargin =
+        marginMode === 'isolated' &&
+        MARGIN_ADJUSTABLE_EXCHANGES.has(pos.exchange.toLowerCase());
+
+      return {
+        id: pos.id,
+        symbol: pos.symbol,
+        exchange: pos.exchange,
+        side: pos.side,
+        quantity: pos.quantity.toString(),
+        avgPrice: pos.avgPrice.toString(),
+        markPrice: pos.markPrice.toString(),
+        unrealizedPnl: pos.unrealizedPnl.toString(),
+        leverage: pos.leverage.toString(),
+        timestamp: pos.timestamp,
+        createdAt: pos.createdAt,
+        updatedAt: pos.updatedAt,
+        // Calculate market value
+        marketValue: pos.quantity.mul(pos.markPrice).toString(),
+        // Calculate PnL percentage
+        pnlPercentage:
+          pos.avgPrice.gt(0) && pos.quantity.abs().gt(0)
+            ? pos.unrealizedPnl
+                .div(pos.avgPrice.mul(pos.quantity.abs()))
+                .mul(100)
+                .toFixed(2)
+            : '0.00',
+        // 🆕 Liquidation price — null when the exchange doesn't report one
+        // (e.g. Coinbase, or a Binance/OKX position with no liquidation risk).
+        liquidationPrice: pos.liquidationPrice ? pos.liquidationPrice.toString() : null,
+        // 🆕 Margin mode, when the exchange reports it.
+        marginMode,
+        // 🆕 Whether the increase/reduce margin actions should be shown for
+        // this position. False hides the buttons entirely in the UI.
+        canAdjustMargin,
+      };
+    });
 
     return NextResponse.json({
       positions: serializedPositions,

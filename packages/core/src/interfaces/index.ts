@@ -32,6 +32,7 @@ import {
   InitialDataConfig,
   SubscriptionConfig,
   Transfer,
+  MarginAdjustmentResult,
 } from '../types';
 
 // Exchange Interface
@@ -94,6 +95,17 @@ export interface IExchange extends EventEmitter {
   getBalances(): Promise<Balance[]>;
   getPositions(): Promise<Position[]>;
   getTransfers?(startTime?: Date, endTime?: Date, limit?: number): Promise<Transfer[]>;
+
+  // 🆕 Adjust isolated-margin position collateral. Optional — only exchanges
+  // that support this natively (Binance, OKX) implement it. Callers must
+  // check `typeof exchange.adjustIsolatedMargin === 'function'` before use,
+  // and should only offer it for positions where `marginMode === 'isolated'`.
+  adjustIsolatedMargin?(
+    symbol: string,
+    amount: Decimal,
+    type: 'add' | 'reduce',
+    positionSide?: 'long' | 'short',
+  ): Promise<MarginAdjustmentResult>;
 
   // Exchange Info
   getExchangeInfo(): Promise<ExchangeInfo>;

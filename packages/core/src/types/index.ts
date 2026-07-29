@@ -251,6 +251,27 @@ export interface Position {
   marketValue?: Decimal;
   // Optional: Position value in USD (from exchange, e.g., OKX's notionalUsd)
   notionalUsd?: string;
+  // 🆕 Liquidation price, if the exchange's position API reports one. Undefined
+  // when the exchange doesn't expose this (e.g. Coinbase INTX) or the value is
+  // not applicable (e.g. no liquidation risk for the current margin mode).
+  liquidationPrice?: Decimal;
+  // 🆕 Margin mode for this position, when the exchange reports it. Only
+  // 'isolated' positions support per-position margin add/reduce.
+  marginMode?: 'isolated' | 'cross';
+}
+
+// 🆕 Result of an isolated-margin add/reduce request against an exchange.
+// `maxAmount`/`minAmount` are included only when the exchange's response
+// itself reports a bound (neither Binance nor OKX currently do for this
+// endpoint) — otherwise callers should treat them as unknown, not zero.
+export interface MarginAdjustmentResult {
+  symbol: string;
+  type: 'add' | 'reduce';
+  amount: Decimal;
+  marginMode: 'isolated' | 'cross';
+  newIsolatedMargin?: Decimal;
+  maxAmount?: Decimal;
+  minAmount?: Decimal;
 }
 
 // Account Types

@@ -12,7 +12,8 @@ export type AuditLogAction =
   | 'strategy.delete'
   | 'order.create'
   | 'order.update'
-  | 'order.cancel';
+  | 'order.cancel'
+  | 'position.adjustMargin';
 
 /**
  * Audit trail for admin actions taken on/as another user's account

@@ -224,6 +224,8 @@ export class PositionTracker {
             leverage: restPosition.leverage,
             marketValue: restPosition.marketValue,
             notionalUsd: restPosition.notionalUsd,
+            liquidationPrice: restPosition.liquidationPrice,
+            marginMode: restPosition.marginMode,
           },
         };
       });

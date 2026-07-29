@@ -5,7 +5,14 @@ import {
   CoinbaseExchange,
   OKXExchange,
 } from '@itrade/exchange-connectors';
-import { OrderSide, OrderStatus, OrderType, TimeInForce, TradeMode } from '@itrade/core';
+import {
+  IExchange,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+  TimeInForce,
+  TradeMode,
+} from '@itrade/core';
 import { AccountInfoEntity, isValidExchange } from '@itrade/data-manager';
 import { CryptoUtils } from '@itrade/utils/CryptoUtils';
 
@@ -44,7 +51,7 @@ function getEncryptionKey(): string {
   return encryptionKey;
 }
 
-async function getActiveAccount(userId: string, exchange: string) {
+export async function getActiveAccount(userId: string, exchange: string) {
   if (!isValidExchange(exchange)) {
     throw new Error('Invalid exchange');
   }
@@ -87,7 +94,7 @@ function isUnauthorizedError(error: unknown): boolean {
   return getAxiosStatus(error) === 401;
 }
 
-async function createExchangeConnection(
+export async function createExchangeConnection(
   account: AccountInfoEntity,
   options?: { forceDemo?: boolean },
 ) {
@@ -483,5 +490,92 @@ export async function modifyUserOrder(
     // If placement fails, we should probably warn the user that the original order was cancelled
     console.error('Failed to place replacement order', error);
     throw error;
+  }
+}
+
+export interface MarginAdjustmentInput {
+  type: 'add' | 'reduce';
+  amount: string | number | Decimal;
+}
+
+/**
+ * 🆕 Add or reduce isolated-margin collateral on an open position. Only
+ * exchanges whose adapter implements `adjustIsolatedMargin` (currently
+ * Binance and OKX) support this — Coinbase positions are cross-margin only
+ * on this platform, so `connection.exchange.adjustIsolatedMargin` will be
+ * undefined and we reject with a clear error rather than silently no-op'ing.
+ */
+export async function adjustPositionMargin(
+  userId: string,
+  positionId: number,
+  input: MarginAdjustmentInput,
+) {
+  const dataManager = await getDataManager();
+  const position = await dataManager.getPositionRepository().findById(positionId);
+
+  if (!position) {
+    throw new Error('Position not found');
+  }
+
+  if (position.userId !== userId) {
+    throw new Error('Unauthorized');
+  }
+
+  if (position.marginMode !== 'isolated') {
+    throw new Error('Margin can only be adjusted for isolated-margin positions');
+  }
+
+  const amount = toDecimal(input.amount);
+  if (!amount.isFinite() || amount.lte(0)) {
+    throw new Error('Amount must be a positive number');
+  }
+
+  const account = await getActiveAccount(userId, position.exchange);
+  let connection = await createExchangeConnection(account);
+
+  // `connection.exchange` is typed as the concrete union of exchange classes
+  // (Binance | OKX | Coinbase), which TypeScript won't let us probe for an
+  // optional member unless narrowed via the shared `IExchange` interface —
+  // `adjustIsolatedMargin` is declared there as optional (see @itrade/core).
+  const asExchange = (exchange: typeof connection.exchange): IExchange => exchange;
+
+  try {
+    if (typeof asExchange(connection.exchange).adjustIsolatedMargin !== 'function') {
+      throw new Error(`${position.exchange} does not support margin adjustment`);
+    }
+
+    let result;
+    try {
+      result = await asExchange(connection.exchange).adjustIsolatedMargin!(
+        position.symbol,
+        amount,
+        input.type,
+        position.side,
+      );
+    } catch (error) {
+      if (
+        account.exchange.toLowerCase() === 'okx' &&
+        !connection.isDemo &&
+        isUnauthorizedError(error)
+      ) {
+        await connection.exchange.disconnect();
+        connection = await createExchangeConnection(account, { forceDemo: true });
+        if (typeof asExchange(connection.exchange).adjustIsolatedMargin !== 'function') {
+          throw new Error(`${position.exchange} does not support margin adjustment`);
+        }
+        result = await asExchange(connection.exchange).adjustIsolatedMargin!(
+          position.symbol,
+          amount,
+          input.type,
+          position.side,
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    return result;
+  } finally {
+    await connection.exchange.disconnect();
   }
 }

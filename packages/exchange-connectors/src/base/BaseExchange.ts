@@ -128,6 +128,15 @@ export abstract class BaseExchange extends EventEmitter implements IExchange {
   public abstract getSymbols(): Promise<string[]>;
   public abstract getSymbolInfo(symbol: string): Promise<SymbolInfo>;
 
+  // Note: `adjustIsolatedMargin` is intentionally NOT declared here. It's an
+  // optional member of the `IExchange` interface (see @itrade/core), and only
+  // Binance/OKX implement it as a real method. Declaring it on this base
+  // class would force every subclass (including Coinbase, which has no such
+  // endpoint) to use the same member kind (property vs. method), which
+  // TypeScript doesn't allow to differ between a base class and its
+  // subclasses. Callers that need to invoke it should type the value as
+  // `IExchange` (not a concrete exchange union) before checking for it.
+
   // WebSocket subscription methods - must be implemented per exchange
   public abstract subscribeToTicker(symbol: string): Promise<void>;
   public abstract subscribeToOrderBook(symbol: string, depth?: number): Promise<void>;

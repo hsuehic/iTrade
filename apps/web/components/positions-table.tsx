@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 import {
   IconSearch,
   IconSortAscending,
@@ -29,7 +30,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -65,7 +75,15 @@ interface PositionData {
   pnlPercentage: string;
   timestamp: string;
   updatedAt: string;
+  // 🆕 null when the exchange doesn't report a liquidation price for this position.
+  liquidationPrice: string | null;
+  // 🆕 null when the exchange doesn't report a margin mode.
+  marginMode: 'isolated' | 'cross' | null;
+  // 🆕 Whether the exchange supports increase/reduce margin for this position.
+  canAdjustMargin: boolean;
 }
+
+type MarginAdjustmentType = 'add' | 'reduce';
 
 interface PositionsTableProps {
   selectedExchange?: string;
@@ -120,11 +138,33 @@ export function PositionsTable({
   const [totalPnl, setTotalPnl] = React.useState('0');
   const [lastRefresh, setLastRefresh] = React.useState<Date | null>(null);
 
+  const [marginDialog, setMarginDialog] = React.useState<{
+    position: PositionData;
+    type: MarginAdjustmentType;
+  } | null>(null);
+  const [marginAmount, setMarginAmount] = React.useState('');
+  const [marginError, setMarginError] = React.useState<string | null>(null);
+  const [isSubmittingMargin, setIsSubmittingMargin] = React.useState(false);
+
   const getSideLabel = React.useCallback(
     (side: string) =>
       side === 'long' ? t('side.long') : side === 'short' ? t('side.short') : side,
     [t],
   );
+
+  const openMarginDialog = React.useCallback(
+    (position: PositionData, type: MarginAdjustmentType) => {
+      setMarginDialog({ position, type });
+      setMarginAmount('');
+      setMarginError(null);
+    },
+    [],
+  );
+
+  const closeMarginDialog = React.useCallback(() => {
+    if (isSubmittingMargin) return;
+    setMarginDialog(null);
+  }, [isSubmittingMargin]);
 
   const columns = React.useMemo<ColumnDef<PositionData>[]>(
     () => [
@@ -278,6 +318,36 @@ export function PositionsTable({
           parseFloat(rowA.original.markPrice) - parseFloat(rowB.original.markPrice),
       },
       {
+        accessorKey: 'liquidationPrice',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="-ml-4 h-8 data-[state=open]:bg-accent"
+          >
+            {t('columns.liquidationPrice')}
+            {column.getIsSorted() === 'asc' ? (
+              <IconSortAscending className="ml-2 h-4 w-4" />
+            ) : column.getIsSorted() === 'desc' ? (
+              <IconSortDescending className="ml-2 h-4 w-4" />
+            ) : null}
+          </Button>
+        ),
+        cell: ({ row }) =>
+          row.original.liquidationPrice ? (
+            <div className="text-right font-mono tabular-nums text-amber-600 dark:text-amber-400">
+              {formatCurrency(row.original.liquidationPrice)}
+            </div>
+          ) : (
+            <div className="text-right text-muted-foreground">
+              {t('cells.notAvailable')}
+            </div>
+          ),
+        sortingFn: (rowA, rowB) =>
+          parseFloat(rowA.original.liquidationPrice || '0') -
+          parseFloat(rowB.original.liquidationPrice || '0'),
+      },
+      {
         accessorKey: 'marketValue',
         header: ({ column }) => (
           <Button
@@ -368,8 +438,41 @@ export function PositionsTable({
           new Date(rowA.original.updatedAt).getTime() -
           new Date(rowB.original.updatedAt).getTime(),
       },
+      {
+        id: 'actions',
+        header: t('columns.actions'),
+        cell: ({ row }) => {
+          const position = row.original;
+          // Hide entirely when the exchange/position doesn't support margin
+          // adjustment (e.g. Coinbase, or a cross-margin position).
+          if (!position.canAdjustMargin) {
+            return <span className="text-muted-foreground">-</span>;
+          }
+
+          return (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openMarginDialog(position, 'add')}
+                aria-label={t('margin.actions.increase')}
+              >
+                {t('margin.actions.increase')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openMarginDialog(position, 'reduce')}
+                aria-label={t('margin.actions.reduce')}
+              >
+                {t('margin.actions.reduce')}
+              </Button>
+            </div>
+          );
+        },
+      },
     ],
-    [getSideLabel, locale, t],
+    [getSideLabel, locale, openMarginDialog, t],
   );
 
   const fetchData = React.useCallback(async () => {
@@ -401,6 +504,49 @@ export function PositionsTable({
     const interval = setInterval(fetchData, refreshInterval);
     return () => clearInterval(interval);
   }, [fetchData, refreshInterval]);
+
+  const handleSubmitMargin = React.useCallback(async () => {
+    if (!marginDialog) return;
+
+    const amountNum = parseFloat(marginAmount);
+    if (!marginAmount.trim() || !Number.isFinite(amountNum) || amountNum <= 0) {
+      setMarginError(t('margin.errors.invalidAmount'));
+      return;
+    }
+
+    setMarginError(null);
+    setIsSubmittingMargin(true);
+    try {
+      const response = await fetch(
+        `/api/portfolio/positions/${marginDialog.position.id}/margin`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: marginDialog.type, amount: marginAmount.trim() }),
+        },
+      );
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || t('margin.errors.adjustFailed'));
+      }
+
+      toast.success(
+        marginDialog.type === 'add'
+          ? t('margin.messages.increased')
+          : t('margin.messages.reduced'),
+      );
+      setMarginDialog(null);
+      await fetchData();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t('margin.errors.adjustFailed');
+      setMarginError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmittingMargin(false);
+    }
+  }, [fetchData, marginAmount, marginDialog, t]);
 
   const table = useReactTable({
     data: positions,
@@ -465,6 +611,59 @@ export function PositionsTable({
 
   return (
     <Card>
+      <Dialog
+        open={Boolean(marginDialog)}
+        onOpenChange={(open) => !open && closeMarginDialog()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {marginDialog?.type === 'add'
+                ? t('margin.dialog.increaseTitle')
+                : t('margin.dialog.reduceTitle')}
+            </DialogTitle>
+            <DialogDescription>
+              {marginDialog
+                ? t('margin.dialog.description', {
+                    symbol: marginDialog.position.symbol,
+                    exchange: marginDialog.position.exchange,
+                  })
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="margin-amount">{t('margin.dialog.amountLabel')}</Label>
+              <Input
+                id="margin-amount"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={marginAmount}
+                onChange={(event) => setMarginAmount(event.target.value)}
+                disabled={isSubmittingMargin}
+              />
+              {marginError && <p className="text-sm text-rose-500">{marginError}</p>}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('margin.dialog.boundsNotAvailable')}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeMarginDialog}
+              disabled={isSubmittingMargin}
+            >
+              {t('margin.actions.cancel')}
+            </Button>
+            <Button onClick={handleSubmitMargin} disabled={isSubmittingMargin}>
+              {isSubmittingMargin
+                ? t('margin.actions.submitting')
+                : t('margin.actions.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <div className="flex flex-col gap-1">
           <CardTitle>{t('title')}</CardTitle>

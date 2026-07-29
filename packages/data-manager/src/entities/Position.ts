@@ -80,6 +80,18 @@ export class PositionEntity implements Position {
   })
   leverage!: Decimal;
 
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    nullable: true,
+    transformer: decimalTransformer,
+  })
+  liquidationPrice?: Decimal;
+
+  @Column({ type: 'character varying', length: 10, nullable: true })
+  marginMode?: 'isolated' | 'cross';
+
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   timestamp!: Date;
 

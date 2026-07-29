@@ -1756,12 +1756,15 @@
       "quantity": "Quantity",
       "avgPrice": "Avg Price",
       "markPrice": "Mark Price",
+      "liquidationPrice": "Liquidation Price",
       "marketValue": "Market Value",
       "unrealizedPnl": "Unrealized PnL",
-      "updated": "Updated"
+      "updated": "Updated",
+      "actions": "Actions"
     },
     "cells": {
-      "leverage": "{value}x leverage"
+      "leverage": "{value}x leverage",
+      "notAvailable": "N/A"
     },
     "filters": {
       "searchPlaceholder": "Search positions...",
@@ -1790,6 +1793,30 @@
     },
     "errors": {
       "fetchPositions": "Failed to fetch positions"
+    },
+    "margin": {
+      "actions": {
+        "increase": "Increase Margin",
+        "reduce": "Reduce Margin",
+        "cancel": "Cancel",
+        "confirm": "Confirm",
+        "submitting": "Submitting..."
+      },
+      "dialog": {
+        "increaseTitle": "Increase Isolated Margin",
+        "reduceTitle": "Reduce Isolated Margin",
+        "description": "{symbol} on {exchange}",
+        "amountLabel": "Amount (USDT)",
+        "boundsNotAvailable": "This exchange does not report a maximum or minimum adjustable amount for this action."
+      },
+      "messages": {
+        "increased": "Margin increased successfully",
+        "reduced": "Margin reduced successfully"
+      },
+      "errors": {
+        "invalidAmount": "Amount must be a positive number",
+        "adjustFailed": "Failed to adjust margin"
+      }
     }
   },
   "helpBot": {

@@ -22,6 +22,7 @@ import {
   Transfer,
   TransferType,
   TransferStatus,
+  MarginAdjustmentResult,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -414,6 +415,47 @@ export class BinanceExchange extends BaseExchange {
         // Don't throw - margin type is optional
       }
     }
+  }
+
+  /**
+   * 🆕 Add or reduce collateral on an ISOLATED-margin futures position via
+   * `POST /fapi/v1/positionMargin` (type 1 = add margin, 2 = reduce margin).
+   * Binance requires the position to already be in isolated mode — callers
+   * should only expose this when `Position.marginMode === 'isolated'`.
+   * Binance does not return an updated margin balance or any max/min bound
+   * in this response, so `MarginAdjustmentResult` only echoes back what was
+   * requested.
+   */
+  public async adjustIsolatedMargin(
+    symbol: string,
+    amount: Decimal,
+    type: 'add' | 'reduce',
+    positionSide?: 'long' | 'short',
+  ): Promise<MarginAdjustmentResult> {
+    const normalizedSymbol = this.normalizeSymbol(symbol);
+    const params: Record<string, any> = {
+      symbol: normalizedSymbol,
+      amount: amount.toString(),
+      type: type === 'add' ? 1 : 2,
+      timestamp: Date.now(),
+    };
+
+    // Only needed in Hedge Mode; harmless to include in One-way Mode as Binance ignores it there.
+    if (positionSide) {
+      params.positionSide = positionSide === 'long' ? 'LONG' : 'SHORT';
+    }
+
+    const signedParams = this.signRequest(params);
+    await this.futuresClient.post('/fapi/v1/positionMargin', null, {
+      params: signedParams,
+    });
+
+    return {
+      symbol,
+      type,
+      amount,
+      marginMode: 'isolated',
+    };
   }
 
   private async getFuturesPositionMode(): Promise<'oneway' | 'hedge'> {
@@ -879,6 +921,12 @@ export class BinanceExchange extends BaseExchange {
         .map((pos: any) => {
           const quantity = new Decimal(pos.positionAmt);
           const unifiedSymbol = this.denormalizeSymbol(pos.symbol, 'futures');
+          // Binance's positionRisk response reports `liquidationPrice` as "0" when
+          // there's no liquidation risk (e.g. very low leverage) — treat that as
+          // "not applicable" rather than a real price of zero.
+          const liquidationPriceRaw = parseFloat(pos.liquidationPrice ?? '0');
+          const marginMode: 'isolated' | 'cross' =
+            pos.marginType === 'isolated' ? 'isolated' : 'cross';
           return {
             symbol: unifiedSymbol,
             side: quantity.isPositive() ? 'long' : 'short',
@@ -888,6 +936,11 @@ export class BinanceExchange extends BaseExchange {
             unrealizedPnl: this.formatDecimal(pos.unRealizedProfit),
             leverage: parseInt(pos.leverage),
             timestamp: new Date(parseInt(pos.updateTime)),
+            liquidationPrice:
+              liquidationPriceRaw > 0
+                ? this.formatDecimal(pos.liquidationPrice)
+                : undefined,
+            marginMode,
           };
         });
     } catch {
