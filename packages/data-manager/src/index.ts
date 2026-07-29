@@ -85,6 +85,7 @@ export { PushNotificationLogEntity } from './entities/PushNotificationLog';
 export { AppSettingEntity } from './entities/AppSetting';
 export { HelpArticleEntity } from './entities/HelpArticle';
 export { TransferEntity } from './entities/Transfer';
+export { InternalTransferEntity } from './entities/InternalTransfer';
 export { AuditLogEntity } from './entities/AuditLog';
 export type { AuditLogAction } from './entities/AuditLog';
 export type {

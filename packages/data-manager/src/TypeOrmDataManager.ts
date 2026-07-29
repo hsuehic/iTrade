@@ -3,6 +3,7 @@ import type { DataSource, Repository, EntitySchema } from 'typeorm';
 import { Decimal } from 'decimal.js';
 import {
   IDataManager,
+  InternalTransfer,
   Kline,
   KlineInterval,
   StrategyPerformance,
@@ -22,6 +23,7 @@ import { StrategyStateEntity } from './entities/StrategyState';
 import { AccountInfoEntity } from './entities/AccountInfo';
 import { BalanceEntity } from './entities/Balance';
 import { TransferEntity } from './entities/Transfer';
+import { InternalTransferEntity } from './entities/InternalTransfer';
 import {
   BalanceMonthEntity,
   BalanceWeekEntity,
@@ -142,6 +144,7 @@ export const EntityMap: Record<string, Function | EntitySchema<unknown>> = {
   app_settings: AppSettingEntity,
   help_articles: HelpArticleEntity,
   transfers: TransferEntity,
+  internal_transfers: InternalTransferEntity,
   audit_logs: AuditLogEntity,
 };
 
@@ -185,6 +188,7 @@ export class TypeOrmDataManager implements IDataManager {
   private balanceRepository!: BalanceRepository;
   private accountInfoRepository!: Repository<AccountInfoEntity>;
   private transferRepository!: Repository<TransferEntity>;
+  private internalTransferRepository!: Repository<InternalTransferEntity>;
   private auditLogRepository!: Repository<AuditLogEntity>;
 
   // Dry run repositories (initialized on demand via dataSource)
@@ -236,6 +240,8 @@ export class TypeOrmDataManager implements IDataManager {
     this.balanceRepository = new BalanceRepository(this.dataSource);
     this.accountInfoRepository = this.dataSource.getRepository(AccountInfoEntity);
     this.transferRepository = this.dataSource.getRepository(TransferEntity);
+    this.internalTransferRepository =
+      this.dataSource.getRepository(InternalTransferEntity);
     this.auditLogRepository = this.dataSource.getRepository(AuditLogEntity);
 
     this.isInitialized = true;
@@ -740,6 +746,96 @@ export class TypeOrmDataManager implements IDataManager {
     });
 
     return { totalCount, perAsset };
+  }
+
+  // -------------------- Internal (wallet-to-wallet) transfers --------------------
+  // Deliberately a separate table/repository from transfers/TransferEntity
+  // above — see InternalTransferEntity's doc comment for why.
+
+  async saveInternalTransfers(
+    transfers: InternalTransfer[],
+    userId: string,
+  ): Promise<void> {
+    if (transfers.length === 0) return;
+    this.ensureInitialized();
+    const entities = transfers.map((t) =>
+      this.internalTransferRepository.create({
+        id: t.id,
+        userId,
+        exchange: t.exchange,
+        accountId: t.accountId,
+        asset: t.asset,
+        amount: t.amount,
+        fromWallet: t.fromWallet,
+        toWallet: t.toWallet,
+        status: t.status,
+        timestamp: t.timestamp,
+        providerTransactionId: t.providerTransactionId,
+      }),
+    );
+    await this.internalTransferRepository.upsert(entities, {
+      conflictPaths: ['id'],
+      skipUpdateIfNoValuesChanged: true,
+    });
+  }
+
+  async getInternalTransfers(
+    userId: string,
+    startTime?: Date,
+    endTime?: Date,
+    filters?: {
+      exchange?: string;
+      status?: string;
+      keyword?: string;
+      minAmount?: number | string;
+      maxAmount?: number | string;
+    },
+  ): Promise<InternalTransfer[]> {
+    this.ensureInitialized();
+    const query = this.internalTransferRepository
+      .createQueryBuilder('it')
+      .where('it.userId = :userId', { userId });
+
+    if (startTime) query.andWhere('it.timestamp >= :startTime', { startTime });
+    if (endTime) query.andWhere('it.timestamp <= :endTime', { endTime });
+    if (filters?.exchange && filters.exchange.toLowerCase() !== 'all') {
+      query.andWhere('LOWER(it.exchange) = LOWER(:exchange)', {
+        exchange: filters.exchange,
+      });
+    }
+    if (filters?.status) {
+      query.andWhere('it.status = :status', { status: filters.status });
+    }
+    if (filters?.keyword && filters.keyword.trim() !== '') {
+      query.andWhere(
+        '(it.asset ILIKE :kw OR it.exchange ILIKE :kw OR it."providerTransactionId" ILIKE :kw)',
+        { kw: `%${filters.keyword.trim()}%` },
+      );
+    }
+    if (filters?.minAmount !== undefined && filters.minAmount !== null) {
+      query.andWhere('it.amount >= :minAmount', {
+        minAmount: filters.minAmount.toString(),
+      });
+    }
+    if (filters?.maxAmount !== undefined && filters.maxAmount !== null) {
+      query.andWhere('it.amount <= :maxAmount', {
+        maxAmount: filters.maxAmount.toString(),
+      });
+    }
+
+    const entities = await query.orderBy('it.timestamp', 'DESC').getMany();
+    return entities.map((e) => ({
+      id: e.id,
+      exchange: e.exchange,
+      accountId: e.accountId,
+      asset: e.asset,
+      amount: e.amount,
+      fromWallet: e.fromWallet,
+      toWallet: e.toWallet,
+      status: e.status,
+      timestamp: e.timestamp,
+      providerTransactionId: e.providerTransactionId,
+    }));
   }
 
   // -------------------- Dry Run helpers --------------------

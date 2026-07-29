@@ -6,6 +6,7 @@ import {
   OKXExchange,
 } from '@itrade/exchange-connectors';
 import {
+  AccountWalletType,
   IExchange,
   OrderSide,
   OrderStatus,
@@ -276,7 +277,12 @@ export async function executeManualOrder(userId: string, input: ManualOrderInput
             const fundingBalances = await okxExchange.getFundingBalances();
             const fundingBalance = getBalanceAmount(fundingBalances, asset);
             if (fundingBalance.greaterThanOrEqualTo(required)) {
-              await okxExchange.transferFundingToTrading(asset, required);
+              await okxExchange.transferFunds({
+                asset,
+                amount: required,
+                from: AccountWalletType.FUNDING,
+                to: AccountWalletType.TRADING,
+              });
               const refreshedTradingBalances = await okxExchange.getTradingBalances();
               const refreshedTradingBalance = getBalanceAmount(
                 refreshedTradingBalances,

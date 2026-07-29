@@ -33,6 +33,10 @@ import {
   SubscriptionConfig,
   Transfer,
   MarginAdjustmentResult,
+  AccountWalletType,
+  TransferFundsParams,
+  TransferFundsResult,
+  InternalTransfer,
 } from '../types';
 
 // Exchange Interface
@@ -106,6 +110,16 @@ export interface IExchange extends EventEmitter {
     type: 'add' | 'reduce',
     positionSide?: 'long' | 'short',
   ): Promise<MarginAdjustmentResult>;
+
+  // 🆕 Internal wallet-to-wallet transfer (Funding / Spot / Perpetual / unified
+  // Trading wallet). Optional — only implemented by exchanges with a unified
+  // transfer API (currently Binance, OKX). Callers must check
+  // `typeof exchange.transferFunds === 'function'` before use, and should use
+  // `getSupportedTransferWallets()` to know which wallet types are valid for
+  // this exchange (e.g. OKX exposes FUNDING/TRADING, not SPOT/PERPETUAL).
+  transferFunds?(params: TransferFundsParams): Promise<TransferFundsResult>;
+  getSupportedTransferWallets?(): AccountWalletType[];
+  getWalletBalances?(walletType: AccountWalletType): Promise<Balance[]>;
 
   // Exchange Info
   getExchangeInfo(): Promise<ExchangeInfo>;
@@ -302,9 +316,28 @@ export interface IDataManager {
   cacheOrderBook?(symbol: string, orderbook: OrderBook): Promise<void>;
   getCachedOrderBook?(symbol: string): Promise<OrderBook | undefined>;
 
-  // Transfers
+  // Transfers (external deposits/withdrawals — see PnL/balance routes that
+  // read these as cash flow)
   saveTransfers?(transfers: Transfer[], userId: string, exchange: string): Promise<void>;
   getTransfers?(userId: string, startTime?: Date, endTime?: Date): Promise<Transfer[]>;
+
+  // 🆕 Internal (same-exchange, wallet-to-wallet) transfers — a deliberately
+  // separate store from Transfer/saveTransfers/getTransfers above so PnL and
+  // balance calculations that read the `transfers` table can never pick these
+  // up. See InternalTransfer's doc comment in ../types.
+  saveInternalTransfers?(transfers: InternalTransfer[], userId: string): Promise<void>;
+  getInternalTransfers?(
+    userId: string,
+    startTime?: Date,
+    endTime?: Date,
+    filters?: {
+      exchange?: string;
+      status?: string;
+      keyword?: string;
+      minAmount?: number | string;
+      maxAmount?: number | string;
+    },
+  ): Promise<InternalTransfer[]>;
 
   // Data Quality
   validateData(symbol: string, interval: string): Promise<boolean>;

@@ -23,6 +23,9 @@ import {
   TransferType,
   TransferStatus,
   MarginAdjustmentResult,
+  AccountWalletType,
+  TransferFundsParams,
+  TransferFundsResult,
 } from '@itrade/core';
 
 import { BaseExchange } from '../base/BaseExchange';
@@ -907,6 +910,101 @@ export class BinanceExchange extends BaseExchange {
     transfers.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     return transfers;
+  }
+
+  // 🆕 Internal wallet-to-wallet transfers (Funding / Spot / Perpetual). Binance
+  // exposes these as separate wallets and supports every pairwise combination
+  // via a single "Universal Transfer" endpoint keyed by a `type` enum.
+  private static readonly TRANSFER_TYPE_MAP: Partial<Record<string, string>> = {
+    [`${AccountWalletType.FUNDING}_${AccountWalletType.SPOT}`]: 'FUNDING_MAIN',
+    [`${AccountWalletType.SPOT}_${AccountWalletType.FUNDING}`]: 'MAIN_FUNDING',
+    [`${AccountWalletType.FUNDING}_${AccountWalletType.PERPETUAL}`]: 'FUNDING_UMFUTURE',
+    [`${AccountWalletType.PERPETUAL}_${AccountWalletType.FUNDING}`]: 'UMFUTURE_FUNDING',
+    [`${AccountWalletType.SPOT}_${AccountWalletType.PERPETUAL}`]: 'MAIN_UMFUTURE',
+    [`${AccountWalletType.PERPETUAL}_${AccountWalletType.SPOT}`]: 'UMFUTURE_MAIN',
+  };
+
+  public getSupportedTransferWallets(): AccountWalletType[] {
+    return [
+      AccountWalletType.FUNDING,
+      AccountWalletType.SPOT,
+      AccountWalletType.PERPETUAL,
+    ];
+  }
+
+  public async getWalletBalances(walletType: AccountWalletType): Promise<Balance[]> {
+    switch (walletType) {
+      case AccountWalletType.SPOT: {
+        const params = this.signRequest({ timestamp: Date.now() });
+        const response = await this.httpClient.get('/api/v3/account', { params });
+        return (response.data.balances || []).map((balance: any) => ({
+          asset: balance.asset,
+          free: this.formatDecimal(balance.free),
+          locked: this.formatDecimal(balance.locked),
+          total: this.formatDecimal(balance.free).add(this.formatDecimal(balance.locked)),
+        }));
+      }
+      case AccountWalletType.PERPETUAL: {
+        const params = this.signRequest({ timestamp: Date.now() });
+        const response = await this.futuresClient.get('/fapi/v2/balance', { params });
+        return (response.data || []).map((asset: any) => ({
+          asset: asset.asset,
+          free: this.formatDecimal(asset.availableBalance),
+          locked: this.formatDecimal(asset.balance).sub(
+            this.formatDecimal(asset.availableBalance),
+          ),
+          total: this.formatDecimal(asset.balance),
+        }));
+      }
+      case AccountWalletType.FUNDING: {
+        const params = this.signRequest({ timestamp: Date.now() });
+        const response = await this.httpClient.post(
+          '/sapi/v1/asset/get-funding-asset',
+          null,
+          { params },
+        );
+        return (response.data || []).map((asset: any) => ({
+          asset: asset.asset,
+          free: this.formatDecimal(asset.free),
+          locked: this.formatDecimal(asset.locked).add(this.formatDecimal(asset.freeze)),
+          total: this.formatDecimal(asset.free)
+            .add(this.formatDecimal(asset.locked))
+            .add(this.formatDecimal(asset.freeze)),
+        }));
+      }
+      default:
+        throw new Error(`Binance does not support the "${walletType}" wallet`);
+    }
+  }
+
+  public async transferFunds(params: TransferFundsParams): Promise<TransferFundsResult> {
+    const { asset, amount, from, to } = params;
+
+    if (from === to) {
+      throw new Error('Source and destination wallets must be different');
+    }
+
+    const type = BinanceExchange.TRANSFER_TYPE_MAP[`${from}_${to}`];
+    if (!type) {
+      throw new Error(`Binance does not support transferring from ${from} to ${to}`);
+    }
+
+    const signedParams = this.signRequest({
+      type,
+      asset: asset.toUpperCase(),
+      amount: amount.toString(),
+      timestamp: Date.now(),
+    });
+
+    const response = await this.httpClient.post('/sapi/v1/asset/transfer', null, {
+      params: signedParams,
+    });
+
+    if (!response.data || response.data.tranId === undefined) {
+      throw new Error('Binance transfer failed: unexpected response');
+    }
+
+    return { id: String(response.data.tranId) };
   }
 
   public async getPositions(): Promise<Position[]> {

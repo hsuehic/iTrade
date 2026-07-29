@@ -25,6 +25,9 @@ import {
   TransferType,
   TransferStatus,
   MarginAdjustmentResult,
+  AccountWalletType,
+  TransferFundsParams,
+  TransferFundsResult,
 } from '@itrade/core';
 
 export type OkxWsType = 'public' | 'private' | 'business';
@@ -831,12 +834,60 @@ export class OKXExchange extends BaseExchange {
     return this.fetchFundingBalances();
   }
 
-  public async transferFundingToTrading(asset: string, amount: Decimal): Promise<void> {
+  // 🆕 OKX runs this app's accounts in unified/multi-currency margin mode, so
+  // Spot and Perpetual (SWAP) balances both live in the single "Trading"
+  // account (type 18) — see fetchTradingAccountBalances(), which already
+  // combines SPOT + SWAP. Only Funding <-> Trading is therefore a real
+  // transfer here; SPOT and PERPETUAL both resolve to the same account id,
+  // so a "spot to perpetual" request would be a same-account no-op.
+  public getSupportedTransferWallets(): AccountWalletType[] {
+    return [AccountWalletType.FUNDING, AccountWalletType.TRADING];
+  }
+
+  private toOkxTransferAccountId(walletType: AccountWalletType): string {
+    switch (walletType) {
+      case AccountWalletType.FUNDING:
+        return OKXExchange.OKX_FUNDING_ACCOUNT;
+      case AccountWalletType.TRADING:
+      case AccountWalletType.SPOT:
+      case AccountWalletType.PERPETUAL:
+        return OKXExchange.OKX_TRADING_ACCOUNT;
+      default:
+        throw new Error(`OKX does not support the "${walletType}" wallet`);
+    }
+  }
+
+  public async getWalletBalances(walletType: AccountWalletType): Promise<Balance[]> {
+    if (walletType === AccountWalletType.FUNDING) {
+      return this.fetchFundingBalances();
+    }
+    if (
+      walletType === AccountWalletType.TRADING ||
+      walletType === AccountWalletType.SPOT ||
+      walletType === AccountWalletType.PERPETUAL
+    ) {
+      return this.getTradingBalances();
+    }
+    throw new Error(`OKX does not support the "${walletType}" wallet`);
+  }
+
+  public async transferFunds(params: TransferFundsParams): Promise<TransferFundsResult> {
+    const { asset, amount, from, to } = params;
+
+    const fromAccount = this.toOkxTransferAccountId(from);
+    const toAccount = this.toOkxTransferAccountId(to);
+
+    if (fromAccount === toAccount) {
+      throw new Error(
+        'Spot and Perpetual share the same OKX Trading account — no transfer is needed between them',
+      );
+    }
+
     const payload = {
       ccy: asset.toUpperCase(),
       amt: amount.toString(),
-      from: OKXExchange.OKX_FUNDING_ACCOUNT,
-      to: OKXExchange.OKX_TRADING_ACCOUNT,
+      from: fromAccount,
+      to: toAccount,
     };
     const signedData = this.signOKXRequest('POST', '/api/v5/asset/transfer', payload);
     const response = await this.httpClient.post(signedData.endpoint, signedData.body, {
@@ -846,6 +897,8 @@ export class OKXExchange extends BaseExchange {
     if (response.data.code !== '0') {
       throw new Error(`OKX API error: ${response.data.msg}`);
     }
+
+    return { id: response.data.data?.[0]?.transId };
   }
 
   public async getPositions(): Promise<Position[]> {

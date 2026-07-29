@@ -218,6 +218,7 @@
       "position": "Position",
       "transaction": "Transaction",
       "transfers": "Transfers",
+      "internalTransfers": "Internal Transfers",
       "filterOrders": "Filter Orders",
       "byStatus": "By Status",
       "byExchange": "By Exchange",
@@ -383,11 +384,44 @@
         "updated": "Updated",
         "actions": "Actions"
       },
+      "transferAction": "Transfer funds",
+      "historyAction": "Transfer history",
       "messages": {
         "deleted": "Account deleted"
       },
       "errors": {
         "deleteFailed": "Failed to delete account"
+      }
+    },
+    "transfer": {
+      "title": "Transfer Funds",
+      "description": "Move funds between wallets on {exchange} ({account}).",
+      "wallets": {
+        "funding": "Funding",
+        "spot": "Spot",
+        "perpetual": "Perpetual",
+        "trading": "Trading (Spot & Perpetual)"
+      },
+      "fields": {
+        "from": "From",
+        "to": "To",
+        "selectWallet": "Select wallet",
+        "asset": "Asset",
+        "assetPlaceholder": "USDT",
+        "amount": "Amount",
+        "checkingBalance": "Checking balance...",
+        "available": "Available: {amount}",
+        "max": "Max"
+      },
+      "cancel": "Cancel",
+      "submit": "Transfer",
+      "submitting": "Transferring...",
+      "messages": {
+        "success": "Transfer completed"
+      },
+      "errors": {
+        "loadWalletsFailed": "Failed to load wallets for this exchange",
+        "transferFailed": "Transfer failed"
       }
     },
     "form": {
@@ -1424,6 +1458,57 @@
       "type": {
         "DEPOSIT": "Deposit",
         "WITHDRAW": "Withdraw"
+      },
+      "status": {
+        "COMPLETED": "Completed",
+        "PENDING": "Pending",
+        "FAILED": "Failed",
+        "CANCELED": "Canceled"
+      }
+    },
+    "internalTransfers": {
+      "title": "Internal Transfers",
+      "history": {
+        "title": "Internal Transfer History",
+        "empty": "No internal transfers found for the selected exchange.",
+        "emptyFiltered": "No internal transfers match the current filters."
+      },
+      "filters": {
+        "status": "Status",
+        "statusAll": "All statuses",
+        "keyword": "Search",
+        "keywordPlaceholder": "Asset, provider tx id…",
+        "minAmount": "Min amount",
+        "maxAmount": "Max amount",
+        "reset": "Reset",
+        "resultCount": "Showing {shown}"
+      },
+      "timeRange": {
+        "all": "All",
+        "allLong": "All time",
+        "90d": "90d",
+        "90dLong": "90 days",
+        "30d": "30d",
+        "30dLong": "30 days",
+        "7d": "7d",
+        "7dLong": "7 days",
+        "1d": "1d",
+        "1dLong": "24 hours",
+        "placeholder": "30d"
+      },
+      "columns": {
+        "time": "Time",
+        "exchange": "Exchange",
+        "asset": "Asset",
+        "route": "From → To",
+        "amount": "Amount",
+        "status": "Status"
+      },
+      "wallets": {
+        "FUNDING": "Funding",
+        "SPOT": "Spot",
+        "PERPETUAL": "Perpetual",
+        "TRADING": "Trading"
       },
       "status": {
         "COMPLETED": "Completed",

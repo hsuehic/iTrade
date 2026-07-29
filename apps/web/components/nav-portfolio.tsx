@@ -15,6 +15,7 @@ import {
   IconBrandBinance,
   IconCurrencyBitcoin,
   IconArrowsRightLeft,
+  IconWallet,
 } from '@tabler/icons-react';
 import { usePathname } from 'next/navigation';
 
@@ -81,6 +82,11 @@ export function NavPortfolio() {
       name: t('transfers'),
       url: '/portfolio/transfers',
       icon: IconArrowsRightLeft,
+    },
+    {
+      name: t('internalTransfers'),
+      url: '/portfolio/internal-transfers',
+      icon: IconWallet,
     },
   ];
 

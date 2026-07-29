@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,15 +21,21 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { AccountForm, type AccountFormInitialData } from './account-form';
+import { TransferForm, type TransferFormAccount } from './transfer-form';
 import { deleteAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit } from 'lucide-react';
+import { Plus, Trash2, Edit, ArrowRightLeft, History } from 'lucide-react';
 import {
   getExchangeDisplayName,
   SupportedExchange,
 } from '@itrade/data-manager/constants';
 import { formatDate } from '@/lib/utils';
 import type { AccountListItem } from '@/lib/types/account';
+
+// Only exchanges with a real internal wallet-transfer API expose the
+// Transfer action. See apps/web/lib/services/transfer-service.ts for why
+// Coinbase is excluded.
+const TRANSFER_CAPABLE_EXCHANGES = new Set(['binance', 'okx']);
 
 export function AccountList({ initialAccounts }: { initialAccounts: AccountListItem[] }) {
   const t = useTranslations('accounts.list');
@@ -41,10 +48,22 @@ export function AccountList({ initialAccounts }: { initialAccounts: AccountListI
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState<AccountListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [transferringAccount, setTransferringAccount] =
+    useState<TransferFormAccount | null>(null);
 
   const handleEdit = (account: AccountListItem) => {
     setEditingAccount(account);
     setIsFormOpen(true);
+  };
+
+  const handleTransfer = (account: AccountListItem) => {
+    setTransferringAccount({
+      id: account.id,
+      exchange: account.exchange,
+      accountId: account.accountId,
+    });
+    setIsTransferOpen(true);
   };
 
   const handleAdd = () => {
@@ -119,6 +138,30 @@ export function AccountList({ initialAccounts }: { initialAccounts: AccountListI
                   <TableCell className="font-mono text-xs">{account.apiKey}</TableCell>
                   <TableCell>{formatDate(account.updatedTime, locale)}</TableCell>
                   <TableCell className="text-right space-x-2">
+                    {TRANSFER_CAPABLE_EXCHANGES.has(account.exchange.toLowerCase()) && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t('transferAction')}
+                          onClick={() => handleTransfer(account)}
+                        >
+                          <ArrowRightLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={t('historyAction')}
+                          asChild
+                        >
+                          <Link
+                            href={`/portfolio/internal-transfers?exchange=${encodeURIComponent(account.exchange)}`}
+                          >
+                            <History className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                      </>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -196,6 +239,13 @@ export function AccountList({ initialAccounts }: { initialAccounts: AccountListI
               } satisfies AccountFormInitialData)
             : undefined
         }
+      />
+
+      <TransferForm
+        open={isTransferOpen}
+        onOpenChange={setIsTransferOpen}
+        onSuccess={refresh}
+        account={transferringAccount}
       />
     </div>
   );

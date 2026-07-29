@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Decimal } from 'decimal.js';
+import { AccountWalletType } from '@itrade/core';
 import { BinanceExchange } from '../binance/BinanceExchange';
 
 describe('BinanceExchange Leverage & Margin', () => {
@@ -186,5 +188,70 @@ describe('BinanceExchange getTransfers', () => {
     expect(withdrawal.timestamp.getTime()).toBe(
       new Date('2026-05-19T17:02:25.000Z').getTime(),
     );
+  });
+});
+
+describe('BinanceExchange transferFunds', () => {
+  let exchange: BinanceExchange;
+  let postSpy: any;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+    };
+
+    postSpy = vi.fn().mockResolvedValue({ data: { tranId: 999999 } });
+    (exchange as any).httpClient.post = postSpy;
+  });
+
+  it('exposes FUNDING, SPOT, and PERPETUAL as supported wallets', () => {
+    expect(exchange.getSupportedTransferWallets()).toEqual([
+      AccountWalletType.FUNDING,
+      AccountWalletType.SPOT,
+      AccountWalletType.PERPETUAL,
+    ]);
+  });
+
+  it.each([
+    [AccountWalletType.FUNDING, AccountWalletType.SPOT, 'FUNDING_MAIN'],
+    [AccountWalletType.SPOT, AccountWalletType.FUNDING, 'MAIN_FUNDING'],
+    [AccountWalletType.FUNDING, AccountWalletType.PERPETUAL, 'FUNDING_UMFUTURE'],
+    [AccountWalletType.PERPETUAL, AccountWalletType.FUNDING, 'UMFUTURE_FUNDING'],
+    [AccountWalletType.SPOT, AccountWalletType.PERPETUAL, 'MAIN_UMFUTURE'],
+    [AccountWalletType.PERPETUAL, AccountWalletType.SPOT, 'UMFUTURE_MAIN'],
+  ])('maps %s -> %s to universal transfer type %s', async (from, to, expectedType) => {
+    const result = await exchange.transferFunds({
+      asset: 'usdt',
+      amount: new Decimal(50),
+      from,
+      to,
+    });
+
+    expect(result).toEqual({ id: '999999' });
+    expect(postSpy).toHaveBeenCalledTimes(1);
+    const [url, body, config] = postSpy.mock.calls[0];
+    expect(url).toBe('/sapi/v1/asset/transfer');
+    expect(body).toBeNull();
+    expect(config.params).toMatchObject({
+      type: expectedType,
+      asset: 'USDT',
+      amount: '50',
+    });
+  });
+
+  it('rejects a transfer when the source and destination wallets are the same', async () => {
+    await expect(
+      exchange.transferFunds({
+        asset: 'USDT',
+        amount: new Decimal(10),
+        from: AccountWalletType.SPOT,
+        to: AccountWalletType.SPOT,
+      }),
+    ).rejects.toThrow(/must be different/);
+
+    expect(postSpy).not.toHaveBeenCalled();
   });
 });

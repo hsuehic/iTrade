@@ -309,6 +309,67 @@ export interface Transfer {
   fee?: Decimal;
 }
 
+// 🆕 Internal (wallet-to-wallet) transfers between sub-accounts on the SAME
+// exchange — e.g. moving USDT from Funding to the Perpetual/Futures wallet
+// before opening a position. This is distinct from `Transfer` above, which
+// tracks external deposits/withdrawals.
+//
+// `TRADING` exists because some exchanges run a unified account where Spot
+// and Perpetual balances live in a single wallet (OKX in this codebase uses
+// account type "18" for both). Exchanges with genuinely separate Spot and
+// Perpetual wallets (Binance) use `SPOT` / `PERPETUAL` instead and never
+// report `TRADING`. Callers should use `getSupportedTransferWallets()` to
+// know which of these an exchange actually exposes rather than assuming all
+// four are valid.
+export enum AccountWalletType {
+  FUNDING = 'FUNDING',
+  SPOT = 'SPOT',
+  PERPETUAL = 'PERPETUAL',
+  TRADING = 'TRADING',
+}
+
+export interface TransferFundsParams {
+  asset: string;
+  amount: Decimal;
+  from: AccountWalletType;
+  to: AccountWalletType;
+}
+
+// 🆕 Returned by `IExchange.transferFunds`. `id` is the exchange's own
+// transaction id for the transfer (Binance `tranId`, OKX `transId`) when the
+// exchange's API reports one — callers use it to build a durable
+// `InternalTransfer` record. It's optional because not every exchange's
+// transfer endpoint is guaranteed to return an id on every response shape.
+export interface TransferFundsResult {
+  id?: string;
+}
+
+// 🆕 A record of a same-exchange wallet-to-wallet move (e.g. Funding ->
+// Perpetual), initiated via `IExchange.transferFunds`.
+//
+// This is intentionally a SEPARATE type/table from `Transfer` above rather
+// than a third `TransferType` value. `Transfer` rows (DEPOSIT/WITHDRAW) cross
+// the exchange boundary and are read by PnL/balance calculations as external
+// cash flow (see apps/web/app/api/analytics/pnl-chart and .../account
+// routes, and TypeOrmDataManager.getTransfersSummary). An internal transfer
+// moves no money in or out of the exchange, so keeping it in a wholly
+// separate entity/table makes it impossible for it to be miscounted there —
+// there's no shared `type` field for a future query to forget to filter on.
+export interface InternalTransfer {
+  id: string;
+  exchange: string;
+  // The specific AccountInfoEntity row this transfer was made on, when known.
+  accountId?: number;
+  asset: string;
+  amount: Decimal;
+  fromWallet: AccountWalletType;
+  toWallet: AccountWalletType;
+  status: TransferStatus;
+  timestamp: Date;
+  // The exchange's own transaction id, when its API returns one.
+  providerTransactionId?: string;
+}
+
 export enum SignalType {
   Entry = 'entry',
   TakeProfit = 'take_profit',
