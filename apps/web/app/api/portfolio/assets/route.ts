@@ -2,13 +2,20 @@
 
 import { NextResponse } from 'next/server';
 
+import { AccountWalletType } from '@itrade/core';
+
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 import { STABLECOINS, computeLiveBalances } from '@/lib/live-balance';
+import {
+  fetchWalletAssetsForAccount,
+  supportsWalletBreakdown,
+} from '@/lib/services/wallet-assets-service';
 
 export interface AssetData {
   asset: string;
   exchange: string;
+  wallet?: AccountWalletType;
   free: number;
   locked: number;
   total: number;
@@ -86,11 +93,57 @@ export async function GET(request: Request) {
     const exchanges: string[] = [];
 
     for (const account of accountsToProcess) {
-      const accountBalances = balancesByAccountId.get(account.id) ?? [];
       const exchange = account.exchange;
 
       if (!exchanges.includes(exchange)) exchanges.push(exchange);
-      assetsByExchange[exchange] = [];
+      if (!assetsByExchange[exchange]) assetsByExchange[exchange] = [];
+
+      let accountAssetsAdded = false;
+
+      if (supportsWalletBreakdown(exchange)) {
+        try {
+          const walletAssets = await fetchWalletAssetsForAccount(account);
+          if (walletAssets.length > 0) {
+            for (const entry of walletAssets) {
+              const assetData: AssetData = {
+                asset: entry.asset,
+                exchange: entry.exchange,
+                wallet: entry.wallet,
+                free: entry.free,
+                locked: entry.locked,
+                total: entry.total,
+                percentage: 0,
+              };
+              allAssets.push(assetData);
+              assetsByExchange[exchange].push(assetData);
+
+              const existing = aggregatedAssetsMap.get(entry.asset);
+              if (existing) {
+                existing.free += entry.free;
+                existing.locked += entry.locked;
+                existing.total += entry.total;
+              } else {
+                aggregatedAssetsMap.set(entry.asset, {
+                  asset: entry.asset,
+                  free: entry.free,
+                  locked: entry.locked,
+                  total: entry.total,
+                });
+              }
+            }
+            accountAssetsAdded = true;
+          }
+        } catch (error) {
+          console.error(
+            `[portfolio/assets] Wallet breakdown failed for account ${account.id}, falling back to stored balances`,
+            error,
+          );
+        }
+      }
+
+      if (accountAssetsAdded) continue;
+
+      const accountBalances = balancesByAccountId.get(account.id) ?? [];
 
       for (const balance of accountBalances) {
         const free = parseFloat(balance.free.toString());

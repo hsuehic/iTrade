@@ -1354,7 +1354,16 @@
   },
   "portfolio": {
     "assets": {
-      "title": "Assets"
+      "title": "Assets",
+      "table": {
+        "wallet": "Wallet"
+      },
+      "wallets": {
+        "FUNDING": "Funding",
+        "SPOT": "Spot",
+        "PERPETUAL": "Perpetual",
+        "TRADING": "Trading"
+      }
     },
     "balance": {
       "title": "Balance"

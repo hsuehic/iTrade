@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 import {
   IconSearch,
   IconSortAscending,
@@ -55,6 +56,7 @@ declare module '@tanstack/react-table' {
 interface AssetData {
   asset: string;
   exchange: string;
+  wallet?: string;
   free: number;
   locked: number;
   total: number;
@@ -113,86 +115,109 @@ const renderSortableHeader = (
   </div>
 );
 
-const columns: ColumnDef<AssetData>[] = [
-  {
-    accessorKey: 'asset',
-    header: ({ column }) => renderSortableHeader('Asset', column),
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <SymbolIcon
-          symbol={row.original.asset}
-          exchangeId={row.original.exchange?.toLowerCase()}
-          size="md"
-        />
-        <span className="font-medium">{row.original.asset}</span>
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'exchange',
-    header: 'Exchange',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <ExchangeLogo exchange={row.original.exchange} className="h-5 w-5" />
-        <span className="capitalize">{row.original.exchange}</span>
-      </div>
-    ),
-    filterFn: (row, id, value) => {
-      return value === 'all' || row.getValue(id) === value;
+function createColumns(
+  translateWallet: (wallet: string) => string,
+  translateWalletLabel: string,
+  showWalletColumn: boolean,
+): ColumnDef<AssetData>[] {
+  const walletColumn: ColumnDef<AssetData> = {
+    accessorKey: 'wallet',
+    header: translateWalletLabel,
+    cell: ({ row }) => {
+      const wallet = row.original.wallet;
+      if (!wallet) return <span className="text-muted-foreground">—</span>;
+      return <Badge variant="outline">{translateWallet(wallet)}</Badge>;
     },
-  },
-  {
-    accessorKey: 'free',
-    meta: { align: 'right' },
-    header: ({ column }) => renderSortableHeader('Available', column, 'right'),
-    cell: ({ row }) => (
-      <div className="text-right tabular-nums">{formatNumber(row.original.free)}</div>
-    ),
-  },
-  {
-    accessorKey: 'locked',
-    meta: { align: 'right' },
-    header: ({ column }) => renderSortableHeader('Locked', column, 'right'),
-    cell: ({ row }) => (
-      <div className="text-right tabular-nums text-muted-foreground">
-        {row.original.locked > 0 ? formatNumber(row.original.locked) : '-'}
-      </div>
-    ),
-  },
-  {
-    id: 'totalValue',
-    accessorFn: (row) => getAssetValue(row),
-    meta: { align: 'right' },
-    header: ({ column }) => renderSortableHeader('Total Value', column, 'right'),
-    cell: ({ row }) => (
-      <div className="text-right font-medium tabular-nums">
-        {formatCurrency(getAssetValue(row.original))}
-      </div>
-    ),
-  },
-  {
-    accessorKey: 'percentage',
-    header: ({ column }) => renderSortableHeader('Allocation', column),
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full transition-all duration-300"
-            style={{ width: `${Math.min(row.original.percentage, 100)}%` }}
+  };
+
+  const baseColumns: ColumnDef<AssetData>[] = [
+    {
+      accessorKey: 'asset',
+      header: ({ column }) => renderSortableHeader('Asset', column),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <SymbolIcon
+            symbol={row.original.asset}
+            exchangeId={row.original.exchange?.toLowerCase()}
+            size="md"
           />
+          <span className="font-medium">{row.original.asset}</span>
         </div>
-        <span className="text-sm tabular-nums text-muted-foreground w-14 text-right">
-          {row.original.percentage.toFixed(1)}%
-        </span>
-      </div>
-    ),
-  },
-];
+      ),
+    },
+    {
+      accessorKey: 'exchange',
+      header: 'Exchange',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <ExchangeLogo exchange={row.original.exchange} className="h-5 w-5" />
+          <span className="capitalize">{row.original.exchange}</span>
+        </div>
+      ),
+      filterFn: (row, id, value) => {
+        return value === 'all' || row.getValue(id) === value;
+      },
+    },
+    {
+      accessorKey: 'free',
+      meta: { align: 'right' },
+      header: ({ column }) => renderSortableHeader('Available', column, 'right'),
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums">{formatNumber(row.original.free)}</div>
+      ),
+    },
+    {
+      accessorKey: 'locked',
+      meta: { align: 'right' },
+      header: ({ column }) => renderSortableHeader('Locked', column, 'right'),
+      cell: ({ row }) => (
+        <div className="text-right tabular-nums text-muted-foreground">
+          {row.original.locked > 0 ? formatNumber(row.original.locked) : '-'}
+        </div>
+      ),
+    },
+    {
+      id: 'totalValue',
+      accessorFn: (row) => getAssetValue(row),
+      meta: { align: 'right' },
+      header: ({ column }) => renderSortableHeader('Total Value', column, 'right'),
+      cell: ({ row }) => (
+        <div className="text-right font-medium tabular-nums">
+          {formatCurrency(getAssetValue(row.original))}
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'percentage',
+      header: ({ column }) => renderSortableHeader('Allocation', column),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(row.original.percentage, 100)}%` }}
+            />
+          </div>
+          <span className="text-sm tabular-nums text-muted-foreground w-14 text-right">
+            {row.original.percentage.toFixed(1)}%
+          </span>
+        </div>
+      ),
+    },
+  ];
+
+  if (!showWalletColumn) return baseColumns;
+
+  const withWallet = [...baseColumns];
+  withWallet.splice(2, 0, walletColumn);
+  return withWallet;
+}
 
 export function AssetsTable({
   selectedExchange,
   refreshInterval = 10000,
 }: AssetsTableProps) {
+  const t = useTranslations('portfolio.assets');
   const [assets, setAssets] = React.useState<AssetData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
@@ -202,6 +227,35 @@ export function AssetsTable({
   const [globalFilter, setGlobalFilter] = React.useState('');
   const [exchanges, setExchanges] = React.useState<string[]>([]);
   const [selectedFilterExchange, setSelectedFilterExchange] = React.useState('all');
+
+  const showWalletColumn = assets.some((asset) => !!asset.wallet);
+
+  const translateWallet = React.useCallback(
+    (wallet: string) => {
+      const upper = wallet.toUpperCase();
+      if (
+        upper === 'FUNDING' ||
+        upper === 'SPOT' ||
+        upper === 'PERPETUAL' ||
+        upper === 'TRADING'
+      ) {
+        return t(
+          `wallets.${upper}` as
+            | 'wallets.FUNDING'
+            | 'wallets.SPOT'
+            | 'wallets.PERPETUAL'
+            | 'wallets.TRADING',
+        );
+      }
+      return wallet;
+    },
+    [t],
+  );
+
+  const columns = React.useMemo(
+    () => createColumns(translateWallet, t('table.wallet'), showWalletColumn),
+    [translateWallet, showWalletColumn, t],
+  );
 
   React.useEffect(() => {
     const fetchData = async () => {
@@ -231,6 +285,7 @@ export function AssetsTable({
   const table = useReactTable({
     data: assets,
     columns,
+    getRowId: (row) => `${row.exchange}-${row.wallet ?? 'all'}-${row.asset}`,
     state: {
       sorting,
       columnFilters,

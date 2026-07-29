@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -74,10 +74,21 @@ export function TransferForm({
   const [available, setAvailable] = useState<string | null>(null);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const initializedForRef = useRef<string | null>(null);
 
-  // Reset form state whenever the dialog is opened for a (possibly different) account.
+  const accountId = account?.id;
+  const accountExchange = account?.exchange;
+
+  // Reset form state when the dialog opens for a (possibly different) account.
   useEffect(() => {
-    if (!open || !account) return;
+    if (!open || accountId == null || !accountExchange) {
+      if (!open) initializedForRef.current = null;
+      return;
+    }
+
+    const initKey = `${accountId}:${accountExchange}`;
+    if (initializedForRef.current === initKey) return;
+    initializedForRef.current = initKey;
 
     setFrom(undefined);
     setTo(undefined);
@@ -85,13 +96,13 @@ export function TransferForm({
     setAmount('');
     setAvailable(null);
 
-    getTransferWallets(account.exchange)
+    getTransferWallets(accountExchange)
       .then(setWallets)
       .catch(() => {
         setWallets([]);
         toast.error(t('errors.loadWalletsFailed'));
       });
-  }, [open, account, t]);
+  }, [open, accountId, accountExchange, t]);
 
   // Whenever the "from" wallet or asset changes, look up the available balance.
   useEffect(() => {
@@ -170,10 +181,10 @@ export function TransferForm({
                 value={from}
                 onValueChange={(value) => setFrom(value as AccountWalletType)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder={t('fields.selectWallet')} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent container={false}>
                   {fromOptions.map((w) => (
                     <SelectItem key={w} value={w}>
                       {t(WALLET_LABEL_KEY[w])}
@@ -188,10 +199,10 @@ export function TransferForm({
                 value={to}
                 onValueChange={(value) => setTo(value as AccountWalletType)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder={t('fields.selectWallet')} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent container={false}>
                   {toOptions.map((w) => (
                     <SelectItem key={w} value={w}>
                       {t(WALLET_LABEL_KEY[w])}
@@ -205,6 +216,8 @@ export function TransferForm({
           <div className="space-y-2">
             <Label>{t('fields.asset')}</Label>
             <Input
+              id="transfer-asset"
+              autoComplete="off"
               placeholder={t('fields.assetPlaceholder')}
               value={asset}
               onChange={(e) => setAsset(e.target.value.toUpperCase())}
@@ -226,11 +239,12 @@ export function TransferForm({
             </div>
             <div className="flex gap-2">
               <Input
-                type="number"
+                id="transfer-amount"
+                type="text"
                 inputMode="decimal"
                 placeholder="0.00"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
               />
               {available !== null && (
                 <Button

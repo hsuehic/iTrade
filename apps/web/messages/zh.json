@@ -1354,7 +1354,16 @@
   },
   "portfolio": {
     "assets": {
-      "title": "资产"
+      "title": "资产",
+      "table": {
+        "wallet": "钱包"
+      },
+      "wallets": {
+        "FUNDING": "资金账户",
+        "SPOT": "现货账户",
+        "PERPETUAL": "永续合约账户",
+        "TRADING": "交易账户"
+      }
     },
     "balance": {
       "title": "余额"
