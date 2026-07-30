@@ -75,14 +75,14 @@ const formatCurrency = (value: number) => {
     currency: 'USD',
     currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 8,
+    maximumFractionDigits: 2,
   }).format(value);
 };
 
 const formatNumber = (value: number) => {
   return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 8,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 };
 

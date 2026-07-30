@@ -93,7 +93,7 @@ interface PositionsTableProps {
   refreshInterval?: number;
 }
 
-const formatCurrency = (value: string | number) => {
+const formatCurrency = (value: string | number, maxFractionDigits: number = 8) => {
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '$0.00';
 
@@ -102,7 +102,7 @@ const formatCurrency = (value: string | number) => {
     currency: 'USD',
     currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 8,
+    maximumFractionDigits: maxFractionDigits,
   }).format(num);
 };
 
@@ -415,7 +415,7 @@ export function PositionsTable({
         ),
         cell: ({ row }) => (
           <div className="text-right font-medium font-mono tabular-nums">
-            {formatCurrency(row.original.marketValue)}
+            {formatCurrency(row.original.marketValue, 2)}
           </div>
         ),
         sortingFn: (rowA, rowB) =>
@@ -453,7 +453,7 @@ export function PositionsTable({
             >
               <div className="font-medium">
                 {isPositive ? '+' : ''}
-                {formatCurrency(pnl)}
+                {formatCurrency(pnl, 2)}
               </div>
               <div className="text-xs opacity-80">{formatPercentage(pnlPct)}</div>
             </div>
@@ -800,7 +800,7 @@ export function PositionsTable({
               )}
             >
               {t('stats.totalPnl')}: {isPnlPositive ? '+' : ''}
-              {formatCurrency(totalPnl)}
+              {formatCurrency(totalPnl, 2)}
             </span>
           </div>
         </div>
