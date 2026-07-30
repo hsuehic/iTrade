@@ -359,7 +359,12 @@
   "accounts": {
     "title": "Accounts",
     "manageTitle": "Manage Exchange Accounts",
-    "manageDescription": "Connect your exchange accounts (Binance, OKX, Coinbase) to enable trading.",
+    "manageDescription": "Connect your exchange accounts (Binance, OKX, Coinbase) to enable trading. Restrict each API key with IP whitelisting before saving credentials.",
+    "ipWhitelist": {
+      "title": "Secure your API keys with IP whitelisting",
+      "description": "When creating an API key on your exchange, enable IP whitelist restrictions and add the iTrade server IP <ip>{serverIp}</ip> to the allowed list. This limits API access to our servers only—helping protect your account even if credentials are exposed.",
+      "modalDescription": "Before entering credentials, enable IP whitelist on your exchange API key and add <ip>{serverIp}</ip> to the allowed list."
+    },
     "list": {
       "title": "Exchange Accounts",
       "add": "Add Account",

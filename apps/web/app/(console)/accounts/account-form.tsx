@@ -32,6 +32,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
+import { ApiKeyIpWhitelistNotice } from '@/components/accounts/api-key-ip-whitelist-notice';
 import { saveAccount } from '@/app/actions/accounts';
 import {
   SupportedExchange,
@@ -94,11 +95,12 @@ export function AccountForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{initialData ? t('titleEdit') : t('titleAdd')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
+        {!initialData ? <ApiKeyIpWhitelistNotice variant="modal" /> : null}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField

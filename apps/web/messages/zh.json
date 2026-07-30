@@ -359,7 +359,12 @@
   "accounts": {
     "title": "账户",
     "manageTitle": "管理交易所账户",
-    "manageDescription": "连接交易所账户（Binance、OKX、Coinbase）以启用交易。",
+    "manageDescription": "连接交易所账户（Binance、OKX、Coinbase）以启用交易。保存凭证前，请为 API Key 开启 IP 白名单限制。",
+    "ipWhitelist": {
+      "title": "使用 IP 白名单保护 API Key",
+      "description": "在交易所创建 API Key 时，请开启 IP 白名单限制，并将 iTrade 服务器 IP <ip>{serverIp}</ip> 加入允许列表。这样 API 仅允许我们的服务器访问，即使凭证泄露也能降低账户风险。",
+      "modalDescription": "填写凭证前，请先在交易所为 API Key 开启 IP 白名单，并将 <ip>{serverIp}</ip> 加入允许列表。"
+    },
     "list": {
       "title": "交易所账户",
       "add": "添加账户",

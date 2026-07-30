@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { ApiKeyIpWhitelistNotice } from '@/components/accounts/api-key-ip-whitelist-notice';
 import { AccountList } from './account-list';
 import { getAccounts } from '@/app/actions/accounts';
 import {
@@ -42,7 +43,8 @@ export default async function AccountsPage() {
             <CardTitle>{t('manageTitle')}</CardTitle>
             <CardDescription>{t('manageDescription')}</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <ApiKeyIpWhitelistNotice />
             <AccountList initialAccounts={accounts} />
           </CardContent>
         </Card>
