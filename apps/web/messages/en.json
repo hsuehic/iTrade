@@ -433,6 +433,12 @@
       "titleAdd": "Add Account",
       "titleEdit": "Edit Account",
       "description": "Enter your exchange API credentials. They will be encrypted securely.",
+      "apiKeyGuides": {
+        "title": "How to create an API key on {exchange}",
+        "webLink": "Web: open API management",
+        "mobileLink": "Mobile app: official instructions",
+        "mobileLinkCoinbase": "Official setup guide (web portal)"
+      },
       "fields": {
         "exchange": "Exchange",
         "exchangePlaceholder": "Select exchange",

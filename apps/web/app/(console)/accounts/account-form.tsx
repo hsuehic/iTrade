@@ -33,6 +33,7 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 import { ApiKeyIpWhitelistNotice } from '@/components/accounts/api-key-ip-whitelist-notice';
+import { ExchangeApiKeyGuideLinks } from '@/components/accounts/exchange-api-key-guide-links';
 import { saveAccount } from '@/app/actions/accounts';
 import {
   SupportedExchange,
@@ -77,6 +78,7 @@ export function AccountForm({
   const form = useForm<AccountFormValues>({
     defaultValues: initialData ? { ...defaultValues, ...initialData } : defaultValues,
   });
+  const selectedExchange = form.watch('exchange');
 
   async function onSubmit(data: AccountFormValues) {
     try {
@@ -127,6 +129,9 @@ export function AccountForm({
                 </FormItem>
               )}
             />
+            {!initialData && selectedExchange ? (
+              <ExchangeApiKeyGuideLinks exchange={selectedExchange} />
+            ) : null}
             <FormField
               control={form.control}
               name="accountId"

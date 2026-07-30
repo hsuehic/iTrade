@@ -433,6 +433,12 @@
       "titleAdd": "添加账户",
       "titleEdit": "编辑账户",
       "description": "请输入交易所 API 凭证，我们会进行安全加密。",
+      "apiKeyGuides": {
+        "title": "如何在 {exchange} 创建 API Key",
+        "webLink": "网页版：打开 API 管理",
+        "mobileLink": "手机 App：官方说明",
+        "mobileLinkCoinbase": "官方设置指南（网页门户）"
+      },
       "fields": {
         "exchange": "交易所",
         "exchangePlaceholder": "选择交易所",
