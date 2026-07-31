@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 
+import {
+  analyticsCacheKey,
+  getAnalyticsCached,
+  setAnalyticsCached,
+} from '@/lib/analytics-cache';
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 
@@ -19,6 +24,23 @@ interface SymbolGroup {
   activeCount: number;
 }
 
+interface StrategiesResponse {
+  summary: {
+    total: number;
+    active: number;
+    inactive: number;
+    totalPnl: number;
+    totalRealizedPnl: number;
+    totalOrders: number;
+    totalFilledOrders: number;
+    avgFillRate: string;
+  };
+  topPerformers: unknown[];
+  byExchange: ExchangeGroup[];
+  bySymbol: SymbolGroup[];
+  allStrategies: unknown[];
+}
+
 /**
  * GET /api/analytics/strategies - 获取策略分析数据
  */
@@ -32,44 +54,50 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '10');
 
+    const cacheKey = analyticsCacheKey('strategies', session.user.id, {
+      limit: String(limit),
+    });
+    const cached = getAnalyticsCached<StrategiesResponse>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
     const dm = await getDataManager();
     const strategyRepo = dm.getStrategyRepository();
 
-    // Get all strategies with performance data
-    const strategies = await strategyRepo.findAll({ userId: session.user.id });
+    // Fetch strategy metadata and PnL in two queries (not N+1 per strategy)
+    const [strategies, overallPnl] = await Promise.all([
+      strategyRepo.findAll({ userId: session.user.id }),
+      dm.getOverallPnL(session.user.id),
+    ]);
 
-    // Calculate performance for each strategy
-    const strategyStats = await Promise.all(
-      strategies.map(async (strategy) => {
-        const pnl = await dm.getStrategyPnL(strategy.id);
+    const pnlByStrategyId = new Map(overallPnl.strategies.map((s) => [s.strategyId, s]));
 
-        return {
-          id: strategy.id,
-          name: strategy.name,
-          symbol: strategy.symbol,
-          normalizedSymbol: strategy.normalizedSymbol,
-          exchange: strategy.exchange,
-          status: strategy.status,
-          type: strategy.type,
-          marketType: strategy.marketType,
-          totalPnl: pnl.totalPnl || 0,
-          realizedPnl: pnl.realizedPnl || 0,
-          unrealizedPnl: pnl.unrealizedPnl || 0,
-          totalOrders: pnl.totalOrders || 0,
-          filledOrders: pnl.filledOrders || 0,
-          fillRate:
-            pnl.totalOrders > 0
-              ? ((pnl.filledOrders / pnl.totalOrders) * 100).toFixed(2)
-              : '0.00',
-          // TODO: Add initialCapital field to StrategyEntity to calculate ROI
-          // roi: strategy.initialCapital && strategy.initialCapital > 0
-          //   ? ((pnl.totalPnl / strategy.initialCapital) * 100).toFixed(2)
-          //   : '0.00',
-          createdAt: strategy.createdAt,
-          updatedAt: strategy.updatedAt,
-        };
-      }),
-    );
+    const strategyStats = strategies.map((strategy) => {
+      const pnl = pnlByStrategyId.get(strategy.id);
+      const totalOrders = pnl?.totalOrders ?? 0;
+      const filledOrders = pnl?.filledOrders ?? 0;
+
+      return {
+        id: strategy.id,
+        name: strategy.name,
+        symbol: strategy.symbol,
+        normalizedSymbol: strategy.normalizedSymbol,
+        exchange: strategy.exchange,
+        status: strategy.status,
+        type: strategy.type,
+        marketType: strategy.marketType,
+        totalPnl: pnl?.pnl ?? 0,
+        realizedPnl: pnl?.realizedPnl ?? 0,
+        unrealizedPnl: pnl?.unrealizedPnl ?? 0,
+        totalOrders,
+        filledOrders,
+        fillRate:
+          totalOrders > 0 ? ((filledOrders / totalOrders) * 100).toFixed(2) : '0.00',
+        createdAt: strategy.createdAt,
+        updatedAt: strategy.updatedAt,
+      };
+    });
 
     // Sort by PnL
     const topPerformers = [...strategyStats]
@@ -81,6 +109,8 @@ export async function GET(request: Request) {
     const totalPnl = strategyStats.reduce((sum, s) => sum + s.totalPnl, 0);
     const totalOrders = strategyStats.reduce((sum, s) => sum + s.totalOrders, 0);
     const totalFilledOrders = strategyStats.reduce((sum, s) => sum + s.filledOrders, 0);
+
+    const totalRealizedPnl = strategyStats.reduce((sum, s) => sum + s.realizedPnl, 0);
 
     // Group by exchange
     const byExchange = strategyStats.reduce((acc: Record<string, ExchangeGroup>, s) => {
@@ -122,12 +152,13 @@ export async function GET(request: Request) {
       return acc;
     }, {});
 
-    return NextResponse.json({
+    const response: StrategiesResponse = {
       summary: {
         total: strategyStats.length,
         active: activeStrategies,
         inactive: strategyStats.length - activeStrategies,
         totalPnl,
+        totalRealizedPnl,
         totalOrders,
         totalFilledOrders,
         avgFillRate:
@@ -141,7 +172,10 @@ export async function GET(request: Request) {
         (a: SymbolGroup, b: SymbolGroup) => b.totalPnl - a.totalPnl,
       ),
       allStrategies: strategyStats,
-    });
+    };
+
+    setAnalyticsCached(cacheKey, response);
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Strategy analytics error:', error);
     return NextResponse.json(

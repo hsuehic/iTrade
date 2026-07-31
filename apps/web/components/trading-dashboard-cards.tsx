@@ -46,15 +46,12 @@ interface BalanceChangeData {
   period: string;
 }
 
-interface StrategyData {
-  realizedPnl?: number;
-}
-
 interface StrategySummary {
   total: number;
   active: number;
   inactive: number;
   totalPnl: number;
+  totalRealizedPnl?: number;
   totalOrders: number;
   totalFilledOrders: number;
   avgFillRate: string;
@@ -94,22 +91,12 @@ export function TradingDashboardCards({
 
         if (accountRes.ok) {
           const accountJson = await accountRes.json();
-          let accountSummary = accountJson.summary;
+          const accountSummary = accountJson.summary;
 
-          // Get realized PnL from strategies
           if (strategyRes.ok) {
             const strategyJson = await strategyRes.json();
             setStrategyData(strategyJson.summary);
-
-            // Calculate total realized PnL from all strategies
-            const totalRealizedPnl =
-              strategyJson.allStrategies?.reduce(
-                (sum: number, strategy: StrategyData) =>
-                  sum + (strategy.realizedPnl || 0),
-                0,
-              ) || 0;
-
-            accountSummary.totalRealizedPnl = totalRealizedPnl;
+            accountSummary.totalRealizedPnl = strategyJson.summary?.totalRealizedPnl ?? 0;
           }
 
           setAccountData(accountSummary);

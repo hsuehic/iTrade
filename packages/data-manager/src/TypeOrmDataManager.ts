@@ -1406,6 +1406,8 @@ export class TypeOrmDataManager implements IDataManager {
       pnl: number;
       realizedPnl: number;
       unrealizedPnl: number;
+      totalOrders: number;
+      filledOrders: number;
     }>;
   }> {
     this.ensureInitialized();

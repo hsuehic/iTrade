@@ -21,6 +21,7 @@ import type { OrderFillEntity } from './OrderFill';
 @Index(['symbol'])
 @Index(['status'])
 @Index(['strategyId'])
+@Index(['strategyId', 'timestamp'])
 @Index(['exchange'])
 @Index(['userId'])
 export class OrderEntity implements Order {

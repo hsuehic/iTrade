@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 
+import {
+  analyticsCacheKey,
+  getAnalyticsCached,
+  setAnalyticsCached,
+} from '@/lib/analytics-cache';
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 
@@ -95,6 +100,18 @@ export async function GET(request: Request) {
     // Arbitrary time-window parameters (take priority over period/align).
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
+
+    const cacheKey = analyticsCacheKey('account', userId, {
+      exchange,
+      period,
+      align,
+      startDate: startDateParam ?? '',
+      endDate: endDateParam ?? '',
+    });
+    const cached = getAnalyticsCached<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
 
     const dm = await getDataManager();
 
@@ -511,7 +528,7 @@ export async function GET(request: Request) {
       ? `${startDateParam}${endDateParam ? ` to ${endDateParam}` : '+'}`
       : period;
 
-    return NextResponse.json({
+    const response = {
       summary: {
         totalBalance,
         totalPositionValue,
@@ -526,7 +543,10 @@ export async function GET(request: Request) {
       exchanges: exchangeData,
       chartData: chartDataArray,
       timestamp: new Date(),
-    });
+    };
+
+    setAnalyticsCached(cacheKey, response);
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Account analytics error:', error);
     return NextResponse.json(
