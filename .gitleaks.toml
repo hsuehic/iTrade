@@ -82,6 +82,25 @@ secretGroup = 2
   ]
 
 [[rules]]
+# Override default gcp-api-key rule: Firebase client API keys (AIza...)
+# in mobile app config are public identifiers by design, not secrets.
+# Access control is enforced via API key restrictions in Google Cloud
+# Console (package name / bundle ID / SHA-1), not by key secrecy.
+id = "gcp-api-key"
+description = "GCP API Key"
+regex = '''(?i)\b(AIza[\w-]{35})(?:['|\"|\n|\r|\s|\x60|;]|$)'''
+entropy = 3
+keywords = ["aiza"]
+
+  [rules.allowlist]
+  description = "Firebase client config files (public client API keys)"
+  paths = [
+    '''firebase_options\.dart''',
+    '''google-services(\.back)?\.json''',
+    '''GoogleService-Info\.plist''',
+  ]
+
+[[rules]]
 id = "jwt"
 description = "JWT Token"
 regex = '''eyJ[A-Za-z0-9+/]{20,}\.eyJ[A-Za-z0-9+/]{20,}\.[A-Za-z0-9+/._-]{10,}'''

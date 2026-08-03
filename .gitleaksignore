@@ -1,0 +1,16 @@
+# =============================================================
+# Gitleaks fingerprint ignore list
+# =============================================================
+# Format: <commit>:<file>:<rule-id>:<line>
+# These are historical findings that have been reviewed and
+# confirmed as false positives / accepted risks.
+#
+# Firebase client API keys (AIza...) are public identifiers
+# shipped inside the mobile app binary — not secrets. Access is
+# restricted via API key restrictions in Google Cloud Console.
+# =============================================================
+
+dd8a71adbab8a9b1d1f5ae8cd6f466d6ea12dde0:apps/mobile/lib/firebase_options.dart:gcp-api-key:53
+dd8a71adbab8a9b1d1f5ae8cd6f466d6ea12dde0:apps/mobile/lib/firebase_options.dart:gcp-api-key:61
+9c5a825e6433040952e2d26e2e78fbcb976ca9ba:apps/mobile/android/app/google-services.back.json:gcp-api-key:18
+9c5a825e6433040952e2d26e2e78fbcb976ca9ba:apps/mobile/android/app/google-services.json:gcp-api-key:31
