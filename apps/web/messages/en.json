@@ -405,7 +405,8 @@
         "funding": "Funding",
         "spot": "Spot",
         "perpetual": "Perpetual",
-        "trading": "Trading (Spot & Perpetual)"
+        "trading": "Trading (Spot & Perpetual)",
+        "earn": "Earn"
       },
       "fields": {
         "from": "From",
@@ -1373,7 +1374,8 @@
         "FUNDING": "Funding",
         "SPOT": "Spot",
         "PERPETUAL": "Perpetual",
-        "TRADING": "Trading"
+        "TRADING": "Trading",
+        "EARN": "Earn"
       }
     },
     "balance": {

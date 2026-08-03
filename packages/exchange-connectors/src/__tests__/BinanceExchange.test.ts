@@ -356,3 +356,122 @@ describe('BinanceExchange transferFunds', () => {
     expect(postSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('BinanceExchange Simple Earn (EARN wallet)', () => {
+  let exchange: BinanceExchange;
+  let getSpy: any;
+
+  beforeEach(() => {
+    exchange = new BinanceExchange(false);
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+    };
+
+    getSpy = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('simple-earn/flexible/position')) {
+        return Promise.resolve({
+          data: {
+            total: 2,
+            rows: [
+              { asset: 'USDT', totalAmount: '1000.5' },
+              { asset: 'BTC', totalAmount: '0.25' },
+            ],
+          },
+        });
+      }
+      if (url.includes('simple-earn/locked/position')) {
+        return Promise.resolve({
+          data: {
+            total: 1,
+            rows: [{ asset: 'USDT', amount: '200' }],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    (exchange as any).httpClient.get = getSpy;
+  });
+
+  it('merges flexible (free) and locked positions into EARN balances', async () => {
+    const balances = await exchange.getWalletBalances(AccountWalletType.EARN);
+
+    expect(getSpy).toHaveBeenCalledWith(
+      '/sapi/v1/simple-earn/flexible/position',
+      expect.objectContaining({
+        params: expect.objectContaining({ current: 1, size: 100 }),
+      }),
+    );
+    expect(getSpy).toHaveBeenCalledWith(
+      '/sapi/v1/simple-earn/locked/position',
+      expect.objectContaining({
+        params: expect.objectContaining({ current: 1, size: 100 }),
+      }),
+    );
+
+    const usdt = balances.find((b) => b.asset === 'USDT');
+    expect(usdt?.free.toString()).toBe('1000.5');
+    expect(usdt?.locked.toString()).toBe('200');
+    expect(usdt?.total.toString()).toBe('1200.5');
+    expect(usdt?.saving?.toString()).toBe('1200.5');
+
+    const btc = balances.find((b) => b.asset === 'BTC');
+    expect(btc?.free.toString()).toBe('0.25');
+    expect(btc?.locked.toString()).toBe('0');
+    expect(btc?.total.toString()).toBe('0.25');
+  });
+
+  it('follows pagination when a full page is returned', async () => {
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      asset: `TOKEN${i}`,
+      totalAmount: '1',
+    }));
+
+    getSpy.mockImplementation((url: string, config: any) => {
+      if (url.includes('simple-earn/flexible/position')) {
+        return Promise.resolve({
+          data: { rows: config.params.current === 1 ? fullPage : [] },
+        });
+      }
+      return Promise.resolve({ data: { rows: [] } });
+    });
+
+    const balances = await exchange.getWalletBalances(AccountWalletType.EARN);
+
+    const flexibleCalls = getSpy.mock.calls.filter(([url]: [string]) =>
+      url.includes('flexible/position'),
+    );
+    expect(flexibleCalls).toHaveLength(2);
+    expect(balances).toHaveLength(100);
+  });
+
+  it('still returns locked positions when the flexible endpoint fails', async () => {
+    getSpy.mockImplementation((url: string) => {
+      if (url.includes('flexible/position')) {
+        return Promise.reject(new Error('flexible endpoint down'));
+      }
+      return Promise.resolve({
+        data: { rows: [{ asset: 'ETH', amount: '2' }] },
+      });
+    });
+
+    const balances = await exchange.getWalletBalances(AccountWalletType.EARN);
+
+    expect(balances).toHaveLength(1);
+    expect(balances[0].asset).toBe('ETH');
+    expect(balances[0].locked.toString()).toBe('2');
+  });
+
+  it('throws when both Simple Earn endpoints fail', async () => {
+    getSpy.mockRejectedValue(new Error('unauthorized'));
+
+    await expect(exchange.getWalletBalances(AccountWalletType.EARN)).rejects.toThrow(
+      'unauthorized',
+    );
+  });
+
+  it('keeps EARN out of the transferable wallet list', () => {
+    expect(exchange.getSupportedTransferWallets()).not.toContain(AccountWalletType.EARN);
+  });
+});

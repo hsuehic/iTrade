@@ -114,3 +114,60 @@ describe('OKXExchange transferFunds', () => {
     expect(postSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('OKXExchange Simple Earn (EARN wallet)', () => {
+  let exchange: OKXExchange;
+  let getSpy: any;
+
+  beforeEach(() => {
+    exchange = new OKXExchange(false);
+
+    (exchange as any).credentials = {
+      apiKey: 'test-api-key',
+      secretKey: 'test-secret-key',
+      passphrase: 'test-passphrase',
+    };
+
+    getSpy = vi.fn().mockResolvedValue({
+      data: {
+        code: '0',
+        msg: '',
+        data: [
+          { ccy: 'USDT', amt: '500.25', earnings: '1.2' },
+          { ccy: 'ETH', amt: '3', earnings: '0.01' },
+        ],
+      },
+    });
+
+    (exchange as any).httpClient.get = getSpy;
+  });
+
+  it('maps savings balances to EARN wallet balances', async () => {
+    const balances = await exchange.getWalletBalances(AccountWalletType.EARN);
+
+    expect(getSpy).toHaveBeenCalledTimes(1);
+    const endpoint = getSpy.mock.calls[0][0];
+    expect(endpoint).toContain('/api/v5/finance/savings/balance');
+
+    expect(balances).toHaveLength(2);
+    const usdt = balances.find((b) => b.asset === 'USDT');
+    expect(usdt?.free.toString()).toBe('500.25');
+    expect(usdt?.locked.toString()).toBe('0');
+    expect(usdt?.total.toString()).toBe('500.25');
+    expect(usdt?.saving?.toString()).toBe('500.25');
+  });
+
+  it('throws on an OKX API error response', async () => {
+    getSpy.mockResolvedValue({
+      data: { code: '50110', msg: 'IP not whitelisted', data: [] },
+    });
+
+    await expect(exchange.getWalletBalances(AccountWalletType.EARN)).rejects.toThrow(
+      'OKX API error: IP not whitelisted',
+    );
+  });
+
+  it('keeps EARN out of the transferable wallet list', () => {
+    expect(exchange.getSupportedTransferWallets()).not.toContain(AccountWalletType.EARN);
+  });
+});

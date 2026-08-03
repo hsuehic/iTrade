@@ -52,6 +52,9 @@ const WALLET_LABEL_KEY: Record<AccountWalletType, string> = {
   [AccountWalletType.SPOT]: 'wallets.spot',
   [AccountWalletType.PERPETUAL]: 'wallets.perpetual',
   [AccountWalletType.TRADING]: 'wallets.trading',
+  // EARN is read-only (never in getSupportedTransferWallets), listed only to
+  // keep this Record exhaustive over the enum.
+  [AccountWalletType.EARN]: 'wallets.earn',
 };
 
 export function TransferForm({

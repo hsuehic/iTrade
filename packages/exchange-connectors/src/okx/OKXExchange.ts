@@ -628,6 +628,37 @@ export class OKXExchange extends BaseExchange {
     }));
   }
 
+  // 🆕 Simple Earn (savings) balances — flexible and fixed products. `amt` is
+  // the principal currently deployed in the product. Reported as `free`
+  // because flexible savings can be redeemed at any time.
+  private async fetchSavingsBalances(): Promise<Balance[]> {
+    const earnBalanceSigned = this.signOKXRequest(
+      'GET',
+      '/api/v5/finance/savings/balance',
+      {
+        ccy: '', // Fetch all
+      },
+    );
+    const earnBalanceResponse = await this.httpClient.get(earnBalanceSigned.endpoint, {
+      headers: earnBalanceSigned.headers,
+    });
+
+    if (earnBalanceResponse.data.code !== '0') {
+      throw new Error(`OKX API error: ${earnBalanceResponse.data.msg}`);
+    }
+
+    return (earnBalanceResponse.data.data || []).map((detail: any) => {
+      const amount = this.formatDecimal(detail.amt ?? '0');
+      return {
+        asset: detail.ccy,
+        free: amount,
+        locked: new Decimal(0),
+        saving: amount,
+        total: amount,
+      };
+    });
+  }
+
   public async getAccountInfo(): Promise<AccountInfo> {
     // 1. Get Trading Account Balance
     const { balancesMap, updateTime, tradingData } =
@@ -659,41 +690,26 @@ export class OKXExchange extends BaseExchange {
 
     // 3. Get Simple Earn Balance
     try {
-      // Get all simple earn balances (flexible and fixed)
-      const earnBalanceSigned = this.signOKXRequest(
-        'GET',
-        '/api/v5/finance/savings/balance',
-        {
-          ccy: '', // Fetch all
-        },
-      );
-      const earnBalanceResponse = await this.httpClient.get(earnBalanceSigned.endpoint, {
-        headers: earnBalanceSigned.headers,
+      const earnBalances = await this.fetchSavingsBalances();
+      earnBalances.forEach((detail) => {
+        const asset = detail.asset;
+        const amount = detail.total;
+
+        if (balancesMap.has(asset)) {
+          const existing = balancesMap.get(asset)!;
+          // Add to saving and total
+          existing.saving = (existing.saving || new Decimal(0)).add(amount);
+          existing.total = existing.total.add(amount);
+        } else {
+          balancesMap.set(asset, {
+            asset,
+            free: new Decimal(0),
+            locked: new Decimal(0),
+            saving: amount,
+            total: amount,
+          });
+        }
       });
-
-      if (earnBalanceResponse.data.code === '0') {
-        const earnData = earnBalanceResponse.data.data;
-        earnData.forEach((detail: any) => {
-          const asset = detail.ccy;
-          // For Simple Earn, "amt" is the principal amount
-          const amount = this.formatDecimal(detail.amt);
-
-          if (balancesMap.has(asset)) {
-            const existing = balancesMap.get(asset)!;
-            // Add to saving and total
-            existing.saving = (existing.saving || new Decimal(0)).add(amount);
-            existing.total = existing.total.add(amount);
-          } else {
-            balancesMap.set(asset, {
-              asset,
-              free: new Decimal(0),
-              locked: new Decimal(0),
-              saving: amount,
-              total: amount,
-            });
-          }
-        });
-      }
     } catch {
       // ignore
     }
@@ -868,6 +884,9 @@ export class OKXExchange extends BaseExchange {
       walletType === AccountWalletType.PERPETUAL
     ) {
       return this.getTradingBalances();
+    }
+    if (walletType === AccountWalletType.EARN) {
+      return this.fetchSavingsBalances();
     }
     throw new Error(`OKX does not support the "${walletType}" wallet`);
   }

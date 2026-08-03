@@ -1,5 +1,7 @@
 # iTrade
 
+Website: [https://xtrde.com](https://xtrde.com)
+
 Intelligent and Strategic Trading Platform for Everyone.
 
 iTrade is for study, research purpose only. Don't risk your real assets. Use iTrade at your own risk.
@@ -91,10 +93,10 @@ const logger = new ConsoleLogger(LogLevel.INFO);
 
 // Create risk manager with custom limits
 const riskManager = new RiskManager({
-  maxDrawdown: new Decimal(20),        // 20% max drawdown
-  maxPositionSize: new Decimal(10),    // 10% max position size
-  maxDailyLoss: new Decimal(5),        // 5% max daily loss
-  maxLeverage: new Decimal(1),         // 1:1 leverage (no leverage)
+  maxDrawdown: new Decimal(20), // 20% max drawdown
+  maxPositionSize: new Decimal(10), // 10% max position size
+  maxDailyLoss: new Decimal(5), // 5% max daily loss
+  maxLeverage: new Decimal(1), // 1:1 leverage (no leverage)
 });
 
 // Create portfolio manager with initial balance
@@ -112,7 +114,7 @@ import { MovingAverageStrategy } from '@itrade/strategies';
 const strategy = new MovingAverageStrategy({
   fastPeriod: 10,
   slowPeriod: 30,
-  threshold: 0.001,  // 0.1% minimum crossover threshold
+  threshold: 0.001, // 0.1% minimum crossover threshold
 });
 
 engine.addStrategy('ma-strategy', strategy);
@@ -177,7 +179,7 @@ import { Decimal } from 'decimal.js';
 async function main() {
   // Initialize logger
   const logger = new ConsoleLogger(LogLevel.INFO);
-  
+
   // Initialize database
   const dataManager = new TypeOrmDataManager({
     type: 'postgres',
@@ -190,7 +192,7 @@ async function main() {
   });
   await dataManager.initialize();
   logger.info('✅ Database connected');
-  
+
   // Initialize components
   const riskManager = new RiskManager({
     maxDrawdown: new Decimal(20),
@@ -198,17 +200,17 @@ async function main() {
     maxDailyLoss: new Decimal(5),
   });
   const portfolioManager = new PortfolioManager(new Decimal(10000));
-  
+
   // Create engine
   const engine = new TradingEngine(riskManager, portfolioManager, logger);
-  
+
   // Add strategy with subscription config
   const strategy = new MovingAverageStrategy({
     symbol: 'BTC/USDT',
     exchange: 'binance',
     fastPeriod: 10,
     slowPeriod: 30,
-    threshold: 0.001,  // 0.1% minimum crossover threshold
+    threshold: 0.001, // 0.1% minimum crossover threshold
     subscription: {
       ticker: true,
       klines: true,
@@ -216,7 +218,7 @@ async function main() {
     },
   });
   engine.addStrategy('ma-strategy', strategy);
-  
+
   // Add exchange (use testnet)
   const binance = new BinanceExchange(true);
   await binance.connect({
@@ -225,12 +227,12 @@ async function main() {
     sandbox: true,
   });
   engine.addExchange('binance', binance);
-  
+
   // Start trading
   await engine.start();
-  
+
   logger.info('✅ Trading system is running...');
-  
+
   // Graceful shutdown
   process.on('SIGINT', async () => {
     logger.info('Shutting down...');
@@ -421,7 +423,11 @@ this.logger.debug(`Current price: ${currentPrice.toString()}`);
 Implement the `IExchange` interface by extending `BaseExchange` (refer to `BinanceExchange` or `CoinbaseExchange` implementation):
 
 ```typescript
-import { BaseExchange, ExchangeCredentials, ExchangeInfo } from '@itrade/exchange-connectors';
+import {
+  BaseExchange,
+  ExchangeCredentials,
+  ExchangeInfo,
+} from '@itrade/exchange-connectors';
 
 export class CustomExchange extends BaseExchange {
   async connect(credentials: ExchangeCredentials): Promise<void> {
@@ -466,7 +472,7 @@ const strategy = new MovingAverageStrategy({
   exchange: 'binance',
   fastPeriod: 10,
   slowPeriod: 30,
-  threshold: 0.001,  // 0.1% minimum crossover threshold
+  threshold: 0.001, // 0.1% minimum crossover threshold
 });
 
 // Configure backtest

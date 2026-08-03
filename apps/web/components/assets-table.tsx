@@ -237,14 +237,16 @@ export function AssetsTable({
         upper === 'FUNDING' ||
         upper === 'SPOT' ||
         upper === 'PERPETUAL' ||
-        upper === 'TRADING'
+        upper === 'TRADING' ||
+        upper === 'EARN'
       ) {
         return t(
           `wallets.${upper}` as
             | 'wallets.FUNDING'
             | 'wallets.SPOT'
             | 'wallets.PERPETUAL'
-            | 'wallets.TRADING',
+            | 'wallets.TRADING'
+            | 'wallets.EARN',
         );
       }
       return wallet;

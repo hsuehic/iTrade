@@ -14,6 +14,7 @@ import {
   Trade,
   Kline,
   AccountInfo,
+  AccountWalletType,
   Balance,
   Position,
   ExchangeInfo,
@@ -411,22 +412,46 @@ export class CoinbaseExchange extends BaseExchange {
     return orders.map((o: any) => this.transformOrder(o));
   }
 
+  // 🆕 Fetch ALL brokerage accounts with cursor pagination. The default page
+  // size is only 49, so accounts with many currencies (e.g. dust from Earn or
+  // rewards) would silently miss assets without following the cursor.
+  private async fetchAllBrokerageAccounts(): Promise<any[]> {
+    const accounts: any[] = [];
+    let cursor: string | undefined;
+
+    for (let page = 0; page < 20; page++) {
+      const params: any = { limit: 250 };
+      if (cursor) params.cursor = cursor;
+
+      const resp = await this.httpClient.get('/api/v3/brokerage/accounts', { params });
+      accounts.push(...(resp.data?.accounts || []));
+
+      if (!resp.data?.has_next || !resp.data?.cursor) break;
+      cursor = resp.data.cursor;
+    }
+
+    return accounts;
+  }
+
+  private mapBrokerageAccountToBalance(a: any): Balance {
+    const asset = a.currency || a.asset || a.uuid || 'USD';
+    const available = a.available_balance?.value || '0';
+    const hold = a.hold?.value || a.hold || '0';
+    const free = this.formatDecimal(available);
+    const locked = this.formatDecimal(hold);
+    return {
+      asset,
+      free,
+      locked,
+      total: free.add(locked),
+    };
+  }
+
   public async getAccountInfo(): Promise<AccountInfo> {
-    const resp = await this.httpClient.get('/api/v3/brokerage/accounts');
-    const accounts = resp.data?.accounts || [];
-    const balances: Balance[] = accounts.map((a: any) => {
-      const asset = a.currency || a.asset || a.uuid || 'USD';
-      const available = a.available_balance?.value || '0';
-      const hold = a.hold?.value || a.hold || '0';
-      const free = this.formatDecimal(available);
-      const locked = this.formatDecimal(hold);
-      return {
-        asset,
-        free,
-        locked,
-        total: free.add(locked),
-      };
-    });
+    const accounts = await this.fetchAllBrokerageAccounts();
+    const balances: Balance[] = accounts.map((a: any) =>
+      this.mapBrokerageAccountToBalance(a),
+    );
     return {
       balances,
       canTrade: true,
@@ -434,6 +459,27 @@ export class CoinbaseExchange extends BaseExchange {
       canDeposit: true,
       updateTime: new Date(),
     };
+  }
+
+  // 🆕 Per-wallet balance lookup so the portfolio assets page can show a live
+  // breakdown for Coinbase too (SPOT = retail brokerage accounts, PERPETUAL =
+  // INTX portfolios). Coinbase has no transfer API in this codebase, so these
+  // wallets are read-only — getSupportedTransferWallets stays unimplemented.
+  public async getWalletBalances(walletType: AccountWalletType): Promise<Balance[]> {
+    switch (walletType) {
+      case AccountWalletType.SPOT: {
+        const accounts = await this.fetchAllBrokerageAccounts();
+        // Exclude INTX platform accounts — those are reported by the
+        // PERPETUAL wallet via the INTX portfolio summary instead.
+        return accounts
+          .filter((a: any) => a.platform !== 'ACCOUNT_PLATFORM_INTX')
+          .map((a: any) => this.mapBrokerageAccountToBalance(a));
+      }
+      case AccountWalletType.PERPETUAL:
+        return this.getIntxBalances();
+      default:
+        throw new Error(`Coinbase does not support the "${walletType}" wallet`);
+    }
   }
 
   public async getTransfers(

@@ -2,7 +2,26 @@ import { AccountWalletType, IExchange } from '@itrade/core';
 import { AccountInfoEntity } from '@itrade/data-manager';
 
 import { createExchangeConnection } from './order-execution-service';
-import { getSupportedTransferWallets } from './transfer-service';
+
+// 🆕 Wallets to query when building the per-wallet asset breakdown for the
+// portfolio assets page. This is intentionally a SUPERSET of the transfer
+// wallets in transfer-service.ts: EARN (Simple Earn/savings) holds assets but
+// can never be a transfer source/destination, and Coinbase supports balance
+// lookups (SPOT retail + PERPETUAL INTX) even though it has no transfer API.
+const ASSET_WALLETS: Record<string, AccountWalletType[]> = {
+  binance: [
+    AccountWalletType.FUNDING,
+    AccountWalletType.SPOT,
+    AccountWalletType.PERPETUAL,
+    AccountWalletType.EARN,
+  ],
+  okx: [AccountWalletType.FUNDING, AccountWalletType.TRADING, AccountWalletType.EARN],
+  coinbase: [AccountWalletType.SPOT, AccountWalletType.PERPETUAL],
+};
+
+export function getAssetWallets(exchange: string): AccountWalletType[] {
+  return ASSET_WALLETS[exchange.toLowerCase()] ?? [];
+}
 
 export interface WalletAssetEntry {
   asset: string;
@@ -14,13 +33,13 @@ export interface WalletAssetEntry {
 }
 
 export function supportsWalletBreakdown(exchange: string): boolean {
-  return getSupportedTransferWallets(exchange).length > 0;
+  return getAssetWallets(exchange).length > 0;
 }
 
 export async function fetchWalletAssetsForAccount(
   account: AccountInfoEntity,
 ): Promise<WalletAssetEntry[]> {
-  const supportedWallets = getSupportedTransferWallets(account.exchange);
+  const supportedWallets = getAssetWallets(account.exchange);
   if (supportedWallets.length === 0) return [];
 
   const { exchange: connection } = await createExchangeConnection(account);

@@ -1031,9 +1031,81 @@ export class BinanceExchange extends BaseExchange {
             .add(this.formatDecimal(asset.freeze)),
         }));
       }
+      case AccountWalletType.EARN:
+        return this.getSimpleEarnBalances();
       default:
         throw new Error(`Binance does not support the "${walletType}" wallet`);
     }
+  }
+
+  // 🆕 Simple Earn holdings (flexible + locked products). Flexible positions
+  // are redeemable at any time so they count as `free`; locked positions count
+  // as `locked`. Both endpoints are paginated (max 100 rows per page).
+  private async fetchSimpleEarnPositions(
+    endpoint: string,
+    extractAmount: (row: any) => string,
+  ): Promise<Map<string, Decimal>> {
+    const amounts = new Map<string, Decimal>();
+    const size = 100;
+
+    for (let current = 1; current <= 10; current++) {
+      const params = this.signRequest({ current, size, timestamp: Date.now() });
+      const response = await this.httpClient.get(endpoint, { params });
+      const rows: any[] = response.data?.rows || [];
+
+      for (const row of rows) {
+        const asset = row.asset;
+        if (!asset) continue;
+        const amount = this.formatDecimal(extractAmount(row) || '0');
+        amounts.set(asset, (amounts.get(asset) || new Decimal(0)).add(amount));
+      }
+
+      if (rows.length < size) break;
+    }
+
+    return amounts;
+  }
+
+  public async getSimpleEarnBalances(): Promise<Balance[]> {
+    const [flexibleRes, lockedRes] = await Promise.allSettled([
+      this.fetchSimpleEarnPositions(
+        '/sapi/v1/simple-earn/flexible/position',
+        (row) => row.totalAmount,
+      ),
+      this.fetchSimpleEarnPositions(
+        '/sapi/v1/simple-earn/locked/position',
+        (row) => row.amount,
+      ),
+    ]);
+
+    if (flexibleRes.status === 'rejected' && lockedRes.status === 'rejected') {
+      throw flexibleRes.reason;
+    }
+
+    const flexible =
+      flexibleRes.status === 'fulfilled' ? flexibleRes.value : new Map<string, Decimal>();
+    const locked =
+      lockedRes.status === 'fulfilled' ? lockedRes.value : new Map<string, Decimal>();
+
+    const assets = new Set([...flexible.keys(), ...locked.keys()]);
+    const balances: Balance[] = [];
+
+    for (const asset of assets) {
+      const free = flexible.get(asset) || new Decimal(0);
+      const lockedAmount = locked.get(asset) || new Decimal(0);
+      const total = free.add(lockedAmount);
+      if (total.lessThanOrEqualTo(0)) continue;
+
+      balances.push({
+        asset,
+        free,
+        locked: lockedAmount,
+        saving: total,
+        total,
+      });
+    }
+
+    return balances;
   }
 
   public async transferFunds(params: TransferFundsParams): Promise<TransferFundsResult> {

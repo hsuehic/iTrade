@@ -405,7 +405,8 @@
         "funding": "资金账户",
         "spot": "现货账户",
         "perpetual": "永续合约账户",
-        "trading": "交易账户（现货与合约共用）"
+        "trading": "交易账户（现货与合约共用）",
+        "earn": "理财账户"
       },
       "fields": {
         "from": "从",
@@ -1373,7 +1374,8 @@
         "FUNDING": "资金账户",
         "SPOT": "现货账户",
         "PERPETUAL": "永续合约账户",
-        "TRADING": "交易账户"
+        "TRADING": "交易账户",
+        "EARN": "理财账户"
       }
     },
     "balance": {

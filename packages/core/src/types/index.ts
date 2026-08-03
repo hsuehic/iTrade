@@ -335,6 +335,10 @@ export enum AccountWalletType {
   SPOT = 'SPOT',
   PERPETUAL = 'PERPETUAL',
   TRADING = 'TRADING',
+  // 🆕 Earn/savings products (Binance Simple Earn, OKX Simple Earn savings).
+  // Read-only for balances — never a valid transfer source/destination, so it
+  // must not appear in any getSupportedTransferWallets() result.
+  EARN = 'EARN',
 }
 
 export interface TransferFundsParams {
