@@ -2,7 +2,9 @@
 # iTrade — GitHub Actions CD: Deploy to Google Compute Engine
 # =============================================================
 #
-# Triggers: push to 'main' branch, or manual dispatch
+# Triggers: push to 'main' that touches deploy-relevant paths
+#           (apps/web, apps/console, packages, dependency manifests,
+#           Docker/deploy config), or manual dispatch
 #
 # Strategy (near-zero downtime):
 #   Job 1 — Build Docker images on CI runner → push to GHCR
@@ -30,6 +32,34 @@ on:
   push:
     branches:
       - main
+    # Only deploy when files that affect the built images or the
+    # deployment process itself change. The pipeline ships three
+    # images (web, console, schema-migrator), so triggers must cover
+    # all of their inputs — not just apps/web.
+    paths:
+      # Application source (web + console/schema-migrator images)
+      - 'apps/web/**'
+      - 'apps/console/**'
+      # Shared workspace packages (copied into every image)
+      - 'packages/**'
+      # Dependency manifests (Dockerfile.deps install + deps-image hash)
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      # Build configuration
+      - 'tsconfig.base.json'
+      - 'Dockerfile.deps'
+      - '.dockerignore'
+      # Deployment configuration (downloaded/executed on GCE)
+      - 'docker-compose.prod.yml'
+      - 'deploy/deploy-remote.sh'
+      # This workflow itself
+      - '.github/workflows/deploy.yml'
+      # Exclusions: docs never affect the deployed images
+      # (.dockerignore already strips *.md and docs/ from the build context)
+      - '!**/*.md'
+      - '!**/docs/**'
   workflow_dispatch:
     inputs:
       force_rebuild:
