@@ -82,6 +82,7 @@
     "screen.strategy.search_query": "“{{query}}”",
     "screen.strategy.filled_total": "{{filled}} / {{total}}",
     "screen.strategy.created_at": "创建于 {{date}}",
+    "screen.strategy.updated_at": "更新于 {{date}}",
     "screen.product_detail.websocket_connection_failed_us": "WebSocket 连接失败，已改用轮询。",
     "screen.product_detail.load_failed": "加载数据失败：{{error}}",
     "screen.product_detail.text": "--",

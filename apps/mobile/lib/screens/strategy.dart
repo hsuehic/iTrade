@@ -13,7 +13,7 @@ import 'strategy_detail.dart';
 import 'strategy_create.dart';
 import '../widgets/copy_text.dart';
 
-enum SortBy { name, pnl, createdAt }
+enum SortBy { name, pnl, date }
 
 class StrategyScreen extends StatefulWidget {
   const StrategyScreen({super.key});
@@ -31,8 +31,9 @@ class _StrategyScreenState extends State<StrategyScreen>
   bool _isLoading = true;
   String? _errorMessage;
   String _searchQuery = '';
-  SortBy _sortBy = SortBy.name;
-  bool _sortAscending = true;
+  // Default: most recently created/modified strategies first
+  SortBy _sortBy = SortBy.date;
+  bool _sortAscending = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -101,8 +102,9 @@ class _StrategyScreenState extends State<StrategyScreen>
             final bPnl = _pnlMap[b.id]?.totalPnl ?? 0.0;
             comparison = aPnl.compareTo(bPnl);
             break;
-          case SortBy.createdAt:
-            comparison = a.createdAt.compareTo(b.createdAt);
+          case SortBy.date:
+            // Use updatedAt so recently modified strategies also surface
+            comparison = a.updatedAt.compareTo(b.updatedAt);
             break;
         }
         return _sortAscending ? comparison : -comparison;
@@ -123,7 +125,9 @@ class _StrategyScreenState extends State<StrategyScreen>
         _sortAscending = !_sortAscending;
       } else {
         _sortBy = sortBy;
-        _sortAscending = true;
+        // Sensible default direction per field: A-Z for name,
+        // highest PnL / most recent date first for the others.
+        _sortAscending = sortBy == SortBy.name;
       }
     });
     _applyFiltersAndSort();
@@ -609,9 +613,9 @@ class _StrategyScreenState extends State<StrategyScreen>
                     _SortChip(
                       labelKey: 'screen.strategy.sort.date',
                       labelFallback: 'Date',
-                      isSelected: _sortBy == SortBy.createdAt,
+                      isSelected: _sortBy == SortBy.date,
                       isAscending: _sortAscending,
-                      onTap: () => _handleSortChange(SortBy.createdAt),
+                      onTap: () => _handleSortChange(SortBy.date),
                     ),
                   ],
                 ),
@@ -817,6 +821,17 @@ class _StrategyCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Strategy name on its own full-width row so long names
+              // are not squeezed between the icon and the status badge
+              Text(
+                strategy.name,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   if (baseCurrency.isNotEmpty)
@@ -865,15 +880,6 @@ class _StrategyCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          strategy.name,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
                         Row(
                           children: [
                             Flexible(
@@ -1039,9 +1045,9 @@ class _StrategyCard extends StatelessWidget {
                   Icon(Icons.schedule, size: 12.w, color: secondaryText),
                   SizedBox(width: 4.w),
                   CopyText(
-                    'screen.strategy.created_at',
-                    params: {'date': _formatDate(copy, strategy.createdAt)},
-                    fallback: 'Created {{date}}',
+                    'screen.strategy.updated_at',
+                    params: {'date': _formatDate(copy, strategy.updatedAt)},
+                    fallback: 'Updated {{date}}',
                     style: TextStyle(fontSize: 11.sp, color: secondaryText),
                   ),
                 ],

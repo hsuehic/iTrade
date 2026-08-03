@@ -82,6 +82,7 @@
     "screen.strategy.search_query": "\"{{query}}\"",
     "screen.strategy.filled_total": "{{filled}} / {{total}}",
     "screen.strategy.created_at": "Created {{date}}",
+    "screen.strategy.updated_at": "Updated {{date}}",
     "screen.strategy.symbol.na": "N/A",
     "screen.strategy.market_type.perp": "PERP",
     "screen.strategy.market_type.futures": "FUT",
