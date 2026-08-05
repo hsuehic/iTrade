@@ -1,0 +1,926 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import Decimal from 'decimal.js';
+import {
+  Kline,
+  KlineInterval,
+  normalizeAnalyzeResult,
+  Order,
+  OrderBook,
+  OrderSide,
+  OrderStatus,
+  OrderType,
+  Position,
+  SignalType,
+  StrategyCancelOrderResult,
+  StrategyConfig,
+  StrategyOrderResult,
+  TimeInForce,
+} from '@itrade/core';
+import {
+  MarketMakerGridParameters,
+  MarketMakerGridStrategy,
+} from '../strategies/MarketMakerGridStrategy';
+
+const SYMBOL = 'ETH/USDC:USDC';
+
+function createOrder(params: {
+  clientOrderId: string;
+  side: OrderSide;
+  price: number;
+  quantity: number | Decimal;
+  status: OrderStatus;
+  executedQuantity?: number | Decimal;
+  strategyId?: number;
+}): Order {
+  const now = new Date();
+  return {
+    id: `order-${params.clientOrderId}`,
+    clientOrderId: params.clientOrderId,
+    symbol: SYMBOL,
+    exchange: 'binance',
+    strategyId: params.strategyId,
+    side: params.side,
+    type: OrderType.LIMIT,
+    quantity: new Decimal(params.quantity),
+    price: new Decimal(params.price),
+    status: params.status,
+    timeInForce: TimeInForce.GTC,
+    timestamp: now,
+    updateTime: now,
+    executedQuantity: new Decimal(params.executedQuantity ?? 0),
+    averagePrice: new Decimal(params.price),
+  };
+}
+
+function createPosition(params: { quantity: number; avgPrice: number }): Position {
+  return {
+    symbol: SYMBOL,
+    side: 'long',
+    quantity: new Decimal(params.quantity),
+    avgPrice: new Decimal(params.avgPrice),
+    markPrice: new Decimal(params.avgPrice),
+    unrealizedPnl: new Decimal(0),
+    leverage: new Decimal(1),
+    timestamp: new Date(),
+    exchange: 'binance',
+  };
+}
+
+function createOrderBook(params: { bid: number; ask: number }): OrderBook {
+  return {
+    symbol: SYMBOL,
+    timestamp: new Date(),
+    bids: [[new Decimal(params.bid), new Decimal(1)]],
+    asks: [[new Decimal(params.ask), new Decimal(1)]],
+  };
+}
+
+let klineCounter = 0;
+
+function createKline(params: {
+  high: number;
+  low: number;
+  open?: number;
+  close?: number;
+  interval?: string;
+  isClosed?: boolean;
+}): Kline {
+  klineCounter += 1;
+  const openTime = new Date(Date.now() - 15 * 60 * 1000 + klineCounter * 1000);
+  return {
+    symbol: SYMBOL,
+    interval: (params.interval ?? '15m') as KlineInterval,
+    openTime,
+    closeTime: new Date(openTime.getTime() + 15 * 60 * 1000),
+    open: new Decimal(params.open ?? params.low),
+    high: new Decimal(params.high),
+    low: new Decimal(params.low),
+    close: new Decimal(params.close ?? params.high),
+    volume: new Decimal(100),
+    quoteVolume: new Decimal(10000),
+    trades: 100,
+    isClosed: params.isClosed ?? true,
+  };
+}
+
+function buySignals(result: Awaited<ReturnType<MarketMakerGridStrategy['analyze']>>) {
+  return normalizeAnalyzeResult(result).filter(
+    (s): s is StrategyOrderResult => s.action === 'buy',
+  );
+}
+
+function sellSignals(result: Awaited<ReturnType<MarketMakerGridStrategy['analyze']>>) {
+  return normalizeAnalyzeResult(result).filter(
+    (s): s is StrategyOrderResult => s.action === 'sell',
+  );
+}
+
+function cancelSignals(result: Awaited<ReturnType<MarketMakerGridStrategy['analyze']>>) {
+  return normalizeAnalyzeResult(result).filter(
+    (s): s is StrategyCancelOrderResult => s.action === 'cancel',
+  );
+}
+
+function createStrategy(
+  overrides: Partial<MarketMakerGridParameters> = {},
+): MarketMakerGridStrategy {
+  const config: StrategyConfig<MarketMakerGridParameters> = {
+    type: 'MarketMakerGridStrategy',
+    strategyId: 1,
+    strategyName: 'mm-grid-test',
+    symbol: SYMBOL,
+    exchange: 'binance',
+    parameters: {
+      klineInterval: '15m',
+      minRangePercent: 0.8,
+      levelGapsPercent: '1,5,25',
+      levelAllocationsPercent: '50,30,20',
+      levelTakeProfitGapsPercent: '',
+      takeProfitGapPercent: 0,
+      maxInvestment: 1000,
+      maxInventory: 100,
+      // leverage 1 keeps buying power == maxInvestment for simple size assertions
+      leverage: 1,
+      ...overrides,
+    },
+  };
+  return new MarketMakerGridStrategy(config);
+}
+
+async function initWithOrderBook(
+  strategy: MarketMakerGridStrategy,
+  params: { bid: number; ask: number },
+) {
+  return strategy.processInitialData({
+    symbol: SYMBOL,
+    exchange: 'binance',
+    timestamp: new Date(),
+    orderBook: createOrderBook(params),
+  });
+}
+
+describe('MarketMakerGridStrategy', () => {
+  let strategy: MarketMakerGridStrategy;
+
+  beforeEach(() => {
+    strategy = createStrategy();
+  });
+
+  it('places one BUY entry per level when kline range exceeds threshold', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // Range = (101 - 100) / 100 = 1% >= 0.8% threshold
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(result);
+
+    expect(buys).toHaveLength(3);
+
+    // Level 0: gap 1% -> price 99, allocation 50% -> 500 quote
+    expect(buys[0].price!.toNumber()).toBeCloseTo(99, 8);
+    expect(buys[0].quantity!.toNumber()).toBeCloseTo(500 / 99, 8);
+    // Level 1: gap 5% -> price 95, allocation 30% -> 300 quote
+    expect(buys[1].price!.toNumber()).toBeCloseTo(95, 8);
+    expect(buys[1].quantity!.toNumber()).toBeCloseTo(300 / 95, 8);
+    // Level 2: gap 25% -> price 75, allocation 20% -> 200 quote
+    expect(buys[2].price!.toNumber()).toBeCloseTo(75, 8);
+    expect(buys[2].quantity!.toNumber()).toBeCloseTo(200 / 75, 8);
+
+    for (const buy of buys) {
+      expect(buy.metadata?.signalType).toBe(SignalType.Entry);
+    }
+  });
+
+  it('does nothing when kline range is below threshold and no orders are open', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // Range = 0.5% < 0.8%
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 100.5, low: 100 })],
+    });
+
+    expect(buySignals(result)).toHaveLength(0);
+    expect(cancelSignals(result)).toHaveLength(0);
+  });
+
+  it('cancels open entries when the signal turns inactive', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    expect(buys).toHaveLength(3);
+
+    // Exchange confirms the three entry orders
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // Quiet kline: range 0.2% < 0.8%
+    const quietResult = await strategy.analyze({
+      klines: [createKline({ high: 100.2, low: 100 })],
+    });
+    const cancels = cancelSignals(quietResult);
+
+    expect(cancels).toHaveLength(3);
+    const canceledIds = cancels.map((c) => c.clientOrderId);
+    for (const buy of buys) {
+      expect(canceledIds).toContain(buy.clientOrderId);
+    }
+  });
+
+  it('places a take-profit above ask1 after an entry fill', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tps = sellSignals(fillResult);
+
+    expect(tps).toHaveLength(1);
+    expect(tps[0].metadata?.signalType).toBe(SignalType.TakeProfit);
+    expect(tps[0].quantity!.toNumber()).toBeCloseTo(level0Buy.quantity!.toNumber(), 8);
+    // ask1 (100.1) > entry (99), so TP = 100.1 * (1 + 1%) = 101.101
+    expect(tps[0].price!.toNumber()).toBeCloseTo(100.1 * 1.01, 8);
+  });
+
+  it('floors the take-profit at entry price when ask has dropped below entry', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    // Market dropped: ask now below the 99 entry price
+    const fillResult = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 98, ask: 98.1 }),
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tps = sellSignals(fillResult);
+
+    expect(tps).toHaveLength(1);
+    // Floored at entryPrice * (1 + 1%) = 99.99, not 98.1 * 1.01
+    expect(tps[0].price!.toNumber()).toBeCloseTo(99 * 1.01, 8);
+  });
+
+  it('re-enters the level after its take-profit fills while the signal is active', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp = sellSignals(fillResult)[0];
+
+    const tpFillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp.price!.toNumber(),
+          quantity: tp.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const reentries = buySignals(tpFillResult);
+
+    // Only level 0 is idle again (levels 1/2 still have their original entries open)
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(99, 8);
+
+    const state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(0, 8);
+  });
+
+  it('leaves other levels untouched when a TP fills, even if bid moved', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    const level0Buy = buys[0];
+
+    // Confirm all three entries, then fill level 0's entry
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp = sellSignals(fillResult)[0];
+
+    // TP fills while the bid has moved down to 99: only level 0 re-enters at the
+    // new bid; levels 1/2 keep their original entries (no cancels).
+    const tpFillResult = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
+      orders: [
+        createOrder({
+          clientOrderId: tp.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp.price!.toNumber(),
+          quantity: tp.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const reentries = buySignals(tpFillResult);
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(99 * 0.99, 8);
+    expect(cancelSignals(tpFillResult)).toHaveLength(0);
+  });
+
+  it('re-anchors all entries at kline close when the grid is clean', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const first = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const firstBuys = buySignals(first);
+    await strategy.analyze({
+      orders: firstBuys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // No fills, no TPs -> clean grid: next kline close re-prices everything
+    const second = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
+      klines: [createKline({ high: 100, low: 99 })],
+    });
+
+    expect(cancelSignals(second)).toHaveLength(3);
+    const newBuys = buySignals(second);
+    expect(newBuys).toHaveLength(3);
+    expect(newBuys[0].price!.toNumber()).toBeCloseTo(99 * 0.99, 8);
+    expect(newBuys[1].price!.toNumber()).toBeCloseTo(99 * 0.95, 8);
+    expect(newBuys[2].price!.toNumber()).toBeCloseTo(99 * 0.75, 8);
+  });
+
+  it('does not touch open entries at kline close while a TP is outstanding', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const first = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const firstBuys = buySignals(first);
+    await strategy.analyze({
+      orders: firstBuys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // Level 0 fills -> TP is now outstanding (active cycle)
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: firstBuys[0].clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: firstBuys[0].quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: firstBuys[0].quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Next kline closes above threshold with a moved bid: levels 1/2 entries
+    // must remain untouched (no cancels, no replacements).
+    const second = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
+      klines: [createKline({ high: 100, low: 99 })],
+    });
+
+    expect(cancelSignals(second)).toHaveLength(0);
+    expect(buySignals(second)).toHaveLength(0);
+  });
+
+  it('still fills an empty level at kline close during an active cycle', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const first = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const firstBuys = buySignals(first);
+    await strategy.analyze({
+      orders: firstBuys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // Level 0 fills (TP outstanding), and level 1's entry is canceled externally
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: firstBuys[0].clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: firstBuys[0].quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: firstBuys[0].quantity!,
+          strategyId: 1,
+        }),
+        createOrder({
+          clientOrderId: firstBuys[1].clientOrderId,
+          side: OrderSide.BUY,
+          price: 95,
+          quantity: firstBuys[1].quantity!,
+          status: OrderStatus.CANCELED,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Next kline: level 1 (no entry) gets a fresh one at the current bid;
+    // level 2's entry stays untouched.
+    const second = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
+      klines: [createKline({ high: 100, low: 99 })],
+    });
+
+    expect(cancelSignals(second)).toHaveLength(0);
+    const newBuys = buySignals(second);
+    expect(newBuys).toHaveLength(1);
+    expect(newBuys[0].price!.toNumber()).toBeCloseTo(99 * 0.95, 8);
+  });
+
+  it('enforces maxInventory including open BUY orders', async () => {
+    strategy = createStrategy({ maxInventory: 6 });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(result);
+
+    // L0 target = 500/99 ≈ 5.0505 fits; L1 target = 300/95 ≈ 3.158 gets clamped
+    // to remaining capacity; L2 has no capacity left.
+    expect(buys.length).toBeLessThanOrEqual(3);
+    const totalQty = buys.reduce((acc, b) => acc.add(b.quantity!), new Decimal(0));
+    expect(totalQty.toNumber()).toBeLessThanOrEqual(6 + 1e-9);
+    expect(buys[0].quantity!.toNumber()).toBeCloseTo(500 / 99, 8);
+    expect(buys[1].quantity!.toNumber()).toBeCloseTo(6 - 500 / 99, 8);
+  });
+
+  it('cancels stale entries and adopts take-profit orders on restart', async () => {
+    const staleEntry = createOrder({
+      clientOrderId: 'E1D7D1710000000',
+      side: OrderSide.BUY,
+      price: 95,
+      quantity: 2,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+    const openTp = createOrder({
+      clientOrderId: 'T1D8D1710000000',
+      side: OrderSide.SELL,
+      price: 105,
+      quantity: 1.5,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    const result = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [staleEntry, openTp],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(1.5),
+    });
+
+    const cancels = cancelSignals(result);
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0].clientOrderId).toBe(staleEntry.clientOrderId);
+
+    const state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(1.5, 8);
+  });
+
+  it('multiplies buying power by leverage when sizing entries', async () => {
+    strategy = createStrategy({ leverage: 5, maxInventory: 1000 });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(result);
+
+    expect(buys).toHaveLength(3);
+    // Buying power = 1000 * 5 = 5000; level 0 gets 50% = 2500 quote at price 99
+    expect(buys[0].quantity!.toNumber()).toBeCloseTo(2500 / 99, 8);
+    expect(buys[1].quantity!.toNumber()).toBeCloseTo(1500 / 95, 8);
+    expect(buys[2].quantity!.toNumber()).toBeCloseTo(1000 / 75, 8);
+  });
+
+  it('uses per-level take-profit gaps when levelTakeProfitGapsPercent is set', async () => {
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '0.2,0.5,2' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tps = sellSignals(fillResult);
+
+    expect(tps).toHaveLength(1);
+    // Level 0 TP gap is 0.2% (not the 1% entry gap): 100.1 * 1.002
+    expect(tps[0].price!.toNumber()).toBeCloseTo(100.1 * 1.002, 8);
+
+    const state = strategy.getStrategyState();
+    expect(state.levels.map((l) => l.tpGapPercent)).toEqual(['0.2', '0.5', '2']);
+  });
+
+  it('applies a single levelTakeProfitGapsPercent value to all levels', async () => {
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '0.3' });
+    const state = strategy.getStrategyState();
+    expect(state.levels.map((l) => l.tpGapPercent)).toEqual(['0.3', '0.3', '0.3']);
+  });
+
+  it('rejects a levelTakeProfitGapsPercent count that does not match the levels', () => {
+    expect(() => createStrategy({ levelTakeProfitGapsPercent: '0.2,0.5' })).toThrow(
+      /levelTakeProfitGapsPercent/,
+    );
+  });
+
+  it('prefers per-level TP gap over the global takeProfitGapPercent', async () => {
+    strategy = createStrategy({
+      levelTakeProfitGapsPercent: '0.2,0.5,2',
+      takeProfitGapPercent: 9,
+    });
+    const state = strategy.getStrategyState();
+    expect(state.levels.map((l) => l.tpGapPercent)).toEqual(['0.2', '0.5', '2']);
+  });
+
+  it('places a recovery TP for inventory not covered by adopted TP orders on restart', async () => {
+    // Net position 2.0 but only 1.5 is covered by an open TP:
+    // 0.5 filled while the strategy was down and must be re-listed.
+    const openTp = createOrder({
+      clientOrderId: 'T1D8D1710000000',
+      side: OrderSide.SELL,
+      price: 105,
+      quantity: 1.5,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    const result = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [openTp],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(2),
+    });
+
+    const tps = normalizeAnalyzeResult(result).filter(
+      (s): s is StrategyOrderResult => s.action === 'sell',
+    );
+    expect(tps).toHaveLength(1);
+    expect(tps[0].quantity!.toNumber()).toBeCloseTo(0.5, 8);
+    // Entry price unknown -> priced off ask1 with level 0's TP gap (1%)
+    expect(tps[0].price!.toNumber()).toBeCloseTo(100.1 * 1.01, 8);
+
+    const state = strategy.getStrategyState();
+    expect(new Decimal(state.levels[0].inventoryQty).toNumber()).toBeCloseTo(0.5, 8);
+  });
+
+  it('prices the recovery TP from the exchange position avgPrice when above ask', async () => {
+    // Position basis 102 > ask 100.1: TP must be floored at 102 * (1 + 1%)
+    const result = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [],
+      positions: [createPosition({ quantity: 2, avgPrice: 102 })],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(2),
+    });
+
+    const tps = normalizeAnalyzeResult(result).filter(
+      (s): s is StrategyOrderResult => s.action === 'sell',
+    );
+    expect(tps).toHaveLength(1);
+    expect(tps[0].quantity!.toNumber()).toBeCloseTo(2, 8);
+    expect(tps[0].price!.toNumber()).toBeCloseTo(102 * 1.01, 8);
+  });
+
+  it('drops phantom inventory when the exchange reports no open position', async () => {
+    // SQL says 2 units, but position data is present and shows no position:
+    // the position was closed externally. Selling would open a short -> drop.
+    const result = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [],
+      positions: [],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(2),
+    });
+
+    const tps = normalizeAnalyzeResult(result).filter(
+      (s): s is StrategyOrderResult => s.action === 'sell',
+    );
+    expect(tps).toHaveLength(0);
+
+    const state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(0, 8);
+    expect(new Decimal(state.levels[0].inventoryQty).toNumber()).toBeCloseTo(0, 8);
+  });
+
+  it('clamps the recovery TP to the sellable excess of the exchange position', async () => {
+    // SQL says 2, exchange holds 1.8, and 1.5 is already covered by an adopted TP:
+    // only 0.3 is sellable; the phantom 0.2 is dropped.
+    const openTp = createOrder({
+      clientOrderId: 'T1D8D1710000000',
+      side: OrderSide.SELL,
+      price: 105,
+      quantity: 1.5,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    const result = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [openTp],
+      positions: [createPosition({ quantity: 1.8, avgPrice: 102 })],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(2),
+    });
+
+    const tps = normalizeAnalyzeResult(result).filter(
+      (s): s is StrategyOrderResult => s.action === 'sell',
+    );
+    expect(tps).toHaveLength(1);
+    expect(tps[0].quantity!.toNumber()).toBeCloseTo(0.3, 8);
+    expect(tps[0].price!.toNumber()).toBeCloseTo(102 * 1.01, 8);
+
+    const state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(1.8, 8);
+  });
+
+  it('falls back to the latest entry order price for the recovery cost basis', async () => {
+    // No position data; a stale entry order at 101 provides the basis.
+    const staleEntry = createOrder({
+      clientOrderId: 'E1D7D1710000000',
+      side: OrderSide.BUY,
+      price: 101,
+      quantity: 2,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    const result = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [staleEntry],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(1),
+    });
+
+    const tps = normalizeAnalyzeResult(result).filter(
+      (s): s is StrategyOrderResult => s.action === 'sell',
+    );
+    expect(tps).toHaveLength(1);
+    // basis 101 > ask 100.1 -> TP = 101 * (1 + 1%)
+    expect(tps[0].price!.toNumber()).toBeCloseTo(101 * 1.01, 8);
+    // The stale entry is still canceled
+    expect(cancelSignals(result)).toHaveLength(1);
+  });
+
+  it('re-lists a canceled adopted TP no lower than its original price', async () => {
+    const openTp = createOrder({
+      clientOrderId: 'T1D8D1710000000',
+      side: OrderSide.SELL,
+      price: 105,
+      quantity: 1.5,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [openTp],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(1.5),
+    });
+
+    // The adopted TP is canceled externally (e.g. by the user on the exchange)
+    const result = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: openTp.clientOrderId!,
+          side: OrderSide.SELL,
+          price: 105,
+          quantity: 1.5,
+          status: OrderStatus.CANCELED,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const tps = sellSignals(result);
+    expect(tps).toHaveLength(1);
+    expect(tps[0].quantity!.toNumber()).toBeCloseTo(1.5, 8);
+    // Derived basis = 105 / 1.01, so the new TP is back at ~105, not ask*(1+1%)
+    expect(tps[0].price!.toNumber()).toBeCloseTo(105, 6);
+  });
+
+  it('deducts adopted TP notional from buying power when placing new entries', async () => {
+    // Adopted TP: 4 units @ 105 = 420 quote already deployed.
+    const openTp = createOrder({
+      clientOrderId: 'T1D8D1710000000',
+      side: OrderSide.SELL,
+      price: 105,
+      quantity: 4,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [openTp],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(4),
+    });
+
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(result);
+
+    // Budget = 1000 - 420 = 580: L0 gets its full 500, L1 is clamped to 80, L2 skipped
+    expect(buys).toHaveLength(2);
+    expect(buys[0].quantity!.mul(buys[0].price!).toNumber()).toBeCloseTo(500, 6);
+    expect(buys[1].quantity!.mul(buys[1].price!).toNumber()).toBeCloseTo(80, 6);
+  });
+
+  it('captures fills carried on a cancel acknowledgment and places a TP for them', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    // No PARTIALLY_FILLED update was ever received; the cancel carries the fill.
+    const cancelResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.CANCELED,
+          executedQuantity: 1,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tps = sellSignals(cancelResult);
+
+    expect(tps).toHaveLength(1);
+    expect(tps[0].quantity!.toNumber()).toBeCloseTo(1, 8);
+
+    const state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(1, 8);
+  });
+
+  it('supports single-level configuration matching the classic 0.2% market maker', async () => {
+    strategy = createStrategy({
+      levelGapsPercent: '0.2',
+      levelAllocationsPercent: '',
+      maxInvestment: 990,
+    });
+    await initWithOrderBook(strategy, { bid: 1000, ask: 1000.5 });
+
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 1010, low: 1000 })],
+    });
+    const buys = buySignals(result);
+
+    expect(buys).toHaveLength(1);
+    // bid1 * (1 - 0.2%) = 998
+    expect(buys[0].price!.toNumber()).toBeCloseTo(998, 8);
+    expect(buys[0].quantity!.toNumber()).toBeCloseTo(990 / 998, 8);
+  });
+});

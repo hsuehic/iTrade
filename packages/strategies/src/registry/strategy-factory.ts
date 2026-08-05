@@ -32,6 +32,10 @@ import {
   SpreadGridStrategy,
   SpreadGridStrategyRegistryConfig,
 } from '../strategies/SpreadGridStrategy';
+import {
+  MarketMakerGridStrategy,
+  MarketMakerGridStrategyRegistryConfig,
+} from '../strategies/MarketMakerGridStrategy';
 import { silentLogger } from '../utils/silent-logger';
 
 // ============================================================================
@@ -50,7 +54,8 @@ export type StrategyTypeKey =
   | 'MovingWindowGridsStrategy'
   | 'HammerChannelStrategy'
   | 'SingleLadderLifoTPStrategy'
-  | 'SpreadGridStrategy';
+  | 'SpreadGridStrategy'
+  | 'MarketMakerGridStrategy';
 
 /**
  * 策略构造函数类型
@@ -163,6 +168,11 @@ registry.register(
   'SpreadGridStrategy',
   SpreadGridStrategy,
   SpreadGridStrategyRegistryConfig,
+);
+registry.register(
+  'MarketMakerGridStrategy',
+  MarketMakerGridStrategy,
+  MarketMakerGridStrategyRegistryConfig,
 );
 
 // ============================================================================

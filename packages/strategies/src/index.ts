@@ -15,6 +15,10 @@ export {
   type SingleLadderLifoTPParameters,
   SingleLadderLifoTPStrategy,
 } from './strategies/SingleLadderLifoTPStrategy';
+export {
+  type MarketMakerGridParameters,
+  MarketMakerGridStrategy,
+} from './strategies/MarketMakerGridStrategy';
 
 // Export策略注册表和工厂（合并后的完整导出）
 export {

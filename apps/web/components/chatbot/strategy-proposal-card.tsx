@@ -33,6 +33,7 @@ interface StrategyProposalCardProps {
 
 const STRATEGY_LABELS: Record<string, string> = {
   SpreadGridStrategy: 'Spread Grid',
+  MarketMakerGridStrategy: 'Market Maker Grid',
   SingleLadderLifoTPStrategy: 'Single Ladder LIFO',
   MovingAverageStrategy: 'Moving Average',
   MovingWindowGridsStrategy: 'Moving Window Grids',
