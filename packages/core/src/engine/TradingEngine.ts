@@ -1649,6 +1649,18 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   /**
+   * Feed externally-discovered order updates (e.g. from a periodic REST
+   * open-order reconciliation) into the same strategy notification path as
+   * websocket order updates. Strategies process dataUpdate.orders
+   * idempotently (incremental fills, stale-update guards), so replaying an
+   * already-known state is safe.
+   */
+  public async notifyOrderUpdates(orders: Order[], exchangeName?: string): Promise<void> {
+    if (orders.length === 0) return;
+    await this.onAccountUpdate({ orders, exchangeName });
+  }
+
+  /**
    * Notify strategies with specific account data updates (pushed data only)
    * Only passes the data that was actually pushed, not all account data
    */

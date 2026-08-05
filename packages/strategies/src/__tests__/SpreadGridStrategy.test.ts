@@ -174,7 +174,7 @@ describe('SpreadGridStrategy', () => {
     // making historical bar times always appear stale, so no new signals were generated.
     const historicalTime = new Date('2024-06-15T12:00:00Z');
 
-    await strategy.processInitialData({
+    const initResult = await strategy.processInitialData({
       symbol: 'ETH/USDC:USDC',
       exchange: 'binance',
       timestamp: historicalTime,
@@ -185,8 +185,41 @@ describe('SpreadGridStrategy', () => {
       },
     });
 
-    // Kline update with historical timestamp (as backtest engine would provide)
-    const result = await strategy.analyze({
+    // All initial orders expire (TTL, as the backtest engine would report).
+    // Regeneration must happen even though the orderbook carries historical
+    // timestamps - staleness is measured by wall-clock receipt time.
+    const initEntries = normalizeAnalyzeResult(initResult).filter(
+      (signal): signal is StrategyOrderResult =>
+        signal.action === 'buy' || signal.action === 'sell',
+    );
+    expect(initEntries.length).toBeGreaterThan(0);
+
+    const expireResult = await strategy.analyze({
+      orders: initEntries.map((entry) =>
+        createOrder({
+          clientOrderId: entry.clientOrderId,
+          side: entry.action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
+          price: entry.price!.toNumber(),
+          quantity: entry.quantity!.toNumber(),
+          status: OrderStatus.EXPIRED,
+          strategyId: 1,
+        }),
+      ),
+      orderbook: {
+        ...createOrderBook({ bid: 2054, ask: 2056 }),
+        timestamp: historicalTime,
+      },
+    });
+
+    const regenerated = normalizeAnalyzeResult(expireResult).filter(
+      (signal): signal is StrategyOrderResult =>
+        signal.action === 'buy' || signal.action === 'sell',
+    );
+    expect(regenerated.length).toBeGreaterThan(0);
+
+    // While the regenerated entries are in flight, further market ticks must
+    // NOT create duplicates.
+    const tickResult = await strategy.analyze({
       exchangeName: 'binance',
       symbol: 'ETH/USDC:USDC',
       klines: [
@@ -209,14 +242,139 @@ describe('SpreadGridStrategy', () => {
         timestamp: historicalTime,
       },
     });
-
-    const signals = normalizeAnalyzeResult(result).filter(
+    const duplicates = normalizeAnalyzeResult(tickResult).filter(
       (signal): signal is StrategyOrderResult =>
         signal.action === 'buy' || signal.action === 'sell',
     );
+    expect(duplicates).toHaveLength(0);
+  });
 
-    // Must generate signals even though orderbook has historical timestamp
-    expect(signals.length).toBeGreaterThan(0);
+  it('does not duplicate entries on orderbook ticks while orders are in flight', async () => {
+    const initResult = await strategy.processInitialData({
+      symbol: 'ETH/USDC:USDC',
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [],
+      orderBook: createOrderBook({ bid: 2050, ask: 2051 }),
+    });
+    const initEntries = normalizeAnalyzeResult(initResult).filter(
+      (signal): signal is StrategyOrderResult =>
+        signal.action === 'buy' || signal.action === 'sell',
+    );
+    expect(initEntries.length).toBeGreaterThan(0);
+
+    // Orderbook events stream every ~100ms in live trading. While the initial
+    // entries are unconfirmed (in flight), no additional entries may be placed.
+    for (let i = 0; i < 5; i++) {
+      const tick = await strategy.analyze({
+        orderbook: createOrderBook({ bid: 2050 + i * 0.1, ask: 2051 + i * 0.1 }),
+      });
+      const dupes = normalizeAnalyzeResult(tick).filter(
+        (signal): signal is StrategyOrderResult =>
+          signal.action === 'buy' || signal.action === 'sell',
+      );
+      expect(dupes).toHaveLength(0);
+    }
+  });
+
+  it('cancels duplicate orders per side on restart, keeping the newest', async () => {
+    const older = createOrder({
+      clientOrderId: 'E1D1D1710000000',
+      side: OrderSide.SELL,
+      price: 2058.29,
+      quantity: 3,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+    older.updateTime = new Date('2026-08-05T10:00:00Z');
+    const middle = createOrder({
+      clientOrderId: 'E1D2D1710000100',
+      side: OrderSide.SELL,
+      price: 2058.29,
+      quantity: 3,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+    middle.updateTime = new Date('2026-08-05T10:05:00Z');
+    const newest = createOrder({
+      clientOrderId: 'E1D3D1710000200',
+      side: OrderSide.SELL,
+      price: 2058.29,
+      quantity: 3,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+    newest.updateTime = new Date('2026-08-05T10:10:00Z');
+
+    const result = await strategy.processInitialData({
+      symbol: 'ETH/USDC:USDC',
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [older, middle, newest],
+      orderBook: createOrderBook({ bid: 2050, ask: 2051 }),
+    });
+
+    const signals = normalizeAnalyzeResult(result);
+    const cancels = signals.filter(
+      (signal): signal is StrategyCancelOrderResult => signal.action === 'cancel',
+    );
+
+    // The two older duplicates are canceled; the newest SELL survives.
+    expect(cancels).toHaveLength(2);
+    const canceledIds = cancels.map((c) => c.clientOrderId);
+    expect(canceledIds).toContain(older.clientOrderId);
+    expect(canceledIds).toContain(middle.clientOrderId);
+    expect(strategy.getStrategyState().openUpperOrder).toBe(newest.clientOrderId);
+  });
+
+  it('re-places the missing side immediately when an order is canceled externally', async () => {
+    const initResult = await strategy.processInitialData({
+      symbol: 'ETH/USDC:USDC',
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [],
+      orderBook: createOrderBook({ bid: 2050, ask: 2051 }),
+    });
+    const initEntries = normalizeAnalyzeResult(initResult).filter(
+      (signal): signal is StrategyOrderResult =>
+        signal.action === 'buy' || signal.action === 'sell',
+    );
+    // maxSize=0 blocks the BUY side in this config, so only a SELL entry exists
+    expect(initEntries).toHaveLength(1);
+    const sellEntry = initEntries[0];
+
+    // Exchange confirms it, then it is canceled externally (e.g. by the user)
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: sellEntry.clientOrderId,
+          side: OrderSide.SELL,
+          price: sellEntry.price!.toNumber(),
+          quantity: sellEntry.quantity!.toNumber(),
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const cancelResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: sellEntry.clientOrderId,
+          side: OrderSide.SELL,
+          price: sellEntry.price!.toNumber(),
+          quantity: sellEntry.quantity!.toNumber(),
+          status: OrderStatus.CANCELED,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Recovery is event-driven: the terminal update itself triggers re-placement
+    const replaced = normalizeAnalyzeResult(cancelResult).filter(
+      (signal): signal is StrategyOrderResult => signal.action === 'sell',
+    );
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0].clientOrderId).not.toBe(sellEntry.clientOrderId);
   });
 
   it('respects minSize when multiple FILLED updates arrive in one batch', async () => {

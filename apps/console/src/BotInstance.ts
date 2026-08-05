@@ -604,6 +604,15 @@ export class BotInstance {
         strategyType: normalizedOrder.strategyType,
         strategyName: normalizedOrder.strategyName,
       });
+
+      // The DB considered this order open but the exchange reports a different
+      // state: the websocket notification for this transition was evidently
+      // missed. Replay the refreshed state through the engine so strategies can
+      // react (e.g. re-place an externally canceled ladder order, or place a
+      // take-profit for a missed fill). Strategy handlers are idempotent.
+      if (normalizedOrder.status !== order.status) {
+        await this.engine.notifyOrderUpdates([normalizedOrder], exchangeName);
+      }
     } catch {
       return;
     }

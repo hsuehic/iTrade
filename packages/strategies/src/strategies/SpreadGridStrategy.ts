@@ -181,6 +181,9 @@ interface ExtendedSignalMetaData extends SignalMetaData {
 }
 
 export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
+  /** How long a generated-but-unconfirmed entry blocks regeneration before being purged. */
+  private static readonly IN_FLIGHT_TIMEOUT_MS = 60000;
+
   private basePrice: number;
   private stepPercent: number;
   private orderAmount: number;
@@ -188,10 +191,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private minSize: number;
   private maxSize: number;
   private tradeMode: TradeMode = TradeMode.ISOLATED;
-
-  private lastOrderBook: OrderBook | null = null;
-  private lastOrderBookReceivedAt: number = 0;
-  private readonly orderBookStaleMs = 10000;
 
   private positionSize: Decimal = new Decimal(0);
   private filledEntries: FilledEntry[] = [];
@@ -229,8 +228,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
 
   private updateOrderBookPrice(orderbook?: OrderBook): void {
     if (!orderbook) return;
-    this.lastOrderBook = orderbook;
-    this.lastOrderBookReceivedAt = Date.now();
     const bestBid = orderbook.bids?.[0]?.[0];
     const bestAsk = orderbook.asks?.[0]?.[0];
     let price: Decimal | null = null;
@@ -243,14 +240,6 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     }
     if (!price) return;
     this.lastOrderBookPrice = price;
-  }
-
-  private isOrderBookStale(): boolean {
-    if (!this.lastOrderBook) return true;
-    // Use real wall-clock time of when the orderbook was last received.
-    // This correctly handles backtesting where orderbook.timestamp is a historical
-    // bar time (not real-time), which would otherwise always appear stale.
-    return Date.now() - this.lastOrderBookReceivedAt > this.orderBookStaleMs;
   }
 
   private ensureMakerPrice(price: Decimal, _side: OrderSide): Decimal | null {
@@ -563,6 +552,19 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         `[SpreadGrid] Found ${ownedOrders.length} owned open orders from initial data`,
       );
 
+      // SpreadGrid invariant: at most ONE working order per side. Determine the
+      // newest order per side; any older duplicates (e.g. produced by a placement
+      // race or manual intervention) are canceled below to restore consistency.
+      const newestBySide = new Map<OrderSide, Order>();
+      for (const order of ownedOrders) {
+        const existing = newestBySide.get(order.side);
+        const orderTime = (order.updateTime || order.timestamp)?.getTime() ?? 0;
+        const existingTime = existing
+          ? ((existing.updateTime || existing.timestamp)?.getTime() ?? 0)
+          : -1;
+        if (orderTime > existingTime) newestBySide.set(order.side, order);
+      }
+
       // positionSize tracks FILLS ONLY.
       // If SQL net position is already fills-only, we should NOT subtract open order quantity here.
       ownedOrders.forEach((order: Order) => {
@@ -578,10 +580,18 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
         }
 
         // Track open order references (for duplicate order prevention).
-        if (order.side === OrderSide.BUY) {
-          this.openLowerOrder = order;
+        // Only the newest per side becomes the working order; duplicates get canceled.
+        if (newestBySide.get(order.side) === order) {
+          if (order.side === OrderSide.BUY) {
+            this.openLowerOrder = order;
+          } else {
+            this.openUpperOrder = order;
+          }
         } else {
-          this.openUpperOrder = order;
+          signals.push(this.generateCancelOrderSignal(order));
+          this._logger.warn(
+            `[SpreadGrid] Cancelling duplicate ${order.side} order ${order.clientOrderId ?? order.id} on restart (invariant: one order per side)`,
+          );
         }
 
         if (!order.clientOrderId) {
@@ -681,16 +691,39 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
       if (signals.length > 0) return signals;
     }
 
-    // If we have no open limit orders (either they all expired / were cancelled, or
-    // this strategy has never placed any) but we do have fresh price data, regenerate
-    // entry signals.  This ensures the strategy can recover after TTL-based expiries
-    // (e.g. in backtesting) without requiring an external trigger.
-    if (!this.openLowerOrder && !this.openUpperOrder && !this.isOrderBookStale()) {
-      const newSigs = this.generateEntrySignalsWithReservation();
-      if (newSigs.length > 0) return newSigs;
-    }
-
+    // NOTE: SpreadGrid is purely order-event driven. Recovery after external
+    // cancels / TTL expiries happens inside handleOrderUpdates when the terminal
+    // update arrives - NOT on market data ticks. A former orderbook-tick-driven
+    // recovery path caused duplicate orders during the exchange-confirmation
+    // window and was removed.
     return { action: 'hold' };
+  }
+
+  /**
+   * True when an entry signal has been generated but not yet confirmed by the
+   * exchange. In-flight entries older than IN_FLIGHT_TIMEOUT_MS are assumed lost
+   * (placement failed / signal dropped) and are purged so the strategy can recover.
+   */
+  private hasInFlightEntries(): boolean {
+    const now = Date.now();
+    for (const clientId of this.pendingClientOrderIds) {
+      if (this.orders.has(clientId)) continue; // Confirmed by the exchange
+      const metadata = this.orderMetadataMap.get(clientId);
+      if (!metadata || metadata.signalType !== SignalType.Entry) continue;
+      // Metadata always carries a creation timestamp; treat a missing one as
+      // expired so an anomalous entry can never block regeneration forever.
+      const createdAt = metadata.timestamp ?? 0;
+      if (now - createdAt > SpreadGridStrategy.IN_FLIGHT_TIMEOUT_MS) {
+        this.pendingClientOrderIds.delete(clientId);
+        this.orderMetadataMap.delete(clientId);
+        this._logger.warn(
+          `[SpreadGrid] Purged in-flight entry ${clientId} (unconfirmed for >${SpreadGridStrategy.IN_FLIGHT_TIMEOUT_MS}ms)`,
+        );
+        continue;
+      }
+      return true;
+    }
+    return false;
   }
 
   public override async onOrderCreated(order: Order): Promise<void> {
@@ -714,6 +747,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   private handleOrderUpdates(orders: Order[]): StrategyResult[] {
     const signals: StrategyResult[] = [];
     let shouldRebuildAfterFill = false;
+    let sawTerminalEntry = false;
     for (const order of orders) {
       if (!order.clientOrderId) continue;
       if (this.processedFillIds.has(order.clientOrderId)) continue;
@@ -791,6 +825,7 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
               this.openUpperOrder = null;
             }
           }
+          sawTerminalEntry = true;
           this._logger.debug(
             `[SpreadGrid] Order ${order.clientOrderId} terminal (${order.status}). No positionSize adjustment needed.`,
           );
@@ -799,6 +834,18 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
     }
     if (shouldRebuildAfterFill) {
       signals.push(...this.rebuildOrdersAfterFill());
+    } else if (sawTerminalEntry && !this.hasInFlightEntries()) {
+      // Event-driven recovery: a terminal update (external cancel, TTL expiry)
+      // removed a working order without a fill. Re-place the missing side(s)
+      // immediately. This replaces the former orderbook-tick recovery path,
+      // which raced with the exchange-confirmation window and caused duplicates.
+      const allowBuy = !this.openLowerOrder;
+      const allowSell = !this.openUpperOrder;
+      if (allowBuy || allowSell) {
+        signals.push(
+          ...this.generateEntrySignalsWithReservation({ allowBuy, allowSell }),
+        );
+      }
     }
     return signals;
   }
@@ -960,8 +1007,11 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   }
 
   public override getSubscriptionConfig() {
+    // No live market data needed: SpreadGrid is purely order-event driven.
+    // The reference price bootstrap uses the initial REST orderbook snapshot
+    // (see getInitialDataConfig), and entry prices derive from referencePrice.
     return {
-      orderbook: { enabled: true, depth: 5 },
+      orderbook: { enabled: false },
       method: 'websocket' as const,
       exchange: this._context.exchange,
     };
