@@ -663,7 +663,18 @@ export class SpreadGridStrategy extends BaseStrategy<SpreadGridParameters> {
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
     const { orders } = dataUpdate;
     if (dataUpdate.orderbook) {
-      this.updateOrderBookPrice(dataUpdate.orderbook);
+      // The engine fans out every orderbook event to every strategy; only ingest
+      // books for our own symbol (and exchange, when provided).
+      const obSymbol = dataUpdate.orderbook.symbol || dataUpdate.symbol;
+      const sameSymbol = !obSymbol || obSymbol === this._context.symbol;
+      const sameExchange =
+        !dataUpdate.exchangeName ||
+        dataUpdate.exchangeName === this._exchangeName ||
+        (Array.isArray(this._context.exchange) &&
+          this._context.exchange.includes(dataUpdate.exchangeName));
+      if (sameSymbol && sameExchange) {
+        this.updateOrderBookPrice(dataUpdate.orderbook);
+      }
     }
     if (orders && orders.length > 0) {
       const signals = this.handleOrderUpdates(orders);

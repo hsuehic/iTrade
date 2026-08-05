@@ -1879,8 +1879,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     strategyName: string,
     strategy: IStrategy,
   ): Promise<void> {
-    const config = strategy.context.subscription;
-    if (!config) {
+    // Prefer the strategy's own subscription requirements (getSubscriptionConfig
+    // override) over the persisted context config. Strategies that require
+    // specific streams (e.g. orderbook for pricing) declare them there, so a
+    // stale/incomplete DB subscription config cannot silently disable them.
+    const config = strategy.getSubscriptionConfig?.() ?? strategy.context.subscription;
+    if (!config || Object.keys(config).length === 0) {
       this.logger.warn(
         `⚠️  [SUBSCRIBE] Strategy ${strategyName} has no subscription config - cannot subscribe to data!`,
       );
@@ -1974,11 +1978,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    */
   private async unsubscribeStrategyData(strategyName: string): Promise<void> {
     const strategy = this._strategies.get(strategyName);
-    if (!strategy || !strategy.context.subscription) {
+    if (!strategy) {
       return;
     }
 
-    const config = strategy.context.subscription;
+    // Must mirror subscribeStrategyData: use the same config source so the
+    // unsubscribe keys match what was subscribed.
+    const config = strategy.getSubscriptionConfig?.() ?? strategy.context.subscription;
+    if (!config || Object.keys(config).length === 0) return;
     const symbol = strategy.context.symbol;
     if (!symbol) return;
 

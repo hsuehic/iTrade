@@ -641,20 +641,37 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   }
 
   /**
+   * Freshest price anchor for entry pricing: live bid1 when the orderbook is
+   * fresh, otherwise the provided fallback (kline close at kline close time,
+   * TP fill price on re-entry). Null when no usable price exists.
+   */
+  private resolveEntryAnchor(fallbackAnchor?: Decimal): Decimal | null {
+    if (!this.isOrderBookStale() && this.lastBid) return this.lastBid;
+    if (fallbackAnchor && fallbackAnchor.gt(0)) {
+      this._logger.warn(
+        `[MMGrid] Orderbook stale/missing; anchoring entries at fallback price ${fallbackAnchor.toString()}`,
+      );
+      return fallbackAnchor;
+    }
+    return null;
+  }
+
+  /**
    * Place entries on idle levels. When reprice=true (clean grid: no fills, no
    * open TPs), mispriced existing entries are cancel/replaced at the new bid.
    * When reprice=false, existing entries are never touched - only levels with
    * no entry at all get one.
    */
-  private refreshEntries(reprice: boolean): StrategyResult[] {
+  private refreshEntries(reprice: boolean, fallbackAnchor?: Decimal): StrategyResult[] {
     const signals: StrategyResult[] = [];
-    if (this.isOrderBookStale() || !this.lastBid) {
-      this._logger.warn('[MMGrid] Skipping entries: orderbook stale or missing bid');
+    const anchor = this.resolveEntryAnchor(fallbackAnchor);
+    if (!anchor) {
+      this._logger.warn('[MMGrid] Skipping entries: no usable price anchor');
       return signals;
     }
 
     const buyingPower = this.getBuyingPower();
-    const markPrice = this.lastAsk ?? this.lastBid;
+    const markPrice = !this.isOrderBookStale() && this.lastAsk ? this.lastAsk : anchor;
 
     // Capital already deployed: adopted (orphan) TP orders plus inventory held by levels.
     // New entries may only use the remaining budget, so total exposure never exceeds
@@ -670,9 +687,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       // A level with inventory awaiting TP does not re-enter (its capital is deployed)
       if (level.tpClientOrderId || level.inventoryQty.gt(0)) continue;
 
-      const desiredPrice = this.lastBid
-        .mul(new Decimal(100).sub(level.gapPercent))
-        .div(100);
+      const desiredPrice = anchor.mul(new Decimal(100).sub(level.gapPercent)).div(100);
       if (desiredPrice.lte(0)) continue;
 
       // Existing entries are left untouched until they fill, unless a full
@@ -752,19 +767,21 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
    * keeping order churn low. Budget and inventory caps still account for all
    * other levels' deployed capital and open orders.
    */
-  private placeEntryForSingleLevel(level: GridLevelState): StrategyResult[] {
-    if (this.isOrderBookStale() || !this.lastBid) return [];
+  private placeEntryForSingleLevel(
+    level: GridLevelState,
+    fallbackAnchor?: Decimal,
+  ): StrategyResult[] {
+    const anchor = this.resolveEntryAnchor(fallbackAnchor);
+    if (!anchor) return [];
     if (level.tpClientOrderId || level.inventoryQty.gt(0) || level.entryClientOrderId) {
       return [];
     }
 
-    const desiredPrice = this.lastBid
-      .mul(new Decimal(100).sub(level.gapPercent))
-      .div(100);
+    const desiredPrice = anchor.mul(new Decimal(100).sub(level.gapPercent)).div(100);
     if (desiredPrice.lte(0)) return [];
 
     const buyingPower = this.getBuyingPower();
-    const markPrice = this.lastAsk ?? this.lastBid;
+    const markPrice = !this.isOrderBookStale() && this.lastAsk ? this.lastAsk : anchor;
     let deployed = this.getOrphanTpNotional();
     for (const other of this.levels) {
       if (other.inventoryQty.gt(0)) {
@@ -833,7 +850,9 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     if (!this.signalActive) return this.cancelOpenEntries();
     // Full re-anchoring of existing entries only when the grid is clean:
     // no entry has filled and no take-profit order is outstanding.
-    return this.refreshEntries(!this.hasActiveCycle());
+    // The just-closed kline's close price is the fallback anchor when the
+    // orderbook stream is unavailable.
+    return this.refreshEntries(!this.hasActiveCycle(), kline.close);
   }
 
   /**
@@ -999,7 +1018,16 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     const signals: StrategyResult[] = [];
 
     if (dataUpdate.orderbook) {
-      this.updateOrderBook(dataUpdate.orderbook);
+      // The engine fans out every orderbook event to every strategy; only ingest
+      // books for our own symbol (and exchange, when provided) so another
+      // strategy's market data can never contaminate our bid/ask.
+      const obSymbol = dataUpdate.orderbook.symbol || dataUpdate.symbol;
+      const sameSymbol = !obSymbol || obSymbol === this._symbol;
+      const sameExchange =
+        !dataUpdate.exchangeName || dataUpdate.exchangeName === this._exchangeName;
+      if (sameSymbol && sameExchange) {
+        this.updateOrderBook(dataUpdate.orderbook);
+      }
     }
 
     if (dataUpdate.orders && dataUpdate.orders.length > 0) {
@@ -1209,8 +1237,10 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
             level.avgEntryPrice = null;
             // Level cycle complete: re-enter ONLY this level if the signal is still
             // active. Other levels' open entries stay untouched until kline close.
+            // The TP fill price is the fallback anchor if the orderbook is stale.
             if (this.signalActive) {
-              signals.push(...this.placeEntryForSingleLevel(level));
+              const fillPrice = order.averagePrice || order.price || undefined;
+              signals.push(...this.placeEntryForSingleLevel(level, fillPrice));
             }
           }
           this.clearFilledOrderTracking(order.clientOrderId);

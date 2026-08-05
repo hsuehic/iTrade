@@ -542,6 +542,97 @@ describe('MarketMakerGridStrategy', () => {
     expect(newBuys[0].price!.toNumber()).toBeCloseTo(99 * 0.95, 8);
   });
 
+  it('ignores orderbook events from other symbols', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // A foreign symbol's orderbook (engine fans out all events to all strategies)
+    await strategy.analyze({
+      symbol: 'BTC/USDC:USDC',
+      orderbook: {
+        symbol: 'BTC/USDC:USDC',
+        timestamp: new Date(),
+        bids: [[new Decimal(50000), new Decimal(1)]],
+        asks: [[new Decimal(50001), new Decimal(1)]],
+      },
+    });
+
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(result);
+
+    // Entries must still be anchored on OUR bid (100), not BTC's 50000
+    expect(buys).toHaveLength(3);
+    expect(buys[0].price!.toNumber()).toBeCloseTo(99, 8);
+  });
+
+  it('anchors entries on the kline close when no orderbook stream exists', async () => {
+    // No orderbook at all (e.g. subscription misconfigured in production)
+    await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+    });
+
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100, close: 100.4 })],
+    });
+    const buys = buySignals(result);
+
+    expect(buys).toHaveLength(3);
+    expect(buys[0].price!.toNumber()).toBeCloseTo(100.4 * 0.99, 8);
+    expect(buys[1].price!.toNumber()).toBeCloseTo(100.4 * 0.95, 8);
+    expect(buys[2].price!.toNumber()).toBeCloseTo(100.4 * 0.75, 8);
+  });
+
+  it('re-enters after a TP fill using the fill price when the orderbook is stale', async () => {
+    await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+    });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100, close: 100.4 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level0Buy.price!.toNumber(),
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp = sellSignals(fillResult)[0];
+    expect(tp).toBeDefined();
+
+    const tpFillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp.price!.toNumber(),
+          quantity: tp.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const reentries = buySignals(tpFillResult);
+
+    // Anchored on the TP fill price, not blocked by the missing orderbook
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(tp.price!.toNumber() * 0.99, 6);
+  });
+
   it('enforces maxInventory including open BUY orders', async () => {
     strategy = createStrategy({ maxInventory: 6 });
     await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
