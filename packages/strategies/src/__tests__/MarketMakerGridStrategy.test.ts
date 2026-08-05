@@ -905,6 +905,69 @@ describe('MarketMakerGridStrategy', () => {
     expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(1, 8);
   });
 
+  it('ignores a stale PARTIALLY_FILLED replay after the entry already reached CANCELED', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const level0Buy = buySignals(triggerResult)[0];
+
+    // 1) Exchange reports a partial fill of 0.5
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.PARTIALLY_FILLED,
+          executedQuantity: 0.5,
+          strategyId: 1,
+        }),
+      ],
+    });
+    let state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(0.5, 8);
+
+    // 2) Entry is canceled; the cancel ack carries the same executedQuantity=0.5
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.CANCELED,
+          executedQuantity: 0.5,
+          strategyId: 1,
+        }),
+      ],
+    });
+    state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(0.5, 8);
+
+    // 3) Stale replay of the earlier PARTIALLY_FILLED update must be ignored
+    const replayResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.PARTIALLY_FILLED,
+          executedQuantity: 0.5,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    state = strategy.getStrategyState();
+    expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(0.5, 8);
+    // No additional TP should be generated for the replayed fill
+    expect(sellSignals(replayResult)).toHaveLength(0);
+  });
+
   it('supports single-level configuration matching the classic 0.2% market maker', async () => {
     strategy = createStrategy({
       levelGapsPercent: '0.2',

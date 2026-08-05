@@ -307,6 +307,8 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   private pendingClientOrderIds: Set<string> = new Set();
   private processedFillIds: Set<string> = new Set();
   private processedQuantityMap: Map<string, Decimal> = new Map();
+  /** Terminal orders (canceled/rejected/expired) already processed; ignores any stale replays. */
+  private processedTerminalIds: Set<string> = new Set();
 
   constructor(config: StrategyConfig<MarketMakerGridParameters>) {
     super({ ...config, logger: silentLogger });
@@ -1131,6 +1133,8 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     for (const order of orders) {
       if (!order.clientOrderId) continue;
       if (this.processedFillIds.has(order.clientOrderId)) continue;
+      // Ignore any replayed update for an order whose terminal status was already processed
+      if (this.processedTerminalIds.has(order.clientOrderId)) continue;
 
       const metadata =
         this.orderMetadataMap.get(order.clientOrderId) ??
@@ -1182,6 +1186,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
         } else if (this.isTerminalStatus(order.status)) {
           // Canceled/rejected/expired entry: if it partially filled, still take profit
           // on the acquired inventory.
+          this.processedTerminalIds.add(order.clientOrderId);
           if (level && level.entryClientOrderId === order.clientOrderId) {
             level.entryClientOrderId = null;
           }
@@ -1210,6 +1215,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
           }
           this.clearFilledOrderTracking(order.clientOrderId);
         } else if (this.isTerminalStatus(order.status)) {
+          this.processedTerminalIds.add(order.clientOrderId);
           this.clearOrderTracking(order.clientOrderId);
           if (level) {
             level.tpClientOrderId = null;
@@ -1287,6 +1293,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     this.pendingClientOrderIds.clear();
     this.processedFillIds.clear();
     this.processedQuantityMap.clear();
+    this.processedTerminalIds.clear();
     this.inventoryQty = new Decimal(0);
     this.signalActive = false;
     this.lastRangePercent = null;
