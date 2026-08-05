@@ -489,12 +489,29 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   // Signal generation
   // ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Encode the level index into the clientOrderId (suffix "L{index}") so that
+   * level attribution survives console restarts. Format stays alphanumeric and
+   * well under the 32-char exchange limit: E{stratId}D{seq}D{ts}L{level}.
+   */
+  private generateLevelClientOrderId(type: SignalType, level: GridLevelState): string {
+    return `${this.generateClientOrderId(type)}L${level.index}`;
+  }
+
+  /** Extract the level index encoded in a clientOrderId, if present. */
+  private parseLevelIndexFromClientOrderId(clientOrderId: string): number | undefined {
+    const match = /L(\d+)$/.exec(clientOrderId);
+    if (!match) return undefined;
+    const index = Number(match[1]);
+    return index >= 0 && index < this.levels.length ? index : undefined;
+  }
+
   private generateEntrySignal(
     level: GridLevelState,
     price: Decimal,
     quantity: Decimal,
   ): StrategyOrderResult {
-    const clientOrderId = this.generateClientOrderId(SignalType.Entry);
+    const clientOrderId = this.generateLevelClientOrderId(SignalType.Entry, level);
     const metadata: MMGridSignalMetaData = {
       signalType: SignalType.Entry,
       timestamp: Date.now(),
@@ -526,7 +543,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     price: Decimal,
     quantity: Decimal,
   ): StrategyOrderResult {
-    const clientOrderId = this.generateClientOrderId(SignalType.TakeProfit);
+    const clientOrderId = this.generateLevelClientOrderId(SignalType.TakeProfit, level);
     const metadata: MMGridSignalMetaData = {
       signalType: SignalType.TakeProfit,
       timestamp: Date.now(),
@@ -911,31 +928,81 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
         return Boolean(isIdMatch || isClientOrderMatch);
       });
 
+      // Pass 1: adopt take-profit orders. When the level index is encoded in the
+      // clientOrderId, re-attach the TP (and its inventory) to that level so the
+      // level is correctly blocked from re-entering and its capital is accounted
+      // per-level. Legacy TPs without a level suffix stay as orphans.
       for (const order of ownedOrders) {
-        if (!order.clientOrderId) continue;
-        const isTakeProfit = order.clientOrderId.startsWith('T');
-        if (isTakeProfit) {
-          const metadata = this.ensureRecoveredMetadata(order);
-          if (metadata) {
-            this.orders.set(order.clientOrderId, order);
-            this.pendingClientOrderIds.add(order.clientOrderId);
-            const executed = order.executedQuantity || new Decimal(0);
-            if (executed.gt(0)) {
-              this.processedQuantityMap.set(order.clientOrderId, executed);
-            }
-            const remaining = order.quantity.sub(executed);
-            if (remaining.gt(0)) {
-              adoptedTpRemaining = adoptedTpRemaining.add(remaining);
-            }
-            this._logger.info(
-              `[MMGrid] Adopted open TP order ${order.clientOrderId} (${order.quantity} @ ${order.price})`,
-            );
+        if (!order.clientOrderId || !order.clientOrderId.startsWith('T')) continue;
+        const metadata = this.ensureRecoveredMetadata(order);
+        if (!metadata) continue;
+
+        this.orders.set(order.clientOrderId, order);
+        this.pendingClientOrderIds.add(order.clientOrderId);
+        const executed = order.executedQuantity || new Decimal(0);
+        if (executed.gt(0)) {
+          this.processedQuantityMap.set(order.clientOrderId, executed);
+        }
+        const remaining = order.quantity.sub(executed);
+        if (remaining.gt(0)) {
+          adoptedTpRemaining = adoptedTpRemaining.add(remaining);
+        }
+
+        const level = this.findLevel(metadata);
+        if (level && !level.tpClientOrderId && remaining.gt(0)) {
+          level.tpClientOrderId = order.clientOrderId;
+          level.inventoryQty = level.inventoryQty.add(remaining);
+          // Derive the cost basis from the TP's own price so a re-placed TP
+          // (after external cancel) is never listed below break-even.
+          if (order.price && order.price.gt(0)) {
+            const gapFactor = new Decimal(100).add(this.getTpGapPercent(level)).div(100);
+            level.avgEntryPrice = order.price.div(gapFactor);
           }
+          this._logger.info(
+            `[MMGrid] Re-attached open TP ${order.clientOrderId} to L${level.index} ` +
+              `(${remaining} @ ${order.price})`,
+          );
         } else {
-          // Entry orders are signal-dependent; cancel and start fresh
+          // Orphan accounting requires levelIndex to be unset
+          metadata.levelIndex = undefined;
+          this._logger.info(
+            `[MMGrid] Adopted open TP order ${order.clientOrderId} as orphan ` +
+              `(${order.quantity} @ ${order.price})`,
+          );
+        }
+      }
+
+      // Pass 2: adopt entry orders. Entries with a recoverable level whose level
+      // is free are KEPT (not canceled) - they simply resume their cycle. Only
+      // unattributable/conflicting entries are canceled and re-placed on the
+      // next valid signal.
+      for (const order of ownedOrders) {
+        if (!order.clientOrderId || order.clientOrderId.startsWith('T')) continue;
+        const metadata = this.ensureRecoveredMetadata(order);
+        const level = metadata ? this.findLevel(metadata) : undefined;
+
+        if (
+          metadata &&
+          level &&
+          !level.tpClientOrderId &&
+          level.inventoryQty.lte(0) &&
+          !level.entryClientOrderId
+        ) {
+          this.orders.set(order.clientOrderId, order);
+          this.pendingClientOrderIds.add(order.clientOrderId);
+          const executed = order.executedQuantity || new Decimal(0);
+          if (executed.gt(0)) {
+            this.processedQuantityMap.set(order.clientOrderId, executed);
+          }
+          level.entryClientOrderId = order.clientOrderId;
+          this._logger.info(
+            `[MMGrid] Kept open entry ${order.clientOrderId} on L${level.index} ` +
+              `(${order.quantity} @ ${order.price})`,
+          );
+        } else {
           signals.push(this.generateCancelOrderSignal(order));
           this._logger.info(
-            `[MMGrid] Cancelling stale entry order ${order.clientOrderId} on restart`,
+            `[MMGrid] Cancelling unattributable entry order ${order.clientOrderId} on restart`,
           );
         }
       }
@@ -983,7 +1050,9 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       }
 
       if (recoveryQty.gt(0)) {
-        const recoveryLevel = this.levels[0];
+        // Prefer the tightest level that is not already managing an attached TP
+        const recoveryLevel =
+          this.levels.find((l) => !l.tpClientOrderId) ?? this.levels[0];
         recoveryLevel.inventoryQty = recoveryLevel.inventoryQty.add(recoveryQty);
         if (basis) {
           recoveryLevel.avgEntryPrice = recoveryLevel.avgEntryPrice
@@ -1304,7 +1373,11 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       timestamp: Date.now(),
       clientOrderId: order.clientOrderId,
       side: order.side,
+      // Level attribution encoded in the clientOrderId suffix (L{index});
+      // undefined for legacy orders placed before suffixing was introduced.
+      levelIndex: this.parseLevelIndexFromClientOrderId(order.clientOrderId),
       quantity: order.quantity.toString(),
+      price: order.price?.toString(),
     };
     this.orderMetadataMap.set(order.clientOrderId, metadata);
     return metadata;

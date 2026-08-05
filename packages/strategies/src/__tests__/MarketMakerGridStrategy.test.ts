@@ -651,6 +651,68 @@ describe('MarketMakerGridStrategy', () => {
     expect(buys[1].quantity!.toNumber()).toBeCloseTo(6 - 500 / 99, 8);
   });
 
+  it('encodes the level index in generated clientOrderIds', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+    const result = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(result);
+    expect(buys.map((b) => b.clientOrderId.slice(-2))).toEqual(['L0', 'L1', 'L2']);
+  });
+
+  it('re-attaches suffixed TP orders and keeps suffixed entries across a restart', async () => {
+    // L1's TP (level suffix L1) and L2's entry (suffix L2) survive the restart
+    const openTp = createOrder({
+      clientOrderId: 'T1D8D1710000000L1',
+      side: OrderSide.SELL,
+      price: 105,
+      quantity: 3,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+    const openEntry = createOrder({
+      clientOrderId: 'E1D7D1710000000L2',
+      side: OrderSide.BUY,
+      price: 75,
+      quantity: 2.6,
+      status: OrderStatus.NEW,
+      strategyId: 1,
+    });
+
+    const initResult = await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+      openOrders: [openTp, openEntry],
+      orderBook: createOrderBook({ bid: 100, ask: 100.1 }),
+      strategyNetPosition: new Decimal(3),
+    });
+
+    // Nothing canceled, no recovery TP needed (TP covers the inventory)
+    expect(cancelSignals(initResult)).toHaveLength(0);
+    expect(
+      normalizeAnalyzeResult(initResult).filter((s) => s.action === 'sell'),
+    ).toHaveLength(0);
+
+    const state = strategy.getStrategyState();
+    expect(state.levels[1].tpClientOrderId).toBe(openTp.clientOrderId);
+    expect(new Decimal(state.levels[1].inventoryQty).toNumber()).toBeCloseTo(3, 8);
+    // Cost basis derived from TP price / (1 + 5% level gap) = 105 / 1.05 = 100
+    expect(new Decimal(state.levels[1].avgEntryPrice!).toNumber()).toBeCloseTo(100, 8);
+    expect(state.levels[2].entryClientOrderId).toBe(openEntry.clientOrderId);
+
+    // Next trigger: only L0 gets a fresh entry. L1 is blocked by its attached TP,
+    // L2's kept entry stays untouched (active cycle -> no repricing).
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    expect(buys).toHaveLength(1);
+    expect(buys[0].clientOrderId.endsWith('L0')).toBe(true);
+    expect(buys[0].price!.toNumber()).toBeCloseTo(99, 8);
+    expect(cancelSignals(triggerResult)).toHaveLength(0);
+  });
+
   it('cancels stale entries and adopts take-profit orders on restart', async () => {
     const staleEntry = createOrder({
       clientOrderId: 'E1D7D1710000000',
