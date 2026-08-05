@@ -13,6 +13,7 @@ import {
   OrderBook,
   Trade,
   Kline,
+  KlineInterval,
   AccountInfo,
   Balance,
   Position,
@@ -257,10 +258,26 @@ export class BinanceExchange extends BaseExchange {
     const path = isFutures ? '/fapi/v1/klines' : '/api/v3/klines';
     const response = await client.get(path, { params });
 
-    return response.data.map((kline: any[]) => ({
+    // The REST API includes the current, still-forming candle as the last
+    // element. Marking it closed would let strategies evaluate a partial bar.
+    //
+    // Strict determination:
+    // - Every bar that is followed by a later bar in the response is closed by
+    //   construction (Binance returns bars in ascending order and only the
+    //   trailing one can be in progress). No clock is involved.
+    // - Only the trailing bar needs a time comparison. Use the exchange's own
+    //   clock (HTTP Date response header) rather than the local clock, so local
+    //   clock skew can never mark a forming bar as closed. Fall back to local
+    //   time only if the header is missing.
+    const serverDateHeader = response.headers?.date as string | undefined;
+    const parsedServerNow = serverDateHeader ? Date.parse(serverDateHeader) : NaN;
+    const nowMs = Number.isFinite(parsedServerNow) ? parsedServerNow : Date.now();
+    const bars: any[][] = response.data;
+
+    return bars.map((kline: any[], index: number) => ({
       symbol, // Use unified symbol format
       exchange: this.name, // Add exchange name
-      interval: interval,
+      interval: interval as KlineInterval,
       openTime: this.formatTimestamp(kline[0]),
       closeTime: this.formatTimestamp(kline[6]),
       open: this.formatDecimal(kline[1]),
@@ -270,7 +287,7 @@ export class BinanceExchange extends BaseExchange {
       volume: this.formatDecimal(kline[5]),
       quoteVolume: this.formatDecimal(kline[7]),
       trades: kline[8],
-      isClosed: true, // REST API returns historical/closed klines
+      isClosed: index < bars.length - 1 || (kline[6] as number) < nowMs,
     }));
   }
 

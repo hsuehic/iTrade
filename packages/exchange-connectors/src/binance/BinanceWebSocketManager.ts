@@ -170,28 +170,44 @@ export class BinanceWebSocketManager extends EventEmitter {
       return;
     }
 
+    // Combined-stream endpoints (/stream, /market/stream, /public/stream) wrap
+    // every payload as { stream, data }. Unwrap before event-type dispatch,
+    // otherwise all market data from combined sockets is silently dropped.
+    let payload = message;
+    let streamName: string | undefined;
+    if (message.stream && message.data) {
+      payload = message.data;
+      streamName = String(message.stream);
+    }
+
     // Handle data messages
-    if (message.e) {
+    if (payload.e) {
       // Regular event messages (depthUpdate, trade, kline, etc.)
-      this.emit('data', marketType, message);
-    } else if (message.lastUpdateId && message.bids && message.asks) {
+      this.emit('data', marketType, payload);
+    } else if (payload.lastUpdateId && payload.bids && payload.asks) {
       // Depth snapshot messages (@depth5/@depth10/@depth20)
-      // These don't have an event type or symbol, but have lastUpdateId, bids, asks
-      // Find the symbol from active orderbook subscriptions
-      const state = this.connections.get(marketType);
-      if (state) {
-        const orderbookSubs = state.subscriptions.get('orderbook');
+      // These don't have an event type or symbol. Prefer the combined-stream
+      // name (e.g. 'wldusdc@depth5@100ms') to identify the symbol; fall back to
+      // the first orderbook subscription for raw (non-combined) sockets.
+      let binanceSymbol: string | undefined;
+      if (streamName) {
+        binanceSymbol = streamName.split('@')[0]?.toUpperCase();
+      } else {
+        const state = this.connections.get(marketType);
+        const orderbookSubs = state?.subscriptions.get('orderbook');
         if (orderbookSubs && orderbookSubs.size > 0) {
-          // Use the first (or only) orderbook subscription
-          const symbol = Array.from(orderbookSubs)[0];
-          // Inject event type and symbol for consistent handling
-          const enrichedMessage = {
-            ...message,
-            e: 'depthSnapshot',
-            s: this.normalizeSymbol(symbol).toUpperCase(), // Add symbol in Binance format
-          };
-          this.emit('data', marketType, enrichedMessage);
+          binanceSymbol = this.normalizeSymbol(
+            Array.from(orderbookSubs)[0],
+          ).toUpperCase();
         }
+      }
+      if (binanceSymbol) {
+        const enrichedMessage = {
+          ...payload,
+          e: 'depthSnapshot',
+          s: binanceSymbol,
+        };
+        this.emit('data', marketType, enrichedMessage);
       }
     }
   }
