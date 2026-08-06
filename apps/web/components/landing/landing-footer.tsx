@@ -1,11 +1,13 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import Image from 'next/image';
 
 export function LandingFooter() {
   const t = useTranslations('landing.footer');
   const tb = useTranslations('landing.brand');
+  const locale = useLocale();
+  const isZh = locale === 'zh';
 
   return (
     <footer className="relative border-t bg-background/80 py-10 backdrop-blur-sm">
@@ -27,9 +29,17 @@ export function LandingFooter() {
           <p className="mx-auto max-w-2xl text-xs italic text-muted-foreground sm:text-sm">
             {tb('mission')}
           </p>
+          {isZh && (
+            <p className="mx-auto mt-1 max-w-2xl text-[11px] text-muted-foreground/80 sm:text-xs">
+              {tb('missionZh')}
+            </p>
+          )}
           <p className="mt-2 text-sm font-semibold text-foreground">
             {tb('slogan')} <span className="text-primary">{tb('sloganSub')}</span>
           </p>
+          {isZh && (
+            <p className="mt-1 text-xs text-muted-foreground/80">{tb('sloganZh')}</p>
+          )}
         </div>
 
         {/* Divider */}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, Zap, Shield } from 'lucide-react';
 
@@ -16,6 +16,8 @@ const AUTO_PLAY_MS = 8000;
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
   const t = useTranslations('landing.hero');
   const tb = useTranslations('landing.brand');
+  const locale = useLocale();
+  const isZh = locale === 'zh';
   const [slide, setSlide] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -70,9 +72,19 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
               <p className="mx-auto max-w-2xl text-base italic text-muted-foreground sm:text-xl">
                 {tb('mission')}
               </p>
+              {isZh && (
+                <p className="mx-auto mt-1.5 max-w-2xl text-xs text-muted-foreground/80 sm:text-sm">
+                  {tb('missionZh')}
+                </p>
+              )}
               <p className="mt-4 text-2xl font-bold text-foreground sm:text-3xl">
                 {tb('slogan')} <span className="text-primary">{tb('sloganSub')}</span>
               </p>
+              {isZh && (
+                <p className="mt-1.5 text-sm text-muted-foreground/80 sm:text-base">
+                  {tb('sloganZh')}
+                </p>
+              )}
             </div>
 
             {/* Slide 2 — product pitch */}

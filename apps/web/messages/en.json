@@ -25,8 +25,10 @@
         "e": "Execute"
       },
       "mission": "Explore intelligence. Build trust. Research deeply. Decide confidently. Execute precisely.",
+      "missionZh": "探索智能，建立信任。深入研究，自信决策，精准执行。",
       "slogan": "Reason. Decide. Execute.",
       "sloganSub": "Research Smarter. Decide Faster.",
+      "sloganZh": "理性 · 决断 · 执行。研究更聪明，决策更迅速。",
       "company": "XTRDE Labs PTE. LTD."
     },
     "hero": {
