@@ -10,8 +10,24 @@
   },
   "landing": {
     "meta": {
-      "title": "iTrade - Intelligent & Strategic Crypto Trading",
-      "description": "Trade smarter with AI-powered strategies across multiple exchanges. Real-time analytics, automated execution, and risk management built for professionals."
+      "title": "XTRDE · iTrade - Intelligent & Strategic Crypto Trading",
+      "description": "XTRDE = eXplore · Trust · Research · Decide · Execute. Trade smarter with iTrade, AI-powered strategies across multiple exchanges."
+    },
+    "brand": {
+      "name": "XTRDE",
+      "product": "iTrade",
+      "tagline": "by XTRDE",
+      "acronym": {
+        "x": "eXplore",
+        "t": "Trust",
+        "r": "Research",
+        "d": "Decide",
+        "e": "Execute"
+      },
+      "mission": "Explore intelligence. Build trust. Research deeply. Decide confidently. Execute precisely.",
+      "slogan": "Reason. Decide. Execute.",
+      "sloganSub": "Research Smarter. Decide Faster.",
+      "company": "XTRDE Labs PTE. LTD."
     },
     "hero": {
       "badge": "Intelligent & Strategic Crypto Trading",
@@ -56,10 +72,12 @@
       }
     },
     "footer": {
-      "rights": "© 2026 iTrade. All rights reserved.",
+      "rights": "© 2026 XTRDE Labs PTE. LTD. All rights reserved.",
+      "product": "iTrade, a product of XTRDE Labs",
       "risk": "Trade responsibly. Cryptocurrency trading involves risk.",
       "privacy": "Privacy Policy",
-      "terms": "Terms of Service"
+      "terms": "Terms of Service",
+      "brandSectionTitle": "About XTRDE"
     }
   },
   "auth": {

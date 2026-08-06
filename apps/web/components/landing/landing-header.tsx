@@ -26,7 +26,12 @@ export function LandingHeader({ isAuthenticated }: LandingHeaderProps) {
             height={32}
             className="size-8"
           />
-          <span className="text-xl font-bold">iTrade</span>
+          <span className="flex flex-col leading-none">
+            <span className="text-xl font-bold">iTrade</span>
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              by XTRDE
+            </span>
+          </span>
         </Link>
 
         {/* Navigation */}

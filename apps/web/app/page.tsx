@@ -4,6 +4,7 @@ import { HeroSection } from '@/components/landing/hero-section';
 import { TickerGrid } from '@/components/landing/ticker-grid';
 import { MobileDownload } from '@/components/landing/mobile-download';
 import { ChartBackground } from '@/components/landing/chart-background';
+import { LandingFooter } from '@/components/landing/landing-footer';
 import { HelpWidget } from '@/components/help-bot/help-widget';
 import { auth } from '@/lib/auth';
 import { getTranslations } from 'next-intl/server';
@@ -18,7 +19,6 @@ export async function generateMetadata() {
 }
 
 export default async function Home() {
-  const t = await getTranslations('landing.footer');
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -43,32 +43,7 @@ export default async function Home() {
         <TickerGrid />
         <MobileDownload />
       </main>
-      {/* Footer */}
-      <footer className="relative border-t bg-background/80 py-8 backdrop-blur-sm">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground sm:px-6 lg:px-8">
-          <p>{t('rights')}</p>
-          <p className="mt-2">{t('risk')}</p>
-          <div className="mt-4 flex items-center justify-center gap-4">
-            <a
-              href="/privacy.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline transition-colors hover:text-foreground"
-            >
-              {t('privacy')}
-            </a>
-            <span>•</span>
-            <a
-              href="/terms.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline transition-colors hover:text-foreground"
-            >
-              {t('terms')}
-            </a>
-          </div>
-        </div>
-      </footer>
+      <LandingFooter />
 
       {/* Public help bot — landing page only */}
       <HelpWidget />

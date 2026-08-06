@@ -10,8 +10,24 @@
   },
   "landing": {
     "meta": {
-      "title": "iTrade - 智能与策略的加密交易",
-      "description": "在多个交易所使用 AI 策略进行更聪明的交易。实时分析、自动执行与风险管理，为专业人士打造。"
+      "title": "XTRDE · iTrade - 智能与策略的加密交易",
+      "description": "XTRDE = eXplore · Trust · Research · Decide · Execute。用 iTrade 更聪明地交易，跨多个交易所的 AI 策略。"
+    },
+    "brand": {
+      "name": "XTRDE",
+      "product": "iTrade",
+      "tagline": "by XTRDE",
+      "acronym": {
+        "x": "eXplore",
+        "t": "Trust",
+        "r": "Research",
+        "d": "Decide",
+        "e": "Execute"
+      },
+      "mission": "Explore intelligence. Build trust. Research deeply. Decide confidently. Execute precisely.",
+      "slogan": "Reason. Decide. Execute.",
+      "sloganSub": "Research Smarter. Decide Faster.",
+      "company": "XTRDE Labs PTE. LTD."
     },
     "hero": {
       "badge": "智能与策略的加密交易",
@@ -56,10 +72,12 @@
       }
     },
     "footer": {
-      "rights": "© 2026 iTrade. 保留所有权利。",
+      "rights": "© 2026 XTRDE Labs PTE. LTD. 保留所有权利。",
+      "product": "iTrade — XTRDE Labs 旗下产品",
       "risk": "交易需谨慎，加密货币交易具有风险。",
       "privacy": "隐私政策",
-      "terms": "服务条款"
+      "terms": "服务条款",
+      "brandSectionTitle": "关于 XTRDE"
     }
   },
   "auth": {
