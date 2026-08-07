@@ -128,6 +128,25 @@ class AuthService {
     }
   }
 
+  Future<User?> signInWithSocial(String provider) async {
+    try {
+      final response = await ApiClient.instance.postJson(
+        '/api/mobile/sign-in/social',
+        data: {'provider': provider},
+      );
+      if (response.statusCode == 200) {
+        final res = await getUser();
+        unawaited(
+          NotificationService.instance.syncDeviceTokenToServer(force: true),
+        );
+        return res;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   Future<void> ensureInitialized() async {
     if (_initialized) return;
 
@@ -160,19 +179,11 @@ class AuthService {
         return null;
       }
 
-      // Send ID token to Auth.js callback URL
-      // Auth.js v5 with serverClientId should accept ID tokens for mobile apps
-      final Map<String, dynamic> callbackData = {'idToken': _idToken};
-
-      // Use Dio directly to send form-encoded data (not JSON)
       // Send ID token to your server
       final response = await ApiClient.instance.postJson(
         '/api/mobile/sign-in/social',
         data: {'provider': 'google', 'idToken': idToken},
       );
-
-      final List<String>? setCookies = response.headers.map['set-cookie'];
-      // Cookies are set automatically by Dio
 
       // Check if callback was successful
       if (response.statusCode != 200) {
@@ -185,9 +196,7 @@ class AuthService {
         );
         return res;
       }
-
-      return null;
-    } catch (e, st) {
+    } catch (e) {
       return null;
     }
   }

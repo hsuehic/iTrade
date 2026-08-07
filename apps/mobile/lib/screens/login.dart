@@ -363,6 +363,72 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGithubSignIn() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      if (!await _ensureApiClientReady()) return;
+      final User? user = await AuthService.instance.signInWithSocial('github');
+      if (user != null) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/home');
+        return;
+      } else {
+        final String msg = 'Login failed';
+        setState(() => _error = msg);
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Login failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+      _logAnalyticsEvent('sign_in_with_github', {
+        'screen': 'login',
+        'action': 'login with github',
+      });
+    }
+  }
+
+  Future<void> _handleSlackSignIn() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      if (!await _ensureApiClientReady()) return;
+      final User? user = await AuthService.instance.signInWithSocial('slack');
+      if (user != null) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/home');
+        return;
+      } else {
+        final String msg = 'Login failed';
+        setState(() => _error = msg);
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Login failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+      _logAnalyticsEvent('sign_in_with_slack', {
+        'screen': 'login',
+        'action': 'login with slack',
+      });
+    }
+  }
+
   Future<void> _handleCredentialLogin() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -574,6 +640,208 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // 1-Click Start Highlight Badge
+                  Center(
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.bolt,
+                            size: 16.sp,
+                            color: theme.colorScheme.primary,
+                          ),
+                          SizedBox(width: 6.w),
+                          CopyText(
+                            'screen.login.one_click_start',
+                            fallback: "Start just with one click",
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w600,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Primary Social OAuth Buttons
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleGoogleSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16.w,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/google.svg',
+                      width: 20.w,
+                      height: 20.w,
+                    ),
+                    label: Expanded(
+                      child: CopyText(
+                        'screen.login.continue_with_google',
+                        fallback: "Continue with Google",
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleAppleSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16.w,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/apple.svg',
+                      width: 20.w,
+                      height: 20.w,
+                    ),
+                    label: Expanded(
+                      child: CopyText(
+                        'screen.login.continue_with_apple',
+                        fallback: "Continue with Apple",
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleGithubSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16.w,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/github.svg',
+                      width: 20.w,
+                      height: 20.w,
+                    ),
+                    label: Expanded(
+                      child: CopyText(
+                        'screen.login.continue_with_github',
+                        fallback: "Continue with GitHub",
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleSlackSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 16.w,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/slack.svg',
+                      width: 20.w,
+                      height: 20.w,
+                    ),
+                    label: Expanded(
+                      child: CopyText(
+                        'screen.login.continue_with_slack',
+                        fallback: "Continue with Slack",
+                        style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Divider
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Divider(
+                          color: isDark
+                              ? Colors.grey.withValues(alpha: 0.3)
+                              : Colors.grey.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                        ), // ✅ Width-adapted
+                        child: CopyText(
+                          'screen.login.or_sign_in_with_email',
+                          fallback: "Or sign in with email",
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 12.sp, // ✅ Adaptive font size
+                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(
+                          color: isDark
+                              ? Colors.grey.withValues(alpha: 0.3)
+                              : Colors.grey.withValues(alpha: 0.3),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Secondary Email / Password Input Form
                   TextFormField(
                     controller: _emailController,
                     enabled: !_loading,
@@ -646,123 +914,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               fallback: 'Sign In',
                             ),
                     ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Divider
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Divider(
-                          color: isDark
-                              ? Colors.grey.withValues(alpha: 0.3)
-                              : Colors.grey.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12.w,
-                        ), // ✅ Width-adapted
-                        child: CopyText(
-                          'screen.login.or_continue_with',
-                          fallback: "Or continue with",
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 12.sp, // ✅ Adaptive font size
-                            color: isDark ? Colors.grey[500] : Colors.grey[600],
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Divider(
-                          color: isDark
-                              ? Colors.grey.withValues(alpha: 0.3)
-                              : Colors.grey.withValues(alpha: 0.3),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Social Login Buttons
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(width: 12.w), // ✅ Width-adapted
-                      OutlinedButton.icon(
-                        onPressed: _loading ? null : _handleAppleSignIn,
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            vertical: 12, // ✅ Fixed vertical
-                            horizontal: 12.w, // ✅ Width-adapted
-                          ),
-                          side: BorderSide(
-                            color: isDark
-                                ? Colors.grey[800]!
-                                : Colors.grey.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        icon: SvgPicture.asset(
-                          'assets/icons/apple.svg',
-                          width: 18.w, // ✅ Uniform scaling
-                          height: 18.w, // ✅ Uniform scaling
-                        ),
-                        label: CopyText(
-                          'screen.login.apple',
-                          fallback: "Apple",
-                          style: TextStyle(fontSize: 14.sp),
-                        ), // ✅ Adaptive font
-                      ),
-                      SizedBox(width: 12.w), // ✅ Width-adapted
-                      OutlinedButton.icon(
-                        onPressed: _loading ? null : _handleGoogleSignIn,
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(
-                            vertical: 12, // ✅ Fixed vertical
-                            horizontal: 12.w, // ✅ Width-adapted
-                          ),
-                          side: BorderSide(
-                            color: isDark
-                                ? Colors.grey[800]!
-                                : Colors.grey.withValues(alpha: 0.3),
-                          ),
-                        ),
-                        icon: SvgPicture.asset(
-                          'assets/icons/google.svg',
-                          width: 18.w, // ✅ Uniform scaling
-                          height: 18.w, // ✅ Uniform scaling
-                        ),
-                        label: CopyText(
-                          'screen.login.google',
-                          fallback: "Google",
-                          style: TextStyle(fontSize: 14.sp),
-                        ), // ✅ Adaptive font
-                      ),
-                      SizedBox(width: 12.w), // ✅ Width-adapted
-                      // Expanded(
-                      //   child: OutlinedButton.icon(
-                      //     onPressed: () => _showSnack('Coming soon'),
-                      //     style: OutlinedButton.styleFrom(
-                      //       padding: const EdgeInsets.symmetric(
-                      //         vertical: 12,
-                      //       ),
-                      //       side: BorderSide(
-                      //         color: isDark
-                      //             ? Colors.grey[800]!
-                      //             : Colors.grey.withValues(alpha: 0.3),
-                      //       ),
-                      //     ),
-                      //     icon: SvgPicture.asset(
-                      //       'assets/icons/github.svg',
-                      //       width: 18,
-                      //       height: 18,
-                      //     ),
-                      //     label: CopyText('screen.login.github', fallback: "GitHub"),
-                      //   ),
-                      // ),
-                    ],
                   ),
                 ],
               ),
@@ -942,12 +1093,47 @@ class _LoginScreenState extends State<LoginScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        CopyText(
-          'screen.login.welcome_back',
-          fallback: "Welcome back",
-          style: theme.textTheme.headlineLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            CopyText(
+              'screen.login.welcome_back',
+              fallback: "Welcome back",
+              style: theme.textTheme.headlineLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.bolt,
+                    size: 16,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  CopyText(
+                    'screen.login.one_click_start',
+                    fallback: "Start just with one click",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         CopyText(
@@ -988,9 +1174,160 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
 
-        // Login Form
+        // Primary OAuth Buttons
+        Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleGoogleSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/google.svg',
+                      width: 20,
+                      height: 20,
+                    ),
+                    label: CopyText(
+                      'screen.login.continue_with_google',
+                      fallback: "Continue with Google",
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleAppleSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/apple.svg',
+                      width: 20,
+                      height: 20,
+                    ),
+                    label: CopyText(
+                      'screen.login.continue_with_apple',
+                      fallback: "Continue with Apple",
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleGithubSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/github.svg',
+                      width: 20,
+                      height: 20,
+                    ),
+                    label: CopyText(
+                      'screen.login.continue_with_github',
+                      fallback: "Continue with GitHub",
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading ? null : _handleSlackSignIn,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(
+                        color: isDark
+                            ? Colors.grey[800]!
+                            : Colors.grey.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    icon: SvgPicture.asset(
+                      'assets/icons/slack.svg',
+                      width: 20,
+                      height: 20,
+                    ),
+                    label: CopyText(
+                      'screen.login.continue_with_slack',
+                      fallback: "Continue with Slack",
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Divider
+        Row(
+          children: [
+            Expanded(
+              child: Divider(
+                color: isDark
+                    ? Colors.grey.withValues(alpha: 0.3)
+                    : Colors.grey.withValues(alpha: 0.3),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: CopyText(
+                'screen.login.or_sign_in_with_email',
+                fallback: "Or sign in with email",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+              ),
+            ),
+            Expanded(
+              child: Divider(
+                color: isDark
+                    ? Colors.grey.withValues(alpha: 0.3)
+                    : Colors.grey.withValues(alpha: 0.3),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Secondary Email Login Form
         Form(
           key: _formKey,
           child: Column(
@@ -1079,100 +1416,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                 ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Divider
-              Row(
-                children: [
-                  Expanded(
-                    child: Divider(
-                      color: isDark
-                          ? Colors.grey.withValues(alpha: 0.3)
-                          : Colors.grey.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: CopyText(
-                      'screen.login.or_continue_with',
-                      fallback: "Or continue with",
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? Colors.grey[500] : Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Divider(
-                      color: isDark
-                          ? Colors.grey.withValues(alpha: 0.3)
-                          : Colors.grey.withValues(alpha: 0.3),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 32),
-
-              // Social Login Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _handleAppleSignIn,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: BorderSide(
-                          color: isDark
-                              ? Colors.grey[800]!
-                              : Colors.grey.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      icon: SvgPicture.asset(
-                        'assets/icons/apple.svg',
-                        width: 20,
-                        height: 20,
-                      ),
-                      label: CopyText('screen.login.apple', fallback: "Apple"),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _loading ? null : _handleGoogleSignIn,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        side: BorderSide(
-                          color: isDark
-                              ? Colors.grey[800]!
-                              : Colors.grey.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      icon: SvgPicture.asset(
-                        'assets/icons/google.svg',
-                        width: 20,
-                        height: 20,
-                      ),
-                      label: CopyText(
-                        'screen.login.google',
-                        fallback: "Google",
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),

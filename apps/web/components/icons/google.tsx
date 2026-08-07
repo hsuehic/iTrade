@@ -1,6 +1,11 @@
-export const IconGoogle = () => {
+export const IconGoogle = ({ className }: { className?: string }) => {
   return (
-    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+    <svg
+      version="1.1"
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 48 48"
+      className={className}
+    >
       <g>
         <path
           fill="#EA4335"
