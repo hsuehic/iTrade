@@ -29,7 +29,7 @@ export async function sendEmail(to: string, subject: string, text: string) {
 
   try {
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'support@ihsueh.com',
+      from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@xtrde.com',
       to,
       subject,
       html: text, // Changed from 'text' to 'html' to support HTML content
