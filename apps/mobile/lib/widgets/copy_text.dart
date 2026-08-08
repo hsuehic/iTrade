@@ -47,7 +47,15 @@ class CopyText extends StatelessWidget {
   Widget build(BuildContext context) {
     final service = CopyService.instance;
     final text = service.t(copyKey, params: params);
-    final display = text == copyKey && fallback != null ? fallback! : text;
+    String display;
+    if (text == copyKey && fallback != null) {
+      display = params != null && params.isNotEmpty
+          ? params.entries.fold(fallback!, (result, entry) =>
+              result.replaceAll('{{${entry.key}}}', entry.value))
+          : fallback!;
+    } else {
+      display = text;
+    }
     final base = Text(
       display,
       style: style,
