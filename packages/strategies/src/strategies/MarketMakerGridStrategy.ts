@@ -864,7 +864,17 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
         `threshold=${this.minRangePercent}% -> signal ${this.signalActive ? 'ACTIVE' : 'inactive'}`,
     );
 
-    if (!this.signalActive) return this.cancelOpenEntries();
+    if (!this.signalActive) {
+      // Quiet kline: keep every entry order untouched. The previous behaviour
+      // cancelled all open entries here, which on low-volatility symbols (e.g.
+      // WLD with 0.65%/4.35%/12.5% gaps on a 15m interval) meant entries were
+      // churned every cycle and rarely filled. With wide gaps like ours, price
+      // rarely revisits the levels within a single kline interval, so the
+      // orders must be left in place to have any chance of filling.
+      // Re-pricing only resumes on the next ACTIVE kline, and only when the
+      // grid is clean (no fills, no outstanding TPs) - see hasActiveCycle().
+      return [];
+    }
     // Full re-anchoring of existing entries only when the grid is clean:
     // no entry has filled and no take-profit order is outstanding.
     // The just-closed kline's close price is the fallback anchor when the

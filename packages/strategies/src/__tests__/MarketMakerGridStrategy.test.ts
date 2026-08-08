@@ -204,7 +204,7 @@ describe('MarketMakerGridStrategy', () => {
     expect(cancelSignals(result)).toHaveLength(0);
   });
 
-  it('cancels open entries when the signal turns inactive', async () => {
+  it('keeps open entries untouched when the signal turns inactive', async () => {
     await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
 
     const triggerResult = await strategy.analyze({
@@ -227,17 +227,125 @@ describe('MarketMakerGridStrategy', () => {
       ),
     });
 
-    // Quiet kline: range 0.2% < 0.8%
+    // Quiet kline: range 0.2% < 0.8%. Previously this cancelled all three
+    // entries; the new behaviour keeps them so wide grid levels (whose
+    // prices are far from bid) actually have a chance to fill later.
     const quietResult = await strategy.analyze({
       klines: [createKline({ high: 100.2, low: 100 })],
     });
-    const cancels = cancelSignals(quietResult);
 
-    expect(cancels).toHaveLength(3);
-    const canceledIds = cancels.map((c) => c.clientOrderId);
-    for (const buy of buys) {
-      expect(canceledIds).toContain(buy.clientOrderId);
+    expect(cancelSignals(quietResult)).toHaveLength(0);
+    expect(buySignals(quietResult)).toHaveLength(0);
+
+    // Entries must still be open - the strategy state retains them.
+    const state = strategy.getStrategyState();
+    for (const lvl of state.levels) {
+      expect(lvl.entryClientOrderId).not.toBeNull();
     }
+  });
+
+  it('keeps every entry untouched when any entry partially filled and next kline is quiet', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // Trigger the grid.
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    expect(buys).toHaveLength(3);
+    const level0Buy = buys[0];
+
+    // Exchange confirms all three entries as NEW.
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // Level 0 partially fills (half). The other two entries remain untouched.
+    const halfQty = level0Buy.quantity!.div(2);
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level0Buy.price!.toNumber(),
+          quantity: level0Buy.quantity!,
+          executedQuantity: halfQty,
+          status: OrderStatus.PARTIALLY_FILLED,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Quiet kline arrives while L0 is still PARTIALLY_FILLED with inventory
+    // held. The new rule: do not cancel ANY entry (not even L1/L2 which are
+    // still NEW). Lifecycle of the partial fill continues via handleOrderUpdates.
+    const quietResult = await strategy.analyze({
+      klines: [createKline({ high: 100.2, low: 100 })],
+    });
+
+    expect(cancelSignals(quietResult)).toHaveLength(0);
+    expect(buySignals(quietResult)).toHaveLength(0);
+  });
+
+  it('keeps every entry untouched when any entry partially filled and next kline is active', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    const level0Buy = buys[0];
+
+    // Exchange confirms all three entries.
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // Level 0 partially fills -> hasActiveCycle() must hold.
+    const halfQty = level0Buy.quantity!.div(2);
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level0Buy.price!.toNumber(),
+          quantity: level0Buy.quantity!,
+          executedQuantity: halfQty,
+          status: OrderStatus.PARTIALLY_FILLED,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // ACTIVE kline (range >= 0.8%) with a moved bid: reprice=false branch must
+    // not touch L0 (still partially filled, in-flight inventory) nor L1/L2
+    // (their fills could arrive any moment).
+    const activeResult = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
+      klines: [createKline({ high: 100.5, low: 99.5 })],
+    });
+
+    expect(cancelSignals(activeResult)).toHaveLength(0);
+    // No new buys either: L0 busy, L1/L2 already have entries open.
+    expect(buySignals(activeResult)).toHaveLength(0);
   });
 
   it('places a take-profit above ask1 after an entry fill', async () => {
