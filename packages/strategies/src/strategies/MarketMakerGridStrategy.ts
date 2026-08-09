@@ -946,6 +946,38 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     this.processedQuantityMap.delete(clientOrderId);
   }
 
+  /**
+   * True when the grid is fully ready for a fresh reprice: every level has an
+   * entry order in NEW status on the exchange (never touched by any fill),
+   * no TP outstanding, no inventory, and no in-flight churn.
+   *
+   * This is the user's "全 clean grid 允许下根 K 线 refresh 重锚" condition.
+   * When this holds we:
+   *   1) wipe level.lastEntryFillPrice (it would otherwise latch the previous
+   *      cycle and keep hasActiveCycle() >= true forever, dead-locking the
+   *      scheduler at reprice=false),
+   *   2) return reprice=true so refreshEntries can cancel-and-replace at the
+   *      fresh anchor.
+   *
+   * IMPORTANT: a level with MISSING entry (entryClientOrderId == null) does
+   * NOT count as clean - the cycle is mid-flight, the level is somewhere in
+   * the entry -> TP chain, we must not touch other levels' orders.
+   */
+  private isGridCleanForReprice(): boolean {
+    if (this.inventoryQty.gt(0)) return false;
+    for (const level of this.levels) {
+      if (!level.entryClientOrderId) return false;
+      if (level.tpClientOrderId) return false;
+      if (level.inventoryQty.gt(0)) return false;
+      const existing = this.orders.get(level.entryClientOrderId);
+      if (!existing) return false;
+      if (existing.status !== OrderStatus.NEW) return false;
+      const exec = existing.executedQuantity || new Decimal(0);
+      if (exec.gt(0)) return false;
+    }
+    return true;
+  }
+
   private evaluateKline(kline: Kline): StrategyResult[] {
     const rangePercent = this.computeRangePercent(kline);
     if (!rangePercent) return [];
@@ -964,14 +996,28 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       // churned every cycle and rarely filled. With wide gaps like ours, price
       // rarely revisits the levels within a single kline interval, so the
       // orders must be left in place to have any chance of filling.
-      // Re-pricing only resumes on the next ACTIVE kline, and only when the
-      // grid is clean (no fills, no outstanding TPs) - see hasActiveCycle().
       return [];
     }
-    // Full re-anchoring of existing entries only when the grid is clean:
-    // no entry has filled and no take-profit order is outstanding.
-    // The just-closed kline's close price is the fallback anchor when the
-    // orderbook stream is unavailable.
+
+    // ACTIVE kline. Two distinct cases per user's 2026-08-09 rule:
+    //
+    //   (a) Grid is FULLY CLEAN: every level's entry is on the book in NEW
+    //       status (zero fills, zero partial fills), no TP outstanding, no
+    //       inventory. The previous cycle has cleanly finished - wipe stale
+    //       lastEntryFillPrice and re-anchor the entire grid at the new
+    //       kline close. This is the user's "如果新的cycle(K线),满足条件,
+    //       需要refresh entry订单" branch.
+    //
+    //   (b) Otherwise: some level has churn in flight (its entry is partway
+    //       through entry -> TP, or a TP is in flight, or inventory is held).
+    //       reprice=false: leave every existing order alone, only fill idle
+    //       slots (levels with no entry at all).
+    if (this.isGridCleanForReprice()) {
+      for (const level of this.levels) {
+        level.lastEntryFillPrice = null;
+      }
+      return this.refreshEntries(/* reprice = */ true, kline.close);
+    }
     return this.refreshEntries(!this.hasActiveCycle(), kline.close);
   }
 

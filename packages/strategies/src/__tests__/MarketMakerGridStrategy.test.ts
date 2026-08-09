@@ -1482,4 +1482,106 @@ describe('MarketMakerGridStrategy', () => {
     expect(state.levels[2].tpClientOrderId).toBeNull();
     expect(state.levels[2].inventoryQty).toBe('0');
   });
+
+  it('re-anchors all entries when every level still has a NEW-only entry and the next kline is ACTIVE, even after one level previously FILLED+TPd', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // Wave 1: trigger the grid at anchor=100.
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const wave1 = buySignals(trigger);
+    expect(wave1).toHaveLength(3);
+
+    // Exchange acks all three as NEW.
+    await strategy.analyze({
+      orders: wave1.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills -> TP placed. L1/L2 entries remain NEW on the book.
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: wave1[0].clientOrderId,
+          side: OrderSide.BUY,
+          price: wave1[0].price!.toNumber(),
+          quantity: wave1[0].quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: wave1[0].quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+
+    // L0 TP FILLED. Per the new rule: deeper levels still have NEW entries,
+    // so L0 must be re-listed at its ORIGINAL entry fill price (99).
+    const tp0Filled = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 100, ask: 100.1 }),
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp0.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const reentries = buySignals(tp0Filled);
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(99, 8);
+
+    // Exchange acks the re-listed L0 as NEW. Grid state now :
+    //   L0 NEW (re-listed at 99), L1 NEW (95), L2 NEW (75) ; no TPs, no inventory.
+    // L0 has lastEntryFillPrice = 99 latched from the previous cycle.
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: reentries[0].clientOrderId,
+          side: OrderSide.BUY,
+          price: reentries[0].price!.toNumber(),
+          quantity: reentries[0].quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Next ACTIVE kline arrives. Per the user rule: "如果每个level都有entry
+    // 订单、且都是New的状态,如果新的cycle(K线)满足条件,需要refresh entry订单."
+    // The scheduler must cancel the three existing NEW entries and re-issue
+    // them at the fresh anchor (bid=98 here), not freeze the grid on the
+    // stale lastEntryFillPrice.
+    const refresh = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 98, ask: 98.1 }),
+      klines: [createKline({ high: 98.5, low: 97.5 })],
+    });
+
+    const cancels = cancelSignals(refresh);
+    const newBuys = buySignals(refresh);
+    expect(cancels).toHaveLength(3);
+    expect(newBuys).toHaveLength(3);
+    // Re-anchored at bid=98 with gaps 1% / 5% / 25%.
+    expect(newBuys[0].price!.toNumber()).toBeCloseTo(98 * 0.99, 8);
+    expect(newBuys[1].price!.toNumber()).toBeCloseTo(98 * 0.95, 8);
+    expect(newBuys[2].price!.toNumber()).toBeCloseTo(98 * 0.75, 8);
+
+    // lastEntryFillPrice must have been wiped for the next reprice cycle.
+    const state = strategy.getStrategyState();
+    expect(state.levels[0].entryClientOrderId).not.toBeNull();
+    expect(state.levels[1].entryClientOrderId).not.toBeNull();
+    expect(state.levels[2].entryClientOrderId).not.toBeNull();
+  });
 });
