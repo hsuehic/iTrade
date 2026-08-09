@@ -510,7 +510,11 @@ describe('MarketMakerGridStrategy', () => {
 
     const reentries = buySignals(tpFillResult);
     expect(reentries).toHaveLength(1);
-    expect(reentries[0].price!.toNumber()).toBeCloseTo(99 * 0.99, 8);
+    // The re-entry rides the SAME price L0 filled at earlier (level.lastEntryFillPrice),
+    // not the latest bid; that's the conservative "buy the dip back" anchor.
+    // A deeper level (L1 or L2) still has an untraded entry on the book, so we
+    // re-list L0 at its original fill price 99.
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(99, 8);
     expect(cancelSignals(tpFillResult)).toHaveLength(0);
   });
 
@@ -736,9 +740,12 @@ describe('MarketMakerGridStrategy', () => {
     });
     const reentries = buySignals(tpFillResult);
 
-    // Anchored on the TP fill price, not blocked by the missing orderbook
+    // Anchored on the LEVEL's last entry fill price (= 99.396 here), not on
+    // the TP fill price. Deeper levels (L1/L2) still have entries on the book
+    // (they were placed in the trigger step and never touched in the test), so
+    // the strategy re-lists L0 at its original BUY price.
     expect(reentries).toHaveLength(1);
-    expect(reentries[0].price!.toNumber()).toBeCloseTo(tp.price!.toNumber() * 0.99, 6);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(99.396, 6);
   });
 
   it('enforces maxInventory including open BUY orders', async () => {
@@ -1246,5 +1253,233 @@ describe('MarketMakerGridStrategy', () => {
     // bid1 * (1 - 0.2%) = 998
     expect(buys[0].price!.toNumber()).toBeCloseTo(998, 8);
     expect(buys[0].quantity!.toNumber()).toBeCloseTo(990 / 998, 8);
+  });
+
+  it('does NOT re-list L0 after TP fill when every deeper entry already FILLED (deepest chain exhausted)', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // Trigger: places L0/L1/L2 entry BUYs
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    expect(buys).toHaveLength(3);
+    const level0Buy = buys[0];
+    const level1Buy = buys[1];
+    const level2Buy = buys[2];
+
+    // Exchange acknowledges all three as NEW.
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills -> TP placed
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level0Buy.price!.toNumber(),
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    expect(tp0).toBeDefined();
+
+    // Deeper levels fill: L1 -> TP
+    const fill1 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level1Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level1Buy.price!.toNumber(),
+          quantity: level1Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level1Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    expect(sellSignals(fill1)[0]).toBeDefined();
+
+    // L2 (deepest) also fills -> TP. Now NO level has an unfilled entry left;
+    // every level has either an outstanding TP or nothing.
+    const fill2 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level2Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level2Buy.price!.toNumber(),
+          quantity: level2Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level2Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    expect(sellSignals(fill2)[0]).toBeDefined();
+
+    // Now L0's TP fills. With every deeper level's entry already filled (i.e.
+    // nothing deeper still has an OPEN entry hanging), the new rule says: do
+    // NOT re-list L0. The cycle is meant to exhaust itself when the deeper
+    // chains unwind.
+    const tp0FillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp0.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    expect(buySignals(tp0FillResult)).toHaveLength(0);
+    expect(cancelSignals(tp0FillResult)).toHaveLength(0);
+  });
+
+  it('re-lists L0 at its ORIGINAL entry price after TP fill while deeper entries are still NEW', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    const level0Buy = buys[0];
+    const level0Price = level0Buy.price!.toNumber(); // 99
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills -> TP placed
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level0Price,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp = sellSignals(fillResult)[0];
+
+    // Market has moved on: bid now 97.5 (far below L0's original 99 fill).
+    // L1 / L2 entries are still NEW (never touched).
+    const tpFillResult = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 97.5, ask: 97.6 }),
+      orders: [
+        createOrder({
+          clientOrderId: tp.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp.price!.toNumber(),
+          quantity: tp.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const reentries = buySignals(tpFillResult);
+    expect(reentries).toHaveLength(1);
+    // Re-entry anchored at the ORIGINAL L0 entry fill price 99, NOT at the
+    // latest bid (97.5). That's the "buy the dip back" semantics.
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(level0Price, 8);
+    expect(cancelSignals(tpFillResult)).toHaveLength(0);
+  });
+
+  it('deepest level (L2) never re-enters via TP unwind, allowing the cycle to terminate', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const triggerResult = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(triggerResult);
+    const level2Buy = buys[2];
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L2 fills -> TP
+    const fillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level2Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level2Buy.price!.toNumber(),
+          quantity: level2Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level2Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp = sellSignals(fillResult)[0];
+
+    // L2 TP fills. L0/L1 entries are still NEW on the book, but L2 itself has
+    // nothing deeper, so hasDeeperOpenEntry(L2) must be false -> no re-list.
+    const tpFillResult = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp.price!.toNumber(),
+          quantity: tp.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    expect(buySignals(tpFillResult)).toHaveLength(0);
+    // L0 / L1 entries must remain untouched (no cancels).
+    expect(cancelSignals(tpFillResult)).toHaveLength(0);
+
+    // Level 2 state has cleaned up (inventory zeroed after TP fill).
+    const state = strategy.getStrategyState();
+    expect(state.levels[2].entryClientOrderId).toBeNull();
+    expect(state.levels[2].tpClientOrderId).toBeNull();
+    expect(state.levels[2].inventoryQty).toBe('0');
   });
 });

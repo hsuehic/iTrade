@@ -268,6 +268,12 @@ interface GridLevelState {
   inventoryQty: Decimal;
   /** Volume-weighted average entry price of current inventoryQty */
   avgEntryPrice: Decimal | null;
+  /**
+   * Last entry fill price for this level. After a TP unwinds we re-list the
+   * next entry at this exact price (conservative "buy the dip back") instead
+   * of chasing the market. Cleared on the next clean-cycle reprice.
+   */
+  lastEntryFillPrice: Decimal | null;
 }
 
 interface MMGridSignalMetaData extends SignalMetaData {
@@ -383,6 +389,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       tpClientOrderId: null,
       inventoryQty: new Decimal(0),
       avgEntryPrice: null,
+      lastEntryFillPrice: null,
     }));
   }
 
@@ -642,17 +649,51 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
    * Called when the volatility signal is (still) active.
    */
   /**
-   * True when any entry has filled (inventory held) or any take-profit order
-   * (level-attached, in-flight, or adopted) is outstanding. While a cycle is
-   * active, existing entry orders must not be re-priced.
+   * True when the current cycle has actual churn in flight: a take-profit
+   * order outstanding, inventory awaiting TP, or any level whose
+   * lastEntryFillPrice says it has already ridden at least one fill in this
+   * cycle. While such a cycle is active the kline scheduler must NOT
+   * re-price or cancel existing entry orders - they're managed by their
+   * own entry -> TP chain.
+   *
+   * IMPORTANT: pending / NEW-entry-only state does NOT count. Otherwise the
+   * grid would never re-anchor when price drifts far from an untraded
+   * entry. reprice=true is reserved for the case where the grid is
+   * effectively clean: zero fills ever, zero TPs, zero inventory - with
+   * only untraded NEW entries possibly lingering, or nothing at all.
    */
   private hasActiveCycle(): boolean {
     if (this.inventoryQty.gt(0)) return true;
     for (const level of this.levels) {
-      if (level.tpClientOrderId || level.inventoryQty.gt(0)) return true;
+      if (level.tpClientOrderId) return true;
+      if (level.inventoryQty.gt(0)) return true;
+      if (level.lastEntryFillPrice) return true;
     }
-    for (const metadata of this.orderMetadataMap.values()) {
-      if (metadata.signalType === SignalType.TakeProfit) return true;
+    return false;
+  }
+
+  /**
+   * True when at least one level whose entry gap is DEEPER than `level`'s
+   * (i.e. higher index; the levels array is ordered tightest -> deepest)
+   * still has an unfilled entry order hanging on the exchange.
+   *
+   * Used by the TP-FILLED handler to decide whether to re-list the just
+   * closed level at its own last entry fill price:
+   *   - if a deeper level still has an open entry, the current level may
+   *     re-list at its original fill price ("buy the dip back" while the
+   *     deeper safety net is still in place).
+   *   - if every deeper level has already FILLED (i.e. their entries have
+   *     become TPs or unwound), the current level does NOT re-list. The
+   *     cycle is then expected to terminate once the deeper TPs unwind,
+   *     and the next ACTIVE kline re-anchors the grid.
+   *
+   * The deepest level never has anything deeper, so it never qualifies for
+   * a re-entry; that property is what guarantees the cycle terminates.
+   */
+  private hasDeeperOpenEntry(level: GridLevelState): boolean {
+    for (const other of this.levels) {
+      if (other.index <= level.index) continue;
+      if (other.entryClientOrderId) return true;
     }
     return false;
   }
@@ -685,6 +726,15 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     if (!anchor) {
       this._logger.warn('[MMGrid] Skipping entries: no usable price anchor');
       return signals;
+    }
+
+    if (reprice) {
+      // A reprice=true pass means the entire cycle is being reset at a fresh
+      // anchor. Drop per-level cycle state so the next wave of orders anchors
+      // off the new kline close / live bid, not stale fill prices.
+      for (const level of this.levels) {
+        level.lastEntryFillPrice = null;
+      }
     }
 
     const buyingPower = this.getBuyingPower();
@@ -827,6 +877,49 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       `[MMGrid] L${level.index}: re-entry BUY ${quantity} @ ${desiredPrice} after TP fill`,
     );
     return [this.generateEntrySignal(level, desiredPrice, quantity)];
+  }
+
+  /**
+   * Re-list an entry for THIS level at the price of its most recent entry fill
+   * (level.lastEntryFillPrice). Used by the TP-FILLED handler when other levels
+   * still have live work: we want the entry hanging back at the same level the
+   * last fill happened, not chasing the market. Budget and inventory caps are
+   * still respected; if there's no usable budget nothing is emitted.
+   */
+  private placeEntryAtLastFillPrice(level: GridLevelState): StrategyResult[] {
+    const price = level.lastEntryFillPrice;
+    if (!price || !price.gt(0)) return [];
+    if (level.tpClientOrderId || level.inventoryQty.gt(0) || level.entryClientOrderId) {
+      return [];
+    }
+
+    const buyingPower = this.getBuyingPower();
+    const markPrice = !this.isOrderBookStale() && this.lastAsk ? this.lastAsk : price;
+    let deployed = this.getOrphanTpNotional();
+    for (const other of this.levels) {
+      if (other.inventoryQty.gt(0)) {
+        deployed = deployed.add(other.inventoryQty.mul(other.avgEntryPrice ?? markPrice));
+      }
+      if (other !== level) {
+        deployed = deployed.add(this.getOpenEntryNotional(other));
+      }
+    }
+
+    const budget = buyingPower.sub(deployed);
+    const targetNotional = Decimal.min(buyingPower.mul(level.allocationRatio), budget);
+    if (targetNotional.lte(0)) {
+      this._logger.debug(
+        `[MMGrid] L${level.index}: re-entry at last fill price skipped (buying power exhausted, deployed=${deployed})`,
+      );
+      return [];
+    }
+    const quantity = Decimal.min(targetNotional.div(price), this.getRemainingCapacity());
+    if (quantity.lte(0)) return [];
+
+    this._logger.debug(
+      `[MMGrid] L${level.index}: re-entry BUY ${quantity} @ ${price} (last entry fill price)`,
+    );
+    return [this.generateEntrySignal(level, price, quantity)];
   }
 
   /** Cancel all open, unfilled entry orders (take-profits are left untouched). */
@@ -1220,6 +1313,9 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
           level.inventoryQty = level.inventoryQty.add(increment);
           level.avgEntryPrice = fillPrice || level.avgEntryPrice;
         }
+        // Remember the most recent fill price so TP unwind can re-list the
+        // entry at the SAME price instead of chasing the market up.
+        if (fillPrice && fillPrice.gt(0)) level.lastEntryFillPrice = fillPrice;
       }
     } else {
       // TakeProfit SELL fill reduces inventory
@@ -1314,12 +1410,25 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
           if (level) {
             level.tpClientOrderId = null;
             level.avgEntryPrice = null;
-            // Level cycle complete: re-enter ONLY this level if the signal is still
-            // active. Other levels' open entries stay untouched until kline close.
-            // The TP fill price is the fallback anchor if the orderbook is stale.
-            if (this.signalActive) {
-              const fillPrice = order.averagePrice || order.price || undefined;
-              signals.push(...this.placeEntryForSingleLevel(level, fillPrice));
+            // Per user's rule (2026-08):
+            //  - If a DEEPER level still has an unfilled entry hanging, the
+            //    deeper safety net is still in place -> re-list THIS level at
+            //    its own last entry fill price (conservative "buy the dip
+            //    back"). Not gated on signalActive.
+            //  - If every deeper level has already FILLED (no deeper open
+            //    entry remains), THIS level stops participating: the deeper
+            //    levels' own chains will exhaust themselves, the cycle then
+            //    terminates, and the next ACTIVE kline re-anchors the grid.
+            // The deepest level has nothing deeper, so it never re-enters via
+            // this path - that property is what prevents the cycle from
+            // locking forever.
+            if (this.hasDeeperOpenEntry(level)) {
+              signals.push(...this.placeEntryAtLastFillPrice(level));
+            } else {
+              this._logger.debug(
+                `[MMGrid] L${level.index}: TP unwind with no deeper entry open; ` +
+                  `waiting for deeper chains to exhaust + next ACTIVE kline to re-anchor`,
+              );
             }
           }
           this.clearFilledOrderTracking(order.clientOrderId);
@@ -1416,6 +1525,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       level.tpClientOrderId = null;
       level.inventoryQty = new Decimal(0);
       level.avgEntryPrice = null;
+      level.lastEntryFillPrice = null;
     }
     this._logger.debug('🧹 [MMGrid] Strategy cleaned up');
   }
