@@ -947,28 +947,48 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   }
 
   /**
-   * True when the grid is fully ready for a fresh reprice: every level has an
-   * entry order in NEW status on the exchange (never touched by any fill),
-   * no TP outstanding, no inventory, and no in-flight churn.
+   * True when the grid is ready for a fresh reprice: NO take-profit order
+   * outstanding anywhere, NO inventory held anywhere, and every level that
+   * still has an entry order on the book holds it in NEW status with zero
+   * fills. The DEEPEST level (and only the deepest) is allowed to have NO
+   * entry at all: it has just unwound via the "no deeper entry open -> no
+   * re-entry" rule after its TP filled. Any OTHER level missing its entry
+   * is mid-flight and must block the clean state.
    *
-   * This is the user's "全 clean grid 允许下根 K 线 refresh 重锚" condition.
+   * This is the user's "全 clean grid 允许下根 K 线 refresh 重锚" condition,
+   * extended per 2026-08-10 to cover the post-TP-unwind freeze:
+   *   - deepest level TP FILLED -> no re-entry (hasDeeperOpenEntry=false)
+   *   - all OTHER levels' entries still sit NEW (untouched)
+   *   - no TP outstanding, no inventory
+   *   -> grid must refresh on the next ACTIVE kline, not stay anchored at
+   *      the stale bid that placed the original entries.
+   *
    * When this holds we:
    *   1) wipe level.lastEntryFillPrice (it would otherwise latch the previous
    *      cycle and keep hasActiveCycle() >= true forever, dead-locking the
    *      scheduler at reprice=false),
-   *   2) return reprice=true so refreshEntries can cancel-and-replace at the
-   *      fresh anchor.
+   *   2) return reprice=true so refreshEntries cancels-and-replaces at the
+   *      fresh anchor and fills in the deepest slot.
    *
-   * IMPORTANT: a level with MISSING entry (entryClientOrderId == null) does
-   * NOT count as clean - the cycle is mid-flight, the level is somewhere in
-   * the entry -> TP chain, we must not touch other levels' orders.
+   * Still NOT clean (mid-flight, must not touch): any level holding a TP,
+   * any inventory anywhere, any entry already PARTIALLY_FILLED / FILLED,
+   * any non-deepest level missing its entry.
    */
   private isGridCleanForReprice(): boolean {
     if (this.inventoryQty.gt(0)) return false;
+    const deepestIndex = this.levels.length - 1;
     for (const level of this.levels) {
-      if (!level.entryClientOrderId) return false;
       if (level.tpClientOrderId) return false;
       if (level.inventoryQty.gt(0)) return false;
+      if (!level.entryClientOrderId) {
+        // Only the DEEPEST level is allowed to be missing its entry: it has
+        // cleanly unwound via the "no deeper entry open -> no re-entry" rule
+        // after its TP filled. Any other level missing its entry means the
+        // cycle is mid-flight (entry -> TP chain in progress) and we must
+        // NOT touch the rest of the grid.
+        if (level.index !== deepestIndex) return false;
+        continue;
+      }
       const existing = this.orders.get(level.entryClientOrderId);
       if (!existing) return false;
       if (existing.status !== OrderStatus.NEW) return false;

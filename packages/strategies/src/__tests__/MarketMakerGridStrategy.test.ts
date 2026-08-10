@@ -1584,4 +1584,83 @@ describe('MarketMakerGridStrategy', () => {
     expect(state.levels[1].entryClientOrderId).not.toBeNull();
     expect(state.levels[2].entryClientOrderId).not.toBeNull();
   });
+
+  it('re-anchors when the DEEPEST level entry is missing (post TP unwind) and every other level holds NEW-only entries on an ACTIVE kline', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    // Wave 1: place L0 / L1 / L2 entry BUYs at anchor=100 (gaps 1% / 5% / 25%).
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const wave1 = buySignals(trigger);
+    expect(wave1).toHaveLength(3);
+
+    // Exchange acks all three as NEW.
+    await strategy.analyze({
+      orders: wave1.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L2 (deepest) fills -> TP placed.
+    const fill2 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: wave1[2].clientOrderId,
+          side: OrderSide.BUY,
+          price: wave1[2].price!.toNumber(),
+          quantity: wave1[2].quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: wave1[2].quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp2 = sellSignals(fill2)[0];
+    expect(tp2).toBeDefined();
+
+    // L2 TP fills. Per the "no deeper entry open -> no re-entry" rule, L2 is
+    // NOT re-listed. L0 / L1 entries remain NEW on the book. No TP
+    // outstanding, no inventory held anywhere.
+    const tp2Filled = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp2.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp2.price!.toNumber(),
+          quantity: tp2.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp2.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    expect(buySignals(tp2Filled)).toHaveLength(0);
+    expect(cancelSignals(tp2Filled)).toHaveLength(0);
+
+    // Next ACTIVE kline arrives with a different bid (98). The grid must:
+    //   - cancel the two stale NEW entries on L0 / L1,
+    //   - re-issue ALL THREE levels at the fresh anchor (L2 slot gets a new
+    //     entry too because refreshEntries places on empty levels),
+    //   - NOT freeze on L2's latched lastEntryFillPrice.
+    const refresh = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 98, ask: 98.1 }),
+      klines: [createKline({ high: 98.5, low: 97.5 })],
+    });
+
+    const cancels = cancelSignals(refresh);
+    const newBuys = buySignals(refresh);
+    expect(cancels).toHaveLength(2);
+    expect(newBuys).toHaveLength(3);
+    expect(newBuys[0].price!.toNumber()).toBeCloseTo(98 * 0.99, 8);
+    expect(newBuys[1].price!.toNumber()).toBeCloseTo(98 * 0.95, 8);
+    expect(newBuys[2].price!.toNumber()).toBeCloseTo(98 * 0.75, 8);
+  });
 });
