@@ -448,7 +448,8 @@ describe('MarketMakerGridStrategy', () => {
 
     // Only level 0 is idle again (levels 1/2 still have their original entries open)
     expect(reentries).toHaveLength(1);
-    expect(reentries[0].price!.toNumber()).toBeCloseTo(99, 8);
+    // Re-entry price = min(bid1=100, tpPrice=101.101) / (1 + 1%) = 100/1.01 = 99.0099...
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(100 / 1.01, 8);
 
     const state = strategy.getStrategyState();
     expect(new Decimal(state.inventoryQty).toNumber()).toBeCloseTo(0, 8);
@@ -510,11 +511,12 @@ describe('MarketMakerGridStrategy', () => {
 
     const reentries = buySignals(tpFillResult);
     expect(reentries).toHaveLength(1);
-    // The re-entry rides the SAME price L0 filled at earlier (level.lastEntryFillPrice),
-    // not the latest bid; that's the conservative "buy the dip back" anchor.
-    // A deeper level (L1 or L2) still has an untraded entry on the book, so we
-    // re-list L0 at its original fill price 99.
-    expect(reentries[0].price!.toNumber()).toBeCloseTo(99, 8);
+    // Re-entry price = min(bid1=99, tpPrice=101.101) / (1 + 1%) = 99/1.01 = 98.0198...
+    // The min() picks the lower of current bid and TP fill price so the re-entry
+    // BUY never chases the market up past the TP price; it sits one gap below bid.
+    // A deeper level (L1 or L2) still has an untraded entry on the book, so L0
+    // re-enters while the deeper safety net is still in place.
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(99 / 1.01, 8);
     expect(cancelSignals(tpFillResult)).toHaveLength(0);
   });
 
@@ -1354,7 +1356,7 @@ describe('MarketMakerGridStrategy', () => {
     expect(cancelSignals(tp0FillResult)).toHaveLength(0);
   });
 
-  it('re-lists L0 at its ORIGINAL entry price after TP fill while deeper entries are still NEW', async () => {
+  it('re-lists L0 at min(bid1, tpPrice)/(1+gap%) after TP fill while deeper entries are still NEW', async () => {
     await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
 
     const triggerResult = await strategy.analyze({
@@ -1412,9 +1414,11 @@ describe('MarketMakerGridStrategy', () => {
 
     const reentries = buySignals(tpFillResult);
     expect(reentries).toHaveLength(1);
-    // Re-entry anchored at the ORIGINAL L0 entry fill price 99, NOT at the
-    // latest bid (97.5). That's the "buy the dip back" semantics.
-    expect(reentries[0].price!.toNumber()).toBeCloseTo(level0Price, 8);
+    // Re-entry price = min(bid1=97.5, tpPrice=101.101) / (1 + 1%) = 97.5/1.01.
+    // The min() picks the lower of current bid and TP fill price so the re-entry
+    // BUY sits one gap below the current (lower) bid, not chasing up to the TP
+    // price or latching the stale original fill price.
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(97.5 / 1.01, 8);
     expect(cancelSignals(tpFillResult)).toHaveLength(0);
   });
 
@@ -1524,7 +1528,7 @@ describe('MarketMakerGridStrategy', () => {
     const tp0 = sellSignals(fill0)[0];
 
     // L0 TP FILLED. Per the new rule: deeper levels still have NEW entries,
-    // so L0 must be re-listed at its ORIGINAL entry fill price (99).
+    // so L0 re-enters at min(bid1=100, tpPrice=101.101)/(1+1%) = 100/1.01.
     const tp0Filled = await strategy.analyze({
       orderbook: createOrderBook({ bid: 100, ask: 100.1 }),
       orders: [
@@ -1541,7 +1545,7 @@ describe('MarketMakerGridStrategy', () => {
     });
     const reentries = buySignals(tp0Filled);
     expect(reentries).toHaveLength(1);
-    expect(reentries[0].price!.toNumber()).toBeCloseTo(99, 8);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(100 / 1.01, 8);
 
     // Exchange acks the re-listed L0 as NEW. Grid state now :
     //   L0 NEW (re-listed at 99), L1 NEW (95), L2 NEW (75) ; no TPs, no inventory.
@@ -1662,5 +1666,584 @@ describe('MarketMakerGridStrategy', () => {
     expect(newBuys[0].price!.toNumber()).toBeCloseTo(98 * 0.99, 8);
     expect(newBuys[1].price!.toNumber()).toBeCloseTo(98 * 0.95, 8);
     expect(newBuys[2].price!.toNumber()).toBeCloseTo(98 * 0.75, 8);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Deeper-entry-fill re-prices shallower TPs at
+  //   max(bid1, averagePositionPrice) * (1 + level's tpGap%)
+  // where averagePositionPrice is the cycle-wide VWAP across all filled
+  // inventory. Added 2026-08-10.
+  // ───────────────────────────────────────────────────────────────────────
+
+  it('re-prices shallower level TPs at max(bid1, avgPositionPrice)*(1+tpGap%) when a deeper entry fills', async () => {
+    // Explicit per-level TP gaps keep the arithmetic clean: 1%, 5%, 25%.
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(trigger);
+    expect(buys).toHaveLength(3);
+    const level0Buy = buys[0]; // price 99, qty 500/99
+    const level1Buy = buys[1]; // price 95, qty 300/95
+
+    // Exchange acks all three entries as NEW.
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills -> TP placed at max(ask1=100.1, entry=99)*(1+1%) = 101.101
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    expect(tp0).toBeDefined();
+    expect(tp0.price!.toNumber()).toBeCloseTo(100.1 * 1.01, 6); // 101.101
+
+    // Exchange acks L0's TP as NEW so it is tracked with a known price.
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // L1 (deeper) fills. avgPositionPrice = VWAP(L0 fill, L1 fill):
+    //   (500/99 * 99 + 300/95 * 95) / (500/99 + 300/95)
+    //   = (500 + 300) / (500/99 + 300/95) = 800 / 8.20845... = 97.4519...
+    // bid1 = 100 > 97.4519, so base = bid1 = 100.
+    // L0 new TP price = 100 * (1 + 1%) = 101.0  (< old 101.101 => re-priced)
+    // L1's own TP is placed the normal way at max(ask1=100.1, 95)*(1+5%) = 105.105
+    const fill1 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level1Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 95,
+          quantity: level1Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level1Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const sells = sellSignals(fill1);
+    // One new TP for L1 + cancel(old L0 TP) + re-placed L0 TP = 1 sell + 1 cancel + 1 sell
+    const cancels = cancelSignals(fill1);
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0].clientOrderId).toBe(tp0.clientOrderId);
+    const newTps = sells.filter((s) => s.clientOrderId !== tp0.clientOrderId);
+    // L1's own freshly-placed TP + L0's re-priced TP
+    expect(newTps).toHaveLength(2);
+
+    // Identify L0's re-priced TP vs L1's own new TP by level suffix
+    const l0Repriced = newTps.find((s) => s.clientOrderId!.endsWith('L0'));
+    const l1Own = newTps.find((s) => s.clientOrderId!.endsWith('L1'));
+    expect(l0Repriced).toBeDefined();
+    expect(l1Own).toBeDefined();
+    // L0 re-priced at max(bid1=100, avgPosPrice≈97.4519) * (1+1%) = 101.0
+    expect(l0Repriced!.price!.toNumber()).toBeCloseTo(100 * 1.01, 8);
+    // L1's own TP at max(ask1=100.1, entry=95) * (1+5%) = 105.105
+    expect(l1Own!.price!.toNumber()).toBeCloseTo(100.1 * 1.05, 6);
+  });
+
+  it('does NOT re-price the deepest level TP (no deeper fill can trigger it)', async () => {
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(trigger);
+    const level0Buy = buys[0];
+    const level2Buy = buys[2]; // deepest
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills -> TP placed
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // L2 (deepest) fills. L0 is shallower and has an open TP, so L0 TP is
+    // re-priced. L2's own TP is placed normally. Nothing re-prices L2.
+    const fill2 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level2Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 75,
+          quantity: level2Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level2Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const cancels = cancelSignals(fill2);
+    // Only L0's TP is canceled (L2 has no TP yet to cancel)
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0].clientOrderId).toBe(tp0.clientOrderId);
+
+    const sells = sellSignals(fill2);
+    // L2's freshly placed own TP + L0's re-priced TP
+    expect(sells.filter((s) => s.clientOrderId !== tp0.clientOrderId)).toHaveLength(2);
+  });
+
+  it('re-prices L0 TP lower (toward bid1) when a deeper fill pulls avgPositionPrice below bid1', async () => {
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 99, ask: 99.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 99 })],
+    });
+    const buys = buySignals(trigger);
+    const level0Buy = buys[0]; // price 99*0.99 = 98.01
+    const level1Buy = buys[1]; // price 99*0.95 = 94.05
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills -> TP at max(ask1=99.1, entry=98.01)*(1+1%) = 99.1*1.01 = 100.091
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 98.01,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    const tp0Price = tp0.price!.toNumber();
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0Price,
+          quantity: tp0.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // L1 fills. avgPosPrice = (500/98.01*98.01 + 300/94.05*94.05)/(500/98.01+300/94.05)
+    //   = 800 / (5.101... + 3.189...) = 800 / 8.2908 = 96.49...
+    // bid1 = 99 > 96.49 => base = 99 => new L0 TP = 99 * 1.01 = 99.99
+    // 99.99 != 100.091 => re-price fires here.
+    const fill1 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level1Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 94.05,
+          quantity: level1Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level1Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Sanity: L0 was re-priced to max(bid1=99, avgPosPrice)*1.01
+    const newTps = sellSignals(fill1).filter(
+      (s) => s.clientOrderId !== tp0.clientOrderId,
+    );
+    const l0Repriced = newTps.find((s) => s.clientOrderId!.endsWith('L0'));
+    expect(l0Repriced).toBeDefined();
+    expect(l0Repriced!.price!.toNumber()).toBeCloseTo(99 * 1.01, 8);
+    // Cancel of the old TP must be present
+    expect(cancelSignals(fill1).map((c) => c.clientOrderId)).toContain(tp0.clientOrderId);
+  });
+
+  it('re-prices shallower TPs using avgPositionPrice when it is higher than bid1', async () => {
+    // Set up so averagePositionPrice > bid1 after a deeper fill.
+    // bid drops between entry-fill and deeper-fill so avgPosPrice > bid1.
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(trigger);
+    const level0Buy = buys[0]; // price 99
+    const level1Buy = buys[1]; // price 95
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills at 99 -> TP at max(100.1, 99)*1.01 = 101.101
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Bid drops to 88 before L1 fills. avgPosPrice = 800/(500/99+300/95) = 97.4519...
+    // avgPosPrice (97.45) > bid (88) => base = avgPosPrice.
+    // L0 new TP = 97.4519... * 1.01
+    const expectedAvgPos = (500 + 300) / (500 / 99 + 300 / 95); // = 97.4519...
+    const fill1 = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 88, ask: 88.1 }),
+      orders: [
+        createOrder({
+          clientOrderId: level1Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 95,
+          quantity: level1Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level1Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const newTps = sellSignals(fill1).filter(
+      (s) => s.clientOrderId !== tp0.clientOrderId,
+    );
+    const l0Repriced = newTps.find((s) => s.clientOrderId!.endsWith('L0'));
+    expect(l0Repriced).toBeDefined();
+    // max(bid1=88, avgPosPrice≈97.4519) * (1+1%) = 97.4519 * 1.01
+    expect(l0Repriced!.price!.toNumber()).toBeCloseTo(expectedAvgPos * 1.01, 4);
+  });
+
+  it('does not re-price shallower TP when the filled level is the deepest (single-level grid)', async () => {
+    // Single-level grid: the only level IS the deepest, so updateShallowerTpOrders
+    // is never even called. Ensure no spurious cancels/sells on a fill.
+    strategy = createStrategy({
+      levelGapsPercent: '1',
+      levelAllocationsPercent: '',
+      levelTakeProfitGapsPercent: '1',
+      maxInvestment: 990,
+    });
+    await initWithOrderBook(strategy, { bid: 1000, ask: 1000.5 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 1010, low: 1000 })],
+    });
+    const buy = buySignals(trigger)[0];
+
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    // Fill -> a single TP is placed, no cancels, no extra sells.
+    const fill = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    expect(cancelSignals(fill)).toHaveLength(0);
+    expect(sellSignals(fill)).toHaveLength(1);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // TP-fill re-entry price: min(bid1, tpPrice) / (1 + level gap%).
+  // Added 2026-08-10.
+  // ───────────────────────────────────────────────────────────────────────
+
+  it('re-enters at min(bid1, tpPrice)/(1+gap%) after TP fill when bid < tpPrice', async () => {
+    // bid drops below tpPrice => min picks bid => re-entry = bid/(1+gap%)
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(trigger);
+    const level0Buy = buys[0]; // price 99
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills at 99 -> TP at max(100.1, 99)*1.01 = 101.101
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    expect(tp0.price!.toNumber()).toBeCloseTo(101.101, 6);
+
+    // TP fills while bid dropped to 95 (< tpPrice=101.101).
+    // min(bid1=95, tpPrice=101.101) = 95; re-entry = 95/(1+1%) = 94.0594...
+    const tpFill = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 95, ask: 95.1 }),
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp0.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const reentries = buySignals(tpFill);
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(95 / 1.01, 8);
+  });
+
+  it('re-enters at min(bid1, tpPrice)/(1+gap%) after TP fill when bid > tpPrice', async () => {
+    // bid rises above tpPrice => min picks tpPrice => re-entry = tpPrice/(1+gap%)
+    // (never chases the market up past the TP price)
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(trigger);
+    const level0Buy = buys[0]; // price 99
+
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 fills at 99 -> TP at 101.101
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+
+    // TP fills while bid rose to 105 (> tpPrice=101.101).
+    // min(bid1=105, tpPrice=101.101) = 101.101; re-entry = 101.101/(1+1%) = 100.099...
+    const tpFill = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 105, ask: 105.1 }),
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp0.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const reentries = buySignals(tpFill);
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(101.101 / 1.01, 6);
+  });
+
+  it('re-enters at tpPrice/(1+gap%) after TP fill when orderbook is stale (no bid1)', async () => {
+    // No live bid => anchor falls back to tpPrice alone.
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await strategy.processInitialData({
+      symbol: SYMBOL,
+      exchange: 'binance',
+      timestamp: new Date(),
+    });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100, close: 100.4 })],
+    });
+    const level0Buy = buySignals(trigger)[0]; // price = 100.4*0.99 = 99.396
+
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: level0Buy.price!.toNumber(),
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    // TP = max(ask=None, entry=99.396)*1.01 = 100.38996
+    const tpPrice = tp0.price!.toNumber();
+
+    // TP fills, no orderbook => bid is null => anchor = tpPrice.
+    // re-entry = tpPrice/(1+1%) = entry*1.01/1.01 = entry = 99.396
+    const tpFill = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tpPrice,
+          quantity: tp0.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: tp0.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const reentries = buySignals(tpFill);
+    expect(reentries).toHaveLength(1);
+    expect(reentries[0].price!.toNumber()).toBeCloseTo(tpPrice / 1.01, 6);
   });
 });
