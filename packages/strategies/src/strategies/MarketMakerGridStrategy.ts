@@ -553,7 +553,27 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     level: GridLevelState,
     price: Decimal,
     quantity: Decimal,
-  ): StrategyOrderResult {
+  ): StrategyResult[] {
+    const result: StrategyResult[] = [];
+
+    // Enforce the single-open-TP-per-level invariant. Every new TP SELL must
+    // not coexist with another live SELL on the same level — placing a
+    // replacement while the old TP is still tracked would hand the engine two
+    // sell signals for one inventory lot and open an unbacked sell position
+    // (observed on prod strategy 462: duplicate L0 SELL, one of which filled
+    // naked leaving a second as a stray extra sell). Cancel-then-place so a
+    // level can never hold two open TPs, whichever code path double-fired.
+    if (level.tpClientOrderId) {
+      const preExisting = this.orders.get(level.tpClientOrderId);
+      result.push(
+        preExisting
+          ? this.generateCancelOrderSignal(preExisting)
+          : this.generateCancelByClientIdSignal(level.tpClientOrderId),
+      );
+      this.clearOrderTracking(level.tpClientOrderId);
+      level.tpClientOrderId = null;
+    }
+
     const clientOrderId = this.generateLevelClientOrderId(SignalType.TakeProfit, level);
     const metadata: MMGridSignalMetaData = {
       signalType: SignalType.TakeProfit,
@@ -567,7 +587,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     this.pendingClientOrderIds.add(clientOrderId);
     level.tpClientOrderId = clientOrderId;
 
-    return {
+    result.push({
       action: 'sell',
       price,
       quantity,
@@ -577,7 +597,8 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       tradeMode: this.tradeMode,
       reason: `mm_grid_take_profit_L${level.index}`,
       metadata,
-    };
+    });
+    return result;
   }
 
   private generateCancelOrderSignal(order: Order): StrategyCancelOrderResult {
@@ -676,7 +697,11 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
    */
   private placeTakeProfitForLevel(level: GridLevelState): StrategyResult[] {
     if (level.inventoryQty.lte(0)) return [];
-    if (level.tpClientOrderId) return [];
+    // An existing TP is not a reason to skip — generateTakeProfitSignal now
+    // cancels-and-replaces it so a level can never hold two open TPs (single-
+    // TP invariant, see generateTakeProfitSignal). Drop the old early-return
+    // that previously let a second TP slip through when this method and
+    // updateShallowerTpOrders disagreed about a level's slot.
     const tpPrice = this.computeTpPrice(level);
     if (!tpPrice) {
       this._logger.warn(
@@ -688,7 +713,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     this._logger.debug(
       `[MMGrid] L${level.index}: placing TP ${level.inventoryQty} @ ${tpPrice}`,
     );
-    return [this.generateTakeProfitSignal(level, tpPrice, level.inventoryQty)];
+    return this.generateTakeProfitSignal(level, tpPrice, level.inventoryQty);
   }
 
   /**
@@ -755,7 +780,9 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
         `[MMGrid] L${level.index}: re-pricing TP ${level.inventoryQty} ` +
           `@ ${newTpPrice} after L${filledLevel.index} entry fill`,
       );
-      signals.push(this.generateTakeProfitSignal(level, newTpPrice, level.inventoryQty));
+      signals.push(
+        ...this.generateTakeProfitSignal(level, newTpPrice, level.inventoryQty),
+      );
     }
     return signals;
   }

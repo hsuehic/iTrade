@@ -2246,4 +2246,102 @@ describe('MarketMakerGridStrategy', () => {
     expect(reentries).toHaveLength(1);
     expect(reentries[0].price!.toNumber()).toBeCloseTo(tpPrice / 1.01, 6);
   });
+
+  it('regression(462): never places two live take-profit SELLs on the same level when a deeper entry fills', async () => {
+    // Reproduces the prod strategy-462 duplicate-SELL bug: when L0 already holds
+    // an open TP and a DEEPER (L1) entry fills, the L0 TP is re-priced.
+    // The strategy must cancel-then-replace so no level ever carries two open
+    // sell signals in the same batch — one of those extras filled naked on 462,
+    // leaving a stray sell outstanding. The single-TP invariant must hold.
+    strategy = createStrategy({ levelTakeProfitGapsPercent: '1,5,25' });
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const trigger = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const buys = buySignals(trigger);
+    expect(buys).toHaveLength(3);
+    const [level0Buy, level1Buy] = buys;
+
+    // Exchange acks all entries as NEW.
+    await strategy.analyze({
+      orders: buys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // L0 entry fills -> place L0 TP.
+    const fill0 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level0Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 99,
+          quantity: level0Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level0Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+    const tp0 = sellSignals(fill0)[0];
+    // No pre-existing TP on L0 yet, so exactly ONE L0 sell signal and NO cancel.
+    expect(sellSignals(fill0)).toHaveLength(1);
+    expect(cancelSignals(fill0)).toHaveLength(0);
+
+    // Exchange confirms L0's TP as a tracked NEW order on the book.
+    await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: tp0.clientOrderId,
+          side: OrderSide.SELL,
+          price: tp0.price!.toNumber(),
+          quantity: tp0.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ],
+    });
+    expect(strategy.getStrategyState().levels[0].tpClientOrderId).toBe(tp0.clientOrderId);
+
+    // L1 (deeper) fills. This was the exact trigger: L0's TP gets re-priced,
+    // and in the pre-fix code a second L0 sell could slip in via the
+    // placeTakeProfitForLevel/updateShallowerTpOrders path, leaving two live L0 sells.
+    const fill1 = await strategy.analyze({
+      orders: [
+        createOrder({
+          clientOrderId: level1Buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: 95,
+          quantity: level1Buy.quantity!,
+          status: OrderStatus.FILLED,
+          executedQuantity: level1Buy.quantity!,
+          strategyId: 1,
+        }),
+      ],
+    });
+
+    const sells = sellSignals(fill1);
+    const cancels = cancelSignals(fill1);
+
+    // L0 re-price MUST cancel the old L0 TP...
+    expect(cancels.some((c) => c.clientOrderId === tp0.clientOrderId)).toBe(true);
+
+    // ...and the re-priced L0 TP must not coexist with the old one.
+    const l0Sells = sells.filter((s) => s.clientOrderId!.endsWith('L0'));
+    expect(l0Sells).toHaveLength(1); // exactly ONE L0 sell signal (never two)
+    const l1Sells = sells.filter((s) => s.clientOrderId!.endsWith('L1'));
+    expect(l1Sells).toHaveLength(1); // L1's own TP still placed normally
+
+    // Final invariant: exactly one L0 TP signal and one L1 TP signal, each
+    // distinct from the cancelled original — no level ever has two live sells.
+    expect(l0Sells[0].clientOrderId).not.toBe(tp0.clientOrderId);
+  });
 });
