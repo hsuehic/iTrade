@@ -48,9 +48,10 @@ class CopyText extends StatelessWidget {
     final service = CopyService.instance;
     final text = service.t(copyKey, params: params);
     String display;
+    final p = params;
     if (text == copyKey && fallback != null) {
-      display = params != null && params.isNotEmpty
-          ? params.entries.fold(fallback!, (result, entry) =>
+      display = (p != null && p.isNotEmpty)
+          ? p.entries.fold(fallback!, (result, entry) =>
               result.replaceAll('{{${entry.key}}}', entry.value))
           : fallback!;
     } else {
