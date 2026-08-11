@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/admin_service.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/copy_service.dart';
@@ -16,6 +17,8 @@ import '../services/theme_service.dart';
 import '../widgets/app_switch.dart';
 import '../widgets/copy_text.dart';
 import '../widgets/responsive_layout_builder.dart';
+import 'admin_trading_pairs.dart';
+import 'admin_users.dart';
 import 'change_password.dart';
 import 'delete_account.dart';
 import 'edit_profile.dart';
@@ -88,6 +91,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadSetting();
     unawaited(DynamicConfigService.instance.refresh(force: true));
+    // Refresh the session so the Admin section / impersonation banner reflect
+    // the latest role and impersonatedBy state.
+    unawaited(
+      _authService.getUser().then((_) {
+        if (mounted) setState(() {});
+      }),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAppInfo();
     });
@@ -136,6 +146,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListView(
       padding: EdgeInsets.all(16.w),
       children: [
+        // Impersonation banner (only while an admin is viewing as this user)
+        _buildImpersonationBanner(isDark),
+
         // User Profile Card
         _buildUserCard(user, image, isDark),
         const SizedBox(height: 24),
@@ -287,6 +300,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         const SizedBox(height: 24),
+
+        // Admin (visible to admin users only)
+        ..._buildAdminSection(isDark),
 
         // App Settings
         _buildSectionHeader('settings_app', 'App settings'),
@@ -523,6 +539,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return ListView(
       padding: EdgeInsets.all(24.w),
       children: [
+        // Impersonation banner (only while an admin is viewing as this user)
+        _buildImpersonationBanner(isDark),
+
         // User Profile Card
         _buildUserCard(user, image, isDark),
         const SizedBox(height: 32),
@@ -684,6 +703,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
               const SizedBox(height: 24),
+
+              // Admin (visible to admin users only)
+              ..._buildAdminSection(isDark),
 
               // App Settings
               _buildSectionHeader('settings_app', 'App settings'),
@@ -1513,6 +1535,144 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  /// Admin section — only rendered for sessions whose user has the admin
+  /// role. Contains entries for the Trading Pairs and Users & Roles admin
+  /// modules. Returns an empty list for non-admins.
+  List<Widget> _buildAdminSection(bool isDark) {
+    if (!_authService.isAdmin) {
+      return const [];
+    }
+    return [
+      _buildSectionHeader('screen.profile.section.admin', 'Admin'),
+      const SizedBox(height: 8),
+      _buildSettingsGroup(
+        isDark: isDark,
+        children: [
+          _buildSettingTile(
+            icon: Icons.currency_exchange,
+            titleKey: 'screen.admin_trading_pairs.title',
+            titleFallback: 'Trading Pairs',
+            subtitleKey: 'screen.profile.admin_trading_pairs_subtitle',
+            subtitleFallback: 'Manage supported trading pairs',
+            trailing: Icons.chevron_right,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminTradingPairsScreen(),
+                ),
+              );
+            },
+            isDark: isDark,
+          ),
+          _buildDivider(isDark),
+          _buildSettingTile(
+            icon: Icons.group_outlined,
+            titleKey: 'screen.admin_users.title',
+            titleFallback: 'Users & Roles',
+            subtitleKey: 'screen.profile.admin_users_subtitle',
+            subtitleFallback: 'Manage users, roles, and access',
+            trailing: Icons.chevron_right,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminUsersScreen(),
+                ),
+              );
+            },
+            isDark: isDark,
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+    ];
+  }
+
+  /// Yellow banner shown while the current session is an impersonation
+  /// session ("viewing as another user"). Tapping Exit stops impersonation
+  /// and returns to the admin's own session.
+  Widget _buildImpersonationBanner(bool isDark) {
+    if (!_authService.isImpersonating) {
+      return const SizedBox.shrink();
+    }
+    final email = _authService.user?.email ?? '';
+    return Container(
+      margin: EdgeInsets.only(bottom: 16.w),
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(isDark ? 0.18 : 0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade700.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.visibility_outlined,
+            size: 20.w,
+            color: Colors.amber.shade800,
+          ),
+          SizedBox(width: 10.w),
+          Expanded(
+            child: CopyText(
+              'screen.profile.impersonation_banner',
+              params: {'email': email},
+              fallback: 'You are viewing as {{email}}',
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: Colors.amber.shade900,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _stopImpersonating,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.amber.shade900,
+              padding: EdgeInsets.symmetric(horizontal: 10.w),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: CopyText(
+              'screen.profile.impersonation_exit',
+              fallback: 'Exit',
+              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _stopImpersonating() async {
+    final result = await AdminService.instance.stopImpersonating();
+    if (!mounted) return;
+    if (result.success) {
+      // Session is back to the admin's own account — restart the app shell
+      // so every screen reloads with the admin identity.
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: CopyText(
+            'screen.profile.impersonation_ended',
+            fallback: 'Impersonation ended',
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: CopyText(
+            'screen.profile.impersonation_stop_failed',
+            params: {'error': result.message ?? ''},
+            fallback: 'Failed to stop impersonation{{error}}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildDivider(bool isDark) {

@@ -83,3 +83,5 @@ apps/mobile/macos/Flutter/ephemeral/Flutter-Generated.xcconfig
 apps/mobile/macos/Flutter/ephemeral/flutter_export_environment.sh
 
 routa.*
+# Claude Code local settings
+**/.claude/settings.local.json

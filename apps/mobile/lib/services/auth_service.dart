@@ -26,12 +26,25 @@ class User {
   final String name;
   final String? image;
 
+  /// Better Auth admin-plugin role, e.g. 'user', 'admin' (may be a
+  /// comma-separated list when multiple roles are assigned).
+  final String role;
+
+  /// Whether the account is banned (Better Auth admin plugin).
+  final bool banned;
+
   User({
     required this.id,
     required this.email,
     required this.name,
     required this.image,
+    this.role = 'user',
+    this.banned = false,
   });
+
+  /// True when the user carries [role] (handles comma-separated role lists).
+  bool hasRole(String role) =>
+      this.role.split(',').map((r) => r.trim()).contains(role);
 }
 
 /// Simple auth service to handle Google Sign-In and expose idToken.
@@ -43,11 +56,23 @@ class AuthService {
   bool _initialized = false;
   User? user;
 
+  /// When the current session is an impersonation session (started by an
+  /// admin via "Login as user"), this is the impersonating admin's user id,
+  /// as reported by Better Auth's `session.impersonatedBy`. Null otherwise.
+  String? impersonatedBy;
+
   GoogleSignInAccount? _currentAccount;
   String? _idToken;
 
   GoogleSignInAccount? get currentAccount => _currentAccount;
   String? get idToken => _idToken;
+
+  /// Whether the signed-in user has the admin role.
+  bool get isAdmin => user?.hasRole('admin') ?? false;
+
+  /// Whether the current session is an impersonation session.
+  bool get isImpersonating =>
+      impersonatedBy != null && impersonatedBy!.isNotEmpty;
 
   String _generateNonce([int length = 32]) {
     const charset =
@@ -295,7 +320,20 @@ class AuthService {
         email: userMap['email']?.toString() ?? '',
         name: userMap['name']?.toString() ?? '',
         image: userMap['image']?.toString(),
+        role: userMap['role']?.toString() ?? 'user',
+        banned: userMap['banned'] == true,
       );
+
+      // The Better Auth admin plugin flags impersonation sessions with
+      // session.impersonatedBy (the impersonating admin's user id).
+      final dynamic sessionData = responseData['session'];
+      if (sessionData is Map) {
+        final dynamic impersonator =
+            (sessionData as Map<String, dynamic>)['impersonatedBy'];
+        impersonatedBy = impersonator?.toString();
+      } else {
+        impersonatedBy = null;
+      }
       return user;
     } catch (e, st) {
       return null;
@@ -317,5 +355,6 @@ class AuthService {
     _currentAccount = null;
     _idToken = null;
     user = null;
+    impersonatedBy = null;
   }
 }

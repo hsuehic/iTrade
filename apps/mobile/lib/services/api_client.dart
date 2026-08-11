@@ -152,12 +152,36 @@ class ApiClient {
     );
   }
 
-  Future<Response<T>> delete<T>(
+  Future<Response<T>> patchJson<T>(
     String path, {
+    dynamic data,
     Map<String, dynamic>? queryParameters,
+    Options? options,
+    CancelToken? cancelToken,
   }) async {
     _ensureInitialized();
-    return _dio.delete<T>(path, queryParameters: queryParameters);
+    return _dio.patch<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+      cancelToken: cancelToken,
+    );
+  }
+
+  Future<Response<T>> delete<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) async {
+    _ensureInitialized();
+    return _dio.delete<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    );
   }
 
   /// Clear all persisted cookies (e.g., to sign out or reset session).
