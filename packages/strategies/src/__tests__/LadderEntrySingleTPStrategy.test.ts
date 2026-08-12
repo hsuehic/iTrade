@@ -232,7 +232,7 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(entrySignals).toHaveLength(5);
       entrySignals.forEach((s) => expect(s.action).toBe('buy'));
 
-      // Arithmetic 1% steps: 100, 99, 98, 97, 96
+      // Arithmetic absolute steps (stepValue=1): 100, 99, 98, 97, 96
       const prices = entrySignals.map((s) => s.price!.toNumber());
       expect(prices[0]).toBeCloseTo(100, 1);
       expect(prices[1]).toBeCloseTo(99, 1);
@@ -1028,6 +1028,57 @@ describe('LadderEntrySingleTPStrategy', () => {
         // At most 1 new TP + possibly some cancels of stale pending
         expect(newTps.length).toBeLessThanOrEqual(2);
       }
+    });
+  });
+
+  describe('Arithmetic absolute price difference (real-world scenarios)', () => {
+    it('BTC: bid0=65000, stepValue=300 → 65000, 64700, 64400, 64100, 63800', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 65000,
+          ladderSteps: 5,
+          stepType: 'arithmetic',
+          stepValue: 300,
+          qtyPerStep: 0.001,
+          maxInvestment: 100000,
+          maxPosition: 1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entries = findEntrySignals(result);
+
+      expect(entries).toHaveLength(5);
+      expect(entries[0].price!.toNumber()).toBe(65000);
+      expect(entries[1].price!.toNumber()).toBe(64700);
+      expect(entries[2].price!.toNumber()).toBe(64400);
+      expect(entries[3].price!.toNumber()).toBe(64100);
+      expect(entries[4].price!.toNumber()).toBe(63800);
+    });
+
+    it('SOL: bid0=76, geometric stepValue=1 → 76, 75.24, 74.4876', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 76,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          maxInvestment: 5000,
+          maxPosition: 10,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entries = findEntrySignals(result);
+
+      expect(entries).toHaveLength(3);
+      // 76 * (1 - 0.01)^0 = 76
+      expect(entries[0].price!.toNumber()).toBeCloseTo(76, 2);
+      // 76 * (1 - 0.01)^1 = 76 * 0.99 = 75.24
+      expect(entries[1].price!.toNumber()).toBeCloseTo(75.24, 2);
+      // 76 * (1 - 0.01)^2 = 76 * 0.99^2 = 74.4876
+      expect(entries[2].price!.toNumber()).toBeCloseTo(74.4876, 3);
     });
   });
 

@@ -22,38 +22,38 @@ import { silentLogger } from '../utils/silent-logger';
 /**
  * 📗 LadderEntrySingleTPStrategy parameters
  *
- * 分批阶梯买入 + 单次止盈策略：
- * - 入场：以 bid0 (或固定 basePrice) 为基准，按等差或等比阶梯分批挂 BUY limit 单
- * - 止盈：整个策略永远最多只有一个 TP SELL limit 单
- *         止盈条件可以是固定盈利额（quote 计价）或百分比
- *         每次有新 entry 成交（含部分成交）后立即更新 TP 单
- * - 风控：最大投入（quote）、最大持仓量（base）—— 仅针对本策略产生的订单
- * - 循环：TP 全部成交后 → 取消所有剩余 entry → 用最新 bid0 重建阶梯 → 开始新循环
+ * Ladder entry with single take-profit strategy:
+ * - Entry: Uses bid0 (or fixed basePrice) as reference, places BUY limit orders in arithmetic (absolute price difference) or geometric (percentage ratio) ladder steps
+ * - Take profit: The strategy always has at most ONE TP SELL limit order
+ *         TP condition can be a fixed profit amount (in quote currency) or a percentage
+ *         TP order is updated immediately whenever a new entry fills (including partial fills)
+ * - Risk control: Max investment (quote) and max position (base) — only counts orders from this strategy
+ * - Cycle: On TP fully filled → cancel all remaining entries → rebuild ladder with latest bid0 → start new cycle
  *
  * Edge/Corner case handling:
- * - 停止重启/服务重启: processInitialData 通过 REST fetchOpenOrders 恢复所有本策略订单,
- *   recalculateVWAP 重建 inventory/VWAP, 重新挂 TP 和未完成的 entry 阶梯
- * - 订单推送不及时/乱序: processedQuantityMap + processedTerminalIds 去重,
- *   updateTime 比较 skip stale updates, recalculateVWAP 从全量订单重算 (幂等)
- * - Entry 部分成交: 重算 VWAP → 更新 TP (price+qty)
- * - TP 部分成交: 不做任何处理 (TP order 状态由交易所管理, 策略不干预)
- * - Entry 取消未成交: 允许重新挂单
- * - TP 成交后: cancel 所有 pending entry → 重置 → 重建阶梯
+ * - Stop/restart/service restart: processInitialData recovers all strategy orders via REST fetchOpenOrders,
+ *   recalculateVWAP rebuilds inventory/VWAP, re-places TP and unfilled entry ladder steps
+ * - Delayed/out-of-order order pushes: processedQuantityMap + processedTerminalIds for dedup,
+ *   updateTime comparison skips stale updates, recalculateVWAP recomputes from all orders (idempotent)
+ * - Entry partial fill: Recalculate VWAP → update TP (price+qty)
+ * - TP partial fill: No action taken (TP order state managed by exchange, strategy does not intervene)
+ * - Entry cancelled unfilled: Allows re-placement
+ * - TP fully filled: Cancel all pending entries → reset → rebuild ladder
  */
 export interface LadderEntrySingleTPParameters extends StrategyParameters {
   /**
-   * 基准价格。0 = 使用 orderbook bid0 作为参考价（策略启动 / 每次循环重启时通过 REST 获取）。
-   * >0 = 使用固定价格，不需要 orderbook。
+   * Reference price. 0 = use orderbook bid0 as reference (fetched via REST on strategy start / each cycle restart).
+   * >0 = use fixed price, no orderbook needed.
    */
   basePrice: number;
 
   /** Number of ladder steps (levels) */
   ladderSteps: number;
 
-  /** Step type: 'arithmetic' (等差) or 'geometric' (等比) */
+  /** Step type: 'arithmetic' or 'geometric' */
   stepType: 'arithmetic' | 'geometric';
 
-  /** Step value for ladder. For arithmetic: percent below base per step. For geometric: ratio percent per step */
+  /** Step value for ladder. For arithmetic: absolute price drop per step (e.g. 300 = 300 USDT below previous). For geometric: percentage drop per step (e.g. 1 = 1% below previous) */
   stepValue: number;
 
   /** Quantity type: 'arithmetic' or 'geometric' */
@@ -92,8 +92,9 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
     type: 'LadderEntrySingleTPStrategy',
     name: 'Ladder Entry Single TP',
     description:
-      '分批阶梯买入 + 单次止盈策略。支持等差/等比阶梯价格和数量，止盈条件支持固定盈利额或百分比，' +
-      '每次新 entry 成交后立即更新唯一的 TP 单。TP 全部成交后取消剩余 entry 并开始新循环。',
+      'Ladder entry with single take-profit strategy. Supports arithmetic/geometric ladder prices and quantities, ' +
+      'TP condition supports fixed profit amount or percentage. TP order is updated immediately on each entry fill. ' +
+      'Cancels remaining entries and starts a new cycle when TP is fully filled.',
     icon: '📗',
     implemented: true,
     category: 'volatility',
@@ -118,7 +119,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         name: 'basePrice',
         type: 'number',
         description:
-          '基准价格。0 = 策略启动时通过 REST API 获取 orderbook bid0。>0 = 固定价格，不获取 orderbook。',
+          'Reference price. 0 = fetch orderbook bid0 via REST API on strategy start. >0 = fixed price, no orderbook fetch.',
         defaultValue: 0,
         required: true,
         min: 0,
@@ -141,8 +142,8 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         name: 'stepType',
         type: 'enum',
         description:
-          'Ladder price step type: "arithmetic" (等差: price_i = base*(1 - i*step%/100)) ' +
-          'or "geometric" (等比: price_i = base*(1-step%/100)^i).',
+          'Ladder price step type: "arithmetic" (absolute price difference: price_i = base - stepValue * i) ' +
+          'or "geometric" (percentage ratio: price_i = base * (1 - stepValue/100)^i).',
         defaultValue: 'arithmetic',
         required: true,
         validation: { options: ['arithmetic', 'geometric'] },
@@ -153,15 +154,14 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         name: 'stepValue',
         type: 'number',
         description:
-          'Step value for ladder price. Arithmetic: percent below base per step (e.g. 1 = 1%). ' +
-          'Geometric: ratio percent per step (e.g. 2 = each step is 2% below previous).',
+          'Step value for ladder price. Arithmetic: absolute price drop per step (e.g. 300 = each step 300 USDT below previous). ' +
+          'Geometric: percentage drop per step (e.g. 1 = each step 1% below previous).',
         defaultValue: 1,
         required: true,
-        min: 0.001,
-        max: 50,
+        min: 0.000001,
+        max: 1000000,
         group: 'Ladder Entry',
         order: 4,
-        unit: '%',
       },
       {
         name: 'qtyType',
@@ -304,27 +304,27 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
     },
     documentation: {
       overview:
-        '分批阶梯买入 + 单次限价止盈策略。以 bid0 (或固定 basePrice) 为基准，按等差或等比阶梯分批挂 BUY limit 单，' +
-        '每次 entry 成交（含部分成交）后立即更新唯一的 TP SELL limit 单。' +
-        'TP 全部成交后取消所有剩余 entry 并用最新 bid0 重建阶梯开始新循环。' +
-        '不订阅 orderbook WebSocket，仅在初始化和循环重启时通过 REST 获取 bid0。',
+        'Ladder entry with single take-profit strategy. Uses bid0 (or fixed basePrice) as reference, places BUY limit orders in arithmetic/geometric ladder steps. ' +
+        'TP SELL limit order is updated immediately on each entry fill (including partial fills). ' +
+        'On TP fully filled, cancels all remaining entries and rebuilds the ladder with latest bid0 to start a new cycle. ' +
+        'Does not subscribe to orderbook WebSocket; fetches bid0 via REST only on initialization and cycle restart.',
       parameters:
-        'basePrice(0=bid0 via REST) + ladderSteps + stepType/stepValue 定义阶梯价格；' +
-        'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio 定义阶梯数量；' +
-        'tpType + tpAbsoluteProfit/tpPercent 定义止盈条件；' +
-        'maxInvestment * leverage = 总购买力；maxPosition = 最大持仓量。',
+        'basePrice(0=bid0 via REST) + ladderSteps + stepType/stepValue define ladder prices (arithmetic=absolute price diff, geometric=percentage ratio); ' +
+        'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio define ladder quantities; ' +
+        'tpType + tpAbsoluteProfit/tpPercent define take-profit condition; ' +
+        'maxInvestment * leverage = total buying power; maxPosition = max position size.',
       signals:
-        '启动时：通过 REST 获取 orderbook bid0 → 构建阶梯 → 一次性挂出全部 BUY limit entry 单。\n' +
-        'Entry 成交（含部分）：重算 VWAP → 更新 TP（取消旧 TP → 挂新 TP，qty=当前持仓，price=VWAP±盈利目标）。\n' +
-        'TP 部分成交：不做任何处理（TP 状态由交易所管理）。\n' +
-        'TP 全部成交：取消所有剩余 entry → 用最新 bid0 重建阶梯 → 开始新循环。\n' +
-        '停止重启：processInitialData 通过 REST fetchOpenOrders 恢复本策略所有订单 → 重算 VWAP/inventory → 恢复 TP + 补挂未完成 entry。',
+        'On start: Fetch orderbook bid0 via REST → build ladder → place all BUY limit entry orders at once.\n' +
+        'Entry fill (incl. partial): Recalculate VWAP → update TP (cancel old TP → place new TP, qty=current inventory, price=VWAP±profit target).\n' +
+        'TP partial fill: No action taken (TP state managed by exchange).\n' +
+        'TP fully filled: Cancel all remaining entries → rebuild ladder with latest bid0 → start new cycle.\n' +
+        'Stop/restart: processInitialData recovers all strategy orders via REST fetchOpenOrders → recalculate VWAP/inventory → restore TP + re-place unfilled entries.',
       riskFactors: [
-        '下跌趋势中阶梯分批买入会累积持仓，可能触及 maxPosition 上限',
-        'TP 限价单可能不成交（行情持续下跌）',
-        '限价 entry 单可能不成交（错过行情）',
-        'Deep steps (深层阶梯) 可能长时间不触发',
-        '重启恢复时若 orderbook 不可用（basePrice=0），需等待 REST 获取 bid0',
+        'Ladder buying in a downtrend accumulates position and may hit maxPosition limit',
+        'TP limit order may not fill (if price keeps falling)',
+        'Entry limit orders may not fill (missed market movement)',
+        'Deep ladder steps may remain untriggered for extended periods',
+        'On restart recovery, if orderbook unavailable (basePrice=0), must wait for REST bid0 fetch',
       ],
     },
   };
@@ -451,8 +451,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     for (let i = 0; i < this.ladderSteps; i++) {
       let price: Decimal;
       if (this.stepType === 'arithmetic') {
-        price = this.referencePrice.mul(new Decimal(1).minus(stepPercent.mul(i)));
+        // Absolute price difference: price_i = referencePrice - stepValue * i
+        price = this.referencePrice.minus(this.stepValue.mul(i));
       } else {
+        // Geometric percentage ratio: price_i = referencePrice * (1 - stepValue/100)^i
         price = this.referencePrice.mul(new Decimal(1).minus(stepPercent).pow(i));
       }
       if (price.lte(0)) {
