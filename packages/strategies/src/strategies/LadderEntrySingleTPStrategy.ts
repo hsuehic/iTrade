@@ -54,7 +54,7 @@ export interface LadderEntrySingleTPParameters extends StrategyParameters {
   /** Step type: 'arithmetic' or 'geometric' */
   stepType: 'arithmetic' | 'geometric';
 
-  /** Step value for ladder. For arithmetic: absolute price drop per step (e.g. 300 = 300 USDT below previous). For geometric: percentage drop per step (e.g. 1 = 1% below previous) */
+  /** Step value for ladder. For arithmetic: absolute price drop per step (e.g. 300 = 300 USDT below base per step). For geometric: percentage ratio per step (e.g. 0.62 = 0.62% ratio per step) */
   stepValue: number;
 
   /** Quantity type: 'arithmetic' or 'geometric' */
@@ -155,7 +155,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         name: 'stepValue',
         type: 'number',
         description:
-          'Step value for ladder price. Arithmetic: absolute price drop per step (e.g. 300 = each step 300 USDT below previous, entry 0 is at base - 300). ' +
+          'Step value for ladder price. Arithmetic: absolute price drop per step (e.g. 300 = each step 300 USDT below base, entry 0 is at base - 300). ' +
           'Geometric: percentage drop per step (e.g. 1 = each step 1% below previous, entry 0 is at base * 0.99).',
         defaultValue: 1,
         required: true,
@@ -483,7 +483,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       let price: Decimal;
       if (this.stepType === 'arithmetic') {
         // Absolute price difference: price_i = referencePrice - stepValue * (i + 1)
-        // Entry 0 = referencePrice - stepValue, entry 1 = referencePrice - 2*stepValue, etc.
+        // Each step drops by a fixed absolute price amount.
+        // e.g. stepValue=300 → entry 0 = base - 300, entry 1 = base - 600, etc.
         price = this.referencePrice.minus(this.stepValue.mul(i + 1));
       } else {
         // Geometric percentage ratio: price_i = referencePrice * (1 - stepValue/100)^(i + 1)
