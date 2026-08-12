@@ -922,6 +922,73 @@ describe('LadderEntrySingleTPStrategy', () => {
     });
   });
 
+  describe('PARTIAL fill → FULL fill with same updateTime', () => {
+    it('should process FILLED update even when updateTime equals PARTIAL_FILL updateTime', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          ladderSteps: 2,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      const sameTime = new Date('2025-01-01T10:00:01.000Z');
+
+      // First push: PARTIAL_FILL — executed 0.051 of 0.1
+      const partialOrder = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.PARTIALLY_FILLED,
+        100,
+        0.1,
+        0.051,
+        100,
+        sameTime,
+      );
+      const partialResult = await strategy.analyze(
+        createDataUpdate({ orders: [partialOrder] }),
+      );
+      // Partial fill creates initial TP with qty=0.051
+      const partialTp = findTpSignals(partialResult);
+      expect(partialTp).toHaveLength(1);
+      expect((partialTp[0] as StrategyOrderResult).quantity!.toNumber()).toBeCloseTo(
+        0.051,
+        5,
+      );
+
+      // Second push: FILLED — executed 0.1 of 0.1 (same updateTime!)
+      const filledOrder = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        100,
+        0.1,
+        0.1,
+        100,
+        sameTime,
+      );
+      const filledResult = await strategy.analyze(
+        createDataUpdate({ orders: [filledOrder] }),
+      );
+
+      // TP should be updated to qty=0.1 (not stuck at 0.051)
+      const filledTp = findTpSignals(filledResult);
+      // Should have a cancel-old-TP signal + new-TP signal, or an update-TP signal
+      const tpUpdateSignals = filledTp;
+      expect(tpUpdateSignals.length).toBeGreaterThanOrEqual(1);
+      const finalTp = tpUpdateSignals[tpUpdateSignals.length - 1] as StrategyOrderResult;
+      expect(finalTp.quantity!.toNumber()).toBeCloseTo(0.1, 5);
+
+      // Verify inventory is correct
+      const state = strategy.getStrategyState();
+      expect(state.inventoryQty).toBe('0.1');
+    });
+  });
+
   describe('Risk limits', () => {
     it('should not place more entries than maxPosition allows', async () => {
       const strategy = new LadderEntrySingleTPStrategy(

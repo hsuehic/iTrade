@@ -1013,12 +1013,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         if (!metadata) continue;
       }
 
-      // Skip stale updates — prevents out-of-order push issues
+      // Skip stale updates — prevents out-of-order push issues.
+      // IMPORTANT: use strict `>` (not `>=`) so that a status upgrade
+      // (e.g. PARTIALLY_FILLED → FILLED) arriving with the same updateTime
+      // is NOT skipped. Binance often sends partial-fill and full-fill
+      // updates with identical millisecond timestamps; using `>=` would
+      // discard the FILLED update and leave inventoryQty stuck at the
+      // partial-fill quantity.
       const existingOrder = this.orders.get(order.clientOrderId);
       if (
         existingOrder?.updateTime &&
         order.updateTime &&
-        existingOrder.updateTime.getTime() >= order.updateTime.getTime()
+        existingOrder.updateTime.getTime() > order.updateTime.getTime()
       )
         continue;
 
