@@ -956,9 +956,84 @@ describe('LadderEntrySingleTPStrategy', () => {
       // Step 1 is active (NEW)
       expect(state.steps[1].entryClientOrderId).toBe(entry1Id);
       expect(state.steps[1].filled).toBe(false);
-      // Inventory and VWAP recovered
+      // Inventory and VWAP recovered from orderHistory
       expect(state.inventoryQty).toBe('0.1');
       expect(state.vwap).toBe('100');
+    });
+
+    it('should infer filled step count from TP quantity (strategy 465 real-world scenario)', async () => {
+      // Real-world scenario from strategy 465:
+      // basePrice=0, stepType=geometric, stepValue=0.62, qtyType=arithmetic,
+      // qtyPerStep=3000, qtyStepAdd=1500, ladderSteps=5, tpType=absolute, tpAbsoluteProfit=15
+      // After cycle 2: entry 0 FILLED at 0.3367 (old formula: entry 0 = bid0),
+      //   TP NEW at 0.3417 qty=3000, entry 1 NEW at 0.3346
+      // On restart: TP qty=3000, step 0 qty=3000 → cumulative=3000 >= 3000 → 1 step filled
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'geometric',
+          stepValue: 0.62,
+          qtyType: 'arithmetic',
+          qtyPerStep: 3000,
+          qtyStepAdd: 1500,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 15,
+          maxInvestment: 1200,
+          maxPosition: 30000,
+          leverage: 10,
+        }),
+      );
+
+      const entry1Id = 'E1D7000002';
+      const tpId = 'T1D7000001';
+      const entry0OldId = 'E1D7000001';
+
+      // Use fresh orderbook with bid0 = 0.3367 (same as pre-restart)
+      const openOrders: Order[] = [
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 0.3346, 4500, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 0.3417, 3000, 0, undefined),
+      ];
+
+      const orderHistory: Order[] = [
+        createOrder(
+          entry0OldId,
+          OrderSide.BUY,
+          OrderStatus.FILLED,
+          0.3367,
+          3000,
+          3000,
+          0.3367,
+        ),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderHistory,
+          orderBook: {
+            symbol: 'BTC/USDT',
+            timestamp: new Date(),
+            exchange: 'okx',
+            bids: [[new Decimal(0.3367), new Decimal(1)]],
+            asks: [[new Decimal(0.3377), new Decimal(1)]],
+          },
+        }),
+      );
+
+      const entrySignals = findEntrySignals(result);
+      // No duplicate entry — step 0 filled (inferred from TP qty=3000 = step 0 qty),
+      // step 1 is active (NEW in openOrders)
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+      // Step 0 must be marked as filled (TP qty=3000 = cumulative step 0 qty)
+      expect(state.steps[0].filled).toBe(true);
+      // Step 1 is active (NEW in openOrders)
+      expect(state.steps[1].entryClientOrderId).toBe(entry1Id);
+      expect(state.steps[1].filled).toBe(false);
+      // TP recovered
+      expect(state.tpClientOrderId).toBe(tpId);
     });
   });
 

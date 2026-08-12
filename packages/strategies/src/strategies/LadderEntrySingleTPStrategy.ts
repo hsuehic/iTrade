@@ -1533,39 +1533,113 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
         // Re-recalculate VWAP with the recovered FILLED orders
         this.recalculateVWAP();
+      }
 
-        // Step 4a-b: Fallback inference for unmatched FILLED entries.
-        // In sequential mode, if N entry orders have fully FILLED, then
-        // steps 0..N-1 must be filled. If price matching via
-        // recoverStepIndex failed (e.g. ladder formula changed between
-        // versions), count total unique FILLED entries and ensure the
-        // first N steps are marked filled. This prevents duplicate
-        // entry orders on restart.
-        const filledCoids = new Set<string>();
-        for (const [coid, meta] of this.orderMetadataMap) {
-          if (meta.signalType !== SignalType.Entry) continue;
-          const ord = this.orders.get(coid);
-          if (!ord) continue;
-          if (
-            ord.status === OrderStatus.FILLED ||
-            (ord.executedQuantity && ord.executedQuantity.eq(ord.quantity))
-          ) {
-            filledCoids.add(coid);
-          }
-        }
-        const alreadyMarkedFilled = this.steps.filter((s) => s.filled).length;
-        const unmatchedFilled = filledCoids.size - alreadyMarkedFilled;
-        if (unmatchedFilled > 0) {
-          let toMark = unmatchedFilled;
-          for (let i = 0; i < this.steps.length && toMark > 0; i++) {
-            if (!this.steps[i].filled) {
-              this.steps[i].filled = true;
-              toMark--;
-              this._logger.debug(
-                `[processInitialData] Fallback: marked step ${i} as filled ` +
-                  `(${unmatchedFilled} unmatched FILLED entries from orderHistory)`,
-              );
+      // Step 4a-b: Infer filled steps from active TP order quantity.
+      // The TP quantity always equals the sum of all filled entry quantities
+      // in the current cycle (TP is rebuilt on every entry fill). By matching
+      // the TP quantity against the cumulative step quantities, we can
+      // determine exactly how many steps have filled — regardless of whether
+      // price matching succeeded or the ladder formula changed between versions.
+      // This is more reliable than counting orderHistory FILLED entries (which
+      // span multiple cycles) or price matching (which breaks on formula changes).
+      if (this.tpClientOrderId) {
+        const tpOrder = this.orders.get(this.tpClientOrderId);
+        if (tpOrder && tpOrder.quantity && tpOrder.quantity.gt(0)) {
+          let cumulative = new Decimal(0);
+          let filledStepCount = 0;
+          for (let i = 0; i < this.steps.length; i++) {
+            cumulative = cumulative.plus(this.steps[i].quantity);
+            if (tpOrder.quantity.gte(cumulative)) {
+              filledStepCount = i + 1;
+            } else {
+              break;
             }
+          }
+
+          // Collect all active (NEW / PARTIALLY_FILLED) entry orders recovered
+          // from openOrders. These are the next pending entries in the cycle.
+          const activeEntryOrders: Array<{
+            coid: string;
+            order: Order;
+          }> = [];
+          for (const [coid, meta] of this.orderMetadataMap) {
+            if (meta.signalType !== SignalType.Entry) continue;
+            const ord = this.orders.get(coid);
+            if (!ord) continue;
+            if (
+              ord.status === OrderStatus.NEW ||
+              ord.status === OrderStatus.PARTIALLY_FILLED
+            ) {
+              activeEntryOrders.push({ coid, order: ord });
+            }
+          }
+
+          // Reset all steps' fill state and entryClientOrderId that were set
+          // by unreliable price matching. We will rebuild from TP qty inference
+          // + active entry orders.
+          for (let i = 0; i < this.steps.length; i++) {
+            const step = this.steps[i];
+            if (i < filledStepCount) {
+              // This step must be filled
+              step.filled = true;
+              // Clear any entryClientOrderId that was set by price matching to
+              // an active order — that order belongs to a later step.
+              if (step.entryClientOrderId) {
+                const linkedOrder = this.orders.get(step.entryClientOrderId);
+                if (
+                  linkedOrder &&
+                  (linkedOrder.status === OrderStatus.NEW ||
+                    linkedOrder.status === OrderStatus.PARTIALLY_FILLED)
+                ) {
+                  step.entryClientOrderId = null;
+                }
+              }
+              this._logger.debug(
+                `[processInitialData] TP-qty inference: step ${i} filled ` +
+                  `(TP qty=${tpOrder.quantity.toString()})`,
+              );
+            } else {
+              // Not filled — clear any stale price-match assignment
+              step.filled = false;
+              step.entryClientOrderId = null;
+            }
+          }
+
+          // Assign active entry orders to steps starting at filledStepCount
+          // (the first unfilled step). If there's exactly one active entry,
+          // assign it to filledStepCount. If multiple, assign in order.
+          let nextStep = filledStepCount;
+          for (const { coid } of activeEntryOrders) {
+            if (nextStep >= this.steps.length) break;
+            if (this.steps[nextStep].entryClientOrderId) {
+              nextStep++;
+              continue;
+            }
+            this.steps[nextStep].entryClientOrderId = coid;
+            const meta = this.orderMetadataMap.get(coid);
+            if (meta) meta.stepIndex = nextStep;
+            this._logger.debug(
+              `[processInitialData] TP-qty inference: assigned active entry ${coid} ` +
+                `to step ${nextStep} (was mismatches by price)`,
+            );
+            nextStep++;
+          }
+
+          // Also handle partial fills: if TP qty > expected cumulative after
+          // filledStepCount, the step at filledStepCount has a partial fill.
+          // The active entry order assigned to that step handles this.
+          const expectedCumulative = this.steps
+            .slice(0, filledStepCount)
+            .reduce((sum, s) => sum.plus(s.quantity), new Decimal(0));
+          if (
+            tpOrder.quantity.gt(expectedCumulative) &&
+            filledStepCount < this.steps.length
+          ) {
+            this._logger.debug(
+              `[processInitialData] Step ${filledStepCount} likely has partial fill ` +
+                `(TP qty=${tpOrder.quantity.toString()} > expected=${expectedCumulative.toString()})`,
+            );
           }
         }
       }
