@@ -1726,6 +1726,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // contains FILLED entries from the PREVIOUS cycle. Recovering them
       // would rebuild stale inventory/VWAP → place a TP at the old price →
       // immediate fill → TP storm → financial loss.
+      //
+      // CRITICAL: Also skip if orderHistory contains FILLED TP orders from
+      // this strategy. A FILLED TP means the previous cycle completed — the
+      // inventory was already sold. Recovering the old FILLED entries would
+      // rebuild stale inventory → place TP at old VWAP → immediate fill →
+      // TP storm. This handles the case where the strategy was stopped after
+      // a TP storm (multiple TP fills) and is being restarted fresh.
       if (initialData.orderHistory && !isReinit) {
         const ownedHistory = initialData.orderHistory.filter((order) => {
           if (order.symbol !== this._symbol) return false;
@@ -1735,50 +1742,83 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           );
         });
 
-        for (const order of ownedHistory) {
-          if (!order.clientOrderId) continue;
-          // Skip if already recovered from openOrders
-          if (this.orders.has(order.clientOrderId)) continue;
+        // CRITICAL: Check if orderHistory contains FILLED TP orders from this
+        // strategy. A FILLED TP means the cycle already completed — inventory
+        // was sold to zero. All FILLED entry orders in this orderHistory belong
+        // to COMPLETED cycles and must NOT be recovered. Recovering them would
+        // rebuild stale inventory/VWAP → place TP at old VWAP → immediate fill
+        // → TP storm.
+        const hasFilledTpInHistory = ownedHistory.some(
+          (order) =>
+            order.clientOrderId &&
+            /^T\d+D/.test(order.clientOrderId) &&
+            order.status === OrderStatus.FILLED,
+        );
 
-          let metadata = this.orderMetadataMap.get(order.clientOrderId);
-          if (!metadata) metadata = this.ensureRecoveredMetadata(order);
-          if (!metadata) continue;
+        if (hasFilledTpInHistory) {
+          // Previous cycle(s) already completed (TP FILLED). Start fresh.
+          // Blacklist all old-cycle order IDs to prevent delayed WS pushes
+          // from re-introducing them.
+          for (const order of ownedHistory) {
+            if (order.clientOrderId) {
+              this.previousCycleOrderIds.add(order.clientOrderId);
+            }
+          }
+          // Recalculate VWAP from openOrders recovery only (Step 4 result).
+          // Do NOT recover any FILLED entries from orderHistory.
+          this._logger.info(
+            `[processInitialData] Found FILLED TP in orderHistory — previous cycle completed. ` +
+              `Skipping orderHistory entry recovery to prevent TP storm. ` +
+              `Blacklisted ${ownedHistory.length} old-cycle orders.`,
+          );
+        } else {
+          // No FILLED TP in history — safe to recover FILLED entries.
 
-          this.orders.set(order.clientOrderId, order);
+          for (const order of ownedHistory) {
+            if (!order.clientOrderId) continue;
+            // Skip if already recovered from openOrders
+            if (this.orders.has(order.clientOrderId)) continue;
 
-          if (metadata.signalType === SignalType.Entry) {
-            const recoveredStepIndex = this.recoverStepIndex(order);
-            if (recoveredStepIndex !== undefined) {
-              metadata.stepIndex = recoveredStepIndex;
-              const step = this.steps[recoveredStepIndex];
-              if (step) {
-                step.entryClientOrderId = order.clientOrderId;
-                if (
-                  order.status === OrderStatus.FILLED ||
-                  (order.executedQuantity && order.executedQuantity.eq(order.quantity))
-                ) {
-                  step.filled = true;
+            let metadata = this.orderMetadataMap.get(order.clientOrderId);
+            if (!metadata) metadata = this.ensureRecoveredMetadata(order);
+            if (!metadata) continue;
+
+            this.orders.set(order.clientOrderId, order);
+
+            if (metadata.signalType === SignalType.Entry) {
+              const recoveredStepIndex = this.recoverStepIndex(order);
+              if (recoveredStepIndex !== undefined) {
+                metadata.stepIndex = recoveredStepIndex;
+                const step = this.steps[recoveredStepIndex];
+                if (step) {
+                  step.entryClientOrderId = order.clientOrderId;
+                  if (
+                    order.status === OrderStatus.FILLED ||
+                    (order.executedQuantity && order.executedQuantity.eq(order.quantity))
+                  ) {
+                    step.filled = true;
+                  }
                 }
+              }
+            }
+
+            if (metadata.signalType === SignalType.TakeProfit) {
+              // TP in orderHistory means it was FILLED — cycle already reset.
+              // Do NOT set tpClientOrderId (it's no longer active).
+            }
+
+            // Track executed quantities for VWAP recalculation
+            if (order.executedQuantity && order.executedQuantity.gt(0)) {
+              this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
+              if (metadata.signalType === SignalType.Entry) {
+                metadata.entryPrice = (order.averagePrice || order.price)?.toString();
               }
             }
           }
 
-          if (metadata.signalType === SignalType.TakeProfit) {
-            // TP in orderHistory means it was FILLED — cycle already reset.
-            // Do NOT set tpClientOrderId (it's no longer active).
-          }
-
-          // Track executed quantities for VWAP recalculation
-          if (order.executedQuantity && order.executedQuantity.gt(0)) {
-            this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
-            if (metadata.signalType === SignalType.Entry) {
-              metadata.entryPrice = (order.averagePrice || order.price)?.toString();
-            }
-          }
-        }
-
-        // Re-recalculate VWAP with the recovered FILLED orders
-        this.recalculateVWAP();
+          // Re-recalculate VWAP with the recovered FILLED orders
+          this.recalculateVWAP();
+        } // end else (no FILLED TP in history)
       }
 
       // Step 4a-b: Infer filled steps from active TP order quantity.

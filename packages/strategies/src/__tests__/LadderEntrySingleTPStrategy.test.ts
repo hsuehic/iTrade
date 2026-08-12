@@ -1965,6 +1965,90 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(delayedTpSignals).toHaveLength(0);
     });
 
+    it('should NOT recover stale inventory when orderHistory contains FILLED TP (restart after TP storm)', async () => {
+      // CRITICAL: When strategy is restarted after a TP storm, orderHistory
+      // contains FILLED TP orders AND FILLED entry orders from the completed
+      // cycle(s). The strategy must detect the FILLED TP and skip ALL
+      // orderHistory entry recovery — otherwise it rebuilds stale inventory/VWAP
+      // → places TP at old price → immediate fill → new TP storm.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 100,
+          qtyStepAdd: 50,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 10,
+          maxPosition: 1000,
+          maxInvestment: 10000,
+        }),
+      );
+
+      // Simulate orderHistory containing orders from a COMPLETED cycle:
+      // - 3 FILLED BUY entries (E1D1, E1D2, E1D3) — total qty = 100+150+200 = 450
+      // - 1 FILLED SELL TP (T1D1) — qty = 450 (the full inventory was sold)
+      const filledEntry1 = createOrder(
+        'E1D1D1700000000',
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        100,
+        100,
+        99,
+      );
+      const filledEntry2 = createOrder(
+        'E1D2D1700000001',
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
+        150,
+        150,
+        98,
+      );
+      const filledEntry3 = createOrder(
+        'E1D3D1700000002',
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        97,
+        200,
+        200,
+        97,
+      );
+      const filledTp = createOrder(
+        'T1D1D1700000003',
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        99.5,
+        450,
+        450,
+        99.5,
+      );
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          // No openOrders — all orders are already FILLED (in history)
+          openOrders: [],
+          orderHistory: [filledEntry1, filledEntry2, filledEntry3, filledTp],
+        }),
+      );
+
+      // CRITICAL: inventory must be 0 — previous cycle completed (TP FILLED)
+      const state = strategy.getStrategyState();
+      expect(parseFloat(state.inventoryQty)).toBe(0);
+      expect(parseFloat(state.vwap)).toBe(0);
+
+      // No TP should be placed (no inventory)
+      const tpSignals = findTpSignals(result);
+      expect(tpSignals).toHaveLength(0);
+
+      // Should place fresh entry 0 for the new cycle
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals.length).toBeGreaterThanOrEqual(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(99, 1); // 100 - 1
+    });
+
     it('should keep fixed basePrice unchanged after TP fill', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
