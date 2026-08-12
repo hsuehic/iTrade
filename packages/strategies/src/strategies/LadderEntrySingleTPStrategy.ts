@@ -35,10 +35,11 @@ import { silentLogger } from '../utils/silent-logger';
  *   recalculateVWAP rebuilds inventory/VWAP, re-places TP and unfilled entry ladder steps
  * - Delayed/out-of-order order pushes: processedQuantityMap + processedTerminalIds for dedup,
  *   updateTime comparison skips stale updates, recalculateVWAP recomputes from all orders (idempotent)
- * - Entry partial fill: Recalculate VWAP → update TP (price+qty)
+ * - Entry partial fill: Recalculate VWAP → debounce TP refresh (2s window, full FILLED bypasses debounce)
  * - TP partial fill: No action taken (TP order state managed by exchange, strategy does not intervene)
  * - Entry cancelled unfilled: Allows re-placement
- * - TP fully filled: Cancel all pending entries → reset → rebuild ladder
+ * - Entry cancelled with partial fill: Preserve partial-fill inventory, refresh TP, advance to next step
+ * - TP fully filled: Cancel all pending entries → cancel all pending TP → reset → rebuild ladder
  */
 export interface LadderEntrySingleTPParameters extends StrategyParameters {
   /**
@@ -397,6 +398,19 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private processedQuantityMap: Map<string, Decimal> = new Map();
   private processedTerminalIds: Set<string> = new Set();
 
+  /**
+   * Debounce timer for TP refresh on partial fills (milliseconds).
+   * Prevents rapid cancel+re-place TP cycles from exchange rate limits.
+   * Full FILLED updates bypass this debounce and refresh TP immediately.
+   */
+  private static readonly TP_DEBOUNCE_MS = 2000;
+
+  /** Timestamp (ms) of the last partial-fill TP refresh trigger. */
+  private lastPartialFillTpTriggerTime = 0;
+
+  /** Whether a deferred TP refresh is pending (set by partial fill, cleared when executed). */
+  private tpRefreshPending = false;
+
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
     const { parameters } = config;
@@ -718,6 +732,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     };
     this.orderMetadataMap.set(newClientOrderId, metadata);
     this.pendingClientOrderIds.add(newClientOrderId);
+    // Track the new TP clientOrderId immediately so that a subsequent
+    // refreshTakeProfit() call (before exchange confirms the order) can
+    // detect the pending TP and skip duplicate placement.
+    this.tpClientOrderId = newClientOrderId;
+    // Remove old TP from pending to avoid stale cancel storms
+    this.pendingClientOrderIds.delete(oldClientOrderId);
+    this.orderMetadataMap.delete(oldClientOrderId);
     return {
       action: 'update',
       clientOrderId: oldClientOrderId,
@@ -844,15 +865,48 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         const currentPrice = existingTp.price || new Decimal(0);
         const currentQty = existingTp.quantity || new Decimal(0);
         if (currentPrice.eq(tpPrice) && currentQty.eq(tpQty)) return signals;
+        // Price or qty changed → update existing TP order
         signals.push(this.generateTpUpdateSignal(this.tpClientOrderId, tpPrice, tpQty));
-        this.tpClientOrderId = null;
         return signals;
       }
+
+      // tpClientOrderId is set but the order is not in this.orders or not
+      // NEW/PARTIALLY_FILLED. This can happen when the TP was just signalled
+      // (pending exchange confirmation) — the order is in pendingClientOrderIds
+      // but not yet in this.orders (no exchange order update received yet).
+      if (this.pendingClientOrderIds.has(this.tpClientOrderId)) {
+        // TP order is pending exchange confirmation. Check if the metadata
+        // matches current target — if so, skip to avoid duplicate placement.
+        const pendingMeta = this.orderMetadataMap.get(this.tpClientOrderId);
+        if (pendingMeta) {
+          const pendingPrice = pendingMeta.takeProfitPrice
+            ? new Decimal(pendingMeta.takeProfitPrice)
+            : new Decimal(0);
+          const pendingQty = pendingMeta.quantity
+            ? new Decimal(pendingMeta.quantity)
+            : new Decimal(0);
+          if (pendingPrice.eq(tpPrice) && pendingQty.eq(tpQty)) {
+            // Pending TP matches current target — skip to avoid storm
+            return signals;
+          }
+          // Pending TP doesn't match → cancel it + place new one
+          signals.push(
+            this.generateCancelSignal(
+              this.tpClientOrderId,
+              'ladder_tp_cancel_stale_pending',
+            ),
+          );
+          this.pendingClientOrderIds.delete(this.tpClientOrderId);
+          this.orderMetadataMap.delete(this.tpClientOrderId);
+        }
+      }
+
+      // Clean up stale tpClientOrderId reference
       this.orders.delete(this.tpClientOrderId);
       this.tpClientOrderId = null;
     }
 
-    // Cancel stale pending TP signals
+    // Cancel any remaining stale pending TP signals
     for (const clientId of Array.from(this.pendingClientOrderIds)) {
       const meta = this.orderMetadataMap.get(clientId);
       if (meta?.signalType === SignalType.TakeProfit) {
@@ -927,12 +981,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
     this.pendingClientOrderIds.delete(order.clientOrderId!);
 
+    // Clear any pending debounced TP refresh — FILLED takes priority
+    this.tpRefreshPending = false;
+
     this.recalculateVWAP();
     this._logger.debug(
       `[handleEntryFilled] Entry FILLED: ${order.executedQuantity?.toString()} @ ${order.averagePrice?.toString()}. ` +
         `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
     );
 
+    // Full FILLED bypasses debounce — refresh TP immediately
     signals.push(...this.refreshTakeProfit());
     signals.push(...this.placeLadderEntries());
     return signals;
@@ -955,7 +1013,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       `[handleEntryPartialFill] Entry PARTIAL: ${order.executedQuantity?.toString()}/${order.quantity?.toString()}. ` +
         `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
     );
-    signals.push(...this.refreshTakeProfit());
+
+    // Debounce TP refresh on partial fills to avoid rapid cancel+re-place
+    // cycles that can trigger exchange rate limits. The actual TP refresh
+    // is deferred and executed on the next analyze() call after the
+    // debounce window elapses. Full FILLED updates bypass this debounce.
+    this.tpRefreshPending = true;
+    this.lastPartialFillTpTriggerTime = Date.now();
+
     return signals;
   }
 
@@ -971,10 +1036,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     const signals: StrategyResult[] = [];
 
     this.pendingClientOrderIds.delete(order.clientOrderId!);
+    this.orderMetadataMap.delete(order.clientOrderId!);
     this.tpClientOrderId = null;
+    // Clear any pending debounced TP refresh
+    this.tpRefreshPending = false;
 
     // Cancel ALL remaining entry orders
     signals.push(...this.cancelAllEntryOrders('ladder_entry_cancel_on_tp_filled'));
+
+    // Also cancel any remaining pending TP orders (shouldn't exist, but defensive)
+    signals.push(...this.cancelAllTpOrders('ladder_tp_cleanup_on_cycle_reset'));
 
     // Reset state
     this.resetLadder();
@@ -1116,8 +1187,29 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           if (step) {
             const filledQty = order.executedQuantity || new Decimal(0);
             if (filledQty.lte(0)) {
+              // No fill at all — reset step for re-placement
               step.entryClientOrderId = null;
               step.filled = false;
+              shouldRefreshLadder = true;
+            } else {
+              // Partial fill → cancel: the filled portion is real inventory.
+              // Mark step as filled so sequential mode advances to next step,
+              // recalculate VWAP/inventory to include the partial fill, and
+              // refresh TP to cover the updated inventory.
+              step.filled = true;
+              this.recalculateVWAP();
+              this._logger.debug(
+                `[handleOrderUpdates] Entry PARTIAL→CANCEL: step ${step.index} ` +
+                  `filled ${filledQty.toString()}/${step.quantity.toString()}. ` +
+                  `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
+              );
+              // Refresh TP to match updated inventory
+              if (this.inventoryQty.gt(0)) {
+                // Clear any pending debounced TP refresh — terminal takes priority
+                this.tpRefreshPending = false;
+                signals.push(...this.refreshTakeProfit());
+              }
+              // Place next ladder entry (sequential mode advances)
               shouldRefreshLadder = true;
             }
           }
@@ -1337,12 +1429,36 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * No orderbook subscription — only processes order updates from WebSocket.
    */
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
+    // Check for deferred TP refresh from partial-fill debounce.
+    // If the debounce window has elapsed since the last partial fill,
+    // execute the pending TP refresh now (before processing new orders).
+    const tpDebounceSignals: StrategyResult[] = [];
+    if (
+      this.tpRefreshPending &&
+      Date.now() - this.lastPartialFillTpTriggerTime >=
+        LadderEntrySingleTPStrategy.TP_DEBOUNCE_MS
+    ) {
+      this.tpRefreshPending = false;
+      if (this.inventoryQty.gt(0)) {
+        this._logger.debug(
+          `[analyze] Executing deferred TP refresh from partial fill. ` +
+            `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
+        );
+        tpDebounceSignals.push(...this.refreshTakeProfit());
+      }
+    }
+
     // Only handle order updates (no orderbook/kline subscription)
     if (dataUpdate.orders && dataUpdate.orders.length > 0) {
       const orderSignals = this.handleOrderUpdates(dataUpdate.orders);
-      if (orderSignals.length > 0) return orderSignals;
+      // Merge deferred TP signals with order update signals
+      const allSignals = [...tpDebounceSignals, ...orderSignals];
+      if (allSignals.length > 0) return allSignals;
       return { action: 'hold' };
     }
+
+    // No order updates — return deferred TP signals if any
+    if (tpDebounceSignals.length > 0) return tpDebounceSignals;
 
     return { action: 'hold' };
   }
@@ -1357,6 +1473,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.inventoryQty = new Decimal(0);
     this.vwap = new Decimal(0);
     this.tpClientOrderId = null;
+    this.tpRefreshPending = false;
+    this.lastPartialFillTpTriggerTime = 0;
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }
 

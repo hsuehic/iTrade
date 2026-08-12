@@ -506,7 +506,7 @@ describe('LadderEntrySingleTPStrategy', () => {
   });
 
   describe('Entry partial fill → TP update', () => {
-    it('should update VWAP and TP on entry partial fill', async () => {
+    it('should update VWAP and defer TP refresh on entry partial fill (debounced)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           ladderSteps: 1,
@@ -530,13 +530,22 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
       const result = await strategy.analyze(createDataUpdate({ orders: [partialFill] }));
 
-      const tpSignals = findTpSignals(result);
-      expect(tpSignals.length).toBeGreaterThanOrEqual(1);
-
+      // Partial fill: VWAP updated immediately, but TP refresh is debounced
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
       expect(state.vwap).toBe('100');
-      expect(state.tpPrice).toBe('102');
+
+      // TP signal not returned yet (debounced)
+      const tpSignalsImmediate = findTpSignals(result);
+      expect(tpSignalsImmediate).toHaveLength(0);
+
+      // Wait for debounce window to elapse, then call analyze again
+      await new Promise((resolve) => setTimeout(resolve, 2100));
+      const deferredResult = await strategy.analyze(createDataUpdate({ orders: [] }));
+
+      // Now TP refresh should execute
+      const tpSignalsDeferred = findTpSignals(deferredResult);
+      expect(tpSignalsDeferred.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -939,6 +948,7 @@ describe('LadderEntrySingleTPStrategy', () => {
       const sameTime = new Date('2025-01-01T10:00:01.000Z');
 
       // First push: PARTIAL_FILL — executed 0.051 of 0.1
+      // Partial fill: VWAP updated, TP refresh debounced (no immediate TP signal)
       const partialOrder = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
@@ -952,15 +962,14 @@ describe('LadderEntrySingleTPStrategy', () => {
       const partialResult = await strategy.analyze(
         createDataUpdate({ orders: [partialOrder] }),
       );
-      // Partial fill creates initial TP with qty=0.051
+      // No immediate TP signal (debounced)
       const partialTp = findTpSignals(partialResult);
-      expect(partialTp).toHaveLength(1);
-      expect((partialTp[0] as StrategyOrderResult).quantity!.toNumber()).toBeCloseTo(
-        0.051,
-        5,
-      );
+      expect(partialTp).toHaveLength(0);
+      // But inventory is updated
+      expect(strategy.getStrategyState().inventoryQty).toBe('0.051');
 
       // Second push: FILLED — executed 0.1 of 0.1 (same updateTime!)
+      // FILLED bypasses debounce — TP refreshed immediately
       const filledOrder = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
@@ -975,17 +984,90 @@ describe('LadderEntrySingleTPStrategy', () => {
         createDataUpdate({ orders: [filledOrder] }),
       );
 
-      // TP should be updated to qty=0.1 (not stuck at 0.051)
+      // TP should be refreshed immediately (FILLED bypasses debounce)
       const filledTp = findTpSignals(filledResult);
-      // Should have a cancel-old-TP signal + new-TP signal, or an update-TP signal
-      const tpUpdateSignals = filledTp;
-      expect(tpUpdateSignals.length).toBeGreaterThanOrEqual(1);
-      const finalTp = tpUpdateSignals[tpUpdateSignals.length - 1] as StrategyOrderResult;
+      expect(filledTp.length).toBeGreaterThanOrEqual(1);
+      const finalTp = filledTp[filledTp.length - 1] as StrategyOrderResult;
       expect(finalTp.quantity!.toNumber()).toBeCloseTo(0.1, 5);
 
       // Verify inventory is correct
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
+    });
+  });
+
+  describe('Entry partial fill → cancel', () => {
+    it('should preserve partial-fill inventory and refresh TP when entry is cancelled after partial fill', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Partial fill 0.05 of 0.1 at price 100
+      // Partial fill: VWAP updated, TP refresh debounced (no immediate TP signal)
+      const partialFill = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.PARTIALLY_FILLED,
+        100,
+        0.1,
+        0.05,
+        100, // averagePrice = 100
+        new Date('2025-01-01T10:00:01Z'),
+      );
+      const partialResult = await strategy.analyze(
+        createDataUpdate({ orders: [partialFill] }),
+      );
+      // No immediate TP signal (debounced)
+      const partialTp = findTpSignals(partialResult);
+      expect(partialTp).toHaveLength(0);
+      // But inventory is updated
+      expect(strategy.getStrategyState().inventoryQty).toBe('0.05');
+
+      // Then order gets cancelled (partial fill → cancel)
+      // Cancel is a terminal action — TP refresh is NOT debounced here
+      const cancelledOrder = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        100,
+        0.1,
+        0.05, // executedQuantity stays at 0.05
+        100, // averagePrice = 100
+        new Date('2025-01-01T10:00:02Z'),
+      );
+      const cancelResult = await strategy.analyze(
+        createDataUpdate({ orders: [cancelledOrder] }),
+      );
+
+      // Inventory should be 0.05 (partial fill preserved)
+      const state = strategy.getStrategyState();
+      expect(state.inventoryQty).toBe('0.05');
+      expect(state.vwap).toBe('100');
+
+      // Step 0 should be marked filled (so sequential mode advances)
+      expect(state.steps[0].filled).toBe(true);
+
+      // TP should be refreshed to cover 0.05 inventory (terminal → immediate)
+      const cancelTp = findTpSignals(cancelResult);
+      expect(cancelTp.length).toBeGreaterThanOrEqual(1);
+
+      // Next entry (step 1) should be placed
+      const nextEntries = findEntrySignals(cancelResult);
+      expect(nextEntries.length).toBeGreaterThanOrEqual(1);
+      if (nextEntries.length > 0) {
+        expect(nextEntries[0].price!.toNumber()).toBeCloseTo(99, 1);
+      }
     });
   });
 
@@ -1020,6 +1102,102 @@ describe('LadderEntrySingleTPStrategy', () => {
       const entrySignals = findEntrySignals(result);
       // Sequential mode: only one entry placed at a time, buying power allows it
       expect(entrySignals).toHaveLength(1);
+    });
+  });
+
+  describe('TP placement safety (anti-storm)', () => {
+    it('should NOT create duplicate TP signals when refreshTakeProfit is called multiple times before exchange confirms', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          ladderSteps: 2,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry 0 → should place one TP signal
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        100,
+        0.1,
+        0.1,
+        100,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const tp1 = findTpSignals(result1);
+      expect(tp1).toHaveLength(1);
+      const tpClientId = (tp1[0] as StrategyOrderResult).clientOrderId;
+      expect(tpClientId).toBeDefined();
+
+      // Simulate another fill event arriving before exchange confirms the TP
+      // (e.g., next entry fill). This should NOT create a second TP signal.
+      // Fill entry 1 via analyze
+      const entry1Signals = findEntrySignals(result1);
+      if (entry1Signals.length > 0) {
+        const fill1 = createOrder(
+          entry1Signals[0].clientOrderId,
+          OrderSide.BUY,
+          OrderStatus.FILLED,
+          99,
+          0.1,
+          0.1,
+          99,
+        );
+        const result2 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
+
+        // Should have update TP signal (cancel old + place new), NOT a duplicate
+        const tp2 = findTpSignals(result2);
+        // Update signal = 1 signal (action=update), or cancel+sell = 2 signals
+        // Either way, should NOT have 2+ new sell signals
+        const newSellSignals = tp2.filter((s) => {
+          const r = s as StrategyOrderResult;
+          return r.action === 'sell';
+        });
+        expect(newSellSignals.length).toBeLessThanOrEqual(1);
+      }
+
+      // State should have exactly one tpClientOrderId
+      const state = strategy.getStrategyState();
+      expect(state.tpClientOrderId).toBeTruthy();
+    });
+
+    it('should skip TP placement when pending TP matches current target (pending dedup)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          ladderSteps: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry → place TP
+      const fill = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        100,
+        0.1,
+        0.1,
+        100,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill] }));
+      const tp1 = findTpSignals(result1);
+      expect(tp1).toHaveLength(1);
+
+      // Now trigger another analyze with no new orders — TP should NOT be re-placed
+      const result2 = await strategy.analyze(createDataUpdate({ orders: [] }));
+      const tp2 = findTpSignals(result2);
+      expect(tp2).toHaveLength(0);
     });
   });
 
