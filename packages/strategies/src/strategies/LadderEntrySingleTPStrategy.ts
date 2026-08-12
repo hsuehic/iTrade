@@ -23,7 +23,7 @@ import { silentLogger } from '../utils/silent-logger';
  * 📗 LadderEntrySingleTPStrategy parameters
  *
  * Ladder entry with single take-profit strategy:
- * - Entry: Uses bid0 (or fixed basePrice) as reference, places BUY limit orders in arithmetic (absolute price difference) or geometric (percentage ratio) ladder steps
+ * - Entry: Uses bid0 (or fixed basePrice) as reference, places BUY limit orders one at a time in sequential ladder steps (arithmetic absolute price difference or geometric percentage ratio).
  * - Take profit: The strategy always has at most ONE TP SELL limit order
  *         TP condition can be a fixed profit amount (in quote currency) or a percentage
  *         TP order is updated immediately whenever a new entry fills (including partial fills)
@@ -318,7 +318,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         'tpType + tpAbsoluteProfit/tpPercent define take-profit condition; ' +
         'maxInvestment * leverage = total buying power; maxPosition = max position size.',
       signals:
-        'On start: Fetch orderbook bid0 via REST → build ladder → place all BUY limit entry orders at once.\n' +
+        'On start: Fetch orderbook bid0 via REST → build ladder → place first BUY limit entry order (sequential: next entry placed only after current one fills).\n' +
         'Entry fill (incl. partial): Recalculate VWAP → update TP (cancel old TP → place new TP, qty=current inventory, price=VWAP±profit target).\n' +
         'TP partial fill: No action taken (TP state managed by exchange).\n' +
         'TP fully filled: Cancel all remaining entries → rebuild ladder with latest bid0 → start new cycle.\n' +
@@ -738,6 +738,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   // Ladder entry placement
   // ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Place the next pending entry order in the ladder.
+   *
+   * Sequential mode: only one entry order is active at a time. The next step
+   * is placed only after the current step's order is fully filled.
+   *
+   * Rules:
+   *   1. Find the first unfilled step that has no active order.
+   *   2. If the immediately preceding step exists and is not yet fully filled,
+   *      do NOT place this step — wait for it to fill first.
+   *   3. Only one entry order is live at any time.
+   */
   private placeLadderEntries(): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
@@ -748,22 +760,41 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
     for (const step of this.steps) {
       if (step.filled) continue;
+
+      // If this step already has an active order, do nothing — wait for it
+      // to fill. Only one entry order is live at a time.
       if (step.entryClientOrderId) {
         const order = this.orders.get(step.entryClientOrderId);
         if (
           order &&
           (order.status === OrderStatus.NEW ||
             order.status === OrderStatus.PARTIALLY_FILLED)
-        )
-          continue;
+        ) {
+          // Current step's order is still active; do not place next step.
+          return signals;
+        }
+        // Order no longer active (cancelled / filled / expired) — clear it.
+        // If it was filled, step.filled would already be true (set in
+        // handleEntryFill), so reaching here means it was cancelled/expired.
         step.entryClientOrderId = null;
       }
 
+      // Ensure all previous steps are fully filled before placing this one.
+      const prevStep = this.steps[step.index - 1];
+      if (prevStep && !prevStep.filled) {
+        // Previous step hasn't filled yet; wait.
+        this._logger.debug(
+          `[placeLadderEntries] Step ${step.index}: waiting for step ${prevStep.index} to fill`,
+        );
+        return signals;
+      }
+
+      // Check risk limits
       if (this.getRemainingPositionCapacity().lt(step.quantity)) {
         this._logger.debug(
           `[placeLadderEntries] Step ${step.index}: insufficient position capacity, skipping`,
         );
-        continue;
+        return signals;
       }
 
       const orderNotional = step.price.mul(step.quantity);
@@ -771,16 +802,19 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         this._logger.debug(
           `[placeLadderEntries] Step ${step.index}: insufficient investment capacity, skipping`,
         );
-        continue;
+        return signals;
       }
 
+      // Place this step's entry order and stop — only one at a time.
       const signal = this.generateEntrySignal(step);
       step.entryClientOrderId = signal.clientOrderId;
       signals.push(signal);
       this._logger.debug(
         `[placeLadderEntries] Placed step ${step.index}: ${step.quantity.toString()} @ ${step.price.toString()}`,
       );
+      return signals;
     }
+
     return signals;
   }
 

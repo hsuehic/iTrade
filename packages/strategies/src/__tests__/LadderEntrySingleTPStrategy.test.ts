@@ -214,7 +214,7 @@ describe('LadderEntrySingleTPStrategy', () => {
   });
 
   describe('processInitialData - ladder placement', () => {
-    it('should place all ladder BUY entry orders on init (fixed basePrice)', async () => {
+    it('should place only the first ladder BUY entry order on init (sequential mode)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 100,
@@ -229,18 +229,13 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
 
-      expect(entrySignals).toHaveLength(5);
-      entrySignals.forEach((s) => expect(s.action).toBe('buy'));
+      // Sequential mode: only ONE entry order placed at a time
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].action).toBe('buy');
 
-      // Arithmetic absolute steps (stepValue=1): 100, 99, 98, 97, 96
-      const prices = entrySignals.map((s) => s.price!.toNumber());
-      expect(prices[0]).toBeCloseTo(100, 1);
-      expect(prices[1]).toBeCloseTo(99, 1);
-      expect(prices[2]).toBeCloseTo(98, 1);
-      expect(prices[3]).toBeCloseTo(97, 1);
-      expect(prices[4]).toBeCloseTo(96, 1);
-
-      entrySignals.forEach((s) => expect(s.quantity!.toNumber()).toBeCloseTo(0.1, 5));
+      // Arithmetic absolute steps (stepValue=1): first step = 100
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+      expect(entrySignals[0].quantity!.toNumber()).toBeCloseTo(0.1, 5);
     });
 
     it('should use REST orderbook bid0 as reference when basePrice=0', async () => {
@@ -259,8 +254,9 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
       const entrySignals = findEntrySignals(result);
 
-      expect(entrySignals).toHaveLength(3);
-      // bid0 = 95 → step 0: 95, step 1: 94.05, step 2: 93.10
+      // Sequential mode: only ONE entry order placed on init
+      expect(entrySignals).toHaveLength(1);
+      // bid0 = 95 → step 0: 95
       expect(entrySignals[0].price!.toNumber()).toBeCloseTo(95, 1);
     });
 
@@ -277,10 +273,9 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
 
-      expect(entrySignals).toHaveLength(3);
+      // Sequential mode: only ONE entry order placed on init
+      expect(entrySignals).toHaveLength(1);
       expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
-      expect(entrySignals[1].price!.toNumber()).toBeCloseTo(98, 1);
-      expect(entrySignals[2].price!.toNumber()).toBeCloseTo(96.04, 1);
     });
 
     it('should place geometric qty progression correctly', async () => {
@@ -296,10 +291,9 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
 
-      expect(entrySignals).toHaveLength(3);
+      // Sequential mode: only ONE entry order placed on init
+      expect(entrySignals).toHaveLength(1);
       expect(entrySignals[0].quantity!.toNumber()).toBeCloseTo(0.1, 5);
-      expect(entrySignals[1].quantity!.toNumber()).toBeCloseTo(0.2, 5);
-      expect(entrySignals[2].quantity!.toNumber()).toBeCloseTo(0.4, 5);
     });
 
     it('should place arithmetic qty progression correctly', async () => {
@@ -315,10 +309,9 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
 
-      expect(entrySignals).toHaveLength(3);
+      // Sequential mode: only ONE entry order placed on init
+      expect(entrySignals).toHaveLength(1);
       expect(entrySignals[0].quantity!.toNumber()).toBeCloseTo(0.1, 5);
-      expect(entrySignals[1].quantity!.toNumber()).toBeCloseTo(0.15, 5);
-      expect(entrySignals[2].quantity!.toNumber()).toBeCloseTo(0.2, 5);
     });
 
     it('should skip steps that exceed maxPosition', async () => {
@@ -332,7 +325,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
-      expect(entrySignals).toHaveLength(3);
+      // Sequential mode: only one entry placed at a time, maxPosition allows it
+      expect(entrySignals).toHaveLength(1);
     });
 
     it('should skip steps that exceed maxInvestment', async () => {
@@ -348,7 +342,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
-      expect(entrySignals).toHaveLength(2);
+      // Sequential mode: only one entry placed at a time, maxInvestment allows it
+      expect(entrySignals).toHaveLength(1);
     });
   });
 
@@ -429,6 +424,7 @@ describe('LadderEntrySingleTPStrategy', () => {
       const initResult = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(initResult);
 
+      // Sequential mode: only entry 0 placed on init
       const fill0 = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
@@ -438,10 +434,12 @@ describe('LadderEntrySingleTPStrategy', () => {
         0.1,
         100,
       );
-      await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      // Fill entry 0 → returns entry 1 signal + TP signal
+      const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entry1Signals = findEntrySignals(result0);
 
       const fill1 = createOrder(
-        entrySignals[1].clientOrderId,
+        entry1Signals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
         99,
@@ -474,6 +472,7 @@ describe('LadderEntrySingleTPStrategy', () => {
       const initResult = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(initResult);
 
+      // Sequential mode: only entry 0 placed on init
       const fill0 = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
@@ -483,10 +482,12 @@ describe('LadderEntrySingleTPStrategy', () => {
         0.5,
         100,
       );
-      await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      // Fill entry 0 → returns entry 1 signal + TP signal
+      const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entry1Signals = findEntrySignals(result0);
 
       const fill1 = createOrder(
-        entrySignals[1].clientOrderId,
+        entry1Signals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
         99,
@@ -553,7 +554,7 @@ describe('LadderEntrySingleTPStrategy', () => {
       const initResult = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(initResult);
 
-      // Fill both entries
+      // Sequential mode: fill entry 0 first
       const fill0 = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
@@ -563,10 +564,12 @@ describe('LadderEntrySingleTPStrategy', () => {
         0.1,
         100,
       );
-      await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      // Fill entry 0 → returns entry 1 signal + TP signal
+      const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entry1Signals = findEntrySignals(result0);
 
       const fill1 = createOrder(
-        entrySignals[1].clientOrderId,
+        entry1Signals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
         99,
@@ -639,11 +642,12 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
       const tpResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
 
-      // Should cancel remaining entries (step 1 + step 2)
+      // Sequential mode: entry 0 was filled, then entry 1 was placed (pending).
+      // TP filled → cancel entry 1 (the only pending entry order).
       const cancelSignals = findCancelSignals(tpResult);
-      expect(cancelSignals.length).toBeGreaterThanOrEqual(2);
+      expect(cancelSignals.length).toBe(1);
 
-      // Should also place new ladder entries (new cycle)
+      // Should place new cycle's first entry
       const newEntries = findEntrySignals(tpResult);
       expect(newEntries.length).toBeGreaterThanOrEqual(1);
 
@@ -825,7 +829,8 @@ describe('LadderEntrySingleTPStrategy', () => {
         createInitialData({ openOrders: [] }),
       );
       const entrySignals = findEntrySignals(result);
-      expect(entrySignals).toHaveLength(3);
+      // Sequential mode: only one entry placed on init
+      expect(entrySignals).toHaveLength(1);
     });
   });
 
@@ -929,7 +934,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
-      expect(entrySignals).toHaveLength(3);
+      // Sequential mode: only one entry placed at a time
+      expect(entrySignals).toHaveLength(1);
     });
 
     it('should respect tight buying power', async () => {
@@ -945,7 +951,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const result = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(result);
-      expect(entrySignals).toHaveLength(2);
+      // Sequential mode: only one entry placed at a time, buying power allows it
+      expect(entrySignals).toHaveLength(1);
     });
   });
 
@@ -1032,7 +1039,7 @@ describe('LadderEntrySingleTPStrategy', () => {
   });
 
   describe('Arithmetic absolute price difference (real-world scenarios)', () => {
-    it('BTC: bid0=65000, stepValue=300 → 65000, 64700, 64400, 64100, 63800', async () => {
+    it('BTC: bid0=65000, stepValue=300 → first entry = 65000 (sequential)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 65000,
@@ -1048,15 +1055,12 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entries = findEntrySignals(result);
 
-      expect(entries).toHaveLength(5);
+      // Sequential mode: only first entry placed on init
+      expect(entries).toHaveLength(1);
       expect(entries[0].price!.toNumber()).toBe(65000);
-      expect(entries[1].price!.toNumber()).toBe(64700);
-      expect(entries[2].price!.toNumber()).toBe(64400);
-      expect(entries[3].price!.toNumber()).toBe(64100);
-      expect(entries[4].price!.toNumber()).toBe(63800);
     });
 
-    it('SOL: bid0=76, geometric stepValue=1 → 76, 75.24, 74.4876', async () => {
+    it('SOL: bid0=76, geometric stepValue=1 → first entry = 76 (sequential)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 76,
@@ -1072,18 +1076,15 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entries = findEntrySignals(result);
 
-      expect(entries).toHaveLength(3);
+      // Sequential mode: only first entry placed on init
+      expect(entries).toHaveLength(1);
       // 76 * (1 - 0.01)^0 = 76
       expect(entries[0].price!.toNumber()).toBeCloseTo(76, 2);
-      // 76 * (1 - 0.01)^1 = 76 * 0.99 = 75.24
-      expect(entries[1].price!.toNumber()).toBeCloseTo(75.24, 2);
-      // 76 * (1 - 0.01)^2 = 76 * 0.99^2 = 74.4876
-      expect(entries[2].price!.toNumber()).toBeCloseTo(74.4876, 3);
     });
   });
 
   describe('Geometric + arithmetic combination', () => {
-    it('should handle geometric price + arithmetic qty', async () => {
+    it('should handle geometric price + arithmetic qty (sequential mode)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           ladderSteps: 3,
@@ -1100,14 +1101,10 @@ describe('LadderEntrySingleTPStrategy', () => {
       const result = await strategy.processInitialData(createInitialData());
       const entries = findEntrySignals(result);
 
-      expect(entries).toHaveLength(3);
+      // Sequential mode: only first entry placed on init
+      expect(entries).toHaveLength(1);
       expect(entries[0].price!.toNumber()).toBeCloseTo(100, 1);
-      expect(entries[1].price!.toNumber()).toBeCloseTo(95, 1);
-      expect(entries[2].price!.toNumber()).toBeCloseTo(90.25, 1);
-
       expect(entries[0].quantity!.toNumber()).toBeCloseTo(0.1, 5);
-      expect(entries[1].quantity!.toNumber()).toBeCloseTo(0.15, 5);
-      expect(entries[2].quantity!.toNumber()).toBeCloseTo(0.2, 5);
 
       const fill = createOrder(
         entries[0].clientOrderId,
@@ -1125,6 +1122,80 @@ describe('LadderEntrySingleTPStrategy', () => {
       const tp = tpSignals[0] as StrategyOrderResult;
       expect(tp.price!.toNumber()).toBeCloseTo(102, 1);
       expect(tp.quantity!.toNumber()).toBeCloseTo(0.1, 5);
+    });
+  });
+
+  describe('Sequential entry progression', () => {
+    it('should place next entry only after previous entry fills', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      // Init → only entry 0 placed
+      const initResult = await strategy.processInitialData(createInitialData());
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries).toHaveLength(1);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(100, 1);
+
+      // Fill entry 0 → should place entry 1 + TP
+      const fill0 = createOrder(
+        initEntries[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        100,
+        0.1,
+        0.1,
+        100,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entries1 = findEntrySignals(result1);
+      const tp1 = findTpSignals(result1);
+      // Entry 1 placed (price=99) + TP placed
+      expect(entries1).toHaveLength(1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(99, 1);
+      expect(tp1).toHaveLength(1);
+
+      // Fill entry 1 → should place entry 2 + update TP
+      const fill1 = createOrder(
+        entries1[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        9.9,
+      );
+      const result2 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
+      const entries2 = findEntrySignals(result2);
+      const tp2 = findTpSignals(result2);
+      // Entry 2 placed (price=98) + TP updated
+      expect(entries2).toHaveLength(1);
+      expect(entries2[0].price!.toNumber()).toBeCloseTo(98, 1);
+      expect(tp2).toHaveLength(1);
+
+      // Fill entry 2 (last step) → no more entries, TP updated only
+      const fill2 = createOrder(
+        entries2[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
+        0.1,
+        0.1,
+        9.8,
+      );
+      const result3 = await strategy.analyze(createDataUpdate({ orders: [fill2] }));
+      const entries3 = findEntrySignals(result3);
+      const tp3 = findTpSignals(result3);
+      expect(entries3).toHaveLength(0);
+      expect(tp3).toHaveLength(1);
     });
   });
 
@@ -1146,7 +1217,8 @@ describe('LadderEntrySingleTPStrategy', () => {
         createInitialData({ orderBook: createOrderBook(50) }),
       );
       const entries = findEntrySignals(result);
-      expect(entries).toHaveLength(2);
+      // Sequential mode: only one entry placed on init
+      expect(entries).toHaveLength(1);
       expect(entries[0].price!.toNumber()).toBeCloseTo(50, 1);
     });
 
