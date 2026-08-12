@@ -866,9 +866,11 @@ describe('LadderEntrySingleTPStrategy', () => {
       const entry1Id = 'E1D5000002'; // NEW at 98 — in openOrders
       const tpId = 'T1D5000001'; // NEW — in openOrders
 
+      // TP price = VWAP * (1 + tpPercent/100) = 99 * 1.01 = 99.99
+      // (only entry 0 filled → VWAP = 99)
       const openOrders: Order[] = [
         createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 98, 0.1, 0, undefined),
-        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.485, 0.1, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.99, 0.1, 0, undefined),
       ];
 
       const orderHistory: Order[] = [
@@ -1121,6 +1123,88 @@ describe('LadderEntrySingleTPStrategy', () => {
       const state = strategy.getStrategyState();
       expect(state.steps[0].filled).toBe(true);
       expect(state.tpClientOrderId).toBe(tpId);
+    });
+
+    it('should reverse-engineer referencePrice from TP (strategy 465 real params)', async () => {
+      // Strategy 465: geometric stepValue=0.62, qtyPerStep=3000, qtyStepAdd=1500,
+      //               ladderSteps=5, tpType=absolute, tpAbsoluteProfit=15
+      // After entry 0 FILLED: VWAP=0.3367, TP price = 0.3367 + 15/3000 = 0.3417
+      // TP qty=3000 → 1 filled step
+      // reverseEngineer: VWAP=0.3417-15/3000=0.3367, ref=0.3367/0.9938=0.33880...
+      // Rebuilt step 0 = 0.33880*0.9938 = 0.33670 (matches FILLED entry 0)
+      // Rebuilt step 1 = 0.33880*0.9938^2 = 0.33461 (matches openOrders entry 1)
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'geometric',
+          stepValue: 0.62,
+          qtyType: 'arithmetic',
+          qtyPerStep: 3000,
+          qtyStepAdd: 1500,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 15,
+          maxInvestment: 1200,
+          maxPosition: 30000,
+          leverage: 10,
+        }),
+      );
+
+      const entry1Id = 'E1DA000002';
+      const tpId = 'T1DA000001';
+      const entry0FilledId = 'E1DA000001';
+
+      const openOrders: Order[] = [
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 0.3346, 4500, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 0.3417, 3000, 0, undefined),
+      ];
+
+      const orderHistory: Order[] = [
+        createOrder(
+          entry0FilledId,
+          OrderSide.BUY,
+          OrderStatus.FILLED,
+          0.3367,
+          3000,
+          3000,
+          0.3367,
+        ),
+      ];
+
+      // Orderbook bid0 is different from original — but we should NOT use it
+      // because TP reverse-engineering takes priority.
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderHistory,
+          orderBook: {
+            symbol: 'BTC/USDT',
+            timestamp: new Date(),
+            exchange: 'okx',
+            bids: [[new Decimal(0.35), new Decimal(1)]], // different bid0
+            asks: [[new Decimal(0.36), new Decimal(1)]],
+          },
+        }),
+      );
+
+      const state = strategy.getStrategyState();
+      // referencePrice should be reverse-engineered, not 0.3500 (bid0)
+      // ref = 0.3367 / 0.9938 = 0.33880...
+      const expectedRef = parseFloat(
+        new Decimal(0.3367)
+          .div(new Decimal(1).minus(new Decimal(0.62).div(100)))
+          .toString(),
+      );
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(expectedRef, 4);
+
+      // Step 0 price should match entry 0 FILLED price (0.3367)
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(0.3367, 4);
+      // Step 1 price should match entry 1 NEW price (0.3346)
+      expect(parseFloat(state.steps[1].price)).toBeCloseTo(0.3346, 3);
+
+      // No duplicate entries
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
     });
   });
 

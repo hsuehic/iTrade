@@ -524,6 +524,90 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpClientOrderId = null;
   }
 
+  /**
+   * Reverse-engineer the referencePrice (bid0) from an active TP order.
+   *
+   * On restart, the original bid0 used to build the ladder is unknown.
+   * Fetching a fresh bid0 may produce different step prices that don't match
+   * the entry orders still open in openOrders. Instead, we can back-calculate:
+   *
+   * 1. VWAP from TP price:
+   *    absolute: VWAP = TP_price - tpAbsoluteProfit / TP_qty
+   *    percent:  VWAP = TP_price / (1 + tpPercent/100)
+   *
+   * 2. referencePrice from VWAP + filledStepCount (inferred from TP qty):
+   *    arithmetic:
+   *      VWAP = ref - stepValue * sum((i+1)*qty[i]) / totalQty
+   *      ref  = VWAP + stepValue * sum((i+1)*qty[i]) / totalQty
+   *    geometric:
+   *      r = (1 - stepValue/100)
+   *      VWAP = ref * sum(r^(i+1)*qty[i]) / totalQty
+   *      ref  = VWAP * totalQty / sum(r^(i+1)*qty[i])
+   *
+   * This ensures the rebuilt ladder prices exactly match the entry orders
+   * already on the exchange, preventing duplicates and price mismatches.
+   *
+   * @param tpOrder - The active TP order from openOrders
+   * @param filledStepCount - Number of filled steps (inferred from TP qty)
+   * @returns The back-calculated referencePrice, or null if calculation fails
+   */
+  private reverseEngineerReferencePrice(
+    tpOrder: Order,
+    filledStepCount: number,
+  ): Decimal | null {
+    if (!tpOrder.price || !tpOrder.quantity || tpOrder.quantity.lte(0)) return null;
+    if (filledStepCount <= 0) return null;
+
+    // Step 1: Back-calculate VWAP from TP price
+    let vwapFromTp: Decimal;
+    if (this.tpType === 'absolute') {
+      if (this.tpAbsoluteProfit.lte(0)) return null;
+      vwapFromTp = tpOrder.price.minus(this.tpAbsoluteProfit.div(tpOrder.quantity));
+    } else {
+      if (this.tpPercent.lte(0)) return null;
+      vwapFromTp = tpOrder.price.div(new Decimal(1).plus(this.tpPercent.div(100)));
+    }
+
+    if (vwapFromTp.lte(0)) return null;
+
+    // Step 2: Build temporary ladder quantities for filled steps
+    // (we need qty[i] for i=0..filledStepCount-1, but steps aren't built yet)
+    const stepPercent = this.stepValue.div(100);
+    let totalQty = new Decimal(0);
+    let weightedSum = new Decimal(0); // for arithmetic: sum((i+1)*qty[i])
+    let geometricWeightedSum = new Decimal(0); // for geometric: sum(r^(i+1)*qty[i])
+
+    for (let i = 0; i < filledStepCount; i++) {
+      let qty: Decimal;
+      if (this.qtyType === 'arithmetic') {
+        qty = this.qtyPerStep.plus(this.qtyStepAdd.mul(i));
+      } else {
+        qty = this.qtyPerStep.mul(this.qtyStepRatio.pow(i));
+      }
+      totalQty = totalQty.plus(qty);
+      weightedSum = weightedSum.plus(new Decimal(i + 1).mul(qty));
+      const r = new Decimal(1).minus(stepPercent);
+      geometricWeightedSum = geometricWeightedSum.plus(r.pow(i + 1).mul(qty));
+    }
+
+    if (totalQty.lte(0)) return null;
+
+    // Step 3: Back-calculate referencePrice
+    let refPrice: Decimal;
+    if (this.stepType === 'arithmetic') {
+      // VWAP = ref - stepValue * weightedSum / totalQty
+      // ref = VWAP + stepValue * weightedSum / totalQty
+      refPrice = vwapFromTp.plus(this.stepValue.mul(weightedSum).div(totalQty));
+    } else {
+      // VWAP = ref * geometricWeightedSum / totalQty
+      // ref = VWAP * totalQty / geometricWeightedSum
+      if (geometricWeightedSum.lte(0)) return null;
+      refPrice = vwapFromTp.mul(totalQty).div(geometricWeightedSum);
+    }
+
+    return refPrice;
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // VWAP / TP calculation
   // ──────────────────────────────────────────────────────────────────────────
@@ -1398,6 +1482,56 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           `No entry orders will be placed.`,
       );
       return [];
+    }
+
+    // Step 1b: If there is an active TP order in openOrders, reverse-engineer
+    // the referencePrice from it instead of using the fresh bid0. This ensures
+    // the rebuilt ladder prices match the entry orders still on the exchange.
+    // (Only when not _needsReinit — reinit starts a fresh cycle with fresh bid0.)
+    if (!this._needsReinit && initialData.openOrders) {
+      const tpOrder = initialData.openOrders.find(
+        (o) =>
+          o.symbol === this._symbol &&
+          o.side === OrderSide.SELL &&
+          (o.status === OrderStatus.NEW || o.status === OrderStatus.PARTIALLY_FILLED) &&
+          o.clientOrderId &&
+          this.isStrategyOrderId(o.clientOrderId) &&
+          /^(T)\d+D/.test(o.clientOrderId),
+      );
+      if (tpOrder && tpOrder.quantity && tpOrder.quantity.gt(0)) {
+        // Infer filledStepCount from TP qty vs step quantities.
+        // Step quantities don't depend on referencePrice, so we can compute
+        // them directly without building the full ladder.
+        let cumulative = new Decimal(0);
+        let filledStepCount = 0;
+        for (let i = 0; i < this.ladderSteps; i++) {
+          let qty: Decimal;
+          if (this.qtyType === 'arithmetic') {
+            qty = this.qtyPerStep.plus(this.qtyStepAdd.mul(i));
+          } else {
+            qty = this.qtyPerStep.mul(this.qtyStepRatio.pow(i));
+          }
+          cumulative = cumulative.plus(qty);
+          if (tpOrder.quantity.gte(cumulative)) {
+            filledStepCount++;
+          } else {
+            break;
+          }
+        }
+        if (filledStepCount > 0) {
+          const recoveredRef = this.reverseEngineerReferencePrice(
+            tpOrder,
+            filledStepCount,
+          );
+          if (recoveredRef && recoveredRef.gt(0)) {
+            this.referencePrice = recoveredRef;
+            this._logger.info(
+              `[processInitialData] Reverse-engineered referencePrice from TP: ${recoveredRef.toString()} ` +
+                `(TP price=${tpOrder.price?.toString()}, qty=${tpOrder.quantity.toString()}, filledSteps=${filledStepCount})`,
+            );
+          }
+        }
+      }
     }
 
     // Step 2: Build ladder
