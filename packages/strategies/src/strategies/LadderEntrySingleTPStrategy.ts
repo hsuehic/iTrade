@@ -2052,21 +2052,29 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       );
     }
 
-    // Step 4c: Recover tpFilledQty from any PARTIALLY_FILLED TP order in
-    // openOrders. Without this, a restart after a partial TP fill would
-    // lose tpFilledQty → refreshTakeProfit would oversell by the partial amount.
+    // Step 4c: Recover tpFilledQty from ALL SELL orders with executedQuantity > 0
+    // in this.orders. This includes:
+    //   - PARTIALLY_FILLED TP (from openOrders) — the active TP
+    //   - CANCELED TP with partial fill (from orderHistory — happens when
+    //     refreshTakeProfit cancels the old TP and places a new one; the old
+    //     TP may have partial fills before the cancel took effect)
+    // Without recovering all of them, tpFilledQty would be understated →
+    // refreshTakeProfit would oversell by the unrecovered amount.
+    // On restart, tpFilledQty starts at 0, so there is no double-counting risk.
+    // If hasFilledTpInHistory was true, orderHistory recovery was skipped entirely,
+    // so this.orders only contains openOrders (active cycle) — safe to sum.
     if (!isReinit) {
       for (const order of this.orders.values()) {
         if (
           order.side === OrderSide.SELL &&
-          order.status === OrderStatus.PARTIALLY_FILLED &&
           order.executedQuantity &&
           order.executedQuantity.gt(0)
         ) {
           this.tpFilledQty = this.tpFilledQty.plus(order.executedQuantity);
           this._logger.info(
-            `[processInitialData] Recovered tpFilledQty=${this.tpFilledQty.toString()} ` +
-              `from partial TP order ${order.clientOrderId} (executed ${order.executedQuantity.toString()}).`,
+            `[processInitialData] Recovered tpFilledQty from TP order ` +
+              `${order.clientOrderId} (status=${order.status}, executed=${order.executedQuantity.toString()}), ` +
+              `tpFilledQty=${this.tpFilledQty.toString()}.`,
           );
         }
       }
