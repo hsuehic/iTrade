@@ -354,10 +354,17 @@ export function StrategyParameterFormDynamic({
     }
   };
 
-  // Separate subscription parameters from strategy parameters
-  const strategyParams = strategyConfig.parameterDefinitions.filter(
-    (p) => p.name !== 'subscription',
-  );
+  // Separate subscription parameters from strategy parameters.
+  // Apply showIf conditional visibility — a parameter with showIf is only
+  // rendered when the referenced field's current value equals the expected value.
+  const strategyParams = strategyConfig.parameterDefinitions.filter((p) => {
+    if (p.name === 'subscription') return false;
+    if (p.showIf) {
+      const depValue = parameters[p.showIf.field];
+      return depValue === p.showIf.equals;
+    }
+    return true;
+  });
 
   return (
     <Card>
