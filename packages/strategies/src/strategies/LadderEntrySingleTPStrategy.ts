@@ -402,6 +402,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private pendingClientOrderIds: Set<string> = new Set();
   private processedQuantityMap: Map<string, Decimal> = new Map();
   private processedTerminalIds: Set<string> = new Set();
+  /**
+   * Client order IDs from previous cycles that have been fully processed.
+   * When resetLadder clears all tracking maps, these IDs are recorded here
+   * so that delayed WS pushes for old-cycle orders are ignored instead of
+   * being re-processed as new fills (which would contaminate VWAP/inventory
+   * and trigger TP storms).
+   */
+  private previousCycleOrderIds: Set<string> = new Set();
 
   /**
    * Debounce timer for TP refresh on partial fills (milliseconds).
@@ -520,10 +528,33 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   }
 
   private resetLadder(): void {
+    // Record all current cycle's order IDs before clearing, so that delayed
+    // WS pushes for these orders are ignored in the new cycle.
+    for (const coid of this.orders.keys()) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    for (const coid of this.orderMetadataMap.keys()) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    for (const coid of this.pendingClientOrderIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
+
     this.steps = [];
     this.inventoryQty = new Decimal(0);
     this.vwap = new Decimal(0);
     this.tpClientOrderId = null;
+    // CRITICAL: Clear all order tracking maps to prevent stale orders from
+    // the previous cycle contaminating recalculateVWAP in the new cycle.
+    // Without this, old FILLED entries remain in this.orders and their
+    // metadata in orderMetadataMap — recalculateVWAP would include them,
+    // rebuilding stale inventory/VWAP → TP at wrong price → immediate fill
+    // → TP storm → financial loss.
+    this.orders.clear();
+    this.orderMetadataMap.clear();
+    this.pendingClientOrderIds.clear();
+    this.processedQuantityMap.clear();
+    this.processedTerminalIds.clear();
   }
 
   /**
@@ -1194,6 +1225,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
     for (const order of orders) {
       if (!order.clientOrderId) continue;
+
+      // CRITICAL: Skip orders from previous cycles. After TP fills and
+      // resetLadder clears all tracking maps, delayed WS pushes for old-cycle
+      // orders would be re-processed as new fills — contaminating VWAP/inventory
+      // and triggering TP storms. previousCycleOrderIds is populated in
+      // resetLadder with all clientOrderIds from the completed cycle.
+      if (this.previousCycleOrderIds.has(order.clientOrderId)) continue;
 
       let metadata = this.orderMetadataMap.get(order.clientOrderId);
       if (!metadata) {
@@ -2008,6 +2046,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpRefreshPending = false;
     this.lastPartialFillTpTriggerTime = 0;
     this._needsReinit = false;
+    this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }
 

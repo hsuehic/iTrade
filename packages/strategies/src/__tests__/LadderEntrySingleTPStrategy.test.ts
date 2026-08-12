@@ -1885,6 +1885,86 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(newEntries[0].price!.toNumber()).toBeCloseTo(101, 1);
     });
 
+    it('should NOT process delayed WS push of old-cycle FILLED entry as new fill (TP storm prevention)', async () => {
+      // CRITICAL: After TP fills and resetLadder clears all tracking maps,
+      // a delayed WS push of an old-cycle FILLED entry order must NOT be
+      // re-processed as a new fill. Without previousCycleOrderIds blacklist,
+      // ensureRecoveredMetadata would create fresh metadata, handleEntryFilled
+      // would call recalculateVWAP → stale inventory → TP at old price → storm.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100, // fixed — no reinit needed, tests resetLadder directly
+          ladderSteps: 2,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 2,
+        }),
+      );
+
+      // Initial: entry 0 at 99
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry 0 → TP at 99*1.02 = 100.98
+      const entry0Id = entrySignals[0].clientOrderId;
+      const fill0 = createOrder(
+        entry0Id,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+      );
+      const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const tpSignals = findTpSignals(fillResult);
+      expect(tpSignals).toHaveLength(1);
+      const tpId = (tpSignals[0] as StrategyOrderResult).clientOrderId;
+
+      // TP fills → resetLadder + rebuild (basePrice>0, so immediate rebuild)
+      const tpFill = createOrder(
+        tpId,
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        100.98,
+        0.1,
+        0.1,
+        100.98,
+      );
+      await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
+
+      // After TP fill: inventory=0, VWAP=0, new entry 0 placed (basePrice=100 → entry at 99)
+      const stateAfterTp = strategy.getStrategyState();
+      expect(parseFloat(stateAfterTp.inventoryQty)).toBe(0);
+      expect(parseFloat(stateAfterTp.vwap)).toBe(0);
+
+      // Now simulate a DELAYED WS push of the OLD cycle's FILLED entry 0
+      // This must NOT be processed as a new fill!
+      const delayedOldFill = createOrder(
+        entry0Id,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+      );
+      const delayedResult = await strategy.analyze(
+        createDataUpdate({ orders: [delayedOldFill] }),
+      );
+
+      // Inventory/VWAP must remain 0 — old fill must be ignored
+      const stateAfterDelayed = strategy.getStrategyState();
+      expect(parseFloat(stateAfterDelayed.inventoryQty)).toBe(0);
+      expect(parseFloat(stateAfterDelayed.vwap)).toBe(0);
+
+      // No TP should be placed (no inventory)
+      const delayedTpSignals = findTpSignals(delayedResult);
+      expect(delayedTpSignals).toHaveLength(0);
+    });
+
     it('should keep fixed basePrice unchanged after TP fill', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
