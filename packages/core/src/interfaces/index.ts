@@ -247,6 +247,22 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
 
   cleanup?(): Promise<void>;
 
+  /**
+   * 🆕 Reinitialization Request
+   * Strategy can request the engine to reload initial data (e.g. orderbook
+   * via REST) and re-run processInitialData. Used when the strategy needs
+   * fresh market data that cannot be obtained synchronously (e.g. after TP
+   * fill when basePrice=0, the reference price is stale and a new orderbook
+   * snapshot is needed for the next cycle).
+   *
+   * The engine checks this flag after each analyze() call. When true, it
+   * clears the loaded-initial-data marker, re-fetches initial data via
+   * loadInitialDataForStrategy, and calls processInitialData again.
+   *
+   * The strategy MUST reset its internal flag in processInitialData.
+   */
+  requiresReinitialization?(): boolean;
+
   /** Configuration retrieval methods */
   getInitialDataConfig?(): InitialDataConfig;
   getSubscriptionConfig?(): SubscriptionConfig;

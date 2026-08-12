@@ -1711,6 +1711,26 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
             result,
             'account update',
           );
+
+          // 🆕 Check if strategy requested reinitialization (e.g. after TP fill
+          // when basePrice=0, strategy needs a fresh orderbook snapshot for the
+          // next cycle). The strategy signals this via requiresReinitialization().
+          if (strategy.requiresReinitialization?.()) {
+            this.logger.info(
+              `🔄 [Reinit] Strategy ${strategyName} requested reinitialization. ` +
+                `Reloading initial data (orderbook REST fetch)...`,
+            );
+            // Clear the loaded marker so loadInitialDataForStrategy runs again
+            this._strategiesWithLoadedInitialData.delete(strategyName);
+            try {
+              await this.loadInitialDataForStrategy(strategyName, strategy);
+            } catch (reinitError) {
+              this.logger.error(
+                `❌ [Reinit] Failed to reload initial data for ${strategyName}`,
+                reinitError as Error,
+              );
+            }
+          }
         } catch (error) {
           this.logger.error(
             `Error in strategy ${strategyName} (account update)`,

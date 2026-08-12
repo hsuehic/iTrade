@@ -411,6 +411,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   /** Whether a deferred TP refresh is pending (set by partial fill, cleared when executed). */
   private tpRefreshPending = false;
 
+  /**
+   * Flag set by handleTpFilled when basePrice=0 — strategy needs the engine
+   * to re-fetch orderbook via REST and call processInitialData again so the
+   * new cycle uses a fresh bid0 as the reference price.
+   * Reset to false in processInitialData after consuming the fresh orderbook.
+   */
+  private _needsReinit = false;
+
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
     const { parameters } = config;
@@ -1053,21 +1061,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.processedTerminalIds.clear();
 
     // Update reference price for the new cycle.
-    // When basePrice=0, the reference price was originally fetched from REST
-    // orderbook bid0. After TP fills, the market has moved up to the TP price,
-    // so the old bid0 is stale. Use the TP fill price as the new reference —
-    // it's the best available approximation of the current market price
-    // without a synchronous REST fetch. (bid0 ≈ TP fill price minus spread.)
-    // When basePrice>0 (fixed), keep the original reference.
+    // When basePrice=0, the reference price was fetched from REST orderbook
+    // bid0 at strategy init. After TP fills, that bid0 is stale — the market
+    // has moved to the TP price. Rather than approximating with the TP fill
+    // price, request the engine to re-fetch a fresh orderbook via REST and
+    // re-run processInitialData so the new cycle uses an accurate bid0.
+    // When basePrice>0 (fixed), the reference price never changes.
     if (this.basePrice.lte(0)) {
-      const tpFillPrice = order.averagePrice || order.price;
-      if (tpFillPrice && tpFillPrice.gt(0)) {
-        this.referencePrice = tpFillPrice;
-        this._logger.debug(
-          `[handleTpFilled] Updated reference price for new cycle: ${this.referencePrice.toString()} ` +
-            `(from TP fill price, basePrice=0)`,
-        );
-      }
+      this._needsReinit = true;
+      this._logger.debug(
+        `[handleTpFilled] basePrice=0 — set _needsReinit=true. ` +
+          `Engine will re-fetch orderbook and call processInitialData for new cycle.`,
+      );
     }
 
     this._logger.debug(
@@ -1075,8 +1080,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         `Cycle reset. Reference price: ${this.referencePrice.toString()}`,
     );
 
-    // Rebuild ladder and place entries for new cycle
-    if (this.referencePrice.gt(0)) {
+    // Rebuild ladder and place entries for new cycle.
+    // When basePrice>0: rebuild immediately with the fixed reference price.
+    // When basePrice=0: rebuild with the current (stale) reference price as a
+    //   best-effort placeholder — the engine will re-fetch orderbook and call
+    //   processInitialData, which rebuilds the ladder with the fresh bid0.
+    if (this.referencePrice.gt(0) && !this._needsReinit) {
       signals.push(...this.placeLadderEntries());
     }
     return signals;
@@ -1326,7 +1335,33 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   ): Promise<StrategyAnalyzeResult> {
     const signals: StrategyResult[] = [];
 
-    // Step 1: Set reference price from REST orderbook if basePrice=0
+    // Step 1: Set reference price from REST orderbook if basePrice=0.
+    // When _needsReinit=true (TP filled in previous cycle with basePrice=0),
+    // the engine has re-fetched a fresh orderbook — consume the new bid0
+    // and rebuild the ladder with the updated reference price.
+    if (this._needsReinit) {
+      this._needsReinit = false;
+      if (initialData.orderBook) {
+        const freshBid0 = initialData.orderBook.bids?.[0]?.[0];
+        if (freshBid0 && freshBid0.gt(0)) {
+          this.referencePrice = freshBid0;
+          this._logger.info(
+            `[processInitialData] Reinit: updated reference price from fresh REST orderbook bid0: ${this.referencePrice.toString()}`,
+          );
+        } else {
+          this._logger.warn(
+            `[processInitialData] Reinit: orderbook fetched but bid0 is empty/invalid. Keeping stale reference: ${this.referencePrice.toString()}`,
+          );
+        }
+      } else {
+        this._logger.warn(
+          `[processInitialData] Reinit: no orderBook in initialData. Keeping stale reference: ${this.referencePrice.toString()}`,
+        );
+      }
+      // Force rebuild ladder with the fresh reference price
+      this.steps = [];
+    }
+
     if (this.referencePrice.lte(0) && initialData.orderBook) {
       const bestBid = initialData.orderBook.bids?.[0]?.[0];
       if (bestBid && bestBid.gt(0)) {
@@ -1490,7 +1525,17 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpClientOrderId = null;
     this.tpRefreshPending = false;
     this.lastPartialFillTpTriggerTime = 0;
+    this._needsReinit = false;
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
+  }
+
+  /**
+   * Engine calls this after each analyze() to check if the strategy needs
+   * a fresh REST orderbook fetch + processInitialData re-run.
+   * True after TP fill when basePrice=0 (reference price is stale).
+   */
+  public requiresReinitialization(): boolean {
+    return this._needsReinit;
   }
 
   public getStrategyState() {

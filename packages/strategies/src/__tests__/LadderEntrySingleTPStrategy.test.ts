@@ -1202,7 +1202,7 @@ describe('LadderEntrySingleTPStrategy', () => {
   });
 
   describe('TP filled → new cycle reference price', () => {
-    it('should update referencePrice to TP fill price when basePrice=0 (dynamic mode)', async () => {
+    it('should request reinitialization after TP fill when basePrice=0 (dynamic mode)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 0, // dynamic — uses orderbook bid0
@@ -1248,10 +1248,32 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
       const tpFillResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
 
-      // New cycle: entry should be placed at ~102 (new referencePrice), NOT 100
+      // After TP fill with basePrice=0, strategy should NOT immediately place
+      // new entries — it requests reinitialization instead.
+      expect(strategy.requiresReinitialization()).toBe(true);
       const newEntrySignals = findEntrySignals(tpFillResult);
-      expect(newEntrySignals.length).toBeGreaterThanOrEqual(1);
-      expect(newEntrySignals[0].price!.toNumber()).toBeCloseTo(102, 1);
+      expect(newEntrySignals).toHaveLength(0);
+
+      // Simulate engine re-fetching orderbook with new bid0 = 102 and calling
+      // processInitialData again
+      const reinitResult = await strategy.processInitialData(
+        createInitialData({
+          orderBook: {
+            bids: [[new Decimal(102), new Decimal(1)]],
+            asks: [[new Decimal(102.1), new Decimal(1)]],
+            timestamp: new Date(),
+            symbol: 'BTC/USDT',
+            exchange: 'okx',
+          },
+        }),
+      );
+      // Strategy no longer needs reinit
+      expect(strategy.requiresReinitialization()).toBe(false);
+
+      // New cycle: entry should be at 102 (fresh bid0)
+      const reinitEntries = findEntrySignals(reinitResult);
+      expect(reinitEntries.length).toBeGreaterThanOrEqual(1);
+      expect(reinitEntries[0].price!.toNumber()).toBeCloseTo(102, 1);
 
       // Verify state reflects new reference price
       const state = strategy.getStrategyState();
