@@ -1309,9 +1309,20 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     if (order.side !== OrderSide.BUY) return undefined;
     if (!order.price) return undefined;
 
-    // Try to match by price against existing ladder steps
+    // Try exact match by price against existing ladder steps
     for (const step of this.steps) {
       if (step.price.eq(order.price)) return step.index;
+    }
+
+    // Try approximate match (within 0.1% tolerance) — handles cases where
+    // floating-point rounding differences cause exact match to fail, or
+    // where the old code used a different formula version (e.g., i vs i+1)
+    // and the prices differ slightly from the new ladder.
+    const tolerance = order.price.mul(0.001); // 0.1%
+    for (const step of this.steps) {
+      if (step.price.minus(order.price).abs().lte(tolerance)) {
+        return step.index;
+      }
     }
 
     // If steps not built yet, try to infer from price relative to referencePrice
@@ -1522,6 +1533,41 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
         // Re-recalculate VWAP with the recovered FILLED orders
         this.recalculateVWAP();
+
+        // Step 4a-b: Fallback inference for unmatched FILLED entries.
+        // In sequential mode, if N entry orders have fully FILLED, then
+        // steps 0..N-1 must be filled. If price matching via
+        // recoverStepIndex failed (e.g. ladder formula changed between
+        // versions), count total unique FILLED entries and ensure the
+        // first N steps are marked filled. This prevents duplicate
+        // entry orders on restart.
+        const filledCoids = new Set<string>();
+        for (const [coid, meta] of this.orderMetadataMap) {
+          if (meta.signalType !== SignalType.Entry) continue;
+          const ord = this.orders.get(coid);
+          if (!ord) continue;
+          if (
+            ord.status === OrderStatus.FILLED ||
+            (ord.executedQuantity && ord.executedQuantity.eq(ord.quantity))
+          ) {
+            filledCoids.add(coid);
+          }
+        }
+        const alreadyMarkedFilled = this.steps.filter((s) => s.filled).length;
+        const unmatchedFilled = filledCoids.size - alreadyMarkedFilled;
+        if (unmatchedFilled > 0) {
+          let toMark = unmatchedFilled;
+          for (let i = 0; i < this.steps.length && toMark > 0; i++) {
+            if (!this.steps[i].filled) {
+              this.steps[i].filled = true;
+              toMark--;
+              this._logger.debug(
+                `[processInitialData] Fallback: marked step ${i} as filled ` +
+                  `(${unmatchedFilled} unmatched FILLED entries from orderHistory)`,
+              );
+            }
+          }
+        }
       }
 
       // Step 4b: Infer prior steps as filled.

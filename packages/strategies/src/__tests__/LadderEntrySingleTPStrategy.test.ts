@@ -905,6 +905,63 @@ describe('LadderEntrySingleTPStrategy', () => {
     });
   });
 
+  describe('Restart recovery - orderHistory (real-world scenarios)', () => {
+    it('should NOT duplicate entries when FILLED order price does not match new ladder (formula version mismatch)', async () => {
+      // Scenario: strategy was running with old code where entry 0 = bid0
+      // (formula i). After code update to formula i+1, entry 0 = bid0 - step.
+      // On restart, the old FILLED entry 0 price no longer matches the new
+      // ladder step 0 price. The fallback inference must still mark step 0
+      // as filled to prevent a duplicate entry.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      // New code: entry 0 = 100 - 1*(0+1) = 99, entry 1 = 100 - 1*(1+1) = 98
+      // Old code: entry 0 = 100 (bid0), entry 1 = 99
+      // Simulate: old entry 0 FILLED at price=100 (old formula i)
+      //           new entry 1 NEW at price=98 (matches new formula i+1)
+      const entry0OldId = 'E1D6000001'; // FILLED at 100 (old formula — price mismatch)
+      const entry1Id = 'E1D6000002'; // NEW at 98 (new formula — price matches)
+      const tpId = 'T1D6000001'; // NEW TP
+
+      const openOrders: Order[] = [
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 98, 0.1, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.99, 0.1, 0, undefined),
+      ];
+
+      const orderHistory: Order[] = [
+        // Old entry 0 FILLED at price=100 — does NOT match new step 0 (99)
+        createOrder(entry0OldId, OrderSide.BUY, OrderStatus.FILLED, 100, 0.1, 0.1, 100),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({ openOrders, orderHistory }),
+      );
+
+      const entrySignals = findEntrySignals(result);
+      // No new entry should be placed — step 0 is filled, step 1 is active
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+      // Step 0 must be marked as filled (fallback inference)
+      expect(state.steps[0].filled).toBe(true);
+      // Step 1 is active (NEW)
+      expect(state.steps[1].entryClientOrderId).toBe(entry1Id);
+      expect(state.steps[1].filled).toBe(false);
+      // Inventory and VWAP recovered
+      expect(state.inventoryQty).toBe('0.1');
+      expect(state.vwap).toBe('100');
+    });
+  });
+
   describe('Out-of-order / delayed order pushes', () => {
     it('should skip stale order updates (older updateTime)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
