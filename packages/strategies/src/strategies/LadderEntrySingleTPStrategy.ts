@@ -1170,6 +1170,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
+    // If basePrice=0 and no orderbook was fetched, we cannot proceed
+    if (this.referencePrice.lte(0)) {
+      this._logger.warn(
+        `[processInitialData] basePrice=0 but no orderBook available in initialData. ` +
+          `Cannot determine reference price. Make sure getInitialDataConfig() returns fetchOrderBook.enabled=true. ` +
+          `No entry orders will be placed.`,
+      );
+      return [];
+    }
+
     // Step 2: Build ladder
     if (this.steps.length === 0 && this.referencePrice.gt(0)) {
       this.steps = this.buildLadder();

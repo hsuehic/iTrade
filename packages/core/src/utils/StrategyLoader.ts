@@ -25,7 +25,12 @@ export async function loadInitialDataForStrategy(
     return {} as InitialDataResult;
   }
 
-  const { initialDataConfig } = context;
+  // Prefer the strategy's dynamic getInitialDataConfig() over the stored context config.
+  // This allows strategies to declare initial data needs based on their parameters
+  // (e.g. fetchOrderBook only when basePrice=0), even if the DB config is stale/incomplete.
+  const initialDataConfig = strategy.getInitialDataConfig
+    ? strategy.getInitialDataConfig()
+    : context.initialDataConfig;
 
   // 2. Get exchange instance
   const exchangeName = Array.isArray(context.exchange)
@@ -145,7 +150,7 @@ export async function loadInitialDataForStrategy(
   }
 
   // 3.7 Load Order Book
-  if (typedInitialData.fetchOrderBook) {
+  if (typedInitialData.fetchOrderBook?.enabled ?? typedInitialData.fetchOrderBook) {
     logger?.info(`📖 Fetching order book for ${symbol}`);
     const depth = typedInitialData.fetchOrderBook?.depth || 20;
     const orderBook = await exchange.getOrderBook(symbol, depth);
