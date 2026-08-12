@@ -160,6 +160,19 @@ export async function loadInitialDataForStrategy(
     );
   }
 
+  // 3.8 Load Order History (FILLED / CANCELED / etc. — not in openOrders)
+  if (typedInitialData.fetchOrderHistory?.enabled ?? typedInitialData.fetchOrderHistory) {
+    const limit = typedInitialData.fetchOrderHistory?.limit || 50;
+    logger?.info(`📋 Fetching order history for ${symbol} (limit=${limit})`);
+    try {
+      const history = await exchange.getOrderHistory(symbol, limit);
+      result.orderHistory = history;
+      logger?.info(`✅ Loaded order history: ${history.length} orders`);
+    } catch (err) {
+      logger?.warn(`⚠️ Failed to load order history: ${(err as Error).message}`);
+    }
+  }
+
   logger?.info(`✅ Initial data loaded for ${symbol}`);
   return result as InitialDataResult;
 }

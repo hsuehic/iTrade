@@ -54,6 +54,10 @@ export interface InitialDataConfig {
   // Account data
   fetchPositions?: boolean; // Fetch current positions for the symbol
   fetchOpenOrders?: boolean; // Fetch open orders for the symbol
+  fetchOrderHistory?: {
+    enabled: boolean;
+    limit?: number; // Max number of historical orders to fetch (default: 50)
+  }; // Fetch recent order history (includes FILLED / CANCELED / REJECTED / EXPIRED)
   fetchBalance?: boolean; // Fetch account balance
   fetchAccountInfo?: boolean; // Fetch full account info
 
@@ -75,6 +79,7 @@ export interface InitialDataResult {
   // Account data
   positions?: Position[];
   openOrders?: Order[];
+  orderHistory?: Order[]; // Recent order history (FILLED / CANCELED / etc.)
   balance?: Balance[];
   accountInfo?: AccountInfo;
 

@@ -23,7 +23,7 @@ import { silentLogger } from '../utils/silent-logger';
  * 📗 LadderEntrySingleTPStrategy parameters
  *
  * Ladder entry with single take-profit strategy:
- * - Entry: Uses bid0 (or fixed basePrice) as reference, places BUY limit orders one at a time in sequential ladder steps (arithmetic absolute price difference or geometric percentage ratio).
+ * - Entry: Uses bid0 (or fixed basePrice) as reference, places BUY limit orders one at a time in sequential ladder steps (arithmetic: base - stepValue * (i+1), or geometric: base * (1 - stepValue/100)^(i+1)).
  * - Take profit: The strategy always has at most ONE TP SELL limit order
  *         TP condition can be a fixed profit amount (in quote currency) or a percentage
  *         TP order is updated immediately whenever a new entry fills (including partial fills)
@@ -143,8 +143,8 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         name: 'stepType',
         type: 'enum',
         description:
-          'Ladder price step type: "arithmetic" (absolute price difference: price_i = base - stepValue * i) ' +
-          'or "geometric" (percentage ratio: price_i = base * (1 - stepValue/100)^i).',
+          'Ladder price step type: "arithmetic" (absolute price difference: price_i = base - stepValue * (i + 1)) ' +
+          'or "geometric" (percentage ratio: price_i = base * (1 - stepValue/100)^(i + 1)).',
         defaultValue: 'arithmetic',
         required: true,
         validation: { options: ['arithmetic', 'geometric'] },
@@ -155,8 +155,8 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         name: 'stepValue',
         type: 'number',
         description:
-          'Step value for ladder price. Arithmetic: absolute price drop per step (e.g. 300 = each step 300 USDT below previous). ' +
-          'Geometric: percentage drop per step (e.g. 1 = each step 1% below previous).',
+          'Step value for ladder price. Arithmetic: absolute price drop per step (e.g. 300 = each step 300 USDT below previous, entry 0 is at base - 300). ' +
+          'Geometric: percentage drop per step (e.g. 1 = each step 1% below previous, entry 0 is at base * 0.99).',
         defaultValue: 1,
         required: true,
         min: 0.000001,
@@ -298,6 +298,11 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         editable: false,
         description: 'Fetch open orders for recovery',
       },
+      fetchOrderHistory: {
+        required: true,
+        editable: false,
+        description: 'Fetch recent order history (FILLED orders) for restart recovery',
+      },
       fetchBalance: { required: true, editable: false, description: 'Fetch balance' },
       fetchOrderBook: {
         required: false,
@@ -314,7 +319,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         'On TP fully filled, cancels all remaining entries and rebuilds the ladder with latest bid0 to start a new cycle. ' +
         'Does not subscribe to orderbook WebSocket; fetches bid0 via REST only on initialization and cycle restart.',
       parameters:
-        'basePrice(0=bid0 via REST) + ladderSteps + stepType/stepValue define ladder prices (arithmetic=absolute price diff, geometric=percentage ratio); ' +
+        'basePrice(0=bid0 via REST) + ladderSteps + stepType/stepValue define ladder prices (arithmetic=base-stepValue*(i+1), geometric=base*(1-stepValue/100)^(i+1)); ' +
         'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio define ladder quantities; ' +
         'tpType + tpAbsoluteProfit/tpPercent define take-profit condition; ' +
         'maxInvestment * leverage = total buying power; maxPosition = max position size.',
@@ -477,11 +482,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     for (let i = 0; i < this.ladderSteps; i++) {
       let price: Decimal;
       if (this.stepType === 'arithmetic') {
-        // Absolute price difference: price_i = referencePrice - stepValue * i
-        price = this.referencePrice.minus(this.stepValue.mul(i));
+        // Absolute price difference: price_i = referencePrice - stepValue * (i + 1)
+        // Entry 0 = referencePrice - stepValue, entry 1 = referencePrice - 2*stepValue, etc.
+        price = this.referencePrice.minus(this.stepValue.mul(i + 1));
       } else {
-        // Geometric percentage ratio: price_i = referencePrice * (1 - stepValue/100)^i
-        price = this.referencePrice.mul(new Decimal(1).minus(stepPercent).pow(i));
+        // Geometric percentage ratio: price_i = referencePrice * (1 - stepValue/100)^(i + 1)
+        // Entry 0 = referencePrice * (1 - stepValue/100), entry 1 = referencePrice * (1 - stepValue/100)^2, etc.
+        price = this.referencePrice.mul(new Decimal(1).minus(stepPercent).pow(i + 1));
       }
       if (price.lte(0)) {
         this._logger.warn(`[buildLadder] Step ${i} price <= 0, skipping`);
@@ -1456,6 +1463,110 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // Step 4: Recalculate VWAP from all recovered entry orders
       this.recalculateVWAP();
 
+      // Step 4a: Recover FILLED entry orders from orderHistory.
+      // openOrders only contains NEW / PARTIALLY_FILLED — FILLED orders are
+      // NOT included. Without orderHistory, the strategy cannot know which
+      // ladder steps have already filled, leading to duplicate entry orders
+      // on restart. orderHistory is fetched via REST getOrderHistory and
+      // contains recent FILLED / CANCELED / REJECTED / EXPIRED orders.
+      if (initialData.orderHistory) {
+        const ownedHistory = initialData.orderHistory.filter((order) => {
+          if (order.symbol !== this._symbol) return false;
+          return (
+            (order.strategyId && order.strategyId === this.getStrategyId()) ||
+            (order.clientOrderId && this.isStrategyOrderId(order.clientOrderId))
+          );
+        });
+
+        for (const order of ownedHistory) {
+          if (!order.clientOrderId) continue;
+          // Skip if already recovered from openOrders
+          if (this.orders.has(order.clientOrderId)) continue;
+
+          let metadata = this.orderMetadataMap.get(order.clientOrderId);
+          if (!metadata) metadata = this.ensureRecoveredMetadata(order);
+          if (!metadata) continue;
+
+          this.orders.set(order.clientOrderId, order);
+
+          if (metadata.signalType === SignalType.Entry) {
+            const recoveredStepIndex = this.recoverStepIndex(order);
+            if (recoveredStepIndex !== undefined) {
+              metadata.stepIndex = recoveredStepIndex;
+              const step = this.steps[recoveredStepIndex];
+              if (step) {
+                step.entryClientOrderId = order.clientOrderId;
+                if (
+                  order.status === OrderStatus.FILLED ||
+                  (order.executedQuantity && order.executedQuantity.eq(order.quantity))
+                ) {
+                  step.filled = true;
+                }
+              }
+            }
+          }
+
+          if (metadata.signalType === SignalType.TakeProfit) {
+            // TP in orderHistory means it was FILLED — cycle already reset.
+            // Do NOT set tpClientOrderId (it's no longer active).
+          }
+
+          // Track executed quantities for VWAP recalculation
+          if (order.executedQuantity && order.executedQuantity.gt(0)) {
+            this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
+            if (metadata.signalType === SignalType.Entry) {
+              metadata.entryPrice = (order.averagePrice || order.price)?.toString();
+            }
+          }
+        }
+
+        // Re-recalculate VWAP with the recovered FILLED orders
+        this.recalculateVWAP();
+      }
+
+      // Step 4b: Infer prior steps as filled.
+      // openOrders only contains NEW / PARTIALLY_FILLED orders — FILLED orders
+      // are NOT included. In sequential mode, step N can only be open if all
+      // prior steps 0..N-1 have fully filled. So if we recovered an active
+      // (NEW / PARTIALLY_FILLED) entry at step N, mark all prior steps as
+      // filled so placeLadderEntries does not re-place them.
+      // Also: if there is an active TP order, at least one entry must have
+      // filled — mark step 0 as filled if no entries were recovered.
+      for (let i = 0; i < this.steps.length; i++) {
+        const step = this.steps[i];
+        if (!step.entryClientOrderId) continue;
+        const order = this.orders.get(step.entryClientOrderId);
+        if (
+          order &&
+          (order.status === OrderStatus.NEW ||
+            order.status === OrderStatus.PARTIALLY_FILLED)
+        ) {
+          // This step has an active order — all prior steps must be filled.
+          for (let j = 0; j < i; j++) {
+            if (!this.steps[j].filled) {
+              this.steps[j].filled = true;
+              this._logger.debug(
+                `[processInitialData] Inferred step ${j} as filled ` +
+                  `(step ${i} has active order in sequential mode)`,
+              );
+            }
+          }
+        }
+      }
+
+      // If we have an active TP but no entry was recovered as filled,
+      // at least step 0 must have filled to produce the inventory.
+      if (this.tpClientOrderId && this.inventoryQty.gt(0)) {
+        const hasAnyFilledStep = this.steps.some((s) => s.filled);
+        if (!hasAnyFilledStep && this.steps.length > 0) {
+          this.steps[0].filled = true;
+          this._logger.debug(
+            `[processInitialData] Inferred step 0 as filled ` +
+              `(active TP + inventory=${this.inventoryQty.toString()} but no filled step recovered)`,
+          );
+        }
+      }
+
       this._logger.debug(
         `[processInitialData] Recovery: ${ownedOrders.length} orders recovered, ` +
           `inventory=${this.inventoryQty.toString()}, VWAP=${this.vwap.toString()}, ` +
@@ -1580,6 +1691,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       fetchOpenOrders: true,
       fetchBalance: true,
       fetchOrderBook: needOrderBook ? { enabled: true, depth: 5 } : { enabled: false },
+      // Fetch recent order history to recover FILLED entry orders on restart.
+      // openOrders only contains NEW / PARTIALLY_FILLED — FILLED orders are
+      // NOT included. Without order history, the strategy cannot know which
+      // ladder steps have already filled, leading to duplicate entry orders.
+      fetchOrderHistory: { enabled: true, limit: 50 },
     };
   }
 }

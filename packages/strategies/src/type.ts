@@ -96,6 +96,11 @@ export interface InitialDataRequirements {
     editable?: boolean; // Can user toggle this? (default: true if not required)
     description?: string;
   };
+  fetchOrderHistory?: {
+    required: boolean;
+    editable?: boolean; // Can user toggle this? (default: true if not required)
+    description?: string;
+  };
   fetchBalance?: {
     required: boolean;
     editable?: boolean; // Can user toggle this? (default: true if not required)

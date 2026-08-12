@@ -233,8 +233,8 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(entrySignals).toHaveLength(1);
       expect(entrySignals[0].action).toBe('buy');
 
-      // Arithmetic absolute steps (stepValue=1): first step = 100
-      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+      // Arithmetic absolute steps (stepValue=1): entry 0 = referencePrice - stepValue * (0+1) = 99
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(99, 1);
       expect(entrySignals[0].quantity!.toNumber()).toBeCloseTo(0.1, 5);
     });
 
@@ -256,8 +256,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       // Sequential mode: only ONE entry order placed on init
       expect(entrySignals).toHaveLength(1);
-      // bid0 = 95 → step 0: 95
-      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(95, 1);
+      // bid0 = 95 → entry 0 = 95 - 1*(0+1) = 94
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(94, 1);
     });
 
     it('should place geometric step prices correctly', async () => {
@@ -275,7 +275,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       // Sequential mode: only ONE entry order placed on init
       expect(entrySignals).toHaveLength(1);
-      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+      // Geometric stepValue=2: entry 0 = 100 * (1 - 0.02)^1 = 98
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(98, 1);
     });
 
     it('should place geometric qty progression correctly', async () => {
@@ -364,10 +365,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
 
       const result = await strategy.analyze(createDataUpdate({ orders: [filledOrder] }));
@@ -377,7 +378,8 @@ describe('LadderEntrySingleTPStrategy', () => {
       const tpSignal = tpSignals[0] as StrategyOrderResult;
       expect(tpSignal.action).toBe('sell');
       expect(tpSignal.quantity!.toNumber()).toBeCloseTo(0.1, 5);
-      expect(tpSignal.price!.toNumber()).toBeCloseTo(101, 1);
+      // VWAP=99, TP = 99 * 1.01 = 99.99
+      expect(tpSignal.price!.toNumber()).toBeCloseTo(99.99, 1);
     });
 
     it('should compute TP price from absolute profit correctly', async () => {
@@ -397,10 +399,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.5,
         0.5,
-        100,
+        99,
       );
 
       const result = await strategy.analyze(createDataUpdate({ orders: [filledOrder] }));
@@ -408,7 +410,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       expect(tpSignals).toHaveLength(1);
       const tpSignal = tpSignals[0] as StrategyOrderResult;
-      expect(tpSignal.price!.toNumber()).toBeCloseTo(120, 1);
+      // VWAP=99, TP = 99 + 10/0.5 = 119
+      expect(tpSignal.price!.toNumber()).toBeCloseTo(119, 1);
       expect(tpSignal.quantity!.toNumber()).toBeCloseTo(0.5, 5);
     });
 
@@ -429,10 +432,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       // Fill entry 0 → returns entry 1 signal + TP signal
       const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
@@ -442,21 +445,21 @@ describe('LadderEntrySingleTPStrategy', () => {
         entry1Signals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        99,
+        98,
         0.1,
         0.1,
-        99,
+        98,
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
 
       const tp1 = findTpSignals(result1);
       expect(tp1.length).toBeGreaterThanOrEqual(1);
 
-      // VWAP = (100*0.1 + 99*0.1) / 0.2 = 99.5; TP = 99.5 * 1.01 = 100.495
+      // VWAP = (99*0.1 + 98*0.1) / 0.2 = 98.5; TP = 98.5 * 1.01 = 99.485
       const tpSignal = tp1[tp1.length - 1] as StrategyOrderResult;
       expect(tpSignal.action).toBe('sell');
       expect(tpSignal.quantity!.toNumber()).toBeCloseTo(0.2, 5);
-      expect(tpSignal.price!.toNumber()).toBeCloseTo(100.495, 1);
+      expect(tpSignal.price!.toNumber()).toBeCloseTo(99.485, 1);
     });
 
     it('should compute absolute TP with multiple fills (VWAP-based)', async () => {
@@ -477,10 +480,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.5,
         0.5,
-        100,
+        99,
       );
       // Fill entry 0 → returns entry 1 signal + TP signal
       const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
@@ -490,17 +493,17 @@ describe('LadderEntrySingleTPStrategy', () => {
         entry1Signals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        99,
+        98,
         0.5,
         0.5,
-        99,
+        98,
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
 
       const tpSignals = findTpSignals(result1);
       const tpSignal = tpSignals[tpSignals.length - 1] as StrategyOrderResult;
-      // VWAP = 99.5; TP = 99.5 + 20/1.0 = 119.5
-      expect(tpSignal.price!.toNumber()).toBeCloseTo(119.5, 1);
+      // VWAP = (99*0.5 + 98*0.5) / 1.0 = 98.5; TP = 98.5 + 20/1.0 = 118.5
+      expect(tpSignal.price!.toNumber()).toBeCloseTo(118.5, 1);
       expect(tpSignal.quantity!.toNumber()).toBeCloseTo(1.0, 5);
     });
   });
@@ -523,17 +526,17 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.PARTIALLY_FILLED,
-        100,
+        99,
         0.2,
         0.1,
-        100,
+        99,
       );
       const result = await strategy.analyze(createDataUpdate({ orders: [partialFill] }));
 
       // Partial fill: VWAP updated immediately, but TP refresh is debounced
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
-      expect(state.vwap).toBe('100');
+      expect(state.vwap).toBe('99');
 
       // TP signal not returned yet (debounced)
       const tpSignalsImmediate = findTpSignals(result);
@@ -568,10 +571,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       // Fill entry 0 → returns entry 1 signal + TP signal
       const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
@@ -581,10 +584,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entry1Signals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        99,
+        98,
         0.1,
         0.1,
-        99,
+        98,
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
       const tpSignals = findTpSignals(result1);
@@ -592,14 +595,15 @@ describe('LadderEntrySingleTPStrategy', () => {
         .clientOrderId;
 
       // TP partial fill: 0.1 out of 0.2 → should produce NO signals
+      // VWAP=(99+98)/2=98.5, TP=98.5*1.01=99.385
       const tpPartial = createOrder(
         tpClientId,
         OrderSide.SELL,
         OrderStatus.PARTIALLY_FILLED,
-        100.495,
+        99.385,
         0.2,
         0.1,
-        100.495,
+        99.385,
       );
       const tpResult = await strategy.analyze(createDataUpdate({ orders: [tpPartial] }));
 
@@ -630,24 +634,24 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
       const tp0 = findTpSignals(result0);
       const tpClientId = (tp0[0] as StrategyOrderResult).clientOrderId;
 
-      // TP fills at 101
+      // TP fills at 99.99 (VWAP=99, TP=99*1.01=99.99)
       const tpFill = createOrder(
         tpClientId,
         OrderSide.SELL,
         OrderStatus.FILLED,
-        101,
+        99.99,
         0.1,
         0.1,
-        101,
+        99.99,
       );
       const tpResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
 
@@ -683,37 +687,39 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
       const tp0 = findTpSignals(result0);
       const tpClientId = (tp0[0] as StrategyOrderResult).clientOrderId;
 
+      // TP fills at 99.99 (VWAP=99, TP=99*1.01=99.99)
       const tpFill = createOrder(
         tpClientId,
         OrderSide.SELL,
         OrderStatus.FILLED,
-        101,
+        99.99,
         0.1,
         0.1,
-        101,
+        99.99,
       );
       const tpResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
 
       // New cycle should use same fixed basePrice=100
+      // entry 0 = 100 - 1*(0+1) = 99
       const newEntries = findEntrySignals(tpResult);
       expect(newEntries.length).toBeGreaterThanOrEqual(1);
-      expect(newEntries[0].price!.toNumber()).toBeCloseTo(100, 1);
+      expect(newEntries[0].price!.toNumber()).toBeCloseTo(99, 1);
     });
   });
 
   describe('Stop/restart recovery', () => {
     it('should recover inventory, VWAP, and TP from open orders on restart', async () => {
-      // Simulate a restart: strategy had 2 entries filled at 100 and 99,
-      // plus an active TP order, and one pending entry at 98.
+      // Simulate a restart: strategy had 2 entries filled at 99 and 98,
+      // plus an active TP order, and one pending entry at 97.
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 100,
@@ -726,16 +732,16 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       // We need to create clientOrderIds that match the strategy's ID pattern
       // Strategy ID = 1, so entry orders start with E1D, TP with T1D
-      const entry0Id = 'E1D1000001'; // filled at 100
-      const entry1Id = 'E1D1000002'; // filled at 99
-      const entry2Id = 'E1D1000003'; // still NEW at 98
+      const entry0Id = 'E1D1000001'; // filled at 99
+      const entry1Id = 'E1D1000002'; // filled at 98
+      const entry2Id = 'E1D1000003'; // still NEW at 97
       const tpId = 'T1D1000001'; // active TP
 
       const recoveredOrders: Order[] = [
-        createOrder(entry0Id, OrderSide.BUY, OrderStatus.FILLED, 100, 0.1, 0.1, 100),
-        createOrder(entry1Id, OrderSide.BUY, OrderStatus.FILLED, 99, 0.1, 0.1, 99),
-        createOrder(entry2Id, OrderSide.BUY, OrderStatus.NEW, 98, 0.1, 0, undefined),
-        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 100.495, 0.2, 0, undefined),
+        createOrder(entry0Id, OrderSide.BUY, OrderStatus.FILLED, 99, 0.1, 0.1, 99),
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.FILLED, 98, 0.1, 0.1, 98),
+        createOrder(entry2Id, OrderSide.BUY, OrderStatus.NEW, 97, 0.1, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.385, 0.2, 0, undefined),
       ];
 
       await strategy.processInitialData(
@@ -744,8 +750,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const state = strategy.getStrategyState();
 
-      // VWAP = (100*0.1 + 99*0.1) / 0.2 = 99.5
-      expect(state.vwap).toBe('99.5');
+      // VWAP = (99*0.1 + 98*0.1) / 0.2 = 98.5
+      expect(state.vwap).toBe('98.5');
       expect(state.inventoryQty).toBe('0.2');
       // TP recovered
       expect(state.tpClientOrderId).toBe(tpId);
@@ -768,9 +774,9 @@ describe('LadderEntrySingleTPStrategy', () => {
         }),
       );
 
-      const entry0Id = 'E1D2000001'; // filled at 100
+      const entry0Id = 'E1D2000001'; // filled at 99
       const recoveredOrders: Order[] = [
-        createOrder(entry0Id, OrderSide.BUY, OrderStatus.FILLED, 100, 0.1, 0.1, 100),
+        createOrder(entry0Id, OrderSide.BUY, OrderStatus.FILLED, 99, 0.1, 0.1, 99),
       ];
 
       const result = await strategy.processInitialData(
@@ -782,8 +788,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
-      expect(state.vwap).toBe('100');
-      expect(state.tpPrice).toBe('101');
+      expect(state.vwap).toBe('99');
+      expect(state.tpPrice).toBe('99.99');
     });
 
     it('should handle partial fills on restart (recovered VWAP)', async () => {
@@ -804,10 +810,10 @@ describe('LadderEntrySingleTPStrategy', () => {
           entry0Id,
           OrderSide.BUY,
           OrderStatus.PARTIALLY_FILLED,
-          100,
+          99,
           0.2,
           0.1,
-          100,
+          99,
         ),
       ];
 
@@ -817,7 +823,7 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
-      expect(state.vwap).toBe('100');
+      expect(state.vwap).toBe('99');
 
       // Should create TP for the partial inventory
       const tpSignals = findTpSignals(result);
@@ -841,6 +847,62 @@ describe('LadderEntrySingleTPStrategy', () => {
       // Sequential mode: only one entry placed on init
       expect(entrySignals).toHaveLength(1);
     });
+
+    it('should NOT duplicate entries on restart when FILLED orders are in orderHistory (not openOrders)', async () => {
+      // Real-world restart scenario: entry 0 was FILLED (not in openOrders),
+      // entry 1 is NEW (in openOrders), TP is NEW (in openOrders).
+      // The strategy must recover entry 0 from orderHistory and NOT re-place it.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const entry0Id = 'E1D5000001'; // FILLED at 99 — in orderHistory only
+      const entry1Id = 'E1D5000002'; // NEW at 98 — in openOrders
+      const tpId = 'T1D5000001'; // NEW — in openOrders
+
+      const openOrders: Order[] = [
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 98, 0.1, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.485, 0.1, 0, undefined),
+      ];
+
+      const orderHistory: Order[] = [
+        // entry 0 was FILLED — only in orderHistory
+        createOrder(entry0Id, OrderSide.BUY, OrderStatus.FILLED, 99, 0.1, 0.1, 99),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({ openOrders, orderHistory }),
+      );
+
+      const entrySignals = findEntrySignals(result);
+
+      // Key assertion: NO duplicate entry 0 should be placed.
+      // entry 1 is already active (NEW in openOrders), so no new entry needed.
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+
+      // Step 0 should be recovered as filled
+      expect(state.steps[0].filled).toBe(true);
+      expect(state.steps[0].entryClientOrderId).toBe(entry0Id);
+
+      // Step 1 should be recovered as active (NEW)
+      expect(state.steps[1].filled).toBe(false);
+      expect(state.steps[1].entryClientOrderId).toBe(entry1Id);
+
+      // Inventory = 0.1, VWAP = 99 (only entry 0 filled)
+      expect(state.inventoryQty).toBe('0.1');
+      expect(state.vwap).toBe('99');
+
+      // TP recovered
+      expect(state.tpClientOrderId).toBe(tpId);
+    });
   });
 
   describe('Out-of-order / delayed order pushes', () => {
@@ -863,10 +925,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
         t1,
       );
       await strategy.analyze(createDataUpdate({ orders: [fillOrder] }));
@@ -877,7 +939,7 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.NEW,
-        100,
+        99,
         0.1,
         0,
         undefined,
@@ -912,10 +974,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
         new Date('2025-01-01T10:00:01Z'),
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fillOrder] }));
@@ -953,10 +1015,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.PARTIALLY_FILLED,
-        100,
+        99,
         0.1,
         0.051,
-        100,
+        99,
         sameTime,
       );
       const partialResult = await strategy.analyze(
@@ -974,10 +1036,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
         sameTime,
       );
       const filledResult = await strategy.analyze(
@@ -1013,16 +1075,16 @@ describe('LadderEntrySingleTPStrategy', () => {
       const initResult = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(initResult);
 
-      // Partial fill 0.05 of 0.1 at price 100
+      // Partial fill 0.05 of 0.1 at price 99
       // Partial fill: VWAP updated, TP refresh debounced (no immediate TP signal)
       const partialFill = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.PARTIALLY_FILLED,
-        100,
+        99,
         0.1,
         0.05,
-        100, // averagePrice = 100
+        99, // averagePrice = 99
         new Date('2025-01-01T10:00:01Z'),
       );
       const partialResult = await strategy.analyze(
@@ -1040,10 +1102,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.CANCELED,
-        100,
+        99,
         0.1,
         0.05, // executedQuantity stays at 0.05
-        100, // averagePrice = 100
+        99, // averagePrice = 99
         new Date('2025-01-01T10:00:02Z'),
       );
       const cancelResult = await strategy.analyze(
@@ -1053,7 +1115,7 @@ describe('LadderEntrySingleTPStrategy', () => {
       // Inventory should be 0.05 (partial fill preserved)
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.05');
-      expect(state.vwap).toBe('100');
+      expect(state.vwap).toBe('99');
 
       // Step 0 should be marked filled (so sequential mode advances)
       expect(state.steps[0].filled).toBe(true);
@@ -1063,10 +1125,11 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(cancelTp.length).toBeGreaterThanOrEqual(1);
 
       // Next entry (step 1) should be placed
+      // entry 1 = 100 - 1*(1+1) = 98
       const nextEntries = findEntrySignals(cancelResult);
       expect(nextEntries.length).toBeGreaterThanOrEqual(1);
       if (nextEntries.length > 0) {
-        expect(nextEntries[0].price!.toNumber()).toBeCloseTo(99, 1);
+        expect(nextEntries[0].price!.toNumber()).toBeCloseTo(98, 1);
       }
     });
   });
@@ -1124,10 +1187,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
       const tp1 = findTpSignals(result1);
@@ -1144,10 +1207,10 @@ describe('LadderEntrySingleTPStrategy', () => {
           entry1Signals[0].clientOrderId,
           OrderSide.BUY,
           OrderStatus.FILLED,
-          99,
+          98,
           0.1,
           0.1,
-          99,
+          98,
         );
         const result2 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
 
@@ -1185,10 +1248,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fill] }));
       const tp1 = findTpSignals(result1);
@@ -1218,33 +1281,33 @@ describe('LadderEntrySingleTPStrategy', () => {
       // Simulate init with orderbook bid0 = 100 (default createOrderBook)
       const initResult = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(initResult);
-      // Entry 0 placed at 100
-      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+      // Entry 0 = 100 - 1*(0+1) = 99
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(99, 1);
 
-      // Fill entry 0 → places TP at 102 (2% above VWAP=100)
+      // Fill entry 0 → places TP at 99*1.02 = 100.98 (2% above VWAP=99)
       const fill0 = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
       const tpSignals = findTpSignals(fillResult);
       expect(tpSignals).toHaveLength(1);
-      expect(tpSignals[0].price!.toNumber()).toBeCloseTo(102, 1);
+      expect(tpSignals[0].price!.toNumber()).toBeCloseTo(100.98, 1);
 
-      // TP fills at 102
+      // TP fills at 100.98
       const tpFill = createOrder(
         (tpSignals[0] as StrategyOrderResult).clientOrderId,
         OrderSide.SELL,
         OrderStatus.FILLED,
-        102,
+        100.98,
         0.1,
         0.1,
-        102,
+        100.98,
       );
       const tpFillResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
 
@@ -1270,10 +1333,10 @@ describe('LadderEntrySingleTPStrategy', () => {
       // Strategy no longer needs reinit
       expect(strategy.requiresReinitialization()).toBe(false);
 
-      // New cycle: entry should be at 102 (fresh bid0)
+      // New cycle: entry should be at 101 (fresh bid0=102, entry 0 = 102 - 1*(0+1) = 101)
       const reinitEntries = findEntrySignals(reinitResult);
       expect(reinitEntries.length).toBeGreaterThanOrEqual(1);
-      expect(reinitEntries[0].price!.toNumber()).toBeCloseTo(102, 1);
+      expect(reinitEntries[0].price!.toNumber()).toBeCloseTo(101, 1);
 
       // Verify state reflects new reference price
       const state = strategy.getStrategyState();
@@ -1294,35 +1357,35 @@ describe('LadderEntrySingleTPStrategy', () => {
       const initResult = await strategy.processInitialData(createInitialData());
       const entrySignals = findEntrySignals(initResult);
 
-      // Fill entry → TP at 105 (5% above 100)
+      // Fill entry → TP at 99*1.05 = 103.95 (5% above VWAP=99)
       const fill = createOrder(
         entrySignals[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill] }));
       const tpSignals = findTpSignals(fillResult);
 
-      // TP fills at 105
+      // TP fills at 103.95
       const tpFill = createOrder(
         (tpSignals[0] as StrategyOrderResult).clientOrderId,
         OrderSide.SELL,
         OrderStatus.FILLED,
-        105,
+        103.95,
         0.1,
         0.1,
-        105,
+        103.95,
       );
       const tpFillResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
 
-      // New cycle: entry should be at 100 (fixed basePrice, NOT 105)
+      // New cycle: entry should be at 99 (fixed basePrice=100, entry 0 = 100 - 1*(0+1) = 99, NOT 103.95)
       const newEntrySignals = findEntrySignals(tpFillResult);
       expect(newEntrySignals.length).toBeGreaterThanOrEqual(1);
-      expect(newEntrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+      expect(newEntrySignals[0].price!.toNumber()).toBeCloseTo(99, 1);
 
       const state = strategy.getStrategyState();
       expect(state.referencePrice).toBe('100');
@@ -1361,17 +1424,17 @@ describe('LadderEntrySingleTPStrategy', () => {
         entries[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       await strategy.analyze(createDataUpdate({ orders: [fill] }));
 
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
-      expect(state.vwap).toBe('100');
-      expect(state.tpPrice).toBe('101');
+      expect(state.vwap).toBe('99');
+      expect(state.tpPrice).toBe('99.99');
     });
   });
 
@@ -1412,7 +1475,7 @@ describe('LadderEntrySingleTPStrategy', () => {
   });
 
   describe('Arithmetic absolute price difference (real-world scenarios)', () => {
-    it('BTC: bid0=65000, stepValue=300 → first entry = 65000 (sequential)', async () => {
+    it('BTC: bid0=65000, stepValue=300 → first entry = 64700 (sequential)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 65000,
@@ -1429,11 +1492,12 @@ describe('LadderEntrySingleTPStrategy', () => {
       const entries = findEntrySignals(result);
 
       // Sequential mode: only first entry placed on init
+      // entry 0 = 65000 - 300 * (0+1) = 64700
       expect(entries).toHaveLength(1);
-      expect(entries[0].price!.toNumber()).toBe(65000);
+      expect(entries[0].price!.toNumber()).toBe(64700);
     });
 
-    it('SOL: bid0=76, geometric stepValue=1 → first entry = 76 (sequential)', async () => {
+    it('SOL: bid0=76, geometric stepValue=1 → first entry = 75.24 (sequential)', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 76,
@@ -1450,9 +1514,9 @@ describe('LadderEntrySingleTPStrategy', () => {
       const entries = findEntrySignals(result);
 
       // Sequential mode: only first entry placed on init
+      // 76 * (1 - 0.01)^(0+1) = 76 * 0.99 = 75.24
       expect(entries).toHaveLength(1);
-      // 76 * (1 - 0.01)^0 = 76
-      expect(entries[0].price!.toNumber()).toBeCloseTo(76, 2);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(75.24, 2);
     });
   });
 
@@ -1475,25 +1539,27 @@ describe('LadderEntrySingleTPStrategy', () => {
       const entries = findEntrySignals(result);
 
       // Sequential mode: only first entry placed on init
+      // entry 0 = 100 * (1 - 0.05)^1 = 95
       expect(entries).toHaveLength(1);
-      expect(entries[0].price!.toNumber()).toBeCloseTo(100, 1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(95, 1);
       expect(entries[0].quantity!.toNumber()).toBeCloseTo(0.1, 5);
 
       const fill = createOrder(
         entries[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        95,
         0.1,
         0.1,
-        100,
+        95,
       );
       const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill] }));
       const tpSignals = findTpSignals(fillResult);
 
       expect(tpSignals).toHaveLength(1);
       const tp = tpSignals[0] as StrategyOrderResult;
-      expect(tp.price!.toNumber()).toBeCloseTo(102, 1);
+      // VWAP=95, TP = 95 * 1.02 = 96.9
+      expect(tp.price!.toNumber()).toBeCloseTo(96.9, 1);
       expect(tp.quantity!.toNumber()).toBeCloseTo(0.1, 5);
     });
   });
@@ -1513,27 +1579,29 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
 
       // Init → only entry 0 placed
+      // entry 0 = 100 - 1*(0+1) = 99
       const initResult = await strategy.processInitialData(createInitialData());
       const initEntries = findEntrySignals(initResult);
       expect(initEntries).toHaveLength(1);
-      expect(initEntries[0].price!.toNumber()).toBeCloseTo(100, 1);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(99, 1);
 
       // Fill entry 0 → should place entry 1 + TP
       const fill0 = createOrder(
         initEntries[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        100,
+        99,
         0.1,
         0.1,
-        100,
+        99,
       );
       const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
       const entries1 = findEntrySignals(result1);
       const tp1 = findTpSignals(result1);
-      // Entry 1 placed (price=99) + TP placed
+      // Entry 1 placed (price=98) + TP placed
+      // entry 1 = 100 - 1*(1+1) = 98, VWAP=99, TP=99*1.01=99.99
       expect(entries1).toHaveLength(1);
-      expect(entries1[0].price!.toNumber()).toBeCloseTo(99, 1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(98, 1);
       expect(tp1).toHaveLength(1);
 
       // Fill entry 1 → should place entry 2 + update TP
@@ -1541,17 +1609,18 @@ describe('LadderEntrySingleTPStrategy', () => {
         entries1[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        99,
+        98,
         0.1,
         0.1,
-        9.9,
+        98,
       );
       const result2 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
       const entries2 = findEntrySignals(result2);
       const tp2 = findTpSignals(result2);
-      // Entry 2 placed (price=98) + TP updated
+      // Entry 2 placed (price=97) + TP updated
+      // entry 2 = 100 - 1*(2+1) = 97
       expect(entries2).toHaveLength(1);
-      expect(entries2[0].price!.toNumber()).toBeCloseTo(98, 1);
+      expect(entries2[0].price!.toNumber()).toBeCloseTo(97, 1);
       expect(tp2).toHaveLength(1);
 
       // Fill entry 2 (last step) → no more entries, TP updated only
@@ -1559,10 +1628,10 @@ describe('LadderEntrySingleTPStrategy', () => {
         entries2[0].clientOrderId,
         OrderSide.BUY,
         OrderStatus.FILLED,
-        98,
+        97,
         0.1,
         0.1,
-        9.8,
+        97,
       );
       const result3 = await strategy.analyze(createDataUpdate({ orders: [fill2] }));
       const entries3 = findEntrySignals(result3);
@@ -1591,8 +1660,9 @@ describe('LadderEntrySingleTPStrategy', () => {
       );
       const entries = findEntrySignals(result);
       // Sequential mode: only one entry placed on init
+      // entry 0 = 50 - 1*(0+1) = 49
       expect(entries).toHaveLength(1);
-      expect(entries[0].price!.toNumber()).toBeCloseTo(50, 1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(49, 1);
     });
 
     it('analyze should only process order updates, ignore orderbook in DataUpdate', async () => {
