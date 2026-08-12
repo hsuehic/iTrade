@@ -2049,6 +2049,69 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(entrySignals[0].price!.toNumber()).toBeCloseTo(99, 1); // 100 - 1
     });
 
+    it('should NOT place TP when strategyNetPosition <= 0 (stale inventory safety)', async () => {
+      // SAFETY: strategyNetPosition is DB-derived (BUY FILLED - SELL FILLED,
+      // filtered by strategyId). If <= 0 while inventoryQty > 0, the inventory
+      // was recovered from stale orderHistory after all position was sold.
+      // Placing a TP would sell non-existent position → TP storm.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 100,
+          qtyStepAdd: 50,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 10,
+          maxPosition: 1000,
+          maxInvestment: 10000,
+        }),
+      );
+
+      // orderHistory with FILLED entries but NO FILLED TP (Step 4a recovers them)
+      const filledEntry1 = createOrder(
+        'E1D1D1700000000',
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        100,
+        100,
+        99,
+      );
+      const filledEntry2 = createOrder(
+        'E1D2D1700000001',
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
+        150,
+        150,
+        98,
+      );
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders: [],
+          orderHistory: [filledEntry1, filledEntry2],
+          // DB reports net position = -1000 (e.g., SELL FILLED > BUY FILLED from TP storm)
+          strategyNetPosition: new Decimal(-1000),
+        }),
+      );
+
+      // CRITICAL: inventory must be reset to 0
+      const state = strategy.getStrategyState();
+      expect(parseFloat(state.inventoryQty)).toBe(0);
+      expect(parseFloat(state.vwap)).toBe(0);
+
+      // No TP should be placed
+      const tpSignals = findTpSignals(result);
+      expect(tpSignals).toHaveLength(0);
+
+      // Should still place fresh entry 0
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals.length).toBeGreaterThanOrEqual(1);
+    });
+
     it('should keep fixed basePrice unchanged after TP fill', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({

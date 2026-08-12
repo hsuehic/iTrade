@@ -1981,6 +1981,21 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
 
     // Step 5: If inventory > 0 but no active TP, create one
+    // SAFETY: strategyNetPosition is the net executed position from the DB
+    // (BUY FILLED - SELL FILLED, filtered by strategyId). If it's <= 0 while
+    // inventoryQty > 0, the inventory was recovered from stale orderHistory
+    // after all position was already sold (e.g., TP storm). Placing a TP would
+    // sell non-existent position → another TP storm. Reset to 0 and skip TP.
+    const netPos = initialData.strategyNetPosition;
+    if (netPos !== undefined && netPos.lte(0) && this.inventoryQty.gt(0)) {
+      this._logger.warn(
+        `[processInitialData] SAFETY: inventoryQty=${this.inventoryQty.toString()} ` +
+          `but strategyNetPosition=${netPos.toString()} <= 0 (from DB). ` +
+          `Stale inventory detected — resetting to 0, skipping TP placement.`,
+      );
+      this.inventoryQty = new Decimal(0);
+      this.vwap = new Decimal(0);
+    }
     if (this.inventoryQty.gt(0) && !this.tpClientOrderId) {
       signals.push(...this.refreshTakeProfit());
     }
@@ -2145,7 +2160,20 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // openOrders only contains NEW / PARTIALLY_FILLED — FILLED orders are
       // NOT included. Without order history, the strategy cannot know which
       // ladder steps have already filled, leading to duplicate entry orders.
-      fetchOrderHistory: { enabled: true, limit: 50 },
+      fetchOrderHistory: {
+        enabled: true,
+        // Fetch enough history to cover at least 2-3 full cycles (each cycle
+        // has up to ladderSteps entries + 1 TP + cancelled orders). With
+        // concurrent strategies on the same symbol, 50 is insufficient.
+        // 500 ensures we can detect the last FILLED TP and recover the
+        // current cycle's FILLED entries even with multiple strategies
+        // sharing the symbol.
+        limit: 500,
+      },
+      // Fetch strategy net position from DB (BUY FILLED - SELL FILLED, filtered
+      // by strategyId). Used as safety check: if net position <= 0, skip TP
+      // placement to prevent TP storms from stale inventory recovery.
+      fetchStrategyNetPosition: true,
     };
   }
 }
