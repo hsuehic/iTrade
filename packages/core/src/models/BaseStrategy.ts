@@ -338,6 +338,14 @@ export abstract class BaseStrategy<
    * Derived classes can override this to provide dynamic configuration
    * based on strategy parameters.
    *
+   * ⚠️ IMPORTANT: StrategyLoader.loadInitialDataForStrategy() calls this method
+   * (NOT context.initialDataConfig) to determine what data to fetch. Any code
+   * that needs the strategy's initial data config must go through this method,
+   * not read context.initialDataConfig directly — otherwise dynamic overrides
+   * (e.g. fetchOrderBook when basePrice=0) will be silently bypassed by stale
+   * DB-stored config. This mirrors the same pattern fixed for subscription
+   * config in subscribeStrategyData (commit 83e3497).
+   *
    * @returns InitialDataConfig - Configuration for initial data loading
    */
   public getInitialDataConfig(): InitialDataConfig {
