@@ -1700,7 +1700,25 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
 
     // Step 6: Place remaining ladder entries
-    signals.push(...this.placeLadderEntries());
+    // Guard: if there is already an active entry order (NEW / PARTIALLY_FILLED)
+    // recovered from openOrders, do NOT place any new entry. The sequential
+    // mode ensures only one entry is live at a time, and the existing order
+    // is that one. Placing another would be a duplicate.
+    const hasActiveEntry = this.steps.some((step) => {
+      if (!step.entryClientOrderId) return false;
+      const ord = this.orders.get(step.entryClientOrderId);
+      return (
+        ord &&
+        (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
+      );
+    });
+    if (hasActiveEntry) {
+      this._logger.debug(
+        '[processInitialData] Active entry order already exists — skipping placeLadderEntries',
+      );
+    } else {
+      signals.push(...this.placeLadderEntries());
+    }
 
     return signals;
   }
