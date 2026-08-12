@@ -781,6 +781,82 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(newEntries.length).toBeGreaterThanOrEqual(1);
       expect(newEntries[0].price!.toNumber()).toBeCloseTo(99, 1);
     });
+
+    it('should not place duplicate entry when delayed CANCELED push arrives after TP fill', async () => {
+      // Strategy 467 bug: after TP FILLED, handleTpFilled generated cancel
+      // signals for pending entry orders. cancelAllEntryOrders deleted pending
+      // orders from pendingClientOrderIds before resetLadder ran, so the
+      // pending order IDs were NOT blacklisted. A delayed WS CANCELED push
+      // for the pending entry was then re-processed via ensureRecoveredMetadata
+      // → shouldRefreshLadder → placeLadderEntries → DUPLICATE entry order.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry 0 → entry 1 placed + TP placed
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+      );
+      const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entry1Signals = findEntrySignals(result0);
+      const tp0 = findTpSignals(result0);
+      const tpClientId = (tp0[0] as StrategyOrderResult).clientOrderId;
+      const entry1ClientId = entry1Signals[0].clientOrderId;
+
+      // TP fills → entry 1 gets cancelled
+      const tpFill = createOrder(
+        tpClientId,
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        99.99,
+        0.1,
+        0.1,
+        99.99,
+      );
+      const tpResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
+
+      // TP fill should produce: 1 cancel (entry 1) + 1 new entry (new cycle)
+      const cancelSignals = findCancelSignals(tpResult);
+      const newEntrySignals = findEntrySignals(tpResult);
+      expect(cancelSignals.length).toBe(1); // cancel entry 1
+      expect(newEntrySignals.length).toBe(1); // new cycle entry 0
+
+      // CRITICAL: Now simulate the delayed WS CANCELED push for entry 1
+      // This should be blacklisted and NOT produce any new entry signals
+      const entry1Cancel = createOrder(
+        entry1ClientId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        98,
+        0.1,
+        0,
+        undefined,
+      );
+      const delayedResult = await strategy.analyze(
+        createDataUpdate({ orders: [entry1Cancel] }),
+      );
+
+      const delayedSignals = toSignalArray(delayedResult);
+      // Should be "hold" — no duplicate entry placed
+      expect(delayedSignals).toHaveLength(1);
+      expect(delayedSignals[0].action).toBe('hold');
+    });
   });
 
   describe('Stop/restart recovery', () => {

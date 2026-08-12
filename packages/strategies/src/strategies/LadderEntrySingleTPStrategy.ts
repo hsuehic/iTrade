@@ -1178,6 +1178,25 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private handleTpFilled(order: Order): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
+    // CRITICAL: Collect ALL current-cycle order IDs (from this.orders,
+    // orderMetadataMap, and pendingClientOrderIds) and add them to
+    // previousCycleOrderIds BEFORE generating cancel signals. Previously,
+    // cancelAllEntryOrders/cancelAllTpOrders deleted pending orders from
+    // pendingClientOrderIds and orderMetadataMap before resetLadder ran.
+    // Those pending order IDs were then NOT blacklisted, and a delayed WS
+    // CANCELED push would be re-processed via ensureRecoveredMetadata →
+    // shouldRefreshLadder → placeLadderEntries → DUPLICATE ENTRY ORDER.
+    // (Strategy 467 bug: E467D1D + E467D2D placed at same time after TP fill.)
+    for (const coid of this.orders.keys()) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    for (const coid of this.orderMetadataMap.keys()) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    for (const coid of this.pendingClientOrderIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
+
     this.pendingClientOrderIds.delete(order.clientOrderId!);
     this.orderMetadataMap.delete(order.clientOrderId!);
     this.tpClientOrderId = null;
