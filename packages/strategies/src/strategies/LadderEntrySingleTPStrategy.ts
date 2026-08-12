@@ -198,6 +198,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         step: 0.000001,
         group: 'Ladder Quantity',
         order: 7,
+        showIf: { field: 'qtyType', equals: 'arithmetic' },
       },
       {
         name: 'qtyStepRatio',
@@ -211,6 +212,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         step: 0.001,
         group: 'Ladder Quantity',
         order: 8,
+        showIf: { field: 'qtyType', equals: 'geometric' },
       },
       {
         name: 'tpType',
@@ -234,6 +236,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         max: 10000000,
         group: 'Take Profit',
         order: 10,
+        showIf: { field: 'tpType', equals: 'absolute' },
       },
       {
         name: 'tpPercent',
@@ -247,6 +250,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         group: 'Take Profit',
         order: 11,
         unit: '%',
+        showIf: { field: 'tpType', equals: 'percent' },
       },
       {
         name: 'maxInvestment',

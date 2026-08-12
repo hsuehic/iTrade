@@ -20,6 +20,14 @@ export interface ParameterDefinition<T = unknown> {
   unit?: string;
   group?: string; // UI grouping
   order?: number; // UI ordering
+  /**
+   * Conditional visibility: only show this field when the referenced parameter equals the specified value.
+   * E.g. { field: 'qtyType', equals: 'arithmetic' } → only visible when qtyType is arithmetic.
+   */
+  showIf?: {
+    field: string;
+    equals: string | number | boolean;
+  };
 }
 
 /**
