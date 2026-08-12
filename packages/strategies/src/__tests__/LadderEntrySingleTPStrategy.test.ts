@@ -1035,6 +1035,93 @@ describe('LadderEntrySingleTPStrategy', () => {
       // TP recovered
       expect(state.tpClientOrderId).toBe(tpId);
     });
+
+    it('should place next entry when TP exists but no active entry (entry was cancelled)', async () => {
+      // Scenario: entry 0 FILLED, entry 1 was NEW but got CANCELLED (e.g. by
+      // exchange or manually). On restart: openOrders has only TP (NEW),
+      // orderHistory has entry 0 FILLED.
+      // TP qty = 0.1 (step 0 qty) → 1 step filled → place step 1 entry.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const entry0FilledId = 'E1D8000001';
+      const tpId = 'T1D8000001';
+
+      // openOrders: only TP (no active entry)
+      const openOrders: Order[] = [
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.99, 0.1, 0, undefined),
+      ];
+
+      // orderHistory: entry 0 FILLED at price=99 (matches new formula i+1)
+      const orderHistory: Order[] = [
+        createOrder(entry0FilledId, OrderSide.BUY, OrderStatus.FILLED, 99, 0.1, 0.1, 99),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({ openOrders, orderHistory }),
+      );
+
+      const entrySignals = findEntrySignals(result);
+      // Should place entry 1 (step 1) since step 0 is filled, no active entry
+      expect(entrySignals).toHaveLength(1);
+      // entry 1 = 100 - 1*(1+1) = 98
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(98, 1);
+
+      const state = strategy.getStrategyState();
+      // Step 0 filled (from TP qty inference)
+      expect(state.steps[0].filled).toBe(true);
+      // Step 1 should now have a new entry order placed
+      expect(state.steps[1].entryClientOrderId).toBeTruthy();
+      expect(state.steps[1].filled).toBe(false);
+    });
+
+    it('should NOT place entry when all steps filled + TP active (waiting for TP fill)', async () => {
+      // Scenario: ladderSteps=1, entry 0 FILLED, TP NEW.
+      // All steps filled → no entry to place, just waiting for TP.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 1,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const entry0FilledId = 'E1D9000001';
+      const tpId = 'T1D9000001';
+
+      const openOrders: Order[] = [
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 99.99, 0.1, 0, undefined),
+      ];
+
+      const orderHistory: Order[] = [
+        createOrder(entry0FilledId, OrderSide.BUY, OrderStatus.FILLED, 99, 0.1, 0.1, 99),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({ openOrders, orderHistory }),
+      );
+
+      const entrySignals = findEntrySignals(result);
+      // All steps filled → no entry needed
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+      expect(state.steps[0].filled).toBe(true);
+      expect(state.tpClientOrderId).toBe(tpId);
+    });
   });
 
   describe('Out-of-order / delayed order pushes', () => {

@@ -1700,10 +1700,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
 
     // Step 6: Place remaining ladder entries
-    // Guard: if there is already an active entry order (NEW / PARTIALLY_FILLED)
-    // recovered from openOrders, do NOT place any new entry. The sequential
-    // mode ensures only one entry is live at a time, and the existing order
-    // is that one. Placing another would be a duplicate.
+    // Decision tree when restarting with a recovered TP order:
+    //
+    //  hasActiveEntry?  → skip (that order is the current sequential entry)
+    //  no active entry + has TP + inventory > 0:
+    //    TP qty = sum of filled step quantities.
+    //    All steps with cumulative <= TP qty are marked filled.
+    //    If all steps are filled → no entry needed (waiting for TP fill).
+    //    If steps remain → place next unfilled step's entry.
+    //  no active entry + no TP:
+    //    Fresh start or all orders were cancelled → place step 0 (or next unfilled).
     const hasActiveEntry = this.steps.some((step) => {
       if (!step.entryClientOrderId) return false;
       const ord = this.orders.get(step.entryClientOrderId);
@@ -1712,11 +1718,30 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
       );
     });
+
     if (hasActiveEntry) {
       this._logger.debug(
         '[processInitialData] Active entry order already exists — skipping placeLadderEntries',
       );
+    } else if (this.tpClientOrderId && this.inventoryQty.gt(0)) {
+      // Has TP + inventory but no active entry.
+      // TP qty inference (Step 4a-b) already marked filled steps.
+      const allFilled = this.steps.length > 0 && this.steps.every((step) => step.filled);
+      if (allFilled) {
+        // All entries filled, waiting for TP to fill. Nothing to place.
+        this._logger.debug(
+          `[processInitialData] All ${this.steps.length} steps filled, ` +
+            `TP active (qty=${this.inventoryQty.toString()}) — waiting for TP fill, no entry needed`,
+        );
+      } else {
+        // There are remaining unfilled steps — place the next one.
+        this._logger.debug(
+          '[processInitialData] No active entry but unfilled steps remain — placing next entry',
+        );
+        signals.push(...this.placeLadderEntries());
+      }
     } else {
+      // No TP, no active entry — fresh start or full reset.
       signals.push(...this.placeLadderEntries());
     }
 
