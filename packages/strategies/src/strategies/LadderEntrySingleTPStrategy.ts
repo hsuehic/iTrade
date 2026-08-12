@@ -705,13 +705,6 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
   }
 
-  private reduceInventoryByTpFill(filledQty: Decimal): void {
-    this.inventoryQty = Decimal.max(new Decimal(0), this.inventoryQty.minus(filledQty));
-    if (this.inventoryQty.lte(0)) {
-      this.vwap = new Decimal(0);
-    }
-  }
-
   /**
    * Compute the TP sell price based on tpType and current VWAP.
    * - 'absolute': TP price = VWAP + tpAbsoluteProfit / inventoryQty
@@ -1400,17 +1393,48 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         }
 
         if (metadata.signalType === SignalType.TakeProfit) {
+          // Capture any additional fill between last PARTIAL_FILL push and
+          // this CANCELED push. Without this, the incremental fill is lost
+          // → tpFilledQty understated → next TP oversells by the difference.
+          const lastProcessed =
+            this.processedQuantityMap.get(order.clientOrderId) || new Decimal(0);
+          const totalFilled = order.executedQuantity || new Decimal(0);
+          if (totalFilled.gt(lastProcessed)) {
+            const increment = totalFilled.minus(lastProcessed);
+            this.tpFilledQty = this.tpFilledQty.plus(increment);
+            this._logger.debug(
+              `[handleOrderUpdates] TP terminal: captured extra fill ${increment.toString()} ` +
+                `(total ${totalFilled.toString()} > last ${lastProcessed.toString()}). ` +
+                `tpFilledQty=${this.tpFilledQty.toString()}`,
+            );
+          }
           if (this.tpClientOrderId === order.clientOrderId) {
             this.tpClientOrderId = null;
           }
-          if (this.inventoryQty.gt(0)) {
+          if (
+            this.inventoryQty.gt(0) &&
+            this.inventoryQty.minus(this.tpFilledQty).gt(0)
+          ) {
             signals.push(...this.refreshTakeProfit());
           }
         }
 
-        this.orders.delete(order.clientOrderId);
-        this.processedQuantityMap.delete(order.clientOrderId);
-        this.orderMetadataMap.delete(order.clientOrderId);
+        // For Entry orders with partial fills that are now terminal, preserve
+        // the partial fill data in processedQuantityMap and orderMetadataMap
+        // so recalculateVWAP()'s second loop (which scans processedQuantityMap
+        // for orders no longer in this.orders) continues to include the partial
+        // fill. Without this, future recalculateVWAP calls would undercount
+        // inventory → TP undersells → inventory orphaned.
+        // For orders with no fills or TP orders, safe to delete all maps.
+        const entryFilledQty = order.executedQuantity || new Decimal(0);
+        if (entryFilledQty.gt(0) && metadata.signalType === SignalType.Entry) {
+          // Keep processedQuantityMap and orderMetadataMap for recalculateVWAP
+          this.orders.delete(order.clientOrderId);
+        } else {
+          this.orders.delete(order.clientOrderId);
+          this.processedQuantityMap.delete(order.clientOrderId);
+          this.orderMetadataMap.delete(order.clientOrderId);
+        }
       }
     }
 
@@ -2009,6 +2033,26 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       );
     }
 
+    // Step 4c: Recover tpFilledQty from any PARTIALLY_FILLED TP order in
+    // openOrders. Without this, a restart after a partial TP fill would
+    // lose tpFilledQty → refreshTakeProfit would oversell by the partial amount.
+    if (!isReinit) {
+      for (const order of this.orders.values()) {
+        if (
+          order.side === OrderSide.SELL &&
+          order.status === OrderStatus.PARTIALLY_FILLED &&
+          order.executedQuantity &&
+          order.executedQuantity.gt(0)
+        ) {
+          this.tpFilledQty = this.tpFilledQty.plus(order.executedQuantity);
+          this._logger.info(
+            `[processInitialData] Recovered tpFilledQty=${this.tpFilledQty.toString()} ` +
+              `from partial TP order ${order.clientOrderId} (executed ${order.executedQuantity.toString()}).`,
+          );
+        }
+      }
+    }
+
     // Step 5: If inventory > 0 but no active TP, create one
     // SAFETY: strategyNetPosition is the net executed position from the DB
     // (BUY FILLED - SELL FILLED, filtered by strategyId). If it's <= 0 while
@@ -2023,6 +2067,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           `Stale inventory detected — resetting to 0, skipping TP placement.`,
       );
       this.inventoryQty = new Decimal(0);
+      this.tpFilledQty = new Decimal(0);
       this.vwap = new Decimal(0);
     }
     if (this.inventoryQty.gt(0) && !this.tpClientOrderId) {
@@ -2149,6 +2194,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       strategyId: this.getStrategyId(),
       referencePrice: this.referencePrice.toString(),
       inventoryQty: this.inventoryQty.toString(),
+      tpFilledQty: this.tpFilledQty.toString(),
       vwap: this.vwap.toString(),
       tpClientOrderId: this.tpClientOrderId,
       tpPrice: this.computeTpPrice()?.toString() ?? null,
