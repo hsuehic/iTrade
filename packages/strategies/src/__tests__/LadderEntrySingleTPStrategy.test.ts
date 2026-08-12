@@ -612,6 +612,73 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(allSignals).toHaveLength(1);
       expect(allSignals[0].action).toBe('hold');
     });
+
+    it('should reduce TP sell quantity after partial TP fill + new entry fill', async () => {
+      // CRITICAL: TP partial fill sells some inventory. When a new entry
+      // subsequently fills, the refreshed TP must sell inventoryQty - tpFilledQty,
+      // NOT the full inventoryQty. Otherwise the TP oversells the position.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          ladderSteps: 3,
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 5,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry 0 → TP placed
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+      );
+      const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entry1Signals = findEntrySignals(result0);
+      const tpSignals0 = findTpSignals(result0);
+      const tpClientId = (tpSignals0[tpSignals0.length - 1] as StrategyOrderResult)
+        .clientOrderId;
+
+      // TP partial fill: 0.05 out of 0.1 sold → tpFilledQty=0.05
+      const tpPartial = createOrder(
+        tpClientId,
+        OrderSide.SELL,
+        OrderStatus.PARTIALLY_FILLED,
+        103.95,
+        0.1,
+        0.05,
+        103.95,
+      );
+      await strategy.analyze(createDataUpdate({ orders: [tpPartial] }));
+
+      // Now fill entry 1 → recalculateVWAP → inventoryQty=0.2, but tpFilledQty=0.05
+      // TP should sell 0.2 - 0.05 = 0.15, NOT 0.2
+      const fill1 = createOrder(
+        entry1Signals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
+        0.1,
+        0.1,
+        98,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill1] }));
+      const tpSignals1 = findTpSignals(result1);
+
+      // Should have a TP signal (update existing or new)
+      expect(tpSignals1.length).toBeGreaterThanOrEqual(1);
+
+      // CRITICAL: TP quantity must be 0.15 (0.2 - 0.05), NOT 0.2
+      const tpSignal = tpSignals1[tpSignals1.length - 1] as StrategyOrderResult;
+      expect(tpSignal.quantity?.toNumber()).toBeCloseTo(0.15, 5);
+    });
   });
 
   describe('TP full fill → cycle reset', () => {

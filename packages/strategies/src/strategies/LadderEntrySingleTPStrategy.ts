@@ -387,6 +387,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   /** Current filled inventory (base quantity bought, not yet sold by TP) */
   private inventoryQty: Decimal = new Decimal(0);
 
+  /**
+   * Total quantity sold by partial TP fills in the current cycle.
+   * Used to compute the remaining TP sell quantity:
+   *   tpQty = inventoryQty - tpFilledQty
+   * This is tracked separately from inventoryQty because recalculateVWAP()
+   * rebuilds inventoryQty from scratch (sum of FILLED entry qty) on every
+   * entry fill, which would erase any reduction from TP partial fills.
+   */
+  private tpFilledQty: Decimal = new Decimal(0);
+
   /** VWAP (volume-weighted average price) of current inventory */
   private vwap: Decimal = new Decimal(0);
 
@@ -542,6 +552,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
     this.steps = [];
     this.inventoryQty = new Decimal(0);
+    this.tpFilledQty = new Decimal(0);
     this.vwap = new Decimal(0);
     this.tpClientOrderId = null;
     // CRITICAL: Clear all order tracking maps to prevent stale orders from
@@ -985,7 +996,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
     const tpPrice = this.computeTpPrice();
     if (!tpPrice || tpPrice.lte(0)) return signals;
-    const tpQty = this.inventoryQty;
+    // TP sell quantity = total bought - already sold by partial TP fills.
+    // Without subtracting tpFilledQty, a partial TP fill followed by a new
+    // entry fill would cause the TP to sell more than the actual position.
+    const tpQty = this.inventoryQty.minus(this.tpFilledQty);
+    if (tpQty.lte(0)) {
+      // All inventory already sold by partial TP fills — cancel any remaining TP
+      return this.cancelAllTpOrders('ladder_tp_cancel_already_sold');
+    }
 
     if (this.tpClientOrderId) {
       const existingTp = this.orders.get(this.tpClientOrderId);
@@ -1299,16 +1317,27 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         continue;
       }
 
-      // ── TP order: PARTIAL fill → no action (TP state managed by exchange) ──
+      // ── TP order: PARTIAL fill → track sold qty, no TP refresh yet ──
+      // TP partial fills reduce the remaining position. We track the sold
+      // amount in tpFilledQty so that the next refreshTakeProfit() computes
+      // the correct TP sell quantity: inventoryQty - tpFilledQty.
+      // We do NOT refresh the TP order here (per design: "TP partial → no
+      // action"). The TP will be refreshed on the next entry fill via
+      // recalculateVWAP + refreshTakeProfit, or when TP fully fills (cycle
+      // reset). This avoids exchange rate-limiting from frequent cancel+replace.
       if (
         hasNewFill &&
         metadata.signalType === SignalType.TakeProfit &&
         order.status === OrderStatus.PARTIALLY_FILLED
       ) {
-        // Update processed quantity for tracking
+        const increment = totalFilled.minus(
+          this.processedQuantityMap.get(order.clientOrderId) || new Decimal(0),
+        );
         this.processedQuantityMap.set(order.clientOrderId, totalFilled);
+        this.tpFilledQty = this.tpFilledQty.plus(increment);
         this._logger.debug(
-          `[handleOrderUpdates] TP PARTIAL fill: ${totalFilled.toString()}/${order.quantity?.toString()}. No action taken.`,
+          `[handleOrderUpdates] TP PARTIAL fill: ${totalFilled.toString()}/${order.quantity?.toString()}. ` +
+            `tpFilledQty=${this.tpFilledQty.toString()}, remaining=${this.inventoryQty.minus(this.tpFilledQty).toString()}. No TP refresh.`,
         );
         continue;
       }
@@ -2096,6 +2125,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.processedTerminalIds.clear();
     this.steps = [];
     this.inventoryQty = new Decimal(0);
+    this.tpFilledQty = new Decimal(0);
     this.vwap = new Decimal(0);
     this.tpClientOrderId = null;
     this.tpRefreshPending = false;
