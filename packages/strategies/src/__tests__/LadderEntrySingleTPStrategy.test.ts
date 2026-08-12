@@ -1206,6 +1206,141 @@ describe('LadderEntrySingleTPStrategy', () => {
       const entrySignals = findEntrySignals(result);
       expect(entrySignals).toHaveLength(0);
     });
+
+    it('should NOT duplicate entry when bid0 changed after restart (no TP, active entry only)', async () => {
+      // Strategy 466 real-world scenario:
+      // - geometric stepValue=0.72, qtyPerStep=3000
+      // - Entry 0 placed at bid0~0.3347 → price = 0.3347*0.9928 = 0.3323
+      // - Service restarts, new bid0~0.3358
+      // - Without fix: buildLadder with new bid0 → step0=0.3334, old entry (0.3322) not matched → duplicate!
+      // - With fix: reverse-engineer refPrice from entry order price → step0 matches → no duplicate
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0, // use orderbid
+          ladderSteps: 5,
+          stepType: 'geometric',
+          stepValue: 0.72,
+          qtyType: 'arithmetic',
+          qtyPerStep: 3000,
+          qtyStepAdd: 1500,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 10,
+        }),
+      );
+
+      // Entry 0 was placed at price 0.3322 (from old bid0 ~0.3347)
+      const entry0Id = 'E1D1D1700000000';
+      const entry0Price = new Decimal('0.3322');
+
+      // Restart: new bid0 is 0.3358 (different from original 0.3347)
+      const newBid0 = new Decimal('0.3358');
+
+      const openOrders: Order[] = [
+        createOrder(
+          entry0Id,
+          OrderSide.BUY,
+          OrderStatus.NEW,
+          parseFloat(entry0Price.toString()),
+          3000,
+          0,
+          undefined,
+        ),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderBook: {
+            symbol: 'TEST/USDC:USDC',
+            bids: [[newBid0, new Decimal(100)]],
+            asks: [[newBid0.plus(0.0001), new Decimal(100)]],
+            timestamp: new Date(),
+          },
+        }),
+      );
+
+      // Critical: NO duplicate entry should be placed
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+
+      // referencePrice should be reverse-engineered from entry order, not new bid0
+      // ref = 0.3322 / (1-0.0072)^1 = 0.3322 / 0.9928 = 0.33462...
+      const expectedRef = parseFloat(
+        new Decimal('0.3322')
+          .div(new Decimal(1).minus(new Decimal(0.72).div(100)))
+          .toString(),
+      );
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(expectedRef, 4);
+
+      // Step 0 price should match the existing entry order price (0.3322)
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(0.3322, 4);
+
+      // Step 0 should have the existing entry order's clientOrderId
+      expect(state.steps[0].entryClientOrderId).toBe(entry0Id);
+    });
+
+    it('should NOT duplicate entry when bid0 changed after restart (arithmetic, no TP)', async () => {
+      // Same test but with arithmetic stepType
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'arithmetic',
+          stepValue: 300, // absolute: 300 USDT per step
+          qtyType: 'arithmetic',
+          qtyPerStep: 0.1,
+          qtyStepAdd: 0.05,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 1,
+        }),
+      );
+
+      // Entry 0 placed at price 64700 (from old bid0 65000)
+      const entry0Id = 'E1D1D1700000000';
+      const entry0Price = new Decimal('64700');
+
+      // Restart: new bid0 is 65500 (different from original 65000)
+      const newBid0 = new Decimal('65500');
+
+      const openOrders: Order[] = [
+        createOrder(
+          entry0Id,
+          OrderSide.BUY,
+          OrderStatus.NEW,
+          parseFloat(entry0Price.toString()),
+          0.1,
+          0,
+          undefined,
+        ),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderBook: {
+            symbol: 'TEST/USDC:USDC',
+            bids: [[newBid0, new Decimal(100)]],
+            asks: [[newBid0.plus(1), new Decimal(100)]],
+            timestamp: new Date(),
+          },
+        }),
+      );
+
+      // Critical: NO duplicate entry
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+
+      // ref = 64700 + 300*1 = 65000 (original bid0, not new 65500)
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(65000, 1);
+
+      // Step 0 price should match existing entry (64700)
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(64700, 1);
+      expect(state.steps[0].entryClientOrderId).toBe(entry0Id);
+    });
   });
 
   describe('Out-of-order / delayed order pushes', () => {

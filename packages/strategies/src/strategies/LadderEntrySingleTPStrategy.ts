@@ -423,6 +423,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * Reset to false in processInitialData after consuming the fresh orderbook.
    */
   private _needsReinit = false;
+  private referencePriceWasReversedFromTp = false;
 
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
@@ -1437,6 +1438,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     initialData: InitialDataResult,
   ): Promise<StrategyAnalyzeResult> {
     const signals: StrategyResult[] = [];
+    this.referencePriceWasReversedFromTp = false;
 
     // Step 1: Set reference price from REST orderbook if basePrice=0.
     // When _needsReinit=true (TP filled in previous cycle with basePrice=0),
@@ -1526,6 +1528,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           );
           if (recoveredRef && recoveredRef.gt(0)) {
             this.referencePrice = recoveredRef;
+            this.referencePriceWasReversedFromTp = true;
             this._logger.info(
               `[processInitialData] Reverse-engineered referencePrice from TP: ${recoveredRef.toString()} ` +
                 `(TP price=${tpOrder.price?.toString()}, qty=${tpOrder.quantity.toString()}, filledSteps=${filledStepCount})`,
@@ -1535,7 +1538,69 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
-    // Step 2: Build ladder
+    // Step 1c: If there is an active entry order (but no TP) in openOrders,
+    // reverse-engineer referencePrice from it instead of using the fresh bid0.
+    // This handles the case where the service restarts between entry 0 placement
+    // and its fill — bid0 may have moved, causing buildLadder to produce different
+    // prices that don't match the existing entry order, leading to duplicate entries.
+    // (Only when not _needsReinit — reinit starts a fresh cycle with fresh bid0.)
+    if (!this._needsReinit && initialData.openOrders) {
+      const entryOrder = initialData.openOrders.find(
+        (o) =>
+          o.symbol === this._symbol &&
+          o.side === OrderSide.BUY &&
+          (o.status === OrderStatus.NEW || o.status === OrderStatus.PARTIALLY_FILLED) &&
+          o.clientOrderId &&
+          this.isStrategyOrderId(o.clientOrderId) &&
+          /^(E)\d+D/.test(o.clientOrderId),
+      );
+      if (
+        entryOrder &&
+        entryOrder.price &&
+        entryOrder.price.gt(0) &&
+        // Only reverse-engineer if we haven't already done so from TP
+        // (TP is more reliable as it encodes VWAP across all filled steps)
+        !this.referencePriceWasReversedFromTp
+      ) {
+        // Infer step index from clientOrderId: extract the step sequence number
+        // Format: E{strategyId}D{seq}D{timestamp} — seq starts at 1
+        const stepMatch = entryOrder.clientOrderId
+          ? /^E\d+D(\d+)D/.exec(entryOrder.clientOrderId)
+          : null;
+        // seq is 1-based; step index = seq - 1
+        const stepIndex = stepMatch && stepMatch[1] ? parseInt(stepMatch[1], 10) - 1 : 0;
+        const stepPercent = this.stepValue.div(100);
+
+        // Back-calculate: entry_price = ref * factor → ref = entry_price / factor
+        let factor: Decimal;
+        if (this.stepType === 'arithmetic') {
+          // price[i] = ref - stepValue * (i+1) → ref = price + stepValue * (i+1)
+          factor = this.stepValue.mul(stepIndex + 1);
+          const recoveredRef = entryOrder.price.plus(factor);
+          if (recoveredRef.gt(0)) {
+            this.referencePrice = recoveredRef;
+            this._logger.info(
+              `[processInitialData] Reverse-engineered referencePrice from entry order: ${recoveredRef.toString()} ` +
+                `(entry price=${entryOrder.price.toString()}, stepIndex=${stepIndex}, stepValue=${this.stepValue.toString()})`,
+            );
+          }
+        } else {
+          // price[i] = ref * (1-stepValue/100)^(i+1) → ref = price / (1-stepValue/100)^(i+1)
+          factor = new Decimal(1).minus(stepPercent).pow(stepIndex + 1);
+          if (factor.gt(0)) {
+            const recoveredRef = entryOrder.price.div(factor);
+            if (recoveredRef.gt(0)) {
+              this.referencePrice = recoveredRef;
+              this._logger.info(
+                `[processInitialData] Reverse-engineered referencePrice from entry order: ${recoveredRef.toString()} ` +
+                  `(entry price=${entryOrder.price.toString()}, stepIndex=${stepIndex}, stepPercent=${stepPercent.toString()})`,
+              );
+            }
+          }
+        }
+      }
+    }
+
     if (this.steps.length === 0 && this.referencePrice.gt(0)) {
       this.steps = this.buildLadder();
     }
