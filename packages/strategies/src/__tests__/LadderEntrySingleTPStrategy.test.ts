@@ -1201,6 +1201,112 @@ describe('LadderEntrySingleTPStrategy', () => {
     });
   });
 
+  describe('TP filled → new cycle reference price', () => {
+    it('should update referencePrice to TP fill price when basePrice=0 (dynamic mode)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0, // dynamic — uses orderbook bid0
+          ladderSteps: 2,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 2,
+        }),
+      );
+
+      // Simulate init with orderbook bid0 = 100 (default createOrderBook)
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+      // Entry 0 placed at 100
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+
+      // Fill entry 0 → places TP at 102 (2% above VWAP=100)
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        100,
+        0.1,
+        0.1,
+        100,
+      );
+      const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const tpSignals = findTpSignals(fillResult);
+      expect(tpSignals).toHaveLength(1);
+      expect(tpSignals[0].price!.toNumber()).toBeCloseTo(102, 1);
+
+      // TP fills at 102
+      const tpFill = createOrder(
+        (tpSignals[0] as StrategyOrderResult).clientOrderId,
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        102,
+        0.1,
+        0.1,
+        102,
+      );
+      const tpFillResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
+
+      // New cycle: entry should be placed at ~102 (new referencePrice), NOT 100
+      const newEntrySignals = findEntrySignals(tpFillResult);
+      expect(newEntrySignals.length).toBeGreaterThanOrEqual(1);
+      expect(newEntrySignals[0].price!.toNumber()).toBeCloseTo(102, 1);
+
+      // Verify state reflects new reference price
+      const state = strategy.getStrategyState();
+      expect(state.referencePrice).toBe('102');
+    });
+
+    it('should keep fixed basePrice unchanged after TP fill', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100, // fixed
+          ladderSteps: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 5,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry → TP at 105 (5% above 100)
+      const fill = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        100,
+        0.1,
+        0.1,
+        100,
+      );
+      const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill] }));
+      const tpSignals = findTpSignals(fillResult);
+
+      // TP fills at 105
+      const tpFill = createOrder(
+        (tpSignals[0] as StrategyOrderResult).clientOrderId,
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        105,
+        0.1,
+        0.1,
+        105,
+      );
+      const tpFillResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
+
+      // New cycle: entry should be at 100 (fixed basePrice, NOT 105)
+      const newEntrySignals = findEntrySignals(tpFillResult);
+      expect(newEntrySignals.length).toBeGreaterThanOrEqual(1);
+      expect(newEntrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+
+      const state = strategy.getStrategyState();
+      expect(state.referencePrice).toBe('100');
+    });
+  });
+
   describe('Strategy state', () => {
     it('should expose correct state after init', async () => {
       const strategy = new LadderEntrySingleTPStrategy(

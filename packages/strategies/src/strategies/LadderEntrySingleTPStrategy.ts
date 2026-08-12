@@ -1052,9 +1052,24 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
 
-    // Update reference price — if basePrice=0, need new REST fetch for next cycle
-    // The new orderbook will arrive via the next processInitialData or a REST fetch
-    // For now, keep existing referencePrice (basePrice>0 case) or use last known
+    // Update reference price for the new cycle.
+    // When basePrice=0, the reference price was originally fetched from REST
+    // orderbook bid0. After TP fills, the market has moved up to the TP price,
+    // so the old bid0 is stale. Use the TP fill price as the new reference —
+    // it's the best available approximation of the current market price
+    // without a synchronous REST fetch. (bid0 ≈ TP fill price minus spread.)
+    // When basePrice>0 (fixed), keep the original reference.
+    if (this.basePrice.lte(0)) {
+      const tpFillPrice = order.averagePrice || order.price;
+      if (tpFillPrice && tpFillPrice.gt(0)) {
+        this.referencePrice = tpFillPrice;
+        this._logger.debug(
+          `[handleTpFilled] Updated reference price for new cycle: ${this.referencePrice.toString()} ` +
+            `(from TP fill price, basePrice=0)`,
+        );
+      }
+    }
+
     this._logger.debug(
       `[handleTpFilled] TP FILLED: ${order.executedQuantity?.toString()} @ ${order.averagePrice?.toString()}. ` +
         `Cycle reset. Reference price: ${this.referencePrice.toString()}`,
