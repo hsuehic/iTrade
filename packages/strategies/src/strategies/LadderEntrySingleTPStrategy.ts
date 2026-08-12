@@ -1014,19 +1014,39 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
 
       // Skip stale updates — prevents out-of-order push issues.
-      // IMPORTANT: use strict `>` (not `>=`) so that a status upgrade
-      // (e.g. PARTIALLY_FILLED → FILLED) arriving with the same updateTime
-      // is NOT skipped. Binance often sends partial-fill and full-fill
-      // updates with identical millisecond timestamps; using `>=` would
-      // discard the FILLED update and leave inventoryQty stuck at the
-      // partial-fill quantity.
+      // Uses a composite check: (1) updateTime strictly older, OR (2) same or
+      // lower status rank AND same or lower executedQuantity.
+      // This avoids relying solely on exchange timestamps (which can share
+      // identical milliseconds for PARTIAL_FILL → FILLED transitions on Binance).
       const existingOrder = this.orders.get(order.clientOrderId);
-      if (
-        existingOrder?.updateTime &&
-        order.updateTime &&
-        existingOrder.updateTime.getTime() > order.updateTime.getTime()
-      )
-        continue;
+      if (existingOrder) {
+        const existingExecQty = existingOrder.executedQuantity || new Decimal(0);
+        const newExecQty = order.executedQuantity || new Decimal(0);
+
+        // Strict time-based skip: update is definitively older
+        if (
+          existingOrder.updateTime &&
+          order.updateTime &&
+          existingOrder.updateTime.getTime() > order.updateTime.getTime()
+        )
+          continue;
+
+        // Status + executedQuantity based skip: if the existing order already
+        // has the same or higher status rank AND same or greater executed qty,
+        // this update is stale/duplicate.
+        const statusRank: Record<OrderStatus, number> = {
+          [OrderStatus.NEW]: 0,
+          [OrderStatus.PARTIALLY_FILLED]: 1,
+          [OrderStatus.FILLED]: 2,
+          [OrderStatus.CANCELED]: 2,
+          [OrderStatus.REJECTED]: 2,
+          [OrderStatus.EXPIRED]: 2,
+        };
+        const existingRank = statusRank[existingOrder.status] ?? 0;
+        const newRank = statusRank[order.status] ?? 0;
+
+        if (existingRank >= newRank && existingExecQty.gte(newExecQty)) continue;
+      }
 
       this.orders.set(order.clientOrderId, order);
 
