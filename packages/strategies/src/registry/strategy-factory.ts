@@ -36,6 +36,10 @@ import {
   MarketMakerGridStrategy,
   MarketMakerGridStrategyRegistryConfig,
 } from '../strategies/MarketMakerGridStrategy';
+import {
+  LadderEntrySingleTPStrategy,
+  LadderEntrySingleTPStrategyRegistryConfig,
+} from '../strategies/LadderEntrySingleTPStrategy';
 import { silentLogger } from '../utils/silent-logger';
 
 // ============================================================================
@@ -55,7 +59,8 @@ export type StrategyTypeKey =
   | 'HammerChannelStrategy'
   | 'SingleLadderLifoTPStrategy'
   | 'SpreadGridStrategy'
-  | 'MarketMakerGridStrategy';
+  | 'MarketMakerGridStrategy'
+  | 'LadderEntrySingleTPStrategy';
 
 /**
  * 策略构造函数类型
@@ -173,6 +178,11 @@ registry.register(
   'MarketMakerGridStrategy',
   MarketMakerGridStrategy,
   MarketMakerGridStrategyRegistryConfig,
+);
+registry.register(
+  'LadderEntrySingleTPStrategy',
+  LadderEntrySingleTPStrategy,
+  LadderEntrySingleTPStrategyRegistryConfig,
 );
 
 // ============================================================================

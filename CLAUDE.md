@@ -122,4 +122,29 @@ For a feature to be considered complete, Claude must demonstrate it works at run
   end tell
   ```
 - Prefer reusing a single Terminal window across multiple commands in the same task rather than opening a new window per command.
-- Never leave behind idle terminal processes or orphaned browser tabs.
+- Never leave behind idle terminal processes or orphaned browser tabs."
+
+---
+
+## Strategy Development — Edge/Corner Cases (MANDATORY)
+
+> **Every new trading strategy MUST handle edge/corner cases in code AND unit tests.**
+
+### Mandatory Scenarios
+
+1. **Order Partial Fills** — Entry partial → VWAP/TP update; TP partial → defined behavior (action or no-action). Test with PARTIALLY_FILLED + executedQuantity < quantity.
+
+2. **Strategy Stop / Restart / Service Restart** — `processInitialData()` MUST recover all strategy orders from `fetchOpenOrders`, rebuild VWAP/inventory/step tracking/TP linkage. Recovery must be idempotent. Partial fills on restart must be accounted. Orphaned TP (inventory exists, no TP order) must be recreated. Test by passing pre-existing orders via `processInitialData({ openOrders })`.
+
+3. **Order Push Delays / Out-of-Order** — Use `updateTime` comparison to skip stale updates. Use `processedQuantityMap`/`processedTerminalIds` to deduplicate. VWAP recalculation must be from-scratch (full order scan), not incremental. Test: send older updateTime after newer, send duplicate FILLED notification.
+
+4. **Order Cancellation / Rejection / Expiry** — Cancelled entry steps must allow re-placement. Cancelled TP with inventory > 0 must be recreated. Test with CANCELED status.
+
+### Anti-Patterns
+
+- Incremental VWAP (breaks on out-of-order pushes) — use full recalculation
+- No dedup on FILLED (phantom inventory) — always track processedQuantity
+- No stale check (corrupts state) — always compare updateTime
+- Assuming kline-driven (can't restart cycles) — use order events as primary triggers
+- No recovery path (broken on restart) — processInitialData must rebuild state
+- Subscription where REST suffices — use REST `fetchOrderBook` if only need snapshot at init

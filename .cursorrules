@@ -3208,3 +3208,65 @@ describe('LoginForm', () => {
 7. **Always sanitize user input** - Security is not optional
 
 **Remember**: Frontend development is about creating excellent user experiences. Every decision should be made with the user in mind. 🎨✅
+
+---
+
+## 📊 Strategy Development Rules — Edge/Corner Cases (MANDATORY)
+
+> **Every new trading strategy MUST be designed and tested for edge/corner cases.** Failing to handle these scenarios causes silent bugs, incorrect P&L, duplicate orders, and stuck strategies in production.
+
+### 1. Mandatory Edge Cases to Handle
+
+Every new strategy MUST explicitly handle the following scenarios in code AND in unit tests:
+
+#### 1.1 Order Partial Fills
+- **Entry partial fill**: How does VWAP/inventory update? Does TP get refreshed?
+- **TP partial fill**: Does the strategy leave the TP as-is, update it, or treat it as full fill?
+- **Both partial simultaneously**: What if entry and TP partial-fill notifications arrive in the same batch?
+- **Test**: Send PARTIALLY_FILLED status with executedQuantity < quantity, verify correct behavior.
+
+#### 1.2 Strategy Stop / Restart / Service Restart
+- **State recovery**: `processInitialData()` MUST recover all strategy orders from `fetchOpenOrders` and rebuild internal state (inventory, VWAP, ladder/step tracking, TP linkage).
+- **Idempotency**: Recovery must be idempotent — running `processInitialData` twice produces the same state.
+- **Partial fills on restart**: Orders that were PARTIALLY_FILLED before restart must be correctly accounted in VWAP.
+- **Orphaned TP**: If inventory exists but no active TP order is found, strategy must recreate the TP.
+- **Stale steps**: Ladder steps that were filled before restart must be marked as filled; steps with open orders must be linked back.
+- **Test**: Simulate restart by passing pre-existing orders via `processInitialData({ openOrders })` and verify state matches.
+
+#### 1.3 Order Push Delays / Out-of-Order Delivery
+- **Stale updates**: Use `updateTime` comparison to skip older order updates that arrive after newer ones.
+- **Duplicate notifications**: Use `processedQuantityMap` / `processedTerminalIds` to deduplicate — receiving the same FILLED notification twice must NOT double-count.
+- **Idempotent recalculation**: VWAP/inventory recalculation must be from-scratch (iterate all known orders), not incremental — so out-of-order pushes produce the same final state.
+- **Test**: Send an older updateTime after a newer one, verify it's skipped. Send duplicate FILLED, verify no double-count.
+
+#### 1.4 Order Cancellation / Rejection / Expiry
+- **Entry cancelled without fill**: Strategy should allow re-placement of that ladder step.
+- **TP cancelled externally**: If inventory > 0, strategy must recreate the TP.
+- **Test**: Send CANCELED status, verify step/TP state is correctly reset.
+
+### 2. Strategy Implementation Checklist
+
+Before marking a new strategy as complete, verify:
+
+- [ ] **processInitialData recovery**: Recovers all strategy orders, rebuilds VWAP/inventory/TP
+- [ ] **Partial fill handling**: Entry partial → VWAP/TP update; TP partial → defined behavior (action or no-action)
+- [ ] **Stale update skip**: `updateTime` comparison prevents out-of-order processing
+- [ ] **Duplicate dedup**: `processedQuantityMap` / `processedTerminalIds` prevent double-counting
+- [ ] **Idempotent recalculation**: VWAP computed from full order scan, not incremental
+- [ ] **Cancellation recovery**: Cancelled entry steps can be re-placed; cancelled TP can be recreated
+- [ ] **Single TP invariant**: (If applicable) Strategy never has more than one active TP order
+- [ ] **Risk limits enforced**: maxInvestment/maxPosition checked with each new order
+- [ ] **Unit tests cover all above cases**: Each edge case has a dedicated test
+- [ ] **Lint passes** (`pnpm lint`)
+- [ ] **Typecheck passes** (`pnpm typecheck`)
+- [ ] **Build passes** (`pnpm build`)
+- [ ] **All tests pass** (`pnpm test`)
+
+### 3. Anti-Patterns to Avoid
+
+- ❌ **Incremental VWAP**: `vwap += newFill * price` — breaks on out-of-order/duplicate pushes. Use full recalculation from all known orders.
+- ❌ **No dedup on FILLED**: Receiving FILLED twice creates phantom inventory. Always track `processedQuantity`.
+- ❌ **No stale check**: Processing an older update after a newer one corrupts state. Always compare `updateTime`.
+- ❌ **Assuming kline-driven**: Strategies that only act on kline events can't restart cycles after TP fills. Use order events as primary triggers.
+- ❌ **No recovery path**: If `processInitialData` doesn't rebuild state from open orders, the strategy is broken on restart.
+- ❌ **Subscription where REST suffices**: Don't subscribe to orderbook WebSocket if you only need a snapshot at init — use REST `fetchOrderBook` in `getInitialDataConfig`.
