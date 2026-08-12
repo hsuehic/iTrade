@@ -1781,6 +1781,110 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(state.referencePrice).toBe('102');
     });
 
+    it('should NOT recover stale inventory from orderHistory during reinit (TP storm prevention)', async () => {
+      // CRITICAL regression test: After TP fills and reinit is triggered,
+      // processInitialData must NOT recover FILLED entries from orderHistory.
+      // orderHistory contains entries from the PREVIOUS cycle. Recovering them
+      // rebuilds stale inventory/VWAP → TP placed at old price → immediate fill
+      // → TP storm → financial loss.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0, // dynamic — uses orderbook bid0
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 2,
+        }),
+      );
+
+      // Initial cycle: bid0=100, entry 0 at 99
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(99, 1);
+
+      // Fill entry 0 → TP at 99*1.02=100.98
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+      );
+      const fillResult = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const tpSignals = findTpSignals(fillResult);
+      expect(tpSignals).toHaveLength(1);
+
+      // TP fills
+      const tpFill = createOrder(
+        (tpSignals[0] as StrategyOrderResult).clientOrderId,
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        100.98,
+        0.1,
+        0.1,
+        100.98,
+      );
+      await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
+      expect(strategy.requiresReinitialization()).toBe(true);
+
+      // Reinit with FRESH orderbook AND orderHistory containing PREVIOUS cycle's FILLED entries.
+      // The strategy MUST NOT recover these stale entries.
+      const reinitResult = await strategy.processInitialData(
+        createInitialData({
+          orderBook: {
+            bids: [[new Decimal(102), new Decimal(1)]],
+            asks: [[new Decimal(102.1), new Decimal(1)]],
+            timestamp: new Date(),
+            symbol: 'BTC/USDT',
+            exchange: 'okx',
+          },
+          orderHistory: [
+            // Previous cycle's FILLED entry — MUST NOT be recovered
+            createOrder(
+              entrySignals[0].clientOrderId,
+              OrderSide.BUY,
+              OrderStatus.FILLED,
+              99,
+              0.1,
+              0.1,
+              99,
+            ),
+            // Previous cycle's FILLED TP — MUST NOT be recovered
+            createOrder(
+              (tpSignals[0] as StrategyOrderResult).clientOrderId,
+              OrderSide.SELL,
+              OrderStatus.FILLED,
+              100.98,
+              0.1,
+              0.1,
+              100.98,
+            ),
+          ],
+        }),
+      );
+
+      const state = strategy.getStrategyState();
+
+      // CRITICAL: inventory must be 0 (fresh cycle), NOT 0.1 (stale from previous cycle)
+      expect(parseFloat(state.inventoryQty)).toBe(0);
+
+      // VWAP must be 0 (fresh cycle), NOT 99 (stale)
+      expect(parseFloat(state.vwap)).toBe(0);
+
+      // No TP should be placed (no inventory → no TP)
+      const newTpSignals = findTpSignals(reinitResult);
+      expect(newTpSignals).toHaveLength(0);
+
+      // New entry 0 should be at fresh price: 102 - 1 = 101
+      const newEntries = findEntrySignals(reinitResult);
+      expect(newEntries.length).toBeGreaterThanOrEqual(1);
+      expect(newEntries[0].price!.toNumber()).toBeCloseTo(101, 1);
+    });
+
     it('should keep fixed basePrice unchanged after TP fill', async () => {
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({

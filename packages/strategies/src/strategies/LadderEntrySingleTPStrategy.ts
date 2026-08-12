@@ -1439,6 +1439,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   ): Promise<StrategyAnalyzeResult> {
     const signals: StrategyResult[] = [];
     this.referencePriceWasReversedFromTp = false;
+    const isReinit = this._needsReinit;
 
     // Step 1: Set reference price from REST orderbook if basePrice=0.
     // When _needsReinit=true (TP filled in previous cycle with basePrice=0),
@@ -1491,7 +1492,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // the referencePrice from it instead of using the fresh bid0. This ensures
     // the rebuilt ladder prices match the entry orders still on the exchange.
     // (Only when not _needsReinit — reinit starts a fresh cycle with fresh bid0.)
-    if (!this._needsReinit && initialData.openOrders) {
+    if (!isReinit && initialData.openOrders) {
       const tpOrder = initialData.openOrders.find(
         (o) =>
           o.symbol === this._symbol &&
@@ -1544,7 +1545,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // and its fill — bid0 may have moved, causing buildLadder to produce different
     // prices that don't match the existing entry order, leading to duplicate entries.
     // (Only when not _needsReinit — reinit starts a fresh cycle with fresh bid0.)
-    if (!this._needsReinit && initialData.openOrders) {
+    if (!isReinit && initialData.openOrders) {
       const entryOrder = initialData.openOrders.find(
         (o) =>
           o.symbol === this._symbol &&
@@ -1606,7 +1607,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
 
     // Step 3: Recover existing open orders
-    if (initialData.openOrders) {
+    // Skip during reinit — old cycle's orders are being cancelled by handleTpFilled.
+    // Recovering them into the new cycle would create stale inventory.
+    if (initialData.openOrders && !isReinit) {
       const ownedOrders = initialData.openOrders.filter((order) => {
         if (order.symbol !== this._symbol) return false;
         return (
@@ -1680,7 +1683,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // ladder steps have already filled, leading to duplicate entry orders
       // on restart. orderHistory is fetched via REST getOrderHistory and
       // contains recent FILLED / CANCELED / REJECTED / EXPIRED orders.
-      if (initialData.orderHistory) {
+      //
+      // CRITICAL: Skip during reinit (TP filled → new cycle). orderHistory
+      // contains FILLED entries from the PREVIOUS cycle. Recovering them
+      // would rebuild stale inventory/VWAP → place a TP at the old price →
+      // immediate fill → TP storm → financial loss.
+      if (initialData.orderHistory && !isReinit) {
         const ownedHistory = initialData.orderHistory.filter((order) => {
           if (order.symbol !== this._symbol) return false;
           return (
