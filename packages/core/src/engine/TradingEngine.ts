@@ -76,6 +76,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     balances?: Balance[];
     exchangeName?: string;
   }> = [];
+  // 🆕 Serialize onAccountUpdate calls. WS order updates call onAccountUpdate
+  // without await (fire-and-forget from exchange.on('orderUpdate')). Without
+  // serialization, concurrent calls can interleave analyze() → strategy state
+  // corruption (e.g. TP FILLED handler + delayed CANCELED handler racing on
+  // the same strategy instance → duplicate entry orders — Strategy 467 bug).
+  private _isProcessingAccountUpdate = false;
 
   // 🆕 Track which orders have been emitted as "created" to avoid duplicate OrderCreated events
   private readonly _emittedOrderCreated = new Set<string>();
@@ -1670,6 +1676,22 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     balances?: Balance[];
     exchangeName?: string;
   }): Promise<void> {
+    // 🆕 Serialize: if an onAccountUpdate is already in progress (e.g.
+    // processing a TP FILLED that triggers reinit with REST fetch), queue
+    // this update and return. The in-progress call will drain the queue
+    // after it finishes. Without this, concurrent WS events (e.g. TP FILLED
+    // followed immediately by entry CANCELED) can interleave analyze() calls
+    // on the same strategy → state corruption → duplicate entry orders.
+    if (this._isProcessingAccountUpdate) {
+      this._pendingAccountUpdates.push(accountData);
+      this.logger.debug(
+        `📤 [onAccountUpdate] Already processing — queued update ` +
+          `(${this._pendingAccountUpdates.length} pending)`,
+      );
+      return;
+    }
+
+    this._isProcessingAccountUpdate = true;
     try {
       if (!this._isRunning) {
         this.enqueueAccountUpdate(accountData);
@@ -1741,6 +1763,18 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
     } catch (error) {
       this.logger.error('Error processing account data update', error as Error);
+    } finally {
+      this._isProcessingAccountUpdate = false;
+    }
+
+    // Drain any updates that were queued while we were processing.
+    // This ensures no WS event is lost — it's just deferred until the
+    // previous onAccountUpdate (and its reinit) completes.
+    if (this._pendingAccountUpdates.length > 0 && this._isRunning) {
+      const pending = this._pendingAccountUpdates.splice(0);
+      for (const update of pending) {
+        await this.onAccountUpdate(update);
+      }
     }
   }
 
