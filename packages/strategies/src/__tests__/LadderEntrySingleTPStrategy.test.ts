@@ -857,6 +857,122 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(delayedSignals).toHaveLength(1);
       expect(delayedSignals[0].action).toBe('hold');
     });
+
+    it('should not place duplicate entry when entry was cancelled before TP fill (DeepSeek-pro C1)', async () => {
+      // Scenario: entry step 1 was CANCELED (no fill) before TP filled.
+      // The terminal handler deletes it from this.orders, orderMetadataMap,
+      // and pendingClientOrderIds. It remains ONLY in processedTerminalIds.
+      // When TP fills, handleTpFilled must blacklist it from
+      // processedTerminalIds too, otherwise a delayed CANCELED push would
+      // be resurrected via ensureRecoveredMetadata → placeLadderEntries.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(initResult);
+
+      // Fill entry 0 → entry 1 placed + TP placed
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+      );
+      const result0 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entry1Signals = findEntrySignals(result0);
+      const tp0 = findTpSignals(result0);
+      const tpClientId = (tp0[0] as StrategyOrderResult).clientOrderId;
+      const entry1ClientId = entry1Signals[0].clientOrderId;
+
+      // Entry 1 gets CANCELED (no fill) — terminal handler removes it from
+      // this.orders, orderMetadataMap, pendingClientOrderIds.
+      // It remains only in processedTerminalIds.
+      // shouldRefreshLadder=true → places entry 1 again (new clientOrderId)
+      const entry1Cancel = createOrder(
+        entry1ClientId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        98,
+        0.1,
+        0,
+        undefined,
+      );
+      const cancelResult = await strategy.analyze(
+        createDataUpdate({ orders: [entry1Cancel] }),
+      );
+      // Entry 1 re-placed after cancel (sequential mode: step 1 not filled)
+      const reEntrySignals = findEntrySignals(cancelResult);
+      expect(reEntrySignals.length).toBe(1);
+      const entry1ReClientId = reEntrySignals[0].clientOrderId;
+
+      // Now TP fills → cancel entry1ReClientId
+      const tpFill = createOrder(
+        tpClientId,
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        99.99,
+        0.1,
+        0.1,
+        99.99,
+      );
+      const tpResult = await strategy.analyze(createDataUpdate({ orders: [tpFill] }));
+
+      // TP fill should produce: 1 cancel (re-placed entry 1) + 1 new entry (new cycle)
+      const cancelSignals = findCancelSignals(tpResult);
+      const newEntrySignals = findEntrySignals(tpResult);
+      expect(cancelSignals.length).toBe(1);
+      expect(newEntrySignals.length).toBe(1);
+
+      // CRITICAL: Simulate delayed WS CANCELED push for the original entry1ClientId
+      // (the one that was cancelled before TP fill).
+      // It's NOT in previousCycleOrderIds from this.orders/orderMetadataMap/pendingClientOrderIds
+      // because the terminal handler already deleted it. It's ONLY in processedTerminalIds.
+      // If handleTpFilled doesn't blacklist from processedTerminalIds, this push
+      // would be resurrected and trigger a duplicate entry.
+      const delayedCancel = createOrder(
+        entry1ClientId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        98,
+        0.1,
+        0,
+        undefined,
+      );
+      const delayedResult = await strategy.analyze(
+        createDataUpdate({ orders: [delayedCancel] }),
+      );
+      const delayedSignals = toSignalArray(delayedResult);
+      expect(delayedSignals).toHaveLength(1);
+      expect(delayedSignals[0].action).toBe('hold');
+
+      // Also verify the re-placed entry's CANCELED push is blacklisted
+      const delayedReCancel = createOrder(
+        entry1ReClientId,
+        OrderSide.BUY,
+        OrderStatus.CANCELED,
+        98,
+        0.1,
+        0,
+        undefined,
+      );
+      const delayedReResult = await strategy.analyze(
+        createDataUpdate({ orders: [delayedReCancel] }),
+      );
+      const delayedReSignals = toSignalArray(delayedReResult);
+      expect(delayedReSignals).toHaveLength(1);
+      expect(delayedReSignals[0].action).toBe('hold');
+    });
   });
 
   describe('Stop/restart recovery', () => {

@@ -1178,15 +1178,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private handleTpFilled(order: Order): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
-    // CRITICAL: Collect ALL current-cycle order IDs (from this.orders,
-    // orderMetadataMap, and pendingClientOrderIds) and add them to
-    // previousCycleOrderIds BEFORE generating cancel signals. Previously,
-    // cancelAllEntryOrders/cancelAllTpOrders deleted pending orders from
-    // pendingClientOrderIds and orderMetadataMap before resetLadder ran.
-    // Those pending order IDs were then NOT blacklisted, and a delayed WS
-    // CANCELED push would be re-processed via ensureRecoveredMetadata →
-    // shouldRefreshLadder → placeLadderEntries → DUPLICATE ENTRY ORDER.
-    // (Strategy 467 bug: E467D1D + E467D2D placed at same time after TP fill.)
+    // CRITICAL: Collect ALL current-cycle order IDs from EVERY tracking map
+    // and add them to previousCycleOrderIds BEFORE generating cancel signals.
+    // Previously (Strategy 467 bug), cancelAllEntryOrders/cancelAllTpOrders
+    // deleted pending orders from pendingClientOrderIds and orderMetadataMap
+    // before resetLadder ran → those IDs were NOT blacklisted → delayed WS
+    // CANCELED push re-processed via ensureRecoveredMetadata → placeLadderEntries
+    // → DUPLICATE ENTRY ORDER.
+    // Additionally, terminal orders (CANCELED/REJECTED/EXPIRED) may exist ONLY
+    // in processedTerminalIds or processedQuantityMap (already deleted from
+    // this.orders, orderMetadataMap, pendingClientOrderIds by the terminal
+    // handler). These must also be blacklisted to prevent ensureRecoveredMetadata
+    // from resurrecting them on delayed WS pushes.
     for (const coid of this.orders.keys()) {
       this.previousCycleOrderIds.add(coid);
     }
@@ -1194,6 +1197,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       this.previousCycleOrderIds.add(coid);
     }
     for (const coid of this.pendingClientOrderIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    for (const coid of this.processedTerminalIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    for (const coid of this.processedQuantityMap.keys()) {
       this.previousCycleOrderIds.add(coid);
     }
 
