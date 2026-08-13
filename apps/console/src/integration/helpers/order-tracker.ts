@@ -330,24 +330,28 @@ export class OrderTracker {
       }
 
       this.totalPartialFills++;
-      const mergedOrder = this.mergeWithExistingOrder(order);
 
-      // Skip if the order has already reached a terminal state (e.g. a late
-      // PARTIALLY_FILLED WS event arriving after FILLED/CANCELED/REJECTED).
-      // The terminal handler already sent the final notification.
+      // Check EXISTING status BEFORE merge — mergeWithExistingOrder spreads
+      // {...existingOrder, ...order}, so the incoming event's status would
+      // overwrite a terminal status (FILLED/CANCELED/REJECTED). We must guard
+      // against late PARTIALLY_FILLED WS events arriving after the order has
+      // already terminated; otherwise the terminal status gets corrupted.
+      const existingOrder = this.orderManager.getOrder(order.id);
       if (
-        mergedOrder.status === 'FILLED' ||
-        mergedOrder.status === 'CANCELED' ||
-        mergedOrder.status === 'REJECTED'
+        existingOrder &&
+        (existingOrder.status === 'FILLED' ||
+          existingOrder.status === 'CANCELED' ||
+          existingOrder.status === 'REJECTED')
       ) {
         return;
       }
+
+      const mergedOrder = this.mergeWithExistingOrder(order);
 
       // Keep OrderManager current with partial-fill progress so that
       // concurrent reads (portfolio snapshots, strategy logic) see the
       // latest executedQuantity / averagePrice. Every other handler in this
       // file updates OrderManager — this one was missing it.
-      const existingOrder = this.orderManager.getOrder(mergedOrder.id);
       if (existingOrder) {
         this.orderManager.updateOrder(mergedOrder.id, mergedOrder);
       } else {
@@ -432,6 +436,24 @@ export class OrderTracker {
       });
 
       this.totalPartialFillsSaved++;
+
+      // Second re-check: a terminal event (FILLED / CANCELED / REJECTED) may
+      // have fired during the saveOrder await above. The terminal handler
+      // deletes the pendingPartialFills entry and sends its own notification.
+      // If the entry is gone OR the order is now in a terminal state, we must
+      // not send a duplicate partial notification.
+      if (!this.pendingPartialFills.has(orderId)) return;
+      const currentOrder = this.orderManager.getOrder(order.id);
+      if (
+        currentOrder &&
+        (currentOrder.status === 'FILLED' ||
+          currentOrder.status === 'CANCELED' ||
+          currentOrder.status === 'REJECTED')
+      ) {
+        this.pendingPartialFills.delete(orderId);
+        return;
+      }
+
       this.pendingPartialFills.delete(orderId);
 
       await this.pushNotificationService?.notifyOrderUpdate(order, 'partial');
