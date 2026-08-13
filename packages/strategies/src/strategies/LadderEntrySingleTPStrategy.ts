@@ -86,6 +86,16 @@ export interface LadderEntrySingleTPParameters extends StrategyParameters {
 
   /** Leverage for futures trading */
   leverage?: number;
+
+  /**
+   * Reset interval in minutes.
+   * When the strategy has only entry 0 (status=NEW, unfilled) and the specified
+   * time has elapsed since entry 0 was placed, the strategy cancels entry 0,
+   * re-fetches the orderbook, rebuilds the ladder with the fresh bid0, and
+   * places a new entry 0.
+   * 0 = never reset (keep entry 0 until it fills or market triggers other actions).
+   */
+  resetInterval: number;
 }
 
 export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<LadderEntrySingleTPParameters> =
@@ -114,6 +124,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
       maxInvestment: 1000,
       maxPosition: 10,
       leverage: 10,
+      resetInterval: 0,
     },
     parameterDefinitions: [
       {
@@ -289,6 +300,19 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         group: 'Risk Management',
         order: 14,
       },
+      {
+        name: 'resetInterval',
+        type: 'enum',
+        description:
+          'Reset interval in minutes. When only entry 0 (status=NEW, unfilled) exists and the specified time has elapsed, ' +
+          'the strategy cancels entry 0, re-fetches orderbook, rebuilds ladder with fresh bid0, and places a new entry 0. ' +
+          '0 = never reset.',
+        defaultValue: 0,
+        required: false,
+        validation: { options: ['0', '5', '15', '30', '60', '1440'] },
+        group: 'Reset',
+        order: 15,
+      },
     ],
     subscriptionRequirements: {},
     initialDataRequirements: {
@@ -316,18 +340,21 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
       overview:
         'Ladder entry with single take-profit strategy. Uses bid0 (or fixed basePrice) as reference, places BUY limit orders in arithmetic/geometric ladder steps. ' +
         'TP SELL limit order is updated immediately on each entry fill (including partial fills). ' +
-        'On TP fully filled, cancels all remaining entries and rebuilds the ladder with latest bid0 to start a new cycle. ' +
-        'Does not subscribe to orderbook WebSocket; fetches bid0 via REST only on initialization and cycle restart.',
+        'On TP fully filled, cancels all remaining entries and rebuilds the ladder with latest bid0 to start new cycle. ' +
+        'resetInterval: if entry 0 stays unfilled for the specified time, cancels entry 0, re-fetches bid0, rebuilds ladder (0=never reset). ' +
+        'Does not subscribe to orderbook WebSocket; fetches bid0 via REST only on initialization, cycle restart, and reset.',
       parameters:
         'basePrice(0=bid0 via REST) + ladderSteps + stepType/stepValue define ladder prices (arithmetic=base-stepValue*(i+1), geometric=base*(1-stepValue/100)^(i+1)); ' +
         'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio define ladder quantities; ' +
         'tpType + tpAbsoluteProfit/tpPercent define take-profit condition; ' +
-        'maxInvestment * leverage = total buying power; maxPosition = max position size.',
+        'maxInvestment * leverage = total buying power; maxPosition = max position size; ' +
+        'resetInterval: minutes before auto-resetting stale entry 0 (0=never, 5/15/30/60/1440).',
       signals:
         'On start: Fetch orderbook bid0 via REST → build ladder → place first BUY limit entry order (sequential: next entry placed only after current one fills).\n' +
         'Entry fill (incl. partial): Recalculate VWAP → update TP (cancel old TP → place new TP, qty=current inventory, price=VWAP±profit target).\n' +
         'TP partial fill: No action taken (TP state managed by exchange).\n' +
-        'TP fully filled: Cancel all remaining entries → rebuild ladder with latest bid0 → start new cycle.\n' +
+        'TP fully filled: cancel all remaining entries → rebuild ladder with latest bid0 → start new cycle.\n' +
+        'resetInterval elapsed (entry 0 still NEW): cancel entry 0 → re-fetch bid0 → rebuild ladder → place new entry 0.\n' +
         'Stop/restart: processInitialData recovers all strategy orders via REST fetchOpenOrders → recalculate VWAP/inventory → restore TP + re-place unfilled entries.',
       riskFactors: [
         'Ladder buying in a downtrend accumulates position and may hit maxPosition limit',
@@ -379,6 +406,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private maxInvestment: Decimal;
   private maxPosition: Decimal;
   private leverage: number;
+  private resetInterval: number; // minutes; 0 = never reset
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
   /** Ladder configuration (precomputed prices + quantities) */
@@ -443,6 +471,34 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private _needsReinit = false;
   private referencePriceWasReversedFromTp = false;
 
+  /**
+   * Timestamp (ms) when the current entry 0 order was placed.
+   * Used by the resetInterval feature: if only entry 0 (status=NEW) is pending
+   * and resetInterval minutes have elapsed, the strategy cancels entry 0,
+   * re-fetches orderbook, and rebuilds the ladder with a fresh bid0.
+   * Reset to 0 on resetLadder, onCleanup, and after a successful reset.
+   */
+  private entry0PlacedTime = 0;
+
+  /**
+   * Flag set by checkAndPerformReset to indicate that the current
+   * previousCycleOrderIds entries are from a reset-cancel (not a TP-filled
+   * cycle switch). This allows handleOrderUpdates to process FILLED pushes
+   * for reset-cancelled orders — if entry 0 filled on the exchange just
+   * before our cancel arrived, we MUST process the fill to avoid an
+   * orphaned position with no TP (unlimited market risk).
+   * Cleared when a new entry 0 is placed (placeLadderEntries) or on cleanup.
+   */
+  private resetCancelPending = false;
+
+  /**
+   * Timestamp of the last resetInterval-triggered reset. Used to limit the
+   * orphan-fill recovery window in handleOrderUpdates: only recover blacklisted
+   * fills within 30s after a reset (after that, late pushes are TP-filled cycle
+   * switches, not reset-cancel race-fills). Cleared in onCleanup.
+   */
+  private _lastResetTime = 0;
+
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
     const { parameters } = config;
@@ -461,6 +517,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.maxInvestment = new Decimal(parameters.maxInvestment);
     this.maxPosition = new Decimal(parameters.maxPosition);
     this.leverage = parameters.leverage ?? 10;
+    this.resetInterval = parameters.resetInterval ?? 0;
 
     // Validate
     if (this.maxInvestment.lte(0)) {
@@ -566,6 +623,19 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.pendingClientOrderIds.clear();
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
+    this.entry0PlacedTime = 0;
+
+    // Cap previousCycleOrderIds to prevent unbounded growth over long-running
+    // strategies. Keep the most recent 200 entries (sufficient to cover all
+    // delayed WS pushes). Older entries are unlikely to receive late pushes.
+    if (this.previousCycleOrderIds.size > 200) {
+      const excess = this.previousCycleOrderIds.size - 200;
+      let removed = 0;
+      for (const id of this.previousCycleOrderIds) {
+        this.previousCycleOrderIds.delete(id);
+        if (++removed >= excess) break;
+      }
+    }
   }
 
   /**
@@ -965,6 +1035,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // Place this step's entry order and stop — only one at a time.
       const signal = this.generateEntrySignal(step);
       step.entryClientOrderId = signal.clientOrderId;
+
+      // Track when entry 0 is placed for the resetInterval feature.
+      // Also clear resetCancelPending — if we got here, a new entry 0 has been
+      // placed (either via processInitialData reinit or normal cycle start).
+      // The reset-cancel window is over.
+      if (step.index === 0) {
+        this.entry0PlacedTime = Date.now();
+        this.resetCancelPending = false;
+      }
+
       signals.push(signal);
       this._logger.debug(
         `[placeLadderEntries] Placed step ${step.index}: ${step.quantity.toString()} @ ${step.price.toString()}`,
@@ -1270,7 +1350,83 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // orders would be re-processed as new fills — contaminating VWAP/inventory
       // and triggering TP storms. previousCycleOrderIds is populated in
       // resetLadder with all clientOrderIds from the completed cycle.
-      if (this.previousCycleOrderIds.has(order.clientOrderId)) continue;
+      //
+      // EXCEPTION (reset-cancel race condition): If resetCancelPending is true
+      // (set by checkAndPerformReset) and a blacklisted order arrives as FILLED
+      // or PARTIALLY_FILLED with executedQuantity > 0, it means entry 0 filled
+      // on the exchange just before (or despite) our cancel request. We MUST
+      // process this fill — otherwise we get an orphaned position with no TP
+      // order, exposing us to unlimited market risk.
+      // This exception does NOT apply to TP-filled cycle switches (where
+      // resetCancelPending is false) — in that case ALL blacklisted orders are
+      // skipped unconditionally to prevent TP storms.
+      if (this.previousCycleOrderIds.has(order.clientOrderId)) {
+        if (this.resetCancelPending) {
+          const hasExecQty = order.executedQuantity && order.executedQuantity.gt(0);
+          // Accept FILLED, PARTIALLY_FILLED, and terminal CANCELED/EXPIRED with
+          // execQty>0. A CANCELED order with executedQuantity>0 means entry 0
+          // was partially filled before the cancel arrived — we MUST process
+          // that fill to avoid orphaned inventory with no TP.
+          const isFilledOrPartial =
+            order.status === OrderStatus.FILLED ||
+            order.status === OrderStatus.PARTIALLY_FILLED ||
+            ((order.status === OrderStatus.CANCELED ||
+              order.status === OrderStatus.EXPIRED) &&
+              hasExecQty);
+          if (isFilledOrPartial && hasExecQty) {
+            // Race condition: entry 0 filled despite reset-cancel.
+            // Remove from blacklist and process normally to recover the fill.
+            // Clear _needsReinit — entry 0 filled, price was valid, no need
+            // to re-fetch orderbook. handleEntryFilled will place TP + entry 1.
+            // Clear resetCancelPending — race is resolved, no longer pending.
+            this.previousCycleOrderIds.delete(order.clientOrderId);
+            this._needsReinit = false;
+            this.resetCancelPending = false;
+            this._logger.warn(
+              `[handleOrderUpdates] Blacklisted order ${order.clientOrderId} ` +
+                `arrived as ${order.status} (execQty=${order.executedQuantity?.toString() ?? '0'}) — ` +
+                `processing fill (reset-cancel race condition). Cleared _needsReinit and resetCancelPending.`,
+            );
+          } else {
+            continue;
+          }
+        } else {
+          // TP-filled cycle switch OR post-reinit late push.
+          // Skip blacklisted orders unconditionally to prevent TP storms...
+          // EXCEPT: if the order has executedQuantity>0, inventory is empty,
+          // AND we're within 30s of a resetInterval-triggered reset — this is
+          // an orphaned fill from a reset-cancel race-fill that arrived AFTER
+          // reinit completed. Without this recovery, the fill is lost →
+          // orphaned position with no TP.
+          // (When inventoryQty>0, it's a normal TP-filled cycle switch — old
+          // cycle's entries already have fills that are accounted for. When
+          // >30s since last reset, it's a delayed TP-cycle push, not a reset
+          // race-fill.)
+          const hasExecQty = order.executedQuantity && order.executedQuantity.gt(0);
+          const withinResetWindow =
+            this._lastResetTime > 0 && Date.now() - this._lastResetTime < 30_000;
+          const isOrphanedResetFill =
+            (order.status === OrderStatus.FILLED ||
+              order.status === OrderStatus.PARTIALLY_FILLED ||
+              ((order.status === OrderStatus.CANCELED ||
+                order.status === OrderStatus.EXPIRED) &&
+                hasExecQty)) &&
+            hasExecQty &&
+            this.inventoryQty.isZero() &&
+            withinResetWindow;
+          if (isOrphanedResetFill) {
+            this.previousCycleOrderIds.delete(order.clientOrderId);
+            this._logger.warn(
+              `[handleOrderUpdates] Blacklisted order ${order.clientOrderId} ` +
+                `arrived as ${order.status} (execQty=${order.executedQuantity?.toString() ?? '0'}) ` +
+                `post-reinit with inventoryQty=0 — recovering orphaned fill.`,
+            );
+            // Continue to normal processing below
+          } else {
+            continue;
+          }
+        }
+      }
 
       let metadata = this.orderMetadataMap.get(order.clientOrderId);
       if (!metadata) {
@@ -1566,6 +1722,22 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // and rebuild the ladder with the updated reference price.
     if (this._needsReinit) {
       this._needsReinit = false;
+      // Clear resetCancelPending: reinit is a synchronous block — between
+      // resetLadder() and placeLadderEntries(), no WS push can arrive.
+      // Also clear _lastResetTime: the orphan-fill recovery (Path B) in
+      // handleOrderUpdates should NOT fire after reinit, because reinit
+      // places a new entry 0 — if the old entry 0's late FILLED is then
+      // processed via Path B, it would create duplicate inventory alongside
+      // the new entry 0. Path A (resetCancelPending=true) covers the
+      // pre-reinit race window; post-reinit late FILLED is correctly
+      // skipped (blacklisted + resetCancelPending=false + no _lastResetTime).
+      this.resetCancelPending = false;
+      this._lastResetTime = 0;
+      // Full state reset: clear all tracking maps so stale data from the
+      // previous cycle (old ladder, legs, pending cancels) doesn't contaminate
+      // the new cycle. resetLadder also adds all current order IDs to
+      // previousCycleOrderIds to handle delayed WS pushes.
+      this.resetLadder();
       if (initialData.orderBook) {
         const freshBid0 = initialData.orderBook.bids?.[0]?.[0];
         if (freshBid0 && freshBid0.gt(0)) {
@@ -1789,6 +1961,35 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
           if (metadata.signalType === SignalType.Entry) {
             metadata.entryPrice = (order.averagePrice || order.price)?.toString();
+          }
+        }
+      }
+
+      // Restore entry0PlacedTime for resetInterval feature.
+      // On restart, entry0PlacedTime is 0 (constructor default), which disables
+      // the reset check. If entry 0 is active (NEW/PARTIALLY_FILLED) and is the
+      // only active entry, restore the timestamp so resetInterval continues to
+      // work after restart. Use order.updateTime if available (exchange-side),
+      // otherwise fall back to Date.now() (conservative — may delay first reset).
+      if (
+        this.resetInterval > 0 &&
+        this.entry0PlacedTime === 0 &&
+        this.steps.length > 0
+      ) {
+        const step0 = this.steps[0];
+        if (step0.entryClientOrderId) {
+          const entry0Order = this.orders.get(step0.entryClientOrderId);
+          if (
+            entry0Order &&
+            (entry0Order.status === OrderStatus.NEW ||
+              entry0Order.status === OrderStatus.PARTIALLY_FILLED)
+          ) {
+            // Use updateTime from exchange if available, otherwise Date.now()
+            this.entry0PlacedTime = entry0Order.updateTime?.getTime() ?? Date.now();
+            this._logger.debug(
+              `[processInitialData] Restored entry0PlacedTime=${new Date(this.entry0PlacedTime).toISOString()} ` +
+                `from recovered entry 0 (status=${entry0Order.status})`,
+            );
           }
         }
       }
@@ -2160,6 +2361,136 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   }
 
   /**
+   * Check if the resetInterval condition is met and perform the reset.
+   *
+   * Reset condition: ALL of the following must be true:
+   * 1. resetInterval > 0 (feature enabled)
+   * 2. inventoryQty = 0 (no filled entries)
+   * 3. No active TP order (no inventory → no TP)
+   * 4. Entry 0 exists and its order status is NEW (unfilled, not even partial)
+   * 5. No other entries are active (only entry 0 is pending)
+   * 6. entry0PlacedTime > 0 and the elapsed time >= resetInterval minutes
+   *
+   * Reset action:
+   * 1. Cancel entry 0's order
+   * 2. Clear all tracking state (resetLadder) to prevent stale data contamination
+   * 3. Clear any pending TP debounce state
+   * 4. Set _needsReinit=true → engine re-fetches orderbook and re-runs processInitialData
+   *
+   * Note: Reset is only meaningful when basePrice=0 (dynamic bid0). When basePrice>0
+   * (fixed price), rebuilding the ladder produces identical prices, so reset is skipped.
+   *
+   * @returns StrategyResult[] containing cancel signal if reset was triggered, empty otherwise
+   */
+  private checkAndPerformReset(): StrategyResult[] {
+    if (this.resetInterval <= 0) return [];
+    // Reset is only meaningful for dynamic price (basePrice=0). For fixed price,
+    // rebuilding produces identical prices — skip to avoid pointless cancel+place.
+    if (this.basePrice.gt(0)) return [];
+    if (this.entry0PlacedTime <= 0) return [];
+    if (this.inventoryQty.gt(0)) return [];
+    if (this.tpClientOrderId) return [];
+
+    // Check elapsed time
+    const elapsedMs = Date.now() - this.entry0PlacedTime;
+    const intervalMs = this.resetInterval * 60 * 1000;
+    if (elapsedMs < intervalMs) return [];
+
+    // Find entry 0's active order
+    if (this.steps.length === 0) return [];
+    const step0 = this.steps[0];
+    if (!step0.entryClientOrderId) return [];
+
+    const entry0Order = this.orders.get(step0.entryClientOrderId);
+    if (!entry0Order) return [];
+    if (entry0Order.status !== OrderStatus.NEW) return [];
+
+    // Verify NO other entries are active (only entry 0 should be pending)
+    for (let i = 1; i < this.steps.length; i++) {
+      const step = this.steps[i];
+      if (step.entryClientOrderId) {
+        const ord = this.orders.get(step.entryClientOrderId);
+        if (
+          ord &&
+          (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
+        ) {
+          // Another entry is active — not a clean entry-0-only state
+          return [];
+        }
+      }
+    }
+
+    // Also check pendingClientOrderIds for any entry signals not yet linked to steps
+    for (const coid of this.pendingClientOrderIds) {
+      const meta = this.orderMetadataMap.get(coid);
+      if (!meta || meta.signalType !== SignalType.Entry) continue;
+      if (coid === step0.entryClientOrderId) continue; // entry 0 itself
+      const ord = this.orders.get(coid);
+      if (
+        !ord ||
+        ord.status === OrderStatus.NEW ||
+        ord.status === OrderStatus.PARTIALLY_FILLED
+      ) {
+        // Untracked active entry found — abort reset
+        this._logger.warn(
+          `[checkAndPerformReset] Found untracked active entry ${coid}, aborting reset`,
+        );
+        return [];
+      }
+    }
+
+    // Reset condition met — cancel entry 0 and rebuild
+    this._logger.info(
+      `[checkAndPerformReset] Reset triggered: entry 0 has been pending for ${Math.floor(elapsedMs / 1000)}s ` +
+        `(resetInterval=${this.resetInterval}min). Cancelling entry 0.`,
+    );
+
+    const signals: StrategyResult[] = [];
+
+    // Set resetCancelPending so handleOrderUpdates knows this is a reset-cancel
+    // (not a TP-filled cycle switch) and can process FILLED pushes as a race
+    // condition exception (entry 0 may have filled just before cancel arrived).
+    // resetCancelPending is cleared in processInitialData (reinit) and placeLadderEntries.
+    this.resetCancelPending = true;
+    this._lastResetTime = Date.now();
+
+    // Blacklist entry 0's clientOrderId so handleOrderUpdates can detect
+    // the race-fill (entry 0 filled before cancel arrived). Without this,
+    // race-fill goes through normal path without clearing _needsReinit →
+    // processInitialData reinit wipes the fill's TP/entry 1.
+    // (resetLadder is NOT called here, so we must add manually.)
+    this.previousCycleOrderIds.add(step0.entryClientOrderId);
+
+    // Cancel entry 0. resetLadder() in processInitialData's reinit path will
+    // clear all tracking maps and add remaining IDs to previousCycleOrderIds.
+    signals.push(
+      this.generateCancelSignal(step0.entryClientOrderId, 'ladder_reset_interval'),
+    );
+
+    // Clear any pending TP debounce state (defensive — reset condition requires
+    // no TP, but tpRefreshPending may be stale from a prior partial fill)
+    this.tpRefreshPending = false;
+    this.lastPartialFillTpTriggerTime = 0;
+
+    // Do NOT call resetLadder() here. If entry 0 race-fills (cancel arrives at
+    // exchange after fill), handleOrderUpdates needs orderMetadataMap intact
+    // to process the fill. resetLadder() would clear maps → fill lost → orphaned
+    // position. Instead, resetLadder() is deferred to processInitialData's reinit
+    // path (normal case: cancel succeeded, no race-fill). In the race-fill case,
+    // handleOrderUpdates clears _needsReinit and processes the fill normally.
+
+    // Request engine to re-fetch orderbook via REST and re-run processInitialData
+    // with a fresh bid0. The new cycle's ladder will be built with the updated price.
+    this._needsReinit = true;
+    this._logger.debug(
+      `[checkAndPerformReset] Set _needsReinit=true. ` +
+        `Engine will re-fetch orderbook and rebuild ladder with fresh bid0.`,
+    );
+
+    return signals;
+  }
+
+  /**
    * Analyze real-time data updates.
    * No orderbook subscription — only processes order updates from WebSocket.
    */
@@ -2181,6 +2512,20 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         );
         tpDebounceSignals.push(...this.refreshTakeProfit());
       }
+    }
+
+    // Check if the resetInterval feature should trigger a reset.
+    // This runs BEFORE processing order updates so that a reset (cancel entry 0
+    // + rebuild) takes priority over handling incoming WS pushes for entry 0.
+    const resetSignals = this.checkAndPerformReset();
+    if (resetSignals.length > 0) {
+      // Reset triggered — return immediately. The engine will process cancel
+      // signals, and if _needsReinit is true, re-fetch orderbook and re-run
+      // processInitialData. Any WS orders in this dataUpdate will be processed
+      // in the next analyze() call after reinit completes.
+      // Note: handleOrderUpdates has a FILLED exception for blacklisted orders
+      // to prevent losing fills that happened just before the cancel was sent.
+      return resetSignals;
     }
 
     // Only handle order updates (no orderbook/kline subscription)
@@ -2212,6 +2557,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpRefreshPending = false;
     this.lastPartialFillTpTriggerTime = 0;
     this._needsReinit = false;
+    this.entry0PlacedTime = 0;
+    this.resetCancelPending = false;
+    this._lastResetTime = 0;
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }
@@ -2234,6 +2582,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       vwap: this.vwap.toString(),
       tpClientOrderId: this.tpClientOrderId,
       tpPrice: this.computeTpPrice()?.toString() ?? null,
+      resetInterval: this.resetInterval,
+      entry0PlacedTime:
+        this.entry0PlacedTime > 0 ? new Date(this.entry0PlacedTime).toISOString() : null,
+      resetCancelPending: this.resetCancelPending,
+      lastResetTime:
+        this._lastResetTime > 0 ? new Date(this._lastResetTime).toISOString() : null,
       steps: this.steps.map((s) => ({
         index: s.index,
         price: s.price.toString(),
