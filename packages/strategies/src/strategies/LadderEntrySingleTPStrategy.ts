@@ -499,6 +499,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    */
   private _lastResetTime = 0;
 
+  /**
+   * Best ask (ask0) from the most recent REST orderbook fetch.
+   * Used to cap TP sell price at min(ask0, expectedTpPrice) to ensure
+   * TP orders are placed at or below the current market ask, avoiding
+   * inventory accumulation from unfilled high-priced TP orders.
+   * Updated in processInitialData from initialData.orderBook.asks[0].
+   * 0 = unknown (initial state or no orderbook available).
+   */
+  private _currentAsk0: Decimal = new Decimal(0);
+
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
     const { parameters } = config;
@@ -624,6 +634,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
     this.entry0PlacedTime = 0;
+    this._currentAsk0 = new Decimal(0);
 
     // Cap previousCycleOrderIds to prevent unbounded growth over long-running
     // strategies. Keep the most recent 200 entries (sufficient to cover all
@@ -779,16 +790,37 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * Compute the TP sell price based on tpType and current VWAP.
    * - 'absolute': TP price = VWAP + tpAbsoluteProfit / inventoryQty
    * - 'percent':  TP price = VWAP * (1 + tpPercent/100)
+   *
+   * If _currentAsk0 > 0, the TP price is capped at min(ask0, tpPrice) to
+   * ensure the TP order is placed at or below the current market ask price.
+   * This prevents inventory accumulation from unfilled high-priced TP orders
+   * (e.g., when VWAP + profit target exceeds the current ask, the TP would
+   * be a maker order far above market that never fills → position stuck).
    */
   private computeTpPrice(): Decimal | null {
     if (this.inventoryQty.lte(0) || this.vwap.lte(0)) return null;
 
+    let tpPrice: Decimal;
     if (this.tpType === 'absolute') {
       if (this.tpAbsoluteProfit.lte(0)) return null;
-      return this.vwap.plus(this.tpAbsoluteProfit.div(this.inventoryQty));
+      tpPrice = this.vwap.plus(this.tpAbsoluteProfit.div(this.inventoryQty));
+    } else {
+      if (this.tpPercent.lte(0)) return null;
+      tpPrice = this.vwap.mul(new Decimal(1).plus(this.tpPercent.div(100)));
     }
-    if (this.tpPercent.lte(0)) return null;
-    return this.vwap.mul(new Decimal(1).plus(this.tpPercent.div(100)));
+
+    // Cap TP price at min(ask0, tpPrice) to avoid inventory accumulation.
+    // If ask0 is known and tpPrice > ask0, use ask0 instead — this ensures
+    // the TP order fills immediately (taker) rather than sitting unfilled
+    // above the market.
+    if (this._currentAsk0.gt(0) && tpPrice.gt(this._currentAsk0)) {
+      this._logger.debug(
+        `[computeTpPrice] Capping TP at min(ask0=${this._currentAsk0.toString()}, tpPrice=${tpPrice.toString()}) → ${this._currentAsk0.toString()}`,
+      );
+      return this._currentAsk0;
+    }
+
+    return tpPrice;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1750,6 +1782,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
             `[processInitialData] Reinit: orderbook fetched but bid0 is empty/invalid. Keeping stale reference: ${this.referencePrice.toString()}`,
           );
         }
+        // Capture ask0 for TP price capping
+        const freshAsk0 = initialData.orderBook.asks?.[0]?.[0];
+        if (freshAsk0 && freshAsk0.gt(0)) {
+          this._currentAsk0 = freshAsk0;
+        }
       } else {
         this._logger.warn(
           `[processInitialData] Reinit: no orderBook in initialData. Keeping stale reference: ${this.referencePrice.toString()}`,
@@ -1766,6 +1803,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         this._logger.debug(
           `[processInitialData] Reference price from REST orderbook bid0: ${this.referencePrice.toString()}`,
         );
+      }
+      // Capture ask0 for TP price capping
+      const ask0 = initialData.orderBook.asks?.[0]?.[0];
+      if (ask0 && ask0.gt(0)) {
+        this._currentAsk0 = ask0;
       }
     }
 
@@ -2046,13 +2088,160 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
               this.previousCycleOrderIds.add(order.clientOrderId);
             }
           }
-          // Recalculate VWAP from openOrders recovery only (Step 4 result).
-          // Do NOT recover any FILLED entries from orderHistory.
-          this._logger.info(
-            `[processInitialData] Found FILLED TP in orderHistory — previous cycle completed. ` +
-              `Skipping orderHistory entry recovery to prevent TP storm. ` +
-              `Blacklisted ${ownedHistory.length} old-cycle orders.`,
-          );
+
+          // CRITICAL FIX: Before skipping all recovery, check if there is REAL
+          // unsold inventory from the current (incomplete) cycle.
+          //
+          // hasFilledTpInHistory detects FILLED TPs from PREVIOUS cycles. But
+          // the CURRENT cycle may have a FILLED entry whose TP was never placed
+          // (e.g., WS push lost, service crash after fill but before TP signal
+          // executed by the engine). In that case:
+          //   - openOrders recovery (Step 3) found no active entry/TP for this cycle
+          //   - inventoryQty = 0 (no entry recovered from openOrders)
+          //   - strategyNetPosition (from DB) > 0 (real unsold position exists)
+          //
+          // If we skip recovery entirely, the unsold position is abandoned
+          // without a TP order → unlimited market risk + inventory accumulation.
+          //
+          // Fix: recover the MOST RECENT FILLED entry orders from orderHistory
+          // (after the last FILLED TP) to rebuild inventory/VWAP, then let the
+          // Step 5 safety check + TP placement logic create a TP for them.
+          const netPos = initialData.strategyNetPosition;
+          if (netPos !== undefined && netPos.gt(0) && this.inventoryQty.lte(0)) {
+            // Find the timestamp of the most recent FILLED TP — entries after
+            // it belong to the current incomplete cycle.
+            let lastFilledTpTime: Date | null = null;
+            for (const order of ownedHistory) {
+              if (
+                order.clientOrderId &&
+                /^T\d+D/.test(order.clientOrderId) &&
+                order.status === OrderStatus.FILLED &&
+                order.timestamp
+              ) {
+                if (!lastFilledTpTime || order.timestamp > lastFilledTpTime) {
+                  lastFilledTpTime = order.timestamp;
+                }
+              }
+            }
+
+            // Recover FILLED entries that were created AFTER the last FILLED TP.
+            // These belong to the current incomplete cycle and represent real
+            // unsold inventory.
+            let recoveredCount = 0;
+            for (const order of ownedHistory) {
+              if (!order.clientOrderId) continue;
+              if (order.side !== OrderSide.BUY) continue;
+              if (order.status !== OrderStatus.FILLED) continue;
+              // Must be after the last FILLED TP (or no FILLED TP at all)
+              if (
+                lastFilledTpTime &&
+                order.timestamp &&
+                order.timestamp <= lastFilledTpTime
+              ) {
+                continue;
+              }
+              // Skip if already in this.orders
+              if (this.orders.has(order.clientOrderId)) continue;
+
+              let metadata = this.orderMetadataMap.get(order.clientOrderId);
+              if (!metadata) metadata = this.ensureRecoveredMetadata(order);
+              if (!metadata) continue;
+
+              // Remove from blacklist — this is current-cycle inventory
+              this.previousCycleOrderIds.delete(order.clientOrderId);
+
+              this.orders.set(order.clientOrderId, order);
+
+              const recoveredStepIndex = this.recoverStepIndex(order);
+              if (recoveredStepIndex !== undefined) {
+                metadata.stepIndex = recoveredStepIndex;
+                const step = this.steps[recoveredStepIndex];
+                if (step) {
+                  step.entryClientOrderId = order.clientOrderId;
+                  step.filled = true;
+                }
+              }
+
+              if (order.executedQuantity && order.executedQuantity.gt(0)) {
+                this.processedQuantityMap.set(
+                  order.clientOrderId,
+                  order.executedQuantity,
+                );
+                if (metadata.signalType === SignalType.Entry) {
+                  metadata.entryPrice = (order.averagePrice || order.price)?.toString();
+                }
+              }
+              recoveredCount++;
+            }
+
+            if (recoveredCount > 0) {
+              // Re-recalculate VWAP with the recovered entries
+              this.recalculateVWAP();
+              this._logger.warn(
+                `[processInitialData] Found FILLED TP in orderHistory BUT strategyNetPosition=${netPos.toString()} > 0. ` +
+                  `Recovered ${recoveredCount} FILLED entries from current incomplete cycle ` +
+                  `(after last FILLED TP). inventory=${this.inventoryQty.toString()}, VWAP=${this.vwap.toString()}. ` +
+                  `Will place TP to cover unsold position.`,
+              );
+            } else {
+              // No FILLED entries found after the last FILLED TP, but netPos > 0.
+              // This can happen if the entry fill is very recent and orderHistory
+              // doesn't include it yet, or if the position is from a different source.
+              // Use strategyNetPosition as the inventory and recover VWAP from
+              // the most recent FILLED entry in history.
+              let lastFilledEntry: Order | null = null;
+              for (const order of ownedHistory) {
+                if (
+                  order.side === OrderSide.BUY &&
+                  order.status === OrderStatus.FILLED &&
+                  order.executedQuantity &&
+                  order.executedQuantity.gt(0)
+                ) {
+                  if (
+                    !lastFilledEntry ||
+                    !order.timestamp ||
+                    !lastFilledEntry.timestamp ||
+                    order.timestamp > lastFilledEntry.timestamp
+                  ) {
+                    lastFilledEntry = order;
+                  }
+                }
+              }
+              if (lastFilledEntry && lastFilledEntry.clientOrderId) {
+                this.previousCycleOrderIds.delete(lastFilledEntry.clientOrderId);
+                let metadata = this.orderMetadataMap.get(lastFilledEntry.clientOrderId);
+                if (!metadata) metadata = this.ensureRecoveredMetadata(lastFilledEntry);
+                if (metadata) {
+                  this.orders.set(lastFilledEntry.clientOrderId, lastFilledEntry);
+                  const fillPrice = lastFilledEntry.averagePrice || lastFilledEntry.price;
+                  if (fillPrice && fillPrice.gt(0)) {
+                    this.inventoryQty = netPos;
+                    this.vwap = fillPrice;
+                    metadata.entryPrice = fillPrice.toString();
+                  }
+                  if (lastFilledEntry.executedQuantity) {
+                    this.processedQuantityMap.set(
+                      lastFilledEntry.clientOrderId,
+                      lastFilledEntry.executedQuantity,
+                    );
+                  }
+                }
+              }
+              this._logger.warn(
+                `[processInitialData] Found FILLED TP in orderHistory BUT strategyNetPosition=${netPos.toString()} > 0 ` +
+                  `with no recoverable entries after last TP. Used netPos as inventory with last known fill price. ` +
+                  `inventory=${this.inventoryQty.toString()}, VWAP=${this.vwap.toString()}.`,
+              );
+            }
+          } else {
+            // Recalculate VWAP from openOrders recovery only (Step 4 result).
+            // Do NOT recover any FILLED entries from orderHistory.
+            this._logger.info(
+              `[processInitialData] Found FILLED TP in orderHistory — previous cycle completed. ` +
+                `Skipping orderHistory entry recovery to prevent TP storm. ` +
+                `Blacklisted ${ownedHistory.length} old-cycle orders.`,
+            );
+          }
         } else {
           // No FILLED TP in history — safe to recover FILLED entries.
 
@@ -2533,6 +2722,27 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       const orderSignals = this.handleOrderUpdates(dataUpdate.orders);
       // Merge deferred TP signals with order update signals
       const allSignals = [...tpDebounceSignals, ...orderSignals];
+
+      // SAFETY NET: If inventory > 0 but no active TP order exists after
+      // processing order updates, place a TP immediately. This catches the
+      // case where handleEntryFilled's refreshTakeProfit() signal was lost
+      // (e.g., engine failed to execute, WS push was missed/replayed, or
+      // the TP order was rejected by the exchange). Without this safety net,
+      // the strategy accumulates inventory without a corresponding TP order,
+      // exposing the position to unlimited market risk.
+      // Do NOT trigger during partial-fill debounce — the deferred TP refresh
+      // handles that case and the safety net would bypass the debounce.
+      if (this.inventoryQty.gt(0) && !this.tpClientOrderId && !this.tpRefreshPending) {
+        const safetyTpSignals = this.refreshTakeProfit();
+        if (safetyTpSignals.length > 0) {
+          this._logger.warn(
+            `[analyze] SAFETY NET: inventory=${this.inventoryQty.toString()} > 0 but no active TP. ` +
+              `Placing TP (VWAP=${this.vwap.toString()}).`,
+          );
+          allSignals.push(...safetyTpSignals);
+        }
+      }
+
       if (allSignals.length > 0) return allSignals;
       return { action: 'hold' };
     }
@@ -2560,6 +2770,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.entry0PlacedTime = 0;
     this.resetCancelPending = false;
     this._lastResetTime = 0;
+    this._currentAsk0 = new Decimal(0);
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }
@@ -2588,6 +2799,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       resetCancelPending: this.resetCancelPending,
       lastResetTime:
         this._lastResetTime > 0 ? new Date(this._lastResetTime).toISOString() : null,
+      currentAsk0: this._currentAsk0.toString(),
       steps: this.steps.map((s) => ({
         index: s.index,
         price: s.price.toString(),

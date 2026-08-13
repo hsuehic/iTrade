@@ -103,7 +103,10 @@ function createOrderBook(mid: number = 100, range: number = 5): OrderBook {
   const asks: Array<[Decimal, Decimal]> = [];
   for (let i = 0; i < 5; i += 1) {
     bids.push([midPrice.minus(step.mul(i)), new Decimal(1)]);
-    asks.push([midPrice.plus(step.mul(i)), new Decimal(1)]);
+    // ask0 starts at mid + step (above mid) to create a realistic spread.
+    // Previously asks started at mid (zero spread), which caused the TP
+    // price cap (min(ask0, tpPrice)) to incorrectly trigger.
+    asks.push([midPrice.plus(step.mul(i + 1)), new Decimal(1)]);
   }
   return {
     symbol: 'BTC/USDT',
