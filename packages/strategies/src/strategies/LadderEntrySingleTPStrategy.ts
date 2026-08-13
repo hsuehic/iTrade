@@ -2855,6 +2855,22 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // handles that case and the safety net would bypass the debounce.
       // Also skip if computeTpPrice() would return null (misconfigured
       // tpPercent=0 or tpAbsoluteProfit=0) to avoid persistent no-op calls (R2-M5).
+      // Also check: if tpClientOrderId is set but points to a ghost order
+      // (not in this.orders and not in pendingClientOrderIds), it was rejected
+      // by the exchange but the strategy never got the REJECTED event → clear it
+      // so the safety net can fire.
+      if (
+        this.tpClientOrderId &&
+        !this.orders.has(this.tpClientOrderId) &&
+        !this.pendingClientOrderIds.has(this.tpClientOrderId)
+      ) {
+        this._logger.warn(
+          `[analyze] SAFETY NET: tpClientOrderId=${this.tpClientOrderId} points to ` +
+            `a ghost order (not in this.orders or pendingClientOrderIds). ` +
+            `Clearing and re-attempting TP placement.`,
+        );
+        this.tpClientOrderId = null;
+      }
       if (
         this.inventoryQty.gt(0) &&
         !this.tpClientOrderId &&

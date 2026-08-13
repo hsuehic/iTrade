@@ -1136,6 +1136,15 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         clientOrderId: signal.clientOrderId,
         newClientOrderId: signal.newClientOrderId,
       });
+      // Feed the rejected replacement order back to the strategy so it can
+      // clear tpClientOrderId and re-attempt TP placement. Without this, the
+      // strategy holds tpClientOrderId pointing to a rejected order forever →
+      // no TP → unlimited market risk.
+      rejectedOrder.clientOrderId = signal.newClientOrderId;
+      this.onAccountUpdate({
+        orders: [rejectedOrder],
+        exchangeName: exchangeName ?? undefined,
+      });
     }
   }
 
