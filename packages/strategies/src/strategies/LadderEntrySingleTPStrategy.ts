@@ -500,6 +500,27 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private _lastResetTime = 0;
 
   /**
+   * strategyNetPosition recovered from DB during processInitialData.
+   * Used by handleOrderUpdates to detect console-restart orphaned fills:
+   * when inventoryQty=0 but _recoveredNetPos>0, a blacklisted FILLED order
+   * arriving via WS is a delayed fill from before the restart that was not
+   * recovered by processInitialData (exchange REST API hadn't reflected the
+   * fill yet). Without this, the fill is lost → orphaned position with no TP.
+   * Set in processInitialData, cleared in onCleanup and handleTpFilled.
+   * Invalidated after _recoveredNetPosTtl ms to prevent stale recovery.
+   */
+  private _recoveredNetPos: Decimal = new Decimal(0);
+
+  /**
+   * Timestamp (ms) when _recoveredNetPos was set. Used to invalidate stale
+   * recovery budget: after 5 minutes, delayed WS pushes are almost certainly
+   * from a new cycle, not the restart that set _recoveredNetPos.
+   */
+  private _recoveredNetPosTime = 0;
+
+  private static readonly RECOVERED_NET_POS_TTL_MS = 5 * 60 * 1000; // 5 min
+
+  /**
    * Best ask (ask0) from the most recent orderbook update (REST init or
    * real-time WebSocket subscription).
    * Used to floor TP sell price at max(ask0, expectedTpPrice) to ensure
@@ -1325,6 +1346,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpClientOrderId = null;
     // Clear any pending debounced TP refresh
     this.tpRefreshPending = false;
+    // Clear recovered net position budget — TP filled means the cycle is
+    // complete and all positions are sold. Any remaining _recoveredNetPos
+    // would allow false recovery of delayed WS pushes from the next cycle.
+    this._recoveredNetPos = new Decimal(0);
+    this._recoveredNetPosTime = 0;
 
     // Cancel ALL remaining entry orders
     signals.push(...this.cancelAllEntryOrders('ladder_entry_cancel_on_tp_filled'));
@@ -1436,10 +1462,32 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           // cycle's entries already have fills that are accounted for. When
           // >30s since last reset, it's a delayed TP-cycle push, not a reset
           // race-fill.)
+          //
+          // CONSOLE-RESTART ORPHANED FILL: Also recover when inventoryQty=0 but
+          // _recoveredNetPos>0 (strategyNetPosition from DB). This happens when
+          // the console restarts after an entry fills on the exchange but before
+          // the WS FILLED push arrives. At restart, processInitialData fetches
+          // orderHistory via REST — but the exchange REST API may not yet reflect
+          // the fill, so the entry is not recovered → inventoryQty=0. When the
+          // delayed WS FILLED push later arrives, the order is blacklisted (added
+          // by hasFilledTpInHistory path in processInitialData) and would be
+          // silently skipped → orphaned position with no TP → unlimited market
+          // risk. The _recoveredNetPos>0 check confirms the DB has a real unsold
+          // position, so this fill is genuine and must be recovered.
           const hasExecQty = order.executedQuantity && order.executedQuantity.gt(0);
           const withinResetWindow =
             this._lastResetTime > 0 && Date.now() - this._lastResetTime < 30_000;
-          const isOrphanedResetFill =
+          const isConsoleRestartOrphan =
+            this.inventoryQty.isZero() &&
+            this._recoveredNetPos.gt(0) &&
+            this._recoveredNetPos.gte(order.executedQuantity || new Decimal(0)) &&
+            // TTL: only recover within 5 min of processInitialData. After that,
+            // delayed pushes are almost certainly from a new cycle, not the
+            // restart that set _recoveredNetPos.
+            this._recoveredNetPosTime > 0 &&
+            Date.now() - this._recoveredNetPosTime <
+              LadderEntrySingleTPStrategy.RECOVERED_NET_POS_TTL_MS;
+          const isOrphanedFill =
             (order.status === OrderStatus.FILLED ||
               order.status === OrderStatus.PARTIALLY_FILLED ||
               ((order.status === OrderStatus.CANCELED ||
@@ -1447,13 +1495,23 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
                 hasExecQty)) &&
             hasExecQty &&
             this.inventoryQty.isZero() &&
-            withinResetWindow;
-          if (isOrphanedResetFill) {
+            (withinResetWindow || isConsoleRestartOrphan);
+          if (isOrphanedFill) {
             this.previousCycleOrderIds.delete(order.clientOrderId);
+            // Decrement _recoveredNetPos by the recovered fill quantity so
+            // subsequent delayed pushes from the same cycle don't re-trigger
+            // the console-restart orphan recovery → TP storm.
+            if (isConsoleRestartOrphan && hasExecQty) {
+              this._recoveredNetPos = this._recoveredNetPos.minus(
+                order.executedQuantity!,
+              );
+            }
             this._logger.warn(
               `[handleOrderUpdates] Blacklisted order ${order.clientOrderId} ` +
                 `arrived as ${order.status} (execQty=${order.executedQuantity?.toString() ?? '0'}) ` +
-                `post-reinit with inventoryQty=0 — recovering orphaned fill.`,
+                `post-reinit with inventoryQty=0 — recovering orphaned fill ` +
+                `(withinResetWindow=${withinResetWindow}, isConsoleRestartOrphan=${isConsoleRestartOrphan}, ` +
+                `_recoveredNetPos=${this._recoveredNetPos.toString()}).`,
             );
             // Continue to normal processing below
           } else {
@@ -2529,6 +2587,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // after all position was already sold (e.g., TP storm). Placing a TP would
     // sell non-existent position → another TP storm. Reset to 0 and skip TP.
     const netPos = initialData.strategyNetPosition;
+    // Store strategyNetPosition for handleOrderUpdates to detect
+    // console-restart orphaned fills (delayed WS FILLED arrives post-restart
+    // for a blacklisted order that processInitialData couldn't recover).
+    this._recoveredNetPos = netPos ?? new Decimal(0);
+    this._recoveredNetPosTime = Date.now();
     if (netPos !== undefined && netPos.lte(0) && this.inventoryQty.gt(0)) {
       this._logger.warn(
         `[processInitialData] SAFETY: inventoryQty=${this.inventoryQty.toString()} ` +
@@ -2836,6 +2899,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.entry0PlacedTime = 0;
     this.resetCancelPending = false;
     this._lastResetTime = 0;
+    this._recoveredNetPos = new Decimal(0);
+    this._recoveredNetPosTime = 0;
     this._currentAsk0 = new Decimal(0);
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
@@ -2865,6 +2930,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       resetCancelPending: this.resetCancelPending,
       lastResetTime:
         this._lastResetTime > 0 ? new Date(this._lastResetTime).toISOString() : null,
+      recoveredNetPos: this._recoveredNetPos.toString(),
       currentAsk0: this._currentAsk0.toString(),
       steps: this.steps.map((s) => ({
         index: s.index,
