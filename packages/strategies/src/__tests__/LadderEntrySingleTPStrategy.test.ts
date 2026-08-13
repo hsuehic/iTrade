@@ -99,14 +99,15 @@ function createOrder(
 function createOrderBook(mid: number = 100, range: number = 5): OrderBook {
   const midPrice = new Decimal(mid);
   const step = new Decimal(range).div(5);
+  const tick = new Decimal(0.01); // realistic 1-tick spread between bid0 and ask0
   const bids: Array<[Decimal, Decimal]> = [];
   const asks: Array<[Decimal, Decimal]> = [];
   for (let i = 0; i < 5; i += 1) {
     bids.push([midPrice.minus(step.mul(i)), new Decimal(1)]);
-    // ask0 starts at mid + step (above mid) to create a realistic spread.
-    // Previously asks started at mid (zero spread), which caused the TP
-    // price cap (min(ask0, tpPrice)) to incorrectly trigger.
-    asks.push([midPrice.plus(step.mul(i + 1)), new Decimal(1)]);
+    // ask0 = mid + 1 tick (just above bid0 = mid) — realistic tight spread.
+    // A wide spread (e.g. mid+step) would cause max(ask0, tpPrice) to floor
+    // tpPrice up to ask0 in every test, defeating TP-price assertions.
+    asks.push([midPrice.plus(tick).plus(step.mul(i)), new Decimal(1)]);
   }
   return {
     symbol: 'BTC/USDT',
@@ -357,7 +358,7 @@ describe('LadderEntrySingleTPStrategy', () => {
         createStrategyConfig({
           ladderSteps: 3,
           tpType: 'percent',
-          tpPercent: 1,
+          tpPercent: 2,
         }),
       );
 
@@ -381,8 +382,8 @@ describe('LadderEntrySingleTPStrategy', () => {
       const tpSignal = tpSignals[0] as StrategyOrderResult;
       expect(tpSignal.action).toBe('sell');
       expect(tpSignal.quantity!.toNumber()).toBeCloseTo(0.1, 5);
-      // VWAP=99, TP = 99 * 1.01 = 99.99
-      expect(tpSignal.price!.toNumber()).toBeCloseTo(99.99, 1);
+      // VWAP=99, TP = 99 * 1.02 = 100.98 (above ask0=100.01, so no floor)
+      expect(tpSignal.price!.toNumber()).toBeCloseTo(100.98, 1);
     });
 
     it('should compute TP price from absolute profit correctly', async () => {
@@ -423,7 +424,7 @@ describe('LadderEntrySingleTPStrategy', () => {
         createStrategyConfig({
           ladderSteps: 3,
           tpType: 'percent',
-          tpPercent: 1,
+          tpPercent: 2,
         }),
       );
 
@@ -458,11 +459,11 @@ describe('LadderEntrySingleTPStrategy', () => {
       const tp1 = findTpSignals(result1);
       expect(tp1.length).toBeGreaterThanOrEqual(1);
 
-      // VWAP = (99*0.1 + 98*0.1) / 0.2 = 98.5; TP = 98.5 * 1.01 = 99.485
+      // VWAP = (99*0.1 + 98*0.1) / 0.2 = 98.5; TP = 98.5 * 1.02 = 100.47 (above ask0=100.01)
       const tpSignal = tp1[tp1.length - 1] as StrategyOrderResult;
       expect(tpSignal.action).toBe('sell');
       expect(tpSignal.quantity!.toNumber()).toBeCloseTo(0.2, 5);
-      expect(tpSignal.price!.toNumber()).toBeCloseTo(99.485, 1);
+      expect(tpSignal.price!.toNumber()).toBeCloseTo(100.47, 1);
     });
 
     it('should compute absolute TP with multiple fills (VWAP-based)', async () => {
@@ -1032,7 +1033,7 @@ describe('LadderEntrySingleTPStrategy', () => {
           ladderSteps: 3,
           qtyPerStep: 0.1,
           tpType: 'percent',
-          tpPercent: 1,
+          tpPercent: 2,
         }),
       );
 
@@ -1051,7 +1052,8 @@ describe('LadderEntrySingleTPStrategy', () => {
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
       expect(state.vwap).toBe('99');
-      expect(state.tpPrice).toBe('99.99');
+      // TP = 99 * 1.02 = 100.98 (above ask0=100.01, so no floor)
+      expect(state.tpPrice).toBe('100.98');
     });
 
     it('should handle partial fills on restart (recovered VWAP)', async () => {
@@ -2444,7 +2446,7 @@ describe('LadderEntrySingleTPStrategy', () => {
         createStrategyConfig({
           ladderSteps: 2,
           tpType: 'percent',
-          tpPercent: 1,
+          tpPercent: 2,
         }),
       );
 
@@ -2465,7 +2467,8 @@ describe('LadderEntrySingleTPStrategy', () => {
       const state = strategy.getStrategyState();
       expect(state.inventoryQty).toBe('0.1');
       expect(state.vwap).toBe('99');
-      expect(state.tpPrice).toBe('99.99');
+      // TP = 99 * 1.02 = 100.98 (above ask0=100.01, so no floor)
+      expect(state.tpPrice).toBe('100.98');
     });
   });
 
@@ -2562,7 +2565,7 @@ describe('LadderEntrySingleTPStrategy', () => {
           qtyPerStep: 0.1,
           qtyStepAdd: 0.05,
           tpType: 'percent',
-          tpPercent: 2,
+          tpPercent: 6,
         }),
       );
 
@@ -2589,8 +2592,8 @@ describe('LadderEntrySingleTPStrategy', () => {
 
       expect(tpSignals).toHaveLength(1);
       const tp = tpSignals[0] as StrategyOrderResult;
-      // VWAP=95, TP = 95 * 1.02 = 96.9
-      expect(tp.price!.toNumber()).toBeCloseTo(96.9, 1);
+      // VWAP=95, TP = 95 * 1.06 = 100.7 (above ask0=100.01, so no floor)
+      expect(tp.price!.toNumber()).toBeCloseTo(100.7, 1);
       expect(tp.quantity!.toNumber()).toBeCloseTo(0.1, 5);
     });
   });

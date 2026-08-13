@@ -342,7 +342,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         'TP SELL limit order is updated immediately on each entry fill (including partial fills). ' +
         'On TP fully filled, cancels all remaining entries and rebuilds the ladder with latest bid0 to start new cycle. ' +
         'resetInterval: if entry 0 stays unfilled for the specified time, cancels entry 0, re-fetches bid0, rebuilds ladder (0=never reset). ' +
-        'Does not subscribe to orderbook WebSocket; fetches bid0 via REST only on initialization, cycle restart, and reset.',
+        'Subscribes to orderbook WebSocket for real-time ask0; TP price floored at max(ask0, expectedTpPrice) to never sell below market ask.',
       parameters:
         'basePrice(0=bid0 via REST) + ladderSteps + stepType/stepValue define ladder prices (arithmetic=base-stepValue*(i+1), geometric=base*(1-stepValue/100)^(i+1)); ' +
         'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio define ladder quantities; ' +
@@ -500,11 +500,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private _lastResetTime = 0;
 
   /**
-   * Best ask (ask0) from the most recent REST orderbook fetch.
-   * Used to cap TP sell price at min(ask0, expectedTpPrice) to ensure
-   * TP orders are placed at or below the current market ask, avoiding
-   * inventory accumulation from unfilled high-priced TP orders.
-   * Updated in processInitialData from initialData.orderBook.asks[0].
+   * Best ask (ask0) from the most recent orderbook update (REST init or
+   * real-time WebSocket subscription).
+   * Used to floor TP sell price at max(ask0, expectedTpPrice) to ensure
+   * TP orders are never priced below the current market ask — preserving
+   * profit margin while guaranteeing immediate fill when ask already
+   * exceeds the profit target.
+   * Updated in processInitialData (REST) and analyze() (WS push).
    * 0 = unknown (initial state or no orderbook available).
    */
   private _currentAsk0: Decimal = new Decimal(0);
@@ -791,11 +793,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * - 'absolute': TP price = VWAP + tpAbsoluteProfit / inventoryQty
    * - 'percent':  TP price = VWAP * (1 + tpPercent/100)
    *
-   * If _currentAsk0 > 0, the TP price is capped at min(ask0, tpPrice) to
-   * ensure the TP order is placed at or below the current market ask price.
-   * This prevents inventory accumulation from unfilled high-priced TP orders
-   * (e.g., when VWAP + profit target exceeds the current ask, the TP would
-   * be a maker order far above market that never fills → position stuck).
+   * If _currentAsk0 > 0, the TP price is floored at max(ask0, tpPrice) to
+   * ensure the TP order is never priced below the current market ask.
+   * This preserves the profit margin (never sells below VWAP+target) while
+   * guaranteeing immediate fill when ask0 already exceeds tpPrice (auto-take
+   * profit at market). When tpPrice > ask0, the TP sits as a maker order at
+   * the profit price and fills when market rises to meet it.
    */
   private computeTpPrice(): Decimal | null {
     if (this.inventoryQty.lte(0) || this.vwap.lte(0)) return null;
@@ -809,13 +812,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       tpPrice = this.vwap.mul(new Decimal(1).plus(this.tpPercent.div(100)));
     }
 
-    // Cap TP price at min(ask0, tpPrice) to avoid inventory accumulation.
-    // If ask0 is known and tpPrice > ask0, use ask0 instead — this ensures
-    // the TP order fills immediately (taker) rather than sitting unfilled
-    // above the market.
-    if (this._currentAsk0.gt(0) && tpPrice.gt(this._currentAsk0)) {
+    // Floor TP price at max(ask0, tpPrice) to never sell below market ask.
+    // If ask0 is known and tpPrice < ask0, use ask0 instead — this captures
+    // a better-than-target price as an immediate taker fill (auto-take-profit).
+    if (this._currentAsk0.gt(0) && tpPrice.lt(this._currentAsk0)) {
       this._logger.debug(
-        `[computeTpPrice] Capping TP at min(ask0=${this._currentAsk0.toString()}, tpPrice=${tpPrice.toString()}) → ${this._currentAsk0.toString()}`,
+        `[computeTpPrice] Flooring TP at max(ask0=${this._currentAsk0.toString()}, tpPrice=${tpPrice.toString()}) → ${this._currentAsk0.toString()}`,
       );
       return this._currentAsk0;
     }
@@ -1796,18 +1798,22 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       this.steps = [];
     }
 
-    if (this.referencePrice.lte(0) && initialData.orderBook) {
-      const bestBid = initialData.orderBook.bids?.[0]?.[0];
-      if (bestBid && bestBid.gt(0)) {
-        this.referencePrice = bestBid;
-        this._logger.debug(
-          `[processInitialData] Reference price from REST orderbook bid0: ${this.referencePrice.toString()}`,
-        );
-      }
-      // Capture ask0 for TP price capping
+    // Capture ask0 from REST orderbook for TP price flooring (max(ask0, tpPrice)).
+    // This runs regardless of basePrice — even basePrice>0 strategies need ask0.
+    if (initialData.orderBook) {
       const ask0 = initialData.orderBook.asks?.[0]?.[0];
       if (ask0 && ask0.gt(0)) {
         this._currentAsk0 = ask0;
+      }
+      // Also use bid0 as reference price for basePrice=0 strategies
+      if (this.referencePrice.lte(0)) {
+        const bestBid = initialData.orderBook.bids?.[0]?.[0];
+        if (bestBid && bestBid.gt(0)) {
+          this.referencePrice = bestBid;
+          this._logger.debug(
+            `[processInitialData] Reference price from REST orderbook bid0: ${this.referencePrice.toString()}`,
+          );
+        }
       }
     }
 
@@ -2215,6 +2221,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
                   this.orders.set(lastFilledEntry.clientOrderId, lastFilledEntry);
                   const fillPrice = lastFilledEntry.averagePrice || lastFilledEntry.price;
                   if (fillPrice && fillPrice.gt(0)) {
+                    // Use DB netPos as authoritative inventory (accounts for
+                    // partial TP fills, etc.) and lastKnown fillPrice as VWAP
+                    // approximation. Do NOT call recalculateVWAP() here — it
+                    // would overwrite netPos with the single order's
+                    // executedQuantity, losing the DB-authoritative value.
                     this.inventoryQty = netPos;
                     this.vwap = fillPrice;
                     metadata.entryPrice = fillPrice.toString();
@@ -2681,9 +2692,24 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
   /**
    * Analyze real-time data updates.
-   * No orderbook subscription — only processes order updates from WebSocket.
+   * Processes order updates and orderbook pushes from WebSocket.
+   * Orderbook is subscribed for real-time ask0 used in TP pricing.
    */
   public override async analyze(dataUpdate: DataUpdate): Promise<StrategyAnalyzeResult> {
+    // Update real-time ask0 from orderbook push (if present).
+    if (dataUpdate.orderbook) {
+      const obSymbol = dataUpdate.orderbook.symbol || dataUpdate.symbol;
+      const sameSymbol = !obSymbol || obSymbol === this._symbol;
+      const sameExchange =
+        !dataUpdate.exchangeName || dataUpdate.exchangeName === this._exchangeName;
+      if (sameSymbol && sameExchange) {
+        const ask0 = dataUpdate.orderbook.asks?.[0]?.[0];
+        if (ask0 && ask0.gt(0)) {
+          this._currentAsk0 = ask0;
+        }
+      }
+    }
+
     // Check for deferred TP refresh from partial-fill debounce.
     // If the debounce window has elapsed since the last partial fill,
     // execute the pending TP refresh now (before processing new orders).
@@ -2735,7 +2761,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       if (this.inventoryQty.gt(0) && !this.tpClientOrderId && !this.tpRefreshPending) {
         const safetyTpSignals = this.refreshTakeProfit();
         if (safetyTpSignals.length > 0) {
-          this._logger.warn(
+          this._logger.debug(
             `[analyze] SAFETY NET: inventory=${this.inventoryQty.toString()} > 0 but no active TP. ` +
               `Placing TP (VWAP=${this.vwap.toString()}).`,
           );
@@ -2821,6 +2847,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     return {
       method: 'websocket' as const,
       exchange: this._context.exchange,
+      // Subscribe to orderbook for real-time ask0 — used to floor TP price
+      // at max(ask0, expectedTpPrice) so the TP never sells below market.
+      orderbook: { enabled: true, depth: 5 },
     };
   }
 
@@ -2828,12 +2857,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * Initial data config: fetch open orders + orderbook (REST, for basePrice=0).
    */
   public override getInitialDataConfig() {
-    const needOrderBook = this.basePrice.lte(0);
+    // Always fetch orderbook — even for basePrice>0 strategies — to seed
+    // _currentAsk0 for TP price flooring (max(ask0, tpPrice)).
     return {
       fetchPositions: true,
       fetchOpenOrders: true,
       fetchBalance: true,
-      fetchOrderBook: needOrderBook ? { enabled: true, depth: 5 } : { enabled: false },
+      fetchOrderBook: { enabled: true, depth: 5 },
       // Fetch recent order history to recover FILLED entry orders on restart.
       // openOrders only contains NEW / PARTIALLY_FILLED — FILLED orders are
       // NOT included. Without order history, the strategy cannot know which
