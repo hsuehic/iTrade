@@ -30,7 +30,15 @@ export class OrderTracker {
   private startTime: Date;
 
   // Debounce configuration (only for partial fills)
-  private readonly DEBOUNCE_MS = 1000; // 1 second debounce for partial fills
+  // 5 second debounce: collapses rapid partial-fill bursts into a single
+  // notification. If the order fully fills (FILLED) or is cancelled/rejected
+  // within the window, the pending partial notification is suppressed entirely
+  // (handleOrderFilled / handleOrderCancelled / handleOrderRejected all cancel
+  // the pending timer), so the user only sees the final terminal notification.
+  private readonly DEBOUNCE_MS: number = parseDebounceMs(
+    process.env.PARTIAL_FILL_DEBOUNCE_MS,
+    5000,
+  );
   private readonly strategyUserCache = new Map<number, string>();
 
   // 🆕 Track which orders have been notified (separate from OrderManager)
@@ -324,6 +332,28 @@ export class OrderTracker {
       this.totalPartialFills++;
       const mergedOrder = this.mergeWithExistingOrder(order);
 
+      // Skip if the order has already reached a terminal state (e.g. a late
+      // PARTIALLY_FILLED WS event arriving after FILLED/CANCELED/REJECTED).
+      // The terminal handler already sent the final notification.
+      if (
+        mergedOrder.status === 'FILLED' ||
+        mergedOrder.status === 'CANCELED' ||
+        mergedOrder.status === 'REJECTED'
+      ) {
+        return;
+      }
+
+      // Keep OrderManager current with partial-fill progress so that
+      // concurrent reads (portfolio snapshots, strategy logic) see the
+      // latest executedQuantity / averagePrice. Every other handler in this
+      // file updates OrderManager — this one was missing it.
+      const existingOrder = this.orderManager.getOrder(mergedOrder.id);
+      if (existingOrder) {
+        this.orderManager.updateOrder(mergedOrder.id, mergedOrder);
+      } else {
+        this.orderManager.addOrder(mergedOrder);
+      }
+
       // Use debounce for partial fills (can be very frequent)
       const key = mergedOrder.id;
 
@@ -356,6 +386,14 @@ export class OrderTracker {
       const { order } = update;
 
       const scopedUserId = await this.getScopedUserId(order);
+
+      // Re-check: a terminal event (FILLED / CANCELED / REJECTED) may have
+      // fired during the await above, deleting this entry from
+      // pendingPartialFills. If so, the terminal handler already saved the
+      // final state and sent its own notification — we must not overwrite
+      // with a stale PARTIALLY_FILLED save or send a duplicate notification.
+      if (!this.pendingPartialFills.has(orderId)) return;
+
       if (this.userId && !scopedUserId) {
         this.pendingPartialFills.delete(orderId);
         return;
@@ -520,4 +558,17 @@ export class OrderTracker {
 
     await Promise.allSettled(promises);
   }
+}
+
+/**
+ * Parse the partial-fill debounce interval from an env var.
+ * Falls back to `defaultValue` (5000 ms) when unset or invalid.
+ * Minimum 500 ms to prevent accidental misconfiguration that would
+ * effectively disable debouncing.
+ */
+function parseDebounceMs(env: string | undefined, defaultValue: number): number {
+  if (!env) return defaultValue;
+  const ms = Number.parseInt(env, 10);
+  if (!Number.isFinite(ms) || ms < 500 || ms > 300_000) return defaultValue;
+  return ms;
 }
