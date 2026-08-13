@@ -1960,38 +1960,62 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // (TP is more reliable as it encodes VWAP across all filled steps)
         !this.referencePriceWasReversedFromTp
       ) {
-        // Infer step index from clientOrderId: extract the step sequence number
-        // Format: E{strategyId}D{seq}D{timestamp} — seq starts at 1
-        const stepMatch = entryOrder.clientOrderId
-          ? /^E\d+D(\d+)D/.exec(entryOrder.clientOrderId)
-          : null;
-        // seq is 1-based; step index = seq - 1
-        const stepIndex = stepMatch && stepMatch[1] ? parseInt(stepMatch[1], 10) - 1 : 0;
-        const stepPercent = this.stepValue.div(100);
+        // Determine stepIndex by matching entry price against the ladder we
+        // just built (Step 1/2 already set referencePrice from bid0 or TP).
+        // CRITICAL: Do NOT extract stepIndex from clientOrderId — the seq in
+        // E{strategyId}D{seq}D{timestamp} is a GLOBAL order sequence counter
+        // (BaseStrategy.orderSequence++), NOT a ladder step index. Using seq
+        // as stepIndex produces wildly wrong referencePrice when seq exceeds
+        // the number of ladder steps (e.g. seq=11 with 5-step ladder →
+        // stepIndex=10 → ref = price / (1-stepValue%)^11 → price far above
+        // market → entries placed above ask → immediate loss on fill).
+        //
+        // Strategy: try price matching first (0.5% tolerance to absorb bid0
+        // drift between restart). If no match, assume step 0 — in sequential
+        // mode, an active entry with no TP means step 0 hasn't filled yet.
+        // If there were filled steps, a TP would exist.
+        let matchedStepIndex = -1;
+        const matchTolerance = entryOrder.price.mul(0.005); // 0.5%
+        for (const step of this.steps) {
+          if (step.price.minus(entryOrder.price).abs().lte(matchTolerance)) {
+            matchedStepIndex = step.index;
+            break;
+          }
+        }
+        // Fallback: if no price match, assume step 0 (sequential mode:
+        // active entry + no TP = step 0 still pending)
+        if (matchedStepIndex < 0) {
+          matchedStepIndex = 0;
+          this._logger.warn(
+            `[processInitialData] Entry order ${entryOrder.clientOrderId} price=${entryOrder.price.toString()} ` +
+              `does not match any ladder step (referencePrice=${this.referencePrice.toString()}, tolerance=0.5%). ` +
+              `Assuming step 0 (sequential mode: active entry + no TP = step 0 pending).`,
+          );
+        }
 
-        // Back-calculate: entry_price = ref * factor → ref = entry_price / factor
+        const stepPercent = this.stepValue.div(100);
         let factor: Decimal;
         if (this.stepType === 'arithmetic') {
           // price[i] = ref - stepValue * (i+1) → ref = price + stepValue * (i+1)
-          factor = this.stepValue.mul(stepIndex + 1);
+          factor = this.stepValue.mul(matchedStepIndex + 1);
           const recoveredRef = entryOrder.price.plus(factor);
           if (recoveredRef.gt(0)) {
             this.referencePrice = recoveredRef;
             this._logger.info(
               `[processInitialData] Reverse-engineered referencePrice from entry order: ${recoveredRef.toString()} ` +
-                `(entry price=${entryOrder.price.toString()}, stepIndex=${stepIndex}, stepValue=${this.stepValue.toString()})`,
+                `(entry price=${entryOrder.price.toString()}, stepIndex=${matchedStepIndex}, stepValue=${this.stepValue.toString()})`,
             );
           }
         } else {
           // price[i] = ref * (1-stepValue/100)^(i+1) → ref = price / (1-stepValue/100)^(i+1)
-          factor = new Decimal(1).minus(stepPercent).pow(stepIndex + 1);
+          factor = new Decimal(1).minus(stepPercent).pow(matchedStepIndex + 1);
           if (factor.gt(0)) {
             const recoveredRef = entryOrder.price.div(factor);
             if (recoveredRef.gt(0)) {
               this.referencePrice = recoveredRef;
               this._logger.info(
                 `[processInitialData] Reverse-engineered referencePrice from entry order: ${recoveredRef.toString()} ` +
-                  `(entry price=${entryOrder.price.toString()}, stepIndex=${stepIndex}, stepPercent=${stepPercent.toString()})`,
+                  `(entry price=${entryOrder.price.toString()}, stepIndex=${matchedStepIndex}, stepPercent=${stepPercent.toString()})`,
               );
             }
           }
