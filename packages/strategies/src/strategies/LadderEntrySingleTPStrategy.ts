@@ -2138,12 +2138,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
               if (!order.clientOrderId) continue;
               if (order.side !== OrderSide.BUY) continue;
               if (order.status !== OrderStatus.FILLED) continue;
+              // Skip entries without timestamp — can't determine cycle
+              // membership, risk of double-counting from previous cycles (R3-M2)
+              if (!order.timestamp) continue;
               // Must be after the last FILLED TP (or no FILLED TP at all)
-              if (
-                lastFilledTpTime &&
-                order.timestamp &&
-                order.timestamp <= lastFilledTpTime
-              ) {
+              if (lastFilledTpTime && order.timestamp <= lastFilledTpTime) {
                 continue;
               }
               // Skip if already in this.orders
@@ -2180,6 +2179,32 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
               recoveredCount++;
             }
 
+            // Also recover SELL (TP) orders with partial fills from the
+            // current cycle (after lastFilledTpTime). Without this, Step 4c
+            // would not find them → tpFilledQty=0 → TP oversells by the
+            // partial fill amount. R2-C1 fix.
+            for (const order of ownedHistory) {
+              if (!order.clientOrderId) continue;
+              if (order.side !== OrderSide.SELL) continue;
+              if (!order.executedQuantity || !order.executedQuantity.gt(0)) continue;
+              // Must be after the last FILLED TP
+              if (
+                lastFilledTpTime &&
+                order.timestamp &&
+                order.timestamp <= lastFilledTpTime
+              ) {
+                continue;
+              }
+              // Skip if already in this.orders
+              if (this.orders.has(order.clientOrderId)) continue;
+
+              this.orders.set(order.clientOrderId, order);
+              this._logger.info(
+                `[processInitialData] Recovered partial-fill TP order ${order.clientOrderId} ` +
+                  `(status=${order.status}, executed=${order.executedQuantity.toString()}) for tpFilledQty recovery.`,
+              );
+            }
+
             if (recoveredCount > 0) {
               // Re-recalculate VWAP with the recovered entries
               this.recalculateVWAP();
@@ -2194,7 +2219,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
               // This can happen if the entry fill is very recent and orderHistory
               // doesn't include it yet, or if the position is from a different source.
               // Use strategyNetPosition as the inventory and recover VWAP from
-              // the most recent FILLED entry in history.
+              // the most recent FILLED entry in history that is AFTER lastFilledTpTime
+              // (R2-M4/R3-M1 fix: previously searched ALL ownedHistory, which could
+              // pick entries from a completed previous cycle → wrong VWAP).
               let lastFilledEntry: Order | null = null;
               for (const order of ownedHistory) {
                 if (
@@ -2203,9 +2230,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
                   order.executedQuantity &&
                   order.executedQuantity.gt(0)
                 ) {
+                  // Skip entries without timestamp — can't determine cycle membership (R3-M2)
+                  if (!order.timestamp) continue;
+                  // Skip entries at/before lastFilledTpTime (previous cycle)
+                  if (lastFilledTpTime && order.timestamp <= lastFilledTpTime) continue;
                   if (
                     !lastFilledEntry ||
-                    !order.timestamp ||
                     !lastFilledEntry.timestamp ||
                     order.timestamp > lastFilledEntry.timestamp
                   ) {
@@ -2468,11 +2498,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     //   - CANCELED TP with partial fill (from orderHistory — happens when
     //     refreshTakeProfit cancels the old TP and places a new one; the old
     //     TP may have partial fills before the cancel took effect)
+    //   - Partial-fill SELL orders recovered by the R2-C1 fix in the new
+    //     unsold-inventory recovery path (hasFilledTpInHistory && netPos > 0)
     // Without recovering all of them, tpFilledQty would be understated →
     // refreshTakeProfit would oversell by the unrecovered amount.
     // On restart, tpFilledQty starts at 0, so there is no double-counting risk.
-    // If hasFilledTpInHistory was true, orderHistory recovery was skipped entirely,
-    // so this.orders only contains openOrders (active cycle) — safe to sum.
+    // The new recovery path (R2-C1) now also adds partial-fill SELL orders to
+    // this.orders, so they are correctly counted here.
     if (!isReinit) {
       for (const order of this.orders.values()) {
         if (
@@ -2758,7 +2790,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // exposing the position to unlimited market risk.
       // Do NOT trigger during partial-fill debounce — the deferred TP refresh
       // handles that case and the safety net would bypass the debounce.
-      if (this.inventoryQty.gt(0) && !this.tpClientOrderId && !this.tpRefreshPending) {
+      // Also skip if computeTpPrice() would return null (misconfigured
+      // tpPercent=0 or tpAbsoluteProfit=0) to avoid persistent no-op calls (R2-M5).
+      if (
+        this.inventoryQty.gt(0) &&
+        !this.tpClientOrderId &&
+        !this.tpRefreshPending &&
+        this.vwap.gt(0) &&
+        this.computeTpPrice() !== null
+      ) {
         const safetyTpSignals = this.refreshTakeProfit();
         if (safetyTpSignals.length > 0) {
           this._logger.debug(
