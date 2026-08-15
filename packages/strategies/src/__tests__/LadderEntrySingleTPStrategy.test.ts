@@ -1169,6 +1169,107 @@ describe('LadderEntrySingleTPStrategy', () => {
       // TP recovered
       expect(state.tpClientOrderId).toBe(tpId);
     });
+
+    // Strategy 471 bug: when all TP orders were CANCELED (not active in openOrders),
+    // tpClientOrderId is null → TP-qty inference (Step 4a-b) is skipped.
+    // recoverStepIndex (price matching, 0.1% tolerance) fails when bid0 drifted
+    // between original ladder placement and restart → old filled entry prices don't
+    // match fresh ladder prices → steps not marked filled → placeLadderEntries
+    // places step 0 instead of the correct next step.
+    // Fix: inventory-qty inference (Step 4d) uses inventoryQty to infer filled steps.
+    it('should infer filled steps from inventoryQty when all TPs were CANCELED and prices do not match fresh ladder (Strategy 471 bug)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0, // dynamic bid0 → ladder prices change with bid0
+          ladderSteps: 5,
+          stepType: 'geometric',
+          stepValue: 0.62,
+          qtyType: 'arithmetic',
+          qtyPerStep: 2000,
+          qtyStepAdd: 500,
+          tpType: 'percent',
+          tpPercent: 5,
+          maxInvestment: 100000,
+          maxPosition: 100000,
+        }),
+      );
+
+      // Original bid0 was ~0.3450. Entries placed at:
+      // Step 0: 0.3450 * (1-0.0062)^1 = 0.34286, qty=2000, FILLED
+      // Step 1: 0.3450 * (1-0.0062)^2 = 0.34073, qty=2500, FILLED
+      // Step 0+1 total qty = 4500
+      // TP was placed but CANCELED.
+      const entry0Id = 'E1D7000001';
+      const entry1Id = 'E1D7000002';
+      const canceledTpId = 'T1D7000001';
+
+      // Fresh bid0 on restart = 0.3420 (drifted from original 0.3450)
+      // Fresh ladder step prices: 0.33988, 0.33777, ...
+      // Old filled entry prices (0.34286, 0.34073) do NOT match fresh ladder
+      const freshOrderBook = createOrderBook(0.342, 0.01);
+
+      const openOrders: Order[] = []; // no active orders — both TPs CANCELED, both entries FILLED
+
+      const orderHistory: Order[] = [
+        createOrder(
+          entry0Id,
+          OrderSide.BUY,
+          OrderStatus.FILLED,
+          0.34286,
+          2000,
+          2000,
+          0.34286,
+        ),
+        createOrder(
+          entry1Id,
+          OrderSide.BUY,
+          OrderStatus.FILLED,
+          0.34073,
+          2500,
+          2500,
+          0.34073,
+        ),
+        createOrder(
+          canceledTpId,
+          OrderSide.SELL,
+          OrderStatus.CANCELED,
+          0.35061,
+          4500,
+          0,
+          undefined,
+        ),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderHistory,
+          orderBook: freshOrderBook,
+          strategyNetPosition: new Decimal(4500),
+        }),
+      );
+
+      const state = strategy.getStrategyState();
+
+      // VWAP = (2000*0.34286 + 2500*0.34073) / 4500 = 0.341677
+      expect(state.inventoryQty).toBe('4500');
+      expect(state.vwap).toBe('0.34167666666666666667');
+
+      // Steps 0 and 1 should be inferred as filled from inventoryQty=4500
+      // (cumulative: step0=2000, step1=4500 → 4500>=4500 → both filled)
+      expect(state.steps[0].filled).toBe(true);
+      expect(state.steps[1].filled).toBe(true);
+      expect(state.steps[2].filled).toBe(false);
+
+      // A TP should be placed (inventory > 0, no active TP)
+      const tpSignals = findTpSignals(result);
+      expect(tpSignals.length).toBeGreaterThanOrEqual(1);
+
+      // The next entry should be at step 2 (qty=3000), NOT step 0 (qty=2000)
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0]!.quantity.toString()).toBe('3000');
+    });
   });
 
   describe('Restart recovery - orderHistory (real-world scenarios)', () => {

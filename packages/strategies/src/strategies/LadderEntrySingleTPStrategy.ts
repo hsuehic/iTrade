@@ -2604,6 +2604,93 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
+    // Step 4d: Infer filled steps from inventoryQty when there is no active TP
+    // order. Step 4a-b (TP-qty inference) requires tpClientOrderId to be set,
+    // but when all TP orders were CANCELED/REJECTED (not active in openOrders),
+    // tpClientOrderId is null → TP-qty inference is skipped. Without this
+    // fallback, recoverStepIndex (price matching, 0.1% tolerance) is the only
+    // step-fill mechanism, and it fails when bid0 drifted between the original
+    // ladder placement and the restart's fresh bid0 → old filled entry prices
+    // don't match fresh ladder prices → steps not marked filled →
+    // placeLadderEntries places step 0 instead of the correct next step.
+    //
+    // This inference uses inventoryQty (which equals the sum of filled entry
+    // executedQuantity minus tpFilledQty, computed by recalculateVWAP + Step 4c)
+    // to determine how many steps have filled, by matching cumulative step
+    // quantities. Effective inventory = inventoryQty + tpFilledQty (tpFilledQty
+    // accounts for partial TP fills that already sold some inventory).
+    //
+    // Only run when inventory > 0, no active TP, and not during reinit.
+    if (
+      !isReinit &&
+      this.inventoryQty.gt(0) &&
+      !this.tpClientOrderId &&
+      this.steps.length > 0
+    ) {
+      let effectiveInventory = this.inventoryQty.plus(this.tpFilledQty);
+      let inferredFilledSteps = 0;
+      let cumulative = new Decimal(0);
+      for (let i = 0; i < this.steps.length; i++) {
+        cumulative = cumulative.plus(this.steps[i].quantity);
+        if (effectiveInventory.gte(cumulative)) {
+          inferredFilledSteps = i + 1;
+        } else {
+          break;
+        }
+      }
+
+      if (inferredFilledSteps > 0) {
+        // Merge with any steps already marked filled by recoverStepIndex.
+        // recoverStepIndex uses price matching (0.1% tolerance) and may
+        // partially succeed (e.g., step 1 matches but step 0 doesn't due
+        // to asymmetric price drift). Instead of skipping entirely when
+        // alreadyFilledCount > 0, fill the gap: mark steps 0..inferredFilledSteps-1
+        // as filled if not already, and clear entryClientOrderId for filled steps.
+        const alreadyFilledCount = this.steps.filter((s) => s.filled).length;
+        if (alreadyFilledCount < inferredFilledSteps) {
+          for (let i = 0; i < this.steps.length; i++) {
+            if (i < inferredFilledSteps) {
+              if (!this.steps[i].filled) {
+                this.steps[i].filled = true;
+                this.steps[i].entryClientOrderId = null;
+              }
+            } else if (i === inferredFilledSteps) {
+              // This is the next step to place. Preserve any active entry
+              // order (NEW/PARTIALLY_FILLED) that recoverStepIndex may have
+              // correctly assigned here — only clear stale/incorrect assignments.
+              const coid = this.steps[i].entryClientOrderId;
+              if (coid) {
+                const ord = this.orders.get(coid);
+                if (
+                  ord &&
+                  (ord.status === OrderStatus.NEW ||
+                    ord.status === OrderStatus.PARTIALLY_FILLED)
+                ) {
+                  // Active entry at the correct next step — keep it.
+                  continue;
+                }
+                // Stale assignment (FILLED/CANCELED/REJECTED) — clear it
+                // so placeLadderEntries can place a fresh order.
+                this.steps[i].entryClientOrderId = null;
+              }
+              this.steps[i].filled = false;
+            } else {
+              // Steps beyond the next step — clear any stale assignments.
+              this.steps[i].filled = false;
+              this.steps[i].entryClientOrderId = null;
+            }
+          }
+          this._logger.info(
+            `[processInitialData] Inventory-qty inference: ${inferredFilledSteps} steps ` +
+              `filled from effectiveInventory=${effectiveInventory.toString()} ` +
+              `(inventory=${this.inventoryQty.toString()}, tpFilledQty=${this.tpFilledQty.toString()}, ` +
+              `alreadyFilled=${alreadyFilledCount}). ` +
+              `Next entry: step ${inferredFilledSteps} (qty=${inferredFilledSteps < this.steps.length ? this.steps[inferredFilledSteps].quantity.toString() : 'N/A'}).`,
+          );
+        }
+      }
+    }
+
     // Step 5: If inventory > 0 but no active TP, create one
     // SAFETY: strategyNetPosition is the net executed position from the DB
     // (BUY FILLED - SELL FILLED, filtered by strategyId). If it's <= 0 while
