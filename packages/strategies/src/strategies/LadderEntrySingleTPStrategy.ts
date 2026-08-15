@@ -1854,6 +1854,38 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
       // Force rebuild ladder with the fresh reference price
       this.steps = [];
+
+      // Ghost order cleanup: cancel any stale BUY entry orders from the previous
+      // cycle that are still NEW/PARTIALLY_FILLED on the exchange. resetLadder()
+      // cleared the internal orders map, but the exchange still has these orders.
+      // Without cancellation, they remain as ghost orders that could fill and
+      // create phantom inventory (Strategy 468 bug: E468D5 BUY 4000 remained
+      // active after TP fill → reinit → no new entry orders placed).
+      if (initialData.openOrders) {
+        const ghostOrders = initialData.openOrders.filter(
+          (o) =>
+            o.symbol === this._symbol &&
+            o.side === OrderSide.BUY &&
+            (o.status === OrderStatus.NEW || o.status === OrderStatus.PARTIALLY_FILLED) &&
+            o.clientOrderId &&
+            this.isStrategyOrderId(o.clientOrderId) &&
+            /^E\d+D/.test(o.clientOrderId),
+        );
+        for (const ghost of ghostOrders) {
+          this._logger.info(
+            `[processInitialData] Reinit: cancelling ghost entry order from previous cycle: ` +
+              `${ghost.clientOrderId} (qty=${ghost.quantity?.toString()}, price=${ghost.price?.toString()})`,
+          );
+          signals.push(
+            this.generateCancelSignal(
+              ghost.clientOrderId!,
+              'ladder_reinit_ghost_cleanup',
+            ),
+          );
+          // Track in previousCycleOrderIds so late FILLED pushes are ignored
+          this.previousCycleOrderIds.add(ghost.clientOrderId!);
+        }
+      }
     }
 
     // Capture ask0 from REST orderbook for TP price flooring (max(ask0, tpPrice)).
@@ -2737,7 +2769,63 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       );
     });
 
-    if (hasActiveEntry) {
+    // SAFETY: If there is an active entry on a non-zero step but step 0 is not
+    // filled and has no entry, the ladder is in an invalid state. This happens
+    // when recoverStepIndex assigns an orphaned entry to the wrong step (price
+    // drift makes the orphan's price match a higher step). Without this fix,
+    // hasActiveEntry=true → skip placeLadderEntries → step 0 never gets placed
+    // → entry0PlacedTime stays 0 → checkAndPerformReset disabled → strategy
+    // permanently stuck (Strategy 468 bug). Fix: cancel the orphaned entry and
+    // fall through to placeLadderEntries which will place step 0.
+    if (hasActiveEntry && this.inventoryQty.eq(0) && !this.tpClientOrderId) {
+      const step0 = this.steps[0];
+      const step0HasActiveEntry =
+        step0?.entryClientOrderId &&
+        this.orders.get(step0.entryClientOrderId) &&
+        (this.orders.get(step0.entryClientOrderId)!.status === OrderStatus.NEW ||
+          this.orders.get(step0.entryClientOrderId)!.status ===
+            OrderStatus.PARTIALLY_FILLED);
+
+      if (!step0HasActiveEntry && !step0?.filled) {
+        // Step 0 has no active entry and is not filled, but some other step
+        // has an active entry. This is invalid — cancel the orphaned entries
+        // so placeLadderEntries can start fresh from step 0.
+        this._logger.warn(
+          `[processInitialData] Active entry found on non-step-0 but step 0 is empty ` +
+            `(inventory=0, no TP). Cancelling orphaned entries to allow step 0 placement.`,
+        );
+        for (const step of this.steps) {
+          if (step.entryClientOrderId && step.index > 0) {
+            const ord = this.orders.get(step.entryClientOrderId);
+            if (
+              ord &&
+              (ord.status === OrderStatus.NEW ||
+                ord.status === OrderStatus.PARTIALLY_FILLED)
+            ) {
+              signals.push(
+                this.generateCancelSignal(
+                  step.entryClientOrderId,
+                  'ladder_orphaned_entry_cleanup',
+                ),
+              );
+            }
+            step.entryClientOrderId = null;
+          }
+        }
+        // Fall through to placeLadderEntries below (hasActiveEntry is now stale)
+      }
+    }
+
+    const hasActiveEntryAfterCleanup = this.steps.some((step) => {
+      if (!step.entryClientOrderId) return false;
+      const ord = this.orders.get(step.entryClientOrderId);
+      return (
+        ord &&
+        (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
+      );
+    });
+
+    if (hasActiveEntryAfterCleanup) {
       this._logger.debug(
         '[processInitialData] Active entry order already exists — skipping placeLadderEntries',
       );
@@ -2793,26 +2881,52 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // Reset is only meaningful for dynamic price (basePrice=0). For fixed price,
     // rebuilding produces identical prices — skip to avoid pointless cancel+place.
     if (this.basePrice.gt(0)) return [];
-    if (this.entry0PlacedTime <= 0) return [];
     if (this.inventoryQty.gt(0)) return [];
     if (this.tpClientOrderId) return [];
 
+    // Find the first step with an active entry order (normally step 0, but
+    // recoverStepIndex may have assigned an orphaned entry to a higher step
+    // when bid0 drifted — Strategy 468 bug). Use that step's placedTime.
+    if (this.steps.length === 0) return [];
+    let resetStepIndex = -1;
+    let resetEntryCoid: string | null = null;
+    let resetPlacedTime = 0;
+    for (let i = 0; i < this.steps.length; i++) {
+      const coid = this.steps[i].entryClientOrderId;
+      if (!coid) continue;
+      const ord = this.orders.get(coid);
+      if (
+        ord &&
+        (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
+      ) {
+        resetStepIndex = i;
+        resetEntryCoid = coid;
+        // Use entry0PlacedTime if it was set (step 0 case), otherwise use
+        // order.updateTime as a best-effort timestamp.
+        resetPlacedTime =
+          i === 0 && this.entry0PlacedTime > 0
+            ? this.entry0PlacedTime
+            : (ord.updateTime?.getTime() ?? Date.now());
+        break;
+      }
+    }
+
+    if (resetStepIndex < 0 || !resetEntryCoid) return [];
+    if (resetPlacedTime <= 0) return [];
+
     // Check elapsed time
-    const elapsedMs = Date.now() - this.entry0PlacedTime;
+    const elapsedMs = Date.now() - resetPlacedTime;
     const intervalMs = this.resetInterval * 60 * 1000;
     if (elapsedMs < intervalMs) return [];
 
-    // Find entry 0's active order
-    if (this.steps.length === 0) return [];
-    const step0 = this.steps[0];
-    if (!step0.entryClientOrderId) return [];
-
-    const entry0Order = this.orders.get(step0.entryClientOrderId);
+    const step0 = this.steps[resetStepIndex];
+    const entry0Order = this.orders.get(resetEntryCoid);
     if (!entry0Order) return [];
     if (entry0Order.status !== OrderStatus.NEW) return [];
 
-    // Verify NO other entries are active (only entry 0 should be pending)
-    for (let i = 1; i < this.steps.length; i++) {
+    // Verify NO other entries are active (only the reset step should be pending)
+    for (let i = 0; i < this.steps.length; i++) {
+      if (i === resetStepIndex) continue;
       const step = this.steps[i];
       if (step.entryClientOrderId) {
         const ord = this.orders.get(step.entryClientOrderId);
@@ -2820,7 +2934,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           ord &&
           (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
         ) {
-          // Another entry is active — not a clean entry-0-only state
+          // Another entry is active — not a clean single-entry state
           return [];
         }
       }
@@ -2865,13 +2979,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // race-fill goes through normal path without clearing _needsReinit →
     // processInitialData reinit wipes the fill's TP/entry 1.
     // (resetLadder is NOT called here, so we must add manually.)
-    this.previousCycleOrderIds.add(step0.entryClientOrderId);
+    this.previousCycleOrderIds.add(resetEntryCoid);
 
-    // Cancel entry 0. resetLadder() in processInitialData's reinit path will
+    // Cancel the stuck entry. resetLadder() in processInitialData's reinit path will
     // clear all tracking maps and add remaining IDs to previousCycleOrderIds.
-    signals.push(
-      this.generateCancelSignal(step0.entryClientOrderId, 'ladder_reset_interval'),
-    );
+    signals.push(this.generateCancelSignal(resetEntryCoid, 'ladder_reset_interval'));
 
     // Clear any pending TP debounce state (defensive — reset condition requires
     // no TP, but tpRefreshPending may be stale from a prior partial fill)

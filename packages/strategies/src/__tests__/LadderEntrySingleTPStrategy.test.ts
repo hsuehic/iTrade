@@ -2813,4 +2813,71 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(toSignalArray(result)[0].action).toBe('hold');
     });
   });
+
+  describe('Ghost order cleanup on reinit (Strategy 468 bug)', () => {
+    it('should cancel stale ghost BUY orders from previous cycle during reinit and place fresh step 0', async () => {
+      // Simulate: TP filled → reinit → ghost entry (step 2, qty 4000) still NEW on exchange
+      // Strategy 468: qtyPerStep=3000, qtyStepAdd=500, basePrice=0, stepType=geometric, stepValue=0.62
+      // After TP fill, resetLadder clears internal state but exchange still has E468D5 (BUY 4000)
+      // Reinit should: cancel ghost + place fresh step 0 (qty 3000)
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          qtyType: 'arithmetic',
+          qtyPerStep: 3000,
+          qtyStepAdd: 500,
+          stepType: 'geometric',
+          stepValue: 0.62,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 10,
+          maxPosition: 30000,
+          maxInvestment: 1200,
+          resetInterval: 60,
+        }),
+      );
+
+      // Simulate: strategy had step 0 + step 1 filled, step 2 placed, then TP filled
+      // First, initialize to set up internal state
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(0.3409) }),
+      );
+      // Place step 0 entry
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries.length).toBe(1);
+
+      // Simulate step 0 filled + step 1 filled + step 2 placed + TP filled
+      // by directly setting _needsReinit and calling processInitialData with ghost order
+      const ghostEntryId = 'E1D5000003'; // step 2's entry order
+      const ghostEntry = createOrder(
+        ghostEntryId,
+        OrderSide.BUY,
+        OrderStatus.NEW,
+        0.3347,
+        4000, // step 2 qty = 3000 + 500*2 = 4000
+        0,
+      );
+
+      // Trigger reinit: set _needsReinit via internal state
+      // (Normally set by handleTpFilled when basePrice=0)
+      (strategy as unknown as { _needsReinit: boolean })._needsReinit = true;
+
+      const reinitResult = await strategy.processInitialData(
+        createInitialData({
+          orderBook: createOrderBook(0.3409),
+          openOrders: [ghostEntry], // ghost order from previous cycle
+        }),
+      );
+      const signals = toSignalArray(reinitResult);
+
+      // Should have: 1 cancel (ghost) + 1 entry (step 0, qty 3000)
+      const cancelSignals = signals.filter((s) => s.action === 'cancel');
+      const entrySignals = findEntrySignals(reinitResult);
+
+      expect(cancelSignals.length).toBe(1);
+      expect(cancelSignals[0].clientOrderId).toBe(ghostEntryId);
+      expect(entrySignals.length).toBe(1);
+      expect(entrySignals[0].quantity!.toNumber()).toBe(3000); // step 0 qty, not 4000
+    });
+  });
 });
