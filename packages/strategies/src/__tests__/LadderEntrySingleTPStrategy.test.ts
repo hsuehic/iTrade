@@ -2880,4 +2880,618 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(entrySignals[0].quantity!.toNumber()).toBe(3000); // step 0 qty, not 4000
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Entry Gap feature tests (entryGapType / entryGapValue)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('Entry Gap feature (entryGapType / entryGapValue)', () => {
+    it('should place entry 0 at referencePrice when entryGapValue=0 (no gap)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 0,
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryGapValue=0 → entryBase = referencePrice = 100 → entry 0 = entryBase - stepValue*0 = 100
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+    });
+
+    it('should place entry 0 at referencePrice when geometric entryGapValue=0', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 2,
+          entryGapType: 'geometric',
+          entryGapValue: 0,
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryGapValue=0 → entryBase = referencePrice = 100 → entry 0 = 100 * (1-0.02)^0 = 100
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(100, 1);
+    });
+
+    it('should use arithmetic entryGap different from stepValue', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 5,
+          stepType: 'arithmetic',
+          stepValue: 5, // inter-level gap = 5 USDT
+          entryGapType: 'arithmetic',
+          entryGapValue: 20, // gap from ref to entry 0 = 20 USDT (different from stepValue)
+          qtyPerStep: 0.1,
+          maxInvestment: 10000,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryBase = 100 - 20 = 80 → entry 0 = 80 - 5*0 = 80
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(80, 1);
+
+      // Fill entry 0 → should place entry 1 at entryBase - stepValue*1 = 80 - 5 = 75
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        80,
+        0.1,
+        0.1,
+        80,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entries1 = findEntrySignals(result1);
+      expect(entries1).toHaveLength(1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(75, 1);
+    });
+
+    it('should use geometric entryGap different from stepValue', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 2, // inter-level gap = 2% per step
+          entryGapType: 'geometric',
+          entryGapValue: 5, // gap from ref to entry 0 = 5% (different from stepValue)
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryBase = 100 * (1 - 0.05) = 95 → entry 0 = 95 * (1-0.02)^0 = 95
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(95, 1);
+
+      // Fill entry 0 → entry 1 = 95 * (1-0.02)^1 = 95 * 0.98 = 93.1
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        95,
+        0.1,
+        0.1,
+        95,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entries1 = findEntrySignals(result1);
+      expect(entries1).toHaveLength(1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(93.1, 1);
+    });
+
+    it('should support mixed gap types: arithmetic gap + geometric steps', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 2, // geometric inter-level gap: 2% per step
+          entryGapType: 'arithmetic',
+          entryGapValue: 10, // arithmetic gap: 10 USDT absolute drop
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryBase = 100 - 10 = 90 (arithmetic gap) → entry 0 = 90 * (1-0.02)^0 = 90
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(90, 1);
+
+      // Fill entry 0 → entry 1 = 90 * (1-0.02)^1 = 88.2
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        90,
+        0.1,
+        0.1,
+        90,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entries1 = findEntrySignals(result1);
+      expect(entries1).toHaveLength(1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(88.2, 1);
+    });
+
+    it('should support mixed gap types: geometric gap + arithmetic steps', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5, // arithmetic inter-level gap: 5 USDT per step
+          entryGapType: 'geometric',
+          entryGapValue: 3, // geometric gap: 3% drop
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryBase = 100 * (1 - 0.03) = 97 → entry 0 = 97 - 5*0 = 97
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(97, 1);
+
+      // Fill entry 0 → entry 1 = 97 - 5*1 = 92
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        97,
+        0.1,
+        0.1,
+        97,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entries1 = findEntrySignals(result1);
+      expect(entries1).toHaveLength(1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(92, 1);
+    });
+
+    it('should be backward compatible when entryGapValue is not specified (defaults to stepValue)', async () => {
+      // Old config: no entryGapType/entryGapValue → defaults to stepType/stepValue
+      // This should produce the SAME prices as the old formula: price[i] = ref - stepValue * (i+1)
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          qtyPerStep: 0.1,
+          // entryGapType and entryGapValue NOT specified
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // Old formula: entry 0 = 100 - 5*(0+1) = 95
+      // New formula with defaults: entryBase = 100 - 5 = 95, entry 0 = 95 - 5*0 = 95 ✓
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(95, 1);
+
+      // Fill entry 0 → entry 1 = 95 - 5*1 = 90 (old: 100 - 5*(1+1) = 90 ✓)
+      const fill0 = createOrder(
+        entrySignals[0].clientOrderId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        95,
+        0.1,
+        0.1,
+        95,
+      );
+      const result1 = await strategy.analyze(createDataUpdate({ orders: [fill0] }));
+      const entries1 = findEntrySignals(result1);
+      expect(entries1).toHaveLength(1);
+      expect(entries1[0].price!.toNumber()).toBeCloseTo(90, 1);
+    });
+
+    it('should be backward compatible for geometric when entryGapValue is not specified', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 2,
+          qtyPerStep: 0.1,
+          // entryGapType and entryGapValue NOT specified
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // Old formula: entry 0 = 100 * (1-0.02)^(0+1) = 98
+      // New with defaults: entryBase = 100 * (1-0.02) = 98, entry 0 = 98 * (1-0.02)^0 = 98 ✓
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(98, 1);
+    });
+
+    it('should reverse-engineer referencePrice correctly with entryGap on restart (arithmetic)', async () => {
+      // Strategy with arithmetic gap=20, stepValue=5
+      // referencePrice=100 → entryBase=80 → entry 0=80, entry 1=75
+      // After restart with only entry 0 active (no TP), reverse-engineer ref from entry 0 price
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 20,
+          qtyType: 'arithmetic',
+          qtyPerStep: 0.1,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 1,
+        }),
+      );
+
+      // Entry 0 was placed at price 80 (from old referencePrice=100)
+      const entry0Id = 'E1D1D1700000000';
+      const entry0Price = new Decimal('80');
+
+      // Restart: new bid0 is 105 (different from original 100)
+      const newBid0 = new Decimal('105');
+
+      const openOrders: Order[] = [
+        createOrder(
+          entry0Id,
+          OrderSide.BUY,
+          OrderStatus.NEW,
+          parseFloat(entry0Price.toString()),
+          0.1,
+          0,
+          undefined,
+        ),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderBook: {
+            symbol: 'TEST/USDC:USDC',
+            bids: [[newBid0, new Decimal(100)]],
+            asks: [[newBid0.plus(0.01), new Decimal(100)]],
+            timestamp: new Date(),
+          },
+        }),
+      );
+
+      // NO duplicate entry
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+
+      // ref = entryBase + entryGapValue = 80 + 20 = 100 (original, not new bid0=105)
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(100, 1);
+      // Step 0 price should match existing entry (80)
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(80, 1);
+      expect(state.steps[0].entryClientOrderId).toBe(entry0Id);
+    });
+
+    it('should reverse-engineer referencePrice correctly with geometric entryGap on restart', async () => {
+      // Strategy with geometric gap=5%, stepValue=2% (geometric)
+      // referencePrice=100 → entryBase=95 → entry 0=95
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'geometric',
+          stepValue: 2,
+          entryGapType: 'geometric',
+          entryGapValue: 5,
+          qtyType: 'arithmetic',
+          qtyPerStep: 0.1,
+          tpType: 'absolute',
+          tpAbsoluteProfit: 1,
+        }),
+      );
+
+      // Entry 0 was placed at price 95 (from old referencePrice=100)
+      const entry0Id = 'E1D1D1700000000';
+      const entry0Price = new Decimal('95');
+
+      // Restart: new bid0 is 110 (different from original 100)
+      const newBid0 = new Decimal('110');
+
+      const openOrders: Order[] = [
+        createOrder(
+          entry0Id,
+          OrderSide.BUY,
+          OrderStatus.NEW,
+          parseFloat(entry0Price.toString()),
+          0.1,
+          0,
+          undefined,
+        ),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderBook: {
+            symbol: 'TEST/USDC:USDC',
+            bids: [[newBid0, new Decimal(100)]],
+            asks: [[newBid0.plus(0.01), new Decimal(100)]],
+            timestamp: new Date(),
+          },
+        }),
+      );
+
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
+
+      const state = strategy.getStrategyState();
+
+      // ref = entryBase / (1 - entryGapValue/100) = 95 / 0.95 = 100
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(100, 1);
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(95, 1);
+    });
+
+    it('should reverse-engineer referencePrice from TP with entryGap (arithmetic gap)', async () => {
+      // Strategy: arithmetic gap=10, stepValue=5, qty=0.1 each
+      // referencePrice=100 → entryBase=90 → entry 0=90, entry 1=85
+      // After entry 0 fills: VWAP=90, TP(percent=2%) = 90*1.02 = 91.8
+      // Restart: TP qty=0.1 → 1 filled step
+      // reverseEngineer: VWAP from TP = 91.8/1.02 = 90
+      // entryBase = VWAP + stepValue * (0*qty[0])/totalQty = 90 + 0 = 90 (i=0, so weightedSum=0)
+      // referencePrice = entryBase + entryGapValue = 90 + 10 = 100
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyType: 'arithmetic',
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 2,
+          maxInvestment: 10000,
+          maxPosition: 100,
+        }),
+      );
+
+      const entry1Id = 'E1DA000002';
+      const tpId = 'T1DA000001';
+
+      // Open orders: entry 1 (NEW at price 85) + TP (NEW at 91.8, qty=0.1)
+      const openOrders: Order[] = [
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 85, 0.1, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 91.8, 0.1, 0, undefined),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderBook: {
+            symbol: 'BTC/USDT',
+            timestamp: new Date(),
+            exchange: 'okx',
+            bids: [[new Decimal(0.95), new Decimal(1)]], // different bid0
+            asks: [[new Decimal(0.96), new Decimal(1)]],
+          },
+        }),
+      );
+
+      const state = strategy.getStrategyState();
+
+      // referencePrice should be reverse-engineered to 100, not 0.95
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(100, 1);
+      // Step 0 = 90, Step 1 = 85
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(90, 1);
+      expect(parseFloat(state.steps[1].price)).toBeCloseTo(85, 1);
+
+      // No duplicate entries
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
+    });
+
+    it('should reverse-engineer referencePrice from TP with geometric entryGap', async () => {
+      // Strategy: geometric gap=5%, geometric stepValue=2%, qty=0.1 each
+      // referencePrice=100 → entryBase=95 → entry 0=95
+      // After entry 0 fills: VWAP=95, TP(percent=2%) = 95*1.02 = 96.9
+      // Restart: TP qty=0.1 → 1 filled step
+      // reverseEngineer: VWAP from TP = 96.9/1.02 = 95
+      // entryBase = VWAP * totalQty / Σ(r^i * qty[i]) = 95 * 0.1 / (r^0 * 0.1) = 95 / 1 = 95 (i=0, r^0=1)
+      // referencePrice = entryBase / (1 - entryGapValue/100) = 95 / 0.95 = 100
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 5,
+          stepType: 'geometric',
+          stepValue: 2,
+          entryGapType: 'geometric',
+          entryGapValue: 5,
+          qtyType: 'arithmetic',
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 2,
+          maxInvestment: 10000,
+          maxPosition: 100,
+        }),
+      );
+
+      const entry1Id = 'E1DA000002';
+      const tpId = 'T1DA000001';
+
+      // Open orders: entry 1 (NEW at price 93.1) + TP (NEW at 96.9, qty=0.1)
+      // entry 1 = 95 * (1-0.02)^1 = 93.1
+      const openOrders: Order[] = [
+        createOrder(entry1Id, OrderSide.BUY, OrderStatus.NEW, 93.1, 0.1, 0, undefined),
+        createOrder(tpId, OrderSide.SELL, OrderStatus.NEW, 96.9, 0.1, 0, undefined),
+      ];
+
+      const result = await strategy.processInitialData(
+        createInitialData({
+          openOrders,
+          orderBook: {
+            symbol: 'BTC/USDT',
+            timestamp: new Date(),
+            exchange: 'okx',
+            bids: [[new Decimal(0.95), new Decimal(1)]],
+            asks: [[new Decimal(0.96), new Decimal(1)]],
+          },
+        }),
+      );
+
+      const state = strategy.getStrategyState();
+
+      // referencePrice = 95 / 0.95 = 100
+      expect(parseFloat(state.referencePrice)).toBeCloseTo(100, 1);
+      // Step 0 = 95, Step 1 = 93.1
+      expect(parseFloat(state.steps[0].price)).toBeCloseTo(95, 1);
+      expect(parseFloat(state.steps[1].price)).toBeCloseTo(93.1, 1);
+
+      const entrySignals = findEntrySignals(result);
+      expect(entrySignals).toHaveLength(0);
+    });
+
+    it('should handle entryGap=0 with bid0 (dynamic mode)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 2,
+          entryGapType: 'arithmetic',
+          entryGapValue: 0,
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const ob = createOrderBook(50);
+      const result = await strategy.processInitialData(
+        createInitialData({ orderBook: ob }),
+      );
+      const entrySignals = findEntrySignals(result);
+
+      // bid0=50, entryGapValue=0 → entryBase=50 → entry 0 = 50 - 2*0 = 50
+      expect(entrySignals).toHaveLength(1);
+      expect(entrySignals[0].price!.toNumber()).toBeCloseTo(50, 1);
+    });
+
+    it('should not build any steps when arithmetic entryGapValue > referencePrice (negative entryBase)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 150, // > referencePrice → entryBase = 100 - 150 = -50
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryBase = -50 ≤ 0 → buildLadder returns [] → no entries placed
+      expect(entrySignals).toHaveLength(0);
+    });
+
+    it('should not build any steps when geometric entryGapValue >= 100 (zero/negative entryBase)', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'geometric',
+          stepValue: 2,
+          entryGapType: 'geometric',
+          entryGapValue: 100, // 100% drop → entryBase = 100 * 0 = 0
+          qtyPerStep: 0.1,
+        }),
+      );
+
+      const result = await strategy.processInitialData(createInitialData());
+      const entrySignals = findEntrySignals(result);
+
+      // entryBase = 0 ≤ 0 → buildLadder returns [] → no entries placed
+      expect(entrySignals).toHaveLength(0);
+    });
+
+    it('should produce identical prices to pre-refactor when entryGapValue not in config (full ladder walk)', async () => {
+      // Simulate an old DB config: no entryGapType/entryGapValue keys at all.
+      // Pre-refactor formula: price[i] = ref - stepValue * (i+1) (arithmetic)
+      // With ref=100, stepValue=5, 5 steps: 95, 90, 85, 80, 75
+      // New formula with constructor fallback (entryGapValue ?? stepValue = 5):
+      //   entryBase = 100 - 5 = 95, price[i] = 95 - 5*i → 95, 90, 85, 80, 75 ✓
+
+      // We need to test via the constructor directly (not the factory)
+      // because the factory would spread defaultParameters which now omits entryGapValue.
+      const config = createStrategyConfig({
+        basePrice: 100,
+        ladderSteps: 5,
+        stepType: 'arithmetic',
+        stepValue: 5,
+        qtyPerStep: 0.1,
+        maxInvestment: 10000,
+        maxPosition: 100,
+        tpType: 'percent',
+        tpPercent: 2,
+      });
+      // Simulate old DB config: delete entryGap keys if somehow present
+      delete (config.parameters as Record<string, unknown>).entryGapType;
+      delete (config.parameters as Record<string, unknown>).entryGapValue;
+
+      const strategy = new LadderEntrySingleTPStrategy(config);
+      const result = await strategy.processInitialData(createInitialData());
+
+      // Walk the full ladder by filling each entry
+      const expectedPrices = [95, 90, 85, 80, 75];
+      let lastResult = result;
+      for (let i = 0; i < expectedPrices.length; i++) {
+        const entries = findEntrySignals(lastResult);
+        if (i === 0) {
+          expect(entries).toHaveLength(1);
+          expect(entries[0].price!.toNumber()).toBeCloseTo(expectedPrices[i], 1);
+        }
+
+        if (i < expectedPrices.length - 1) {
+          // Fill current entry → next entry should be placed
+          const fill = createOrder(
+            entries[0].clientOrderId,
+            OrderSide.BUY,
+            OrderStatus.FILLED,
+            expectedPrices[i],
+            0.1,
+            0.1,
+            expectedPrices[i],
+          );
+          lastResult = await strategy.analyze(createDataUpdate({ orders: [fill] }));
+          const nextEntries = findEntrySignals(lastResult);
+          expect(nextEntries).toHaveLength(1);
+          expect(nextEntries[0].price!.toNumber()).toBeCloseTo(expectedPrices[i + 1], 1);
+        }
+      }
+    });
+  });
 });
