@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Loader2, Check, User } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Loader2, Check, User, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
 
@@ -28,6 +28,8 @@ export function ProfileSettings() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Update local state when user changes
   useEffect(() => {
@@ -67,6 +69,40 @@ export function ProfileSettings() {
     const value = e.target.value;
     setImageUrl(value);
     setHasChanges(name !== user?.name || value !== (user?.image || ''));
+  };
+
+  // Upload the picked file to /api/settings/avatar, which re-encodes it to a
+  // 256x256 webp on the server, stores it on the uploads volume and saves only
+  // the resulting URL on the user row. The file is never inlined as a data URL:
+  // `user.image` is returned by every session lookup, so a large inline avatar
+  // would be re-sent to the browser on practically every page load.
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Let the same file be re-picked later (e.g. after a failed upload).
+    e.target.value = '';
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/settings/avatar', {
+        method: 'POST',
+        body: form,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || t('errors.updateFailed'));
+      }
+      setImageUrl(data.url);
+      setHasChanges(false);
+      toast.success(t('messages.updated'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('errors.updateFailed');
+      toast.error(message);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -139,9 +175,35 @@ export function ProfileSettings() {
                 <User className="size-8" />
               </AvatarFallback>
             </Avatar>
-            <div className="space-y-1">
+            <div className="space-y-2">
               <p className="text-sm font-medium">{t('pictureTitle')}</p>
               <p className="text-xs text-muted-foreground">{t('pictureHint')}</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    {t('saving')}
+                  </>
+                ) : (
+                  <>
+                    <Upload className="size-4" />
+                    {t('pictureTitle')}
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 

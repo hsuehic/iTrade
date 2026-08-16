@@ -161,8 +161,16 @@ services:
       - '3002:3002'
     env_file:
       - /opt/itrade/.env.web
+    environment:
+      # Where POST /api/settings/avatar writes uploaded avatars. Must point at
+      # the mounted volume below — Next.js bakes `public/` into the image at
+      # build time, so anything written there at runtime is lost on redeploy.
+      UPLOADS_DIR: /app/uploads
     volumes:
       - /opt/itrade/firebase-service-account.json:/secrets/firebase-service-account.json:ro
+      # User uploads (avatars). Host-side dir survives image rebuilds and
+      # `docker compose down`; only delete it if you want to drop all avatars.
+      - /opt/itrade/uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy

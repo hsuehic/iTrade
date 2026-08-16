@@ -73,7 +73,13 @@ export class StrategyRepository {
       .where('strategy.id = :id', { id });
 
     if (options?.includeUser) {
-      query.leftJoinAndSelect('strategy.user', 'user');
+      // PERF: select ONLY the columns callers actually need (ownership checks
+      // read strategy.user.id). leftJoinAndSelect would pull every user column
+      // — including `user.image`, which stores the avatar as a base64 data URL
+      // and can be multiple MB. That turned GET /api/strategies/:id into a
+      // 3.3 MB response (nginx then spilled it to disk: "an upstream response
+      // is buffered to a temporary file") on every poll of the strategy page.
+      query.leftJoin('strategy.user', 'user').addSelect(['user.id', 'user.name']);
     }
 
     if (options?.includePerformance) {
@@ -99,9 +105,10 @@ export class StrategyRepository {
   }): Promise<StrategyEntity[]> {
     const query = this.repository.createQueryBuilder('strategy');
 
-    // Only join user if explicitly requested
+    // Only join user if explicitly requested — and never select user.image
+    // (base64 avatar, can be several MB). See findById for details.
     if (filters?.includeUser) {
-      query.leftJoinAndSelect('strategy.user', 'user');
+      query.leftJoin('strategy.user', 'user').addSelect(['user.id', 'user.name']);
     }
 
     // Only join performance if explicitly requested

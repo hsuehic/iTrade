@@ -132,7 +132,12 @@ export default function AnalyticsPage() {
 
   const fetchOrders = async (strategyId?: number) => {
     try {
-      const url = strategyId ? `/api/orders?strategyId=${strategyId}` : '/api/orders';
+      // Always bound the page size: this tab only lists recent orders, and with
+      // no pageSize the endpoint returned the account's entire order history
+      // (measured 18.5 MB / 2.6 s on production for 33k orders).
+      const url = strategyId
+        ? `/api/orders?strategyId=${strategyId}&pageSize=100`
+        : '/api/orders?pageSize=100';
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();

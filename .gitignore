@@ -85,3 +85,6 @@ apps/mobile/macos/Flutter/ephemeral/flutter_export_environment.sh
 routa.*
 # Claude Code local settings
 **/.claude/settings.local.json
+
+# Local upload storage (dev fallback for UPLOADS_DIR)
+.uploads/
