@@ -1937,6 +1937,264 @@ describe('LadderEntrySingleTPStrategy', () => {
     });
   });
 
+  describe('Partial-filled entry → TP filled → ladder MUST re-init', () => {
+    it('should reset the cycle when the TP of a partially-filled entry fills after a restart (live orders must not be blacklisted by orderHistory)', async () => {
+      // REGRESSION: getOrderHistory uses the exchange "all orders" endpoint
+      // (Binance /allOrders), which ALSO returns orders that are still OPEN.
+      // When history contains a FILLED TP from a previous cycle, the strategy
+      // blacklisted every history order id — including the CURRENT cycle's
+      // live entry + live TP recovered from openOrders. Every later WS push for
+      // them was then silently dropped, so the TP FILLED never reached
+      // handleTpFilled → the cycle was never reset and the ladder was never
+      // re-initialized (strategy stuck forever).
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      // Previous, completed cycle (entry FILLED + TP FILLED).
+      const oldEntry = createOrder(
+        'E1D1D1700000000',
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        99,
+        0.1,
+        0.1,
+        99,
+        new Date('2025-01-01T09:00:00Z'),
+      );
+      oldEntry.timestamp = new Date('2025-01-01T09:00:00Z');
+      const oldTp = createOrder(
+        'T1D2D1700000001',
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        99.99,
+        0.1,
+        0.1,
+        99.99,
+        new Date('2025-01-01T09:30:00Z'),
+      );
+      oldTp.timestamp = new Date('2025-01-01T09:30:00Z');
+
+      // Current cycle: entry 0 is PARTIALLY filled and still live, with a live
+      // TP covering the filled portion.
+      const liveEntry = createOrder(
+        'E1D3D1700000002',
+        OrderSide.BUY,
+        OrderStatus.PARTIALLY_FILLED,
+        99,
+        0.1,
+        0.05,
+        99,
+        new Date('2025-01-01T10:00:00Z'),
+      );
+      liveEntry.timestamp = new Date('2025-01-01T10:00:00Z');
+      const liveTp = createOrder(
+        'T1D4D1700000003',
+        OrderSide.SELL,
+        OrderStatus.NEW,
+        99.99,
+        0.05,
+        0,
+        undefined,
+        new Date('2025-01-01T10:00:05Z'),
+      );
+      liveTp.timestamp = new Date('2025-01-01T10:00:05Z');
+
+      await strategy.processInitialData(
+        createInitialData({
+          openOrders: [liveEntry, liveTp],
+          // "all orders" also returns the two still-open orders
+          orderHistory: [oldEntry, oldTp, liveEntry, liveTp],
+          strategyNetPosition: new Decimal(0.05),
+        }),
+      );
+
+      const recovered = strategy.getStrategyState();
+      expect(recovered.inventoryQty).toBe('0.05');
+      expect(recovered.tpClientOrderId).toBe('T1D4D1700000003');
+
+      // The live TP now fills.
+      const tpFilled = createOrder(
+        'T1D4D1700000003',
+        OrderSide.SELL,
+        OrderStatus.FILLED,
+        99.99,
+        0.05,
+        0.05,
+        99.99,
+        new Date('2025-01-01T10:05:00Z'),
+      );
+      const result = await strategy.analyze(createDataUpdate({ orders: [tpFilled] }));
+
+      // Cycle must be reset: the partially-filled entry is cancelled ...
+      const cancels = findCancelSignals(result);
+      expect(cancels.some((c) => c.clientOrderId === 'E1D3D1700000002')).toBe(true);
+
+      // ... and a fresh ladder is started (basePrice is fixed → immediate rebuild).
+      const entries = findEntrySignals(result);
+      expect(entries.length).toBeGreaterThanOrEqual(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(99, 6);
+
+      const after = strategy.getStrategyState();
+      expect(parseFloat(after.inventoryQty)).toBe(0);
+      expect(after.tpClientOrderId).toBeNull();
+    });
+
+    it('should keep partial-fill inventory when CANCELED is the first push seen for the entry', async () => {
+      // REGRESSION: a CANCELED/EXPIRED push can be the FIRST push for a
+      // partially filled entry (no preceding PARTIALLY_FILLED push). The order
+      // is then removed from this.orders, so recalculateVWAP relies on
+      // processedQuantityMap — which was never written → the filled portion
+      // silently vanished from inventory on the next recalculation, leaving an
+      // uncovered position (TP undersells).
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entry0 = findEntrySignals(initResult)[0];
+
+      // First and only push for entry 0: CANCELED with a partial fill.
+      const cancelResult = await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              entry0.clientOrderId,
+              OrderSide.BUY,
+              OrderStatus.CANCELED,
+              99,
+              0.1,
+              0.05,
+              99,
+              new Date('2025-01-01T10:00:02Z'),
+            ),
+          ],
+        }),
+      );
+      expect(strategy.getStrategyState().inventoryQty).toBe('0.05');
+
+      // Step 1 is placed; when it fills, the recalculation must still include
+      // the 0.05 from the cancelled step 0.
+      const entry1 = findEntrySignals(cancelResult)[0];
+      expect(entry1.price!.toNumber()).toBeCloseTo(98, 6);
+
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              entry1.clientOrderId,
+              OrderSide.BUY,
+              OrderStatus.FILLED,
+              98,
+              0.1,
+              0.1,
+              98,
+              new Date('2025-01-01T10:00:10Z'),
+            ),
+          ],
+        }),
+      );
+
+      const state = strategy.getStrategyState();
+      expect(parseFloat(state.inventoryQty)).toBeCloseTo(0.15, 10);
+      // VWAP = (0.05*99 + 0.1*98) / 0.15
+      expect(parseFloat(state.vwap)).toBeCloseTo(98.3333333, 6);
+    });
+
+    it('should rebuild the ladder locally when the engine never performs the requested reinitialization', async () => {
+      // REGRESSION: after a TP fill with basePrice=0 the strategy cancels every
+      // order and waits for the engine to call processInitialData again. If that
+      // never happens (the engine only checks on the account-update path and its
+      // REST fetch can throw), no order is left to generate a push, so nothing
+      // ever re-triggers the reinit → the strategy silently stops trading.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0 = findEntrySignals(initResult)[0];
+
+      const fillResult = await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              entry0.clientOrderId,
+              OrderSide.BUY,
+              OrderStatus.FILLED,
+              99,
+              0.1,
+              0.1,
+              99,
+              new Date('2025-01-01T10:00:01Z'),
+            ),
+          ],
+        }),
+      );
+      const tpSignal = findTpSignals(fillResult)[0] as StrategyOrderResult;
+
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              tpSignal.clientOrderId!,
+              OrderSide.SELL,
+              OrderStatus.FILLED,
+              99.99,
+              0.1,
+              0.1,
+              99.99,
+              new Date('2025-01-01T10:00:05Z'),
+            ),
+          ],
+        }),
+      );
+      expect(strategy.requiresReinitialization()).toBe(true);
+
+      // Engine never calls processInitialData. Simulate the stall window.
+      (strategy as unknown as { _needsReinitTime: number })._needsReinitTime =
+        Date.now() - 31_000;
+
+      // Only an orderbook push arrives (bid0 moved to 110).
+      const healed = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(110),
+      });
+
+      const entries = findEntrySignals(healed);
+      expect(entries).toHaveLength(1);
+      // Fresh bid0 = 110 → entry 0 = 110 - stepValue(1) = 109
+      expect(entries[0].price!.toNumber()).toBeCloseTo(109, 6);
+      expect(strategy.requiresReinitialization()).toBe(false);
+    });
+  });
+
   describe('Risk limits', () => {
     it('should not place more entries than maxPosition allows', async () => {
       const strategy = new LadderEntrySingleTPStrategy(

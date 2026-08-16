@@ -525,6 +525,21 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * Reset to false in processInitialData after consuming the fresh orderbook.
    */
   private _needsReinit = false;
+
+  /**
+   * Timestamp (ms) when _needsReinit was last set to true.
+   * Used by recoverStuckReinitialization() to detect a reinit request that the
+   * engine never fulfilled (its reinit hook only runs on the account-update
+   * path and its REST fetch can throw). Without a self-heal, the strategy is
+   * left with an empty ladder and no live orders — no further WS push will ever
+   * arrive, so nothing re-triggers the reinit and the strategy silently stops
+   * trading (symptom: "TP filled but the ladder was never re-initialized").
+   */
+  private _needsReinitTime = 0;
+
+  /** How long to wait for the engine's reinit before self-healing locally. */
+  private static readonly REINIT_STUCK_MS = 30_000;
+
   private referencePriceWasReversedFromTp = false;
 
   /**
@@ -587,6 +602,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * 0 = unknown (initial state or no orderbook available).
    */
   private _currentAsk0: Decimal = new Decimal(0);
+
+  /**
+   * Best bid (bid0) from the most recent orderbook update (REST init or
+   * real-time WebSocket subscription).
+   * Used by recoverStuckReinitialization() so a locally rebuilt ladder still
+   * uses a fresh reference price when the engine's REST reinit never happened.
+   * 0 = unknown.
+   */
+  private _currentBid0: Decimal = new Decimal(0);
 
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
@@ -1474,6 +1498,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // When basePrice>0 (fixed), the reference price never changes.
     if (this.basePrice.lte(0)) {
       this._needsReinit = true;
+      this._needsReinitTime = Date.now();
       this._logger.debug(
         `[handleTpFilled] basePrice=0 — set _needsReinit=true. ` +
           `Engine will re-fetch orderbook and call processInitialData for new cycle.`,
@@ -1806,7 +1831,19 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // For orders with no fills or TP orders, safe to delete all maps.
         const entryFilledQty = order.executedQuantity || new Decimal(0);
         if (entryFilledQty.gt(0) && metadata.signalType === SignalType.Entry) {
-          // Keep processedQuantityMap and orderMetadataMap for recalculateVWAP
+          // Keep processedQuantityMap and orderMetadataMap for recalculateVWAP.
+          // The order is about to leave this.orders, so its executed quantity
+          // and fill price MUST be recorded here — recalculateVWAP's second
+          // loop needs both (it skips entries without processedQuantity or
+          // without metadata.entryPrice). A CANCELED / EXPIRED push can be the
+          // FIRST push we see for a partially filled entry (no preceding
+          // PARTIALLY_FILLED push), in which case neither was set yet and the
+          // filled portion would silently vanish from inventory on the next
+          // recalculateVWAP → TP undersells → orphaned position with no TP.
+          this.processedQuantityMap.set(order.clientOrderId, entryFilledQty);
+          if (!metadata.entryPrice) {
+            metadata.entryPrice = (order.averagePrice || order.price)?.toString();
+          }
           this.orders.delete(order.clientOrderId);
         } else {
           this.orders.delete(order.clientOrderId);
@@ -1916,6 +1953,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // and rebuild the ladder with the updated reference price.
     if (this._needsReinit) {
       this._needsReinit = false;
+      this._needsReinitTime = 0;
       // Clear resetCancelPending: reinit is a synchronous block — between
       // resetLadder() and placeLadderEntries(), no WS push can arrive.
       // Also clear _lastResetTime: the orphan-fill recovery (Path B) in
@@ -1996,6 +2034,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       const ask0 = initialData.orderBook.asks?.[0]?.[0];
       if (ask0 && ask0.gt(0)) {
         this._currentAsk0 = ask0;
+      }
+      const restBid0 = initialData.orderBook.bids?.[0]?.[0];
+      if (restBid0 && restBid0.gt(0)) {
+        this._currentBid0 = restBid0;
       }
       // Also use bid0 as reference price for basePrice=0 strategies
       if (this.referencePrice.lte(0)) {
@@ -2206,6 +2248,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
         this.orders.set(order.clientOrderId, order);
 
+        // An order that is live on the exchange and adopted into the current
+        // cycle must NEVER stay blacklisted — handleOrderUpdates drops all
+        // pushes for blacklisted ids, which would freeze this order's state
+        // (and, for a TP, prevent the cycle reset / ladder rebuild entirely).
+        this.previousCycleOrderIds.delete(order.clientOrderId);
+
         // Recover stepIndex for entry orders
         if (
           metadata.signalType === SignalType.Entry &&
@@ -2328,12 +2376,41 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
         if (hasFilledTpInHistory) {
           // Previous cycle(s) already completed (TP FILLED). Start fresh.
-          // Blacklist all old-cycle order IDs to prevent delayed WS pushes
-          // from re-introducing them.
+          // Blacklist old-cycle order IDs to prevent delayed WS pushes from
+          // re-introducing them.
+          //
+          // CRITICAL: order history is fetched with the exchange's "all orders"
+          // endpoint (Binance /allOrders, OKX orders-history), which also
+          // returns orders that are STILL OPEN (NEW / PARTIALLY_FILLED) and
+          // therefore belong to the CURRENT cycle. Those were already adopted
+          // into the current cycle by the openOrders recovery above (they live
+          // in this.orders / steps / tpClientOrderId). Blacklisting them makes
+          // handleOrderUpdates silently drop EVERY future WS push for them:
+          //   - the TP FILLED push never reaches handleTpFilled → the cycle is
+          //     never reset and the ladder is never re-initialized. The strategy
+          //     is then permanently stuck: tpClientOrderId still points at a
+          //     "live" order so the TP safety net and checkAndPerformReset both
+          //     bail out, and the active entry blocks placeLadderEntries.
+          //   - further entry fills never update inventory / VWAP → the TP is
+          //     never resized (position left partially uncovered).
+          // This is the root cause of "the TP of a partially-filled entry fills
+          // but the ladder is not re-initialized": a partially-filled entry is
+          // exactly the state where a live entry AND a live TP coexist.
+          // → Only blacklist orders that are terminal and not part of the
+          //   current cycle.
           for (const order of ownedHistory) {
-            if (order.clientOrderId) {
-              this.previousCycleOrderIds.add(order.clientOrderId);
+            if (!order.clientOrderId) continue;
+            // Still open on the exchange → current cycle, never blacklist.
+            if (
+              order.status === OrderStatus.NEW ||
+              order.status === OrderStatus.PARTIALLY_FILLED
+            ) {
+              continue;
             }
+            // Already adopted into the current cycle from openOrders.
+            if (this.orders.has(order.clientOrderId)) continue;
+            if (order.clientOrderId === this.tpClientOrderId) continue;
+            this.previousCycleOrderIds.add(order.clientOrderId);
           }
 
           // CRITICAL FIX: Before skipping all recovery, check if there is REAL
@@ -3127,6 +3204,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // Request engine to re-fetch orderbook via REST and re-run processInitialData
     // with a fresh bid0. The new cycle's ladder will be built with the updated price.
     this._needsReinit = true;
+    this._needsReinitTime = Date.now();
     this._logger.debug(
       `[checkAndPerformReset] Set _needsReinit=true. ` +
         `Engine will re-fetch orderbook and rebuild ladder with fresh bid0.`,
@@ -3152,6 +3230,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         if (ask0 && ask0.gt(0)) {
           this._currentAsk0 = ask0;
         }
+        const bid0 = dataUpdate.orderbook.bids?.[0]?.[0];
+        if (bid0 && bid0.gt(0)) {
+          this._currentBid0 = bid0;
+        }
       }
     }
 
@@ -3174,21 +3256,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
-    // Check if the resetInterval feature should trigger a reset.
-    // This runs BEFORE processing order updates so that a reset (cancel entry 0
-    // + rebuild) takes priority over handling incoming WS pushes for entry 0.
-    const resetSignals = this.checkAndPerformReset();
-    if (resetSignals.length > 0) {
-      // Reset triggered — return immediately. The engine will process cancel
-      // signals, and if _needsReinit is true, re-fetch orderbook and re-run
-      // processInitialData. Any WS orders in this dataUpdate will be processed
-      // in the next analyze() call after reinit completes.
-      // Note: handleOrderUpdates has a FILLED exception for blacklisted orders
-      // to prevent losing fills that happened just before the cancel was sent.
-      return resetSignals;
-    }
+    // Self-heal a reinitialization request the engine never fulfilled.
+    // Must run before the reset check (a stuck reinit would otherwise keep the
+    // strategy order-less forever, and checkAndPerformReset needs a live entry).
+    tpDebounceSignals.push(...this.recoverStuckReinitialization());
 
-    // Only handle order updates (no orderbook/kline subscription)
+    // Handle order updates first, then evaluate the resetInterval condition.
+    // Order updates must NOT be skipped when a reset triggers: a WS push is a
+    // one-shot event, so returning early would silently discard e.g. an entry
+    // FILLED that arrived in the same batch (→ orphaned position with no TP).
+    // Processing pushes first also means the reset condition is evaluated
+    // against the freshest state (a fill in this batch legitimately cancels the
+    // reset, since inventory is then > 0).
     if (dataUpdate.orders && dataUpdate.orders.length > 0) {
       const orderSignals = this.handleOrderUpdates(dataUpdate.orders);
       // Merge deferred TP signals with order update signals
@@ -3238,14 +3317,84 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         }
       }
 
+      // Evaluate the resetInterval condition against the post-update state.
+      allSignals.push(...this.checkAndPerformReset());
+
       if (allSignals.length > 0) return allSignals;
       return { action: 'hold' };
     }
 
-    // No order updates — return deferred TP signals if any
+    // No order updates — evaluate the resetInterval condition and return any
+    // deferred TP / self-heal signals.
+    tpDebounceSignals.push(...this.checkAndPerformReset());
     if (tpDebounceSignals.length > 0) return tpDebounceSignals;
 
     return { action: 'hold' };
+  }
+
+  /**
+   * Self-heal a reinitialization request that the engine never fulfilled.
+   *
+   * handleTpFilled (basePrice=0) and checkAndPerformReset set `_needsReinit`
+   * and rely on the engine calling processInitialData again with a fresh REST
+   * orderbook. That hook only runs on the account-update path and its REST
+   * fetch can throw (network / rate limit) — and by then the strategy has
+   * already cancelled every order and cleared its ladder. With no live orders,
+   * no further order push will ever arrive, so nothing re-triggers the reinit:
+   * the strategy silently stops trading. Observed symptom: "the TP filled but
+   * the ladder was never re-initialized".
+   *
+   * Because this strategy subscribes to the orderbook, analyze() keeps being
+   * called even with no orders — so we can detect the stall and rebuild the
+   * ladder locally from the live bid0.
+   *
+   * Guards (all required): reinit pending for at least REINIT_STUCK_MS, no
+   * inventory, no TP, and no live/pending entry order (so we cannot duplicate
+   * an order that is still working on the exchange).
+   */
+  private recoverStuckReinitialization(): StrategyResult[] {
+    if (!this._needsReinit) return [];
+    if (this._needsReinitTime <= 0) return [];
+    if (
+      Date.now() - this._needsReinitTime <
+      LadderEntrySingleTPStrategy.REINIT_STUCK_MS
+    ) {
+      return [];
+    }
+    if (this.inventoryQty.gt(0)) return [];
+    if (this.tpClientOrderId) return [];
+
+    // Any order still tracked as live (or awaiting exchange confirmation)
+    // means the engine is mid-flight — do not interfere.
+    for (const order of this.orders.values()) {
+      if (
+        order.status === OrderStatus.NEW ||
+        order.status === OrderStatus.PARTIALLY_FILLED
+      ) {
+        return [];
+      }
+    }
+    if (this.pendingClientOrderIds.size > 0) return [];
+
+    // Refresh the reference price from the live orderbook when in dynamic mode.
+    if (this.basePrice.lte(0) && this._currentBid0.gt(0)) {
+      this.referencePrice = this._currentBid0;
+    }
+    if (this.referencePrice.lte(0)) return [];
+
+    this._needsReinit = false;
+    this._needsReinitTime = 0;
+    this.resetCancelPending = false;
+    this.steps = [];
+
+    const signals = this.placeLadderEntries();
+    this._logger.warn(
+      `[recoverStuckReinitialization] Engine reinitialization never happened ` +
+        `(pending > ${LadderEntrySingleTPStrategy.REINIT_STUCK_MS}ms). Rebuilt ladder ` +
+        `locally with referencePrice=${this.referencePrice.toString()} and placed ` +
+        `${signals.length} entry order(s).`,
+    );
+    return signals;
   }
 
   protected async onCleanup(): Promise<void> {
@@ -3262,12 +3411,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpRefreshPending = false;
     this.lastPartialFillTpTriggerTime = 0;
     this._needsReinit = false;
+    this._needsReinitTime = 0;
     this.entry0PlacedTime = 0;
     this.resetCancelPending = false;
     this._lastResetTime = 0;
     this._recoveredNetPos = new Decimal(0);
     this._recoveredNetPosTime = 0;
     this._currentAsk0 = new Decimal(0);
+    this._currentBid0 = new Decimal(0);
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }
@@ -3298,6 +3449,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         this._lastResetTime > 0 ? new Date(this._lastResetTime).toISOString() : null,
       recoveredNetPos: this._recoveredNetPos.toString(),
       currentAsk0: this._currentAsk0.toString(),
+      currentBid0: this._currentBid0.toString(),
+      needsReinit: this._needsReinit,
+      needsReinitTime:
+        this._needsReinitTime > 0 ? new Date(this._needsReinitTime).toISOString() : null,
       steps: this.steps.map((s) => ({
         index: s.index,
         price: s.price.toString(),
