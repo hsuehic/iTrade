@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 import {
   LadderEntrySingleTPStrategy,
   LadderEntrySingleTPParameters,
+  LadderEntrySingleTPStrategyRegistryConfig,
 } from '../strategies/LadderEntrySingleTPStrategy';
 import {
   StrategyConfig,
@@ -2192,6 +2193,396 @@ describe('LadderEntrySingleTPStrategy', () => {
       // Fresh bid0 = 110 → entry 0 = 110 - stepValue(1) = 109
       expect(entries[0].price!.toNumber()).toBeCloseTo(109, 6);
       expect(strategy.requiresReinitialization()).toBe(false);
+    });
+  });
+
+  describe('maxEntryPrice (upward-wick protection)', () => {
+    it('should anchor the ladder at maxEntryPrice when bid0 spikes above it', async () => {
+      // bid0 = 200 (an upward wick), cap = 100. Without the cap entry 0 would be
+      // at 199 and the whole position would be accumulated at the top.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0, // dynamic: anchor on bid0
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          maxEntryPrice: 100,
+        }),
+      );
+
+      const result = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(200) }),
+      );
+
+      const entries = findEntrySignals(result);
+      expect(entries).toHaveLength(1);
+      // Anchored at the cap, not at bid0 - entryGap (= 199)
+      expect(entries[0].price!.toNumber()).toBeCloseTo(100, 6);
+
+      // Whole ladder shifted down with the anchor; nothing above the cap.
+      const steps = strategy.getStrategyState().steps;
+      expect(steps.map((s) => parseFloat(s.price))).toEqual([100, 99, 98]);
+      steps.forEach((s) => expect(parseFloat(s.price)).toBeLessThanOrEqual(100));
+    });
+
+    it('should leave the ladder untouched when bid0 is below maxEntryPrice', async () => {
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          maxEntryPrice: 1000, // far above the market
+        }),
+      );
+
+      const result = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+
+      // bid0 = 100 → entry 0 = 100 - stepValue(1) = 99, cap not involved
+      expect(findEntrySignals(result)[0].price!.toNumber()).toBeCloseTo(99, 6);
+      expect(strategy.getStrategyState().steps.map((s) => parseFloat(s.price))).toEqual([
+        99, 98, 97,
+      ]);
+    });
+
+    it('should behave identically to before when maxEntryPrice is 0 or absent', async () => {
+      const withZero = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          maxEntryPrice: 0,
+        }),
+      );
+      // Old configs loaded from the DB have no maxEntryPrice key at all.
+      const configWithoutKey = createStrategyConfig({
+        basePrice: 0,
+        ladderSteps: 3,
+        stepValue: 1,
+        qtyPerStep: 0.1,
+      });
+      delete (configWithoutKey.parameters as Partial<LadderEntrySingleTPParameters>)
+        .maxEntryPrice;
+      const withoutKey = new LadderEntrySingleTPStrategy(configWithoutKey);
+
+      const a = await withZero.processInitialData(
+        createInitialData({ orderBook: createOrderBook(200) }),
+      );
+      const b = await withoutKey.processInitialData(
+        createInitialData({ orderBook: createOrderBook(200) }),
+      );
+
+      // No cap → anchored on bid0 as before: 200 - 1 = 199
+      expect(findEntrySignals(a)[0].price!.toNumber()).toBeCloseTo(199, 6);
+      expect(findEntrySignals(b)[0].price!.toNumber()).toBeCloseTo(199, 6);
+    });
+
+    it('should still respect the cap when the ladder is rebuilt after a TP fill', async () => {
+      // The dangerous moment: TP fills, the engine re-fetches the orderbook, and
+      // bid0 has spiked. The new cycle must not chase the spike.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          tpType: 'percent',
+          tpPercent: 1,
+          maxEntryPrice: 100,
+        }),
+      );
+
+      const init = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0 = findEntrySignals(init)[0];
+      expect(entry0.price!.toNumber()).toBeCloseTo(99, 6);
+
+      const filled = await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              entry0.clientOrderId,
+              OrderSide.BUY,
+              OrderStatus.FILLED,
+              99,
+              0.1,
+              0.1,
+              99,
+              new Date('2025-01-01T10:00:01Z'),
+            ),
+          ],
+        }),
+      );
+      const tp = findTpSignals(filled)[0] as StrategyOrderResult;
+
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [
+            createOrder(
+              tp.clientOrderId!,
+              OrderSide.SELL,
+              OrderStatus.FILLED,
+              99.99,
+              0.1,
+              0.1,
+              99.99,
+              new Date('2025-01-01T10:00:05Z'),
+            ),
+          ],
+        }),
+      );
+      expect(strategy.requiresReinitialization()).toBe(true);
+
+      // Engine reinit with a spiked bid0 = 500
+      const reinit = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(500) }),
+      );
+
+      const entries = findEntrySignals(reinit);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(100, 6);
+      strategy
+        .getStrategyState()
+        .steps.forEach((s) => expect(parseFloat(s.price)).toBeLessThanOrEqual(100));
+    });
+
+    it('should refuse to place an entry when an in-memory step price is above the cap', async () => {
+      // Guards the restart path: a ladder recovered/reverse-engineered from old
+      // orders can sit above a cap that was added afterwards. Buying must be
+      // refused rather than filling at the old high price.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepValue: 1,
+          qtyPerStep: 0.1,
+          maxEntryPrice: 100,
+        }),
+      );
+      await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+
+      // Force a stale, too-high ladder and clear the placed order.
+      const internals = strategy as unknown as {
+        steps: Array<{
+          index: number;
+          price: Decimal;
+          quantity: Decimal;
+          entryClientOrderId: string | null;
+          filled: boolean;
+        }>;
+        pendingClientOrderIds: Set<string>;
+        placeLadderEntries: () => StrategyResult[];
+      };
+      internals.steps.forEach((s, i) => {
+        s.price = new Decimal(300 - i);
+        s.entryClientOrderId = null;
+        s.filled = false;
+      });
+      internals.pendingClientOrderIds.clear();
+
+      const signals = internals.placeLadderEntries();
+      expect(signals).toHaveLength(0);
+    });
+  });
+
+  describe('Parameter definition / persisted value type consistency', () => {
+    // The dynamic form renders `type: 'enum'` as a Select and persists the raw
+    // option STRING, while `type: 'number'` persists e.target.valueAsNumber.
+    // A numeric parameter declared as an enum therefore lands in the DB as a
+    // string and silently relies on JS coercion (that is exactly what happened
+    // to resetInterval). Keep enums string-valued and numbers numeric.
+    it('should not declare any numeric parameter as an enum', () => {
+      const numericEnums = LadderEntrySingleTPStrategyRegistryConfig.parameterDefinitions
+        .filter((p) => p.type === 'enum')
+        .filter((p) =>
+          (p.validation?.options ?? []).every((o) => /^-?\d+(\.\d+)?$/.test(o)),
+        )
+        .map((p) => p.name);
+      expect(numericEnums).toEqual([]);
+    });
+
+    it('should declare every enum option as a non-numeric string', () => {
+      const enums = LadderEntrySingleTPStrategyRegistryConfig.parameterDefinitions.filter(
+        (p) => p.type === 'enum',
+      );
+      // stepType / qtyType / entryGapType / tpType — all genuinely categorical
+      expect(enums.map((p) => p.name).sort()).toEqual([
+        'entryGapType',
+        'qtyType',
+        'stepType',
+        'tpType',
+      ]);
+      enums.forEach((p) => {
+        (p.validation?.options ?? []).forEach((o) => {
+          expect(Number.isNaN(Number(o))).toBe(true);
+        });
+      });
+    });
+
+    it('should give resetInterval a numeric definition with a usable range', () => {
+      const def = LadderEntrySingleTPStrategyRegistryConfig.parameterDefinitions.find(
+        (p) => p.name === 'resetInterval',
+      );
+      expect(def?.type).toBe('number');
+      expect(def?.validation?.options).toBeUndefined();
+      expect(def?.defaultValue).toBe(0);
+      expect(def?.min).toBe(0);
+      expect(def?.max).toBe(1440);
+    });
+
+    it('should default every numeric parameter definition to a number, never a string', () => {
+      LadderEntrySingleTPStrategyRegistryConfig.parameterDefinitions
+        .filter((p) => p.type === 'number' && p.defaultValue !== undefined)
+        .forEach((p) => {
+          expect(typeof p.defaultValue).toBe('number');
+        });
+    });
+  });
+
+  describe('maxEntryPrice backward compatibility with persisted configs', () => {
+    // Verbatim `parameters` JSON from the two shapes that exist in the
+    // production DB today (2026-08-16: 6 LadderEntrySingleTPStrategy rows, none
+    // of them has a maxEntryPrice key). Note resetInterval is persisted as a
+    // STRING — the parameter form stores enum-typed fields that way — so these
+    // objects also guard against over-strict parsing.
+    const PROD_PARAMS_WITH_ENTRY_GAP = {
+      tpType: 'absolute',
+      qtyType: 'arithmetic',
+      leverage: 10,
+      stepType: 'geometric',
+      basePrice: 0,
+      stepValue: 0.25,
+      tpPercent: 1,
+      qtyPerStep: 30,
+      qtyStepAdd: 5,
+      ladderSteps: 5,
+      maxPosition: 200,
+      entryGapType: 'arithmetic',
+      qtyStepRatio: 1,
+      entryGapValue: 0.1,
+      maxInvestment: 1600,
+      resetInterval: '15',
+      tpAbsoluteProfit: 5,
+    } as unknown as LadderEntrySingleTPParameters;
+
+    const PROD_PARAMS_LEGACY = {
+      tpType: 'absolute',
+      qtyType: 'arithmetic',
+      leverage: 10,
+      stepType: 'geometric',
+      basePrice: 0,
+      stepValue: 0.25,
+      tpPercent: 1,
+      qtyPerStep: 30,
+      qtyStepAdd: 5,
+      ladderSteps: 5,
+      maxPosition: 200,
+      qtyStepRatio: 1,
+      maxInvestment: 1600,
+      resetInterval: '15',
+      tpAbsoluteProfit: 5,
+    } as unknown as LadderEntrySingleTPParameters;
+
+    const buildFromProdParams = (params: LadderEntrySingleTPParameters) =>
+      new LadderEntrySingleTPStrategy({
+        type: 'LadderEntrySingleTPStrategy',
+        parameters: params,
+        symbol: 'BTC/USDT',
+        exchange: 'okx',
+        strategyId: 1,
+        strategyName: 'prod-replay',
+        performance: createEmptyPerformance('BTC/USDT', 'okx', 1, 'prod-replay'),
+      });
+
+    it('should coerce the string resetInterval written by the old enum field to a number', () => {
+      // resetInterval is now declared `type: 'number'`, but rows written while it
+      // was an `enum` hold the option STRING (`"resetInterval": "15"`). Those
+      // rows must keep working, and the state must not leak the string.
+      const strategy = buildFromProdParams(PROD_PARAMS_WITH_ENTRY_GAP);
+      const { resetInterval } = strategy.getStrategyState();
+      expect(resetInterval).toBe(15);
+      expect(typeof resetInterval).toBe('number');
+    });
+
+    it('should treat an unparseable resetInterval as disabled instead of failing to start', () => {
+      const strategy = buildFromProdParams({
+        ...PROD_PARAMS_WITH_ENTRY_GAP,
+        resetInterval: 'not-a-number',
+      } as unknown as LadderEntrySingleTPParameters);
+      expect(strategy.getStrategyState().resetInterval).toBe(0);
+    });
+
+    it('should start and place unchanged entries for a persisted config with entryGap (no maxEntryPrice key)', async () => {
+      const strategy = buildFromProdParams(PROD_PARAMS_WITH_ENTRY_GAP);
+      expect(strategy.getStrategyState().maxEntryPrice).toBe('0');
+
+      const result = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+
+      // bid0=100, arithmetic gap 0.1 → entryBase = 99.9; geometric steps 0.25%
+      const entries = findEntrySignals(result);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(99.9, 10);
+      expect(entries[0].quantity!.toNumber()).toBe(30);
+
+      const prices = strategy
+        .getStrategyState()
+        .steps.map((s) => parseFloat(parseFloat(s.price).toFixed(6)));
+      // 99.9 * 0.9975^i
+      expect(prices).toEqual([99.9, 99.65025, 99.401124, 99.152622, 98.90474]);
+    });
+
+    it('should start and place unchanged entries for the legacy config (no entryGap, no maxEntryPrice)', async () => {
+      const strategy = buildFromProdParams(PROD_PARAMS_LEGACY);
+      expect(strategy.getStrategyState().maxEntryPrice).toBe('0');
+
+      const result = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+
+      // No entryGap keys → gap falls back to stepValue (geometric 0.25%)
+      const entries = findEntrySignals(result);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].price!.toNumber()).toBeCloseTo(99.75, 10);
+    });
+
+    it('should treat null and empty string as "no cap"', () => {
+      for (const raw of [null, '']) {
+        const strategy = buildFromProdParams({
+          ...PROD_PARAMS_WITH_ENTRY_GAP,
+          maxEntryPrice: raw,
+        } as unknown as LadderEntrySingleTPParameters);
+        expect(strategy.getStrategyState().maxEntryPrice).toBe('0');
+      }
+    });
+
+    it('should accept a numeric string (the form persists enum fields as strings)', () => {
+      const strategy = buildFromProdParams({
+        ...PROD_PARAMS_WITH_ENTRY_GAP,
+        maxEntryPrice: '100',
+      } as unknown as LadderEntrySingleTPParameters);
+      expect(strategy.getStrategyState().maxEntryPrice).toBe('100');
+    });
+
+    it('should refuse to start on an unparseable or negative maxEntryPrice', () => {
+      for (const raw of ['abc', NaN, -1]) {
+        expect(() =>
+          buildFromProdParams({
+            ...PROD_PARAMS_WITH_ENTRY_GAP,
+            maxEntryPrice: raw,
+          } as unknown as LadderEntrySingleTPParameters),
+        ).toThrow(/maxEntryPrice/);
+      }
     });
   });
 

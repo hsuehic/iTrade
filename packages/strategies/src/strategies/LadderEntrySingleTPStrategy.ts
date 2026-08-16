@@ -27,7 +27,10 @@ import { silentLogger } from '../utils/silent-logger';
  * - Take profit: The strategy always has at most ONE TP SELL limit order
  *         TP condition can be a fixed profit amount (in quote currency) or a percentage
  *         TP order is updated immediately whenever a new entry fills (including partial fills)
- * - Risk control: Max investment (quote) and max position (base) — only counts orders from this strategy
+ * - Risk control: Max investment (quote) and max position (base) — only counts orders from this strategy.
+ *         maxEntryPrice caps the highest price an entry may be placed at (0 = no cap): when entry 0 would
+ *         land above it the ladder is anchored at maxEntryPrice instead of bid0, so an upward wick cannot
+ *         make the strategy accumulate its position at the top of the spike.
  * - Cycle: On TP fully filled → cancel all remaining entries → rebuild ladder with latest bid0 → start new cycle
  *
  * Edge/Corner case handling:
@@ -101,6 +104,21 @@ export interface LadderEntrySingleTPParameters extends StrategyParameters {
   /** Maximum position size in base currency (including open BUY orders from this strategy) */
   maxPosition: number;
 
+  /**
+   * Highest price an entry order may ever be placed at (quote currency).
+   * 0 = no cap.
+   *
+   * Protects against upward wicks: the ladder is anchored on bid0, so a spike
+   * would otherwise drag the whole ladder up and accumulate a large position at
+   * the top. When entry 0 would land above this price, the ladder is anchored at
+   * maxEntryPrice instead (all steps shift down with it), and no entry order is
+   * ever placed above it.
+   *
+   * Optional: absent in configs created before this parameter existed, which is
+   * treated the same as 0 (no cap).
+   */
+  maxEntryPrice?: number;
+
   /** Leverage for futures trading */
   leverage?: number;
 
@@ -145,6 +163,9 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
       tpPercent: 1,
       maxInvestment: 1000,
       maxPosition: 10,
+      // 0 = no entry price cap (backward compatible: existing strategies loaded
+      // from the DB without this key keep their current behaviour).
+      maxEntryPrice: 0,
       leverage: 10,
       resetInterval: 0,
     },
@@ -343,6 +364,21 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         order: 15,
       },
       {
+        name: 'maxEntryPrice',
+        type: 'number',
+        description:
+          'Maximum entry price (quote currency). Entry orders are never placed above this price. ' +
+          'The ladder is anchored on bid0, so an upward wick would otherwise drag every step up and ' +
+          'accumulate a large position at the top; when entry 0 would land above this price, the ladder ' +
+          'is anchored here instead and all steps shift down with it. 0 = no cap.',
+        defaultValue: 0,
+        required: false,
+        min: 0,
+        max: 100000000,
+        group: 'Risk Management',
+        order: 16,
+      },
+      {
         name: 'leverage',
         type: 'number',
         description: 'Leverage for futures trading.',
@@ -351,20 +387,28 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         min: 1,
         max: 125,
         group: 'Risk Management',
-        order: 16,
+        order: 17,
       },
       {
+        // Declared as 'number', NOT 'enum'. The form renders an enum as a Select
+        // whose onValueChange hands back the raw option STRING, so this used to
+        // be persisted as `"resetInterval": "15"` while the TypeScript type said
+        // number — everything only worked through JS coercion. A 'number' field
+        // stores e.target.valueAsNumber, so the persisted value matches the type.
         name: 'resetInterval',
-        type: 'enum',
+        type: 'number',
         description:
-          'Reset interval in minutes. When only entry 0 (status=NEW, unfilled) exists and the specified time has elapsed, ' +
+          'Reset interval in MINUTES. When only entry 0 (status=NEW, unfilled) exists and the specified time has elapsed, ' +
           'the strategy cancels entry 0, re-fetches orderbook, rebuilds ladder with fresh bid0, and places a new entry 0. ' +
-          '0 = never reset.',
+          '0 = never reset. Typical values: 5, 15, 30, 60, 1440 (1 day).',
         defaultValue: 0,
         required: false,
-        validation: { options: ['0', '5', '15', '30', '60', '1440'] },
+        min: 0,
+        max: 1440,
+        step: 1,
+        unit: 'minutes',
         group: 'Reset',
-        order: 17,
+        order: 18,
       },
     ],
     subscriptionRequirements: {},
@@ -402,7 +446,9 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio define ladder quantities; ' +
         'tpType + tpAbsoluteProfit/tpPercent define take-profit condition; ' +
         'maxInvestment * leverage = total buying power; maxPosition = max position size; ' +
-        'resetInterval: minutes before auto-resetting stale entry 0 (0=never, 5/15/30/60/1440).',
+        'maxEntryPrice caps the highest price an entry may be placed at (0 = no cap) — on an upward wick the ' +
+        'ladder is anchored at maxEntryPrice instead of bid0 so no position is accumulated at the top; ' +
+        'resetInterval: minutes (number, 0-1440) before auto-resetting stale entry 0 (0=never).',
       signals:
         'On start: Fetch orderbook bid0 via REST → build ladder → place first BUY limit entry order (sequential: next entry placed only after current one fills).\n' +
         'Entry fill (incl. partial): Recalculate VWAP → update TP (cancel old TP → place new TP, qty=current inventory, price=VWAP±profit target).\n' +
@@ -412,6 +458,8 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         'Stop/restart: processInitialData recovers all strategy orders via REST fetchOpenOrders → recalculate VWAP/inventory → restore TP + re-place unfilled entries.',
       riskFactors: [
         'Ladder buying in a downtrend accumulates position and may hit maxPosition limit',
+        'With maxEntryPrice=0 (no cap), an upward wick lifts bid0 and the whole ladder with it, so the position is accumulated at the top of the spike',
+        'With maxEntryPrice set below the market, entries sit far below bid0 and may never fill until price comes back down',
         'TP limit order may not fill (if price keeps falling)',
         'Entry limit orders may not fill (missed market movement)',
         'Deep ladder steps may remain untriggered for extended periods',
@@ -432,6 +480,39 @@ interface LadderStep {
   entryClientOrderId: string | null;
   /** Whether this step's entry has been fully FILLED */
   filled: boolean;
+}
+
+/**
+ * Parse the maxEntryPrice parameter out of a persisted strategy config.
+ *
+ * `parameters` is free-form JSON in the database, so this has to cope with more
+ * than a clean number:
+ *  - key absent → every strategy created before this parameter existed. Must
+ *    mean "no cap" so their behaviour is unchanged.
+ *  - null / '' → what an API client or a cleared form field can persist. Same
+ *    as absent: no cap.
+ *  - numeric string → the parameter form stores enum-typed fields as strings
+ *    (e.g. resetInterval is persisted as "15"), so accept "100" as well.
+ *  - anything else ('abc', NaN, negative) → the user asked for a cap and we
+ *    cannot honour it. Throw rather than silently trade with no protection.
+ */
+function parseMaxEntryPrice(raw: unknown): Decimal {
+  if (raw === undefined || raw === null || raw === '') return new Decimal(0);
+
+  let parsed: Decimal;
+  try {
+    parsed = new Decimal(raw as Decimal.Value);
+  } catch {
+    throw new Error(
+      `Invalid maxEntryPrice: ${JSON.stringify(raw)} (must be a number >= 0; 0 or absent = no cap)`,
+    );
+  }
+  if (!parsed.isFinite() || parsed.lt(0)) {
+    throw new Error(
+      `Invalid maxEntryPrice: ${JSON.stringify(raw)} (must be a finite number >= 0; 0 or absent = no cap)`,
+    );
+  }
+  return parsed;
 }
 
 interface LadderSignalMetaData extends SignalMetaData {
@@ -461,6 +542,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private tpPercent: Decimal;
   private maxInvestment: Decimal;
   private maxPosition: Decimal;
+  /** Highest allowed entry price; 0 = no cap. See LadderEntrySingleTPParameters. */
+  private maxEntryPrice: Decimal;
   private leverage: number;
   private resetInterval: number; // minutes; 0 = never reset
   private tradeMode: TradeMode = TradeMode.ISOLATED;
@@ -633,8 +716,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpPercent = new Decimal(parameters.tpPercent ?? 1);
     this.maxInvestment = new Decimal(parameters.maxInvestment);
     this.maxPosition = new Decimal(parameters.maxPosition);
+    this.maxEntryPrice = parseMaxEntryPrice(parameters.maxEntryPrice);
     this.leverage = parameters.leverage ?? 10;
-    this.resetInterval = parameters.resetInterval ?? 0;
+    this.resetInterval = this.parseResetInterval(parameters.resetInterval);
 
     // Validate
     if (this.maxInvestment.lte(0)) {
@@ -642,6 +726,20 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
     if (this.maxPosition.lte(0)) {
       throw new Error(`Invalid maxPosition: ${parameters.maxPosition} (must be > 0)`);
+    }
+    if (
+      this.maxEntryPrice.gt(0) &&
+      this.basePrice.gt(0) &&
+      this.basePrice.gt(this.maxEntryPrice)
+    ) {
+      // Not fatal: buildLadder anchors the ladder at maxEntryPrice, so the
+      // configuration still works — but the fixed basePrice is then irrelevant,
+      // which is almost certainly a config mistake worth surfacing.
+      this._logger.warn(
+        `[constructor] basePrice=${this.basePrice.toString()} is above ` +
+          `maxEntryPrice=${this.maxEntryPrice.toString()}. The ladder will be anchored at ` +
+          `maxEntryPrice, making basePrice ineffective.`,
+      );
     }
     if (this.ladderSteps < 1) {
       throw new Error(`Invalid ladderSteps: ${parameters.ladderSteps} (must be >= 1)`);
@@ -660,6 +758,35 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
     // If basePrice > 0, use it as fixed reference; otherwise wait for REST orderbook fetch
     this.referencePrice = this.basePrice.gt(0) ? this.basePrice : new Decimal(0);
+  }
+
+  /**
+   * Coerce resetInterval to a real number.
+   *
+   * The parameter is now declared `type: 'number'`, so the form stores a real
+   * number. But it USED to be declared `type: 'enum'` with string options, and
+   * the form's Select persisted the raw option string — rows written before that
+   * change contain `"resetInterval": "15"` (6 such rows in production as of
+   * 2026-08-16). Every use site happened to survive it via JS coercion
+   * (`"15" * 60 * 1000`, `"15" > 0`), but the declared type was then a lie: a
+   * future `resetInterval + 1` would produce "151", `=== 0` would not detect the
+   * disabled state, and getStrategyState() leaked a string to the API.
+   * This shim keeps those existing rows working.
+   *
+   * Unparseable values fall back to 0 (feature off) rather than throwing —
+   * unlike maxEntryPrice, this is a convenience feature, not a risk limit, so it
+   * must never prevent a live strategy from starting.
+   */
+  private parseResetInterval(raw: unknown): number {
+    if (raw === undefined || raw === null || raw === '') return 0;
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      this._logger.warn(
+        `[constructor] Invalid resetInterval: ${JSON.stringify(raw)} — treating as 0 (never reset).`,
+      );
+      return 0;
+    }
+    return parsed;
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -690,6 +817,28 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           `No ladder steps will be built.`,
       );
       return [];
+    }
+
+    // Step 1b: Cap the anchor at maxEntryPrice.
+    //
+    // The ladder is anchored on bid0, so an upward wick would drag every step up
+    // with it and the strategy would accumulate its whole position at the top of
+    // the spike. Anchoring at maxEntryPrice instead shifts the entire ladder
+    // down (the step geometry is preserved, prices only go lower from entry 0),
+    // which guarantees no step can ever exceed the cap.
+    //
+    // Clamping rather than dropping the offending steps is deliberate: dropping
+    // them would renumber the ladder and break the step-index invariants that
+    // restart recovery relies on (steps[i].index === i, TP-quantity inference
+    // over cumulative step quantities). Clamping keeps the strategy armed at an
+    // acceptable price instead of going idle during the spike.
+    if (this.maxEntryPrice.gt(0) && entryBase.gt(this.maxEntryPrice)) {
+      this._logger.info(
+        `[buildLadder] entryBase=${entryBase.toString()} exceeds ` +
+          `maxEntryPrice=${this.maxEntryPrice.toString()} ` +
+          `(referencePrice=${this.referencePrice.toString()}) — anchoring ladder at maxEntryPrice.`,
+      );
+      entryBase = this.maxEntryPrice;
     }
 
     // Step 2: Build ladder steps from entryBase.
@@ -1193,6 +1342,24 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // Previous step hasn't filled yet; wait.
         this._logger.debug(
           `[placeLadderEntries] Step ${step.index}: waiting for step ${prevStep.index} to fill`,
+        );
+        return signals;
+      }
+
+      // Hard guard on the entry price cap.
+      //
+      // buildLadder already anchors the ladder at maxEntryPrice, so in normal
+      // operation no step can exceed it. This catches the case where the ladder
+      // in memory predates the cap or was reverse-engineered from old orders on
+      // restart: prices decrease with the step index, so a step above the cap
+      // means the whole remaining ladder is above it. Refuse to buy and wait —
+      // the next reset/reinit rebuilds the ladder from a fresh bid0 through
+      // buildLadder, which re-applies the cap.
+      if (this.maxEntryPrice.gt(0) && step.price.gt(this.maxEntryPrice)) {
+        this._logger.warn(
+          `[placeLadderEntries] Step ${step.index} price=${step.price.toString()} exceeds ` +
+            `maxEntryPrice=${this.maxEntryPrice.toString()} — not placing any entry. ` +
+            `Ladder needs to be rebuilt from a fresh reference price.`,
         );
         return signals;
       }
@@ -3441,6 +3608,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       vwap: this.vwap.toString(),
       tpClientOrderId: this.tpClientOrderId,
       tpPrice: this.computeTpPrice()?.toString() ?? null,
+      maxEntryPrice: this.maxEntryPrice.toString(),
       resetInterval: this.resetInterval,
       entry0PlacedTime:
         this.entry0PlacedTime > 0 ? new Date(this.entry0PlacedTime).toISOString() : null,
