@@ -8,6 +8,7 @@ export type AuditLogAction =
   | 'impersonate.start'
   | 'impersonate.stop'
   | 'strategy.create'
+  | 'strategy.clone'
   | 'strategy.update'
   | 'strategy.delete'
   | 'order.create'

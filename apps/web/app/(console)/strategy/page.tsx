@@ -22,6 +22,7 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconArrowsSort,
+  IconCopy,
 } from '@tabler/icons-react';
 import {
   getStrategyDefaultParameters,
@@ -134,6 +135,7 @@ export default function StrategyPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<number | null>(null);
   const [isUpdatingStatusId, setIsUpdatingStatusId] = useState<number | null>(null);
+  const [isCloningId, setIsCloningId] = useState<number | null>(null);
   // 使用策略配置系统获取默认值
   const getDefaultStrategyType = (): StrategyTypeKey => {
     const implementedStrategies = getImplementedStrategies();
@@ -597,6 +599,31 @@ export default function StrategyPage() {
       }
     }
   }, [searchParams, strategies, router]);
+
+  const cloneStrategy = async (strategy: StrategyEntity) => {
+    if (isCloningId === strategy.id) return;
+
+    setIsCloningId(strategy.id);
+    try {
+      const response = await fetch(`/api/strategies/${strategy.id}/clone`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || t('errors.cloneStrategy'));
+      }
+
+      const data = await response.json();
+      toast.success(t('messages.cloned', { name: strategy.name }));
+      // Navigate to the cloned strategy's detail page
+      router.push(`/strategy/${data.strategy.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('errors.cloneStrategy'));
+    } finally {
+      setIsCloningId(null);
+    }
+  };
 
   const updateStrategyStatus = async (id: number, newStatus: string) => {
     // Prevent multiple status updates for the same strategy
@@ -1648,6 +1675,19 @@ export default function StrategyPage() {
                                         }
                                       >
                                         <IconEdit className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => cloneStrategy(strategy)}
+                                        disabled={isCloningId === strategy.id}
+                                        title={t('actions.clone')}
+                                      >
+                                        {isCloningId === strategy.id ? (
+                                          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                        ) : (
+                                          <IconCopy className="h-3.5 w-3.5" />
+                                        )}
                                       </Button>
                                       <Button
                                         variant="outline"

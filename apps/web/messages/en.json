@@ -1596,7 +1596,9 @@
       "starting": "Starting...",
       "stopping": "Stopping...",
       "deleting": "Deleting...",
-      "delete": "Delete"
+      "delete": "Delete",
+      "clone": "Clone",
+      "cloning": "Cloning..."
     },
     "dialog": {
       "createTitle": "Create New Strategy",
@@ -1677,6 +1679,7 @@
       "generic": "An error occurred",
       "updateStatus": "Failed to update strategy status",
       "deleteStrategy": "Failed to delete strategy",
+      "cloneStrategy": "Failed to clone strategy",
       "notFound": "Strategy not found"
     },
     "messages": {
@@ -1685,6 +1688,7 @@
       "started": "Strategy started",
       "stopped": "Strategy stopped",
       "deleted": "Strategy deleted successfully",
+      "cloned": "Strategy \"{name}\" cloned successfully",
       "rebuiltPerformanceUnavailable": "No order-based performance data available yet."
     },
     "empty": {

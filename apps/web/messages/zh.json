@@ -1596,7 +1596,9 @@
       "stopping": "停止中...",
       "deleting": "删除中...",
       "delete": "删除",
-      "edit": "编辑"
+      "edit": "编辑",
+      "clone": "克隆",
+      "cloning": "克隆中..."
     },
     "dialog": {
       "createTitle": "创建新策略",
@@ -1669,6 +1671,7 @@
       "generic": "发生错误",
       "updateStatus": "更新策略状态失败",
       "deleteStrategy": "删除策略失败",
+      "cloneStrategy": "克隆策略失败",
       "notFound": "未找到策略"
     },
     "messages": {
@@ -1677,6 +1680,7 @@
       "started": "策略已启动",
       "stopped": "策略已停止",
       "deleted": "策略删除成功",
+      "cloned": "策略 \"{name}\" 克隆成功",
       "rebuiltPerformanceUnavailable": "暂无基于订单的绩效数据。"
     },
     "empty": {

@@ -8,6 +8,7 @@ import {
   IconPlayerPlay,
   IconPlayerPause,
   IconEdit,
+  IconCopy,
   IconTrendingUp,
   IconTrendingDown,
   IconCash,
@@ -89,6 +90,7 @@ export default function StrategyDetailPage(props: { params: Params }) {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [cloning, setCloning] = useState(false);
 
   const fetchStrategy = useCallback(async () => {
     try {
@@ -139,6 +141,31 @@ export default function StrategyDetailPage(props: { params: Params }) {
       toast.error(t('errors.updateStatus'));
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const cloneStrategy = async () => {
+    if (!strategy || cloning) return;
+
+    setCloning(true);
+    try {
+      const response = await fetch(`/api/strategies/${strategy.id}/clone`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || t('errors.cloneStrategy'));
+      }
+
+      const data = await response.json();
+      toast.success(t('messages.cloned', { name: strategy.name }));
+      // Navigate to the cloned strategy's detail page
+      router.push(`/strategy/${data.strategy.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('errors.cloneStrategy'));
+    } finally {
+      setCloning(false);
     }
   };
 
@@ -345,6 +372,25 @@ export default function StrategyDetailPage(props: { params: Params }) {
             >
               <IconEdit className="mr-2 h-4 w-4" />
               {t('actions.edit')}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={cloneStrategy}
+              disabled={cloning}
+            >
+              {cloning ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
+                  {t('actions.cloning')}
+                </>
+              ) : (
+                <>
+                  <IconCopy className="mr-2 h-4 w-4" />
+                  {t('actions.clone')}
+                </>
+              )}
             </Button>
           </div>
         </div>
