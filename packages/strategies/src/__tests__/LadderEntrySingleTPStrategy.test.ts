@@ -4143,4 +4143,97 @@ describe('LadderEntrySingleTPStrategy', () => {
       }
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Strategy 473 oversell regression — partial-fill debounce TP vs full-fill
+  // TP race: debounce TP refresh ran BEFORE handleOrderUpdates, placing a
+  // stale-qty TP that raced with the full-fill's cancel+replace TP.
+  // ────────────────────────────────────────────────────────────────────────
+  describe('Strategy 473 oversell regression: double-TP race prevention', () => {
+    it('should NOT place stale TP when partial-fill debounce fires then full-fill arrives', async () => {
+      // This test reproduces Strategy 473: entry partially fills → debounce
+      // TP refresh fires (stale qty) → then full fill arrives in a later
+      // analyze() call. Old code: debounce TP ran BEFORE handleOrderUpdates
+      // in the same cycle, placing a stale-qty TP, then full-fill triggered
+      // cancel+replace → two TPs on exchange simultaneously → oversell.
+      // Fix: debounce TP refresh moved AFTER handleOrderUpdates + _tpRefreshedThisCycle flag.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 100,
+          ladderSteps: 2,
+          stepType: 'arithmetic',
+          stepValue: 2,
+          qtyType: 'arithmetic',
+          qtyPerStep: 10,
+          tpType: 'percent',
+          tpPercent: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(createInitialData());
+      const entries = findEntrySignals(initResult);
+      expect(entries).toHaveLength(1);
+
+      const entryId = entries[0].clientOrderId;
+      const now = new Date();
+
+      // Step 1: partial fill (3 of 10) → arms debounce TP refresh
+      const partialFill = createOrder(
+        entryId,
+        OrderSide.BUY,
+        OrderStatus.PARTIALLY_FILLED,
+        98,
+        10,
+        3,
+        98,
+        now,
+      );
+      const resultPartial = await strategy.analyze(
+        createDataUpdate({ orders: [partialFill] }),
+      );
+      // No TP yet — debounced
+      const tpImmediate = findTpSignals(resultPartial);
+      expect(tpImmediate.length).toBe(0);
+
+      // Step 2: wait for debounce window to elapse (TP_DEBOUNCE_MS = 2000ms)
+      await new Promise((resolve) => setTimeout(resolve, 2100));
+
+      // Step 3: full fill (10 of 10) arrives in a new analyze() call
+      // OLD (buggy) code: debounce TP refresh ran BEFORE handleOrderUpdates
+      //   → placed stale TP (qty=3), then full-fill triggered cancel+replace
+      //   → 2 TP signals (stale new + update/cancel+replace) = oversell
+      // NEW (fixed) code: handleOrderUpdates runs first, clears tpRefreshPending,
+      //   refreshes TP with full-fill qty → debounce TP refresh skipped
+      //   → 1 TP signal (qty=10)
+      const fullFill = createOrder(
+        entryId,
+        OrderSide.BUY,
+        OrderStatus.FILLED,
+        98,
+        10,
+        10,
+        98,
+        new Date(now.getTime() + 2100),
+      );
+      const resultFull = await strategy.analyze(createDataUpdate({ orders: [fullFill] }));
+
+      // Count ALL TP signals: new sell/buy + update (cancel+replace)
+      const allTpSignals = findTpSignals(resultFull);
+
+      // Under the old buggy code, we'd see:
+      //   1. sell TP (qty=3) from stale debounce refresh
+      //   2. update (cancel stale + place new qty=10) from full-fill
+      // Under the fixed code, we should see only:
+      //   1. sell TP (qty=10) from full-fill refreshTakeProfit
+      // Assert: no more than 1 new TP (sell/buy action)
+      const newTpSignals = allTpSignals.filter(
+        (s): s is StrategyOrderResult =>
+          (s.action === 'sell' || s.action === 'buy') && !isUpdateOrderResult(s),
+      );
+      expect(newTpSignals.length).toBe(1);
+
+      // The TP qty MUST reflect the FULL fill (10), not partial (3)
+      expect(newTpSignals[0].quantity!.toNumber()).toBe(10);
+    });
+  });
 });

@@ -602,6 +602,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private tpRefreshPending = false;
 
   /**
+   * Flag set by refreshTakeProfit (via generateTpSignal/generateTpUpdateSignal)
+   * to indicate that TP was already refreshed during the current analyze() call's
+   * handleOrderUpdates phase. This prevents the deferred debounce TP refresh from
+   * running AFTER order updates and placing a SECOND TP based on stale inventory
+   * (pre-partial-fill qty), which races with the TP already placed from the full
+   * fill (post-full-fill qty). Root cause of Strategy 473 oversell: debounce TP
+   * (17.81 qty) ran BEFORE handleOrderUpdates, then handleOrderUpdates triggered
+   * cancel+replace (30 qty) — both TPs ended up on the exchange simultaneously.
+   */
+  private _tpRefreshedThisCycle = false;
+
+  /**
    * Flag set by handleTpFilled when basePrice=0 — strategy needs the engine
    * to re-fetch orderbook via REST and call processInitialData again so the
    * new cycle uses a fresh bid0 as the reference price.
@@ -902,6 +914,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpFilledQty = new Decimal(0);
     this.vwap = new Decimal(0);
     this.tpClientOrderId = null;
+    this._tpRefreshedThisCycle = false;
     // CRITICAL: Clear all order tracking maps to prevent stale orders from
     // the previous cycle contaminating recalculateVWAP in the new cycle.
     // Without this, old FILLED entries remain in this.orders and their
@@ -1235,6 +1248,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.orderMetadataMap.set(clientOrderId, metadata);
     this.pendingClientOrderIds.add(clientOrderId);
     this.tpClientOrderId = clientOrderId;
+    this._tpRefreshedThisCycle = true;
     return {
       action: 'sell',
       price: tpPrice,
@@ -1272,6 +1286,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // refreshTakeProfit() call (before exchange confirms the order) can
     // detect the pending TP and skip duplicate placement.
     this.tpClientOrderId = newClientOrderId;
+    this._tpRefreshedThisCycle = true;
     // Remove old TP from pending to avoid stale cancel storms
     this.pendingClientOrderIds.delete(oldClientOrderId);
     this.orderMetadataMap.delete(oldClientOrderId);
@@ -1412,7 +1427,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     const signals: StrategyResult[] = [];
 
     if (this.inventoryQty.lte(0) || this.vwap.lte(0)) {
-      return this.cancelAllTpOrders('ladder_tp_cancel_no_inventory');
+      const cancelSignals = this.cancelAllTpOrders('ladder_tp_cancel_no_inventory');
+      if (cancelSignals.length > 0) this._tpRefreshedThisCycle = true;
+      return cancelSignals;
     }
 
     const tpPrice = this.computeTpPrice();
@@ -1423,7 +1440,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     const tpQty = this.inventoryQty.minus(this.tpFilledQty);
     if (tpQty.lte(0)) {
       // All inventory already sold by partial TP fills — cancel any remaining TP
-      return this.cancelAllTpOrders('ladder_tp_cancel_already_sold');
+      const cancelSignals = this.cancelAllTpOrders('ladder_tp_cancel_already_sold');
+      if (cancelSignals.length > 0) this._tpRefreshedThisCycle = true;
+      return cancelSignals;
     }
 
     if (this.tpClientOrderId) {
@@ -1985,6 +2004,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
             this.inventoryQty.gt(0) &&
             this.inventoryQty.minus(this.tpFilledQty).gt(0)
           ) {
+            // Clear pending debounce — terminal TP refresh takes priority,
+            // same as handleEntryFilled does. Without this, a subsequent
+            // deferred debounce TP refresh in the same analyze() cycle would
+            // see _tpRefreshedThisCycle=true and skip, but tpRefreshPending
+            // would remain stale, incorrectly suppressing the safety net.
+            this.tpRefreshPending = false;
             signals.push(...this.refreshTakeProfit());
           }
         }
@@ -3404,29 +3429,22 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
-    // Check for deferred TP refresh from partial-fill debounce.
-    // If the debounce window has elapsed since the last partial fill,
-    // execute the pending TP refresh now (before processing new orders).
-    const tpDebounceSignals: StrategyResult[] = [];
-    if (
-      this.tpRefreshPending &&
-      Date.now() - this.lastPartialFillTpTriggerTime >=
-        LadderEntrySingleTPStrategy.TP_DEBOUNCE_MS
-    ) {
-      this.tpRefreshPending = false;
-      if (this.inventoryQty.gt(0)) {
-        this._logger.debug(
-          `[analyze] Executing deferred TP refresh from partial fill. ` +
-            `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
-        );
-        tpDebounceSignals.push(...this.refreshTakeProfit());
-      }
-    }
+    // Clear the per-cycle TP refresh flag before processing order updates.
+    // handleOrderUpdates → handleEntryFilled → refreshTakeProfit will set it
+    // to true if TP was already refreshed, so the deferred debounce refresh
+    // (which runs AFTER order updates) can skip to avoid placing a second TP
+    // based on stale (pre-full-fill) inventory. This is the root cause of
+    // Strategy 473 oversell: debounce TP (17.81 qty, partial-fill inventory)
+    // ran BEFORE handleOrderUpdates, then handleOrderUpdates triggered
+    // cancel+replace (30 qty, full-fill inventory) — both TPs ended up on the
+    // exchange simultaneously and both FILLED → oversold 17.81 SOL.
+    this._tpRefreshedThisCycle = false;
 
     // Self-heal a reinitialization request the engine never fulfilled.
     // Must run before the reset check (a stuck reinit would otherwise keep the
     // strategy order-less forever, and checkAndPerformReset needs a live entry).
-    tpDebounceSignals.push(...this.recoverStuckReinitialization());
+    const preSignals: StrategyResult[] = [];
+    preSignals.push(...this.recoverStuckReinitialization());
 
     // Handle order updates first, then evaluate the resetInterval condition.
     // Order updates must NOT be skipped when a reset triggers: a WS push is a
@@ -3437,8 +3455,63 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // reset, since inventory is then > 0).
     if (dataUpdate.orders && dataUpdate.orders.length > 0) {
       const orderSignals = this.handleOrderUpdates(dataUpdate.orders);
-      // Merge deferred TP signals with order update signals
-      const allSignals = [...tpDebounceSignals, ...orderSignals];
+
+      // Deferred TP refresh from partial-fill debounce — NOW runs AFTER
+      // handleOrderUpdates so it sees the freshest inventory/VWAP. If
+      // handleOrderUpdates already refreshed TP (entry full fill bypasses
+      // debounce and calls refreshTakeProfit directly), skip the deferred
+      // refresh entirely to avoid a second TP placement based on stale data.
+      const tpDebounceSignals: StrategyResult[] = [];
+      if (
+        this.tpRefreshPending &&
+        !this._tpRefreshedThisCycle &&
+        Date.now() - this.lastPartialFillTpTriggerTime >=
+          LadderEntrySingleTPStrategy.TP_DEBOUNCE_MS
+      ) {
+        this.tpRefreshPending = false;
+        if (this.inventoryQty.gt(0)) {
+          this._logger.debug(
+            `[analyze] Executing deferred TP refresh from partial fill. ` +
+              `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
+          );
+          tpDebounceSignals.push(...this.refreshTakeProfit());
+        }
+      } else if (this.tpRefreshPending && this._tpRefreshedThisCycle) {
+        // handleOrderUpdates already refreshed TP this cycle. However, a
+        // LATER order update in the same batch (e.g. a second entry order's
+        // PARTIAL_FILL) may have set tpRefreshPending AFTER the refresh that
+        // set _tpRefreshedThisCycle. In that case the refresh was based on
+        // stale (pre-partial-fill) inventory and tpRefreshPending must be
+        // PRESERVED so the next debounce window picks up the updated inventory.
+        //
+        // We only clear tpRefreshPending when we are certain the refresh
+        // reflected the final post-batch state — i.e. the debounce window has
+        // already elapsed (meaning the partial fill happened long enough ago
+        // that no newer inventory change is pending). If the debounce window
+        // has NOT elapsed, the partial fill is recent and may post-date the
+        // refresh, so keep the flag alive.
+        if (
+          Date.now() - this.lastPartialFillTpTriggerTime <
+          LadderEntrySingleTPStrategy.TP_DEBOUNCE_MS
+        ) {
+          // Debounce window not elapsed — keep tpRefreshPending alive
+          this._logger.debug(
+            `[analyze] TP already refreshed this cycle but debounce window not ` +
+              `elapsed — keeping tpRefreshPending for next cycle ` +
+              `(lastPartialFillTpTriggerTime age: ${Date.now() - this.lastPartialFillTpTriggerTime}ms).`,
+          );
+        } else {
+          // Debounce window elapsed AND TP was refreshed this cycle —
+          // the refresh reflected the final inventory, safe to clear.
+          this.tpRefreshPending = false;
+          this._logger.debug(
+            `[analyze] Skipping deferred TP refresh: handleOrderUpdates already refreshed TP this cycle (debounce elapsed).`,
+          );
+        }
+      }
+
+      // Merge signals: pre (reinit self-heal) → order updates → deferred TP
+      const allSignals = [...preSignals, ...orderSignals, ...tpDebounceSignals];
 
       // SAFETY NET: If inventory > 0 but no active TP order exists after
       // processing order updates, place a TP immediately. This catches the
@@ -3471,6 +3544,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         this.inventoryQty.gt(0) &&
         !this.tpClientOrderId &&
         !this.tpRefreshPending &&
+        !this._tpRefreshedThisCycle &&
         this.vwap.gt(0) &&
         this.computeTpPrice() !== null
       ) {
@@ -3491,8 +3565,23 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       return { action: 'hold' };
     }
 
-    // No order updates — evaluate the resetInterval condition and return any
-    // deferred TP / self-heal signals.
+    // No order updates — execute deferred TP refresh (if elapsed) and evaluate
+    // the resetInterval condition.
+    const tpDebounceSignals: StrategyResult[] = [...preSignals];
+    if (
+      this.tpRefreshPending &&
+      Date.now() - this.lastPartialFillTpTriggerTime >=
+        LadderEntrySingleTPStrategy.TP_DEBOUNCE_MS
+    ) {
+      this.tpRefreshPending = false;
+      if (this.inventoryQty.gt(0)) {
+        this._logger.debug(
+          `[analyze] Executing deferred TP refresh from partial fill (no orders). ` +
+            `Inventory: ${this.inventoryQty.toString()}, VWAP: ${this.vwap.toString()}`,
+        );
+        tpDebounceSignals.push(...this.refreshTakeProfit());
+      }
+    }
     tpDebounceSignals.push(...this.checkAndPerformReset());
     if (tpDebounceSignals.length > 0) return tpDebounceSignals;
 
@@ -3577,6 +3666,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.tpClientOrderId = null;
     this.tpRefreshPending = false;
     this.lastPartialFillTpTriggerTime = 0;
+    this._tpRefreshedThisCycle = false;
     this._needsReinit = false;
     this._needsReinitTime = 0;
     this.entry0PlacedTime = 0;
