@@ -493,7 +493,7 @@
     "theme_switch_light": "Switch to light mode",
     "util.screen_util.hello": "Hello",
     "widget.app_sidebar.menu": "Menu",
-    "widget.app_sidebar.trading_platform": "Trading platform",
+    "widget.app_sidebar.trading_platform": "iTrade platform",
     "widget.asset_list.daily_change": "{{change}}%",
     "widget.asset_list.price": "${{price}}",
     "widget.asset_list.symbol": "Symbol",

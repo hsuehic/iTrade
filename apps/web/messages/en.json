@@ -85,7 +85,7 @@
   "auth": {
     "terms": "By clicking continue, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
     "logoAlt": "iTrade Logo",
-    "promoAlt": "Trading Platform Preview",
+    "promoAlt": "iTrade Platform",
     "meta": {
       "title": "Authentication",
       "description": "Sign in or create an account to start trading",
