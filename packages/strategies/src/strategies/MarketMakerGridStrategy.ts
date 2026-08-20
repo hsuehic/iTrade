@@ -59,8 +59,8 @@ export interface MarketMakerGridParameters extends StrategyParameters {
   maxInventory: number;
   /**
    * Maximum entry price (quote currency). No BUY entry order will be placed
-   * above this price. 0 = no limit. Acts as a hard ceiling on entry price
-   * to prevent buying in overheated markets.
+   * above this price — instead the entry price is capped to maxEntryPrice and
+   * all deeper levels are re-derived from the capped L0 price. 0 = no limit.
    */
   maxEntryPrice?: number;
   /** Leverage for futures trading. Multiplies maxInvestment into buying power */
@@ -189,7 +189,7 @@ export const MarketMakerGridStrategyRegistryConfig: StrategyRegistryConfig<Marke
         name: 'maxEntryPrice',
         type: 'number',
         description:
-          'Maximum entry price (quote currency). No BUY order will be placed above this price. 0 = no limit',
+          'Maximum entry price (quote currency). If L0 entry price exceeds this value, all levels are re-derived from a capped L0 price. 0 = no limit',
         defaultValue: 0,
         required: false,
         min: 0,
@@ -466,6 +466,33 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     if (a.isNegative() || b.isNegative()) return false;
     const relDiff = a.sub(b).abs().div(Decimal.min(a, b));
     return relDiff.lt(new Decimal('0.0001')); // 0.01% tolerance
+  }
+
+  /**
+   * Resolve the entry anchor, then apply maxEntryPrice as a cap on the
+   * *effective* anchor. If L0's desired price (anchor × (1 − L0_gap%))
+   * exceeds maxEntryPrice, the anchor is shifted down so that L0 lands
+   * exactly at maxEntryPrice and all deeper levels derive proportionally
+   * from that capped L0 price.
+   *
+   *   effectiveAnchor = min(anchor, maxEntryPrice / (1 − L0_gap%))
+   *
+   * maxEntryPrice = 0 disables the cap (returns anchor unchanged).
+   * Returns null if anchor is null.
+   */
+  private resolveCappedAnchor(anchor: Decimal | null): Decimal | null {
+    if (!anchor) return null;
+    if (this.maxEntryPrice.lte(0) || this.levels.length === 0) return anchor;
+    const l0Gap = this.levels[0].gapPercent;
+    const l0Price = anchor.mul(new Decimal(100).sub(l0Gap)).div(100);
+    if (l0Price.lte(this.maxEntryPrice)) return anchor;
+    // Cap: shift anchor so L0 = maxEntryPrice
+    const effectiveAnchor = this.maxEntryPrice.mul(100).div(new Decimal(100).sub(l0Gap));
+    this._logger.debug(
+      `[MMGrid] L0 capped: anchor ${anchor} → effectiveAnchor ${effectiveAnchor} ` +
+        `(L0 price ${l0Price} > maxEntryPrice ${this.maxEntryPrice})`,
+    );
+    return effectiveAnchor;
   }
 
   private computeRangePercent(kline: Kline): Decimal | null {
@@ -912,9 +939,17 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
    */
   private refreshEntries(reprice: boolean, fallbackAnchor?: Decimal): StrategyResult[] {
     const signals: StrategyResult[] = [];
-    const anchor = this.resolveEntryAnchor(fallbackAnchor);
-    if (!anchor) {
+    const rawAnchor = this.resolveEntryAnchor(fallbackAnchor);
+    if (!rawAnchor) {
       this._logger.warn('[MMGrid] Skipping entries: no usable price anchor');
+      return signals;
+    }
+    // Apply maxEntryPrice cap: if L0's desired price exceeds maxEntryPrice,
+    // shift the anchor down so L0 lands at maxEntryPrice and all deeper levels
+    // derive proportionally from the capped L0 price.
+    const anchor = this.resolveCappedAnchor(rawAnchor);
+    if (!anchor) {
+      this._logger.warn('[MMGrid] Skipping entries: no usable price anchor after cap');
       return signals;
     }
 
@@ -946,15 +981,6 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
 
       const desiredPrice = anchor.mul(new Decimal(100).sub(level.gapPercent)).div(100);
       if (desiredPrice.lte(0)) continue;
-
-      // Hard ceiling: skip this entry if its price exceeds maxEntryPrice.
-      // maxEntryPrice=0 means no limit.
-      if (this.maxEntryPrice.gt(0) && desiredPrice.gt(this.maxEntryPrice)) {
-        this._logger.debug(
-          `[MMGrid] L${level.index}: skipped (desiredPrice ${desiredPrice} > maxEntryPrice ${this.maxEntryPrice})`,
-        );
-        continue;
-      }
 
       // Existing entries are left untouched until they fill, unless a full
       // re-anchor is allowed (reprice=true: clean grid at kline close) and the
@@ -1061,7 +1087,9 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     level: GridLevelState,
     fallbackAnchor?: Decimal,
   ): StrategyResult[] {
-    const anchor = this.resolveEntryAnchor(fallbackAnchor);
+    const rawAnchor = this.resolveEntryAnchor(fallbackAnchor);
+    if (!rawAnchor) return [];
+    const anchor = this.resolveCappedAnchor(rawAnchor);
     if (!anchor) return [];
     if (level.tpClientOrderId || level.inventoryQty.gt(0) || level.entryClientOrderId) {
       return [];
@@ -1069,14 +1097,6 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
 
     const desiredPrice = anchor.mul(new Decimal(100).sub(level.gapPercent)).div(100);
     if (desiredPrice.lte(0)) return [];
-
-    // Hard ceiling: skip re-entry if price exceeds maxEntryPrice.
-    if (this.maxEntryPrice.gt(0) && desiredPrice.gt(this.maxEntryPrice)) {
-      this._logger.debug(
-        `[MMGrid] L${level.index}: re-entry skipped (desiredPrice ${desiredPrice} > maxEntryPrice ${this.maxEntryPrice})`,
-      );
-      return [];
-    }
 
     const buyingPower = this.getBuyingPower();
     const markPrice = !this.isOrderBookStale() && this.lastAsk ? this.lastAsk : anchor;
@@ -1151,12 +1171,14 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     }
     if (!price || !price.gt(0)) return [];
 
-    // Hard ceiling: skip TP re-entry if price exceeds maxEntryPrice.
+    // Apply maxEntryPrice cap: if this level's price exceeds maxEntryPrice,
+    // cap it to maxEntryPrice. This keeps the entry within the user's
+    // price ceiling rather than skipping it entirely.
     if (this.maxEntryPrice.gt(0) && price.gt(this.maxEntryPrice)) {
       this._logger.debug(
-        `[MMGrid] L${level.index}: TP re-entry skipped (price ${price} > maxEntryPrice ${this.maxEntryPrice})`,
+        `[MMGrid] L${level.index}: TP re-entry price capped ${price} → ${this.maxEntryPrice}`,
       );
-      return [];
+      price = this.maxEntryPrice;
     }
 
     const buyingPower = this.getBuyingPower();
