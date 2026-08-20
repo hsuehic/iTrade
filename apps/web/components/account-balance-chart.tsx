@@ -88,8 +88,13 @@ export function AccountBalanceChart({
       }
 
       try {
+        // 1d and 1h use rolling windows (last 24h / last 1h from now) instead of
+        // calendar-aligned boundaries (midnight / top-of-hour), so the chart always
+        // shows the most recent N hours of data rather than a partial calendar slice.
+        const useRolling = timeRange === '1d' || timeRange === '1h';
+        const alignParam = useRolling ? '&align=rolling' : '';
         const response = await fetch(
-          `/api/analytics/account?period=${timeRange}&exchange=${selectedExchange}`,
+          `/api/analytics/account?period=${timeRange}&exchange=${selectedExchange}${alignParam}`,
         );
         if (response.ok) {
           const data = await response.json();
@@ -106,48 +111,15 @@ export function AccountBalanceChart({
 
           const newChartData = processData(rawChartData);
 
-          if (isFirstLoad || timeRange !== '1h') {
-            // For first load or non-realtime views, replace all data
-            setChartData(newChartData);
-          } else {
-            // For 1-hour view, implement sliding window update with debounce
-            if (updateTimeoutRef.current) {
-              clearTimeout(updateTimeoutRef.current);
-            }
+          // Always replace all data. The API returns a complete rolling or
+          // calendar window each poll, so merging/append is unnecessary and
+          // causes stale left-edge points to persist in rolling mode.
+          setChartData(newChartData);
 
-            updateTimeoutRef.current = setTimeout(() => {
-              setChartData((prevData) => {
-                if (!prevData.length || !newChartData.length) {
-                  return newChartData;
-                }
-
-                // Get the latest timestamp from previous data
-                const latestPrevTime = new Date(
-                  prevData[prevData.length - 1]?.date,
-                ).getTime();
-
-                // Find new data points that are newer than our latest
-                const newPoints = newChartData.filter(
-                  (point: ChartDataPoint) =>
-                    new Date(point.date).getTime() > latestPrevTime,
-                );
-
-                if (newPoints.length === 0) {
-                  return prevData; // No new data
-                }
-
-                // Combine previous data with new points
-                let updatedData = [...prevData, ...newPoints];
-
-                // Keep only last 60 data points for smooth scrolling (1 hour of minute data)
-                const maxPoints = 60;
-                if (updatedData.length > maxPoints) {
-                  updatedData = updatedData.slice(-maxPoints);
-                }
-
-                return updatedData;
-              });
-            }, 100); // 100ms debounce for smoother updates
+          // Clean up any pending debounce timer from the old merge-append logic
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+            updateTimeoutRef.current = null;
           }
 
           // Extract exchange names from data
