@@ -57,6 +57,12 @@ export interface MarketMakerGridParameters extends StrategyParameters {
   maxInvestment: number;
   /** Maximum inventory in base units, including open long (BUY) orders */
   maxInventory: number;
+  /**
+   * Maximum entry price (quote currency). No BUY entry order will be placed
+   * above this price. 0 = no limit. Acts as a hard ceiling on entry price
+   * to prevent buying in overheated markets.
+   */
+  maxEntryPrice?: number;
   /** Leverage for futures trading. Multiplies maxInvestment into buying power */
   leverage?: number;
 }
@@ -81,6 +87,7 @@ export const MarketMakerGridStrategyRegistryConfig: StrategyRegistryConfig<Marke
       takeProfitGapPercent: 0,
       maxInvestment: 1000,
       maxInventory: 10,
+      maxEntryPrice: 0,
       leverage: 10,
     },
     parameterDefinitions: [
@@ -179,6 +186,18 @@ export const MarketMakerGridStrategyRegistryConfig: StrategyRegistryConfig<Marke
         order: 8,
       },
       {
+        name: 'maxEntryPrice',
+        type: 'number',
+        description:
+          'Maximum entry price (quote currency). No BUY order will be placed above this price. 0 = no limit',
+        defaultValue: 0,
+        required: false,
+        min: 0,
+        max: 100000000,
+        group: 'Risk Management',
+        order: 9,
+      },
+      {
         name: 'leverage',
         type: 'number',
         description:
@@ -188,7 +207,7 @@ export const MarketMakerGridStrategyRegistryConfig: StrategyRegistryConfig<Marke
         min: 1,
         max: 125,
         group: 'Risk Management',
-        order: 9,
+        order: 10,
       },
     ],
     subscriptionRequirements: {
@@ -295,6 +314,8 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   private takeProfitGapPercent: Decimal;
   private maxInvestment: Decimal;
   private maxInventory: Decimal;
+  /** Hard ceiling on entry price. 0 = disabled (no limit). */
+  private maxEntryPrice: Decimal;
   private leverage: number;
   private tradeMode: TradeMode = TradeMode.ISOLATED;
 
@@ -319,6 +340,14 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   private processedQuantityMap: Map<string, Decimal> = new Map();
   /** Terminal orders (canceled/rejected/expired) already processed; ignores any stale replays. */
   private processedTerminalIds: Set<string> = new Set();
+  /**
+   * Entry order IDs for which a cancel signal has been emitted in refreshEntries
+   * but the exchange has not yet confirmed the cancel. If a FILLED WS push arrives
+   * for one of these (cancel-replace race: the order filled before the cancel took
+   * effect), the fill must NOT be double-counted — the strategy already cleared the
+   * order's tracking and placed a replacement. The stale FILLED push is dropped.
+   */
+  private pendingCancelEntryIds: Set<string> = new Set();
 
   constructor(config: StrategyConfig<MarketMakerGridParameters>) {
     super({ ...config, logger: silentLogger });
@@ -329,6 +358,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     this.takeProfitGapPercent = new Decimal(parameters.takeProfitGapPercent ?? 0);
     this.maxInvestment = new Decimal(parameters.maxInvestment);
     this.maxInventory = new Decimal(parameters.maxInventory);
+    this.maxEntryPrice = new Decimal(parameters.maxEntryPrice ?? 0);
     this.leverage = parameters.leverage ?? 10;
 
     if (this.maxInvestment.lte(0)) {
@@ -336,6 +366,11 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     }
     if (this.maxInventory.lte(0)) {
       throw new Error(`Invalid maxInventory: ${parameters.maxInventory} (must be > 0)`);
+    }
+    if (this.maxEntryPrice.lt(0)) {
+      throw new Error(
+        `Invalid maxEntryPrice: ${parameters.maxEntryPrice} (must be >= 0)`,
+      );
     }
 
     this.levels = MarketMakerGridStrategy.parseLevels(
@@ -415,6 +450,22 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
   private isOrderBookStale(): boolean {
     if (!this.lastBid) return true;
     return Date.now() - this.lastOrderBookReceivedAt > this.orderBookStaleMs;
+  }
+
+  /**
+   * Compare two prices with a relative tolerance to avoid unnecessary
+   * cancel-replace cycles caused by sub-tick-size Decimal precision drift
+   * (e.g. bid1 moving by a few wei between kline closes). Two prices are
+   * "effectively equal" when their relative difference is below 0.01%
+   * (1 basis point), which is well below any realistic level gap percent
+   * and below typical exchange tick sizes for liquid pairs.
+   */
+  private pricesEffectivelyEqual(a: Decimal, b: Decimal): boolean {
+    if (a.eq(b)) return true;
+    if (a.isZero() || b.isZero()) return false;
+    if (a.isNegative() || b.isNegative()) return false;
+    const relDiff = a.sub(b).abs().div(Decimal.min(a, b));
+    return relDiff.lt(new Decimal('0.0001')); // 0.01% tolerance
   }
 
   private computeRangePercent(kline: Kline): Decimal | null {
@@ -896,16 +947,38 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       const desiredPrice = anchor.mul(new Decimal(100).sub(level.gapPercent)).div(100);
       if (desiredPrice.lte(0)) continue;
 
+      // Hard ceiling: skip this entry if its price exceeds maxEntryPrice.
+      // maxEntryPrice=0 means no limit.
+      if (this.maxEntryPrice.gt(0) && desiredPrice.gt(this.maxEntryPrice)) {
+        this._logger.debug(
+          `[MMGrid] L${level.index}: skipped (desiredPrice ${desiredPrice} > maxEntryPrice ${this.maxEntryPrice})`,
+        );
+        continue;
+      }
+
       // Existing entries are left untouched until they fill, unless a full
       // re-anchor is allowed (reprice=true: clean grid at kline close) and the
       // price no longer matches. In-flight orders compare against the requested
       // price stored in metadata to avoid needless cancel/replace churn.
+      //
+      // When reprice=true, use a relative tolerance (0.01%) to decide whether
+      // the existing entry is "close enough" to the new desired price. Without
+      // this, a sub-tick-size Decimal precision difference (e.g. from bid1
+      // drift between kline closes) causes an unnecessary cancel-replace cycle
+      // that can race with exchange fills: the old order fills before the cancel
+      // takes effect, then the stale FILLED push double-counts inventory because
+      // the strategy already cleared the old order's tracking and placed a
+      // replacement. Keeping the existing order when the price is within
+      // tolerance eliminates this race entirely.
       if (level.entryClientOrderId) {
         const existing = this.orders.get(level.entryClientOrderId);
         const metadata = this.orderMetadataMap.get(level.entryClientOrderId);
         const currentPrice =
           existing?.price ?? (metadata?.price ? new Decimal(metadata.price) : null);
-        if (!reprice || (currentPrice && currentPrice.eq(desiredPrice))) {
+        if (
+          !reprice ||
+          (currentPrice && this.pricesEffectivelyEqual(currentPrice, desiredPrice))
+        ) {
           // Keep the order: its notional stays deployed
           deployed = deployed.add(this.getOpenEntryNotional(level));
           continue;
@@ -915,6 +988,17 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
             ? this.generateCancelOrderSignal(existing)
             : this.generateCancelByClientIdSignal(level.entryClientOrderId),
         );
+        // Track this entry as pending-cancel so a stale FILLED push (cancel
+        // lost the race against an exchange fill) is not double-counted.
+        this.pendingCancelEntryIds.add(level.entryClientOrderId);
+        // Bounded eviction: if the set grows beyond 200 entries (abnormal —
+        // each cycle adds at most `levels.length` IDs and removes them on
+        // terminal/filled push), drop the oldest by recreating the set.
+        // This mirrors the previousCycleOrderIds cap pattern.
+        if (this.pendingCancelEntryIds.size > 200) {
+          const keep = Array.from(this.pendingCancelEntryIds).slice(-200);
+          this.pendingCancelEntryIds = new Set(keep);
+        }
         this.clearOrderTracking(level.entryClientOrderId);
         level.entryClientOrderId = null;
       }
@@ -985,6 +1069,14 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
 
     const desiredPrice = anchor.mul(new Decimal(100).sub(level.gapPercent)).div(100);
     if (desiredPrice.lte(0)) return [];
+
+    // Hard ceiling: skip re-entry if price exceeds maxEntryPrice.
+    if (this.maxEntryPrice.gt(0) && desiredPrice.gt(this.maxEntryPrice)) {
+      this._logger.debug(
+        `[MMGrid] L${level.index}: re-entry skipped (desiredPrice ${desiredPrice} > maxEntryPrice ${this.maxEntryPrice})`,
+      );
+      return [];
+    }
 
     const buyingPower = this.getBuyingPower();
     const markPrice = !this.isOrderBookStale() && this.lastAsk ? this.lastAsk : anchor;
@@ -1059,6 +1151,14 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     }
     if (!price || !price.gt(0)) return [];
 
+    // Hard ceiling: skip TP re-entry if price exceeds maxEntryPrice.
+    if (this.maxEntryPrice.gt(0) && price.gt(this.maxEntryPrice)) {
+      this._logger.debug(
+        `[MMGrid] L${level.index}: TP re-entry skipped (price ${price} > maxEntryPrice ${this.maxEntryPrice})`,
+      );
+      return [];
+    }
+
     const buyingPower = this.getBuyingPower();
     const markPrice = !this.isOrderBookStale() && this.lastAsk ? this.lastAsk : price;
     let deployed = this.getOrphanTpNotional();
@@ -1099,6 +1199,12 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
           ? this.generateCancelOrderSignal(existing)
           : this.generateCancelByClientIdSignal(level.entryClientOrderId),
       );
+      // Remove from pendingCancelEntryIds per-ID: a global clear() would also
+      // erase in-flight cancel guards for orders that were canceled-and-replaced
+      // in a different level's refreshEntries call but whose stale FILLED push
+      // has not yet arrived. Those guards must persist until the matching
+      // terminal/filled WS push processes them individually.
+      this.pendingCancelEntryIds.delete(level.entryClientOrderId);
       this.clearOrderTracking(level.entryClientOrderId);
       level.entryClientOrderId = null;
     }
@@ -1571,10 +1677,48 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
       // Ignore any replayed update for an order whose terminal status was already processed
       if (this.processedTerminalIds.has(order.clientOrderId)) continue;
 
+      // Drop stale FILLED pushes for entries that were already canceled-and-replaced
+      // in refreshEntries. The cancel signal was sent to the exchange, but the old
+      // order filled before the cancel took effect (cancel-replace race). The
+      // strategy has already cleared this order's tracking and placed a replacement;
+      // accepting this stale fill would double-count inventory.
+      if (
+        this.pendingCancelEntryIds.has(order.clientOrderId) &&
+        (order.status === OrderStatus.FILLED ||
+          order.status === OrderStatus.PARTIALLY_FILLED)
+      ) {
+        this._logger.error(
+          `[MMGrid] Dropping stale ${order.status} push for entry ${order.clientOrderId} ` +
+            `(cancel-replace race: order filled before cancel took effect)`,
+        );
+        // On FILLED or PARTIALLY_FILLED, mark as processed so no future replays
+        // re-enter the loop. The fill quantity is NOT credited here because the
+        // strategy already cleared this order's tracking when the cancel was
+        // issued; crediting it now would double-count against the replacement
+        // order's fill. The self-heal in analyze() covers any resulting
+        // inventory-without-TP gap. Deleting on PARTIALLY_FILLED too (not just
+        // FILLED) prevents the 200-cap FIFO eviction from silently removing a
+        // guarded ID before its terminal push arrives.
+        this.pendingCancelEntryIds.delete(order.clientOrderId);
+        this.processedFillIds.add(order.clientOrderId);
+        continue;
+      }
+
       const metadata =
         this.orderMetadataMap.get(order.clientOrderId) ??
         this.ensureRecoveredMetadata(order);
-      if (!metadata) continue;
+      if (!metadata) {
+        // The order was pending-cancel but arrived as terminal (CANCELED/
+        // REJECTED). Clean up the pending-cancel set and skip.
+        if (
+          this.pendingCancelEntryIds.has(order.clientOrderId) &&
+          this.isTerminalStatus(order.status)
+        ) {
+          this.pendingCancelEntryIds.delete(order.clientOrderId);
+          this.processedTerminalIds.add(order.clientOrderId);
+        }
+        continue;
+      }
 
       // Ignore stale updates (older timestamp and no progress)
       const existingOrder = this.orders.get(order.clientOrderId);
@@ -1613,6 +1757,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
 
         if (order.status === OrderStatus.FILLED) {
           this.processedFillIds.add(order.clientOrderId);
+          this.pendingCancelEntryIds.delete(order.clientOrderId);
           if (level && level.entryClientOrderId === order.clientOrderId) {
             level.entryClientOrderId = null;
           }
@@ -1630,6 +1775,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
           // Canceled/rejected/expired entry: if it partially filled, still take profit
           // on the acquired inventory.
           this.processedTerminalIds.add(order.clientOrderId);
+          this.pendingCancelEntryIds.delete(order.clientOrderId);
           if (level && level.entryClientOrderId === order.clientOrderId) {
             level.entryClientOrderId = null;
           }
@@ -1769,6 +1915,7 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
     this.processedFillIds.clear();
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
+    this.pendingCancelEntryIds.clear();
     this.inventoryQty = new Decimal(0);
     this.signalActive = false;
     this.lastRangePercent = null;
