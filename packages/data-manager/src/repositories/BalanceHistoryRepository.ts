@@ -23,8 +23,8 @@ type BalanceHistoryEntity =
   | BalanceMinEntity;
 
 const MAX_ROWS_PER_ACCOUNT: Record<string, number> = {
-  balance_min: 100,
-  balance_5min: 100,
+  balance_min: 120, // 2h at 1-min granularity (1h chart needs 60 pts)
+  balance_5min: 300, // 25h at 5-min granularity (1d chart needs 288 pts)
   balance_15min: 100,
   balance_30min: 100,
   balance_hour: 100,
