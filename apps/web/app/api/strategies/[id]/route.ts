@@ -62,9 +62,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
         if (dataManagerWithRebuild.rebuildStrategyPerformance) {
           // Fetch a real-time market price so open positions get a live
           // unrealized PnL instead of always showing 0.
+          // Pass marketType so perpetual strategies use the futures price
+          // (fapi) instead of the spot price — they can differ materially.
           const currentPrice = await getCurrentPrice(
             strategy.symbol,
             strategy.exchange,
+            strategy.marketType,
           ).catch(() => null);
 
           rebuiltPerformance = await dataManagerWithRebuild.rebuildStrategyPerformance(

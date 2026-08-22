@@ -78,6 +78,68 @@ export const fetchBinanceAllPrices = async (): Promise<Map<string, number>> => {
   }
 };
 
+/**
+ * Cache for Binance Futures (fapi) prices — keyed by full futures symbol
+ * (e.g. "ZECUSDC", "BTCUSDT").  Separate from the spot cache so a spot
+ * fetch never shadows a futures price or vice-versa.
+ */
+let binanceFuturesPriceCache: {
+  prices: Map<string, number>;
+  updatedAt: number;
+} | null = null;
+
+/**
+ * Fetch all Binance **futures** prices in a single request from fapi.
+ * Used when the strategy trades perpetual contracts — the spot price can
+ * differ significantly from the perp price for assets with non-trivial
+ * basis spread (e.g. ZEC, where spot ≠ perp by ~1%).
+ *
+ * Returns a map keyed by the full futures symbol (e.g. "ZECUSDC").
+ */
+export const fetchBinanceAllFuturesPrices = async (): Promise<Map<string, number>> => {
+  if (
+    binanceFuturesPriceCache &&
+    Date.now() - binanceFuturesPriceCache.updatedAt <= PRICE_CACHE_TTL_MS
+  ) {
+    return binanceFuturesPriceCache.prices;
+  }
+
+  try {
+    const response = await fetch('https://fapi.binance.com/fapi/v1/ticker/price', {
+      next: { revalidate: 30 },
+    });
+    if (!response.ok) return binanceFuturesPriceCache?.prices ?? new Map();
+
+    const data = (await response.json()) as Array<{
+      symbol: string;
+      price: string;
+    }>;
+    const prices = new Map<string, number>();
+    for (const item of data) {
+      prices.set(item.symbol, parseFloat(item.price));
+    }
+
+    binanceFuturesPriceCache = { prices, updatedAt: Date.now() };
+    return prices;
+  } catch {
+    return binanceFuturesPriceCache?.prices ?? new Map();
+  }
+};
+
+/**
+ * Look up a single Binance futures price by base + quote asset.
+ * Uses the bulk futures cache; falls back to '' (not found) if missing.
+ */
+export const fetchBinanceFuturesPrice = async (
+  baseAsset: string,
+  quoteAsset: string,
+): Promise<number | null> => {
+  const allPrices = await fetchBinanceAllFuturesPrices();
+  const symbol = `${baseAsset.toUpperCase()}${quoteAsset.toUpperCase()}`;
+  const price = allPrices.get(symbol);
+  return price !== undefined ? price : null;
+};
+
 export const fetchBinancePrices = async (
   assets: string[],
 ): Promise<Map<string, number>> => {
@@ -163,31 +225,58 @@ export const fetchCoinbasePrices = async (
 /**
  * Get a single real-time price for a trading-pair symbol on a given exchange.
  * Reuses the same per-exchange fetchers + 30s cache as `computeLiveBalances`.
+ *
+ * For Binance, when `marketType` is `"perpetual"` (or inferred from a symbol
+ * containing `:USDC` / `:USDT`), the price is fetched from Binance **Futures**
+ * (fapi) instead of spot — perpetual prices can differ materially from spot
+ * for assets with non-trivial basis spread (e.g. ZEC).
  */
 export async function getCurrentPrice(
   symbol: string,
   exchange: string,
+  marketType?: string,
 ): Promise<number | null> {
-  const asset = symbol.split(/[/:]/)[0]?.toUpperCase();
-  if (!asset) return null;
+  const parts = symbol.split(/[/:]/);
+  const baseAsset = parts[0]?.toUpperCase();
+  if (!baseAsset) return null;
 
-  if (STABLECOINS.has(asset)) return 1;
+  const quoteAsset = parts[1]?.toUpperCase() ?? 'USDT';
+
+  if (STABLECOINS.has(baseAsset)) return 1;
 
   const exchangeLower = exchange.toLowerCase();
-  const cacheKey = `${exchangeLower}:${asset}`;
+
+  // For Binance perpetuals, use the futures API (fapi) so unrealized PnL
+  // reflects the contract price, not the spot price.
+  const isPerp =
+    marketType === 'perpetual' || symbol.includes(':USDC') || symbol.includes(':USDT');
+
+  if (exchangeLower === 'binance' && isPerp) {
+    const cacheKey = `binance-futures:${baseAsset}${quoteAsset}`;
+    const cached = getCachedPrice(cacheKey);
+    if (cached !== null) return cached;
+
+    const price = await fetchBinanceFuturesPrice(baseAsset, quoteAsset);
+    if (price !== null) {
+      setCachedPrice(cacheKey, price);
+    }
+    return price;
+  }
+
+  const cacheKey = `${exchangeLower}:${baseAsset}`;
   const cached = getCachedPrice(cacheKey);
   if (cached !== null) return cached;
 
   let fetched = new Map<string, number>();
   if (exchangeLower === 'binance') {
-    fetched = await fetchBinancePrices([asset]);
+    fetched = await fetchBinancePrices([baseAsset]);
   } else if (exchangeLower === 'okx') {
-    fetched = await fetchOkxPrices([asset]);
+    fetched = await fetchOkxPrices([baseAsset]);
   } else if (exchangeLower === 'coinbase') {
-    fetched = await fetchCoinbasePrices([asset]);
+    fetched = await fetchCoinbasePrices([baseAsset]);
   }
 
-  const price = fetched.get(asset);
+  const price = fetched.get(baseAsset);
   if (price === undefined) return null;
 
   setCachedPrice(cacheKey, price);
