@@ -614,6 +614,32 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private _tpRefreshedThisCycle = false;
 
   /**
+   * TP order IDs that have been sent a cancel signal but whose CANCELED/REJECTED
+   * confirmation has NOT yet been received from the exchange (no WS terminal push).
+   *
+   * Problem (Strategy 505, 2026-08-25): refreshTakeProfit() generated a cancel
+   * signal for a pending TP (in pendingClientOrderIds but not yet in this.orders)
+   * and IMMEDIATELY deleted it from pendingClientOrderIds + orderMetadataMap +
+   * tpClientOrderId. The engine's cancel failed on the exchange (-2011 Unknown
+   * order sent — the TP was just placed and not fully active yet). With all
+   * tracking deleted, the orphaned TP sat on the exchange for 18 minutes until a
+   * reinit's REST fetchOpenOrders discovered and cleaned it. During that window,
+   * both the orphaned TP and the new TP were live simultaneously — if price hit
+   * the orphaned TP first, the strategy would oversell.
+   *
+   * Fix: When cancelling a pending TP, move its ID here instead of deleting from
+   * pendingClientOrderIds. The terminal handler (CANCELED/REJECTED/EXPIRED) in
+   * handleOrderUpdates deletes from this set. cancelAllTpOrders also keeps the
+   * Set so that handleTpFilled's cleanup can still generate cancel signals for
+   * IDs that were not yet confirmed. onCleanup clears the set.
+   *
+   * Bounded with FIFO eviction (mirrors pendingCancelEntryIds pattern from
+   * Strategy 494 fix) — prevents unbounded growth if terminal pushes never arrive.
+   */
+  private _pendingCancelTpIds = new Set<string>();
+  private static readonly _PENDING_CANCEL_TP_CAP = 200;
+
+  /**
    * Flag set by handleTpFilled when basePrice=0 — strategy needs the engine
    * to re-fetch orderbook via REST and call processInitialData again so the
    * new cycle uses a fresh bid0 as the reference price.
@@ -1479,15 +1505,41 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
             // Pending TP matches current target — skip to avoid storm
             return signals;
           }
-          // Pending TP doesn't match → cancel it + place new one
+          // Pending TP doesn't match → cancel it + place new one.
+          // Strategy 505 fix: do NOT delete from pendingClientOrderIds /
+          // orderMetadataMap yet — the cancel signal is sent but the exchange
+          // may reject it (-2011 Unknown order sent if the TP was just placed
+          // and not fully active yet). If we delete tracking now and the cancel
+          // fails, the TP becomes an orphan that the strategy cannot see.
+          // Instead, move the ID to _pendingCancelTpIds so it stays tracked
+          // until the CANCELED/REJECTED terminal push confirms the cancel.
           signals.push(
             this.generateCancelSignal(
               this.tpClientOrderId,
               'ladder_tp_cancel_stale_pending',
             ),
           );
+          this._pendingCancelTpIds.add(this.tpClientOrderId);
+          // FIFO eviction — bounded Set (mirrors pendingCancelEntryIds pattern)
+          if (
+            this._pendingCancelTpIds.size >
+            LadderEntrySingleTPStrategy._PENDING_CANCEL_TP_CAP
+          ) {
+            const oldest = this._pendingCancelTpIds.values().next().value;
+            if (oldest) {
+              this._pendingCancelTpIds.delete(oldest);
+              this._logger.warn(
+                `[refreshTakeProfit] _pendingCancelTpIds exceeded cap ` +
+                  `(${LadderEntrySingleTPStrategy._PENDING_CANCEL_TP_CAP}) — ` +
+                  `evicted oldest entry ${oldest}. If its cancel was never ` +
+                  `confirmed, it may remain an untracked orphan on the ` +
+                  `exchange until the next reinit's REST orphan sweep.`,
+              );
+            }
+          }
           this.pendingClientOrderIds.delete(this.tpClientOrderId);
-          this.orderMetadataMap.delete(this.tpClientOrderId);
+          // Keep orderMetadataMap entry — needed by cancelAllTpOrders fallback
+          // and by terminal handler to identify the order as a TP.
         }
       }
 
@@ -1512,6 +1564,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
   private cancelAllTpOrders(reason: string): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    let handledTpClientOrderId: string | null = null;
     if (this.tpClientOrderId) {
       const tpOrder = this.orders.get(this.tpClientOrderId);
       if (
@@ -1521,6 +1574,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       ) {
         signals.push(this.generateCancelSignal(this.tpClientOrderId, reason));
       }
+      // Remember this ID so the _pendingCancelTpIds loop below can skip it
+      // (avoids a theoretical duplicate cancel signal, review nit).
+      handledTpClientOrderId = this.tpClientOrderId;
+      // If tpClientOrderId is in _pendingCancelTpIds, the cancel was already
+      // sent — don't duplicate the signal, just clear the reference.
+      // Otherwise (tpClientOrderId not in _pendingCancelTpIds and not in
+      // this.orders as NEW/PARTIALLY_FILLED), it may be a ghost or already
+      // terminal — just clear the reference.
       this.tpClientOrderId = null;
     }
     for (const clientId of Array.from(this.pendingClientOrderIds)) {
@@ -1530,6 +1591,23 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         this.pendingClientOrderIds.delete(clientId);
         this.orderMetadataMap.delete(clientId);
       }
+    }
+    // Strategy 505 fix: also cancel TPs whose cancel was sent but not yet
+    // confirmed (in _pendingCancelTpIds). The previous cancel may have failed
+    // on the exchange (-2011 Unknown order sent). Re-issue the cancel as a
+    // retry — if the order is already gone, the exchange returns -2011 again
+    // (harmless). If it still exists, this cancel succeeds and the orphaned
+    // TP is removed from the exchange. This is critical in handleTpFilled's
+    // cleanup phase: without this, the old TP (whose cancel was sent but
+    // failed) remains on the exchange while the new cycle's TP is also live.
+    // Skip any ID already handled above via the tpClientOrderId branch (nit
+    // from Strategy 505 fix review) — avoids a theoretical duplicate cancel
+    // signal for the same order in one call.
+    for (const clientId of Array.from(this._pendingCancelTpIds)) {
+      if (clientId === handledTpClientOrderId) continue;
+      signals.push(this.generateCancelSignal(clientId, reason));
+      // Keep in _pendingCancelTpIds — the terminal handler will delete it
+      // when the CANCELED/REJECTED push arrives (or onCleanup clears all).
     }
     return signals;
   }
@@ -1652,8 +1730,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     for (const coid of this.processedQuantityMap.keys()) {
       this.previousCycleOrderIds.add(coid);
     }
+    // Strategy 505 fix: also blacklist pending-cancel TPs so their delayed
+    // CANCELED/REJECTED pushes are ignored (cancelAllTpOrders already
+    // re-issued cancel signals for them).
+    for (const coid of this._pendingCancelTpIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
 
     this.pendingClientOrderIds.delete(order.clientOrderId!);
+    this._pendingCancelTpIds.delete(order.clientOrderId!);
     this.orderMetadataMap.delete(order.clientOrderId!);
     this.tpClientOrderId = null;
     // Clear any pending debounced TP refresh
@@ -1944,6 +2029,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         if (this.processedTerminalIds.has(order.clientOrderId)) continue;
         this.processedTerminalIds.add(order.clientOrderId);
         this.pendingClientOrderIds.delete(order.clientOrderId);
+        // Strategy 505 fix: clear from _pendingCancelTpIds when the terminal
+        // push (CANCELED/REJECTED/EXPIRED) confirms the cancel. If the TP was
+        // in _pendingCancelTpIds, its cancel is now confirmed — remove it so
+        // cancelAllTpOrders doesn't keep re-issuing cancel signals for it.
+        this._pendingCancelTpIds.delete(order.clientOrderId);
 
         if (
           metadata.signalType === SignalType.Entry &&
@@ -2216,6 +2306,43 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           );
           // Track in previousCycleOrderIds so late FILLED pushes are ignored
           this.previousCycleOrderIds.add(ghost.clientOrderId!);
+        }
+
+        // Strategy 505 fix: also cancel orphaned TP (SELL) orders from the
+        // previous cycle that are still NEW/PARTIALLY_FILLED on the exchange
+        // but NOT tracked in the strategy's internal maps. These are TPs whose
+        // cancel signal was sent but failed on the exchange (-2011 Unknown
+        // order sent) — the strategy deleted all tracking (pre-fix) but the
+        // order remained live. Without this cleanup, both the orphaned TP and
+        // the new cycle's TP are live simultaneously → potential oversell.
+        // This runs on every reinit (not just _pendingCancelTpIds) to also
+        // catch pre-fix orphans from before this code was deployed.
+        const orphanedTps = initialData.openOrders.filter(
+          (o) =>
+            o.symbol === this._symbol &&
+            o.side === OrderSide.SELL &&
+            (o.status === OrderStatus.NEW || o.status === OrderStatus.PARTIALLY_FILLED) &&
+            o.clientOrderId &&
+            this.isStrategyOrderId(o.clientOrderId) &&
+            /^T\d+D/.test(o.clientOrderId) &&
+            // Not tracked as the current active TP
+            o.clientOrderId !== this.tpClientOrderId &&
+            // Not in pending cancels (already being handled by Fix 1)
+            !this._pendingCancelTpIds.has(o.clientOrderId),
+        );
+        for (const orphan of orphanedTps) {
+          this._logger.warn(
+            `[processInitialData] Reinit: cancelling orphaned TP order from ` +
+              `previous cycle: ${orphan.clientOrderId} ` +
+              `(qty=${orphan.quantity?.toString()}, price=${orphan.price?.toString()})`,
+          );
+          signals.push(
+            this.generateCancelSignal(
+              orphan.clientOrderId!,
+              'ladder_reinit_orphan_tp_cleanup',
+            ),
+          );
+          this.previousCycleOrderIds.add(orphan.clientOrderId!);
         }
       }
     }
@@ -3657,6 +3784,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.orders.clear();
     this.orderMetadataMap.clear();
     this.pendingClientOrderIds.clear();
+    this._pendingCancelTpIds.clear();
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
     this.steps = [];
