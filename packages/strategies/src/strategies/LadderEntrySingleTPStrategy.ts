@@ -3150,6 +3150,21 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           order.executedQuantity.gt(0)
         ) {
           this.tpFilledQty = this.tpFilledQty.plus(order.executedQuantity);
+          // CRITICAL: mark this fill as already processed in processedQuantityMap.
+          // Without this, a WS replay/redelivery of the same partial-fill update
+          // after restart would be seen as a "new" fill by handleOrderUpdates
+          // (lastProcessed=0 since processedQuantityMap has no entry for this
+          // clientOrderId yet), double-counting the same executedQuantity into
+          // tpFilledQty a second time. This caused Strategy 514's TP to be
+          // undersized by exactly the double-counted amount (194.5 counted twice
+          // → new TP short by 194.5 of the real remaining inventory).
+          if (order.clientOrderId) {
+            const alreadyProcessed =
+              this.processedQuantityMap.get(order.clientOrderId) || new Decimal(0);
+            if (order.executedQuantity.gt(alreadyProcessed)) {
+              this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
+            }
+          }
           this._logger.info(
             `[processInitialData] Recovered tpFilledQty from TP order ` +
               `${order.clientOrderId} (status=${order.status}, executed=${order.executedQuantity.toString()}), ` +
