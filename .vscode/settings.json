@@ -5,12 +5,19 @@
   "eslint.validate": ["javascript", "typescript", "javascriptreact", "typescriptreact"],
   "editor.formatOnSave": true,
   "eslint.format.enable": true,
-  "editor.codeActionsOnSave": { "source.fixAll.eslint": "always" },
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always",
+    "source.fixAll.markdownlint": "always"
+  },
   "[typescript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
   "[typescriptreact]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
   "[javascript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
   "[javascriptreact]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" },
   "prettier.enable": true,
+  "[markdown]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "eslint.trace.server": "messages",
   "typescript.tsdk": "node_modules/typescript/lib"
 }
