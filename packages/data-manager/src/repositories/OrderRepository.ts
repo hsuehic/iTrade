@@ -113,12 +113,18 @@ export class OrderRepository {
       }
     }
     if (filters?.startDate) {
-      query.andWhere('order.timestamp >= :startDate', {
+      // Filter on createdAt (immutable insert time), not `timestamp` — the
+      // latter is overwritten by later exchange order-update events
+      // (FILLED/CANCELED/etc.) at the connector layer and no longer reliably
+      // represents when the order was created. Only affects this read-path
+      // date-range filter; order.timestamp itself is untouched (still relied
+      // on by live trading-strategy cycle-boundary logic).
+      query.andWhere('order.createdAt >= :startDate', {
         startDate: filters.startDate,
       });
     }
     if (filters?.endDate) {
-      query.andWhere('order.timestamp <= :endDate', {
+      query.andWhere('order.createdAt <= :endDate', {
         endDate: filters.endDate,
       });
     }

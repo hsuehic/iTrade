@@ -82,6 +82,7 @@ interface OrderData {
   timeInForce: string;
   timestamp: string;
   updateTime?: string;
+  createdAt?: string;
   executedQuantity?: string;
   cummulativeQuoteQuantity?: string;
   averagePrice?: string;
@@ -271,7 +272,7 @@ export function OrdersTable({
   const [orders, setOrders] = React.useState<OrderData[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [sorting, setSorting] = React.useState<SortingState>([
-    { id: 'timestamp', desc: true },
+    { id: 'createdAt', desc: true },
   ]);
   const [globalFilter, setGlobalFilter] = React.useState('');
   const [exchanges, setExchanges] = React.useState<string[]>([]);
@@ -586,7 +587,8 @@ export function OrdersTable({
   const columns = React.useMemo<ColumnDef<OrderData>[]>(
     () => [
       {
-        accessorKey: 'timestamp',
+        id: 'createdAt',
+        accessorKey: 'createdAt',
         header: ({ column }) => (
           <Button
             variant="ghost"
@@ -601,30 +603,38 @@ export function OrdersTable({
             ) : null}
           </Button>
         ),
-        cell: ({ row }) => (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="text-sm whitespace-nowrap cursor-help">
-                  {formatDate(row.original.timestamp, locale)}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{formatFullDate(row.original.timestamp, locale)}</p>
-                {row.original.updateTime && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {t('cells.updated', {
-                      time: formatFullDate(row.original.updateTime, locale),
-                    })}
-                  </p>
-                )}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ),
+        cell: ({ row }) => {
+          // `timestamp` on the order record is NOT a stable "created" time —
+          // exchange order-update events (FILLED/CANCELED/PARTIALLY_FILLED)
+          // overwrite it with the event's own time. `createdAt` is a DB
+          // CreateDateColumn set once on insert and never touched again, so
+          // it is the only field that reliably represents order creation.
+          const createdDisplay = row.original.createdAt ?? row.original.timestamp;
+          return (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-sm whitespace-nowrap cursor-help">
+                    {formatDate(createdDisplay, locale)}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{formatFullDate(createdDisplay, locale)}</p>
+                  {row.original.updateTime && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t('cells.updated', {
+                        time: formatFullDate(row.original.updateTime, locale),
+                      })}
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        },
         sortingFn: (rowA, rowB) =>
-          new Date(rowA.original.timestamp).getTime() -
-          new Date(rowB.original.timestamp).getTime(),
+          new Date(rowA.original.createdAt ?? rowA.original.timestamp).getTime() -
+          new Date(rowB.original.createdAt ?? rowB.original.timestamp).getTime(),
       },
       {
         accessorKey: 'symbol',
