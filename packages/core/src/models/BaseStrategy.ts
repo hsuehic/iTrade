@@ -55,6 +55,9 @@ export abstract class BaseStrategy<
   // 🆕 订单序列号（用于生成唯一 clientOrderId）
   protected orderSequence: number = 0;
 
+  /** Captured async init promise so the engine can await it (see initialize()). */
+  private _initializePromise: Promise<void> | null = null;
+
   public get strategyType(): string {
     return this._strategyType;
   }
@@ -110,38 +113,98 @@ export abstract class BaseStrategy<
     this._settlement = parts.length > 2 ? parts[2] : undefined;
 
     // indicate that strategy is initialized, is ready to use. you need to override this method in your strategy, and set this._initialized to true, and emit 'initialized' event.
-    this.onInitialize();
+    // The constructor can't await, so we capture the promise for initialize() to await later.
+    this._initializePromise = this.onInitialize().catch((error) => {
+      this._logger.error(`[${this.strategyType}] onInitialize failed`, error as Error);
+    });
+  }
+
+  /**
+   * 🆕 Await the strategy's asynchronous initialization.
+   *
+   * The base constructor fires `onInitialize()` (fire-and-forget, since a
+   * constructor cannot await). This method lets the engine deterministically
+   * wait for that initialization to complete before processing initial data or
+   * subscriptions. It is idempotent and safe to call any number of times.
+   */
+  public async initialize(): Promise<void> {
+    if (this._initializePromise) {
+      await this._initializePromise;
+    }
   }
 
   public get config(): StrategyConfig<TParams> {
     return {
       type: this._strategyType,
-      parameters: { ...this._parameters },
-      ...this._context,
+      parameters: this.cloneParameters(),
+      ...this.context,
     };
   }
 
   public get parameters(): TParams {
-    return { ...this._parameters };
+    return this.cloneParameters();
   }
 
   public get context(): StrategyRuntimeContext {
-    return { ...this._context };
+    // Defensive shallow-copy of primitive properties; the `performance` and
+    // nested configs share references (deep-cloning Decimal trees here would
+    // be expensive and is not required — callers must treat the returned
+    // `performance` as immutable). This at least prevents callers from
+    // reassigning the top-level fields we own.
+    return {
+      ...this._context,
+      performance: { ...this._context.performance },
+      initialDataConfig: { ...this._context.initialDataConfig },
+      subscription: { ...this._context.subscription },
+    };
+  }
+
+  /**
+   * Defensive copy of parameters so external callers cannot mutate the
+   * strategy's live `_parameters` by writing into the returned object.
+   */
+  private cloneParameters(): TParams {
+    return { ...this._parameters };
   }
 
   /**
    * 🆕 生成唯一的 clientOrderId
    * OKX要求: 字母数字字符, 最大长度32字符
+   *
+   * Format: `{prefix}{strategyId}D{sequence}D{ms}` where prefix is E/S/T.
+   * Collision resistance notes (fixed vs the previous second-based design):
+   *  - Uses millisecond timestamps (`Date.now()`), not whole seconds, so two
+   *    orders generated in the same second no longer collide.
+   *  - `orderSequence` is per-instance; on restart it resets to 0, so a fresh
+   *    instance with the same strategyId and same first-generation ms could
+   *    still collide. To eliminate that we also guard with the exchange-side
+   *    dedup only when absolutely needed — strategies that need durable
+   *    uniqueness across restarts should persist and restore `orderSequence`
+   *    in `processInitialData` via the exported `restoreOrderSequence()`.
    */
   protected generateClientOrderId(type: SignalType): string {
     this.orderSequence++;
-    // 使用更短的时间戳（去掉毫秒的后3位）和前缀
-    const shortTimestamp = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
-    const strategyId = this.getStrategyId();
-    // 主订单格式: E{strategyId}D{sequence}D{timestamp} , 止盈订单: T{strategyId}D{sequence}D{timestamp}
+    // 使用毫秒时间戳（不是秒），避免同一秒内重复
+    const ms = Date.now();
+    const strategyId = this.getStrategyId() ?? 0;
+    // 主订单格式: E{strategyId}D{sequence}D{ms} , 止盈订单: T{strategyId}D{sequence}D{ms}
     const typePrefix =
       type === SignalType.Entry ? 'E' : type === SignalType.StopLoss ? 'S' : 'T';
-    return `${typePrefix}${strategyId}D${this.orderSequence}D${shortTimestamp}`;
+    // Truncate strategyId to keep the whole string <= 32 chars while staying
+    // parseable by the engine's /^[ETS](\d+)D/ enrichment regex.
+    const idPart = String(strategyId).slice(0, 13);
+    const seqPart = String(this.orderSequence).slice(0, 8);
+    return `${typePrefix}${idPart}D${seqPart}D${ms}`.slice(0, 32);
+  }
+
+  /**
+   * 🆕 Restore the per-instance order sequence from persisted state so that
+   * auto-generated `clientOrderId`s don't collide after a restart. Strategies
+   * that keep their own monotonically-increasing counter should call this in
+   * `processInitialData` with the last known sequence value.
+   */
+  protected restoreOrderSequence(lastSequence: number): void {
+    this.orderSequence = Math.max(this.orderSequence, lastSequence);
   }
 
   /**
@@ -212,11 +275,16 @@ export abstract class BaseStrategy<
         this._currentPosition = this._currentPosition.minus(quantity);
       }
 
-      // Update average price if available
-      this._averagePrice = trade.price;
+      // Update average price using a TRUE volume-weighted average across the
+      // whole position (additive on buys, unchanged on sells, reset on flat).
+      // Previously this just set `_averagePrice = trade.price`, which is wrong
+      // for multi-batch entries: after two buys at different prices the "average"
+      // silently became the LAST fill's price, so downstream PnL/TP math went
+      // stale whenever the last fill differed from the weighted midpoint.
+      this._averagePrice = this.computeAveragePrice(trade);
 
       this._logger.info(
-        `[${this.strategyType}:${this._strategyId}] Position updated to ${this._currentPosition.toString()} (via ${trade.side} ${quantity})`,
+        `[${this.strategyType}:${this._strategyId}] Position updated to ${this._currentPosition.toString()} (via ${trade.side} ${quantity}) @ avg ${this._averagePrice?.toString() ?? 'N/A'}`,
       );
 
       // Update performance metrics (Volume, Fees, PnL)
@@ -289,6 +357,21 @@ export abstract class BaseStrategy<
 
   protected async onCleanup(): Promise<void> {
     // Override in derived classes for custom cleanup
+  }
+
+  /**
+   * 🆕 Public lifecycle entry point (implements `IStrategy.cleanup`).
+   *
+   * The engine drives strategy shutdown through the optional `cleanup?()` on
+   * `IStrategy` — NOT the protected `onCleanup()`. Without a public bridge here,
+   * every subclass's `onCleanup()` override was dead code: `TradingEngine.stop()`
+   * checks `strategy.cleanup?.()` and would call the interface, but BaseStrategy
+   * never wired it to `onCleanup`, so subclass cleanup never ran. This bridge
+   * fixes that gap and is idempotent.
+   */
+  public async cleanup(): Promise<void> {
+    await this.onCleanup();
+    this._isInitialized = false;
   }
 
   // Utility methods for derived strategies
@@ -384,8 +467,29 @@ export abstract class BaseStrategy<
     return this._strategyId;
   }
 
+  /**
+   * 🆕 Set the strategy id (from database). Implements the optional
+   * `IStrategy.setStrategyId` contract that was previously missing — callers
+   * relying on the interface would hit `undefined is not a function`.
+   */
+  public setStrategyId(id: number): void {
+    this._strategyId = id;
+    this._context.strategyId = id;
+    this._context.performance.strategyId = id;
+  }
+
   public getStrategyName(): string | undefined {
     return this._strategyName;
+  }
+
+  /**
+   * 🆕 Set the user-defined strategy name (from database). Implements the
+   * optional `IStrategy.setStrategyName` contract that was previously missing.
+   */
+  public setStrategyName(name: string): void {
+    this._strategyName = name;
+    this._context.strategyName = name;
+    this._context.performance.strategyName = name;
   }
 
   public getSymbol(): string {
@@ -431,6 +535,55 @@ export abstract class BaseStrategy<
 
   protected getAveragePrice(): Decimal | undefined {
     return this._averagePrice;
+  }
+
+  /**
+   * Compute a volume-weighted average price for the whole position after a trade.
+   *
+   * Semantics (trade's position is `this._currentPosition`, already updated by
+   * the caller before this runs; `oldPos` is the position BEFORE this trade):
+   *  - No previous average → opening a position from flat: avg = fill price.
+   *  - Trade reduces an existing position (same direction) → remaining shares
+   *    keep their entry cost, avg unchanged.
+   *  - Position went fully flat → avg resets to undefined.
+   *  - Trade flips the position side (e.g. +2 long then sell 3 → net -1 short):
+   *    the leftover is a fresh opposing-direction position, so avg resets to the
+   *    fill price. A naive mixed-volume weighted average is WRONG here — it
+   *    would blend the old long entry cost with the new short entry, which has
+   *    no meaning for a single average entry price.
+   *  - Trade adds to a position in the SAME direction → true volume-weighted
+   *    average of the running cost plus this fill.
+   *
+   * Mirrors the same weighted-average semantics as `PerformanceTracker.updateWithTrade`
+   * (single source of truth for average entry price).
+   */
+  private computeAveragePrice(trade: Trade): Decimal | undefined {
+    const quantity = trade.quantity;
+    const fillPrice = trade.price;
+    const isBuy = String(trade.side).toLowerCase() === 'buy';
+    const current = this._currentPosition; // already updated by caller
+    const oldPos = isBuy ? current.minus(quantity) : current.plus(quantity);
+
+    if (quantity.lte(0) || !fillPrice || fillPrice.lte(0)) return this._averagePrice;
+    // Opening a fresh position (either side) from flat.
+    if (!this._averagePrice || oldPos.eq(0)) return fillPrice;
+    // Full close → no position remains, no average.
+    if (current.eq(0)) return undefined;
+    // Flipping the side (current and oldPos have opposite signs) — the leftover
+    // is a NEW opposing-direction position opened at this fill price. Must be
+    // checked BEFORE the reduce branch below, because |current| < |oldPos| can
+    // also hold across a flip (e.g. +2 → -1: |−1| < |2|).
+    if (current.mul(oldPos).lt(0)) return fillPrice;
+    // Reducing an existing position (same side, |current| < |oldPos|) — the
+    // remaining shares keep their entry cost.
+    if (current.abs().lt(oldPos.abs())) return this._averagePrice;
+    // Adding to a position in the SAME direction → weighted average.
+    const totalCost = this._averagePrice
+      .times(oldPos.abs())
+      .plus(fillPrice.times(quantity).abs());
+    const newPos = oldPos.abs().plus(quantity.abs());
+    if (newPos.lte(0)) return undefined;
+    return totalCost.div(newPos);
   }
 
   /**

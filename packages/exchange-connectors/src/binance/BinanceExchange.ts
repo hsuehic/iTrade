@@ -517,7 +517,16 @@ export class BinanceExchange extends BaseExchange {
       throw new Error('Position not found on exchange');
     }
 
-    const marginAsset = (position.marginAsset as string) || 'USDT';
+    // Binance's /fapi/v2/positionRisk does not reliably return `marginAsset`
+    // (it is absent for USDC-margined perpetuals such as ZEC/USDC:USDC), so
+    // derive the margin asset from the symbol's settlement/quote currency as a
+    // fallback. The unified symbol format is BASE/QUOTE:SETTLEMENT, where the
+    // settlement currency is the margin asset (e.g. ZEC/USDC:USDC → USDC).
+    const marginAsset = (
+      (position.marginAsset as string) ||
+      this.extractMarginAssetFromSymbol(symbol) ||
+      'USDT'
+    ).toUpperCase();
     const isolatedWallet = this.formatDecimal(position.isolatedWallet ?? '0');
     const initialMargin = this.formatDecimal(
       position.positionInitialMargin ?? position.initialMargin ?? '0',
@@ -535,6 +544,45 @@ export class BinanceExchange extends BaseExchange {
       currentMargin: isolatedWallet,
       marginAsset,
     };
+  }
+
+  /**
+   * Derive the margin (settlement) asset from a unified symbol such as
+   * `ZEC/USDC:USDC`, `BTC/USDT:USDT`, or a Binance-native `BTCUSDT`.
+   * Returns the settlement/quote currency when identifiable, else null.
+   */
+  private extractMarginAssetFromSymbol(symbol: string): string | null {
+    const upper = symbol.toUpperCase();
+
+    // Perpetual format BASE/QUOTE:SETTLEMENT — the settlement leg is the
+    // margin asset (e.g. ZEC/USDC:USDC → USDC).
+    if (upper.includes(':')) {
+      const settlement = upper.split(':')[1];
+      if (settlement) {
+        return settlement.replace(/[^A-Z0-9]/g, '');
+      }
+    }
+
+    // Spot/compact format BASE/QUOTE, or Binance-native BASEQUOTE.
+    const pair = upper.split(':')[0];
+    if (pair.includes('/')) {
+      const quote = pair.split('/')[1];
+      if (quote) {
+        return quote.replace(/[^A-Z0-9]/g, '');
+      }
+    }
+
+    // Binance-native compact symbols (e.g. ZECUSDC) — strip the trailing
+    // known stablecoin quote when present.
+    const knownQuotes = ['USDC', 'USDT', 'BUSD', 'FDUSD', 'TUSD', 'USD'];
+    const cleaned = pair.replace('/', '').replace('-', '');
+    for (const quote of knownQuotes) {
+      if (cleaned.endsWith(quote) && cleaned.length > quote.length) {
+        return quote;
+      }
+    }
+
+    return null;
   }
 
   private async getFuturesPositionMode(): Promise<'oneway' | 'hedge'> {

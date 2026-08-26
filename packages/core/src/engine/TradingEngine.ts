@@ -1897,6 +1897,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     }
 
     try {
+      // 🆕 Await any async initialization the strategy started in its
+      // constructor before processing its initial data. Ensures derive
+      // classes that do async setup in onInitialize() are ready.
+      await strategy.initialize?.();
+
       const loadedData = await loadInitialDataForStrategy(
         strategy,
         this._exchanges,

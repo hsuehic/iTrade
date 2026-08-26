@@ -190,6 +190,42 @@ describe('BinanceExchange adjustIsolatedMargin', () => {
     expect(limits.currentMargin?.toString()).toBe('100');
     expect(limits.marginAsset).toBe('USDT');
   });
+
+  it('derives USDC margin asset from the symbol when positionRisk omits marginAsset', async () => {
+    // Reproduces the reported bug: USDC-margined perpetuals (e.g. ZEC/USDC:USDC)
+    // do not include `marginAsset` in /fapi/v2/positionRisk, so the code must
+    // fall back to the symbol's settlement currency instead of defaulting to USDT.
+    getSpy.mockImplementation((url: string) => {
+      if (url.includes('positionSide/dual')) {
+        return Promise.resolve({ data: { dualSidePosition: false } });
+      }
+      if (url.includes('positionRisk')) {
+        return Promise.resolve({
+          data: [
+            {
+              symbol: 'ZECUSDC',
+              positionSide: 'BOTH',
+              positionAmt: '1',
+              // NB: `marginAsset` intentionally omitted to mirror live API.
+              isolatedWallet: '1013.56175094',
+              positionInitialMargin: '0',
+            },
+          ],
+        });
+      }
+      if (url.includes('balance')) {
+        return Promise.resolve({
+          data: [{ asset: 'USDC', availableBalance: '500.25' }],
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    const limits = await exchange.getIsolatedMarginLimits('ZEC/USDC:USDC', 'long');
+
+    expect(limits.marginAsset).toBe('USDC');
+    expect(limits.maxAdd.toString()).toBe('500.25');
+  });
 });
 
 describe('BinanceExchange Symbol Info Precision', () => {

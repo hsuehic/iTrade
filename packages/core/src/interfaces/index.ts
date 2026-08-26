@@ -224,6 +224,13 @@ export interface IStrategy<TParams extends StrategyParameters = StrategyParamete
    */
   processInitialData(initialData: InitialDataResult): Promise<StrategyAnalyzeResult>;
 
+  /**
+   * 🆕 Await the strategy's asynchronous initialization (set up in the
+   * constructor). The engine awaits this before loading initial data.
+   * Optional — implementations that initialize synchronously can omit it.
+   */
+  initialize?(): Promise<void>;
+
   // 🆕 Performance Tracking Methods (optional - implemented in BaseStrategy)
   /**
    * Get current performance metrics for this strategy
