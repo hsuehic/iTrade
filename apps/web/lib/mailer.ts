@@ -2,6 +2,11 @@ import nodemailer from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { hasMxRecord } from '@/lib/email-validation';
 
+/** Sanitize control characters from string for safe logging. */
+function sanitizeForLog(s: string): string {
+  return s.replace(/[\r\n\t]/g, '').slice(0, 200);
+}
+
 export async function sendEmail(to: string, subject: string, text: string) {
   // Check if SMTP is configured
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
@@ -19,7 +24,10 @@ export async function sendEmail(to: string, subject: string, text: string) {
   // This prevents SMTP bounce-back abuse from attackers using fake domains.
   const mxOk = await hasMxRecord(to);
   if (!mxOk) {
-    console.warn(`[MAILER] Refused to send email to ${to}: domain has no MX records`);
+    const domain = to.split('@')[1] ?? 'unknown';
+    console.warn(
+      `[MAILER] Refused to send email: domain ${sanitizeForLog(domain)} has no MX records`,
+    );
     return;
   }
 
