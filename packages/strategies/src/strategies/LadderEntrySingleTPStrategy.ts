@@ -3268,8 +3268,53 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       this.tpFilledQty = new Decimal(0);
       this.vwap = new Decimal(0);
     }
-    if (this.inventoryQty.gt(0) && !this.tpClientOrderId) {
-      signals.push(...this.refreshTakeProfit());
+    // Step 5: Ensure TP covers the full inventory.
+    // If inventory > 0 and no active TP → create one.
+    // If inventory > 0 and active TP exists but its qty < inventory - tpFilledQty
+    // → resize it (cancel + replace). This catches the case where the strategy
+    // instance was reloaded mid-cycle (orderSequence reset) and the new instance
+    // recovered fewer FILLED entries than actually exist on the exchange, placing
+    // a TP for only a subset of the real position (Strategy 505 bug: 2 entries
+    // filled = 10000 WLD, but TP only covered 5000 because the reload missed
+    // one entry fill). The existing TP qty check in refreshTakeProfit() handles
+    // the cancel+replace — we just need to call it when the qty mismatches.
+    if (this.inventoryQty.gt(0)) {
+      const expectedTpQty = this.inventoryQty.minus(this.tpFilledQty);
+      let needsTpRefresh = !this.tpClientOrderId;
+      if (this.tpClientOrderId) {
+        const existingTp = this.orders.get(this.tpClientOrderId);
+        if (
+          existingTp &&
+          (existingTp.status === OrderStatus.NEW ||
+            existingTp.status === OrderStatus.PARTIALLY_FILLED)
+        ) {
+          // Use remaining qty (original - executed) for comparison, since a
+          // PARTIALLY_FILLED TP has already sold some inventory.
+          const remainingTpQty = (existingTp.quantity || new Decimal(0)).minus(
+            existingTp.executedQuantity || new Decimal(0),
+          );
+          if (!remainingTpQty.eq(expectedTpQty)) {
+            needsTpRefresh = true;
+          }
+        } else if (this.pendingClientOrderIds.has(this.tpClientOrderId)) {
+          // TP is pending — check if its metadata matches
+          const pendingMeta = this.orderMetadataMap.get(this.tpClientOrderId);
+          if (pendingMeta) {
+            const pendingQty = pendingMeta.quantity
+              ? new Decimal(pendingMeta.quantity)
+              : new Decimal(0);
+            if (!pendingQty.eq(expectedTpQty)) {
+              needsTpRefresh = true;
+            }
+          }
+        } else {
+          // tpClientOrderId set but order not found anywhere — ghost, refresh
+          needsTpRefresh = true;
+        }
+      }
+      if (needsTpRefresh) {
+        signals.push(...this.refreshTakeProfit());
+      }
     }
 
     // Step 6: Place remaining ladder entries
