@@ -122,6 +122,7 @@ export class BotInstance {
       exchange: string;
       timestamp: Date;
       savingBalance?: string;
+      unrealizedPnl?: string;
     };
 
     this.pollingService.on('snapshotSaved', async (snapshot: BalanceSnapshot) => {
@@ -141,10 +142,20 @@ export class BotInstance {
             new Decimal(snapshot.totalBalance),
             snapshot.timestamp,
             snapshot.savingBalance ? new Decimal(snapshot.savingBalance) : new Decimal(0),
+            snapshot.unrealizedPnl !== undefined && snapshot.unrealizedPnl !== null
+              ? new Decimal(snapshot.unrealizedPnl)
+              : null,
           );
         }
-      } catch {
-        return;
+      } catch (error) {
+        // Non-fatal: balance-history sync must not break the polling loop, but
+        // log it — silent drops hide gaps in balance/uPnl history used by the
+        // dashboard (balance charts, realized P&L baselines).
+        this.logger.error(
+          `Failed to sync balance history for ${snapshot.exchange ?? 'unknown exchange'}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     });
   }

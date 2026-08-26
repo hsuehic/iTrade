@@ -287,8 +287,8 @@
         "up": "Growing this month",
         "down": "Declining this month"
       },
-      "balanceFooterAll": "Cash balance across all exchanges",
-      "balanceFooterSingle": "Cash balance on {exchange}",
+      "balanceFooterAll": "Account balance across all exchanges (equity incl. unrealized P&L)",
+      "balanceFooterSingle": "Account balance on {exchange} (equity incl. unrealized P&L)",
       "balanceChangeTitle": "Balance Change",
       "balanceChangeStatus": {
         "none": "No change",
@@ -321,10 +321,16 @@
       "profit": "Profit",
       "loss": "Loss",
       "realizedStatus": {
-        "positive": "Closed profitable trades",
-        "negative": "Closed losing trades"
+        "positive": "Net settled gains",
+        "negative": "Net settled losses"
       },
-      "realizedDescription": "Locked-in profits and losses from completed trades",
+      "realizedApproximate": "Approximate: baseline unrealized P&L history is still accumulating",
+      "realizedDescription": {
+        "lastDay": "Settled account P&L since midnight today (fees included)",
+        "lastWeek": "Settled account P&L since this Monday (fees included)",
+        "lastMonth": "Settled account P&L since the 1st of this month (fees included)",
+        "lastYear": "Settled account P&L since Jan 1 this year (fees included)"
+      },
       "unrealizedStatus": {
         "positive": "Profitable positions",
         "negative": "Positions underwater"

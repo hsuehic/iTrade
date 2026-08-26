@@ -56,6 +56,21 @@ export abstract class BaseBalanceHistoryEntity {
   })
   saving!: Decimal;
 
+  /**
+   * Unrealized P&L of the account at this period (exchange-reported, summed
+   * over open positions; 0 for spot-only accounts). Nullable: rows written
+   * before this column existed are NULL ("unknown"), which consumers treat
+   * as an approximate marker for realized-PnL calculations.
+   */
+  @Column({
+    type: 'decimal',
+    precision: 28,
+    scale: 10,
+    transformer: decimalTransformer,
+    nullable: true,
+  })
+  unrealizedPnl!: Decimal | null;
+
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   period!: Date;
 

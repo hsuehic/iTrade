@@ -27,13 +27,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { fetchJsonShared } from '@/lib/fetch-json';
 
 interface AccountSummary {
   totalBalance: number;
   totalPositionValue: number;
   totalEquity: number;
   totalUnrealizedPnl: number;
-  totalRealizedPnl?: number; // 新增已实现盈亏
   totalPositions: number;
   balanceChange: number;
   balanceChangeValue?: number; // 新增余额变化数值
@@ -46,15 +46,11 @@ interface BalanceChangeData {
   period: string;
 }
 
-interface StrategySummary {
-  total: number;
-  active: number;
-  inactive: number;
-  totalPnl: number;
-  totalRealizedPnl?: number;
-  totalOrders: number;
-  totalFilledOrders: number;
-  avgFillRate: string;
+interface RealizedPnlData {
+  value: number; // 账户级已实现盈亏（期内）
+  unrealizedChange: number; // 同期未实现盈亏变动
+  approximate: boolean; // 基线 uPnl 历史缺失时为 true
+  period: string;
 }
 
 interface TradingDashboardCardsProps {
@@ -69,7 +65,6 @@ export function TradingDashboardCards({
   const t = useTranslations('dashboard.cards');
   const locale = useLocale();
   const [accountData, setAccountData] = useState<AccountSummary | null>(null);
-  const [_strategyData, setStrategyData] = useState<StrategySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [balanceChangeData, setBalanceChangeData] = useState<BalanceChangeData | null>(
     null,
@@ -79,30 +74,19 @@ export function TradingDashboardCards({
     null,
   );
   const [rollingChangePeriod, setRollingChangePeriod] = useState<string>('1m');
+  const [realizedPnlData, setRealizedPnlData] = useState<RealizedPnlData | null>(null);
+  const [realizedPeriod, setRealizedPeriod] = useState<string>('1m');
 
-  // Main account and strategy data
+  // Main account data
   useEffect(() => {
     const fetchMainData = async () => {
       try {
-        const [accountRes, strategyRes] = await Promise.all([
-          fetch(`/api/analytics/account?period=30d&exchange=${selectedExchange}`),
-          fetch('/api/analytics/strategies'),
-        ]);
-
-        if (accountRes.ok) {
-          const accountJson = await accountRes.json();
-          const accountSummary = accountJson.summary;
-
-          if (strategyRes.ok) {
-            const strategyJson = await strategyRes.json();
-            setStrategyData(strategyJson.summary);
-            accountSummary.totalRealizedPnl = strategyJson.summary?.totalRealizedPnl ?? 0;
-          }
-
-          setAccountData(accountSummary);
+        const accountJson = await fetchJsonShared<{ summary: AccountSummary }>(
+          `/api/analytics/account?period=30d&exchange=${selectedExchange}`,
+        );
+        if (accountJson) {
+          setAccountData(accountJson.summary);
         }
-      } catch (error) {
-        console.error('Failed to fetch main dashboard data:', error);
       } finally {
         setLoading(false);
       }
@@ -118,22 +102,17 @@ export function TradingDashboardCards({
   // Calendar-aligned balance change
   useEffect(() => {
     const fetchBalanceChangeData = async () => {
-      try {
-        const res = await fetch(
-          `/api/analytics/account?period=${balanceChangePeriod}&align=calendar&exchange=${selectedExchange}`,
-        );
-        if (res.ok) {
-          const json = await res.json();
-          const changePercentage = json.summary.balanceChange;
-          const changeValue = json.summary.balanceChangeValue ?? 0;
-          setBalanceChangeData({
-            change: changePercentage,
-            changeValue,
-            period: balanceChangePeriod,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch calendar balance change data:', error);
+      const json = await fetchJsonShared<{
+        summary: { balanceChange: number; balanceChangeValue?: number };
+      }>(
+        `/api/analytics/account?period=${balanceChangePeriod}&align=calendar&exchange=${selectedExchange}`,
+      );
+      if (json) {
+        setBalanceChangeData({
+          change: json.summary.balanceChange,
+          changeValue: json.summary.balanceChangeValue ?? 0,
+          period: balanceChangePeriod,
+        });
       }
     };
     fetchBalanceChangeData();
@@ -142,26 +121,47 @@ export function TradingDashboardCards({
   // Rolling-window balance change
   useEffect(() => {
     const fetchRollingChangeData = async () => {
-      try {
-        const res = await fetch(
-          `/api/analytics/account?period=${rollingChangePeriod}&align=rolling&exchange=${selectedExchange}`,
-        );
-        if (res.ok) {
-          const json = await res.json();
-          const changePercentage = json.summary.balanceChange;
-          const changeValue = json.summary.balanceChangeValue ?? 0;
-          setRollingChangeData({
-            change: changePercentage,
-            changeValue,
-            period: rollingChangePeriod,
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch rolling balance change data:', error);
+      const json = await fetchJsonShared<{
+        summary: { balanceChange: number; balanceChangeValue?: number };
+      }>(
+        `/api/analytics/account?period=${rollingChangePeriod}&align=rolling&exchange=${selectedExchange}`,
+      );
+      if (json) {
+        setRollingChangeData({
+          change: json.summary.balanceChange,
+          changeValue: json.summary.balanceChangeValue ?? 0,
+          period: rollingChangePeriod,
+        });
       }
     };
     fetchRollingChangeData();
   }, [selectedExchange, rollingChangePeriod]);
+
+  // Account-level realized P&L (calendar-aligned, same endpoint family as the
+  // other period cards; identical URLs share one in-flight request and the
+  // server applies a short analytics cache, so no extra DB load)
+  useEffect(() => {
+    const fetchRealizedPnlData = async () => {
+      const json = await fetchJsonShared<{
+        summary: {
+          realizedPnl?: number | null;
+          unrealizedPnlChange?: number | null;
+          realizedPnlApproximate?: boolean;
+        };
+      }>(
+        `/api/analytics/account?period=${realizedPeriod}&align=calendar&exchange=${selectedExchange}`,
+      );
+      if (json) {
+        setRealizedPnlData({
+          value: json.summary.realizedPnl ?? 0,
+          unrealizedChange: json.summary.unrealizedPnlChange ?? 0,
+          approximate: json.summary.realizedPnlApproximate === true,
+          period: realizedPeriod,
+        });
+      }
+    };
+    fetchRealizedPnlData();
+  }, [selectedExchange, realizedPeriod]);
 
   if (loading) {
     return (
@@ -196,11 +196,13 @@ export function TradingDashboardCards({
 
   const totalBalance = accountData?.totalBalance || 0;
   const totalEquity = accountData?.totalEquity || 0;
-  const totalRealizedPnl = accountData?.totalRealizedPnl || 0;
+  const realizedPnlValue = realizedPnlData?.value ?? 0;
   const totalUnrealizedPnl = accountData?.totalUnrealizedPnl || 0;
-  // Use the calendar MTD figure (same source as Card 2) so Card 1's badge is
-  // consistent and not a spurious near-duplicate of Card 3's rolling figure.
-  const balanceChange = balanceChangeData?.change ?? accountData?.balanceChange ?? 0;
+  // Card 1's badge/trend show ONLY the calendar-period figure (same source as
+  // Card 2). Deliberately no fallback to the 30d main fetch: that would flash
+  // the rolling 30d % before the calendar figure arrives. Until the calendar
+  // data loads we render skeletons instead.
+  const balanceChange = balanceChangeData?.change ?? 0;
   const periodLabels: Record<string, string> = {
     '1d': t('period.day'),
     '1w': t('period.week'),
@@ -218,35 +220,43 @@ export function TradingDashboardCards({
               <IconWallet className="size-4 shrink-0" />
               {t('balanceTitle')}
             </CardDescription>
-            <Badge
-              variant="outline"
-              className={
-                balanceChange >= 0
-                  ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
-                  : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
-              }
-            >
-              {balanceChange >= 0 ? (
-                <IconTrendingUp className="size-3" />
-              ) : (
-                <IconTrendingDown className="size-3" />
-              )}
-              {formatPercentage(balanceChange)}
-            </Badge>
+            {balanceChangeData ? (
+              <Badge
+                variant="outline"
+                className={
+                  balanceChange >= 0
+                    ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
+                    : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
+                }
+              >
+                {balanceChange >= 0 ? (
+                  <IconTrendingUp className="size-3" />
+                ) : (
+                  <IconTrendingDown className="size-3" />
+                )}
+                {formatPercentage(balanceChange)}
+              </Badge>
+            ) : (
+              <Skeleton className="h-5 w-16" />
+            )}
           </div>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             {formatCurrency(totalBalance)}
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            {balanceChange >= 0 ? t('balanceTrend.up') : t('balanceTrend.down')}
-            {balanceChange >= 0 ? (
-              <IconTrendingUp className="size-4 text-green-500" />
-            ) : (
-              <IconTrendingDown className="size-4 text-red-500" />
-            )}
-          </div>
+          {balanceChangeData ? (
+            <div className="line-clamp-1 flex gap-2 font-medium">
+              {balanceChange >= 0 ? t('balanceTrend.up') : t('balanceTrend.down')}
+              {balanceChange >= 0 ? (
+                <IconTrendingUp className="size-4 text-green-500" />
+              ) : (
+                <IconTrendingDown className="size-4 text-red-500" />
+              )}
+            </div>
+          ) : (
+            <Skeleton className="h-4 w-24" />
+          )}
           <div className="text-muted-foreground">
             {selectedExchange === 'all'
               ? t('balanceFooterAll')
@@ -441,43 +451,85 @@ export function TradingDashboardCards({
       <Card className="@container/card">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
-            <CardDescription className="flex items-center gap-2">
-              <IconChartLine className="size-4" />
+            <CardDescription className="flex items-center gap-2 whitespace-nowrap">
+              <IconChartLine className="size-4 shrink-0" />
               {t('realizedTitle')}
             </CardDescription>
             <Badge
               variant="outline"
               className={
-                totalRealizedPnl >= 0
+                realizedPnlValue >= 0
                   ? 'border-green-500/50 bg-green-500/10 text-green-700 dark:text-green-400'
                   : 'border-red-500/50 bg-red-500/10 text-red-700 dark:text-red-400'
               }
             >
-              {totalRealizedPnl >= 0 ? (
+              {realizedPnlValue >= 0 ? (
                 <IconTrendingUp className="size-3" />
               ) : (
                 <IconTrendingDown className="size-3" />
               )}
-              {totalRealizedPnl >= 0 ? t('profit') : t('loss')}
+              {realizedPnlValue >= 0 ? t('profit') : t('loss')}
             </Badge>
           </div>
           <CardTitle
             className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${
-              totalRealizedPnl >= 0
+              realizedPnlValue >= 0
                 ? 'text-green-600 dark:text-green-400'
                 : 'text-red-600 dark:text-red-400'
             }`}
+            title={realizedPnlData?.approximate ? t('realizedApproximate') : undefined}
           >
-            {formatCurrency(totalRealizedPnl)}
+            {realizedPnlData?.approximate ? '≈' : ''}
+            {formatCurrency(realizedPnlValue)}
           </CardTitle>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
-          <div className="line-clamp-1 flex gap-2 font-medium">
-            {totalRealizedPnl >= 0
-              ? t('realizedStatus.positive')
-              : t('realizedStatus.negative')}
+          <div className="line-clamp-1 flex gap-2 font-medium items-center">
+            <span className="whitespace-nowrap">
+              {realizedPnlValue >= 0
+                ? t('realizedStatus.positive')
+                : t('realizedStatus.negative')}
+            </span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-6 px-2 text-xs bg-muted/50 hover:bg-muted border border-transparent hover:border-border data-[state=open]:border-primary data-[state=open]:bg-primary/10 focus-visible:border-primary focus-visible:bg-primary/5 focus-visible:outline-none focus-visible:ring-0 focus:outline-none focus:ring-0 transition-colors"
+                >
+                  <span className="mr-1">
+                    {periodLabels[realizedPeriod] || realizedPeriod}
+                  </span>
+                  <IconChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-20" align="start">
+                {[
+                  { value: '1d', label: periodLabels['1d'] },
+                  { value: '1w', label: periodLabels['1w'] },
+                  { value: '1m', label: periodLabels['1m'] },
+                  { value: '1y', label: periodLabels['1y'] },
+                ].map((period) => (
+                  <DropdownMenuItem
+                    key={period.value}
+                    onClick={() => setRealizedPeriod(period.value)}
+                    className="cursor-pointer text-sm"
+                  >
+                    {period.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <div className="text-muted-foreground">{t('realizedDescription')}</div>
+          <div className="text-muted-foreground">
+            {realizedPeriod === '1d'
+              ? t('realizedDescription.lastDay')
+              : realizedPeriod === '1w'
+                ? t('realizedDescription.lastWeek')
+                : realizedPeriod === '1m'
+                  ? t('realizedDescription.lastMonth')
+                  : t('realizedDescription.lastYear')}
+          </div>
         </CardFooter>
       </Card>
 

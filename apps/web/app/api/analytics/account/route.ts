@@ -19,6 +19,8 @@ interface BalanceHistoryPoint {
   balance: { toString(): string };
   free: { toString(): string };
   locked: { toString(): string };
+  // NULL for rows written before the column existed ("unknown")
+  unrealizedPnl?: { toString(): string } | null;
   createdAt?: Date;
   accountId?: number;
 }
@@ -125,6 +127,11 @@ export async function GET(request: Request) {
 
     // ── Arbitrary window (startDate / endDate params) ────────────────────────
     // When explicit dates are supplied we bypass the period/align logic entirely.
+    // TZ nuance (documented, kept for compatibility): calendar-aligned periods
+    // anchor at SERVER-LOCAL midnight/Monday/1st, while custom windows treat the
+    // supplied dates as UTC midnights (see setUTCHours below). For most users
+    // the server TZ matches their own, so the two agree; a future cleanup could
+    // accept an explicit tz param instead.
     let useCustomWindow = false;
     if (startDateParam) {
       useCustomWindow = true;
@@ -150,6 +157,15 @@ export async function GET(request: Request) {
         // End of the supplied day (23:59:59.999 UTC)
         parsedEnd.setUTCHours(23, 59, 59, 999);
         endTime = parsedEnd;
+      }
+      // Cap window span: unbounded ranges multiply history/baseline queries and
+      // exceed fine-table retention anyway. 400d covers the longest useful view.
+      const MAX_CUSTOM_WINDOW_MS = 400 * 24 * 60 * 60 * 1000;
+      if (endTime.getTime() - startTime.getTime() > MAX_CUSTOM_WINDOW_MS) {
+        return NextResponse.json(
+          { error: 'Window too large: startDate..endDate must span ≤ 400 days' },
+          { status: 400 },
+        );
       }
       // Baseline = day just before the window start
       baselineEndTime = new Date(startTime.getTime() - 1);
@@ -260,6 +276,9 @@ export async function GET(request: Request) {
           totalUnrealizedPnl: 0,
           totalPositions: 0,
           balanceChange: 0,
+          realizedPnl: null,
+          unrealizedPnlChange: null,
+          realizedPnlApproximate: true,
           period,
         },
         exchanges: [],
@@ -340,14 +359,35 @@ export async function GET(request: Request) {
     // previous period — this is the "opening balance" baseline.
     // Rolling mode: baseline is computed later from the first non-zero point in chartDataArray.
     let totalBaselineBalance = 0;
+    // Unrealized P&L at the baseline point(s), taken from the SAME balance-history
+    // rows as the balance baseline so both anchors are perfectly aligned.
+    // Used to split the equity change into realized vs unrealized components:
+    //   realizedPnl = balanceChangeValue − (currentUPnl − baselineUPnl)
+    let baselineUnrealizedPnl = 0;
+    // True when some baseline rows predate the unrealizedPnl column (NULL → treated
+    // as 0), meaning the realized figure is an approximation until history rewrites.
+    let realizedPnlApproximate = false;
     if (useCustomWindow || align !== 'rolling') {
+      // Read the baseline from the SAME granularity table as the chart, so the
+      // opening balance / baseline uPnl anchor sits immediately before the
+      // window start instead of up to one day earlier. Retention of the fine
+      // tables (5min 75h, hour 16.7d) covers the baseline windows of all
+      // periods that use them; only day-level charts fall back to balance_day.
+      const baselineInterval: 'minute' | '5min' | 'hour' | 'day' =
+        historyInterval === 'minute'
+          ? 'minute'
+          : historyInterval === '5min'
+            ? '5min'
+            : historyInterval === 'hour'
+              ? 'hour'
+              : 'day';
       const baselinePromises = exchangesToQuery.map(async (exchangeName) => ({
         exchange: exchangeName,
         history: await dm.getBalanceTimeSeries(
           exchangeName,
           baselineStartTime,
           baselineEndTime,
-          historyInterval === 'minute' ? 'minute' : 'day',
+          baselineInterval,
           userId,
         ),
       }));
@@ -372,6 +412,16 @@ export async function GET(request: Request) {
           (sum, point) => sum + parseFloat(point.balance.toString()),
           0,
         );
+
+        // Baseline unrealized P&L from the same rows that provided the balance baseline
+        for (const point of baselinePoints) {
+          const upnl = point.unrealizedPnl;
+          if (upnl === null || upnl === undefined) {
+            realizedPnlApproximate = true;
+          } else {
+            baselineUnrealizedPnl += parseFloat(upnl.toString());
+          }
+        }
 
         if (baselinePoints.length > 0) {
           const exchangeTransferStart = baselinePoints
@@ -454,6 +504,10 @@ export async function GET(request: Request) {
         if (total > 0) {
           baselineBalance = total;
 
+          // Baseline unrealized P&L at this bucket: sum across ALL accounts on
+          // each exchange (the balance baseline above is an aggregate too).
+          // Overrides the calendar-branch value when running as a fallback.
+          let fallbackUnrealizedPnl = 0;
           historicalData.forEach(({ exchange: exName, history }) => {
             const exchangeBalance = point[exName];
             if (typeof exchangeBalance !== 'number' || exchangeBalance <= 0) {
@@ -472,7 +526,20 @@ export async function GET(request: Request) {
                   new Date(new Date(point.date).getTime() + bucketIntervalMs),
                 );
             }
+
+            for (const historyPoint of history) {
+              if (getDateKey(historyPoint.timestamp, historyInterval) !== point.date) {
+                continue;
+              }
+              const upnl = historyPoint.unrealizedPnl;
+              if (upnl === null || upnl === undefined) {
+                realizedPnlApproximate = true;
+              } else {
+                fallbackUnrealizedPnl += parseFloat(upnl.toString());
+              }
+            }
           });
+          baselineUnrealizedPnl = fallbackUnrealizedPnl;
           break;
         }
       }
@@ -523,6 +590,22 @@ export async function GET(request: Request) {
     const balanceChangeValue = adjustedTotalBalance - baselineBalance;
     const totalEquity = totalBalance + totalPositionValue;
 
+    // Account-level realized P&L for the period: the balance change already
+    // reflects everything settled into the wallets (trading results, fees,
+    // funding, side effects of manual trades); subtracting the swing in
+    // unrealized P&L leaves the settled (realized) component.
+    //   realized = Δ(equity) − netDeposits − Δ(unrealizedPnl)
+    // Note on sources: the CURRENT uPnl is live (AccountInfo, refreshed by the
+    // polling service) while the BASELINE uPnl comes from the nearest
+    // balance-history bucket. Using the live value for "now" is deliberate —
+    // it is the best available estimate at query time; the baseline is
+    // anchored to the same bucket row as the opening balance, so the pair is
+    // self-consistent. Small divergence vs minute-level precision is inherent
+    // to bucketed history and covered by realizedPnlApproximate during
+    // backfill.
+    const unrealizedPnlChange = totalUnrealizedPnl - baselineUnrealizedPnl;
+    const realizedPnl = balanceChangeValue - unrealizedPnlChange;
+
     // Build a human-readable period label for the response
     const periodLabel = useCustomWindow
       ? `${startDateParam}${endDateParam ? ` to ${endDateParam}` : '+'}`
@@ -537,6 +620,9 @@ export async function GET(request: Request) {
         totalPositions,
         balanceChange,
         balanceChangeValue,
+        realizedPnl,
+        unrealizedPnlChange,
+        realizedPnlApproximate,
         netDeposits,
         period: periodLabel,
       },

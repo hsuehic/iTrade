@@ -569,6 +569,7 @@ export class TypeOrmDataManager implements IDataManager {
     total: Decimal,
     timestamp: Date,
     saving: Decimal = new Decimal(0),
+    unrealizedPnl: Decimal | null = null,
   ): Promise<void> {
     this.ensureInitialized();
     await this.balanceHistoryRepository.updateBalance(
@@ -578,6 +579,7 @@ export class TypeOrmDataManager implements IDataManager {
       saving,
       total,
       timestamp,
+      unrealizedPnl,
     );
   }
 

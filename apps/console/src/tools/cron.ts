@@ -46,6 +46,7 @@ type SnapshotSavedEvent = {
   availableBalance: Decimal;
   lockedBalance: Decimal;
   savingBalance?: Decimal;
+  unrealizedPnl?: Decimal;
   timestamp: Date;
 };
 
@@ -239,6 +240,7 @@ async function initialize() {
           snapshot.totalBalance,
           snapshot.timestamp,
           snapshot.savingBalance, // New saving balance
+          snapshot.unrealizedPnl ?? null,
         );
         logger.info(`✅ Synced balance history for ${snapshot.exchange}`);
       }

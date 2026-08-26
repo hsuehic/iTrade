@@ -287,8 +287,8 @@
         "up": "本月增长",
         "down": "本月下降"
       },
-      "balanceFooterAll": "全交易所现金余额",
-      "balanceFooterSingle": "{exchange} 现金余额",
+      "balanceFooterAll": "全交易所账户余额（含未实现盈亏的权益口径）",
+      "balanceFooterSingle": "{exchange} 账户余额（含未实现盈亏的权益口径）",
       "balanceChangeTitle": "余额变化",
       "balanceChangeStatus": {
         "none": "无变化",
@@ -321,10 +321,16 @@
       "profit": "盈利",
       "loss": "亏损",
       "realizedStatus": {
-        "positive": "已平仓盈利",
-        "negative": "已平仓亏损"
+        "positive": "净结算盈利",
+        "negative": "净结算亏损"
       },
-      "realizedDescription": "已完成交易的盈亏",
+      "realizedApproximate": "近似值：基线未实现盈亏历史仍在积累中",
+      "realizedDescription": {
+        "lastDay": "自今日零点以来账户已结算盈亏（含手续费）",
+        "lastWeek": "自本周一以来账户已结算盈亏（含手续费）",
+        "lastMonth": "自本月 1 日以来账户已结算盈亏（含手续费）",
+        "lastYear": "自今年 1 月 1 日以来账户已结算盈亏（含手续费）"
+      },
       "unrealizedStatus": {
         "positive": "持仓盈利",
         "negative": "持仓浮亏"

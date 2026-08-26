@@ -23,11 +23,11 @@ type BalanceHistoryEntity =
   | BalanceMinEntity;
 
 const MAX_ROWS_PER_ACCOUNT: Record<string, number> = {
-  balance_min: 120, // 2h at 1-min granularity (1h chart needs 60 pts)
-  balance_5min: 300, // 25h at 5-min granularity (1d chart needs 288 pts)
+  balance_min: 150, // 2.5h — 1h chart (60 pts) + custom ≤2h windows + baseline
+  balance_5min: 900, // 75h — 1d chart (288 pts) + custom ≤72h + previous-day baseline
   balance_15min: 100,
   balance_30min: 100,
-  balance_hour: 100,
+  balance_hour: 400, // 16.7d — 1w chart (168 pts) + custom ≤14d + previous-week baseline
   balance_day: 365,
   balance_week: 104,
   balance_month: 120,
@@ -61,6 +61,7 @@ export class BalanceHistoryRepository {
     saving: Decimal,
     total: Decimal,
     timestamp: Date = new Date(),
+    unrealizedPnl: Decimal | null = null,
   ): Promise<void> {
     const currentMonthStart = this.getStartOfMonth(timestamp);
 
@@ -157,6 +158,7 @@ export class BalanceHistoryRepository {
               locked,
               saving,
               total,
+              unrealizedPnl,
               period: getPriorPeriod(currentPeriod),
             })
             .orIgnore()
@@ -173,6 +175,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         currentMonthStart,
       ),
       this.upsert(
@@ -182,6 +185,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfWeek(timestamp),
       ),
       this.upsert(
@@ -191,6 +195,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfDay(timestamp),
       ),
       this.upsert(
@@ -200,6 +205,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfHour(timestamp),
       ),
       this.upsert(
@@ -209,6 +215,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfMinuteInterval(timestamp, 30),
       ),
       this.upsert(
@@ -218,6 +225,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfMinuteInterval(timestamp, 15),
       ),
       this.upsert(
@@ -227,6 +235,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfMinuteInterval(timestamp, 5),
       ),
       this.upsert(
@@ -236,6 +245,7 @@ export class BalanceHistoryRepository {
         locked,
         saving,
         total,
+        unrealizedPnl,
         this.getStartOfMinuteInterval(timestamp, 1),
       ),
     ];
@@ -337,6 +347,7 @@ export class BalanceHistoryRepository {
     locked: Decimal,
     saving: Decimal,
     total: Decimal,
+    unrealizedPnl: Decimal | null,
     period: Date,
   ) {
     try {
@@ -347,6 +358,7 @@ export class BalanceHistoryRepository {
           locked,
           saving,
           total,
+          unrealizedPnl,
           period,
         },
         ['accountInfo', 'period'], // TypeORM should handle relation translation, but if not we might need 'accountInfoId'
@@ -362,6 +374,7 @@ export class BalanceHistoryRepository {
             locked,
             saving,
             total,
+            unrealizedPnl,
             period,
           } as Record<string, unknown>,
           ['account_info_id', 'period'],
@@ -418,6 +431,7 @@ export class BalanceHistoryRepository {
       balance: Decimal;
       free: Decimal;
       locked: Decimal;
+      unrealizedPnl: Decimal | null;
       createdAt: Date;
       accountId: number;
     }>
@@ -465,6 +479,7 @@ export class BalanceHistoryRepository {
       balance: r.total,
       free: r.free,
       locked: r.locked,
+      unrealizedPnl: r.unrealizedPnl ?? null,
       createdAt: r.createdAt,
       accountId: r.accountInfo.id,
     }));
