@@ -2049,6 +2049,28 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // cancelAllTpOrders doesn't keep re-issuing cancel signals for it.
         this._pendingCancelTpIds.delete(order.clientOrderId);
 
+        // If a reinit is pending, do NOT set shouldRefreshLadder or touch step
+        // state. The reinit path in processInitialData will clear all state via
+        // resetLadder() and rebuild from scratch. Setting shouldRefreshLadder
+        // here would call placeLadderEntries() — placing a new entry BEFORE
+        // reinit runs. Reinit then treats that new entry as a ghost and cancels
+        // it, but in the window between placement and cancel, TWO entry orders
+        // are live on the exchange simultaneously (the one from
+        // shouldRefreshLadder and the one from reinit's placeLadderEntries).
+        // This is the root cause of the double-entry bug seen on Strategy 523.
+        if (this._needsReinit) {
+          // Still update order tracking maps so the terminal is recorded, but
+          // do NOT trigger ladder refresh or modify step state.
+          this.orders.delete(order.clientOrderId);
+          this.processedQuantityMap.delete(order.clientOrderId);
+          this.orderMetadataMap.delete(order.clientOrderId);
+          this._logger.debug(
+            `[handleOrderUpdates] Terminal ${order.status} for ${order.clientOrderId} ` +
+              `while _needsReinit=true — skipping ladder refresh, reinit will rebuild.`,
+          );
+          continue;
+        }
+
         if (
           metadata.signalType === SignalType.Entry &&
           metadata.stepIndex !== undefined
