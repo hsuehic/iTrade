@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { hasMxRecord } from '@/lib/email-validation';
 
 export async function sendEmail(to: string, subject: string, text: string) {
   // Check if SMTP is configured
@@ -12,6 +13,14 @@ export async function sendEmail(to: string, subject: string, text: string) {
       return;
     }
     throw new Error('SMTP not configured');
+  }
+
+  // MX record pre-check: refuse to send to domains without MX records.
+  // This prevents SMTP bounce-back abuse from attackers using fake domains.
+  const mxOk = await hasMxRecord(to);
+  if (!mxOk) {
+    console.warn(`[MAILER] Refused to send email to ${to}: domain has no MX records`);
+    return;
   }
 
   const transporter = nodemailer.createTransport({
