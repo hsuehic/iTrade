@@ -831,24 +831,44 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   // Ladder configuration
   // ──────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Compute the entry 0 (entryBase) price from the current referencePrice.
+   *
+   * This is the price of ladder step 0: reference adjusted by entryGapType/
+   * entryGapValue, then capped at maxEntryPrice. Extracted so callers can
+   * compute the would-be entry 0 price without building the full ladder.
+   *
+   * Returns null when the computed price is <= 0 (invalid reference / gap).
+   */
+  private computeEntry0Price(referencePrice?: Decimal): Decimal | null {
+    const ref = referencePrice ?? this.referencePrice;
+    if (ref.lte(0)) return null;
+
+    let entryBase: Decimal;
+    if (this.entryGapType === 'arithmetic') {
+      // Absolute price drop: entryBase = referencePrice - entryGapValue
+      entryBase = ref.minus(this.entryGapValue);
+    } else {
+      // Percentage drop: entryBase = referencePrice * (1 - entryGapValue/100)
+      entryBase = ref.mul(new Decimal(1).minus(this.entryGapValue.div(100)));
+    }
+    if (entryBase.lte(0)) return null;
+
+    // Cap at maxEntryPrice (same logic as buildLadder step 1b).
+    if (this.maxEntryPrice.gt(0) && entryBase.gt(this.maxEntryPrice)) {
+      entryBase = this.maxEntryPrice;
+    }
+    return entryBase;
+  }
+
   private buildLadder(): LadderStep[] {
     if (this.referencePrice.lte(0)) return [];
 
     const steps: LadderStep[] = [];
 
-    // Step 1: Compute entryBase — the price of entry 0 — by applying the
-    // gap (entryGapType/entryGapValue) to the reference price.
-    let entryBase: Decimal;
-    if (this.entryGapType === 'arithmetic') {
-      // Absolute price drop: entryBase = referencePrice - entryGapValue
-      entryBase = this.referencePrice.minus(this.entryGapValue);
-    } else {
-      // Percentage drop: entryBase = referencePrice * (1 - entryGapValue/100)
-      entryBase = this.referencePrice.mul(
-        new Decimal(1).minus(this.entryGapValue.div(100)),
-      );
-    }
-    if (entryBase.lte(0)) {
+    // Step 1: Compute entryBase — the price of entry 0 — via computeEntry0Price.
+    const entryBaseResult = this.computeEntry0Price();
+    if (!entryBaseResult) {
       this._logger.warn(
         `[buildLadder] entryBase <= 0 (referencePrice=${this.referencePrice.toString()}, ` +
           `entryGapType=${this.entryGapType}, entryGapValue=${this.entryGapValue.toString()}). ` +
@@ -856,27 +876,21 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       );
       return [];
     }
+    let entryBase = entryBaseResult;
 
-    // Step 1b: Cap the anchor at maxEntryPrice.
-    //
-    // The ladder is anchored on bid0, so an upward wick would drag every step up
-    // with it and the strategy would accumulate its whole position at the top of
-    // the spike. Anchoring at maxEntryPrice instead shifts the entire ladder
-    // down (the step geometry is preserved, prices only go lower from entry 0),
-    // which guarantees no step can ever exceed the cap.
-    //
-    // Clamping rather than dropping the offending steps is deliberate: dropping
-    // them would renumber the ladder and break the step-index invariants that
-    // restart recovery relies on (steps[i].index === i, TP-quantity inference
-    // over cumulative step quantities). Clamping keeps the strategy armed at an
-    // acceptable price instead of going idle during the spike.
-    if (this.maxEntryPrice.gt(0) && entryBase.gt(this.maxEntryPrice)) {
-      this._logger.info(
-        `[buildLadder] entryBase=${entryBase.toString()} exceeds ` +
-          `maxEntryPrice=${this.maxEntryPrice.toString()} ` +
-          `(referencePrice=${this.referencePrice.toString()}) — anchoring ladder at maxEntryPrice.`,
-      );
-      entryBase = this.maxEntryPrice;
+    // Step 1b: Cap already applied in computeEntry0Price — log if cap was hit.
+    if (this.maxEntryPrice.gt(0) && entryBase.eq(this.maxEntryPrice)) {
+      const uncapped =
+        this.entryGapType === 'arithmetic'
+          ? this.referencePrice.minus(this.entryGapValue)
+          : this.referencePrice.mul(new Decimal(1).minus(this.entryGapValue.div(100)));
+      if (uncapped.gt(this.maxEntryPrice)) {
+        this._logger.info(
+          `[buildLadder] entryBase=${entryBase.toString()} ` +
+            `(capped at maxEntryPrice=${this.maxEntryPrice.toString()}, ` +
+            `referencePrice=${this.referencePrice.toString()}).`,
+        );
+      }
     }
 
     // Step 2: Build ladder steps from entryBase.
@@ -3506,6 +3520,44 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     const entry0Order = this.orders.get(resetEntryCoid);
     if (!entry0Order) return [];
     if (entry0Order.status !== OrderStatus.NEW) return [];
+
+    // Proximity guard: only reset when the new entry 0 price would be closer
+    // to the current bid0 than the existing entry 0 price.
+    //
+    // Without this, a reset may cancel an entry 0 that is already near bid0
+    // (e.g. price dropped toward the limit order) and rebuild the ladder at a
+    // price FURTHER from bid0 — a pointless churn that increases cancel/replace
+    // race risk (Strategies 468/473/505) without improving fill probability.
+    //
+    // The comparison uses the live bid0 from the most recent orderbook push
+    // (WebSocket or REST). When bid0 is unknown (strategy just started, no
+    // orderbook received yet), skip the guard and allow the reset — the old
+    // entry was placed with stale information anyway.
+    const originEntry0Price = entry0Order.price;
+    if (originEntry0Price && originEntry0Price.gt(0) && this._currentBid0.gt(0)) {
+      const newEntry0Price = this.computeEntry0Price(this._currentBid0);
+      if (newEntry0Price) {
+        const originDist = originEntry0Price.sub(this._currentBid0).abs();
+        const newDist = newEntry0Price.sub(this._currentBid0).abs();
+        if (!newDist.lt(originDist)) {
+          this._logger.info(
+            `[checkAndPerformReset] Proximity guard: skipping reset — ` +
+              `new entry0 (${newEntry0Price.toString()}) is NOT closer to ` +
+              `bid0 (${this._currentBid0.toString()}) than current entry0 ` +
+              `(${originEntry0Price.toString()}). ` +
+              `newDist=${newDist.toString()} >= originDist=${originDist.toString()}`,
+          );
+          return [];
+        }
+        this._logger.debug(
+          `[checkAndPerformReset] Proximity guard: reset approved — ` +
+            `new entry0 (${newEntry0Price.toString()}) is closer to bid0 ` +
+            `(${this._currentBid0.toString()}) than current entry0 ` +
+            `(${originEntry0Price.toString()}). ` +
+            `newDist=${newDist.toString()} < originDist=${originDist.toString()}`,
+        );
+      }
+    }
 
     // Verify NO other entries are active (only the reset step should be pending)
     for (let i = 0; i < this.steps.length; i++) {

@@ -1009,6 +1009,39 @@ export class MarketMakerGridStrategy extends BaseStrategy<MarketMakerGridParamet
           deployed = deployed.add(this.getOpenEntryNotional(level));
           continue;
         }
+        // Proximity guard: when reprice=true and the existing entry's price
+        // no longer matches, only cancel/replace L0 (entry0) if the new desired
+        // price is CLOSER to the current bid than the existing entry's price.
+        //
+        // abs(newEntry0Price - bid) < abs(originEntry0Price - bid)
+        //
+        // Without this, a reprice may cancel an L0 that has drifted toward
+        // the market (price moved toward the limit order) and replace it with
+        // one further away — a pointless churn that adds cancel/replace race
+        // risk without improving fill probability. Deeper levels (L1+) are
+        // always re-anchored on reprice to maintain grid geometry relative
+        // to the new bid. When bid is unavailable, skip the guard.
+        if (
+          reprice &&
+          level.index === 0 &&
+          currentPrice &&
+          currentPrice.gt(0) &&
+          this.lastBid &&
+          this.lastBid.gt(0)
+        ) {
+          const originDist = currentPrice.sub(this.lastBid).abs();
+          const newDist = desiredPrice.sub(this.lastBid).abs();
+          if (!newDist.lt(originDist)) {
+            this._logger.info(
+              `[MMGrid] L0: proximity guard — keeping existing entry ` +
+                `(${currentPrice.toString()}) over new (${desiredPrice.toString()}); ` +
+                `newDist=${newDist.toString()} >= originDist=${originDist.toString()} ` +
+                `(bid=${this.lastBid.toString()})`,
+            );
+            deployed = deployed.add(this.getOpenEntryNotional(level));
+            continue;
+          }
+        }
         signals.push(
           existing
             ? this.generateCancelOrderSignal(existing)

@@ -540,18 +540,60 @@ describe('MarketMakerGridStrategy', () => {
       ),
     });
 
-    // No fills, no TPs -> clean grid: next kline close re-prices everything
+    // No fills, no TPs -> clean grid: next kline close re-prices everything.
+    // bid drops from 100 to 90 (a significant move), so ALL levels including
+    // L0 get re-anchored at the new bid. (When bid only drifts slightly, the
+    // L0 proximity guard may skip L0 cancel/replace — tested separately.)
     const second = await strategy.analyze({
-      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
-      klines: [createKline({ high: 100, low: 99 })],
+      orderbook: createOrderBook({ bid: 90, ask: 90.1 }),
+      klines: [createKline({ high: 100, low: 90 })],
     });
 
     expect(cancelSignals(second)).toHaveLength(3);
     const newBuys = buySignals(second);
     expect(newBuys).toHaveLength(3);
-    expect(newBuys[0].price!.toNumber()).toBeCloseTo(99 * 0.99, 8);
-    expect(newBuys[1].price!.toNumber()).toBeCloseTo(99 * 0.95, 8);
-    expect(newBuys[2].price!.toNumber()).toBeCloseTo(99 * 0.75, 8);
+    expect(newBuys[0].price!.toNumber()).toBeCloseTo(90 * 0.99, 8);
+    expect(newBuys[1].price!.toNumber()).toBeCloseTo(90 * 0.95, 8);
+    expect(newBuys[2].price!.toNumber()).toBeCloseTo(90 * 0.75, 8);
+  });
+
+  it('L0 proximity guard: skips L0 cancel when new price is further from bid', async () => {
+    await initWithOrderBook(strategy, { bid: 100, ask: 100.1 });
+
+    const first = await strategy.analyze({
+      klines: [createKline({ high: 101, low: 100 })],
+    });
+    const firstBuys = buySignals(first);
+    // L0 was placed at 100 * 0.99 = 99
+    await strategy.analyze({
+      orders: firstBuys.map((buy) =>
+        createOrder({
+          clientOrderId: buy.clientOrderId,
+          side: OrderSide.BUY,
+          price: buy.price!.toNumber(),
+          quantity: buy.quantity!,
+          status: OrderStatus.NEW,
+          strategyId: 1,
+        }),
+      ),
+    });
+
+    // bid drops to 99 — now L0 at 99 is exactly AT bid.
+    // New desired L0 = 99 * 0.99 = 98.01, which is FURTHER from bid (0.99 vs 0).
+    // Proximity guard should keep L0, but L1 and L2 still get re-anchored.
+    const second = await strategy.analyze({
+      orderbook: createOrderBook({ bid: 99, ask: 99.1 }),
+      klines: [createKline({ high: 100, low: 99 })],
+    });
+
+    const cancels = cancelSignals(second);
+    const newBuys = buySignals(second);
+    // L0 kept (proximity guard), L1+L2 cancelled and re-placed
+    expect(cancels).toHaveLength(2);
+    expect(newBuys).toHaveLength(2);
+    // L1 and L2 re-anchored at bid=99
+    expect(newBuys[0].price!.toNumber()).toBeCloseTo(99 * 0.95, 8);
+    expect(newBuys[1].price!.toNumber()).toBeCloseTo(99 * 0.75, 8);
   });
 
   it('does not touch open entries at kline close while a TP is outstanding', async () => {

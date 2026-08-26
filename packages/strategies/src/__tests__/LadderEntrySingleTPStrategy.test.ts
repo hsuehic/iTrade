@@ -3531,6 +3531,177 @@ describe('LadderEntrySingleTPStrategy', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
+  // resetInterval proximity guard tests (entry0 closer-to-bid check)
+  // ──────────────────────────────────────────────────────────────────────────
+
+  describe('resetInterval proximity guard (entry0 closer-to-bid)', () => {
+    it('should NOT reset entry0 when the new price would be further from bid0', async () => {
+      // entryGapValue=2 (arithmetic), maxEntryPrice=88.
+      // Init bid0=100 -> uncapped entry0 = 98, capped to 88. |88-100|=12.
+      // bid0 rises to 102 via WS. New entry0 = 102-2=100, capped to 88. |88-102|=14 > 12.
+      // Guard should SKIP reset (new distance 14 >= origin distance 12).
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 2,
+          qtyPerStep: 0.1,
+          maxEntryPrice: 88,
+          resetInterval: 1,
+        }),
+      );
+
+      // Init with bid0=100 -> uncapped = 98, capped to 88
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries).toHaveLength(1);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(88, 1);
+
+      // Simulate order ack
+      const entry0Coid = initEntries[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 88, 0.1)],
+        }),
+      );
+
+      // Push orderbook update: bid0 rises to 102
+      // New entry0 = 102-2=100, capped to 88. |88-102|=14 > |88-100|=12 -> guard SKIPS.
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(102),
+      });
+
+      // Advance time past resetInterval (1 minute)
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+
+      const result = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(102),
+      });
+      Date.now = oldNow;
+
+      const signals = toSignalArray(result);
+      const cancels = signals.filter((s) => s.action === 'cancel');
+      expect(cancels).toHaveLength(0);
+    });
+
+    it('should reset entry0 when the new price would be closer to bid0', async () => {
+      // entryGapValue=2 (arithmetic), maxEntryPrice=88.
+      // Init bid0=100 -> uncapped entry0 = 98, capped to 88. |88-100|=12.
+      // bid0 drops to 85 via WS. New entry0 = 85-2=83 (uncapped, 83 < 88). |83-85|=2.
+      // 2 < 12 -> guard ALLOWS reset.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 2,
+          qtyPerStep: 0.1,
+          maxEntryPrice: 88,
+          resetInterval: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries).toHaveLength(1);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(88, 1); // capped (98 > 88)
+
+      // Simulate order ack
+      const entry0Coid = initEntries[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 88, 0.1)],
+        }),
+      );
+
+      // Push orderbook: bid0 drops to 85
+      // New entry0 = 85-2=83 (uncapped, 83 < 88). |83-85|=2 < |88-100|=12 -> guard ALLOWS.
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(85),
+      });
+
+      // Advance time past resetInterval
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+
+      const result = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(85),
+      });
+      Date.now = oldNow;
+
+      const signals = toSignalArray(result);
+      const cancels = signals.filter((s) => s.action === 'cancel');
+      expect(cancels).toHaveLength(1); // entry0 cancelled for reset
+    });
+
+    it('should skip proximity guard when bid0 is unknown (allow reset)', async () => {
+      // When _currentBid0 is 0 (no orderbook received), the guard condition
+      // `this._currentBid0.gt(0)` is false → guard skipped → reset proceeds.
+      // We simulate this by manually clearing _currentBid0 after init.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+        }),
+      );
+
+      // Init with bid0=100 -> entry0 = 90
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const initEntries = findEntrySignals(initResult);
+
+      // Simulate order ack
+      const entry0Coid = initEntries[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 90, 0.1)],
+        }),
+      );
+
+      // Manually clear _currentBid0 to simulate "bid0 unknown" state.
+      // This triggers the guard's fallback: skip guard → allow reset.
+      (strategy as unknown as { _currentBid0: Decimal })._currentBid0 = new Decimal(0);
+
+      // Advance time past resetInterval.
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+
+      const result = await strategy.analyze(createDataUpdate({}));
+      Date.now = oldNow;
+
+      const signals = toSignalArray(result);
+      const cancels = signals.filter((s) => s.action === 'cancel');
+      // Guard skipped because _currentBid0 == 0 → reset proceeds normally.
+      expect(cancels).toHaveLength(1);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Entry Gap feature tests (entryGapType / entryGapValue)
   // ──────────────────────────────────────────────────────────────────────────
 
