@@ -1578,6 +1578,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
   private cancelAllTpOrders(reason: string): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    const cancelledIds = new Set<string>();
     let handledTpClientOrderId: string | null = null;
     if (this.tpClientOrderId) {
       const tpOrder = this.orders.get(this.tpClientOrderId);
@@ -1587,6 +1588,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           tpOrder.status === OrderStatus.PARTIALLY_FILLED)
       ) {
         signals.push(this.generateCancelSignal(this.tpClientOrderId, reason));
+        cancelledIds.add(this.tpClientOrderId);
       }
       // Remember this ID so the _pendingCancelTpIds loop below can skip it
       // (avoids a theoretical duplicate cancel signal, review nit).
@@ -1599,9 +1601,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       this.tpClientOrderId = null;
     }
     for (const clientId of Array.from(this.pendingClientOrderIds)) {
+      if (cancelledIds.has(clientId)) continue; // skip already-cancelled
       const meta = this.orderMetadataMap.get(clientId);
       if (meta?.signalType === SignalType.TakeProfit) {
         signals.push(this.generateCancelSignal(clientId, reason));
+        cancelledIds.add(clientId);
         this.pendingClientOrderIds.delete(clientId);
         this.orderMetadataMap.delete(clientId);
       }
@@ -1619,7 +1623,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // signal for the same order in one call.
     for (const clientId of Array.from(this._pendingCancelTpIds)) {
       if (clientId === handledTpClientOrderId) continue;
+      if (cancelledIds.has(clientId)) continue; // skip already-cancelled
       signals.push(this.generateCancelSignal(clientId, reason));
+      cancelledIds.add(clientId);
       // Keep in _pendingCancelTpIds — the terminal handler will delete it
       // when the CANCELED/REJECTED push arrives (or onCleanup clears all).
     }
@@ -1628,6 +1634,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
   private cancelAllEntryOrders(reason: string): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    const cancelledIds = new Set<string>();
+    // Iterate this.orders first — these are WS-confirmed orders on the exchange.
+    // An order can exist in BOTH this.orders AND pendingClientOrderIds
+    // (added to pendingClientOrderIds at signal generation, added to this.orders
+    // when WS confirms as NEW; pendingClientOrderIds is only deleted on fill or
+    // terminal). Without dedup, the same clientOrderId gets two cancel signals
+    // → the second cancel hits an already-cancelled order → Binance returns 400
+    // / -2011 → engine marks it REJECTED instead of CANCELED.
     for (const [clientOrderId, order] of this.orders) {
       if (order.side !== OrderSide.BUY) continue;
       if (
@@ -1635,12 +1649,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         order.status === OrderStatus.PARTIALLY_FILLED
       ) {
         signals.push(this.generateCancelSignal(clientOrderId, reason));
+        cancelledIds.add(clientOrderId);
       }
     }
     for (const clientId of Array.from(this.pendingClientOrderIds)) {
+      if (cancelledIds.has(clientId)) continue; // skip already-cancelled
       const meta = this.orderMetadataMap.get(clientId);
       if (meta?.signalType === SignalType.Entry) {
         signals.push(this.generateCancelSignal(clientId, reason));
+        cancelledIds.add(clientId);
         this.pendingClientOrderIds.delete(clientId);
         this.orderMetadataMap.delete(clientId);
       }
