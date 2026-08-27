@@ -3520,6 +3520,17 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     if (this.inventoryQty.gt(0)) return [];
     if (this.tpClientOrderId) return [];
 
+    // Re-entry guard: if a reset cancel has already been sent (resetCancelPending)
+    // or a reinit is already pending (_needsReinit), do NOT fire again.
+    // Without this, consecutive orderbook pushes (every ~100ms) each trigger
+    // checkAndPerformReset → generateCancelSignal for the SAME order. The engine
+    // queues multiple cancel signals: 1st succeeds (CANCELED), 2nd+ hit an
+    // already-cancelled order on Binance → HTTP 400 / -2011 → REJECTED.
+    // (Strategy 524, 522 — e8b0109 fix covered cancelAllEntryOrders/cancelAllTpOrders
+    // but NOT this direct generateCancelSignal path.)
+    if (this.resetCancelPending) return [];
+    if (this._needsReinit) return [];
+
     // Find the first step with an active entry order (normally step 0, but
     // recoverStepIndex may have assigned an orphaned entry to a higher step
     // when bid0 drifted — Strategy 468 bug). Use that step's placedTime.
