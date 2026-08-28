@@ -397,6 +397,95 @@
         "active": "Active",
         "inactive": "Inactive"
       }
+    },
+    "onboarding": {
+      "loading": "Loading dashboard...",
+      "banner": {
+        "title": "Connect your exchange to get started",
+        "description": "You haven't linked any exchange account yet. Add an API key to start trading.",
+        "action": "Start Setup",
+        "goToAccounts": "Go to Accounts"
+      },
+      "common": {
+        "later": "Skip for now",
+        "back": "Back",
+        "completed": "Done",
+        "goRegister": "Go Register",
+        "haveAccount": "I have an account"
+      },
+      "steps": {
+        "intro": "Select Exchange",
+        "register": "Register",
+        "createApikey": "Create API Key",
+        "addToItrade": "Connect"
+      },
+      "intro": {
+        "title": "Welcome to iTrade",
+        "description": "Connect your exchange account in 3 simple steps to start trading.",
+        "exchanges": {
+          "binance": "World's largest crypto exchange",
+          "okx": "Advanced trading with low fees",
+          "coinbase": "Trusted & regulated US exchange"
+        }
+      },
+      "register": {
+        "title": "Create your exchange account",
+        "description": "If you already have an account, skip this step.",
+        "guideTitle": "How to register on {exchange}",
+        "step1": "Visit the exchange's official website and sign up with your email.",
+        "step2": "Complete identity verification (KYC) — this is required to use API features.",
+        "step3": "Enable Two-Factor Authentication (2FA) — required for API key creation.",
+        "kycGuide": "KYC/Identity verification guide",
+        "registerLink": "Go to registration page"
+      },
+      "createApikey": {
+        "title": "Create an API Key",
+        "description": "Generate API credentials on your exchange to connect with iTrade.",
+        "guideTitle": "How to create an API Key on {exchange}",
+        "webLink": "Web: Open API Management",
+        "mobileLink": "Mobile App: Official guide",
+        "mobileLinkCoinbase": "Official setup guide (web portal)",
+        "permissionsTitle": "Required API permissions",
+        "actions": {
+          "required": "Required permissions (enable these):",
+          "forbidden": "Forbidden permissions (do NOT enable):"
+        },
+        "securityTip": {
+          "title": "Security tip: IP whitelist",
+          "description": "Add the iTrade server IP {serverIp} to your API key's IP whitelist. This ensures only our server can access your account."
+        }
+      },
+      "addToItrade": {
+        "title": "Connect to iTrade",
+        "description": "Enter your API credentials to link your {exchange} account.",
+        "guideTitle": "Add your API Key to iTrade",
+        "fields": {
+          "exchange": "Exchange"
+        },
+        "fieldsHint": "Fill in your API Key, Secret Key (and Passphrase for OKX). You can set a nickname for this account.",
+        "openForm": "Open Form",
+        "retry": "Try Again",
+        "security": {
+          "title": "Your keys are encrypted",
+          "description": "iTrade encrypts your API credentials at rest. We never store your secrets in plaintext."
+        }
+      },
+      "verify": {
+        "loading": "Verifying connection...",
+        "success": "Exchange account connected successfully!",
+        "successTitle": "Connection verified!",
+        "successDesc": "Your exchange account is now linked. You can view your balance and start trading on the dashboard.",
+        "failed": "Verification failed. Please check your API credentials.",
+        "failedTitle": "Connection failed",
+        "failedDesc": "We couldn't verify the connection. Please check your API key permissions and IP whitelist settings.",
+        "troubleshoot": "Troubleshooting checklist:",
+        "troubleshoot1": "Verify the API Key and Secret Key are correct",
+        "troubleshoot2": "Ensure the required permissions are enabled (see Step 2)",
+        "troubleshoot3": "Add the iTrade server IP to the API key's IP whitelist",
+        "viewDashboard": "View Dashboard",
+        "timeout": "Verification timed out. Please check your dashboard.",
+        "successNoBalance": "Connected successfully, but no balance data yet. Check your dashboard in a moment."
+      }
     }
   },
   "accounts": {

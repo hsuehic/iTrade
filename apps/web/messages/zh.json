@@ -397,6 +397,95 @@
         "active": "运行中",
         "inactive": "已停用"
       }
+    },
+    "onboarding": {
+      "loading": "正在加载仪表盘...",
+      "banner": {
+        "title": "连接交易所以开始使用",
+        "description": "您还未关联任何交易所账号。添加 API Key 即可开始交易。",
+        "action": "开始设置",
+        "goToAccounts": "前往账户管理"
+      },
+      "common": {
+        "later": "稍后再说",
+        "back": "上一步",
+        "completed": "已完成",
+        "goRegister": "去注册",
+        "haveAccount": "我已有账号"
+      },
+      "steps": {
+        "intro": "选择交易所",
+        "register": "注册",
+        "createApikey": "创建 API Key",
+        "addToItrade": "关联"
+      },
+      "intro": {
+        "title": "欢迎使用 iTrade",
+        "description": "只需 3 步即可连接您的交易所账号，开启智能交易之旅。",
+        "exchanges": {
+          "binance": "全球最大的加密货币交易所",
+          "okx": "低手续费高级交易平台",
+          "coinbase": "受监管的美国合规交易所"
+        }
+      },
+      "register": {
+        "title": "创建交易所账号",
+        "description": "如果您已有账号，可直接跳过此步。",
+        "guideTitle": "如何在 {exchange} 注册",
+        "step1": "访问交易所官网，使用邮箱注册账号。",
+        "step2": "完成身份验证（KYC）— 使用 API 功能通常需要通过验证。",
+        "step3": "启用双因素认证（2FA）— 创建 API Key 时通常要求已开启 2FA。",
+        "kycGuide": "KYC 身份验证指南",
+        "registerLink": "前往注册页面"
+      },
+      "createApikey": {
+        "title": "创建 API Key",
+        "description": "在交易所后台生成 API 凭证，用于连接 iTrade。",
+        "guideTitle": "如何在 {exchange} 创建 API Key",
+        "webLink": "网页版：打开 API 管理",
+        "mobileLink": "手机 App：官方说明",
+        "mobileLinkCoinbase": "官方设置指南（网页门户）",
+        "permissionsTitle": "所需 API 权限",
+        "actions": {
+          "required": "必要权限（请勾选）：",
+          "forbidden": "禁止权限（请勿勾选）："
+        },
+        "securityTip": {
+          "title": "安全提示：IP 白名单",
+          "description": "请将 iTrade 服务器 IP {serverIp} 添加到 API Key 的 IP 白名单中。这样只有我们的服务器可以访问您的账户。"
+        }
+      },
+      "addToItrade": {
+        "title": "关联到 iTrade",
+        "description": "输入您的 API 凭证，关联您的 {exchange} 账号。",
+        "guideTitle": "将 API Key 添加到 iTrade",
+        "fields": {
+          "exchange": "交易所"
+        },
+        "fieldsHint": "填写您的 API Key、Secret Key（OKX 还需 Passphrase）。可以为该账号设置备注名。",
+        "openForm": "打开表单",
+        "retry": "重试",
+        "security": {
+          "title": "您的密钥已加密",
+          "description": "iTrade 对 API 凭证进行加密存储，绝不以明文形式保存您的密钥。"
+        }
+      },
+      "verify": {
+        "loading": "正在验证连接...",
+        "success": "交易所账号关联成功！",
+        "successTitle": "连接验证通过！",
+        "successDesc": "您的交易所账号已成功关联。您可以在仪表盘查看余额并开始交易。",
+        "failed": "验证失败，请检查 API 凭证。",
+        "failedTitle": "连接失败",
+        "failedDesc": "我们无法验证连接。请检查 API Key 权限和 IP 白名单设置。",
+        "troubleshoot": "排查清单：",
+        "troubleshoot1": "确认 API Key 和 Secret Key 填写正确",
+        "troubleshoot2": "确保已开启所需权限（见第2步）",
+        "troubleshoot3": "将 iTrade 服务器 IP 添加到 API Key 的 IP 白名单",
+        "viewDashboard": "查看仪表盘",
+        "timeout": "验证超时，请稍后在仪表盘确认。",
+        "successNoBalance": "连接成功，但暂无余额数据。请稍后在仪表盘查看。"
+      }
     }
   },
   "accounts": {
