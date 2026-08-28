@@ -30,6 +30,13 @@ async function main() {
     synchronize: false, // Use migrations in production
     logging: process.env.DB_LOGGING === 'true' ? ['error', 'warn'] : false,
     poolSize: 20,
+    extra: {
+      max: 20,
+      min: 2,
+      idleTimeoutMillis: 30000, // Close idle connections after 30s
+      connectionTimeoutMillis: 5000, // Connection timeout 5s
+      statement_timeout: 10000, // Query timeout 10s
+    },
   });
 
   await dataManager.initialize();
