@@ -468,7 +468,8 @@
         "security": {
           "title": "Your keys are encrypted",
           "description": "iTrade encrypts your API credentials at rest. We never store your secrets in plaintext."
-        }
+        },
+        "saveAndVerify": "Save & Verify"
       },
       "verify": {
         "loading": "Verifying connection...",

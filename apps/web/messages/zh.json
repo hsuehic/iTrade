@@ -468,7 +468,8 @@
         "security": {
           "title": "您的密钥已加密",
           "description": "iTrade 对 API 凭证进行加密存储，绝不以明文形式保存您的密钥。"
-        }
+        },
+        "saveAndVerify": "保存并验证"
       },
       "verify": {
         "loading": "正在验证连接...",

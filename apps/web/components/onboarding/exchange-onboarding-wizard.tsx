@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,6 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -38,10 +49,7 @@ import {
 } from '@/lib/exchange-registration-links';
 import { ITRADE_SERVER_IP } from '@/lib/itrade-server-ip';
 import { ApiKeyIpWhitelistNotice } from '@/components/accounts/api-key-ip-whitelist-notice';
-import {
-  AccountForm,
-  type AccountFormInitialData,
-} from '@/app/(console)/accounts/account-form';
+import { saveAccount } from '@/app/actions/accounts';
 import { toast } from 'sonner';
 
 type WizardStep = 0 | 1 | 2 | 3; // 0=intro, 1=register, 2=create-apikey, 3=add-to-itrade
@@ -49,6 +57,13 @@ type WizardStep = 0 | 1 | 2 | 3; // 0=intro, 1=register, 2=create-apikey, 3=add-
 interface ExchangeOnboardingWizardProps {
   /** Called when the wizard is dismissed (user closes the dialog). */
   onDismiss: () => void;
+}
+
+interface InlineFormValues {
+  accountId: string;
+  apiKey: string;
+  secretKey: string;
+  passphrase?: string;
 }
 
 const STEP_KEYS: Record<WizardStep, string> = {
@@ -64,10 +79,11 @@ const VERIFY_DELAY_MS = 1500;
 
 export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizardProps) {
   const t = useTranslations('dashboard.onboarding');
+  const tForm = useTranslations('accounts.form');
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>(0);
   const [selectedExchange, setSelectedExchange] = useState<SupportedExchange | ''>('');
-  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [verifyState, setVerifyState] = useState<
     'idle' | 'loading' | 'success' | 'failed'
   >('idle');
@@ -81,31 +97,49 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
   const kycLink = exchange
     ? EXCHANGE_KYC_GUIDE_LINKS[exchange as SupportedExchange]
     : null;
+  const isOkx = exchange === SupportedExchange.OKX;
+
+  // Inline form for Step 3
+  const form = useForm<InlineFormValues>({
+    defaultValues: { accountId: '', apiKey: '', secretKey: '', passphrase: '' },
+  });
 
   const handleSelectExchange = useCallback((ex: SupportedExchange) => {
     setSelectedExchange(ex);
   }, []);
 
-  const handleNext = useCallback(() => {
-    setStep((prev) => Math.min(prev + 1, 3) as WizardStep);
+  const handleGoToRegister = useCallback(() => {
+    setStep(1);
+  }, []);
+
+  const handleHaveAccount = useCallback(() => {
+    setStep(2); // Skip registration, go straight to API key creation
+  }, []);
+
+  const handleGoToCreateApikey = useCallback(() => {
+    setStep(2);
+  }, []);
+
+  const handleGoToAddToItrade = useCallback(() => {
+    setStep(3);
   }, []);
 
   const handleBack = useCallback(() => {
-    setStep((prev) => Math.max(prev - 1, 0) as WizardStep);
-    // Reset verify state when going back so stale failed/success doesn't persist
+    setStep((prev) => {
+      // When on Step 2 (create API key), going back returns to Step 0
+      // (exchange selection) rather than Step 1 (register).
+      if (prev === 2) return 0;
+      if (prev === 3) return 2; // Step 3 back → Step 2
+      return Math.max(prev - 1, 0) as WizardStep;
+    });
     setVerifyState('idle');
   }, []);
 
   const handleSaveSuccess = useCallback(async () => {
-    // Brief delay to let the server persist the new account and invalidate
-    // any analytics cache before we probe the endpoint.
     await new Promise((r) => setTimeout(r, VERIFY_DELAY_MS));
 
-    // Auto-verify: try fetching analytics data for this exchange
     setVerifyState('loading');
     try {
-      // cache: 'no-store' to avoid hitting the 15s analytics cache with a
-      // stale pre-save response.
       const response = await fetch('/api/analytics/account?period=7d', {
         cache: 'no-store',
       });
@@ -119,8 +153,6 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
           setVerifyState('success');
           toast.success(t('verify.success'));
         } else {
-          // Connected but no data yet — still a successful save, just no
-          // balance data available (empty account, API still syncing, etc.)
           setVerifyState('success');
           toast.success(t('verify.successNoBalance'));
         }
@@ -136,23 +168,39 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
 
   const handleFinish = useCallback(() => {
     onDismiss();
-    // Use router.refresh() instead of window.location.reload() to trigger a
-    // server re-render without a full page reload. This avoids the flash
-    // and potential onboarding-loop if the DB read is eventually consistent.
     router.refresh();
   }, [onDismiss, router]);
 
-  const handleOpenAccountForm = useCallback(() => {
-    // Reset verify state when opening the form so a previous failed/success
-    // state doesn't persist into the new attempt.
-    setVerifyState('idle');
-    setAccountFormOpen(true);
-  }, []);
+  // Inline form submit — save account then auto-verify
+  const onInlineSubmit = useCallback(
+    async (data: InlineFormValues) => {
+      if (!exchange) return;
+      setSaving(true);
+      try {
+        await saveAccount({
+          exchange,
+          accountId: data.accountId,
+          apiKey: data.apiKey,
+          secretKey: data.secretKey,
+          passphrase: isOkx ? data.passphrase : undefined,
+          isActive: true,
+        });
+        toast.success(tForm('messages.saved'));
+        void handleSaveSuccess();
+      } catch (error) {
+        toast.error(tForm('errors.saveFailed'));
+        console.error(error);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [exchange, isOkx, handleSaveSuccess, tForm],
+  );
 
-  const handleAccountFormSuccess = useCallback(() => {
-    setAccountFormOpen(false);
-    void handleSaveSuccess();
-  }, [handleSaveSuccess]);
+  const handleRetry = useCallback(() => {
+    setVerifyState('idle');
+    form.reset();
+  }, [form]);
 
   const steps = [
     t('steps.intro'),
@@ -249,13 +297,14 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
                     if (exchange && regLink) {
                       window.open(regLink.web, '_blank', 'noopener');
                     }
+                    handleGoToRegister();
                   }}
                   disabled={!exchange}
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
                   {t('common.goRegister')}
                 </Button>
-                <Button onClick={handleNext} disabled={!exchange}>
+                <Button onClick={handleHaveAccount} disabled={!exchange}>
                   {t('common.haveAccount')}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -321,7 +370,7 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {t('common.back')}
               </Button>
-              <Button onClick={handleNext}>
+              <Button onClick={handleGoToCreateApikey}>
                 {t('common.completed')}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -436,7 +485,7 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {t('common.back')}
               </Button>
-              <Button onClick={handleNext}>
+              <Button onClick={handleGoToAddToItrade}>
                 {t('common.completed')}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -444,7 +493,7 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
           </div>
         ) : null}
 
-        {/* Step 3: Add API Key to iTrade */}
+        {/* Step 3: Add API Key to iTrade — inline form */}
         {step === 3 ? (
           <div className="space-y-4">
             {/* Verify states */}
@@ -492,77 +541,134 @@ export function ExchangeOnboardingWizard({ onDismiss }: ExchangeOnboardingWizard
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     {t('common.back')}
                   </Button>
-                  <Button onClick={handleOpenAccountForm}>
-                    {t('addToItrade.retry')}
-                  </Button>
+                  <Button onClick={handleRetry}>{t('addToItrade.retry')}</Button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="rounded-lg border p-4">
-                  <h4 className="font-medium mb-2">{t('addToItrade.guideTitle')}</h4>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {t('addToItrade.description', {
-                      exchange: exchange
-                        ? getExchangeDisplayName(exchange as SupportedExchange)
-                        : '',
-                    })}
-                  </p>
+              /* Idle state — inline form */
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onInlineSubmit)} className="space-y-4">
+                  {/* Exchange badge (read-only) */}
                   {exchange ? (
-                    <div className="text-sm space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground">
-                          {t('addToItrade.fields.exchange')}:
-                        </span>
-                        <Badge variant="secondary">
-                          {getExchangeDisplayName(exchange as SupportedExchange)}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {t('addToItrade.fieldsHint')}
-                      </p>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">
+                        {t('addToItrade.fields.exchange')}:
+                      </span>
+                      <Badge variant="secondary">
+                        {getExchangeDisplayName(exchange as SupportedExchange)}
+                      </Badge>
                     </div>
                   ) : null}
-                </div>
 
-                <Button onClick={handleOpenAccountForm} className="w-full">
-                  {t('addToItrade.openForm')}
-                </Button>
+                  {/* Account ID / nickname */}
+                  <FormField
+                    control={form.control}
+                    name="accountId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{tForm('fields.accountId')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder={tForm('fields.accountIdPlaceholder')}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {tForm('fields.accountIdDescription')}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <Alert>
-                  <ShieldAlert className="h-4 w-4" />
-                  <AlertTitle>{t('addToItrade.security.title')}</AlertTitle>
-                  <AlertDescription>
-                    {t('addToItrade.security.description')}
-                  </AlertDescription>
-                </Alert>
+                  {/* API Key */}
+                  <FormField
+                    control={form.control}
+                    name="apiKey"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{tForm('fields.apiKey')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder={tForm('fields.apiKeyPlaceholder')}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <div className="flex justify-between pt-2">
-                  <Button variant="ghost" onClick={handleBack}>
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    {t('common.back')}
-                  </Button>
-                </div>
-              </div>
+                  {/* Secret Key */}
+                  <FormField
+                    control={form.control}
+                    name="secretKey"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{tForm('fields.secretKey')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="password"
+                            placeholder={tForm('fields.secretKeyPlaceholder')}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Passphrase — OKX only */}
+                  {isOkx ? (
+                    <FormField
+                      control={form.control}
+                      name="passphrase"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{tForm('fields.passphrase')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="password"
+                              placeholder={tForm('fields.passphrasePlaceholder')}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : null}
+
+                  <Alert>
+                    <ShieldAlert className="h-4 w-4" />
+                    <AlertTitle>{t('addToItrade.security.title')}</AlertTitle>
+                    <AlertDescription>
+                      {t('addToItrade.security.description')}
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="flex justify-between pt-2">
+                    <Button type="button" variant="ghost" onClick={handleBack}>
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      {t('common.back')}
+                    </Button>
+                    <Button type="submit" disabled={saving}>
+                      {saving ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {tForm('saving')}
+                        </>
+                      ) : (
+                        t('addToItrade.saveAndVerify')
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
             )}
           </div>
         ) : null}
       </DialogContent>
-
-      {/* Account Form Dialog — rendered outside the wizard dialog */}
-      <AccountForm
-        open={accountFormOpen}
-        onOpenChange={setAccountFormOpen}
-        onSuccess={handleAccountFormSuccess}
-        initialData={
-          exchange
-            ? ({
-                exchange: exchange,
-                isActive: true,
-              } satisfies AccountFormInitialData)
-            : undefined
-        }
-      />
     </Dialog>
   );
 }
