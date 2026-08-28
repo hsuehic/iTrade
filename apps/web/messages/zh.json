@@ -277,6 +277,15 @@
     "user": {
       "pushInbox": "推送收件箱",
       "logout": "退出登录"
+    },
+    "admin": {
+      "label": "管理",
+      "tradingPairs": "交易对",
+      "users": "用户与角色",
+      "auditLog": "审计日志",
+      "aiConfig": "AI 配置",
+      "helpKb": "帮助知识库",
+      "settings": "系统设置"
     }
   },
   "dashboard": {

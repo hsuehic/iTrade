@@ -40,6 +40,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+# Keep Next.js API route: apps/web/app/api/push/logs/
+!apps/web/app/api/push/logs/
+!apps/web/app/api/push/logs/**
 
 # Runtime data
 pids

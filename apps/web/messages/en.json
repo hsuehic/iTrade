@@ -277,6 +277,15 @@
     "user": {
       "pushInbox": "Push inbox",
       "logout": "Log out"
+    },
+    "admin": {
+      "label": "Management",
+      "tradingPairs": "Trading Pairs",
+      "users": "Users & Roles",
+      "auditLog": "Audit Log",
+      "aiConfig": "AI Config",
+      "helpKb": "Help Knowledge Base",
+      "settings": "System Settings"
     }
   },
   "dashboard": {

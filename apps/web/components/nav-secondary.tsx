@@ -32,6 +32,35 @@ export function NavSecondary({
   const pathname = usePathname();
   const { isMobile } = useSidebar();
 
+  // --- Hover-to-open (desktop only) ---
+  // modal={false} on DropdownMenu prevents Radix from stealing focus on open,
+  // which is what caused the popup flicker (trigger blur → onOpenChange(false)).
+  const [langOpen, setLangOpen] = React.useState(false);
+  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = React.useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const handleHoverEnter = React.useCallback(() => {
+    cancelClose();
+    setLangOpen(true);
+  }, [cancelClose]);
+
+  const handleHoverLeave = React.useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setLangOpen(false), 300);
+  }, [cancelClose]);
+
+  React.useEffect(() => cancelClose, [cancelClose]);
+
+  const hoverProps = isMobile
+    ? {}
+    : { onMouseEnter: handleHoverEnter, onMouseLeave: handleHoverLeave };
+
   const handleLocaleChange = async (nextLocale: AppLocale) => {
     if (nextLocale === locale) {
       return;
@@ -90,9 +119,9 @@ export function NavSecondary({
             );
           })}
           <SidebarMenuItem>
-            <DropdownMenu>
+            <DropdownMenu open={langOpen} onOpenChange={setLangOpen} modal={isMobile}>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton tooltip={navigationT('language')}>
+                <SidebarMenuButton tooltip={navigationT('language')} {...hoverProps}>
                   <IconWorld />
                   <span>{navigationT('language')}</span>
                 </SidebarMenuButton>
@@ -101,6 +130,8 @@ export function NavSecondary({
                 className="w-36 rounded-lg"
                 side={isMobile ? 'bottom' : 'right'}
                 align={isMobile ? 'end' : 'start'}
+                onMouseEnter={handleHoverEnter}
+                onMouseLeave={handleHoverLeave}
               >
                 {locales.map((value) => (
                   <DropdownMenuItem

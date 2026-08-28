@@ -18,8 +18,10 @@ import {
 import { authClient } from '@/lib/auth-client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 export function NavAdmin() {
+  const t = useTranslations('nav.admin');
   const { data: session } = authClient.useSession();
   const pathname = usePathname();
 
@@ -30,32 +32,32 @@ export function NavAdmin() {
 
   const items = [
     {
-      title: 'Trading Pairs',
+      title: t('tradingPairs'),
       url: '/admin/trading-pairs',
       icon: IconChartInfographic,
     },
     {
-      title: 'Users & Roles',
+      title: t('users'),
       url: '/admin/users',
       icon: IconUsers,
     },
     {
-      title: 'Audit Log',
+      title: t('auditLog'),
       url: '/admin/audit-log',
       icon: IconHistory,
     },
     {
-      title: 'AI Config',
+      title: t('aiConfig'),
       url: '/admin/ai-config',
       icon: IconBrain,
     },
     {
-      title: 'Help Knowledge Base',
+      title: t('helpKb'),
       url: '/admin/help-kb',
       icon: IconBook,
     },
     {
-      title: 'System Settings',
+      title: t('settings'),
       url: '/admin/settings',
       icon: IconSettings,
     },
@@ -63,7 +65,7 @@ export function NavAdmin() {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>Management</SidebarGroupLabel>
+      <SidebarGroupLabel>{t('label')}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.title}>
