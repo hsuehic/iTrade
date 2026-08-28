@@ -7,6 +7,7 @@ import {
   IconBrain,
   IconBook,
   IconHistory,
+  IconBell,
 } from '@tabler/icons-react';
 import {
   SidebarGroup,
@@ -55,6 +56,11 @@ export function NavAdmin() {
       title: t('helpKb'),
       url: '/admin/help-kb',
       icon: IconBook,
+    },
+    {
+      title: t('push'),
+      url: '/push',
+      icon: IconBell,
     },
     {
       title: t('settings'),

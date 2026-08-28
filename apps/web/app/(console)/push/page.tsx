@@ -1,4 +1,5 @@
 import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +17,10 @@ export default async function PushPage() {
   });
   const role = (session?.user as { role?: string | null } | undefined)?.role ?? null;
   const isAdmin = role === 'admin';
+
+  if (!isAdmin) {
+    redirect('/dashboard');
+  }
 
   return (
     <SidebarInset>

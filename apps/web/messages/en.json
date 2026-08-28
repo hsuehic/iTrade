@@ -275,7 +275,6 @@
       "settings": "Settings"
     },
     "user": {
-      "pushInbox": "Push inbox",
       "logout": "Log out"
     },
     "admin": {
@@ -285,6 +284,7 @@
       "auditLog": "Audit Log",
       "aiConfig": "AI Config",
       "helpKb": "Help Knowledge Base",
+      "push": "Push",
       "settings": "System Settings"
     }
   },
