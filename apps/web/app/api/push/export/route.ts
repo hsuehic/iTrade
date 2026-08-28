@@ -21,6 +21,11 @@ export async function GET(request: NextRequest) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  const role = (session.user as unknown as { role?: string | null }).role ?? null;
+  if (role !== 'admin') {
+    return new Response('Forbidden: Admin role required', { status: 403 });
+  }
+
   const url = new URL(request.url);
   const type = url.searchParams.get('type') ?? 'devices'; // devices | logs
   const format = url.searchParams.get('format') ?? 'csv'; // csv | json

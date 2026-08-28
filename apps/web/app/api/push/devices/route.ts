@@ -26,6 +26,14 @@ export async function GET(request: NextRequest) {
   if (!session?.user)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const role = (session.user as unknown as { role?: string | null }).role ?? null;
+  if (role !== 'admin') {
+    return NextResponse.json(
+      { error: 'Forbidden: Admin role required' },
+      { status: 403 },
+    );
+  }
+
   const url = new URL(request.url);
   const platformRaw = url.searchParams.get('platform');
   const providerRaw = url.searchParams.get('provider');

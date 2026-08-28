@@ -79,22 +79,12 @@ export async function POST(request: NextRequest) {
   if (!session?.user)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Optional: Restrict to admin users only if ENABLE_PUSH_ADMIN_ONLY is set to 'true'
-  // By default, all authenticated users can send push notifications
-  const enableAdminOnly = process.env.ENABLE_PUSH_ADMIN_ONLY === 'true';
-  if (enableAdminOnly) {
-    const role = (session.user as unknown as { role?: string | null }).role ?? null;
-    if (role !== 'admin') {
-      console.log('[Push Send] Forbidden: Admin role required', {
-        userId: session.user.id,
-        role,
-        enableAdminOnly,
-      });
-      return NextResponse.json(
-        { error: 'Forbidden: Admin role required' },
-        { status: 403 },
-      );
-    }
+  const role = (session.user as unknown as { role?: string | null }).role ?? null;
+  if (role !== 'admin') {
+    return NextResponse.json(
+      { error: 'Forbidden: Admin role required' },
+      { status: 403 },
+    );
   }
 
   try {

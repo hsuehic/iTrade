@@ -16,9 +16,8 @@ export default async function PushPage() {
     headers: requestHeaders,
   });
   const role = (session?.user as { role?: string | null } | undefined)?.role ?? null;
-  const isAdmin = role === 'admin';
 
-  if (!isAdmin) {
+  if (role !== 'admin') {
     redirect('/dashboard');
   }
 
@@ -31,7 +30,7 @@ export default async function PushPage() {
             <CardTitle>{t('cardTitle')}</CardTitle>
           </CardHeader>
           <CardContent>
-            <PushNotificationsClient isAdmin={isAdmin} />
+            <PushNotificationsClient />
           </CardContent>
         </Card>
       </div>

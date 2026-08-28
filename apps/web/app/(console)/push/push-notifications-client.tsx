@@ -56,7 +56,7 @@ type PushLog = {
   failureCount: number;
 };
 
-export function PushNotificationsClient({ isAdmin }: { isAdmin: boolean }) {
+export function PushNotificationsClient() {
   const t = useTranslations('push.client');
   const locale = useLocale();
   const [sendPlatform, setSendPlatform] = React.useState('web');
@@ -306,10 +306,6 @@ export function PushNotificationsClient({ isAdmin }: { isAdmin: boolean }) {
     } finally {
       setLoading(false);
     }
-  }
-
-  if (!isAdmin) {
-    return <PushInbox />;
   }
 
   return (
