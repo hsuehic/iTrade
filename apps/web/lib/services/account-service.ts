@@ -102,40 +102,56 @@ export async function removeAccount(id: number, userId: string) {
   const account = await repo.findOne({ where: { id, userId } });
   if (!account) return false;
 
-  // Delete the account_info row (balance_* and account_snapshots cascade automatically)
-  await repo.delete({ id, userId });
-
-  // Clean up orphaned data that has no FK to account_info.
-  // All three tables (orders, positions, transfers) are keyed by userId + exchange,
-  // not by account_info.id, so they survive the account_info deletion.
   const exchange = account.exchange;
 
-  // 1. Delete orders (order_fills cascade via FK ON DELETE CASCADE on orders.internalId)
-  await dm.dataSource
-    .createQueryBuilder()
-    .delete()
-    .from('orders')
-    .where('"userId" = :userId', { userId })
-    .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
-    .execute();
+  // All four deletes in a single transaction: if any step fails, the
+  // account_info row stays too, so the user can retry the whole operation.
+  // Without this, a partial failure leaves account_info gone but orphaned
+  // orders/positions/transfers remain — with no account to re-delete from.
+  const queryRunner = dm.dataSource.createQueryRunner();
+  await queryRunner.connect();
+  await queryRunner.startTransaction();
+  try {
+    // 0. Delete the account_info row (balance_* and account_snapshots cascade automatically)
+    await queryRunner.manager.delete(AccountInfoEntity, { id, userId });
 
-  // 2. Delete positions
-  await dm.dataSource
-    .createQueryBuilder()
-    .delete()
-    .from('positions')
-    .where('"userId" = :userId', { userId })
-    .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
-    .execute();
+    // Clean up orphaned data that has no FK to account_info.
+    // All three tables (orders, positions, transfers) are keyed by userId + exchange,
+    // not by account_info.id, so they survive the account_info deletion.
 
-  // 3. Delete transfers
-  await dm.dataSource
-    .createQueryBuilder()
-    .delete()
-    .from('transfers')
-    .where('"userId" = :userId', { userId })
-    .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
-    .execute();
+    // 1. Delete orders (order_fills cascade via FK ON DELETE CASCADE on orders.internalId)
+    await queryRunner.manager
+      .createQueryBuilder()
+      .delete()
+      .from('orders')
+      .where('"userId" = :userId', { userId })
+      .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
+      .execute();
 
-  return true;
+    // 2. Delete positions
+    await queryRunner.manager
+      .createQueryBuilder()
+      .delete()
+      .from('positions')
+      .where('"userId" = :userId', { userId })
+      .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
+      .execute();
+
+    // 3. Delete transfers
+    await queryRunner.manager
+      .createQueryBuilder()
+      .delete()
+      .from('transfers')
+      .where('"userId" = :userId', { userId })
+      .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
+      .execute();
+
+    await queryRunner.commitTransaction();
+    return true;
+  } catch (err) {
+    await queryRunner.rollbackTransaction();
+    throw err;
+  } finally {
+    await queryRunner.release();
+  }
 }
