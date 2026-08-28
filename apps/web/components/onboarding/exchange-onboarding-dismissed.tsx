@@ -4,9 +4,8 @@ import { useSyncExternalStore, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { SidebarInset } from '@/components/ui/sidebar';
-import { SiteHeader } from '@/components/site-header';
 import { ExchangeOnboardingWizard } from '@/components/onboarding/exchange-onboarding-wizard';
+import { DashboardContent } from '@/components/dashboard/dashboard-content';
 import { Plus, LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 
@@ -36,8 +35,7 @@ function readDismissed(): boolean {
   }
 }
 
-/** SSR snapshot: always false (not dismissed). Matches the client's first
- *  paint when localStorage is empty → no hydration mismatch. */
+/** SSR snapshot: always false (not dismissed). */
 function getServerSnapshot(): boolean {
   return false;
 }
@@ -57,25 +55,19 @@ function setDismissed(value: boolean) {
 }
 
 /**
- * Client component that manages the onboarding wizard dismiss state.
+ * Wraps DashboardContent with the onboarding wizard overlay.
  *
- * - Not dismissed → renders the wizard dialog on top of an empty dashboard shell.
- * - Dismissed → renders a persistent banner with a "Connect Exchange" button
- *   that re-opens the wizard.
+ * - Always renders the full dashboard (cards, charts — empty but visible).
+ * - Not dismissed → wizard dialog overlays on top.
+ * - Dismissed → persistent banner at the top of the dashboard.
  *
  * Used by the dashboard page (server component) when the user has no exchange
- * accounts. The server checks `getAccounts() === []`; this component handles
- * the client-side localStorage dismiss/re-open lifecycle.
+ * accounts.
  */
 export function ExchangeOnboardingDismissed() {
   const t = useTranslations('dashboard');
 
-  // Single source of truth: isDismissed drives both wizard visibility and
-  // the persistent banner. No separate wizardOpen state needed.
   const isDismissed = useSyncExternalStore(subscribe, readDismissed, getServerSnapshot);
-
-  const showWizard = !isDismissed;
-  const showBanner = isDismissed;
 
   const handleDismiss = useCallback(() => {
     setDismissed(true);
@@ -86,41 +78,36 @@ export function ExchangeOnboardingDismissed() {
   }, []);
 
   return (
-    <SidebarInset>
-      <SiteHeader title={t('title')} />
-      <div className="flex flex-1 flex-col main-content">
-        {/* Persistent banner when dismissed */}
-        {showBanner ? (
-          <div className="p-4 lg:p-6">
-            <Alert className="border-primary/30 bg-primary/5">
-              <LinkIcon className="h-4 w-4 text-primary" />
-              <AlertTitle className="text-primary">
-                {t('onboarding.banner.title')}
-              </AlertTitle>
-              <AlertDescription className="flex items-center justify-between">
-                <span>{t('onboarding.banner.description')}</span>
-                <div className="flex gap-2 mt-2 sm:mt-0">
-                  <Button size="sm" onClick={handleReopen}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    {t('onboarding.banner.action')}
-                  </Button>
-                  <Button size="sm" variant="outline" asChild>
-                    <Link href="/accounts">{t('onboarding.banner.goToAccounts')}</Link>
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          </div>
-        ) : (
-          /* Placeholder text behind the wizard dialog (semi-visible through overlay) */
-          <div className="flex flex-1 items-center justify-center p-8">
-            <p className="text-muted-foreground text-sm">{t('onboarding.loading')}</p>
-          </div>
-        )}
-      </div>
+    <>
+      {/* Banner shown when wizard is dismissed */}
+      {isDismissed ? (
+        <div className="px-4 pt-4 lg:px-6 lg:pt-6">
+          <Alert className="border-primary/30 bg-primary/5">
+            <LinkIcon className="h-4 w-4 text-primary" />
+            <AlertTitle className="text-primary">
+              {t('onboarding.banner.title')}
+            </AlertTitle>
+            <AlertDescription className="flex items-center justify-between">
+              <span>{t('onboarding.banner.description')}</span>
+              <div className="flex gap-2 mt-2 sm:mt-0">
+                <Button size="sm" onClick={handleReopen}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t('onboarding.banner.action')}
+                </Button>
+                <Button size="sm" variant="outline" asChild>
+                  <Link href="/accounts">{t('onboarding.banner.goToAccounts')}</Link>
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </div>
+      ) : null}
 
-      {/* The wizard dialog */}
-      {showWizard ? <ExchangeOnboardingWizard onDismiss={handleDismiss} /> : null}
-    </SidebarInset>
+      {/* Full dashboard content — always visible (empty data when no accounts) */}
+      <DashboardContent />
+
+      {/* Wizard dialog overlay */}
+      {!isDismissed ? <ExchangeOnboardingWizard onDismiss={handleDismiss} /> : null}
+    </>
   );
 }
