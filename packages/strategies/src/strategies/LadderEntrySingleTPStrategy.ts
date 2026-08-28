@@ -23,7 +23,7 @@ import { silentLogger } from '../utils/silent-logger';
  * 📗 LadderEntrySingleTPStrategy parameters
  *
  * Ladder entry with single take-profit strategy:
- * - Entry: Uses bid0 (or fixed basePrice) as reference. Entry 0 is placed at entryBase = referencePrice adjusted by entryGapType/entryGapValue (arithmetic: ref - entryGapValue, geometric: ref * (1 - entryGapValue/100)). Then subsequent BUY limit orders are placed one at a time in sequential ladder steps from entryBase (arithmetic: entryBase - stepValue * i, or geometric: entryBase * (1 - stepValue/100)^i, where i=0,1,...,ladderSteps-1).
+ * - Entry: Uses bid0 (or fixed basePrice) as reference. Entry 0 is placed at entryBase = referencePrice adjusted by entryGapType/entryGapValue (arithmetic: ref - entryGapValue, geometric: ref * (1 - entryGapValue/100)). Then subsequent BUY limit orders are placed one at a time in sequential ladder steps from entryBase. Step gaps can be constant or progressive: arithmetic stepType uses gap[i] = stepValue + stepValueAdd * i (stepValueAdd=0 for constant), geometric stepType uses pct[i] = stepValue * stepValueRatio^i (stepValueRatio=1 for constant). So price[i] = entryBase - sum(gap[j]) for arithmetic, or entryBase * prod((1-pct[j]/100)) for geometric, where j=0..i-1.
  * - Take profit: The strategy always has at most ONE TP SELL limit order
  *         TP condition can be a fixed profit amount (in quote currency) or a percentage
  *         TP order is updated immediately whenever a new entry fills (including partial fills)
@@ -76,6 +76,24 @@ export interface LadderEntrySingleTPParameters extends StrategyParameters {
 
   /** Step value for ladder (gap between entry levels, NOT the gap from reference to entry 0). For arithmetic: absolute price drop per step (e.g. 300 = 300 USDT below entryBase per step). For geometric: percentage ratio per step (e.g. 0.62 = 0.62% ratio per step) */
   stepValue: number;
+
+  /**
+   * Arithmetic step value increment per step (for progressive ladder spacing).
+   * Only used when stepType='arithmetic': gap[i] = stepValue + stepValueAdd * i
+   * (e.g. stepValue=100, stepValueAdd=50 → gaps are 100, 150, 200, 250...).
+   * Default 0 = constant gap (backward compatible).
+   * For stepType='geometric', use stepValueRatio instead.
+   */
+  stepValueAdd?: number;
+
+  /**
+   * Geometric step value ratio per step (for progressive ladder spacing).
+   * Only used when stepType='geometric': pct[i] = stepValue * stepValueRatio^i
+   * (e.g. stepValue=1, stepValueRatio=1.5 → drops are 1%, 1.5%, 2.25%, 3.375%...).
+   * Default 1 = constant percentage (backward compatible).
+   * For stepType='arithmetic', use stepValueAdd instead.
+   */
+  stepValueRatio?: number;
 
   /** Quantity type: 'arithmetic' or 'geometric' */
   qtyType: 'arithmetic' | 'geometric';
@@ -139,6 +157,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
     name: 'Ladder Entry Single TP',
     description:
       'Ladder entry with single take-profit strategy. Supports arithmetic/geometric ladder prices and quantities, ' +
+      'progressive step spacing via stepValueAdd/stepValueRatio, ' +
       'TP condition supports fixed profit amount or percentage. TP order is updated immediately on each entry fill. ' +
       'Cancels remaining entries and starts a new cycle when TP is fully filled.',
     icon: '📗',
@@ -154,6 +173,12 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
       ladderSteps: 5,
       stepType: 'arithmetic',
       stepValue: 1,
+      // stepValueAdd / stepValueRatio default to 0 / 1 (backward compatible:
+      // constant gap = stepValue for all levels). Progressive spacing is
+      // opt-in; old strategies loaded from DB (without these keys) keep
+      // identical pricing to pre-refactor behavior.
+      stepValueAdd: 0,
+      stepValueRatio: 1,
       qtyType: 'arithmetic',
       qtyPerStep: 0.1,
       qtyStepAdd: 0,
@@ -227,8 +252,9 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         type: 'enum',
         description:
           'Ladder price step type (gap between entry levels, NOT gap from reference to entry 0): ' +
-          '"arithmetic" (absolute price difference: price_i = entryBase - stepValue * i) ' +
-          'or "geometric" (percentage ratio: price_i = entryBase * (1 - stepValue/100)^i).',
+          '"arithmetic" (absolute price difference: price_i = entryBase - cumsum(stepValue + stepValueAdd*j), j=0..i-1) ' +
+          'or "geometric" (percentage ratio: price_i = entryBase * prod(1 - stepValue*stepValueRatio^j/100, j=0..i-1)). ' +
+          'Use stepValueAdd>0 or stepValueRatio≠1 for progressive spacing (wider gaps deeper in the ladder).',
         defaultValue: 'arithmetic',
         required: true,
         validation: { options: ['arithmetic', 'geometric'] },
@@ -248,6 +274,38 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
         max: 1000000,
         group: 'Ladder Entry',
         order: 6,
+      },
+      {
+        name: 'stepValueAdd',
+        type: 'number',
+        description:
+          'Arithmetic increment added to stepValue per step (progressive spacing). ' +
+          'gap[i] = stepValue + stepValueAdd * i, so gaps grow linearly (e.g. stepValue=100, stepValueAdd=50 → gaps: 100, 150, 200, 250...). ' +
+          '0 = constant gap (backward compatible). Only used when stepType=arithmetic.',
+        defaultValue: 0,
+        required: false,
+        min: 0,
+        max: 1000000,
+        step: 0.000001,
+        group: 'Ladder Entry',
+        order: 6.5,
+        showIf: { field: 'stepType', equals: 'arithmetic' },
+      },
+      {
+        name: 'stepValueRatio',
+        type: 'number',
+        description:
+          'Geometric ratio applied to stepValue per step (progressive spacing). ' +
+          'pct[i] = stepValue * stepValueRatio^i, so percentage drops grow geometrically (e.g. stepValue=1, stepValueRatio=1.5 → drops: 1%, 1.5%, 2.25%, 3.375%...). ' +
+          '1 = constant percentage (backward compatible). Only used when stepType=geometric.',
+        defaultValue: 1,
+        required: false,
+        min: 0.001,
+        max: 100,
+        step: 0.001,
+        group: 'Ladder Entry',
+        order: 6.6,
+        showIf: { field: 'stepType', equals: 'geometric' },
       },
       {
         name: 'qtyType',
@@ -443,6 +501,7 @@ export const LadderEntrySingleTPStrategyRegistryConfig: StrategyRegistryConfig<L
       parameters:
         'basePrice(0=bid0 via REST) + entryGapType/entryGapValue define the gap from reference price to entry 0 (arithmetic=ref-gapValue, geometric=ref*(1-gapValue/100)); ' +
         'stepType/stepValue define the gap between entry levels (arithmetic=entryBase-stepValue*i, geometric=entryBase*(1-stepValue/100)^i; i=0..ladderSteps-1); ' +
+        'stepValueAdd/stepValueRatio enable progressive gap spacing (arithmetic: gap[i]=stepValue+stepValueAdd*i, geometric: pct[i]=stepValue*stepValueRatio^i; default 0/1 = constant gap); ' +
         'qtyType + qtyPerStep + qtyStepAdd/qtyStepRatio define ladder quantities; ' +
         'tpType + tpAbsoluteProfit/tpPercent define take-profit condition; ' +
         'maxInvestment * leverage = total buying power; maxPosition = max position size; ' +
@@ -533,6 +592,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private ladderSteps: number;
   private stepType: 'arithmetic' | 'geometric';
   private stepValue: Decimal;
+  private stepValueAdd: Decimal;
+  private stepValueRatio: Decimal;
   private qtyType: 'arithmetic' | 'geometric';
   private qtyPerStep: Decimal;
   private qtyStepAdd: Decimal;
@@ -745,6 +806,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.ladderSteps = parameters.ladderSteps ?? 5;
     this.stepType = parameters.stepType ?? 'arithmetic';
     this.stepValue = new Decimal(parameters.stepValue ?? 1);
+    this.stepValueAdd = new Decimal(parameters.stepValueAdd ?? 0);
+    this.stepValueRatio = new Decimal(parameters.stepValueRatio ?? 1);
     this.qtyType = parameters.qtyType ?? 'arithmetic';
     this.qtyPerStep = new Decimal(parameters.qtyPerStep ?? 0.1);
     this.qtyStepAdd = new Decimal(parameters.qtyStepAdd ?? 0);
@@ -784,6 +847,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
     if (this.stepValue.lte(0)) {
       throw new Error(`Invalid stepValue: ${parameters.stepValue} (must be > 0)`);
+    }
+    if (this.stepValueAdd.lt(0)) {
+      throw new Error(`Invalid stepValueAdd: ${parameters.stepValueAdd} (must be >= 0)`);
+    }
+    if (this.stepValueRatio.lte(0)) {
+      throw new Error(
+        `Invalid stepValueRatio: ${parameters.stepValueRatio} (must be > 0)`,
+      );
     }
     if (this.qtyPerStep.lte(0)) {
       throw new Error(`Invalid qtyPerStep: ${parameters.qtyPerStep} (must be > 0)`);
@@ -861,6 +932,94 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     return entryBase;
   }
 
+  /**
+   * Compute the price of ladder step `i` given the entryBase price.
+   *
+   * With progressive stepValue (stepValueAdd / stepValueRatio):
+   * - arithmetic: gap[j] = stepValue + stepValueAdd * j
+   *   price[i] = entryBase - sum(gap[j], j=0..i-1)
+   *            = entryBase - i*stepValue - stepValueAdd * i*(i-1)/2
+   * - geometric: pct[j] = stepValue * stepValueRatio^j (percentage)
+   *   price[i] = entryBase * prod((1 - pct[j]/100), j=0..i-1)
+   *
+   * When stepValueAdd=0 / stepValueRatio=1, these reduce to the original
+   * constant-gap formulas, ensuring backward compatibility.
+   *
+   * @param entryBase - Price of step 0 (reference adjusted by entryGap)
+   * @param i - Step index (0-based)
+   * @returns Price of step i, or null if <= 0
+   */
+  private computeStepPrice(entryBase: Decimal, i: number): Decimal | null {
+    if (i === 0) return entryBase;
+
+    if (this.stepType === 'arithmetic') {
+      // price[i] = entryBase - i*stepValue - stepValueAdd * i*(i-1)/2
+      const totalDrop = this.stepValue.mul(i).plus(
+        this.stepValueAdd
+          .mul(i)
+          .mul(i - 1)
+          .div(2),
+      );
+      const price = entryBase.minus(totalDrop);
+      return price.gt(0) ? price : null;
+    } else {
+      // geometric: price[i] = entryBase * prod((1 - pct[j]/100), j=0..i-1)
+      // where pct[j] = stepValue * stepValueRatio^j
+      let price = entryBase;
+      for (let j = 0; j < i; j++) {
+        const pct = this.stepValue.mul(this.stepValueRatio.pow(j));
+        const factor = new Decimal(1).minus(pct.div(100));
+        if (factor.lte(0)) return null;
+        price = price.mul(factor);
+      }
+      return price.gt(0) ? price : null;
+    }
+  }
+
+  /**
+   * Compute the cumulative price drop from entryBase to step `i` (arithmetic only).
+   * drop[i] = i*stepValue + stepValueAdd * i*(i-1)/2
+   *
+   * @param i - Step index (0-based)
+   * @returns Cumulative price drop, or null for geometric (use computeStepPriceRatio)
+   */
+  private computeCumulativeStepDrop(i: number): Decimal | null {
+    if (i === 0) return new Decimal(0);
+
+    if (this.stepType === 'arithmetic') {
+      return this.stepValue.mul(i).plus(
+        this.stepValueAdd
+          .mul(i)
+          .mul(i - 1)
+          .div(2),
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Compute the multiplicative ratio from entryBase to step `i` price (geometric only).
+   * price[i] = entryBase * this ratio.
+   *
+   * @param i - Step index (0-based)
+   * @returns Multiplicative ratio, or null for arithmetic (use computeCumulativeStepDrop)
+   */
+  private computeStepPriceRatio(i: number): Decimal | null {
+    if (i === 0) return new Decimal(1);
+
+    if (this.stepType === 'geometric') {
+      let ratio = new Decimal(1);
+      for (let j = 0; j < i; j++) {
+        const pct = this.stepValue.mul(this.stepValueRatio.pow(j));
+        const factor = new Decimal(1).minus(pct.div(100));
+        if (factor.lte(0)) return null;
+        ratio = ratio.mul(factor);
+      }
+      return ratio;
+    }
+    return null;
+  }
+
   private buildLadder(): LadderStep[] {
     if (this.referencePrice.lte(0)) return [];
 
@@ -893,26 +1052,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
-    // Step 2: Build ladder steps from entryBase.
-    const stepPercent = this.stepValue.div(100);
-
+    // Step 2: Build ladder steps from entryBase using computeStepPrice
+    // (supports progressive stepValue via stepValueAdd / stepValueRatio).
     for (let i = 0; i < this.ladderSteps; i++) {
-      let price: Decimal;
-      if (this.stepType === 'arithmetic') {
-        // Absolute price difference: price_i = entryBase - stepValue * i
-        // i=0 → entry 0 = entryBase (just the gap from reference)
-        // i=1 → entry 1 = entryBase - stepValue, etc.
-        price = entryBase.minus(this.stepValue.mul(i));
-      } else {
-        // Geometric percentage ratio: price_i = entryBase * (1 - stepValue/100)^i
-        // i=0 → entry 0 = entryBase
-        // i=1 → entry 1 = entryBase * (1 - stepValue/100)
-        price = entryBase.mul(new Decimal(1).minus(stepPercent).pow(i));
-      }
-      if (price.lte(0)) {
+      const priceResult = this.computeStepPrice(entryBase, i);
+      if (!priceResult || priceResult.lte(0)) {
         this._logger.warn(`[buildLadder] Step ${i} price <= 0, skipping`);
         continue;
       }
+      const price = priceResult;
 
       let qty: Decimal;
       if (this.qtyType === 'arithmetic') {
@@ -994,13 +1142,20 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    *    percent:  VWAP = TP_price / (1 + tpPercent/100)
    *
    * 2. entryBase from VWAP + filledStepCount (inferred from TP qty):
-   *    arithmetic:
+   *    arithmetic (constant gap, stepValueAdd=0):
    *      VWAP = entryBase - stepValue * sum(i*qty[i]) / totalQty
    *      entryBase = VWAP + stepValue * sum(i*qty[i]) / totalQty
-   *    geometric:
+   *    arithmetic (progressive gap, stepValueAdd>0):
+   *      VWAP = entryBase - sum((i*stepValue + stepValueAdd*i*(i-1)/2) * qty[i]) / totalQty
+   *      entryBase = VWAP + (stepValue * sum(i*qty[i]) + stepValueAdd/2 * sum(i*(i-1)*qty[i])) / totalQty
+   *    geometric (constant ratio, stepValueRatio=1):
    *      r = (1 - stepValue/100)
    *      VWAP = entryBase * sum(r^i*qty[i]) / totalQty
    *      entryBase = VWAP * totalQty / sum(r^i*qty[i])
+   *    geometric (progressive ratio, stepValueRatio≠1):
+   *      ratio[i] = prod((1-pct[j]/100), j=0..i-1) where pct[j] = stepValue * stepValueRatio^j
+   *      VWAP = entryBase * sum(ratio[i]*qty[i]) / totalQty
+   *      entryBase = VWAP * totalQty / sum(ratio[i]*qty[i])
    *
    * 3. referencePrice from entryBase:
    *    arithmetic gap: referencePrice = entryBase + entryGapValue
@@ -1033,12 +1188,24 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     if (vwapFromTp.lte(0)) return null;
 
     // Step 2: Build temporary ladder quantities for filled steps
-    // (we need qty[i] for i=0..filledStepCount-1, but steps aren't built yet)
-    const stepPercent = this.stepValue.div(100);
+    // and compute weighted sums for the VWAP → entryBase back-calculation.
+    //
+    // For arithmetic stepType with progressive gap (stepValueAdd > 0):
+    //   price[i] = entryBase - i*stepValue - stepValueAdd * i*(i-1)/2
+    //   VWAP = entryBase - sum((i*stepValue + stepValueAdd*i*(i-1)/2) * qty[i]) / totalQty
+    //   entryBase = VWAP + (stepValue * sum(i*qty[i]) + stepValueAdd/2 * sum(i*(i-1)*qty[i])) / totalQty
+    //
+    // For geometric stepType with progressive ratio (stepValueRatio ≠ 1):
+    //   ratio[i] = prod((1-pct[j]/100), j=0..i-1) where pct[j] = stepValue * stepValueRatio^j
+    //   VWAP = entryBase * sum(ratio[i] * qty[i]) / totalQty
+    //   entryBase = VWAP * totalQty / sum(ratio[i] * qty[i])
+    //
+    // When stepValueAdd=0 / stepValueRatio=1, these reduce to the original
+    // constant-gap formulas (backward compatible).
     let totalQty = new Decimal(0);
     let weightedSum = new Decimal(0); // for arithmetic: sum(i*qty[i])
-    let geometricWeightedSum = new Decimal(0); // for geometric: sum(r^i*qty[i])
-    const r = new Decimal(1).minus(stepPercent); // constant — hoisted out of loop
+    let quadraticWeightedSum = new Decimal(0); // for arithmetic progressive: sum(i*(i-1)*qty[i])
+    let geometricWeightedSum = new Decimal(0); // for geometric: sum(ratio[i]*qty[i])
 
     for (let i = 0; i < filledStepCount; i++) {
       let qty: Decimal;
@@ -1049,7 +1216,14 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
       totalQty = totalQty.plus(qty);
       weightedSum = weightedSum.plus(new Decimal(i).mul(qty));
-      geometricWeightedSum = geometricWeightedSum.plus(r.pow(i).mul(qty));
+      quadraticWeightedSum = quadraticWeightedSum.plus(
+        new Decimal(i).mul(i - 1).mul(qty),
+      );
+      // Compute ratio[i] = price[i] / entryBase using computeStepPriceRatio
+      const ratioResult = this.computeStepPriceRatio(i);
+      if (ratioResult) {
+        geometricWeightedSum = geometricWeightedSum.plus(ratioResult.mul(qty));
+      }
     }
 
     if (totalQty.lte(0)) return null;
@@ -1057,9 +1231,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // Step 3: Back-calculate entryBase from VWAP
     let entryBase: Decimal;
     if (this.stepType === 'arithmetic') {
-      // VWAP = entryBase - stepValue * weightedSum / totalQty
-      // entryBase = VWAP + stepValue * weightedSum / totalQty
-      entryBase = vwapFromTp.plus(this.stepValue.mul(weightedSum).div(totalQty));
+      // entryBase = VWAP + (stepValue * weightedSum + stepValueAdd/2 * quadraticWeightedSum) / totalQty
+      entryBase = vwapFromTp.plus(
+        this.stepValue
+          .mul(weightedSum)
+          .plus(this.stepValueAdd.div(2).mul(quadraticWeightedSum))
+          .div(totalQty),
+      );
     } else {
       // VWAP = entryBase * geometricWeightedSum / totalQty
       // entryBase = VWAP * totalQty / geometricWeightedSum
@@ -2541,28 +2719,35 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           );
         }
 
-        const stepPercent = this.stepValue.div(100);
-        // New formula: price[i] = entryBase - stepValue * i (arithmetic)
-        //                   or entryBase * (1-stepValue/100)^i (geometric)
-        // where entryBase = referencePrice adjusted by entryGap.
-        // So: entryBase = price + stepValue * i (arithmetic)
-        //          or  = price / (1-stepValue/100)^i (geometric)
+        // With progressive stepValue (stepValueAdd / stepValueRatio):
+        // arithmetic: price[i] = entryBase - i*stepValue - stepValueAdd * i*(i-1)/2
+        //             → entryBase = price + i*stepValue + stepValueAdd * i*(i-1)/2
+        // geometric:  price[i] = entryBase * prod((1-pct[j]/100), j=0..i-1)
+        //             where pct[j] = stepValue * stepValueRatio^j
+        //             → entryBase = price / prod((1-pct[j]/100), j=0..i-1)
+        // When stepValueAdd=0 / stepValueRatio=1, these reduce to the original
+        // constant-gap formulas (backward compatible).
         // Then: referencePrice = entryBase + entryGapValue (arithmetic gap)
         //                     or entryBase / (1 - entryGapValue/100) (geometric gap)
         let entryBase: Decimal | undefined;
         if (this.stepType === 'arithmetic') {
-          // price[i] = entryBase - stepValue * i → entryBase = price + stepValue * i
-          entryBase = entryOrder.price.plus(this.stepValue.mul(matchedStepIndex));
+          // entryBase = price + i*stepValue + stepValueAdd * i*(i-1)/2
+          const drop = this.computeCumulativeStepDrop(matchedStepIndex);
+          if (drop) {
+            entryBase = entryOrder.price.plus(drop);
+          } else {
+            entryBase = entryOrder.price;
+          }
         } else {
-          // price[i] = entryBase * (1-stepValue/100)^i → entryBase = price / (1-stepValue/100)^i
-          const stepFactor = new Decimal(1).minus(stepPercent).pow(matchedStepIndex);
-          if (stepFactor.lte(0)) {
+          // entryBase = price / ratio where ratio = prod((1-pct[j]/100), j=0..i-1)
+          const stepFactor = this.computeStepPriceRatio(matchedStepIndex);
+          if (stepFactor && stepFactor.gt(0)) {
+            entryBase = entryOrder.price.div(stepFactor);
+          } else {
             this._logger.warn(
               `[processInitialData] stepFactor <= 0 for stepIndex=${matchedStepIndex}, ` +
                 `cannot reverse-engineer referencePrice from entry order.`,
             );
-          } else {
-            entryBase = entryOrder.price.div(stepFactor);
           }
         }
 
