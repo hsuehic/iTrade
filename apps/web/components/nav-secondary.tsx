@@ -10,7 +10,6 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
@@ -91,19 +90,12 @@ export function NavSecondary({
             );
           })}
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip={navigationT('language')}>
-              <IconWorld />
-              <span>{navigationT('language')}</span>
-            </SidebarMenuButton>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuAction
-                  showOnHover
-                  className="data-[state=open]:bg-accent rounded-sm"
-                >
-                  <IconWorld className="size-4" />
-                  <span className="sr-only">{navigationT('language')}</span>
-                </SidebarMenuAction>
+                <SidebarMenuButton tooltip={navigationT('language')}>
+                  <IconWorld />
+                  <span>{navigationT('language')}</span>
+                </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 className="w-36 rounded-lg"
