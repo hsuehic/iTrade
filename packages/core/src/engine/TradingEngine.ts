@@ -85,6 +85,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
   // 🆕 Track which orders have been emitted as "created" to avoid duplicate OrderCreated events
   private readonly _emittedOrderCreated = new Set<string>();
+
+  // 🆕 Track whether the engine has completed its startup pre-fill of
+  // _emittedOrderCreated from the database. Until this is true, WS order
+  // updates that arrive during reconnection (which re-push open orders) will
+  // be treated as "new" and emit OrderCreated events → duplicate push
+  // notifications on every restart/redeploy.
+  private _emittedOrderCreatedPreFilled = false;
   private readonly _symbolInfoCache = new Map<
     string,
     { info: SymbolInfo; fetchedAt: number }
@@ -150,6 +157,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // ✅ Mark engine as running BEFORE loading initial data
       // This allows strategies to execute orders during initialization
       this._isRunning = true;
+
+      // 🆕 Pre-fill _emittedOrderCreated with existing open orders from DB
+      // so that WS reconnection replays (which re-push open orders) do NOT
+      // trigger duplicate OrderCreated events → duplicate push notifications.
+      // This is the root cause of "redelivery of push notifications on redeploy":
+      // after restart, _emittedOrderCreated is empty, so the engine treats
+      // every WS-replayed open order as "new" and emits OrderCreated.
+      await this.preFillEmittedOrderCreated();
 
       // 🔄 Load initial data for all strategies that need it (before subscribing to real-time data)
       // This handles strategies added before engine.start() is called
@@ -1310,6 +1325,60 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         return cached.info;
       }
       throw error;
+    }
+  }
+
+  /**
+   * Pre-fill _emittedOrderCreated with existing open orders from the database.
+   *
+   * After a restart/redeploy, the in-memory _emittedOrderCreated Set is empty.
+   * When the exchange WS reconnects, it re-pushes all currently open orders as
+   * `orderUpdate` events. Without this pre-fill, the engine treats each as
+   * "new" and emits OrderCreated → OrderTracker sends a duplicate "Order Placed"
+   * push notification for every open order on every restart.
+   *
+   * This method queries all non-terminal orders (NEW + PARTIALLY_FILLED) from
+   * the DB and adds their clientOrderId (or id) to _emittedOrderCreated, so
+   * WS-replayed orders are correctly recognized as already-known.
+   */
+  private async preFillEmittedOrderCreated(): Promise<void> {
+    if (this._emittedOrderCreatedPreFilled) return;
+    this._emittedOrderCreatedPreFilled = true; // set first to prevent re-entry
+    try {
+      if (!this._dataManager?.getOrders) {
+        return;
+      }
+
+      // Fetch only non-terminal (open) orders: NEW + PARTIALLY_FILLED.
+      // These are the orders the exchange WS will re-push on reconnect.
+      // Terminal orders (FILLED/CANCELED/REJECTED/EXPIRED) are irrelevant —
+      // they won't be replayed and can never emit OrderCreated again.
+      // Open-order count is typically small (tens at most), so memory is
+      // negligible: each entry is just a string key in a Set.
+      const openOrders = await this._dataManager.getOrders({
+        userId: this._userId,
+        status: 'OPEN' as string,
+        page: 1,
+        pageSize: 1000,
+      });
+
+      for (const order of openOrders) {
+        const emittedKey = order.clientOrderId || order.id;
+        if (emittedKey) {
+          this._emittedOrderCreated.add(emittedKey);
+        }
+      }
+
+      this.logger.info(
+        `📦 Pre-filled _emittedOrderCreated with ${openOrders.length} open orders from DB`,
+      );
+    } catch (error) {
+      // Non-fatal: if the DB query fails, we just won't pre-fill. This may
+      // cause one-time re-notification of open orders, but the engine will
+      // still function correctly.
+      this.logger.warn(
+        `Failed to pre-fill _emittedOrderCreated: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

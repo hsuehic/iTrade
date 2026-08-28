@@ -86,9 +86,22 @@ export class OrderTracker {
 
     // 🆕 Load existing OPEN orders from database to prevent duplicate notifications on restart.
     // Done AFTER listener registration so that events are never dropped even if this fails.
+    //
+    // Only load non-terminal (OPEN = NEW + PARTIALLY_FILLED) orders:
+    // - These are the only orders that can still generate new WS events.
+    // - Terminal orders (FILLED/CANCELED/REJECTED/EXPIRED) will never emit
+    //   OrderCreated again, so pre-loading them wastes memory in
+    //   notifiedOrderIds and orderManager.
+    // - The default getOrders page size is 100 sorted by timestamp DESC —
+    //   without an explicit status filter + large pageSize, older open
+    //   orders (like long-running limit orders) are missed, causing
+    //   duplicate "Order Placed" push notifications after every restart.
     try {
       const existingOrders = await this.dataManager.getOrders({
         userId: this.userId,
+        status: 'OPEN' as string,
+        page: 1,
+        pageSize: 1000,
       });
       for (const order of existingOrders) {
         this.orderManager.addOrder(order);

@@ -411,6 +411,28 @@ export interface IDataManager {
 
   // Dry Run
   getDryRunOrders?(sessionId: number): Promise<Order[]>;
+
+  /**
+   * 🆕 Fetch orders from the database. Used by TradingEngine.start() to
+   * pre-fill _emittedOrderCreated so that WS-replayed open orders after a
+   * restart do not trigger duplicate OrderCreated events → duplicate push
+   * notifications.
+   */
+  getOrders?(filters?: {
+    strategyId?: number;
+    symbol?: string;
+    exchange?: string;
+    status?: string;
+    side?: string;
+    type?: string;
+    startDate?: Date;
+    endDate?: Date;
+    userId?: string;
+    includeStrategy?: boolean;
+    includeFills?: boolean;
+    page?: number;
+    pageSize?: number;
+  }): Promise<Order[]>;
 }
 
 // Backtesting Engine Interface
