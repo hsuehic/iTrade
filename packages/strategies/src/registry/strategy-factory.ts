@@ -39,7 +39,7 @@ import {
 import {
   LadderEntrySingleTPStrategy,
   LadderEntrySingleTPStrategyRegistryConfig,
-} from '../strategies/LadderEntrySingleTPStrategy';
+} from '../strategies/ladder-entry-single-tp';
 import { silentLogger } from '../utils/silent-logger';
 
 // ============================================================================

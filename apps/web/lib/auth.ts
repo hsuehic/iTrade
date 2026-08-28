@@ -150,6 +150,43 @@ const trustedOrigins = Array.from(
 );
 const stateCookieDomain = process.env.BETTER_AUTH_COOKIE_DOMAIN;
 
+/**
+ * Single shared pg Pool for all auth instances.
+ *
+ * IMPORTANT: `createAuth()` may be called multiple times (once per distinct
+ * baseURL seen via getCachedAuth — different Host/X-Forwarded-Host headers,
+ * IP-direct requests, health checks, etc.). Each call used to construct a
+ * brand-new `new Pool({ max: 5, ... })`, and since `authCache` is an
+ * unbounded Map that's never evicted, every distinct baseURL variant leaked
+ * its own never-closed connection pool. Over time this exhausted Postgres's
+ * max_connections and produced "sorry, too many clients already" (53300)
+ * errors across the whole app. The pool itself doesn't depend on baseURL,
+ * so it's created exactly once here and reused across every auth instance.
+ *
+ * Use globalThis so the pool also survives Next.js dev-mode HMR reloads of
+ * this module (mirrors the pattern in lib/data-manager.ts).
+ */
+declare global {
+  var __authPgPool: Pool | undefined;
+}
+
+function getAuthPgPool(): Pool {
+  if (!globalThis.__authPgPool) {
+    globalThis.__authPgPool = new Pool({
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_DB || 'itrade',
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      max: 5,
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+    });
+  }
+  return globalThis.__authPgPool;
+}
+
 export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAuth> =>
   betterAuth({
     ...(baseURLOverride ? { baseURL: baseURLOverride } : baseURL ? { baseURL } : {}),
@@ -181,17 +218,7 @@ export const createAuth = (baseURLOverride?: string): ReturnType<typeof betterAu
         },
       },
     },
-    database: new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_DB || 'itrade',
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-      max: 5,
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 30000,
-    }),
+    database: getAuthPgPool(),
     //...other options
     emailAndPassword: {
       enabled: true,

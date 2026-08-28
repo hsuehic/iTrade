@@ -4,7 +4,7 @@ import {
   LadderEntrySingleTPStrategy,
   LadderEntrySingleTPParameters,
   LadderEntrySingleTPStrategyRegistryConfig,
-} from '../strategies/LadderEntrySingleTPStrategy';
+} from '../strategies/ladder-entry-single-tp';
 import {
   StrategyConfig,
   Order,
