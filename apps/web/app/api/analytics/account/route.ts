@@ -266,8 +266,7 @@ export async function GET(request: Request) {
 
     const latestSnapshots = accounts;
 
-    // If no data found for specific exchange, return empty response
-    if (exchange !== 'all' && latestSnapshots.length === 0) {
+    if (latestSnapshots.length === 0) {
       return NextResponse.json({
         summary: {
           totalBalance: 0,
@@ -276,9 +275,11 @@ export async function GET(request: Request) {
           totalUnrealizedPnl: 0,
           totalPositions: 0,
           balanceChange: 0,
+          balanceChangeValue: 0,
           realizedPnl: null,
           unrealizedPnlChange: null,
           realizedPnlApproximate: true,
+          netDeposits: 0,
           period,
         },
         exchanges: [],

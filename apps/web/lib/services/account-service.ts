@@ -97,6 +97,45 @@ export async function upsertAccount(data: AccountDto) {
 export async function removeAccount(id: number, userId: string) {
   const dm = await getDataManager();
   const repo = dm.getAccountInfoRepository();
-  const result = await repo.delete({ id, userId });
-  return result.affected ? result.affected > 0 : false;
+
+  // Fetch the account before deletion so we know the exchange to clean up
+  const account = await repo.findOne({ where: { id, userId } });
+  if (!account) return false;
+
+  // Delete the account_info row (balance_* and account_snapshots cascade automatically)
+  await repo.delete({ id, userId });
+
+  // Clean up orphaned data that has no FK to account_info.
+  // All three tables (orders, positions, transfers) are keyed by userId + exchange,
+  // not by account_info.id, so they survive the account_info deletion.
+  const exchange = account.exchange;
+
+  // 1. Delete orders (order_fills cascade via FK ON DELETE CASCADE on orders.internalId)
+  await dm.dataSource
+    .createQueryBuilder()
+    .delete()
+    .from('orders')
+    .where('"userId" = :userId', { userId })
+    .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
+    .execute();
+
+  // 2. Delete positions
+  await dm.dataSource
+    .createQueryBuilder()
+    .delete()
+    .from('positions')
+    .where('"userId" = :userId', { userId })
+    .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
+    .execute();
+
+  // 3. Delete transfers
+  await dm.dataSource
+    .createQueryBuilder()
+    .delete()
+    .from('transfers')
+    .where('"userId" = :userId', { userId })
+    .andWhere('LOWER(exchange) = LOWER(:exchange)', { exchange })
+    .execute();
+
+  return true;
 }
