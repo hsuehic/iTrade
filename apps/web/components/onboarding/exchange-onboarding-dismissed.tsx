@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -11,26 +11,49 @@ import { Plus, LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 
 const DISMISS_KEY = 'itrade:onboarding-dismissed';
+const DISMISS_EVENT = 'itrade:onboarding-dismissed-change';
 
 /**
- * SSR-safe empty subscribe function for useSyncExternalStore.
- * Returns a no-op unsubscribe.
+ * Real subscribe for useSyncExternalStore — listens for a custom event
+ * dispatched whenever the dismiss state changes, plus the native 'storage'
+ * event for cross-tab sync.
  */
-function emptySubscribe() {
-  return () => {};
+function subscribe(callback: () => void) {
+  window.addEventListener(DISMISS_EVENT, callback);
+  window.addEventListener('storage', callback);
+  return () => {
+    window.removeEventListener(DISMISS_EVENT, callback);
+    window.removeEventListener('storage', callback);
+  };
 }
 
-/**
- * Read whether the user has dismissed the onboarding wizard.
- * Returns false during SSR and on first client paint (to avoid hydration
- * mismatch), then reads localStorage on subsequent renders.
- */
+/** Client snapshot: read actual localStorage value. */
 function readDismissed(): boolean {
   try {
     return localStorage.getItem(DISMISS_KEY) === '1';
   } catch {
     return false;
   }
+}
+
+/** SSR snapshot: always false (not dismissed). Matches the client's first
+ *  paint when localStorage is empty → no hydration mismatch. */
+function getServerSnapshot(): boolean {
+  return false;
+}
+
+/** Write dismiss state to localStorage and notify all subscribers. */
+function setDismissed(value: boolean) {
+  try {
+    if (value) {
+      localStorage.setItem(DISMISS_KEY, '1');
+    } else {
+      localStorage.removeItem(DISMISS_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+  window.dispatchEvent(new Event(DISMISS_EVENT));
 }
 
 /**
@@ -46,38 +69,21 @@ function readDismissed(): boolean {
  */
 export function ExchangeOnboardingDismissed() {
   const t = useTranslations('dashboard');
-  const [wizardOpen, setWizardOpen] = useState(false);
-  // SSR: false (not dismissed). Client: actual localStorage value.
-  // This avoids hydration mismatch — both server and first client paint
-  // show the wizard as open, then the store value applies.
-  const isDismissed = useSyncExternalStore(
-    emptySubscribe,
-    readDismissed,
-    () => false, // SSR snapshot
-  );
 
-  // After hydration, if not dismissed, open the wizard.
-  // If dismissed, keep it closed and show the banner.
-  const showWizard = !isDismissed && wizardOpen;
-  const showBanner = isDismissed && !wizardOpen;
+  // Single source of truth: isDismissed drives both wizard visibility and
+  // the persistent banner. No separate wizardOpen state needed.
+  const isDismissed = useSyncExternalStore(subscribe, readDismissed, getServerSnapshot);
 
-  const handleDismiss = () => {
-    try {
-      localStorage.setItem(DISMISS_KEY, '1');
-    } catch {
-      // ignore storage errors
-    }
-    setWizardOpen(false);
-  };
+  const showWizard = !isDismissed;
+  const showBanner = isDismissed;
 
-  const handleReopen = () => {
-    try {
-      localStorage.removeItem(DISMISS_KEY);
-    } catch {
-      // ignore storage errors
-    }
-    setWizardOpen(true);
-  };
+  const handleDismiss = useCallback(() => {
+    setDismissed(true);
+  }, []);
+
+  const handleReopen = useCallback(() => {
+    setDismissed(false);
+  }, []);
 
   return (
     <SidebarInset>
