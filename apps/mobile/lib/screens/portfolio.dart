@@ -21,6 +21,7 @@ import '../widgets/portfolio/positions_list.dart';
 import '../widgets/portfolio/assets_list.dart';
 import '../widgets/portfolio/exchange_filter.dart';
 import '../widgets/copy_text.dart';
+import 'exchange_onboarding_wizard.dart';
 
 /// Professional portfolio screen with real API data.
 class PortfolioScreen extends StatefulWidget {
@@ -71,6 +72,17 @@ class _PortfolioScreenState extends State<PortfolioScreen>
 
   bool _isAccountStatusLoading = false;
   bool? _hasActiveAccount;
+
+  // Exchange-account onboarding (mirrors the web dashboard wizard).
+  // null = unknown while loading; false = no linked accounts at all.
+  bool? _hasAnyAccount;
+  bool _onboardingDismissed = false;
+  // Auto-show the wizard at most once per screen lifetime (never nag on
+  // every rebuild / pull-to-refresh).
+  bool _onboardingAutoShown = false;
+  // The banner is persistent (survives restarts via the dismiss flag) but
+  // can be hidden for the current session.
+  bool _onboardingBannerHiddenForSession = false;
 
   String _normalizeExchange(String exchange) {
     return exchange.trim().toLowerCase();
@@ -161,7 +173,7 @@ class _PortfolioScreenState extends State<PortfolioScreen>
       }
     });
     _loadData();
-    _loadAccountStatus();
+    _initOnboardingState();
     _setupStreams();
   }
 
@@ -272,6 +284,15 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     }
   }
 
+  /// Loads the persisted onboarding dismiss flag first (so the auto-show
+  /// decision never races the account fetch), then loads account status.
+  Future<void> _initOnboardingState() async {
+    final dismissed = await Preference.isExchangeOnboardingDismissed();
+    if (!mounted) return;
+    setState(() => _onboardingDismissed = dismissed);
+    await _loadAccountStatus();
+  }
+
   Future<void> _loadAccountStatus() async {
     if (_isAccountStatusLoading) return;
     setState(() {
@@ -281,15 +302,20 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     try {
       final accounts = await _accountService.getAccounts();
       final hasActiveAccount = accounts.any((account) => account.isActive);
+      final hasAnyAccount = accounts.isNotEmpty;
       if (mounted) {
         setState(() {
           _hasActiveAccount = hasActiveAccount;
+          _hasAnyAccount = hasAnyAccount;
         });
+        _maybeAutoShowOnboardingWizard();
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _hasActiveAccount = true;
+          // Fail open — never nag on API errors.
+          _hasAnyAccount = true;
         });
       }
     } finally {
@@ -298,6 +324,44 @@ class _PortfolioScreenState extends State<PortfolioScreen>
           _isAccountStatusLoading = false;
         });
       }
+    }
+  }
+
+  /// Shows the onboarding wizard once per screen lifetime when the user is
+  /// logged in, has no linked exchange accounts, and hasn't dismissed it.
+  void _maybeAutoShowOnboardingWizard() {
+    if (_onboardingAutoShown) return;
+    if (!ApiClient.instance.isInitialized) return;
+    if (_hasAnyAccount != false) return;
+    if (_onboardingDismissed) return;
+    _onboardingAutoShown = true;
+    _showOnboardingWizard();
+  }
+
+  /// Opens the exchange onboarding wizard as a modal overlay (the portfolio
+  /// layout itself is untouched underneath it).
+  Future<void> _showOnboardingWizard() async {
+    if (!mounted) return;
+    final result = await ExchangeOnboardingWizard.show(context);
+    if (!mounted) return;
+    switch (result) {
+      case ExchangeOnboardingWizardResult.finished:
+        // Reload the underlying screen (portfolio data + account status),
+        // NOT a full app restart.
+        _refreshData();
+      case ExchangeOnboardingWizardResult.explicitlyDismissed:
+        // Explicit "Skip for now" / X button — persist dismissal so the
+        // banner is shown instead next time.
+        await Preference.setExchangeOnboardingDismissed(true);
+        if (mounted) {
+          setState(() => _onboardingDismissed = true);
+        }
+      case ExchangeOnboardingWizardResult.barrierDismissed:
+        // Accidental barrier tap / back gesture — session-only. Do NOT
+        // persist the preference (a stray tap must not permanently
+        // suppress the wizard); just hide the wizard/banner for the rest
+        // of this screen lifetime so it doesn't immediately re-show.
+        setState(() => _onboardingBannerHiddenForSession = true);
     }
   }
 
@@ -451,6 +515,12 @@ class _PortfolioScreenState extends State<PortfolioScreen>
     final topPadding = MediaQuery.of(context).padding.top;
     final showAccountGuide =
         _hasActiveAccount == false && !_isAccountStatusLoading;
+    // Onboarding banner — an overlay shown on top of the normal portfolio
+    // layout when the wizard was dismissed and no accounts are linked.
+    final showOnboardingBanner =
+        _hasAnyAccount == false &&
+        _onboardingDismissed &&
+        !_onboardingBannerHiddenForSession;
 
     return Stack(
       children: [
@@ -474,6 +544,21 @@ class _PortfolioScreenState extends State<PortfolioScreen>
                     ),
                   ),
                 ),
+
+                // Onboarding banner — replaces the wizard after "Skip for now".
+                // The portfolio content below is unchanged (identical layout
+                // with or without accounts).
+                if (showOnboardingBanner)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        top: 16,
+                        left: 16.w,
+                        right: 16.w,
+                      ),
+                      child: _buildOnboardingBanner(context),
+                    ),
+                  ),
 
                 // Portfolio Summary Card (auto-refreshes via PortfolioService streams)
                 SliverToBoxAdapter(
@@ -614,6 +699,111 @@ class _PortfolioScreenState extends State<PortfolioScreen>
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildOnboardingBanner(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(14.w, 12.w, 6.w, 14.w),
+      decoration: BoxDecoration(
+        color: primary.withValues(alpha: isDark ? 0.10 : 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primary.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.link_rounded, size: 18.sp, color: primary),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: CopyText(
+                  'screen.exchange_onboarding.banner.title',
+                  fallback: 'Connect your exchange to get started',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: primary,
+                  ),
+                ),
+              ),
+              // Dismiss the banner for this session (it is persistent across
+              // app restarts until an exchange account is linked).
+              IconButton(
+                icon: Icon(
+                  Icons.close,
+                  size: 18.sp,
+                  color: isDark ? Colors.white54 : Colors.black45,
+                ),
+                onPressed: () {
+                  setState(() => _onboardingBannerHiddenForSession = true);
+                },
+              ),
+            ],
+          ),
+          CopyText(
+            'screen.exchange_onboarding.banner.description',
+            fallback:
+                "You haven't linked any exchange account yet. Add an API key to start trading.",
+            style: theme.textTheme.bodySmall?.copyWith(
+              height: 1.45,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+          ),
+          SizedBox(height: 12.w),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _showOnboardingWizard,
+                  icon: Icon(Icons.add_rounded, size: 16.sp),
+                  label: CopyText(
+                    'screen.exchange_onboarding.banner.action',
+                    fallback: 'Start Setup',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
+                    padding: EdgeInsets.symmetric(vertical: 10.w),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _openExchangeAccounts,
+                  icon: Icon(Icons.account_balance_outlined, size: 16.sp),
+                  label: CopyText(
+                    'screen.exchange_onboarding.banner.goToAccounts',
+                    fallback: 'Go to Accounts',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(vertical: 10.w),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

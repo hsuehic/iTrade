@@ -20,6 +20,8 @@ class Preference {
   static const String keyPushCategorySecurity = 'push_category_security';
   static const String keyPushCategorySystem = 'push_category_system';
   static const String keyApiBaseUrl = 'api_base_url';
+  static const String keyExchangeOnboardingDismissed =
+      'exchange_onboarding_dismissed';
   static const String keyPushReadIds = 'push_read_ids';
   static const String keyPushUnreadCount = 'push_unread_count';
   static const String keyPushHistoryMessages = 'push_history_messages';
@@ -215,6 +217,16 @@ class Preference {
 
   static Future<String?> getApiBaseUrl() async {
     return await getValue<String>(keyApiBaseUrl);
+  }
+
+  /// Whether the user dismissed the exchange-account onboarding wizard.
+  /// When dismissed, the portfolio shows a persistent banner instead.
+  static Future<bool> isExchangeOnboardingDismissed() async {
+    return (await getValue<bool>(keyExchangeOnboardingDismissed)) ?? false;
+  }
+
+  static Future<void> setExchangeOnboardingDismissed(bool dismissed) async {
+    await setValue(keyExchangeOnboardingDismissed, dismissed);
   }
 
   static Future<void> clearApiBaseUrl() async {
