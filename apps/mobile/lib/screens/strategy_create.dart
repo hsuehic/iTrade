@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../models/strategy.dart';
+import '../models/strategy_config.dart';
 import '../services/strategy_service.dart';
 import '../services/copy_service.dart';
 import '../utils/crypto_icons.dart';
@@ -70,7 +71,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   final _descriptionController = TextEditingController();
   String _selectedExchange = '';
   String? _selectedType;
-  List<_StrategyTypeOption> _strategyTypes = [];
+  List<StrategyConfigInfo> _strategyTypes = [];
   String? _nameError;
   String? _symbolError;
   bool _checkingName = false;
@@ -85,6 +86,18 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   final _parametersController = TextEditingController();
   String? _parametersError;
   Timer? _parametersDebounce;
+
+  /// Dynamic parameter form state (mirrors the web UI's form mode).
+  /// When true the step renders a dynamic form built from the strategy
+  /// type's parameter definitions; when false a raw JSON editor is shown.
+  bool _useFormMode = true;
+
+  /// Current parameter values used by the dynamic form.
+  Map<String, dynamic> _parameterValues = {};
+
+  /// Bumped whenever the form must be re-initialised from [_parameterValues]
+  /// (strategy type change, or switching back from JSON mode).
+  int _formVersion = 0;
 
   // ── Step 2 – Initial Data Config ─────────────────────────────────────────
   List<Map<String, dynamic>> _klineEntries = []; // [{interval, limit}]
@@ -142,8 +155,13 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     _descriptionController.text = s.description ?? '';
     _selectedExchange = s.exchange ?? '';
     _selectedType = s.type;
-    _parametersController.text =
-        const JsonEncoder.withIndent('  ').convert(s.parameters ?? {});
+    // The dynamic form merges the type defaults with the saved parameters
+    // (same as the web form); JSON mode keeps showing the saved parameters.
+    final typeDefaults = _configForType(s.type)?.defaultParameters;
+    _parameterValues = {...?typeDefaults, ...(s.parameters ?? {})};
+    _parametersController.text = const JsonEncoder.withIndent(
+      '  ',
+    ).convert(s.parameters ?? {});
 
     // Initial data config
     final idc = s.initialDataConfig;
@@ -152,14 +170,21 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       if (klines is Map) {
         // Object format: { "15m": 20, "1h": 10 }
         _klineEntries = klines.entries
-            .map((e) => {'interval': e.key as String, 'limit': e.value as int? ?? 20})
+            .map(
+              (e) => {
+                'interval': e.key as String,
+                'limit': (e.value as num?)?.toInt() ?? 20,
+              },
+            )
             .toList();
       } else if (klines is List) {
         _klineEntries = klines
-            .map((e) => {
-                  'interval': (e as Map)['interval'] as String? ?? '15m',
-                  'limit': (e['limit'] as num?)?.toInt() ?? 20,
-                })
+            .map(
+              (e) => {
+                'interval': (e as Map)['interval'] as String? ?? '15m',
+                'limit': (e['limit'] as num?)?.toInt() ?? 20,
+              },
+            )
             .toList();
       }
       _fetchPositions = idc['fetchPositions'] as bool? ?? false;
@@ -204,6 +229,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       _subMethod = sub['method'] as String? ?? 'websocket';
     }
 
+    // Apply the strategy type's initial-data / subscription requirements
+    // (auto-enable required fields, populate defaults) after the pre-fill.
+    _applyRequirements();
+
     setState(() {});
 
     // Eagerly load tickers for the pre-filled exchange so the symbol picker
@@ -221,26 +250,25 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     final configs = await _strategyService.getStrategyConfigs();
     if (!mounted) return;
 
-    final types = configs
-        .map((c) => _StrategyTypeOption.fromJson(c))
-        .where((c) => c.type.isNotEmpty)
-        .toList();
-
     setState(() {
-      _strategyTypes = types;
+      _strategyTypes = configs;
       _loadingTypes = false;
       if (!widget.isEditing) {
         // Only set defaults for create mode
-        if (types.isNotEmpty) {
-          _selectedType = types.first.type;
-          _parametersController.text = const JsonEncoder.withIndent('  ')
-              .convert(types.first.defaultParameters ?? {});
-        } else {
-          _selectedType = 'MovingAverageStrategy';
-          _parametersController.text =
-              const JsonEncoder.withIndent('  ').convert(<String, dynamic>{});
-        }
+        final defaults = configs.isNotEmpty
+            ? configs.first.defaultParameters
+            : const <String, dynamic>{};
+        _selectedType = configs.isNotEmpty
+            ? configs.first.type
+            : 'MovingAverageStrategy';
+        _parameterValues = Map<String, dynamic>.from(defaults);
+        _parametersController.text = const JsonEncoder.withIndent(
+          '  ',
+        ).convert(defaults);
       }
+      // Auto-populate initial-data / subscription fields required by the
+      // selected strategy type (mirrors the web form behaviour).
+      _applyRequirements();
     });
   }
 
@@ -254,14 +282,181 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     if (!mounted) return;
     final filtered = raw
         .map((item) => _SymbolTicker.fromJson(item))
-        .where((t) =>
-            t.exchange?.toLowerCase() == _selectedExchange.toLowerCase())
+        .where(
+          (t) => t.exchange?.toLowerCase() == _selectedExchange.toLowerCase(),
+        )
         .toList();
     setState(() {
       _tickers = filtered;
       _loadingTickers = false;
       _tickersError = filtered.isEmpty ? 'No trading pairs available' : null;
     });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Strategy config helpers (dynamic parameters + requirements)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Config for [type], or null when unknown / not yet loaded.
+  StrategyConfigInfo? _configForType(String type) {
+    for (final c in _strategyTypes) {
+      if (c.type == type) return c;
+    }
+    return null;
+  }
+
+  /// Config for the currently selected strategy type.
+  StrategyConfigInfo? get _currentConfig {
+    final type = _selectedType;
+    if (type == null || type.isEmpty) return null;
+    return _configForType(type);
+  }
+
+  /// Auto-populate initial-data / subscription defaults required by the
+  /// selected strategy type (mirrors the web forms' requirements effect):
+  /// only fills values that are not already configured.
+  void _applyRequirements() {
+    final config = _currentConfig;
+    if (config == null) return;
+
+    final idReq = config.initialDataRequirements;
+    if (idReq != null) {
+      if (idReq.klines != null &&
+          _klineEntries.isEmpty &&
+          idReq.klines!.defaultConfig.isNotEmpty) {
+        _klineEntries = idReq.klines!.defaultConfig.entries
+            .map((e) => {'interval': e.key, 'limit': e.value})
+            .toList();
+      }
+      if (idReq.fetchPositions?.required == true) _fetchPositions = true;
+      if (idReq.fetchOpenOrders?.required == true) _fetchOpenOrders = true;
+      if (idReq.fetchBalance?.required == true) _fetchBalance = true;
+      if (idReq.fetchAccountInfo?.required == true) _fetchAccountInfo = true;
+      if (idReq.fetchTicker?.required == true) _fetchTicker = true;
+      if (idReq.fetchOrderBook?.required == true) {
+        _fetchOrderBook = true;
+        _orderBookDepth = idReq.fetchOrderBook!.defaultDepth ?? 20;
+      }
+    }
+
+    final subReq = config.subscriptionRequirements;
+    final subKlines = subReq?.klines;
+    if (subKlines?.required == true &&
+        (!_subKlines || _subKlineIntervals.isEmpty)) {
+      _subKlines = true;
+      _subKlineIntervals
+        ..clear()
+        ..addAll(
+          subKlines!.fixedIntervals.isNotEmpty
+              ? subKlines.fixedIntervals
+              : subKlines.defaultIntervals.isNotEmpty
+              ? subKlines.defaultIntervals
+              : ['1m'],
+        );
+    }
+  }
+
+  /// Parameter definitions visible for the current type (excludes the
+  /// `subscription` key and applies `showIf` conditional visibility).
+  List<ParameterDefinition> _visibleParameterDefinitions() {
+    final config = _currentConfig;
+    if (config == null) return const [];
+    return config.parameterDefinitions.where((def) {
+      if (def.name == 'subscription') return false;
+      if (def.showIf != null && !def.showIf!.matches(_parameterValues)) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  /// Called by the dynamic form whenever a parameter value changes.
+  void _onFormParametersChange(Map<String, dynamic> values) {
+    setState(() => _parameterValues = values);
+    // Keep the JSON editor in sync so both modes share the same state.
+    // Cleared fields (null) are dropped so the server falls back to defaults.
+    final cleaned = <String, dynamic>{};
+    values.forEach((k, v) {
+      if (v != null) cleaned[k] = v;
+    });
+    _parametersController.text = const JsonEncoder.withIndent(
+      '  ',
+    ).convert(cleaned);
+  }
+
+  void _toggleParameterMode() {
+    setState(() {
+      if (_useFormMode) {
+        // Form → JSON: the controller is already in sync with the form values.
+        _useFormMode = false;
+        _validateParameters();
+      } else {
+        // JSON → Form: re-merge the (possibly edited) JSON with type defaults,
+        // then rebuild the form from the merged values (same as the web).
+        Map<String, dynamic> parsed = {};
+        final raw = _parametersController.text.trim();
+        if (raw.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map) parsed = Map<String, dynamic>.from(decoded);
+          } catch (_) {}
+        }
+        _parameterValues = {...?_currentConfig?.defaultParameters, ...parsed};
+        _parametersError = null;
+        _useFormMode = true;
+        _formVersion++;
+      }
+    });
+  }
+
+  /// Validate the dynamic form values (min/max ranges, required fields).
+  bool _validateFormParameters() {
+    for (final def in _visibleParameterDefinitions()) {
+      final value = _parameterValues[def.name] ?? def.defaultValue;
+      if (def.isNumber || def.isRange) {
+        if (value is! num) {
+          if (def.required) {
+            _showStepError('${def.label} is required');
+            return false;
+          }
+          continue;
+        }
+        final v = value.toDouble();
+        if (def.min != null && v < def.min!) {
+          _showStepError('${def.label} must be at least ${_fmtNum(def.min!)}');
+          return false;
+        }
+        if (def.max != null && v > def.max!) {
+          _showStepError('${def.label} must be at most ${_fmtNum(def.max!)}');
+          return false;
+        }
+      } else if (def.required) {
+        if (value == null || (value is String && value.isEmpty)) {
+          _showStepError('${def.label} is required');
+          return false;
+        }
+      }
+      if (def.isString &&
+          def.validationPattern != null &&
+          value is String &&
+          value.isNotEmpty) {
+        try {
+          if (!RegExp(def.validationPattern!).hasMatch(value)) {
+            _showStepError('${def.label} has an invalid format');
+            return false;
+          }
+        } catch (_) {
+          // Invalid regex in the definition — ignore pattern validation.
+        }
+      }
+    }
+    return true;
+  }
+
+  void _showStepError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -326,8 +521,11 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     }
     try {
       final parsed = jsonDecode(raw);
-      setState(() =>
-          _parametersError = parsed is! Map ? 'Parameters must be a JSON object' : null);
+      setState(
+        () => _parametersError = parsed is! Map
+            ? 'Parameters must be a JSON object'
+            : null,
+      );
     } catch (_) {
       setState(() => _parametersError = 'Invalid JSON format');
     }
@@ -358,6 +556,10 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
         }
         return _nameError == null && _symbolError == null;
       case 1:
+        if (_useFormMode &&
+            (_currentConfig?.parameterDefinitions.isNotEmpty ?? false)) {
+          return _validateFormParameters();
+        }
         _validateParameters();
         return _parametersError == null;
       default:
@@ -401,11 +603,26 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       }
       cfg['klines'] = klines;
     }
-    if (_fetchPositions) { cfg['fetchPositions'] = true; hasAny = true; }
-    if (_fetchOpenOrders) { cfg['fetchOpenOrders'] = true; hasAny = true; }
-    if (_fetchBalance) { cfg['fetchBalance'] = true; hasAny = true; }
-    if (_fetchAccountInfo) { cfg['fetchAccountInfo'] = true; hasAny = true; }
-    if (_fetchTicker) { cfg['fetchTicker'] = true; hasAny = true; }
+    if (_fetchPositions) {
+      cfg['fetchPositions'] = true;
+      hasAny = true;
+    }
+    if (_fetchOpenOrders) {
+      cfg['fetchOpenOrders'] = true;
+      hasAny = true;
+    }
+    if (_fetchBalance) {
+      cfg['fetchBalance'] = true;
+      hasAny = true;
+    }
+    if (_fetchAccountInfo) {
+      cfg['fetchAccountInfo'] = true;
+      hasAny = true;
+    }
+    if (_fetchTicker) {
+      cfg['fetchTicker'] = true;
+      hasAny = true;
+    }
     if (_fetchOrderBook) {
       cfg['fetchOrderBook'] = {'enabled': true, 'depth': _orderBookDepth};
       hasAny = true;
@@ -422,14 +639,23 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     final Map<String, dynamic> cfg = {};
     bool hasAny = false;
 
-    if (_subTicker) { cfg['ticker'] = true; hasAny = true; }
+    if (_subTicker) {
+      cfg['ticker'] = true;
+      hasAny = true;
+    }
     if (_subOrderBook) {
       cfg['orderbook'] = {'enabled': true, 'depth': _subOrderBookDepth};
       hasAny = true;
     }
-    if (_subTrades) { cfg['trades'] = true; hasAny = true; }
+    if (_subTrades) {
+      cfg['trades'] = true;
+      hasAny = true;
+    }
     if (_subKlines && _subKlineIntervals.isNotEmpty) {
-      cfg['klines'] = {'enabled': true, 'intervals': List<String>.from(_subKlineIntervals)};
+      cfg['klines'] = {
+        'enabled': true,
+        'intervals': List<String>.from(_subKlineIntervals),
+      };
       hasAny = true;
     }
     if (hasAny) cfg['method'] = _subMethod;
@@ -494,9 +720,11 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(widget.isEditing
-                ? 'Failed to update strategy'
-                : 'Failed to create strategy'),
+            content: Text(
+              widget.isEditing
+                  ? 'Failed to update strategy'
+                  : 'Failed to create strategy',
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -506,7 +734,9 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(widget.isEditing ? 'Strategy updated' : 'Strategy created'),
+          content: Text(
+            widget.isEditing ? 'Strategy updated' : 'Strategy created',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -514,10 +744,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
       setState(() => _isSubmitting = false);
     }
@@ -529,16 +756,20 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
 
   void _handleTypeChange(String? value) {
     if (value == null) return;
-    final match = _strategyTypes.firstWhere(
-      (item) => item.type == value,
-      orElse: () => const _StrategyTypeOption(type: '', name: ''),
-    );
+    final match = _configForType(value);
     setState(() {
       _selectedType = value;
-      if (!widget.isEditing) {
-        _parametersController.text = const JsonEncoder.withIndent('  ')
-            .convert(match.defaultParameters ?? {});
-      }
+      // Match the web UI: switching type reloads that type's default
+      // parameters and switches back to the dynamic form mode.
+      _parameterValues = Map<String, dynamic>.from(
+        match?.defaultParameters ?? const <String, dynamic>{},
+      );
+      _parametersController.text = const JsonEncoder.withIndent(
+        '  ',
+      ).convert(match?.defaultParameters ?? const <String, dynamic>{});
+      _useFormMode = true;
+      _formVersion++;
+      _applyRequirements();
     });
   }
 
@@ -622,7 +853,9 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
         color: isDark ? Colors.grey[900] : Colors.white,
         border: Border(
           top: BorderSide(
-            color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
+            color: isDark
+                ? Colors.grey[850]!
+                : Colors.grey.withValues(alpha: 0.12),
           ),
         ),
       ),
@@ -642,17 +875,21 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
               onPressed: _isSubmitting
                   ? null
                   : isLastStep
-                      ? _handleSubmit
-                      : _nextStep,
+                  ? _handleSubmit
+                  : _nextStep,
               child: _isSubmitting
                   ? const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(isLastStep
-                      ? (widget.isEditing ? 'Save Changes' : 'Create Strategy')
-                      : 'Next'),
+                  : Text(
+                      isLastStep
+                          ? (widget.isEditing
+                                ? 'Save Changes'
+                                : 'Create Strategy')
+                          : 'Next',
+                    ),
             ),
           ),
         ],
@@ -665,10 +902,13 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildStep0BasicInfo() {
-    final symbolHint = SupportedExchanges.getSymbolFormatHint(_selectedExchange);
+    final symbolHint = SupportedExchanges.getSymbolFormatHint(
+      _selectedExchange,
+    );
     final selectedType = _strategyTypes.firstWhere(
       (t) => t.type == _selectedType,
-      orElse: () => const _StrategyTypeOption(type: '', name: ''),
+      orElse: () =>
+          const StrategyConfigInfo(type: '', name: '', description: ''),
     );
 
     return SingleChildScrollView(
@@ -715,16 +955,15 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
                   onChanged: _handleTypeChange,
                   placeholder: 'Select strategy type',
                 ),
-          if (selectedType.description != null && selectedType.description!.isNotEmpty) ...[
+          if (selectedType.description.isNotEmpty) ...[
             const SizedBox(height: 6),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
-                selectedType.description!,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: Theme.of(context).hintColor),
+                selectedType.description,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                ),
               ),
             ),
           ],
@@ -781,6 +1020,48 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildStep1Parameters() {
+    final config = _currentConfig;
+    final hasDefinitions = config?.parameterDefinitions.isNotEmpty ?? false;
+
+    Widget jsonEditor() => TextField(
+      controller: _parametersController,
+      maxLines: 16,
+      decoration: _inputDecoration(
+        context,
+        hintText: '{\n  "leverage": 10,\n  "orderAmount": 100\n}',
+        errorText: _parametersError,
+      ),
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+      onChanged: (_) => _scheduleParametersValidation(),
+    );
+
+    // No parameter definitions available → raw JSON only (legacy behaviour).
+    if (!hasDefinitions) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _StepHeader(
+              step: 2,
+              title: 'Strategy Parameters',
+              subtitle: 'Configure parameters for the selected strategy type',
+            ),
+            const SizedBox(height: 16),
+            _InfoBanner(
+              text:
+                  'Defaults are automatically loaded from the selected strategy '
+                  'type. Edit values as JSON below.',
+            ),
+            const SizedBox(height: 12),
+            jsonEditor(),
+            const SizedBox(height: 24),
+          ],
+        ),
+      );
+    }
+
+    // Dynamic form mode / JSON advanced mode — same interaction as the web.
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
@@ -792,22 +1073,57 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
             subtitle: 'Configure parameters for the selected strategy type',
           ),
           const SizedBox(height: 16),
-          _InfoBanner(
-            text: 'Defaults are automatically loaded from the selected strategy type. '
-                'Edit values as JSON below.',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Parameters',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const Text(' *', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _useFormMode
+                          ? 'Fill in the dynamic form for this strategy type'
+                          : 'Edit raw JSON parameters',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _toggleParameterMode,
+                icon: Icon(
+                  _useFormMode ? Icons.data_object : Icons.edit_note,
+                  size: 18,
+                ),
+                label: Text(_useFormMode ? 'JSON' : 'Form'),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _parametersController,
-            maxLines: 16,
-            decoration: _inputDecoration(
-              context,
-              hintText: '{\n  "leverage": 10,\n  "orderAmount": 100\n}',
-              errorText: _parametersError,
-            ),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-            onChanged: (_) => _scheduleParametersValidation(),
-          ),
+          const SizedBox(height: 4),
+          if (_useFormMode)
+            _DynamicParameterForm(
+              key: ValueKey('param-form-$_formVersion'),
+              config: config!,
+              values: _parameterValues,
+              onChanged: _onFormParametersChange,
+            )
+          else ...[
+            const SizedBox(height: 8),
+            jsonEditor(),
+          ],
           const SizedBox(height: 24),
         ],
       ),
@@ -821,8 +1137,29 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   Widget _buildStep2InitialData() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDark ? Colors.grey[900] : Colors.white;
-    final borderColor =
-        isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12);
+    final borderColor = isDark
+        ? Colors.grey[850]!
+        : Colors.grey.withValues(alpha: 0.12);
+
+    final req = _currentConfig?.initialDataRequirements;
+    final klineReq = req?.klines;
+
+    // Section visibility — mirrors the web form: when a strategy declares
+    // requirements, only the fields it declares are shown.
+    final showKlines = req == null || klineReq != null;
+    final showAccount =
+        req == null ||
+        req.fetchPositions != null ||
+        req.fetchOpenOrders != null ||
+        req.fetchBalance != null ||
+        req.fetchAccountInfo != null;
+    final showMarket =
+        req == null || req.fetchTicker != null || req.fetchOrderBook != null;
+
+    // A single kline entry is enforced when the strategy does not support
+    // multiple intervals.
+    final canAddKline =
+        klineReq?.allowMultipleIntervals != false || _klineEntries.isEmpty;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -832,198 +1169,335 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
           _StepHeader(
             step: 3,
             title: 'Initial Data Config',
-            subtitle: 'Pre-load historical data and account state when strategy starts',
+            subtitle:
+                'Pre-load historical data and account state when strategy starts',
           ),
           const SizedBox(height: 16),
 
-          // ── Kline Data ──
-          _SectionCard(
-            title: 'Historical Kline Data',
-            icon: Icons.candlestick_chart,
-            trailing: TextButton.icon(
-              onPressed: () => setState(() {
-                _klineEntries.add({'interval': '15m', 'limit': 20});
-              }),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Add'),
+          if (req != null) ...[
+            _InfoBanner(
+              text:
+                  'This strategy has specific initial data requirements. '
+                  'Required fields are marked with *',
             ),
-            child: _klineEntries.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(
-                      'No kline data configured. Click "Add" to provide historical price data.',
-                      style: TextStyle(
-                        fontSize: 13,
+            const SizedBox(height: 12),
+          ],
+
+          // ── Kline Data ──
+          if (showKlines)
+            _SectionCard(
+              title: 'Historical Kline Data',
+              icon: Icons.candlestick_chart,
+              trailing: TextButton.icon(
+                onPressed: canAddKline
+                    ? () => setState(() {
+                        _klineEntries.add({'interval': '15m', 'limit': 20});
+                      })
+                    : null,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add'),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (klineReq?.description?.isNotEmpty == true) ...[
+                    Text(
+                      klineReq!.description!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).hintColor,
                       ),
                     ),
-                  )
-                : Column(
-                    children: List.generate(_klineEntries.length, (i) {
-                      final entry = _klineEntries[i];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: cardColor,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: borderColor),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_klineEntries.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        klineReq?.required == true
+                            ? 'Historical kline data is required for this '
+                                  'strategy. Required defaults are pre-filled.'
+                            : 'No kline data configured. Click "Add" to provide '
+                                  'historical price data.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).hintColor,
                         ),
-                        child: Row(
-                          children: [
-                            // Interval selector
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Interval',
+                      ),
+                    )
+                  else
+                    Column(
+                      children: List.generate(_klineEntries.length, (i) {
+                        final entry = _klineEntries[i];
+                        final intervalsEditable =
+                            klineReq?.intervalsEditable != false;
+                        final limitsEditable =
+                            klineReq?.limitsEditable != false;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: cardColor,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Row(
+                            children: [
+                              // Interval selector
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Interval',
                                       style: Theme.of(context)
                                           .textTheme
                                           .labelSmall
-                                          ?.copyWith(color: Theme.of(context).hintColor)),
-                                  const SizedBox(height: 4),
-                                  _IntervalDropdown(
-                                    value: entry['interval'] as String,
-                                    onChanged: (v) => setState(
-                                      () => _klineEntries[i]['interval'] = v,
+                                          ?.copyWith(
+                                            color: Theme.of(context).hintColor,
+                                          ),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 4),
+                                    _IntervalDropdown(
+                                      value: entry['interval'] as String,
+                                      enabled: intervalsEditable,
+                                      onChanged: (v) => setState(
+                                        () => _klineEntries[i]['interval'] = v,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            // Limit input
-                            SizedBox(
-                              width: 80,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Bars',
+                              const SizedBox(width: 10),
+                              // Limit input
+                              SizedBox(
+                                width: 100,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Bars',
                                       style: Theme.of(context)
                                           .textTheme
                                           .labelSmall
-                                          ?.copyWith(color: Theme.of(context).hintColor)),
-                                  const SizedBox(height: 4),
-                                  TextFormField(
-                                    initialValue: (entry['limit'] as int).toString(),
-                                    keyboardType: TextInputType.number,
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 10,
-                                      ),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: borderColor),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: borderColor),
-                                      ),
+                                          ?.copyWith(
+                                            color: Theme.of(context).hintColor,
+                                          ),
                                     ),
-                                    onChanged: (v) {
-                                      final parsed = int.tryParse(v);
-                                      if (parsed != null && parsed > 0) {
-                                        setState(() => _klineEntries[i]['limit'] = parsed);
-                                      }
-                                    },
-                                  ),
-                                ],
+                                    const SizedBox(height: 4),
+                                    if (limitsEditable)
+                                      TextFormField(
+                                        initialValue: (entry['limit'] as int)
+                                            .toString(),
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 10,
+                                              ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            borderSide: BorderSide(
+                                              color: borderColor,
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            borderSide: BorderSide(
+                                              color: borderColor,
+                                            ),
+                                          ),
+                                        ),
+                                        onChanged: (v) {
+                                          final parsed = int.tryParse(v);
+                                          if (parsed != null && parsed > 0) {
+                                            setState(
+                                              () => _klineEntries[i]['limit'] =
+                                                  parsed,
+                                            );
+                                          }
+                                        },
+                                      )
+                                    else
+                                      Container(
+                                        height: 40,
+                                        alignment: Alignment.centerLeft,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? Colors.grey[850]
+                                              : Colors.grey.withValues(
+                                                  alpha: 0.08,
+                                                ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${entry['limit']} bars (fixed)',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(
+                                                  context,
+                                                ).hintColor,
+                                              ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red),
-                              onPressed: () =>
-                                  setState(() => _klineEntries.removeAt(i)),
-                              tooltip: 'Remove',
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ),
-          ),
-          const SizedBox(height: 12),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                onPressed: klineReq?.required == true
+                                    ? null
+                                    : () => setState(
+                                        () => _klineEntries.removeAt(i),
+                                      ),
+                                tooltip: 'Remove',
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ),
+                ],
+              ),
+            ),
+          if (showKlines) const SizedBox(height: 12),
 
           // ── Account Data ──
-          _SectionCard(
-            title: 'Account Data',
-            icon: Icons.account_balance_wallet_outlined,
-            child: Column(
-              children: [
-                _ToggleRow(
-                  label: 'Position Info',
-                  description: 'Fetch current positions for the symbol',
-                  value: _fetchPositions,
-                  onChanged: (v) => setState(() => _fetchPositions = v),
-                ),
-                _ToggleRow(
-                  label: 'Open Orders',
-                  description: 'Fetch open orders for the current symbol',
-                  value: _fetchOpenOrders,
-                  onChanged: (v) => setState(() => _fetchOpenOrders = v),
-                ),
-                _ToggleRow(
-                  label: 'Account Balance',
-                  description: 'Fetch balance information for all assets',
-                  value: _fetchBalance,
-                  onChanged: (v) => setState(() => _fetchBalance = v),
-                ),
-                _ToggleRow(
-                  label: 'Account Details',
-                  description: 'Fetch complete account information',
-                  value: _fetchAccountInfo,
-                  onChanged: (v) => setState(() => _fetchAccountInfo = v),
-                  isLast: true,
-                ),
-              ],
+          if (showAccount)
+            _SectionCard(
+              title: 'Account Data',
+              icon: Icons.account_balance_wallet_outlined,
+              child: Column(
+                children: [
+                  if (req == null || req.fetchPositions != null)
+                    _ToggleRow(
+                      label: 'Position Info',
+                      requiredField: req?.fetchPositions?.required ?? false,
+                      description:
+                          req?.fetchPositions?.description ??
+                          'Fetch current positions for the symbol',
+                      value: _fetchPositions,
+                      enabled:
+                          !(req?.fetchPositions?.required ?? false) &&
+                          (req?.fetchPositions?.editable ?? true),
+                      onChanged: (v) => setState(() => _fetchPositions = v),
+                    ),
+                  if (req == null || req.fetchOpenOrders != null)
+                    _ToggleRow(
+                      label: 'Open Orders',
+                      requiredField: req?.fetchOpenOrders?.required ?? false,
+                      description:
+                          req?.fetchOpenOrders?.description ??
+                          'Fetch open orders for the current symbol',
+                      value: _fetchOpenOrders,
+                      enabled:
+                          !(req?.fetchOpenOrders?.required ?? false) &&
+                          (req?.fetchOpenOrders?.editable ?? true),
+                      onChanged: (v) => setState(() => _fetchOpenOrders = v),
+                    ),
+                  if (req == null || req.fetchBalance != null)
+                    _ToggleRow(
+                      label: 'Account Balance',
+                      requiredField: req?.fetchBalance?.required ?? false,
+                      description:
+                          req?.fetchBalance?.description ??
+                          'Fetch balance information for all assets',
+                      value: _fetchBalance,
+                      enabled:
+                          !(req?.fetchBalance?.required ?? false) &&
+                          (req?.fetchBalance?.editable ?? true),
+                      onChanged: (v) => setState(() => _fetchBalance = v),
+                    ),
+                  if (req == null || req.fetchAccountInfo != null)
+                    _ToggleRow(
+                      label: 'Account Details',
+                      requiredField: req?.fetchAccountInfo?.required ?? false,
+                      description:
+                          req?.fetchAccountInfo?.description ??
+                          'Fetch complete account information',
+                      value: _fetchAccountInfo,
+                      enabled:
+                          !(req?.fetchAccountInfo?.required ?? false) &&
+                          (req?.fetchAccountInfo?.editable ?? true),
+                      onChanged: (v) => setState(() => _fetchAccountInfo = v),
+                      isLast: true,
+                    ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+          if (showAccount) const SizedBox(height: 12),
 
           // ── Market Data Snapshot ──
-          _SectionCard(
-            title: 'Market Data Snapshot',
-            icon: Icons.bar_chart,
-            child: Column(
-              children: [
-                _ToggleRow(
-                  label: 'Ticker Data',
-                  description: 'Fetch latest price and 24h statistics',
-                  value: _fetchTicker,
-                  onChanged: (v) => setState(() => _fetchTicker = v),
-                ),
-                _ToggleRow(
-                  label: 'Order Book',
-                  description: 'Fetch order book depth data',
-                  value: _fetchOrderBook,
-                  onChanged: (v) => setState(() => _fetchOrderBook = v),
-                  isLast: !_fetchOrderBook,
-                ),
-                if (_fetchOrderBook) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Text(
-                        'Depth:',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Theme.of(context).hintColor),
-                      ),
-                      const SizedBox(width: 8),
-                      _DepthSelector(
-                        value: _orderBookDepth,
-                        onChanged: (v) => setState(() => _orderBookDepth = v),
-                      ),
-                    ],
-                  ),
+          if (showMarket)
+            _SectionCard(
+              title: 'Market Data Snapshot',
+              icon: Icons.bar_chart,
+              child: Column(
+                children: [
+                  if (req == null || req.fetchTicker != null)
+                    _ToggleRow(
+                      label: 'Ticker Data',
+                      requiredField: req?.fetchTicker?.required ?? false,
+                      description:
+                          req?.fetchTicker?.description ??
+                          'Fetch latest price and 24h statistics',
+                      value: _fetchTicker,
+                      enabled:
+                          !(req?.fetchTicker?.required ?? false) &&
+                          (req?.fetchTicker?.editable ?? true),
+                      onChanged: (v) => setState(() => _fetchTicker = v),
+                    ),
+                  if (req == null || req.fetchOrderBook != null)
+                    _ToggleRow(
+                      label: 'Order Book',
+                      requiredField: req?.fetchOrderBook?.required ?? false,
+                      description:
+                          req?.fetchOrderBook?.description ??
+                          'Fetch order book depth data',
+                      value: _fetchOrderBook,
+                      enabled:
+                          !(req?.fetchOrderBook?.required ?? false) &&
+                          (req?.fetchOrderBook?.editable ?? true),
+                      onChanged: (v) => setState(() => _fetchOrderBook = v),
+                      isLast: !_fetchOrderBook,
+                    ),
+                  if (_fetchOrderBook) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          'Depth:',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Theme.of(context).hintColor),
+                        ),
+                        const SizedBox(width: 8),
+                        _DepthSelector(
+                          value: _orderBookDepth,
+                          enabled: req?.fetchOrderBook?.depthEditable != false,
+                          onChanged: (v) => setState(() => _orderBookDepth = v),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -1035,6 +1509,21 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildStep3Subscriptions() {
+    final req = _currentConfig?.subscriptionRequirements;
+    final klineReq = req?.klines;
+
+    // Section visibility — mirrors the web form: when a strategy declares
+    // requirements, only the data types it declares are shown.
+    final showTicker = req == null || req.ticker != null;
+    final showOrderBook = req == null || req.orderbook != null;
+    final showTrades = req == null || req.trades != null;
+    final showKlines = req == null || klineReq != null;
+    final hasDataTypes =
+        showTicker || showOrderBook || showTrades || showKlines;
+
+    // Fixed intervals required by the strategy (not user-editable).
+    final fixedIntervals = klineReq?.fixedIntervals ?? const <String>[];
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
@@ -1047,96 +1536,199 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
           ),
           const SizedBox(height: 16),
 
-          // ── Data Types ──
-          _SectionCard(
-            title: 'Data Types',
-            icon: Icons.stream,
-            child: Column(
-              children: [
-                _ToggleRow(
-                  label: 'Ticker Data',
-                  description: 'Real-time price updates',
-                  value: _subTicker,
-                  onChanged: (v) => setState(() => _subTicker = v),
-                ),
-                _ToggleRow(
-                  label: 'Order Book',
-                  description: 'Real-time order book depth updates',
-                  value: _subOrderBook,
-                  onChanged: (v) => setState(() => _subOrderBook = v),
-                  isLast: !_subOrderBook,
-                ),
-                if (_subOrderBook) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Text(
-                        'Depth:',
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.copyWith(color: Theme.of(context).hintColor),
-                      ),
-                      const SizedBox(width: 8),
-                      _DepthSelector(
-                        value: _subOrderBookDepth,
-                        onChanged: (v) => setState(() => _subOrderBookDepth = v),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                _ToggleRow(
-                  label: 'Trades',
-                  description: 'Real-time trade stream',
-                  value: _subTrades,
-                  onChanged: (v) => setState(() => _subTrades = v),
-                ),
-                _ToggleRow(
-                  label: 'Kline Data',
-                  description: 'Candlestick data stream',
-                  value: _subKlines,
-                  onChanged: (v) => setState(() {
-                    _subKlines = v;
-                    if (!v) _subKlineIntervals.clear();
-                  }),
-                  isLast: !_subKlines,
-                ),
-                if (_subKlines) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Select Intervals',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(color: Theme.of(context).hintColor),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: _kKlineIntervals.map((interval) {
-                      final selected = _subKlineIntervals.contains(interval['value']);
-                      return FilterChip(
-                        label: Text(interval['label']!),
-                        selected: selected,
-                        onSelected: (checked) => setState(() {
-                          if (checked) {
-                            _subKlineIntervals.add(interval['value']!);
-                          } else {
-                            _subKlineIntervals.remove(interval['value']);
-                          }
-                        }),
-                        visualDensity: VisualDensity.compact,
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ],
+          if (req != null) ...[
+            _InfoBanner(
+              text:
+                  'This strategy has specific subscription requirements. '
+                  'Required subscriptions are marked with *',
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
+
+          // ── Data Types ──
+          if (hasDataTypes)
+            _SectionCard(
+              title: 'Data Types',
+              icon: Icons.stream,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (showTicker)
+                    _ToggleRow(
+                      label: 'Ticker Data',
+                      requiredField: req?.ticker?.required ?? false,
+                      description:
+                          req?.ticker?.description ?? 'Real-time price updates',
+                      value: _subTicker,
+                      enabled:
+                          !(req?.ticker?.required ?? false) &&
+                          (req?.ticker?.editable ?? true),
+                      onChanged: (v) => setState(() => _subTicker = v),
+                      isLast: !(showOrderBook || showTrades || showKlines),
+                    ),
+                  if (showOrderBook)
+                    _ToggleRow(
+                      label: 'Order Book',
+                      requiredField: req?.orderbook?.required ?? false,
+                      description:
+                          req?.orderbook?.description ??
+                          'Real-time order book depth updates',
+                      value: _subOrderBook,
+                      enabled:
+                          !(req?.orderbook?.required ?? false) &&
+                          (req?.orderbook?.editable ?? true),
+                      onChanged: (v) => setState(() => _subOrderBook = v),
+                      isLast: !_subOrderBook && !(showTrades || showKlines),
+                    ),
+                  if (showOrderBook && _subOrderBook) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Text(
+                          'Depth:',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Theme.of(context).hintColor),
+                        ),
+                        const SizedBox(width: 8),
+                        _DepthSelector(
+                          value: _subOrderBookDepth,
+                          enabled: req?.orderbook?.depthEditable != false,
+                          onChanged: (v) =>
+                              setState(() => _subOrderBookDepth = v),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (showTrades)
+                    _ToggleRow(
+                      label: 'Trades',
+                      requiredField: req?.trades?.required ?? false,
+                      description:
+                          req?.trades?.description ?? 'Real-time trade stream',
+                      value: _subTrades,
+                      enabled:
+                          !(req?.trades?.required ?? false) &&
+                          (req?.trades?.editable ?? true),
+                      onChanged: (v) => setState(() => _subTrades = v),
+                      isLast: !showKlines,
+                    ),
+                  if (showKlines)
+                    _ToggleRow(
+                      label: 'Kline Data',
+                      requiredField: klineReq?.required ?? false,
+                      description:
+                          klineReq?.description ?? 'Candlestick data stream',
+                      value: _subKlines,
+                      enabled: !(klineReq?.required ?? false),
+                      onChanged: (v) => setState(() {
+                        _subKlines = v;
+                        if (v) {
+                          if (_subKlineIntervals.isEmpty) {
+                            _subKlineIntervals
+                              ..clear()
+                              ..addAll(
+                                fixedIntervals.isNotEmpty
+                                    ? fixedIntervals
+                                    : (klineReq?.defaultIntervals.isNotEmpty ==
+                                              true
+                                          ? klineReq!.defaultIntervals
+                                          : ['1m']),
+                              );
+                          }
+                        } else {
+                          _subKlineIntervals.clear();
+                        }
+                      }),
+                      isLast: !_subKlines,
+                    ),
+                  if (_subKlines) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      fixedIntervals.isNotEmpty
+                          ? 'Fixed Intervals (required by strategy)'
+                          : 'Select Intervals'
+                                '${klineReq?.allowMultipleIntervals == false ? ' (select one)' : ''}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    if (fixedIntervals.isNotEmpty)
+                      // Fixed intervals — display-only chips
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: fixedIntervals
+                            .map(
+                              (interval) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _klineIntervalLabel(interval),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: _kKlineIntervals.map((interval) {
+                          final selected = _subKlineIntervals.contains(
+                            interval['value'],
+                          );
+                          return FilterChip(
+                            label: Text(interval['label']!),
+                            selected: selected,
+                            onSelected: klineReq?.intervalsEditable == false
+                                ? null
+                                : (checked) => setState(() {
+                                    if (klineReq?.allowMultipleIntervals ==
+                                        false) {
+                                      // Single choice — replace selection
+                                      _subKlineIntervals.clear();
+                                      if (checked) {
+                                        _subKlineIntervals.add(
+                                          interval['value']!,
+                                        );
+                                      }
+                                    } else if (checked) {
+                                      _subKlineIntervals.add(
+                                        interval['value']!,
+                                      );
+                                    } else {
+                                      _subKlineIntervals.remove(
+                                        interval['value'],
+                                      );
+                                    }
+                                  }),
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
+                      ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ),
+            ),
+          if (hasDataTypes) const SizedBox(height: 12),
 
           // ── Data Method ──
           _SectionCard(
@@ -1147,10 +1739,9 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
               children: [
                 Text(
                   'Choose how to receive real-time data:',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).hintColor),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).hintColor,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 _MethodSelector(
@@ -1166,48 +1757,17 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     );
   }
 
+  /// Human-readable label for a kline interval value ("15m" → "15 min").
+  String _klineIntervalLabel(String value) {
+    for (final interval in _kKlineIntervals) {
+      if (interval['value'] == value) return interval['label']!;
+    }
+    return value;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Shared input decoration
   // ─────────────────────────────────────────────────────────────────────────
-
-  InputDecoration _inputDecoration(
-    BuildContext context, {
-    String? labelText,
-    String? hintText,
-    String? errorText,
-    Widget? suffixIcon,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor =
-        isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.15);
-    final fillColor = isDark ? Colors.grey[900] : Colors.white;
-
-    return InputDecoration(
-      labelText: labelText,
-      hintText: hintText,
-      errorText: errorText,
-      suffixIcon: suffixIcon,
-      filled: true,
-      fillColor: fillColor,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: borderColor),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: borderColor),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.red),
-      ),
-    );
-  }
 
   Widget _loadingPlaceholder(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -1237,6 +1797,50 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
 // Step Indicator
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Shared input decoration (top-level so both the screen and the dynamic
+// parameter form can use it).
+InputDecoration _inputDecoration(
+  BuildContext context, {
+  String? labelText,
+  String? hintText,
+  String? errorText,
+  String? helperText,
+  Widget? suffixIcon,
+}) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final borderColor = isDark
+      ? Colors.grey[850]!
+      : Colors.grey.withValues(alpha: 0.15);
+  final fillColor = isDark ? Colors.grey[900] : Colors.white;
+
+  return InputDecoration(
+    labelText: labelText,
+    hintText: hintText,
+    errorText: errorText,
+    helperText: helperText,
+    suffixIcon: suffixIcon,
+    filled: true,
+    fillColor: fillColor,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: borderColor),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: borderColor),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: Theme.of(context).colorScheme.primary),
+    ),
+    errorBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Colors.red),
+    ),
+  );
+}
+
 class _StepIndicator extends StatelessWidget {
   final int currentStep;
   final int totalSteps;
@@ -1254,7 +1858,9 @@ class _StepIndicator extends StatelessWidget {
         color: isDark ? Colors.grey[900] : Colors.white,
         border: Border(
           bottom: BorderSide(
-            color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.1),
+            color: isDark
+                ? Colors.grey[850]!
+                : Colors.grey.withValues(alpha: 0.1),
           ),
         ),
       ),
@@ -1276,8 +1882,8 @@ class _StepIndicator extends StatelessWidget {
                           color: isCompleted || isActive
                               ? primary
                               : isDark
-                                  ? Colors.grey[800]
-                                  : Colors.grey.withValues(alpha: 0.2),
+                              ? Colors.grey[800]
+                              : Colors.grey.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -1292,9 +1898,9 @@ class _StepIndicator extends StatelessWidget {
           Text(
             'Step ${currentStep + 1} of $totalSteps  ·  ${_kStepTitles[currentStep]}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).hintColor,
-                  fontWeight: FontWeight.w500,
-                ),
+              color: Theme.of(context).hintColor,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -1324,16 +1930,16 @@ class _StepHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
         Text(
           subtitle,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).hintColor,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
         ),
       ],
     );
@@ -1374,7 +1980,9 @@ class _SectionCard extends StatelessWidget {
           ),
         ],
         border: Border.all(
-          color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.12),
+          color: isDark
+              ? Colors.grey[850]!
+              : Colors.grey.withValues(alpha: 0.12),
         ),
       ),
       child: Column(
@@ -1386,19 +1994,25 @@ class _SectionCard extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.1),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
+                child: Icon(
+                  icon,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               if (trailing != null) trailing!,
@@ -1423,12 +2037,21 @@ class _ToggleRow extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final bool isLast;
 
+  /// Marks the row as required by the strategy — adds a "*" and forces
+  /// the switch on (mirrors the web form's required fields).
+  final bool requiredField;
+
+  /// When false the switch is locked (required or non-editable fields).
+  final bool enabled;
+
   const _ToggleRow({
     required this.label,
     required this.description,
     required this.value,
     required this.onChanged,
     this.isLast = false,
+    this.requiredField = false,
+    this.enabled = true,
   });
 
   @override
@@ -1441,20 +2064,37 @@ class _ToggleRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  Text.rich(
+                    TextSpan(
+                      text: label,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                      children: [
+                        if (requiredField)
+                          const TextSpan(
+                            text: ' *',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 2),
                   Text(
                     description,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Theme.of(context).hintColor),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).hintColor,
+                    ),
                   ),
                 ],
               ),
             ),
-            Switch(value: value, onChanged: onChanged),
+            Switch(value: value, onChanged: enabled ? onChanged : null),
           ],
         ),
         if (!isLast) ...[
@@ -1478,22 +2118,36 @@ class _DepthSelector extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
-  const _DepthSelector({required this.value, required this.onChanged});
+  /// When false the selector is locked (depth fixed by the strategy).
+  final bool enabled;
+
+  const _DepthSelector({
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
 
   static const List<int> _depths = [5, 10, 20, 50, 100];
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // A strategy may require a depth outside the standard list — include
+    // the current value so the dropdown can still display it.
+    final values = _depths.contains(value) ? _depths : <int>[value, ..._depths];
     return DropdownButton<int>(
-      value: _depths.contains(value) ? value : 20,
+      value: value,
       isDense: true,
       underline: const SizedBox.shrink(),
       dropdownColor: isDark ? Colors.grey[900] : Colors.white,
-      items: _depths
+      items: values
           .map((d) => DropdownMenuItem(value: d, child: Text('$d levels')))
           .toList(),
-      onChanged: (v) { if (v != null) onChanged(v); },
+      onChanged: enabled
+          ? (v) {
+              if (v != null) onChanged(v);
+            }
+          : null,
     );
   }
 }
@@ -1565,8 +2219,8 @@ class _MethodOption extends StatelessWidget {
           color: selected
               ? primary.withValues(alpha: 0.1)
               : isDark
-                  ? Colors.grey[850]
-                  : Colors.grey.withValues(alpha: 0.06),
+              ? Colors.grey[850]
+              : Colors.grey.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: selected ? primary : Colors.transparent,
@@ -1575,22 +2229,29 @@ class _MethodOption extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: selected ? primary : Theme.of(context).hintColor),
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? primary : Theme.of(context).hintColor,
+            ),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: selected ? primary : null,
-                    )),
-                Text(description,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Theme.of(context).hintColor)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: selected ? primary : null,
+                  ),
+                ),
+                Text(
+                  description,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).hintColor,
+                  ),
+                ),
               ],
             ),
           ],
@@ -1608,7 +2269,14 @@ class _IntervalDropdown extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
 
-  const _IntervalDropdown({required this.value, required this.onChanged});
+  /// When false the dropdown is locked (intervals fixed by the strategy).
+  final bool enabled;
+
+  const _IntervalDropdown({
+    required this.value,
+    required this.onChanged,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1617,7 +2285,7 @@ class _IntervalDropdown extends StatelessWidget {
     final safeValue = allValues.contains(value) ? value : allValues.first;
 
     return DropdownButtonFormField<String>(
-      value: safeValue,
+      initialValue: safeValue,
       isDense: true,
       dropdownColor: isDark ? Colors.grey[900] : Colors.white,
       decoration: InputDecoration(
@@ -1626,20 +2294,31 @@ class _IntervalDropdown extends StatelessWidget {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(
-            color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.15),
+            color: isDark
+                ? Colors.grey[850]!
+                : Colors.grey.withValues(alpha: 0.15),
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(
-            color: isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.15),
+            color: isDark
+                ? Colors.grey[850]!
+                : Colors.grey.withValues(alpha: 0.15),
           ),
         ),
       ),
       items: _kKlineIntervals
-          .map((i) => DropdownMenuItem(value: i['value'], child: Text(i['label']!)))
+          .map(
+            (i) =>
+                DropdownMenuItem(value: i['value'], child: Text(i['label']!)),
+          )
           .toList(),
-      onChanged: (v) { if (v != null) onChanged(v); },
+      onChanged: enabled
+          ? (v) {
+              if (v != null) onChanged(v);
+            }
+          : null,
     );
   }
 }
@@ -1658,7 +2337,9 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        color: Theme.of(
+          context,
+        ).colorScheme.primaryContainer.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
@@ -1677,8 +2358,8 @@ class _InfoBanner extends StatelessWidget {
             child: Text(
               text,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
           ),
         ],
@@ -1688,34 +2369,540 @@ class _InfoBanner extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Strategy Type Option model
+// Dynamic parameter form — renders fields from ParameterDefinitions
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _StrategyTypeOption {
-  final String type;
-  final String name;
-  final String? description;
-  final String? category;
-  final Map<String, dynamic>? defaultParameters;
+/// Formats a number without a trailing ".0" for integral values (2.0 → "2").
+String _fmtNum(num v) => v % 1 == 0 ? v.toInt().toString() : v.toString();
 
-  const _StrategyTypeOption({
-    required this.type,
-    required this.name,
-    this.description,
-    this.category,
-    this.defaultParameters,
+/// Clamps [v] into the min/max range, snapping to [step] when defined.
+/// Integral values stay integral.
+num _normalizeNum(num v, {double? min, double? max, double? step}) {
+  var n = v;
+  if (min != null && n < min) n = min;
+  if (max != null && n > max) n = max;
+  if (step != null && step > 0) {
+    n = (n / step).round() * step;
+  }
+  return n % 1 == 0 ? n.toInt() : n.toDouble();
+}
+
+/// Renders strategy parameters from [ParameterDefinition]s — the mobile
+/// counterpart of the web app's `StrategyParameterFormDynamic`:
+/// grouped fields, number clamping on blur, enum dropdowns, range sliders,
+/// JSON object editors and `showIf` conditional visibility.
+class _DynamicParameterForm extends StatefulWidget {
+  final StrategyConfigInfo config;
+  final Map<String, dynamic> values;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+
+  const _DynamicParameterForm({
+    super.key,
+    required this.config,
+    required this.values,
+    required this.onChanged,
   });
 
-  factory _StrategyTypeOption.fromJson(Map<String, dynamic> json) {
-    final defaultParams = json['defaultParameters'];
-    return _StrategyTypeOption(
-      type: json['type'] as String? ?? '',
-      name: json['name'] as String? ?? json['type'] as String? ?? '',
-      description: json['description'] as String?,
-      category: json['category'] as String?,
-      defaultParameters: defaultParams is Map
-          ? Map<String, dynamic>.from(defaultParams)
-          : null,
+  @override
+  State<_DynamicParameterForm> createState() => _DynamicParameterFormState();
+}
+
+class _DynamicParameterFormState extends State<_DynamicParameterForm> {
+  final Map<String, TextEditingController> _controllers = {};
+  final Map<String, FocusNode> _focusNodes = {};
+  final Set<String> _blurAttached = {};
+
+  @override
+  void dispose() {
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    for (final node in _focusNodes.values) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  TextEditingController _controllerFor(ParameterDefinition def) {
+    return _controllers.putIfAbsent(def.name, () {
+      final initial = widget.values[def.name] ?? def.defaultValue;
+      String text;
+      if (initial == null) {
+        text = '';
+      } else if (initial is Map || initial is List) {
+        text = const JsonEncoder.withIndent('  ').convert(initial);
+      } else if (initial is num) {
+        text = _fmtNum(initial);
+      } else {
+        text = initial.toString();
+      }
+      return TextEditingController(text: text);
+    });
+  }
+
+  FocusNode _focusNodeFor(String name) =>
+      _focusNodes.putIfAbsent(name, FocusNode.new);
+
+  void _update(String name, Object? value) {
+    final next = Map<String, dynamic>.from(widget.values);
+    if (value == null) {
+      next.remove(name);
+    } else {
+      next[name] = value;
+    }
+    widget.onChanged(next);
+  }
+
+  bool _isVisible(ParameterDefinition def) =>
+      def.showIf == null || def.showIf!.matches(widget.values);
+
+  @override
+  Widget build(BuildContext context) {
+    final definitions =
+        widget.config.parameterDefinitions
+            .where((d) => d.name != 'subscription')
+            .toList()
+          ..sort((a, b) => (a.order ?? 999).compareTo(b.order ?? 999));
+
+    if (definitions.isEmpty) return const SizedBox.shrink();
+
+    // Preserve group declaration order (fields without a group come first).
+    final groups = <String?>[];
+    for (final def in definitions) {
+      if (!groups.contains(def.group)) groups.add(def.group);
+    }
+    final multiGroup = groups.length > 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.config.documentation?.overview?.isNotEmpty == true) ...[
+          _DocBox(
+            icon: Icons.info_outline,
+            title: 'Strategy Overview',
+            text: widget.config.documentation!.overview!,
+          ),
+          const SizedBox(height: 14),
+        ],
+        for (final group in groups) ...[
+          if (multiGroup || group != null)
+            Padding(
+              padding: EdgeInsets.only(
+                top: group == groups.first ? 12 : 18,
+                bottom: 10,
+              ),
+              child: Text(
+                group ?? 'General',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          for (final def in definitions.where(
+            (d) => d.group == group && _isVisible(d),
+          ))
+            _buildField(context, def),
+        ],
+        if (widget.config.documentation?.riskFactors.isNotEmpty == true) ...[
+          const SizedBox(height: 8),
+          _DocBox(
+            icon: Icons.warning_amber_rounded,
+            title: 'Risk Factors',
+            text: (widget.config.documentation!.riskFactors)
+                .map((r) => '• $r')
+                .join('\n'),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildField(BuildContext context, ParameterDefinition def) {
+    if (def.isBoolean) return _buildBooleanField(context, def);
+    if (def.isEnum) return _buildEnumField(context, def);
+    if (def.isRange) return _buildRangeField(context, def);
+    if (def.isNumber) return _buildNumberField(context, def);
+    if (def.isObject) return _buildObjectField(context, def);
+    return _buildStringField(context, def);
+  }
+
+  Widget _buildLabel(BuildContext context, ParameterDefinition def) {
+    final theme = Theme.of(context);
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          def.label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        if (def.required)
+          const Text(
+            ' *',
+            style: TextStyle(
+              color: Colors.red,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
+        if (def.unit?.isNotEmpty == true)
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
+              '(${def.unit})',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.hintColor,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDescription(BuildContext context, ParameterDefinition def) {
+    if (def.description.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        def.description,
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(color: Theme.of(context).hintColor),
+      ),
+    );
+  }
+
+  Widget _buildBooleanField(BuildContext context, ParameterDefinition def) {
+    final raw = widget.values[def.name];
+    final value = raw is bool ? raw : (def.defaultValue as bool? ?? false);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildLabel(context, def),
+                _buildDescription(context, def),
+              ],
+            ),
+          ),
+          Switch(value: value, onChanged: (v) => _update(def.name, v)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnumField(BuildContext context, ParameterDefinition def) {
+    final options = def.dropdownOptions;
+    if (options.isEmpty) return _buildStringField(context, def);
+
+    final current = widget.values[def.name]?.toString();
+    final fallback = def.defaultValue?.toString();
+    String? value;
+    if (current != null && options.contains(current)) {
+      value = current;
+    } else if (fallback != null && options.contains(fallback)) {
+      value = fallback;
+    } else if (options.isNotEmpty) {
+      value = options.first;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildLabel(context, def),
+          _buildDescription(context, def),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: value,
+            isDense: true,
+            items: options
+                .map(
+                  (o) => DropdownMenuItem(
+                    value: o,
+                    child: Text(_humanizeOption(o)),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) {
+              if (v != null) _update(def.name, v);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRangeField(BuildContext context, ParameterDefinition def) {
+    final double min = def.min ?? 0;
+    final double max = def.max ?? 100;
+    final double step = (def.step != null && def.step! > 0) ? def.step! : 1;
+    final raw = widget.values[def.name] ?? def.defaultValue ?? min;
+    final value = raw is num ? raw.toDouble().clamp(min, max).toDouble() : min;
+    final divisions = ((max - min) / step).round();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: _buildLabel(context, def)),
+              Text(
+                _fmtNum(value),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          _buildDescription(context, def),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(trackHeight: 3),
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions > 0 ? divisions : null,
+              label: _fmtNum(value),
+              onChanged: (v) => _update(
+                def.name,
+                _normalizeNum(v, min: min, max: max, step: step),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _fmtNum(min),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
+              Text(
+                _fmtNum(max),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNumberField(BuildContext context, ParameterDefinition def) {
+    final controller = _controllerFor(def);
+    final node = _focusNodeFor(def.name);
+    if (_blurAttached.add(def.name)) {
+      node.addListener(() {
+        if (!node.hasFocus) _onNumberBlur(def, controller);
+      });
+    }
+
+    final rangeHint = (def.min != null || def.max != null)
+        ? 'Range: ${def.min != null ? _fmtNum(def.min!) : '−∞'}'
+              ' – ${def.max != null ? _fmtNum(def.max!) : '∞'}'
+        : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildLabel(context, def),
+          _buildDescription(context, def),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: controller,
+            focusNode: node,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+            decoration: _inputDecoration(
+              context,
+              hintText: def.defaultValue is num
+                  ? _fmtNum((def.defaultValue as num).toDouble())
+                  : null,
+              helperText: rangeHint,
+            ),
+            onChanged: (text) {
+              final trimmed = text.trim();
+              if (trimmed.isEmpty) {
+                _update(def.name, null);
+                return;
+              }
+              final parsed = num.tryParse(trimmed);
+              if (parsed != null) _update(def.name, parsed);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Clamp the edited value into min/max (and snap to step) when focus is
+  /// lost — same behaviour as the web form's blur handling.
+  void _onNumberBlur(
+    ParameterDefinition def,
+    TextEditingController controller,
+  ) {
+    final trimmed = controller.text.trim();
+    final parsed = num.tryParse(trimmed);
+    if (parsed == null) return;
+    final normalized = _normalizeNum(
+      parsed,
+      min: def.min,
+      max: def.max,
+      step: def.step,
+    );
+    final formatted = _fmtNum(normalized);
+    if (formatted != trimmed) {
+      controller.text = formatted;
+      controller.selection = TextSelection.collapsed(
+        offset: controller.text.length,
+      );
+    }
+    _update(def.name, normalized);
+  }
+
+  Widget _buildObjectField(BuildContext context, ParameterDefinition def) {
+    final controller = _controllerFor(def);
+
+    // Validate on every build so error state refreshes as the user types.
+    String? errorText;
+    Object? parsed;
+    final raw = controller.text.trim();
+    if (raw.isEmpty) {
+      parsed = null;
+    } else {
+      try {
+        parsed = jsonDecode(raw);
+      } catch (_) {
+        errorText = 'Invalid JSON';
+        // Keep the last valid value until the JSON parses again.
+        parsed = widget.values[def.name];
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildLabel(context, def),
+          _buildDescription(context, def),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: controller,
+            maxLines: 4,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+            decoration: _inputDecoration(
+              context,
+              hintText: '{ "key": "value" }',
+              errorText: errorText,
+            ),
+            onChanged: (text) => _update(def.name, parsed),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStringField(BuildContext context, ParameterDefinition def) {
+    // Strings with validation options render as a dropdown (same as web).
+    if (def.dropdownOptions.isNotEmpty) return _buildEnumField(context, def);
+
+    final controller = _controllerFor(def);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildLabel(context, def),
+          _buildDescription(context, def),
+          const SizedBox(height: 6),
+          TextFormField(
+            controller: controller,
+            decoration: _inputDecoration(
+              context,
+              hintText: def.defaultValue?.toString(),
+            ),
+            onChanged: (text) =>
+                _update(def.name, text.trim().isEmpty ? null : text),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// "market_order" → "Market Order"
+  static String _humanizeOption(String v) {
+    final normalized = v.replaceAll('_', ' ');
+    if (normalized.isEmpty) return normalized;
+    return normalized
+        .split(' ')
+        .map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1))
+        .join(' ');
+  }
+}
+
+/// Small info box used for strategy overview / risk factor documentation.
+class _DocBox extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String text;
+
+  const _DocBox({required this.icon, required this.title, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(text, style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1726,7 +2913,7 @@ class _StrategyTypeOption {
 
 class _StrategyTypePickerField extends StatelessWidget {
   final String? value;
-  final List<_StrategyTypeOption> options;
+  final List<StrategyConfigInfo> options;
   final ValueChanged<String?> onChanged;
   final String placeholder;
 
@@ -1741,7 +2928,8 @@ class _StrategyTypePickerField extends StatelessWidget {
   Widget build(BuildContext context) {
     final selected = options.firstWhere(
       (item) => item.type == value,
-      orElse: () => const _StrategyTypeOption(type: '', name: ''),
+      orElse: () =>
+          const StrategyConfigInfo(type: '', name: '', description: ''),
     );
 
     return InkWell(
@@ -1756,8 +2944,10 @@ class _StrategyTypePickerField extends StatelessWidget {
           fillColor: Theme.of(context).brightness == Brightness.dark
               ? Colors.grey[900]
               : Colors.white,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
           suffixIcon: const Icon(Icons.expand_more),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -1770,9 +2960,9 @@ class _StrategyTypePickerField extends StatelessWidget {
         ),
         child: Text(
           selected.type.isEmpty ? placeholder : selected.name,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -1795,11 +2985,12 @@ class _StrategyTypePickerField extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StrategyTypePickerSheet extends StatefulWidget {
-  final List<_StrategyTypeOption> options;
+  final List<StrategyConfigInfo> options;
   const _StrategyTypePickerSheet({required this.options});
 
   @override
-  State<_StrategyTypePickerSheet> createState() => _StrategyTypePickerSheetState();
+  State<_StrategyTypePickerSheet> createState() =>
+      _StrategyTypePickerSheetState();
 }
 
 class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
@@ -1818,14 +3009,16 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
     super.dispose();
   }
 
-  List<_StrategyTypeOption> get _filtered {
+  List<StrategyConfigInfo> get _filtered {
     if (_query.trim().isEmpty) return widget.options;
     final lower = _query.trim().toLowerCase();
     return widget.options
-        .where((o) =>
-            o.name.toLowerCase().contains(lower) ||
-            o.type.toLowerCase().contains(lower) ||
-            (o.description?.toLowerCase().contains(lower) ?? false))
+        .where(
+          (o) =>
+              o.name.toLowerCase().contains(lower) ||
+              o.type.toLowerCase().contains(lower) ||
+              o.description.toLowerCase().contains(lower),
+        )
         .toList();
   }
 
@@ -1850,9 +3043,7 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
                     Expanded(
                       child: Text(
                         'Select Strategy Type',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
+                        style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
@@ -1887,9 +3078,7 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
                     ? Center(
                         child: Text(
                           'No strategies found',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
+                          style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: Theme.of(context).hintColor),
                         ),
                       )
@@ -1910,30 +3099,61 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
                                   horizontal: 16,
                                   vertical: 12,
                                 ),
-                                child: Column(
+                                child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(option.name,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodyLarge
-                                            ?.copyWith(fontWeight: FontWeight.w600)),
-                                    if (option.description?.isNotEmpty == true) ...[
-                                      const SizedBox(height: 4),
-                                      Text(option.description!,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                  color: Theme.of(context).hintColor)),
+                                    if (option.icon?.isNotEmpty == true) ...[
+                                      Text(
+                                        option.icon!,
+                                        style: const TextStyle(fontSize: 24),
+                                      ),
+                                      const SizedBox(width: 12),
                                     ],
-                                    const SizedBox(height: 4),
-                                    Text(option.type,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                                color: Theme.of(context).hintColor)),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            option.name,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyLarge
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                          ),
+                                          if (option
+                                              .description
+                                              .isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              option.description,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall
+                                                  ?.copyWith(
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).hintColor,
+                                                  ),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            option.type,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).hintColor,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -1959,6 +3179,7 @@ class _SymbolTicker {
   final double? price;
   final double? change24h;
   final String? exchange;
+
   /// 'spot' or 'perpetual'
   final String marketType;
 
@@ -2007,8 +3228,9 @@ class _SymbolPickerField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor =
-        isDark ? Colors.grey[850]! : Colors.grey.withValues(alpha: 0.15);
+    final borderColor = isDark
+        ? Colors.grey[850]!
+        : Colors.grey.withValues(alpha: 0.15);
     final fillColor = isDark ? Colors.grey[900]! : Colors.white;
     final hasSymbol = selectedSymbol.isNotEmpty;
     final disabled = !exchangeSelected;
@@ -2033,9 +3255,11 @@ class _SymbolPickerField extends StatelessWidget {
                 _CoinAvatar(symbol: selectedSymbol, size: 26),
                 const SizedBox(width: 10),
               ] else ...[
-                Icon(Icons.currency_exchange,
-                    size: 18,
-                    color: Theme.of(context).hintColor),
+                Icon(
+                  Icons.currency_exchange,
+                  size: 18,
+                  color: Theme.of(context).hintColor,
+                ),
                 const SizedBox(width: 10),
               ],
 
@@ -2048,21 +3272,22 @@ class _SymbolPickerField extends StatelessWidget {
                     Text(
                       hasSymbol ? selectedSymbol : hint,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight:
-                                hasSymbol ? FontWeight.w700 : FontWeight.normal,
-                            color: hasSymbol
-                                ? Theme.of(context).colorScheme.onSurface
-                                : Theme.of(context).hintColor,
-                          ),
+                        fontWeight: hasSymbol
+                            ? FontWeight.w700
+                            : FontWeight.normal,
+                        color: hasSymbol
+                            ? Theme.of(context).colorScheme.onSurface
+                            : Theme.of(context).hintColor,
+                      ),
                     ),
                     if (exchangeSelected && !loading && tickerCount > 0) ...[
                       const SizedBox(height: 2),
                       Text(
                         '$tickerCount pairs available',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).hintColor,
-                              fontSize: 11,
-                            ),
+                          color: Theme.of(context).hintColor,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ],
@@ -2077,8 +3302,11 @@ class _SymbolPickerField extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               else
-                Icon(Icons.search_rounded,
-                    size: 20, color: Theme.of(context).hintColor),
+                Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: Theme.of(context).hintColor,
+                ),
             ],
           ),
         ),
@@ -2099,7 +3327,10 @@ class _CoinAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = symbol.split('/').firstOrNull ?? symbol.split('-').firstOrNull ?? symbol;
+    final base =
+        symbol.split('/').firstOrNull ??
+        symbol.split('-').firstOrNull ??
+        symbol;
     return SizedBox(
       width: size,
       height: size,
@@ -2157,6 +3388,7 @@ class _SymbolPickerSheet extends StatefulWidget {
 class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
   late final TextEditingController _searchController;
   String _query = '';
+
   /// 'all', 'spot', or 'perpetual'
   String _marketFilter = 'all';
 
@@ -2199,8 +3431,9 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return AnimatedPadding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       duration: const Duration(milliseconds: 150),
       curve: Curves.easeOut,
       child: Container(
@@ -2236,19 +3469,16 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
                           children: [
                             Text(
                               widget.title,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
+                              style: Theme.of(context).textTheme.titleLarge
                                   ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                             if (widget.tickers.isNotEmpty)
                               Text(
                                 '${widget.tickers.length} pairs loaded',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
-                                        color: Theme.of(context).hintColor),
+                                      color: Theme.of(context).hintColor,
+                                    ),
                               ),
                           ],
                         ),
@@ -2282,7 +3512,8 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
                         _MarketFilterChip(
                           label: 'Perp',
                           selected: _marketFilter == 'perpetual',
-                          onTap: () => setState(() => _marketFilter = 'perpetual'),
+                          onTap: () =>
+                              setState(() => _marketFilter = 'perpetual'),
                         ),
                       ],
                     ),
@@ -2301,8 +3532,7 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
                       fillColor: isDark
                           ? Colors.grey[850]
                           : Colors.grey.withValues(alpha: 0.07),
-                      contentPadding:
-                          const EdgeInsets.symmetric(vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide.none,
@@ -2333,16 +3563,17 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_off_rounded,
-                size: 40,
-                color: Theme.of(context).hintColor.withValues(alpha: 0.4)),
+            Icon(
+              Icons.search_off_rounded,
+              size: 40,
+              color: Theme.of(context).hintColor.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 12),
             Text(
               'No pairs found',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodyMedium
-                  ?.copyWith(color: Theme.of(context).hintColor),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).hintColor,
+              ),
             ),
           ],
         ),
@@ -2369,6 +3600,7 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
 
 class _SymbolListTile extends StatelessWidget {
   final _SymbolTicker ticker;
+
   /// Exchange-native display string, e.g. "BTCUSDT" or "BTC-USDT".
   final String displaySymbol;
   final VoidCallback onTap;
@@ -2385,7 +3617,9 @@ class _SymbolListTile extends StatelessWidget {
     final price = ticker.price;
     final change = ticker.change24h;
     final isPositive = (change ?? 0) >= 0;
-    final changeColor = isPositive ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final changeColor = isPositive
+        ? const Color(0xFF10B981)
+        : const Color(0xFFEF4444);
 
     return InkWell(
       onTap: onTap,
@@ -2408,9 +3642,9 @@ class _SymbolListTile extends StatelessWidget {
                       Text(
                         displaySymbol,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                       const SizedBox(width: 6),
                       _MarketTypeBadge(marketType: ticker.marketType),
@@ -2445,8 +3679,10 @@ class _SymbolListTile extends StatelessWidget {
             // Price
             if (price != null)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isDark
                       ? Colors.grey[850]
@@ -2540,7 +3776,9 @@ class _MarketFilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? primary
-              : (isDark ? Colors.grey[850] : Colors.grey.withValues(alpha: 0.1)),
+              : (isDark
+                    ? Colors.grey[850]
+                    : Colors.grey.withValues(alpha: 0.1)),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(

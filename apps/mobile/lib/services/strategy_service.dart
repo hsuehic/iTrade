@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../models/strategy.dart';
+import '../models/strategy_config.dart';
 import 'api_client.dart';
 
 /// Service for managing trading strategies
@@ -51,7 +52,8 @@ class StrategyService {
       final Response response = await _apiClient.getJson('/api/strategies/$id');
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
-        if (data.containsKey('strategy') && data['strategy'] is Map<String, dynamic>) {
+        if (data.containsKey('strategy') &&
+            data['strategy'] is Map<String, dynamic>) {
           return Strategy.fromJson(data['strategy']);
         }
         return Strategy.fromJson(data);
@@ -63,11 +65,14 @@ class StrategyService {
   }
 
   /// Get a single strategy by ID along with position summary and rebuilt performance
-  Future<({
-    Strategy? strategy,
-    StrategyPositionSummary? positionSummary,
-    RebuiltPerformance? rebuiltPerformance,
-  })> getStrategyDetail(int id) async {
+  Future<
+    ({
+      Strategy? strategy,
+      StrategyPositionSummary? positionSummary,
+      RebuiltPerformance? rebuiltPerformance,
+    })
+  >
+  getStrategyDetail(int id) async {
     try {
       final Response response = await _apiClient.getJson('/api/strategies/$id');
 
@@ -77,8 +82,11 @@ class StrategyService {
         StrategyPositionSummary? positionSummary;
         RebuiltPerformance? rebuiltPerformance;
 
-        if (data.containsKey('strategy') && data['strategy'] is Map<String, dynamic>) {
-          strategy = Strategy.fromJson(data['strategy'] as Map<String, dynamic>);
+        if (data.containsKey('strategy') &&
+            data['strategy'] is Map<String, dynamic>) {
+          strategy = Strategy.fromJson(
+            data['strategy'] as Map<String, dynamic>,
+          );
         } else {
           strategy = Strategy.fromJson(data);
         }
@@ -155,15 +163,22 @@ class StrategyService {
     }
   }
 
-  /// Fetch strategy type configurations
-  Future<List<Map<String, dynamic>>> getStrategyConfigs() async {
+  /// Fetch strategy type configurations (incl. dynamic parameter definitions
+  /// and subscription/initial-data requirements) for building the create form.
+  Future<List<StrategyConfigInfo>> getStrategyConfigs() async {
     try {
-      final Response response = await _apiClient.getJson('/api/strategies/config');
+      final Response response = await _apiClient.getJson(
+        '/api/strategies/config',
+      );
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
         final strategies = data['strategies'] as List?;
         if (strategies != null) {
-          return strategies.whereType<Map<String, dynamic>>().toList();
+          return strategies
+              .whereType<Map<String, dynamic>>()
+              .map((json) => StrategyConfigInfo.fromJson(json))
+              .where((c) => c.type.isNotEmpty)
+              .toList();
         }
       }
       return [];
@@ -197,7 +212,9 @@ class StrategyService {
     try {
       final Response response = await _apiClient.getJson('/api/tickers');
       if (response.statusCode == 200 && response.data is List) {
-        return (response.data as List).whereType<Map<String, dynamic>>().toList();
+        return (response.data as List)
+            .whereType<Map<String, dynamic>>()
+            .toList();
       }
       return [];
     } catch (e) {
@@ -210,7 +227,9 @@ class StrategyService {
     try {
       final Response response = await _apiClient.getJson('/api/trading-pairs');
       if (response.statusCode == 200 && response.data is List) {
-        return (response.data as List).whereType<Map<String, dynamic>>().toList();
+        return (response.data as List)
+            .whereType<Map<String, dynamic>>()
+            .toList();
       }
       return [];
     } catch (e) {
@@ -293,7 +312,8 @@ class StrategyService {
       if (description != null) data['description'] = description;
       if (exchange != null) data['exchange'] = exchange;
       if (parameters != null) data['parameters'] = parameters;
-      if (initialDataConfig != null) data['initialDataConfig'] = initialDataConfig;
+      if (initialDataConfig != null)
+        data['initialDataConfig'] = initialDataConfig;
       if (subscription != null) data['subscription'] = subscription;
 
       final Response response = await _apiClient.dio.patch(
@@ -303,7 +323,9 @@ class StrategyService {
       if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
         final responseData = response.data as Map<String, dynamic>;
         if (responseData['strategy'] is Map<String, dynamic>) {
-          return Strategy.fromJson(responseData['strategy'] as Map<String, dynamic>);
+          return Strategy.fromJson(
+            responseData['strategy'] as Map<String, dynamic>,
+          );
         }
         return Strategy.fromJson(responseData);
       }
@@ -316,7 +338,9 @@ class StrategyService {
   /// Delete a strategy
   Future<bool> deleteStrategy(int id) async {
     try {
-      final Response response = await _apiClient.dio.delete('/api/strategies/$id');
+      final Response response = await _apiClient.dio.delete(
+        '/api/strategies/$id',
+      );
       return response.statusCode == 200 && response.data['success'] == true;
     } catch (e) {
       return false;

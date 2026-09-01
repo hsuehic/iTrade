@@ -29,8 +29,10 @@ export async function GET(request: NextRequest) {
         category: strategy.category,
         icon: strategy.icon,
         defaultParameters: getStrategyDefaultParameters(strategy.type),
+        parameterDefinitions: config?.parameterDefinitions ?? [],
         subscriptionRequirements: config?.subscriptionRequirements ?? null,
         initialDataRequirements: config?.initialDataRequirements ?? null,
+        documentation: config?.documentation ?? null,
       };
     });
 
