@@ -86,8 +86,8 @@ export class BotManager {
       };
 
       if (typeof driver.obtainMasterConnection !== 'function') {
-        console.warn(
-          '[BotManager] driver lacks obtainMasterConnection — LISTEN disabled, polling fallback active',
+        this.logger.warn(
+          'driver lacks obtainMasterConnection — LISTEN disabled, polling fallback active',
         );
         return;
       }
@@ -101,10 +101,10 @@ export class BotManager {
           if (this.notifyDebounceTimer) clearTimeout(this.notifyDebounceTimer);
           this.notifyDebounceTimer = setTimeout(() => {
             this.notifyDebounceTimer = null;
-            console.log('[BotManager] pg_notify received — refreshing bots/strategies');
+            this.logger.info('pg_notify received — refreshing bots/strategies');
             this.refreshBots().catch((err) => {
-              console.warn(
-                `[BotManager] refreshBots after pg_notify failed: ${(err as Error).message}`,
+              this.logger.warn(
+                `refreshBots after pg_notify failed: ${(err as Error).message}`,
               );
             });
           }, 50);
@@ -114,7 +114,7 @@ export class BotManager {
         // Only remember the release AFTER LISTEN succeeds — otherwise the
         // catch below releases it immediately and stop() shouldn't double-release.
         this.pgListenRelease = release;
-        console.log('[BotManager] LISTEN itrade_config_changed registered');
+        this.logger.info('LISTEN itrade_config_changed registered');
       } catch (err) {
         // LISTEN failed after we acquired the client — release the pool slot
         // immediately so we don't permanently leak a pg client from the pool.
@@ -126,8 +126,8 @@ export class BotManager {
         throw err;
       }
     } catch (err) {
-      console.warn(
-        `[BotManager] LISTEN setup failed (polling fallback intact): ${(err as Error).message}`,
+      this.logger.warn(
+        `LISTEN setup failed (polling fallback intact): ${(err as Error).message}`,
       );
     }
   }
