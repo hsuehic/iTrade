@@ -5,6 +5,7 @@ import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 import { logIfImpersonating } from '@/lib/audit-log';
 import { getCurrentPrice } from '@/lib/live-balance';
+import { notifyConfigChange } from '@/lib/console-notify';
 import { StrategyParameters } from '@itrade/core';
 
 type RouteContext = {
@@ -202,6 +203,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       metadata: { strategyId: id, updates },
     });
 
+    // Wake console: covers both status flips and param changes (defensive — see plan)
+    void notifyConfigChange({
+      kind: 'strategy',
+      userId: session.user.id,
+      strategyId: id,
+    });
+
     // No need to include user in response
     const updatedStrategy = await dataManager.getStrategy(id);
     return NextResponse.json({ strategy: updatedStrategy });
@@ -255,6 +263,13 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       session,
       action: 'strategy.delete',
       metadata: { strategyId: id, name: strategy.name },
+    });
+
+    // Wake console to remove any live instance of this strategy
+    void notifyConfigChange({
+      kind: 'strategy',
+      userId: session.user.id,
+      strategyId: id,
     });
 
     return NextResponse.json({ success: true });

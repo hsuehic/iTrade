@@ -4,6 +4,7 @@ import { StrategyStatus } from '@itrade/data-manager';
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 import { logIfImpersonating } from '@/lib/audit-log';
+import { notifyConfigChange } from '@/lib/console-notify';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -85,6 +86,13 @@ export async function POST(request: NextRequest) {
       session,
       action: 'strategy.create',
       metadata: { strategyId: strategy.id, name: strategy.name, symbol: strategy.symbol },
+    });
+
+    // Wake console in case this strategy is later flipped ACTIVE (defensive — see plan Task 2)
+    void notifyConfigChange({
+      kind: 'strategy',
+      userId: session.user.id,
+      strategyId: strategy.id,
     });
 
     return NextResponse.json({ strategy }, { status: 201 });

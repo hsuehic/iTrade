@@ -3,6 +3,7 @@ import { StrategyStatus } from '@itrade/data-manager';
 
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
+import { notifyConfigChange } from '@/lib/console-notify';
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -51,6 +52,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     await dataManager.updateStrategyStatus(id, status);
 
     const updatedStrategy = await dataManager.getStrategy(id);
+    // Wake console so start/stop/pause takes effect immediately
+    void notifyConfigChange({
+      kind: 'strategy',
+      userId: session.user.id,
+      strategyId: id,
+    });
     return NextResponse.json({ strategy: updatedStrategy });
   } catch (error) {
     console.error('Error updating strategy status:', error);

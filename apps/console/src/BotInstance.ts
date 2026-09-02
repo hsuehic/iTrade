@@ -294,6 +294,26 @@ export class BotInstance {
     return this.strategyManager.getActiveStrategyIds();
   }
 
+  /**
+   * Force the strategy manager to sync with the DB right now, instead of
+   * waiting for its periodic timer. Called by BotManager when it receives
+   * a pg_notify from web that hints at a strategy change.
+   *
+   * StrategyManager.syncStrategiesWithDatabase is the existing idempotent
+   * sync loop — we reach into it via structural typing so we don't have
+   * to widen its public surface just for this call.
+   */
+  public async syncStrategiesNow(): Promise<void> {
+    const sync = (
+      this.strategyManager as unknown as {
+        syncStrategiesWithDatabase?: () => Promise<void>;
+      }
+    ).syncStrategiesWithDatabase;
+    if (typeof sync === 'function') {
+      await sync.call(this.strategyManager);
+    }
+  }
+
   private async connectExchangeForAccount(account: AccountInfoEntity): Promise<boolean> {
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) {

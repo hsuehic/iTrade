@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
+import { notifyConfigChange } from '@/lib/console-notify';
 import { isValidExchange } from '@itrade/data-manager';
 
 export async function GET(request: NextRequest) {
@@ -40,6 +41,9 @@ export async function POST(request: NextRequest) {
       ...body,
       userId: session.user.id,
     });
+
+    // Wake console immediately instead of waiting for the next polling tick
+    void notifyConfigChange({ kind: 'account', userId: session.user.id });
 
     return NextResponse.json({ success: true, account });
   } catch (error) {

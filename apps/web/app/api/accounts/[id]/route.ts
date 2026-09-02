@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import * as accountService from '@/lib/services/account-service';
+import { notifyConfigChange } from '@/lib/console-notify';
 
 export async function DELETE(
   request: NextRequest,
@@ -22,6 +23,8 @@ export async function DELETE(
 
     const success = await accountService.removeAccount(accId, session.user.id);
     if (success) {
+      // Wake console immediately so it tears down this exchange connection/bot
+      void notifyConfigChange({ kind: 'account', userId: session.user.id });
       return NextResponse.json({ success: true });
     } else {
       return NextResponse.json(

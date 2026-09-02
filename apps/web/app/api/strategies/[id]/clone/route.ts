@@ -4,6 +4,7 @@ import { StrategyStatus } from '@itrade/data-manager';
 import { getDataManager } from '@/lib/data-manager';
 import { getSession } from '@/lib/auth';
 import { logIfImpersonating } from '@/lib/audit-log';
+import { notifyConfigChange } from '@/lib/console-notify';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -81,6 +82,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       initialDataConfig: sourceStrategy.initialDataConfig,
       subscription: sourceStrategy.subscription,
       userId: session.user.id,
+    });
+
+    // Defensive notify (clone is STOPPED so console ignores it —— keeps parity with create)
+    void notifyConfigChange({
+      kind: 'strategy',
+      userId: session.user.id,
+      strategyId: clonedStrategy.id,
     });
 
     await logIfImpersonating({
