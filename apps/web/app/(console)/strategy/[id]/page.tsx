@@ -369,6 +369,12 @@ export default function StrategyDetailPage(props: { params: Params }) {
               size="sm"
               variant="outline"
               onClick={() => router.push(`/strategy?edit=${strategy.id}`)}
+              disabled={strategy.status === StrategyStatus.ACTIVE}
+              title={
+                strategy.status === StrategyStatus.ACTIVE
+                  ? t('actions.cannotEditActive')
+                  : undefined
+              }
             >
               <IconEdit className="mr-2 h-4 w-4" />
               {t('actions.edit')}

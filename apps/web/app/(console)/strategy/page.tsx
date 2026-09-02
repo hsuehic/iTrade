@@ -594,10 +594,18 @@ export default function StrategyPage() {
     if (editId && strategies.length > 0) {
       const strategyToEdit = strategies.find((s) => s.id === parseInt(editId));
       if (strategyToEdit) {
-        editStrategy(strategyToEdit);
+        // Guard: only non-active strategies are editable, consistent with
+        // the list-row Edit button's disabled state. Strategy detail page
+        // deep-links here via ?edit=<id> — skip and notify when active.
+        if (strategyToEdit.status === 'active') {
+          toast.error(t('actions.cannotEditActive'));
+        } else {
+          editStrategy(strategyToEdit);
+        }
         router.replace('/strategy');
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, strategies, router]);
 
   const cloneStrategy = async (strategy: StrategyEntity) => {

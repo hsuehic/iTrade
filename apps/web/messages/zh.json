@@ -1702,6 +1702,7 @@
       "deleting": "删除中...",
       "delete": "删除",
       "edit": "编辑",
+      "cannotEditActive": "策略运行中无法编辑，请先停止策略。",
       "clone": "克隆",
       "cloning": "克隆中..."
     },

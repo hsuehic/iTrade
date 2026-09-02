@@ -158,6 +158,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Don't allow editing active strategies — consistent with the UI guard
+    // on the list/detail Edit buttons. Users must stop the strategy first.
+    if (strategy.status === 'active') {
+      return NextResponse.json(
+        { error: 'Cannot edit active strategy. Stop it first.' },
+        { status: 400 },
+      );
+    }
+
     const body = await request.json();
     const {
       name,

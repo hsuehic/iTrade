@@ -1698,6 +1698,7 @@
       "start": "Start",
       "stop": "Stop",
       "edit": "Edit",
+      "cannotEditActive": "Cannot edit an active strategy. Stop it first.",
       "starting": "Starting...",
       "stopping": "Stopping...",
       "deleting": "Deleting...",
