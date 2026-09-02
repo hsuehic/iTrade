@@ -220,11 +220,11 @@ class _StrategyScreenState extends State<StrategyScreen>
   }
 
   Future<void> _openCreateStrategy() async {
-    final created = await Navigator.push<bool>(
+    final created = await Navigator.push<Strategy>(
       context,
       MaterialPageRoute(builder: (context) => const StrategyCreateScreen()),
     );
-    if (created == true) {
+    if (created != null) {
       _loadStrategies();
     }
   }

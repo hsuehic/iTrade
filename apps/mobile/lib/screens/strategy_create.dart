@@ -821,25 +821,33 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
         centerTitle: true,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _StepIndicator(currentStep: _currentStep, totalSteps: _kTotalSteps),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildStep0BasicInfo(),
-                  _buildStep1Parameters(),
-                  _buildStep2InitialData(),
-                  _buildStep3Subscriptions(),
-                ],
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: SafeArea(
+          child: Column(
+            children: [
+              _StepIndicator(currentStep: _currentStep, totalSteps: _kTotalSteps),
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildStep0BasicInfo(),
+                    _buildStep1Parameters(),
+                    _buildStep2InitialData(),
+                    _buildStep3Subscriptions(),
+                  ],
+                ),
               ),
-            ),
-            _buildNavButtons(isLastStep),
-          ],
+              _buildNavButtons(isLastStep),
+            ],
+          ),
         ),
       ),
     );
