@@ -229,6 +229,7 @@ export default function AdminRoiAnalysisPage() {
                 <ChangeBadge
                   value={mtoNowRoiPct}
                   hasBaseline={totals.mtoNowBaseline > 0}
+                  alignLeft
                 />
               </div>
             </CardHeader>
@@ -243,6 +244,7 @@ export default function AdminRoiAnalysisPage() {
                 <ChangeBadge
                   value={ytoNowRoiPct}
                   hasBaseline={totals.ytoNowBaseline > 0}
+                  alignLeft
                 />
               </div>
             </CardHeader>
@@ -366,7 +368,15 @@ function PnlValue({ value, hasBaseline }: { value: number; hasBaseline: boolean 
   );
 }
 
-function ChangeBadge({ value, hasBaseline }: { value: number; hasBaseline: boolean }) {
+function ChangeBadge({
+  value,
+  hasBaseline,
+  alignLeft = false,
+}: {
+  value: number;
+  hasBaseline: boolean;
+  alignLeft?: boolean;
+}) {
   if (!hasBaseline) {
     return <Badge variant="secondary">N/A</Badge>;
   }
@@ -374,7 +384,9 @@ function ChangeBadge({ value, hasBaseline }: { value: number; hasBaseline: boole
   const Icon = positive ? IconTrendingUp : IconTrendingDown;
   return (
     <Badge
-      className="flex w-fit items-center gap-1 border bg-transparent ml-auto"
+      className={`flex w-fit items-center gap-1 border bg-transparent ${
+        alignLeft ? '' : 'ml-auto'
+      }`}
       style={{
         color: positive ? '#16c784' : '#ea3943',
         borderColor: positive ? '#16c784' : '#ea3943',
