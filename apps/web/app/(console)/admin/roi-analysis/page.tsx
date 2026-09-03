@@ -37,8 +37,10 @@ interface RoiRow {
   balance: number;
   feeBalance: number;
   lockedBalance: number;
+  mtoNowPnl: number;
   mtoNowRoi: number;
   mtoNowBaseline: number;
+  ytoNowPnl: number;
   ytoNowRoi: number;
   ytoNowBaseline: number;
 }
@@ -51,6 +53,11 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatCurrencySigned(value: number) {
+  const formatted = formatCurrency(Math.abs(value));
+  return value < 0 ? `-${formatted}` : `+${formatted}`;
 }
 
 function formatPercentage(value: number, showSign = true) {
@@ -113,10 +120,35 @@ export default function AdminRoiAnalysisPage() {
       acc.balance += r.balance;
       acc.feeBalance += r.feeBalance;
       acc.lockedBalance += r.lockedBalance;
+      // PnL and ROI baselines: only count users with a real period-start baseline
+      // (baseline > 0), so a user with no snapshot doesn't skew the aggregate.
+      if (r.mtoNowBaseline > 0) {
+        acc.mtoNowPnl += r.mtoNowPnl;
+        acc.mtoNowBaseline += r.mtoNowBaseline;
+      }
+      if (r.ytoNowBaseline > 0) {
+        acc.ytoNowPnl += r.ytoNowPnl;
+        acc.ytoNowBaseline += r.ytoNowBaseline;
+      }
       return acc;
     },
-    { accountCount: 0, balance: 0, feeBalance: 0, lockedBalance: 0 },
+    {
+      accountCount: 0,
+      balance: 0,
+      feeBalance: 0,
+      lockedBalance: 0,
+      mtoNowPnl: 0,
+      mtoNowBaseline: 0,
+      ytoNowPnl: 0,
+      ytoNowBaseline: 0,
+    },
   );
+  // Aggregate ROI for the cards = total PnL / total baseline (weighted), so the
+  // badge reflects real portfolio return across all users with a baseline.
+  const mtoNowRoiPct =
+    totals.mtoNowBaseline > 0 ? (totals.mtoNowPnl / totals.mtoNowBaseline) * 100 : 0;
+  const ytoNowRoiPct =
+    totals.ytoNowBaseline > 0 ? (totals.ytoNowPnl / totals.ytoNowBaseline) * 100 : 0;
 
   return (
     <SidebarInset>
@@ -154,7 +186,7 @@ export default function AdminRoiAnalysisPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Users</CardDescription>
@@ -185,6 +217,34 @@ export default function AdminRoiAnalysisPage() {
               <CardTitle className="text-2xl font-semibold tabular-nums">
                 {formatCurrency(totals.lockedBalance)}
               </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>MtoNow PnL (USD)</CardDescription>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-2xl font-semibold tabular-nums">
+                  {formatCurrencySigned(totals.mtoNowPnl)}
+                </CardTitle>
+                <ChangeBadge
+                  value={mtoNowRoiPct}
+                  hasBaseline={totals.mtoNowBaseline > 0}
+                />
+              </div>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>YtoNow PnL (USD)</CardDescription>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-2xl font-semibold tabular-nums">
+                  {formatCurrencySigned(totals.ytoNowPnl)}
+                </CardTitle>
+                <ChangeBadge
+                  value={ytoNowRoiPct}
+                  hasBaseline={totals.ytoNowBaseline > 0}
+                />
+              </div>
             </CardHeader>
           </Card>
         </div>
@@ -218,7 +278,9 @@ export default function AdminRoiAnalysisPage() {
                       <TableHead className="text-right">Balance</TableHead>
                       <TableHead className="text-right">Fee Balance</TableHead>
                       <TableHead className="text-right">Locked</TableHead>
+                      <TableHead className="text-right">MtoNowPnL</TableHead>
                       <TableHead className="text-right">MtoNowROI</TableHead>
+                      <TableHead className="text-right">YtoNowPnL</TableHead>
                       <TableHead className="text-right">YtoNowROI</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -246,10 +308,22 @@ export default function AdminRoiAnalysisPage() {
                           <TableCell className="text-right tabular-nums">
                             {formatCurrency(row.lockedBalance)}
                           </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            <PnlValue
+                              value={row.mtoNowPnl}
+                              hasBaseline={row.mtoNowBaseline > 0}
+                            />
+                          </TableCell>
                           <TableCell className="text-right">
                             <ChangeBadge
                               value={row.mtoNowRoi}
                               hasBaseline={row.mtoNowBaseline > 0}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            <PnlValue
+                              value={row.ytoNowPnl}
+                              hasBaseline={row.ytoNowBaseline > 0}
                             />
                           </TableCell>
                           <TableCell className="text-right">
@@ -262,7 +336,7 @@ export default function AdminRoiAnalysisPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center">
+                        <TableCell colSpan={9} className="h-24 text-center">
                           {searchQuery
                             ? 'No users match your search.'
                             : 'No users with linked exchange accounts found.'}
@@ -277,6 +351,18 @@ export default function AdminRoiAnalysisPage() {
         </Card>
       </div>
     </SidebarInset>
+  );
+}
+
+function PnlValue({ value, hasBaseline }: { value: number; hasBaseline: boolean }) {
+  if (!hasBaseline) {
+    return <span className="text-muted-foreground">N/A</span>;
+  }
+  const positive = value >= 0;
+  return (
+    <span className="tabular-nums" style={{ color: positive ? '#16c784' : '#ea3943' }}>
+      {formatCurrencySigned(value)}
+    </span>
   );
 }
 

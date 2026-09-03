@@ -234,6 +234,10 @@ export async function GET(request: NextRequest) {
       const yearBaseline = yearBaselines[u.userId] ?? 0;
       const mNet = monthNet[u.userId] ?? 0;
       const yNet = yearNet[u.userId] ?? 0;
+      // Trading PnL for the period (deposits netted out): change = current −
+      // netDeposits − baseline. ROI is that change relative to the baseline.
+      const mPnl = u.totalBalance - mNet - monthBaseline;
+      const yPnl = u.totalBalance - yNet - yearBaseline;
       return {
         userId: u.userId,
         name: meta?.name ?? '',
@@ -242,9 +246,11 @@ export async function GET(request: NextRequest) {
         balance: u.totalBalance,
         feeBalance: u.feeBalance,
         lockedBalance: u.lockedBalance,
+        mtoNowPnl: mPnl,
         mtoNowRoi: calculateChange(u.totalBalance, monthBaseline, mNet),
         mtoNowBaseline: monthBaseline,
         monthNetDeposits: mNet,
+        ytoNowPnl: yPnl,
         ytoNowRoi: calculateChange(u.totalBalance, yearBaseline, yNet),
         ytoNowBaseline: yearBaseline,
         yearNetDeposits: yNet,
