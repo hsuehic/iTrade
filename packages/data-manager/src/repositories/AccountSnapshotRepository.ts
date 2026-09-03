@@ -342,6 +342,39 @@ export class AccountSnapshotRepository {
   }
 
   /**
+   * 获取指定账号在某个截止时间之前最近一次快照的 totalBalance，按 userId 汇总。
+   * 用于 admin ROI 分析：MtoNowROI / YtoNowROI 的期初基准（月初/年初）。
+   * 与 dashboard 卡片日历对齐的 baseline 逻辑一致（期初权益）。
+   */
+  async getPeriodStartBaselinesByUser(cutoff: Date): Promise<Record<string, Decimal>> {
+    const rows = await this.repository
+      .createQueryBuilder('snapshot')
+      .select('accountInfo."userId"', 'userId')
+      .addSelect('snapshot."totalBalance"', 'totalBalance')
+      .addSelect(
+        'ROW_NUMBER() OVER (PARTITION BY snapshot."account_info_id" ORDER BY snapshot."timestamp" DESC) AS rn',
+        'rn',
+      )
+      .innerJoin('snapshot.accountInfo', 'accountInfo')
+      .where('accountInfo."isActive" = true')
+      .andWhere('snapshot."timestamp" <= :cutoff', { cutoff })
+      .getRawMany<{
+        userId: string;
+        totalBalance: string;
+        rn: string;
+      }>();
+
+    const perUser: Record<string, Decimal> = {};
+    for (const row of rows) {
+      if (Number(row.rn) !== 1) continue;
+      perUser[row.userId] = (perUser[row.userId] ?? new Decimal(0)).add(
+        new Decimal(row.totalBalance),
+      );
+    }
+    return perUser;
+  }
+
+  /**
    * 将实体转换为数据对象
    */
   private entityToData(entity: AccountSnapshotEntity): AccountSnapshotData {

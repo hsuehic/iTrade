@@ -642,6 +642,19 @@
     "widget.responsive_layout_builder.tag_2": "标签 2",
     "widget.trade_history_widget.amount": "数量",
     "widget.trade_history_widget.recent_trades": "最新成交",
-    "widget.trade_history_widget.time": "时间"
+    "widget.trade_history_widget.time": "时间",
+    "screen.admin_roi.title": "ROI 分析",
+    "screen.admin_roi.search_hint": "搜索用户或邮箱...",
+    "screen.admin_roi.empty": "暂无有关联交易所账号的用户",
+    "screen.admin_roi.load_failed": "ROI 分析加载失败",
+    "screen.admin_roi.account_count": "{{count}} 个账号",
+    "screen.admin_roi.balance": "余额",
+    "screen.admin_roi.fee_balance": "可用余额",
+    "screen.admin_roi.locked": "锁定余额",
+    "screen.admin_roi.summary_users": "用户数",
+    "screen.admin_roi.summary_accounts": "账号数",
+    "screen.admin_roi.summary_balance": "总余额",
+    "screen.admin_roi.summary_locked": "锁定余额",
+    "screen.profile.admin_roi_subtitle": "各用户资产与交易所 ROI 概览"
   }
 }

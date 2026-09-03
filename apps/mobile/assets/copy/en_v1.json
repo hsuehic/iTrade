@@ -642,6 +642,19 @@
     "widget.responsive_layout_builder.tag_2": "Tag 2",
     "widget.trade_history_widget.amount": "Amount",
     "widget.trade_history_widget.recent_trades": "Recent trades",
-    "widget.trade_history_widget.time": "Time"
+    "widget.trade_history_widget.time": "Time",
+    "screen.admin_roi.title": "ROI Analysis",
+    "screen.admin_roi.search_hint": "Search user or email...",
+    "screen.admin_roi.empty": "No users with exchange accounts.",
+    "screen.admin_roi.load_failed": "Failed to load ROI analysis.",
+    "screen.admin_roi.account_count": "{{count}} accts",
+    "screen.admin_roi.balance": "Balance",
+    "screen.admin_roi.fee_balance": "Fee Balance",
+    "screen.admin_roi.locked": "Locked",
+    "screen.admin_roi.summary_users": "Users",
+    "screen.admin_roi.summary_accounts": "Accounts",
+    "screen.admin_roi.summary_balance": "Total Balance",
+    "screen.admin_roi.summary_locked": "Locked",
+    "screen.profile.admin_roi_subtitle": "User assets & ROI across exchanges"
   }
 }

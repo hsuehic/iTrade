@@ -17,6 +17,7 @@ import '../services/theme_service.dart';
 import '../widgets/app_switch.dart';
 import '../widgets/copy_text.dart';
 import '../widgets/responsive_layout_builder.dart';
+import 'admin_roi.dart';
 import 'admin_trading_pairs.dart';
 import 'admin_users.dart';
 import 'change_password.dart';
@@ -1580,6 +1581,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const AdminUsersScreen(),
+                ),
+              );
+            },
+            isDark: isDark,
+          ),
+          _buildDivider(isDark),
+          _buildSettingTile(
+            icon: Icons.insights_outlined,
+            titleKey: 'screen.admin_roi.title',
+            titleFallback: 'ROI Analysis',
+            subtitleKey: 'screen.profile.admin_roi_subtitle',
+            subtitleFallback: 'User assets & ROI across exchanges',
+            trailing: Icons.chevron_right,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AdminRoiScreen(),
                 ),
               );
             },

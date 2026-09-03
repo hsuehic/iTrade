@@ -8,6 +8,7 @@ import {
   IconBook,
   IconHistory,
   IconBell,
+  IconReportAnalytics,
 } from '@tabler/icons-react';
 import {
   SidebarGroup,
@@ -41,6 +42,11 @@ export function NavAdmin() {
       title: t('users'),
       url: '/admin/users',
       icon: IconUsers,
+    },
+    {
+      title: t('roiAnalysis'),
+      url: '/admin/roi-analysis',
+      icon: IconReportAnalytics,
     },
     {
       title: t('auditLog'),

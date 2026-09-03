@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/admin_user.dart';
+import '../models/admin_roi.dart';
 import '../models/trading_pair.dart';
 import 'api_client.dart';
 import 'auth_service.dart';
@@ -225,6 +226,33 @@ class AdminService {
       );
     } catch (_) {
       return const AdminOperationResult(success: false);
+    }
+  }
+
+  // ----------------------------------------------------- ROI Analysis ---
+
+  /// Fetches the aggregated per-user ROI analysis (asset balances +
+  /// MtoNowROI / YtoNowROI). Returns `null` on any transport/HTTP/parse
+  /// error (so the screen can show its error state), and a `List` (possibly
+  /// empty) on success — the screen distinguishes "no users" ([] -> empty
+  /// state) from a failed request (null -> error state).
+  Future<List<AdminRoiRow>?> fetchRoiAnalysis() async {
+    try {
+      final res = await ApiClient.instance.getJson(
+        '/api/admin/roi-analysis',
+        options: _tolerant,
+      );
+      if (res.statusCode != 200 || res.data is! Map) {
+        return null;
+      }
+      final dynamic rawRows = (res.data as Map)['rows'];
+      if (rawRows is! List) return null;
+      return rawRows
+          .whereType<Map>()
+          .map((r) => AdminRoiRow.fromJson(Map<String, dynamic>.from(r)))
+          .toList();
+    } catch (_) {
+      return null;
     }
   }
 }
