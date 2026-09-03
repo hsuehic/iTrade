@@ -252,6 +252,11 @@ export class TypeOrmDataManager implements IDataManager {
     return this.accountInfoRepository;
   }
 
+  getBalanceHistoryRepository(): BalanceHistoryRepository {
+    this.ensureInitialized();
+    return this.balanceHistoryRepository;
+  }
+
   getAuditLogRepository(): Repository<AuditLogEntity> {
     this.ensureInitialized();
     return this.auditLogRepository;

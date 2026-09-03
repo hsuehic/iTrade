@@ -22,15 +22,17 @@ interface UserRow {
   yearStartBalance: number;
 }
 
-/** Fetch the latest account_snapshots at-or-before the cutoff, per account,
- *  attributed to the owning user's totalBalance. Mirrors the dashboard's
- *  calendar-aligned baseline (equity at period start). */
+/** Fetch each user's latest balance at-or-before the cutoff, summed per user.
+ *  Uses the balance_<interval> bucket tables (matching the dashboard's source):
+ *  - overDay → 'day' table for the month-start baseline
+ *  - overMonth → 'month' table for the year-start baseline */
 async function fetchBaselines(
   dm: Awaited<ReturnType<typeof getDataManager>>,
+  interval: 'day' | 'month',
   cutoff: Date,
 ): Promise<Record<string, number>> {
-  const snapshotRepo = dm.getAccountSnapshotRepository();
-  const baselines = await snapshotRepo.getPeriodStartBaselinesByUser(cutoff);
+  const balanceRepo = dm.getBalanceHistoryRepository();
+  const baselines = await balanceRepo.getPeriodStartTotalByUser(interval, cutoff);
   const perUser: Record<string, number> = {};
   for (const [userId, decimal] of Object.entries(baselines)) {
     perUser[userId] = decimal.toNumber();
@@ -43,9 +45,10 @@ async function fetchBaselines(
  * summary for every user that has at least one active linked exchange account.
  *
  * - Live balances aggregated from `account_info` (total / available / locked).
- * - MtoNowROI / YtoNowROI use `account_snapshots` for the period-start equity
- *   baseline (latest snapshot at-or-before month/year start), matching the
- *   calendar-aligned balanceChange cards on /dashboard.
+ * - MtoNowROI / YtoNowROI use the balance_<interval> bucket tables for the
+ *   period-start equity baseline (matching the dashboard's source): MtoNowROI
+ *   reads `balance_day` at-or-before month start; YtoNowROI reads
+ *   `balance_month` at-or-before year start.
  * - Note: this is a balance-based ROI (no net-deposit adjustment), computed
  *   once for all users at admin scale.
  */
@@ -91,13 +94,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ rows: [], computedAt: new Date().toISOString() });
     }
 
-    // ── 2. Period-start baselines from account_snapshots ───────────────────
+    // ── 2. Period-start baselines from balance_<interval> tables ───────────
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
-    const monthBaselines = await fetchBaselines(dm, monthStart);
-    const yearBaselines = await fetchBaselines(dm, yearStart);
+    const monthBaselines = await fetchBaselines(dm, 'day', monthStart);
+    const yearBaselines = await fetchBaselines(dm, 'month', yearStart);
 
     for (const u of userRows) {
       u.monthStartBalance = monthBaselines[u.userId] ?? 0;

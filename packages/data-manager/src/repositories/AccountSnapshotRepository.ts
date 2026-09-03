@@ -352,7 +352,7 @@ export class AccountSnapshotRepository {
       .select('accountInfo."userId"', 'userId')
       .addSelect('snapshot."totalBalance"', 'totalBalance')
       .addSelect(
-        'ROW_NUMBER() OVER (PARTITION BY snapshot."account_info_id" ORDER BY snapshot."timestamp" DESC) AS rn',
+        'ROW_NUMBER() OVER (PARTITION BY snapshot."account_info_id" ORDER BY snapshot."timestamp" DESC)',
         'rn',
       )
       .innerJoin('snapshot.accountInfo', 'accountInfo')

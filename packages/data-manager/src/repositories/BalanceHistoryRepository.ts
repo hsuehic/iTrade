@@ -419,6 +419,53 @@ export class BalanceHistoryRepository {
   }
 
   // Add method to get time series for charts
+  // Choose appropriate table based on interval
+  private repoForInterval(interval: 'day' | 'month'): Repository<BalanceHistoryEntity> {
+    return interval === 'month' ? this.monthRepo : this.dayRepo;
+  }
+
+  /**
+   * Get each user's latest account total balance at-or-before a cutoff, from a
+   * balance_<interval> bucket table. Used by the admin ROI Analysis page for
+   * period-start baselines:
+   *   - MtoNowROI (month)  → balance_day   (latest day row ≤ month start)
+   *   - YtoNowROI (year)   → balance_month (latest month row ≤ year start)
+   * Returns a map of userId → summed total (latest row per account, summed across
+   * the user's active accounts). Mirrors the dashboard's calendar-aligned baseline.
+   */
+  async getPeriodStartTotalByUser(
+    interval: 'day' | 'month',
+    cutoff: Date,
+  ): Promise<Record<string, Decimal>> {
+    const repo = this.repoForInterval(interval);
+    const rows = await repo
+      .createQueryBuilder('balance')
+      .select('accountInfo."userId"', 'userId')
+      .addSelect('balance."total"', 'totalBalance')
+      .addSelect(
+        'ROW_NUMBER() OVER (PARTITION BY balance."account_info_id" ORDER BY balance."period" DESC)',
+        'rn',
+      )
+      .innerJoin('balance.accountInfo', 'accountInfo')
+      .where('accountInfo."isActive" = true')
+      .andWhere('balance."period" <= :cutoff', { cutoff })
+      .getRawMany<{
+        userId: string;
+        totalBalance: string;
+        rn: string;
+      }>();
+
+    const perUser: Record<string, Decimal> = {};
+    for (const row of rows) {
+      if (Number(row.rn) !== 1) continue;
+      perUser[row.userId] = (perUser[row.userId] ?? new Decimal(0)).add(
+        new Decimal(row.totalBalance),
+      );
+    }
+    return perUser;
+  }
+
+  // Add method to get time series for charts
   async getBalanceTimeSeries(
     exchange: string,
     startTime: Date,
