@@ -186,7 +186,7 @@ export default function AdminRoiAnalysisPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Users</CardDescription>
@@ -221,7 +221,7 @@ export default function AdminRoiAnalysisPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>MtoNow PnL (USD)</CardDescription>
+              <CardDescription>MTD PnL (USD)</CardDescription>
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-2xl font-semibold tabular-nums">
                   {formatCurrencySigned(totals.mtoNowPnl)}
@@ -235,7 +235,7 @@ export default function AdminRoiAnalysisPage() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>YtoNow PnL (USD)</CardDescription>
+              <CardDescription>YTD PnL (USD)</CardDescription>
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-2xl font-semibold tabular-nums">
                   {formatCurrencySigned(totals.ytoNowPnl)}
@@ -254,9 +254,9 @@ export default function AdminRoiAnalysisPage() {
             <div className="flex flex-col gap-2">
               <CardTitle>Users with Linked Accounts</CardTitle>
               <CardDescription>
-                Admin view of asset status &amp; ROI. MtoNowROI = return from start of
-                month; YtoNowROI = return from start of year. N/A shown when no
-                period-start snapshot baseline exists.
+                Admin view of asset status &amp; ROI. MTD ROI = return from start of
+                month; YTD ROI = return from start of year. N/A shown when no period-start
+                snapshot baseline exists.
               </CardDescription>
             </div>
           </CardHeader>
@@ -278,10 +278,10 @@ export default function AdminRoiAnalysisPage() {
                       <TableHead className="text-right">Balance</TableHead>
                       <TableHead className="text-right">Fee Balance</TableHead>
                       <TableHead className="text-right">Locked</TableHead>
-                      <TableHead className="text-right">MtoNowPnL</TableHead>
-                      <TableHead className="text-right">MtoNowROI</TableHead>
-                      <TableHead className="text-right">YtoNowPnL</TableHead>
-                      <TableHead className="text-right">YtoNowROI</TableHead>
+                      <TableHead className="text-right">MTD PnL</TableHead>
+                      <TableHead className="text-right">MTD ROI</TableHead>
+                      <TableHead className="text-right">YTD PnL</TableHead>
+                      <TableHead className="text-right">YTD ROI</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
