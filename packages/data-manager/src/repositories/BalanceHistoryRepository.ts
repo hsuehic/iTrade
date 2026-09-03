@@ -425,29 +425,35 @@ export class BalanceHistoryRepository {
   }
 
   /**
-   * Get each user's latest account total balance at-or-before a cutoff, from a
-   * balance_<interval> bucket table. Used by the admin ROI Analysis page for
-   * period-start baselines:
+   * Get each user's period-start account total balance from a balance_<interval>
+   * bucket table. Used by the admin ROI Analysis page for period-start baselines:
    *   - MtoNowROI (month)  → balance_day   (latest day row ≤ month start)
    *   - YtoNowROI (year)   → balance_month (latest month row ≤ year start)
-   * Returns a map of userId → summed total (latest row per account, summed across
-   * the user's active accounts). Mirrors the dashboard's calendar-aligned baseline.
+   * Returns a map of userId → summed total (latest row per active account, summed
+   * across the user's active accounts). Mirrors the dashboard's calendar-aligned
+   * baseline, INCLUDING its fallback: when no row exists at-or-before `cutoff`
+   * (e.g. balance_month has no Jan-1 row yet), fall back to the FIRST available
+   * row on-or-after `fallbackStart` (the period's earliest recorded balance), so
+   * the baseline is never 0 for a user that actually holds funds in the period.
    */
   async getPeriodStartTotalByUser(
     interval: 'day' | 'month',
     cutoff: Date,
+    fallbackStart?: Date,
   ): Promise<Record<string, Decimal>> {
     const repo = this.repoForInterval(interval);
-    const rows = await repo
+
+    // 1) Baseline = latest row at-or-before cutoff (the exact period start).
+    const atOrBefore = await repo
       .createQueryBuilder('balance')
-      .select('accountInfo."userId"', 'userId')
+      .select('ai."userId"', 'userId')
       .addSelect('balance."total"', 'totalBalance')
       .addSelect(
         'ROW_NUMBER() OVER (PARTITION BY balance."account_info_id" ORDER BY balance."period" DESC)',
         'rn',
       )
-      .innerJoin('balance.accountInfo', 'accountInfo')
-      .where('accountInfo."isActive" = true')
+      .innerJoin('balance.accountInfo', 'ai')
+      .where('ai."isActive" = true')
       .andWhere('balance."period" <= :cutoff', { cutoff })
       .getRawMany<{
         userId: string;
@@ -456,12 +462,42 @@ export class BalanceHistoryRepository {
       }>();
 
     const perUser: Record<string, Decimal> = {};
-    for (const row of rows) {
+    for (const row of atOrBefore) {
       if (Number(row.rn) !== 1) continue;
       perUser[row.userId] = (perUser[row.userId] ?? new Decimal(0)).add(
         new Decimal(row.totalBalance),
       );
     }
+
+    // 2) Fallback for users with no ≤cutoff row: first row on/after fallbackStart.
+    if (fallbackStart && Object.keys(perUser).length === 0) {
+      const firstInWindow = await repo
+        .createQueryBuilder('balance')
+        .select('ai."userId"', 'userId')
+        .addSelect('balance."total"', 'totalBalance')
+        .addSelect(
+          'ROW_NUMBER() OVER (PARTITION BY balance."account_info_id" ORDER BY balance."period" ASC)',
+          'rn',
+        )
+        .innerJoin('balance.accountInfo', 'ai')
+        .where('ai."isActive" = true')
+        .andWhere('balance."period" >= :fallbackStart', { fallbackStart })
+        .andWhere('balance."total" > 0')
+        .getRawMany<{
+          userId: string;
+          totalBalance: string;
+          rn: string;
+        }>();
+
+      for (const row of firstInWindow) {
+        if (Number(row.rn) !== 1) continue;
+        if (perUser[row.userId] !== undefined) continue; // keep real ≤cutoff baseline
+        perUser[row.userId] = (perUser[row.userId] ?? new Decimal(0)).add(
+          new Decimal(row.totalBalance),
+        );
+      }
+    }
+
     return perUser;
   }
 

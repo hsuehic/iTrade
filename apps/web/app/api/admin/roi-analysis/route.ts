@@ -22,22 +22,46 @@ interface UserRow {
   yearStartBalance: number;
 }
 
-/** Fetch each user's latest balance at-or-before the cutoff, summed per user.
- *  Uses the balance_<interval> bucket tables (matching the dashboard's source):
- *  - overDay → 'day' table for the month-start baseline
- *  - overMonth → 'month' table for the year-start baseline */
+/** Fetch each user's period-start balance baseline, summed per user, from the
+ *  balance_<interval> bucket tables. Mirrors the dashboard source:
+ *  - overDay  → balance_day   for the month-start baseline
+ *  - overMonth→ balance_month for the year-start baseline
+ *  Falls back to the first available balance in the window when no row exists
+ *  at-or-before the cutoff (dashboard's "first non-zero aggregate" fallback), so
+ *  the baseline is never 0 for a user that actually holds funds in the period. */
 async function fetchBaselines(
   dm: Awaited<ReturnType<typeof getDataManager>>,
   interval: 'day' | 'month',
   cutoff: Date,
 ): Promise<Record<string, number>> {
   const balanceRepo = dm.getBalanceHistoryRepository();
-  const baselines = await balanceRepo.getPeriodStartTotalByUser(interval, cutoff);
+  const baselines = await balanceRepo.getPeriodStartTotalByUser(interval, cutoff, cutoff);
   const perUser: Record<string, number> = {};
   for (const [userId, decimal] of Object.entries(baselines)) {
     perUser[userId] = decimal.toNumber();
   }
   return perUser;
+}
+
+/** Net deposits/withdrawals WITHIN [from, to] for a single user, mirroring the
+ *  dashboard's semantics exactly: only COMPLETED, non-internal transfers count;
+ *  DEPOSIT adds, WITHDRAW subtracts. */
+async function fetchNetDeposits(
+  dm: Awaited<ReturnType<typeof getDataManager>>,
+  userId: string,
+  from: Date,
+  to: Date,
+): Promise<number> {
+  if (!dm.getTransfers) return 0;
+  const transfers = await dm.getTransfers(userId, from, to);
+  let net = 0;
+  for (const t of transfers) {
+    if (t.status !== 'COMPLETED') continue;
+    if (t.network === 'internal') continue;
+    if (t.type === 'DEPOSIT') net += parseFloat(t.amount.toString());
+    else if (t.type === 'WITHDRAW') net -= parseFloat(t.amount.toString());
+  }
+  return net;
 }
 
 /**
@@ -48,9 +72,14 @@ async function fetchBaselines(
  * - MtoNowROI / YtoNowROI use the balance_<interval> bucket tables for the
  *   period-start equity baseline (matching the dashboard's source): MtoNowROI
  *   reads `balance_day` at-or-before month start; YtoNowROI reads
- *   `balance_month` at-or-before year start.
- * - Note: this is a balance-based ROI (no net-deposit adjustment), computed
- *   once for all users at admin scale.
+ *   `balance_month` at-or-before year start. Missing baselines fall back to the
+ *   first available balance in the period (dashboard's first-non-zero fallback).
+ * - ROI nets out deposits/withdrawals made during the period (dashboard's
+ *   netDeposits semantics: COMPLETED, non-internal transfers), so a top-up or
+ *   withdrawal doesn't masquerade as a gain or loss:
+ *       roi = (totalBalance − netDeposits − baseline) / baseline × 100
+ *   This is a balance-based achieved Return on Investment (equivalent to the
+ *   dashboard's balanceChange), computed once for all users at admin scale.
  */
 export async function GET(request: NextRequest) {
   const session = await getSession(request);
@@ -130,16 +159,39 @@ export async function GET(request: NextRequest) {
       userMeta = {};
     }
 
-    // ── 4. Compute ROI and assemble rows ───────────────────────────────────
-    const calculateChange = (current: number, baseline: number): number => {
-      if (baseline <= 0) return 0; // 0 → no period-start baseline available → shown as N/A in UI
-      return ((current - baseline) / baseline) * 100;
+    // ── 4. Net deposits/withdrawals within each period, per user ──────────
+    const monthNet: Record<string, number> = {};
+    const yearNet: Record<string, number> = {};
+    for (const u of userRows) {
+      try {
+        monthNet[u.userId] = await fetchNetDeposits(dm, u.userId, monthStart, now);
+        yearNet[u.userId] = await fetchNetDeposits(dm, u.userId, yearStart, now);
+      } catch (e) {
+        console.error(`[Admin ROI] Transfer fetch failed for ${u.userId}:`, e);
+        monthNet[u.userId] = 0;
+        yearNet[u.userId] = 0;
+      }
+    }
+
+    // ── 5. Compute ROI and assemble rows ───────────────────────────────────
+    // Dashboard-faithful formula: per-user ROI nets out deposits/withdrawals
+    // made during the period, so a top-up doesn't masquerade as a gain.
+    //   roi = (totalBalance − netDeposits − baseline) / baseline × 100
+    const calculateChange = (
+      current: number,
+      baseline: number,
+      netDeposits: number,
+    ): number => {
+      if (baseline <= 0) return 0; // 0 → no period-start baseline → shown as N/A in UI
+      return ((current - netDeposits - baseline) / baseline) * 100;
     };
 
     const rows = userRows.map((u) => {
       const meta = userMeta[u.userId];
       const monthBaseline = monthBaselines[u.userId] ?? 0;
       const yearBaseline = yearBaselines[u.userId] ?? 0;
+      const mNet = monthNet[u.userId] ?? 0;
+      const yNet = yearNet[u.userId] ?? 0;
       return {
         userId: u.userId,
         name: meta?.name ?? '',
@@ -148,10 +200,12 @@ export async function GET(request: NextRequest) {
         balance: u.totalBalance,
         feeBalance: u.feeBalance,
         lockedBalance: u.lockedBalance,
-        mtoNowRoi: calculateChange(u.totalBalance, monthBaseline),
+        mtoNowRoi: calculateChange(u.totalBalance, monthBaseline, mNet),
         mtoNowBaseline: monthBaseline,
-        ytoNowRoi: calculateChange(u.totalBalance, yearBaseline),
+        monthNetDeposits: mNet,
+        ytoNowRoi: calculateChange(u.totalBalance, yearBaseline, yNet),
         ytoNowBaseline: yearBaseline,
+        yearNetDeposits: yNet,
         createdAt: meta?.createdAt ?? null,
       };
     });
