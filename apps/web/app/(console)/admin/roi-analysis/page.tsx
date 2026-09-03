@@ -222,10 +222,10 @@ export default function AdminRoiAnalysisPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>MTD PnL (USD)</CardDescription>
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-2xl font-semibold tabular-nums">
-                  {formatCurrencySigned(totals.mtoNowPnl)}
-                </CardTitle>
+              <CardTitle className="text-2xl font-semibold tabular-nums">
+                {formatCurrencySigned(totals.mtoNowPnl)}
+              </CardTitle>
+              <div className="mt-1">
                 <ChangeBadge
                   value={mtoNowRoiPct}
                   hasBaseline={totals.mtoNowBaseline > 0}
@@ -236,10 +236,10 @@ export default function AdminRoiAnalysisPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>YTD PnL (USD)</CardDescription>
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-2xl font-semibold tabular-nums">
-                  {formatCurrencySigned(totals.ytoNowPnl)}
-                </CardTitle>
+              <CardTitle className="text-2xl font-semibold tabular-nums">
+                {formatCurrencySigned(totals.ytoNowPnl)}
+              </CardTitle>
+              <div className="mt-1">
                 <ChangeBadge
                   value={ytoNowRoiPct}
                   hasBaseline={totals.ytoNowBaseline > 0}
