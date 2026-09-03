@@ -24,18 +24,31 @@ interface UserRow {
 
 /** Fetch each user's period-start balance baseline, summed per user, from the
  *  balance_<interval> bucket tables. Mirrors the dashboard source:
- *  - overDay  → balance_day   for the month-start baseline
- *  - overMonth→ balance_month for the year-start baseline
- *  Falls back to the first available balance in the window when no row exists
- *  at-or-before the cutoff (dashboard's "first non-zero aggregate" fallback), so
- *  the baseline is never 0 for a user that actually holds funds in the period. */
+ *  - MtoNow  → balance_day at the close of the previous month (31 Aug for Sep)
+ *  - YtoNow  → balance_day at the close of the previous year (31 Dec)
+ *  Falls back to the first available (first non-zero) balance the user ever had
+ *  when no row exists at-or-before the cutoff, so the baseline is never 0 for a
+ *  user that actually holds funds in the period (new accounts). */
 async function fetchBaselines(
   dm: Awaited<ReturnType<typeof getDataManager>>,
   interval: 'day' | 'month',
-  cutoff: Date,
+  periodStart: Date,
 ): Promise<Record<string, number>> {
   const balanceRepo = dm.getBalanceHistoryRepository();
-  const baselines = await balanceRepo.getPeriodStartTotalByUser(interval, cutoff, cutoff);
+  // Baseline = close value of the PREVIOUS cycle: the last balance_day row at or
+  // just before the period start (e.g. for September = the 31 Aug close, NOT the
+  // 1 Sep row). `periodStart - 1ms` excludes the period's own first row so a user
+  // who has a record on the 1st is anchored to the prior cycle's close instead.
+  const cycleCloseCutoff = new Date(periodStart.getTime() - 1);
+  // Fallback (no row at/before the cutoff, e.g. a brand-new account): first
+  // non-zero balance the user ever had. Bound from epoch so it finds the true
+  // earliest balance rather than the first row after the cutoff.
+  const fallbackStart = new Date(0);
+  const baselines = await balanceRepo.getPeriodStartTotalByUser(
+    interval,
+    cycleCloseCutoff,
+    fallbackStart,
+  );
   const perUser: Record<string, number> = {};
   for (const [userId, decimal] of Object.entries(baselines)) {
     perUser[userId] = decimal.toNumber();
@@ -43,21 +56,42 @@ async function fetchBaselines(
   return perUser;
 }
 
-/** Net deposits/withdrawals WITHIN [from, to] for a single user, mirroring the
- *  dashboard's semantics exactly: only COMPLETED, non-internal transfers count;
- *  DEPOSIT adds, WITHDRAW subtracts. */
+/** Net deposits/withdrawals for a cycle, mirroring the dashboard semantics:
+ *  only COMPLETED, non-internal transfers count; DEPOSIT adds, WITHDRAW subtracts.
+ *
+ *  Crucial: the baseline (close of previous cycle, or first-non-zero for new
+ *  users) ALREADY reflects the account's opening balance, so the opening "seed"
+ *  transfer must NOT be netted again (identity: current = baseline + change +
+ *  netDeposit). We therefore window netDeposits to start only AFTER the account's
+ *  first-ever transfer:  windowStart = max(cycleStart, firstTransferTimestamp).
+ *  Transfers at/before windowStart are part of the baseline and are excluded. */
 async function fetchNetDeposits(
   dm: Awaited<ReturnType<typeof getDataManager>>,
   userId: string,
-  from: Date,
+  cycleStart: Date,
   to: Date,
 ): Promise<number> {
   if (!dm.getTransfers) return 0;
-  const transfers = await dm.getTransfers(userId, from, to);
-  let net = 0;
-  for (const t of transfers) {
+  const all = await dm.getTransfers(userId);
+
+  let firstTs: number | null = null;
+  for (const t of all) {
     if (t.status !== 'COMPLETED') continue;
     if (t.network === 'internal') continue;
+    const ts = new Date(t.timestamp).getTime();
+    if (firstTs === null || ts < firstTs) firstTs = ts;
+  }
+  const windowStart =
+    firstTs !== null ? Math.max(cycleStart.getTime(), firstTs) : cycleStart.getTime();
+
+  let net = 0;
+  const end = to.getTime();
+  for (const t of all) {
+    if (t.status !== 'COMPLETED') continue;
+    if (t.network === 'internal') continue;
+    const ts = new Date(t.timestamp).getTime();
+    if (ts <= windowStart) continue; // part of the baseline / opening seed
+    if (ts > end) continue;
     if (t.type === 'DEPOSIT') net += parseFloat(t.amount.toString());
     else if (t.type === 'WITHDRAW') net -= parseFloat(t.amount.toString());
   }
@@ -69,14 +103,13 @@ async function fetchNetDeposits(
  * summary for every user that has at least one active linked exchange account.
  *
  * - Live balances aggregated from `account_info` (total / available / locked).
- * - MtoNowROI / YtoNowROI use the balance_<interval> bucket tables for the
- *   period-start equity baseline (matching the dashboard's source): MtoNowROI
- *   reads `balance_day` at-or-before month start; YtoNowROI reads
- *   `balance_month` at-or-before year start. Missing baselines fall back to the
- *   first available balance in the period (dashboard's first-non-zero fallback).
- * - ROI nets out deposits/withdrawals made during the period (dashboard's
- *   netDeposits semantics: COMPLETED, non-internal transfers), so a top-up or
- *   withdrawal doesn't masquerade as a gain or loss:
+ * - MtoNowROI / YtoNowROI read `balance_day` for the equity baseline at the
+ *   CLOSE of the previous cycle (MtoNow = 31 Aug for Sep; YtoNow = 31 Dec).
+ *   New accounts with no prior-cycle row fall back to their first non-zero
+ *   balance as the baseline.
+ * - ROI nets out deposits/withdrawals made after the account's opening (the
+ *   baseline seed is NOT netted again) via netDeposits (COMPLETED, non-internal
+ *   transfers), so a top-up or withdrawal doesn't masquerade as a gain:
  *       roi = (totalBalance − netDeposits − baseline) / baseline × 100
  *   This is a balance-based achieved Return on Investment (equivalent to the
  *   dashboard's balanceChange), computed once for all users at admin scale.
@@ -138,7 +171,7 @@ export async function GET(request: NextRequest) {
     const yearStart = new Date(now.getFullYear(), 0, 1);
 
     const monthBaselines = await fetchBaselines(dm, 'day', monthStart);
-    const yearBaselines = await fetchBaselines(dm, 'month', yearStart);
+    const yearBaselines = await fetchBaselines(dm, 'day', yearStart);
 
     for (const u of userRows) {
       u.monthStartBalance = monthBaselines[u.userId] ?? 0;

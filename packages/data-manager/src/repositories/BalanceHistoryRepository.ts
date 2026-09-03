@@ -28,7 +28,7 @@ const MAX_ROWS_PER_ACCOUNT: Record<string, number> = {
   balance_15min: 100,
   balance_30min: 100,
   balance_hour: 400, // 16.7d — 1w chart (168 pts) + custom ≤14d + previous-week baseline
-  balance_day: 365,
+  balance_day: 367, // full leap year (366d) + the 1-day prior-cycle close for YtoNow/MtoNow
   balance_week: 104,
   balance_month: 120,
 };
