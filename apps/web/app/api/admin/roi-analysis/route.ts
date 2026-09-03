@@ -109,15 +109,24 @@ export async function GET(request: NextRequest) {
         lockedBalance: string;
       }>();
 
-    const userRows: UserRow[] = aggregated.map((r) => ({
-      userId: r.userId,
-      accountCount: Number(r.accountCount),
-      totalBalance: Number(r.totalBalance),
-      feeBalance: Number(r.availableBalance),
-      lockedBalance: Number(r.lockedBalance),
-      monthStartBalance: 0,
-      yearStartBalance: 0,
-    }));
+    const userRows: UserRow[] = aggregated.map((r) => {
+      const total = Number(r.totalBalance);
+      const available = Number(r.availableBalance);
+      // Locked can't be negative and free+locked must reconcile to total equity.
+      // Cross-margin futures accounts can report available > total (negative
+      // locked) — clamp so free never exceeds total and locked is never negative.
+      const clampedAvailable = Math.min(available, total);
+      const clampedLocked = Math.max(0, total - clampedAvailable);
+      return {
+        userId: r.userId,
+        accountCount: Number(r.accountCount),
+        totalBalance: total,
+        feeBalance: clampedAvailable,
+        lockedBalance: clampedLocked,
+        monthStartBalance: 0,
+        yearStartBalance: 0,
+      };
+    });
 
     if (userRows.length === 0) {
       return NextResponse.json({ rows: [], computedAt: new Date().toISOString() });

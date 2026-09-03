@@ -462,15 +462,19 @@ export class BalanceHistoryRepository {
       }>();
 
     const perUser: Record<string, Decimal> = {};
+    const realBaselineUsers = new Set<string>();
     for (const row of atOrBefore) {
       if (Number(row.rn) !== 1) continue;
+      realBaselineUsers.add(row.userId);
       perUser[row.userId] = (perUser[row.userId] ?? new Decimal(0)).add(
         new Decimal(row.totalBalance),
       );
     }
 
-    // 2) Fallback for users with no ≤cutoff row: first row on/after fallbackStart.
-    if (fallbackStart && Object.keys(perUser).length === 0) {
+    // 2) Fallback for users with no ≤cutoff row: first row on/after fallbackStart,
+    //    summed across ALL of the user's active accounts (so a multi-account user
+    //    gets their full equity baseline, not just one account's).
+    if (fallbackStart) {
       const firstInWindow = await repo
         .createQueryBuilder('balance')
         .select('ai."userId"', 'userId')
@@ -491,7 +495,7 @@ export class BalanceHistoryRepository {
 
       for (const row of firstInWindow) {
         if (Number(row.rn) !== 1) continue;
-        if (perUser[row.userId] !== undefined) continue; // keep real ≤cutoff baseline
+        if (realBaselineUsers.has(row.userId)) continue; // keep the exact ≤cutoff baseline
         perUser[row.userId] = (perUser[row.userId] ?? new Decimal(0)).add(
           new Decimal(row.totalBalance),
         );
