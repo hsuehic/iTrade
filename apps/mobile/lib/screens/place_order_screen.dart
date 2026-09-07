@@ -1053,11 +1053,16 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
+      String message = e.toString();
+      // Strip the "Exception: " prefix so users get a clean error message.
+      if (message.startsWith('Exception: ')) {
+        message = message.substring('Exception: '.length);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: CopyText(
             'screen.orders.place_order.errors.submit_failed',
-            params: {'error': e.toString()},
+            params: {'error': message},
             fallback: 'Failed to place order: {{error}}',
           ),
           backgroundColor: Colors.red,
@@ -1082,11 +1087,14 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.w),
-          child: Column(
-            children: [
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.w),
+            child: Column(
+              children: [
               ExchangePickerField(
                 selectedExchange: _exchange,
                 onChanged: (value) {
@@ -1287,6 +1295,7 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
             ],
           ),
         ),
+      ),
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(

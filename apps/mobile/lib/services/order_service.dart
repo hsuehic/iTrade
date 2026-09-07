@@ -192,10 +192,39 @@ class OrderService {
           return Order.fromJson(orderData);
         }
       }
-      return null;
+      throw Exception(
+        'Failed to place order (HTTP ${response.statusCode}): '
+        '${response.data}',
+      );
+    } on DioException catch (e) {
+      // Surface the real server error (e.g. "Insufficient balance",
+      // "Exchange account not found or inactive", "Unauthorized") instead of
+      // silently returning null, so the user can diagnose why the order failed.
+      final message = _extractErrorMessage(e);
+      throw Exception(
+        message == null || message.isEmpty
+            ? 'Failed to place order: ${e.message ?? 'request error'}'
+            : message,
+      );
     } catch (e) {
-      return null;
+      throw Exception(
+        'Failed to place order: ${e is Exception ? e.toString() : e}',
+      );
     }
+  }
+
+  /// Pull the human-readable `error` (or message) out of a Dio error response.
+  String? _extractErrorMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic>) {
+      final value = data['error'] ?? data['message'] ?? data['msg'];
+      if (value is String && value.isNotEmpty) {
+        return value;
+      }
+    } else if (data is String && data.isNotEmpty) {
+      return data;
+    }
+    return null;
   }
 
   /// Cancel an open order by ID
