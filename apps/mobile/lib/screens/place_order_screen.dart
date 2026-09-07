@@ -158,6 +158,35 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
     return instId;
   }
 
+  /// Known quote currencies for Binance/Coinbase compact symbols, ordered by
+  /// how `splitCompactSymbol` in the backend splits them (longest first).
+  static const List<String> _quoteCurrencies = [
+    'USDT',
+    'USDC',
+  ];
+
+  /// Normalize a compact Binance/Coinbase futures/spot symbol (e.g. "BTCUSDT")
+  /// into the display + submit form. When the product type is perpetual, mark
+  /// it with a `:QUOTE` suffix so the backend places a perp order, NOT a spot
+  /// order. Binance/Coinbase continuous APIs return "BTCUSDT" for BOTH spot
+  /// and perpetual (unlike OKX), which is why spot/perp were being confused.
+  String _formatContinuousSymbol(String raw, String productType) {
+    final upper = raw.trim().toUpperCase();
+    if (upper.isEmpty) return '';
+    if (_isSwapSymbol(upper)) return upper; // already marked as perpetual
+    String? quote;
+    for (final q in _quoteCurrencies) {
+      if (upper.endsWith(q) && upper.length > q.length) {
+        quote = q;
+        break;
+      }
+    }
+    if (quote == null) return upper; // unrecognized quote, leave as-is
+    final base = upper.substring(0, upper.length - quote.length);
+    if (base.isEmpty) return upper;
+    return productType == 'SWAP' ? '$base/$quote:$quote' : '$base/$quote';
+  }
+
   String _extractBaseSymbol(String symbol) {
     final trimmed = symbol.trim();
     if (trimmed.isEmpty) return '';
@@ -238,7 +267,8 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
         exchange,
         productType,
         () => _binanceService.getTickers(isSwap: productType == 'SWAP'),
-        applyProductFilter: false,
+        applyProductFilter: true,
+        formatSymbol: (s) => _formatContinuousSymbol(s, productType),
       );
       return;
     }
@@ -247,7 +277,8 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
         exchange,
         productType,
         () => _coinbaseService.getTickers(isSwap: productType == 'SWAP'),
-        applyProductFilter: false,
+        applyProductFilter: true,
+        formatSymbol: (s) => _formatContinuousSymbol(s, productType),
       );
       return;
     }
@@ -312,6 +343,7 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
     String productType,
     Future<List<MarketTicker>> Function() loader, {
     bool applyProductFilter = true,
+    String Function(String symbol)? formatSymbol,
   }
   ) async {
     if (!mounted) return;
@@ -328,18 +360,27 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
       final filtered = applyProductFilter
           ? raw.where((ticker) {
               if (productType == 'SWAP') {
-                return _isSwapSymbol(ticker.symbol);
+                return _isSwapSymbol(
+                  formatSymbol?.call(ticker.symbol) ?? ticker.symbol,
+                );
               }
-              return !_isSwapSymbol(ticker.symbol);
+              return !_isSwapSymbol(
+                formatSymbol?.call(ticker.symbol) ?? ticker.symbol,
+              );
             }).toList()
           : raw;
 
       final symbols = filtered
-          .map((ticker) => ticker.symbol)
+          .map((ticker) =>
+              formatSymbol?.call(ticker.symbol) ?? ticker.symbol)
           .where((s) => s.isNotEmpty)
           .toList();
       final symbolMap = <String, MarketTicker>{
-        for (final ticker in filtered) ticker.symbol: ticker,
+        for (final rawSymbol in filtered)
+          (formatSymbol?.call(rawSymbol.symbol) ?? rawSymbol.symbol):
+              rawSymbol.copyWith(
+                symbol: formatSymbol?.call(rawSymbol.symbol) ?? rawSymbol.symbol,
+              ),
       };
 
       setState(() {
