@@ -8,6 +8,13 @@ import { getCurrentPrice } from '@/lib/live-balance';
 import { notifyConfigChange } from '@/lib/console-notify';
 import { StrategyParameters } from '@itrade/core';
 
+// Unrealized PnL on this route is computed live from the current market
+// price (see getCurrentPrice() below) — force-dynamic + revalidate:0 keep
+// Next.js from serving a cached response with a stale price snapshot.
+// Matches the convention already applied to /api/strategies (list route).
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type RouteContext = {
   params: Promise<{ id: string }>;
 };

@@ -92,27 +92,45 @@ export default function StrategyDetailPage(props: { params: Params }) {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [cloning, setCloning] = useState(false);
 
-  const fetchStrategy = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/strategies/${id}`);
-      if (!res.ok) throw new Error('Failed to fetch strategy');
-      const data = await res.json();
-      setStrategy(data.strategy);
-      setRebuiltPerformance(data.rebuiltPerformance ?? null);
-      setPositionSummary(data.positionSummary ?? null);
-    } catch (error) {
-      console.error(error);
-      toast.error(t('errors.loadStrategies'));
-    } finally {
-      setLoading(false);
-    }
-  }, [id, t]);
+  const fetchStrategy = useCallback(
+    async (isBackgroundRefresh = false) => {
+      try {
+        if (!isBackgroundRefresh) setLoading(true);
+        const res = await fetch(`/api/strategies/${id}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to fetch strategy');
+        const data = await res.json();
+        setStrategy(data.strategy);
+        setRebuiltPerformance(data.rebuiltPerformance ?? null);
+        setPositionSummary(data.positionSummary ?? null);
+      } catch (error) {
+        console.error(error);
+        // Don't spam toasts on background polling failures — only surface
+        // the error on the initial load.
+        if (!isBackgroundRefresh) toast.error(t('errors.loadStrategies'));
+      } finally {
+        if (!isBackgroundRefresh) setLoading(false);
+      }
+    },
+    [id, t],
+  );
 
   useEffect(() => {
-    if (!isNaN(id)) {
-      fetchStrategy();
-    }
+    if (isNaN(id)) return;
+
+    fetchStrategy();
+
+    // Unrealized PnL depends on the live market price, which the initial
+    // fetch snapshots at load time. Without polling, the figures on this
+    // page silently go stale the longer the tab stays open (bug: PnL sign
+    // can flip vs. reality after the market moves). Poll in the background
+    // every 15s — matches the ~30s server-side price cache TTL without
+    // re-triggering the full-page loading skeleton on each tick. Pause
+    // while the tab is hidden to avoid needless API hammering.
+    const tick = () => {
+      if (document.visibilityState === 'visible') fetchStrategy(true);
+    };
+    const intervalId = setInterval(tick, 15000);
+    return () => clearInterval(intervalId);
   }, [id, fetchStrategy]);
 
   const toggleStatus = async () => {
