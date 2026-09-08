@@ -79,7 +79,7 @@ export default function AdminUsersPage() {
     | 'createdAt'
     | 'exchangeAccounts'
     | 'balance';
-  const [sortKey, setSortKey] = useState<SortKey>('createdAt');
+  const [sortKey, setSortKey] = useState<SortKey>('balance');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const fetchExchangeStats = useCallback(async () => {
