@@ -2037,7 +2037,7 @@ class _SectionCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (trailing != null) trailing!,
+              ?trailing,
             ],
           ),
           const SizedBox(height: 12),
@@ -3107,7 +3107,7 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
                     : ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                         itemCount: _filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
                         itemBuilder: (_, i) {
                           final option = _filtered[i];
                           return Material(
@@ -3333,7 +3333,7 @@ class _CoinAvatar extends StatelessWidget {
           CryptoIcons.getIconUrl(base),
           width: size,
           height: size,
-          errorBuilder: (_, __, ___) => Container(
+          errorBuilder: (_, _, _) => Container(
             width: size,
             height: size,
             color: Theme.of(context).colorScheme.primaryContainer,
