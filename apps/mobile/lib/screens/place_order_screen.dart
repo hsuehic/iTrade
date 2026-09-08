@@ -8,10 +8,10 @@ import '../services/binance_data_service.dart';
 import '../services/coinbase_data_service.dart';
 import '../services/copy_service.dart';
 import '../services/okx_data_service.dart';
-import '../utils/crypto_icons.dart';
 import '../utils/number_format_utils.dart';
 import '../widgets/copy_text.dart';
 import '../widgets/exchange_picker_field.dart';
+import '../widgets/unified_symbol_picker.dart';
 
 class PlaceOrderPayload {
   final String exchange;
@@ -53,8 +53,6 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
 
   List<String> _symbols = [];
   Map<String, MarketTicker> _symbolTickers = {};
-  bool _symbolsLoading = false;
-  String? _symbolsError;
 
   String _exchange = '';
   String _side = 'BUY';
@@ -70,7 +68,6 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
   double? _bestAsk;
   bool _tickerLoading = false;
   String? _tickerError;
-  VoidCallback? _symbolSheetRefresh;
 
   @override
   void dispose() {
@@ -187,57 +184,6 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
     return productType == 'SWAP' ? '$base/$quote:$quote' : '$base/$quote';
   }
 
-  String _extractBaseSymbol(String symbol) {
-    final trimmed = symbol.trim();
-    if (trimmed.isEmpty) return '';
-    final withoutSuffix = trimmed.split(':').first;
-    final parts = withoutSuffix.split(RegExp(r'[-/]'));
-    if (parts.isNotEmpty && parts.first.isNotEmpty) {
-      return parts.first;
-    }
-
-    final upper = withoutSuffix.toUpperCase();
-    const knownQuotes = [
-      'USDT',
-      'USDC',
-      'BUSD',
-      'TUSD',
-      'FDUSD',
-      'USD',
-    ];
-    for (final quote in knownQuotes) {
-      if (upper.endsWith(quote) && upper.length > quote.length) {
-        return upper.substring(0, upper.length - quote.length);
-      }
-    }
-    return withoutSuffix;
-  }
-
-  String _buildBaseIconUrl(String symbol) {
-    final base = _extractBaseSymbol(symbol);
-    if (base.isEmpty) return '';
-    return CryptoIcons.getIconUrl(base, exchangeId: _exchange);
-  }
-
-  double _calculateDisplayVolume(MarketTicker ticker) {
-    final volume = ticker.volume24h;
-    if (volume == null || volume <= 0) {
-      return 0;
-    }
-
-    final symbol = ticker.symbol.toUpperCase();
-    final isSpot = !_isSwapSymbol(symbol);
-
-    if (isSpot) {
-      return volume;
-    }
-
-    if (ticker.last == null) {
-      return volume;
-    }
-    return volume * ticker.last!;
-  }
-
   bool _isSwapSymbol(String symbol) {
     final upper = symbol.toUpperCase();
     return upper.contains(':') ||
@@ -287,19 +233,12 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
       setState(() {
         _symbols = _getDefaultSymbols(exchange, productType);
         _symbolTickers = {};
-        _symbolsLoading = false;
-        _symbolsError = 'Unsupported exchange';
       });
       _syncSymbolSelection();
-      _refreshSymbolSheet();
       return;
     }
 
     if (!mounted) return;
-    setState(() {
-      _symbolsLoading = true;
-      _symbolsError = null;
-    });
 
     try {
       final instType = productType == 'SWAP' ? 'SWAP' : 'SPOT';
@@ -320,21 +259,15 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
             ? _getDefaultSymbols(exchange, productType)
             : symbols;
         _symbolTickers = symbolMap;
-        _symbolsLoading = false;
-        _symbolsError = null;
       });
       _syncSymbolSelection();
-      _refreshSymbolSheet();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _symbols = _getDefaultSymbols(exchange, productType);
         _symbolTickers = {};
-        _symbolsLoading = false;
-        _symbolsError = e.toString();
       });
       _syncSymbolSelection();
-      _refreshSymbolSheet();
     }
   }
 
@@ -348,8 +281,6 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
   ) async {
     if (!mounted) return;
     setState(() {
-      _symbolsLoading = true;
-      _symbolsError = null;
       _symbolTickers = {};
     });
 
@@ -387,28 +318,16 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
         _symbols =
             symbols.isEmpty ? _getDefaultSymbols(exchange, productType) : symbols;
         _symbolTickers = symbolMap;
-        _symbolsLoading = false;
-        _symbolsError = symbols.isEmpty ? 'No market data available' : null;
       });
       _syncSymbolSelection();
-      _refreshSymbolSheet();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _symbols = _getDefaultSymbols(exchange, productType);
         _symbolTickers = {};
-        _symbolsLoading = false;
-        _symbolsError = e.toString();
       });
       _syncSymbolSelection();
-      _refreshSymbolSheet();
     }
-  }
-
-  void _refreshSymbolSheet() {
-    final refresh = _symbolSheetRefresh;
-    if (refresh == null) return;
-    refresh();
   }
 
   void _syncSymbolSelection() {
@@ -424,18 +343,6 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
     _markTouched('symbol');
     _scheduleValidation();
     _scheduleTickerUpdate();
-  }
-
-  void _handleProductTypeChange(String value) {
-    if (_productType == value) return;
-    setState(() {
-      _productType = value;
-      _symbols = _getDefaultSymbols(_exchange, _productType);
-      _symbolTickers = {};
-      _symbolsLoading = _exchange.trim().isNotEmpty;
-      _symbolsError = null;
-    });
-    _loadSymbolsForExchange(_exchange, _productType);
   }
 
   void _scheduleTickerUpdate() {
@@ -500,462 +407,40 @@ class _PlaceOrderScreenState extends State<PlaceOrderScreen> {
     await _okxService.disconnectWebSocket();
   }
 
-  void _showSymbolSearchDialog(bool isDarkMode) {
-    String searchQuery = '';
-    final searchController = TextEditingController();
-    final copy = CopyService.instance;
-
-    showModalBottomSheet(
+  Future<void> _showSymbolSearchDialog(bool isDarkMode) async {
+    final selected = await UnifiedSymbolPicker.show(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            _symbolSheetRefresh = () => setModalState(() {});
-            final filteredSymbols = _symbols.where((symbol) {
-              return symbol.toLowerCase().contains(searchQuery.toLowerCase());
-            }).toList();
-
-            return AnimatedPadding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
+      title: 'Select symbol',
+      exchange: _exchange,
+      initialSymbol: _symbolController.text.trim(),
+      initialMarketType: _productType == 'SWAP' ? 'perpetual' : 'spot',
+      loadForMarketType: (marketType) async {
+        final type = marketType == 'perpetual' ? 'SWAP' : 'SPOT';
+        setState(() => _productType = type);
+        // _loadSymbolsForExchange populates _symbols/_symbolTickers for the
+        // active product type from the exchange (compact -> unified).
+        await _loadSymbolsForExchange(_exchange, type);
+        return _symbolTickers.values
+            .map(
+              (t) => SymbolPickerItem(
+                symbol: t.symbol,
+                marketType: marketType,
+                exchange: t.exchange ?? _exchange,
+                price: t.last,
+                changePercent: t.changePercent,
+                volume24h: t.volume24h,
+                iconUrl: t.iconUrl,
               ),
-              duration: const Duration(milliseconds: 150),
-              curve: Curves.easeOut,
-              child: ClipRRect(
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20.w),
-                  topRight: Radius.circular(20.w),
-                ),
-                child: Container(
-                  height: MediaQuery.of(context).size.height * 0.8,
-                  decoration: BoxDecoration(
-                    color: isDarkMode ? Colors.grey[900] : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(20.w),
-                      topRight: Radius.circular(20.w),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        margin: EdgeInsets.only(top: 12.w, bottom: 8.w),
-                        width: 40.w,
-                        height: 4.w,
-                        decoration: BoxDecoration(
-                          color: isDarkMode
-                              ? Colors.grey[700]
-                              : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2.w),
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: CopyText(
-                                'screen.product_detail.select_symbol',
-                                fallback: 'Select symbol',
-                                style: TextStyle(
-                                  fontSize: 18.sp,
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      isDarkMode ? Colors.white : Colors.black,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () => Navigator.pop(context),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 10.w),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _buildProductTypeChip(
-                              context: context,
-                              labelKey: 'screen.product.filter.spot',
-                              fallback: 'Spot',
-                              selected: _productType == 'SPOT',
-                              onSelected: () {
-                                setModalState(() {});
-                                _handleProductTypeChange('SPOT');
-                              },
-                            ),
-                            SizedBox(width: 8.w),
-                            _buildProductTypeChip(
-                              context: context,
-                            labelKey: 'screen.product.filter.swap',
-                            fallback: 'Perp',
-                              selected: _productType == 'SWAP',
-                              onSelected: () {
-                                setModalState(() {});
-                                _handleProductTypeChange('SWAP');
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 10.w),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        child: TextField(
-                          controller: searchController,
-                          autofocus: false,
-                          style: TextStyle(
-                            color: isDarkMode ? Colors.white : Colors.black87,
-                            fontSize: 14.sp,
-                          ),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                              vertical: 12.w,
-                              horizontal: 16.w,
-                            ),
-                            hintText: copy.t(
-                              'common.search_placeholder',
-                              fallback: 'Search...',
-                            ),
-                            hintStyle: TextStyle(
-                              color: isDarkMode
-                                  ? Colors.grey[500]
-                                  : Colors.grey[600],
-                              fontSize: 14.sp,
-                            ),
-                            prefixIcon: Icon(
-                              Icons.search,
-                              color: isDarkMode
-                                  ? Colors.grey[400]
-                                  : Colors.grey[600],
-                              size: 20.w,
-                            ),
-                            suffixIcon:
-                                ValueListenableBuilder<TextEditingValue>(
-                              valueListenable: searchController,
-                              builder: (context, value, child) {
-                                if (value.text.isEmpty) {
-                                  return const SizedBox.shrink();
-                                }
-                                return IconButton(
-                                  icon: Icon(
-                                    Icons.clear,
-                                    color: isDarkMode
-                                        ? Colors.grey[400]
-                                        : Colors.grey[600],
-                                    size: 20.w,
-                                  ),
-                                  onPressed: () {
-                                    searchController.clear();
-                                    setModalState(() {
-                                      searchQuery = '';
-                                    });
-                                  },
-                                  tooltip: copy.t(
-                                    'common.clear_search',
-                                    fallback: 'Clear search',
-                                  ),
-                                );
-                              },
-                            ),
-                            filled: true,
-                            fillColor: isDarkMode
-                                ? Colors.grey[850]
-                                : Colors.grey[100],
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(20.w),
-                              borderSide: BorderSide(
-                                color: isDarkMode
-                                    ? Colors.grey[700]!
-                                    : Colors.grey[300]!,
-                                width: 1.0,
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(20.w),
-                              borderSide: BorderSide(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withValues(alpha: 0.5),
-                                width: 2.0,
-                              ),
-                            ),
-                          ),
-                          onChanged: (value) {
-                            setModalState(() {
-                              searchQuery = value;
-                            });
-                          },
-                        ),
-                      ),
-                      SizedBox(height: 12.w),
-                      Expanded(
-                        child: _symbolsLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _symbolsError != null && _symbols.isEmpty
-                                ? Center(
-                                    child: Text(
-                                      _symbolsError!,
-                                      style: TextStyle(
-                                        color: isDarkMode
-                                            ? Colors.grey[400]
-                                            : Colors.grey[600],
-                                        fontSize: 12.sp,
-                                      ),
-                                    ),
-                                  )
-                                : filteredSymbols.isEmpty
-                                    ? Center(
-                                        child: CopyText(
-                                          'screen.product_detail.no_symbols_found',
-                                          fallback: 'No symbols found',
-                                          style: TextStyle(
-                                            color: isDarkMode
-                                                ? Colors.grey[400]
-                                                : Colors.grey[600],
-                                          ),
-                                        ),
-                                      )
-                                    : ListView.builder(
-                                        itemCount: filteredSymbols.length,
-                                        itemBuilder: (context, index) {
-                                          final symbol =
-                                              filteredSymbols[index];
-                                          final ticker =
-                                              _symbolTickers[symbol];
-                                          return _buildSymbolListItem(
-                                            symbol,
-                                            isDarkMode,
-                                            ticker,
-                                          );
-                                        },
-                                      ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
+            )
+            .toList();
       },
-    ).whenComplete(() {
-      _symbolSheetRefresh = null;
-    });
-  }
-
-  Widget _buildSymbolListItem(
-    String symbol,
-    bool isDarkMode,
-    MarketTicker? ticker,
-  ) {
-    final selectedSymbol = _symbolController.text.trim();
-    final isSelected = selectedSymbol.isNotEmpty && selectedSymbol == symbol;
-    final hasData = ticker != null;
-    final baseIconUrl = _buildBaseIconUrl(symbol);
-    final iconUrl = baseIconUrl.isNotEmpty
-        ? baseIconUrl
-        : (hasData ? (ticker.iconUrl ?? '') : '');
-    final changePercent = hasData
-        ? (ticker.changePercent ??
-            ((ticker.open24h != null &&
-                    ticker.open24h! > 0 &&
-                    ticker.last != null)
-                ? ((ticker.last! - ticker.open24h!) / ticker.open24h!) * 100
-                : null))
-        : null;
-    final changeColor = changePercent != null && changePercent >= 0
-        ? Colors.green
-        : Colors.red;
-    final selectedFill = isDarkMode
-        ? Colors.blue.withValues(alpha: 0.15)
-        : Colors.blue.withValues(alpha: 0.12);
-    final selectedBorder =
-        isSelected ? (isDarkMode ? Colors.blue[300] : Colors.blue[400]) : null;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12.w),
-        onTap: () {
-          Navigator.pop(context);
-          _symbolController.text = symbol;
-          _markTouched('symbol');
-          _scheduleValidation();
-          _scheduleTickerUpdate();
-        },
-        child: Container(
-          margin: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.w),
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.w),
-          decoration: BoxDecoration(
-            color: isSelected ? selectedFill : Colors.transparent,
-            borderRadius: BorderRadius.circular(12.w),
-            border: Border.all(
-              color: selectedBorder ?? Colors.transparent,
-              width: 1.w,
-            ),
-          ),
-          child: Row(
-            children: [
-              iconUrl.isNotEmpty
-                  ? Image.network(
-                      iconUrl,
-                      width: 28.w,
-                      height: 28.w,
-                      errorBuilder: (context, error, stackTrace) => Icon(
-                        Icons.monetization_on,
-                        size: 28.w,
-                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                    )
-                  : Icon(
-                      Icons.currency_exchange,
-                      size: 28.w,
-                      color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                    ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      symbol,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14.sp,
-                        color: isDarkMode ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    SizedBox(height: 4.w),
-                    Text(
-                      hasData
-                          ? 'Vol: ${formatVolume(_calculateDisplayVolume(ticker))}'
-                          : 'Vol: --',
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    hasData && ticker.last != null
-                        ? '\$${formatPriceExact(ticker.last!, precision: 4)}'
-                        : '--',
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w600,
-                      color: isDarkMode ? Colors.white : Colors.black87,
-                    ),
-                  ),
-                  SizedBox(height: 2.w),
-                  if (changePercent != null)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          changePercent >= 0
-                              ? Icons.trending_up
-                              : Icons.trending_down,
-                          size: 14.w,
-                          color: changeColor,
-                        ),
-                        SizedBox(width: 4.w),
-                        CopyText(
-                          'common.percent',
-                          params: {
-                            'percent':
-                                '${changePercent >= 0 ? '+' : ''}${changePercent.toStringAsFixed(2)}',
-                          },
-                          fallback: '{{percent}}%',
-                          style: TextStyle(
-                            fontSize: 11.sp,
-                            color: changeColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    CopyText(
-                      'screen.product_detail.text',
-                      fallback: '--',
-                      style: TextStyle(
-                        fontSize: 11.sp,
-                        color: isDarkMode ? Colors.grey[500] : Colors.grey[600],
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
     );
-  }
-
-  Widget _buildProductTypeChip({
-    required BuildContext context,
-    required String labelKey,
-    required String fallback,
-    required bool selected,
-    required VoidCallback onSelected,
-  }) {
-    final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
-    final borderColor = selected
-        ? theme.colorScheme.primary
-        : (isDarkMode ? Colors.grey[700]! : Colors.grey[300]!);
-    final textColor = selected
-        ? theme.colorScheme.primary
-        : (isDarkMode ? Colors.grey[200] : Colors.grey[700]);
-    final backgroundColor = selected
-        ? theme.colorScheme.primary.withValues(alpha: 0.12)
-        : Colors.transparent;
-
-    return Material(
-      color: backgroundColor,
-      borderRadius: BorderRadius.circular(16.w),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16.w),
-        onTap: onSelected,
-        child: Container(
-          height: 28.w,
-          padding: EdgeInsets.symmetric(horizontal: 10.w),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16.w),
-            border: Border.all(color: borderColor, width: 1),
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: CopyText(
-              labelKey,
-              fallback: fallback,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.sp,
-                height: 1,
-                color: textColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    if (selected != null && selected.symbol.isNotEmpty && mounted) {
+      setState(() => _symbolController.text = selected.symbol);
+      _markTouched('symbol');
+      _scheduleValidation();
+      _scheduleTickerUpdate();
+    }
   }
 
   Widget _buildSymbolSelector(

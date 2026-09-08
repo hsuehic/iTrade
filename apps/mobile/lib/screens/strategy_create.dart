@@ -10,6 +10,7 @@ import '../services/copy_service.dart';
 import '../utils/crypto_icons.dart';
 import '../utils/exchange_config.dart';
 import '../widgets/exchange_picker_field.dart';
+import '../widgets/unified_symbol_picker.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public entry-point widget
@@ -78,7 +79,7 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
   bool _loadingTypes = true;
   bool _loadingTickers = false;
   String? _tickersError;
-  List<_SymbolTicker> _tickers = [];
+  List<SymbolPickerItem> _tickers = [];
   Timer? _nameDebounce;
   String _lastCheckedName = '';
 
@@ -286,10 +287,23 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
     final raw = await _strategyService.getTradingPairs();
     if (!mounted) return;
     final filtered = raw
-        .map((item) => _SymbolTicker.fromJson(item))
         .where(
-          (t) => t.exchange?.toLowerCase() == _selectedExchange.toLowerCase(),
+          (m) =>
+              (m['exchange'] as String? ?? '')
+                  .toLowerCase() ==
+              _selectedExchange.toLowerCase(),
         )
+        .map(
+          (m) => SymbolPickerItem(
+            symbol: m['symbol'] as String? ?? '',
+            marketType: m['type'] as String? ?? 'spot',
+            exchange: m['exchange'] as String?,
+            price: (m['price'] as num?)?.toDouble(),
+            changePercent: (m['change24h'] as num?)?.toDouble(),
+            iconUrl: m['iconUrl'] as String?,
+          ),
+        )
+        .where((t) => t.symbol.isNotEmpty)
         .toList();
     setState(() {
       _tickers = filtered;
@@ -792,22 +806,17 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
       await _loadTickersForExchange();
     }
     if (!mounted) return;
-    final selected = await showModalBottomSheet<String>(
+    final selected = await UnifiedSymbolPicker.show(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _SymbolPickerSheet(
-        title: 'Select Trading Pair',
-        exchange: _selectedExchange,
-        tickers: _tickers,
-        loading: _loadingTickers,
-        errorMessage: _tickersError,
-        initialQuery: _symbolController.text.trim(),
-      ),
+      title: 'Select Trading Pair',
+      exchange: _selectedExchange,
+      items: _tickers,
+      initialLoading: _loadingTickers,
+      initialError: _tickersError,
+      initialSymbol: _symbolController.text.trim(),
     );
-    if (selected != null && selected.isNotEmpty && mounted) {
-      setState(() => _symbolController.text = selected);
+    if (selected != null && selected.symbol.isNotEmpty && mounted) {
+      setState(() => _symbolController.text = selected.symbol);
       _validateSymbol();
     }
   }
@@ -3187,34 +3196,6 @@ class _StrategyTypePickerSheetState extends State<_StrategyTypePickerSheet> {
 // Symbol Ticker model
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SymbolTicker {
-  final String symbol;
-  final double? price;
-  final double? change24h;
-  final String? exchange;
-
-  /// 'spot' or 'perpetual'
-  final String marketType;
-
-  const _SymbolTicker({
-    required this.symbol,
-    this.price,
-    this.change24h,
-    this.exchange,
-    this.marketType = 'spot',
-  });
-
-  factory _SymbolTicker.fromJson(Map<String, dynamic> json) {
-    return _SymbolTicker(
-      symbol: json['symbol'] as String? ?? '',
-      price: (json['price'] as num?)?.toDouble(),
-      change24h: (json['change24h'] as num?)?.toDouble(),
-      exchange: json['exchange'] as String?,
-      marketType: json['type'] as String? ?? 'spot',
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Symbol Picker Field — tap-to-open selector with loading state
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3366,450 +3347,6 @@ class _CoinAvatar extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Symbol Picker Sheet
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SymbolPickerSheet extends StatefulWidget {
-  final String title;
-  final String exchange;
-  final List<_SymbolTicker> tickers;
-  final bool loading;
-  final String? errorMessage;
-  final String? initialQuery;
-
-  const _SymbolPickerSheet({
-    required this.title,
-    required this.exchange,
-    required this.tickers,
-    required this.loading,
-    required this.errorMessage,
-    this.initialQuery,
-  });
-
-  @override
-  State<_SymbolPickerSheet> createState() => _SymbolPickerSheetState();
-}
-
-class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
-  late final TextEditingController _searchController;
-  String _query = '';
-
-  /// 'all', 'spot', or 'perpetual'
-  String _marketFilter = 'all';
-
-  @override
-  void initState() {
-    super.initState();
-    _query = widget.initialQuery ?? '';
-    _searchController = TextEditingController(text: _query);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  /// Convert a CCXT-format symbol (e.g. BTC/USDT) to the exchange-native
-  /// display format (e.g. BTCUSDT for Binance, BTC-USDT for OKX).
-  String _nativeSymbol(String ccxtSymbol) =>
-      SupportedExchanges.normalizeSymbol(ccxtSymbol, widget.exchange);
-
-  List<_SymbolTicker> get _filtered {
-    var list = widget.tickers;
-    // Apply market type filter
-    if (_marketFilter != 'all') {
-      list = list.where((t) => t.marketType == _marketFilter).toList();
-    }
-    if (_query.trim().isEmpty) return list;
-    final lower = _query.trim().toLowerCase();
-    return list.where((t) {
-      return t.symbol.toLowerCase().contains(lower) ||
-          _nativeSymbol(t.symbol).toLowerCase().contains(lower);
-    }).toList();
-  }
-
-  bool get _hasPerp => widget.tickers.any((t) => t.marketType == 'perpetual');
-  bool get _hasSpot => widget.tickers.any((t) => t.marketType == 'spot');
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return AnimatedPadding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOut,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height * 0.88,
-            child: Column(
-              children: [
-                // ── Drag handle ──────────────────────────────────────────
-                Container(
-                  margin: const EdgeInsets.symmetric(vertical: 10),
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-
-                // ── Header ───────────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 8, 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.title,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            if (widget.tickers.isNotEmpty)
-                              Text(
-                                '${widget.tickers.length} pairs loaded',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(
-                                      color: Theme.of(context).hintColor,
-                                    ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // ── Market Type Filter ───────────────────────────────────
-                if (_hasSpot && _hasPerp)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                    child: Row(
-                      children: [
-                        _MarketFilterChip(
-                          label: 'All',
-                          selected: _marketFilter == 'all',
-                          onTap: () => setState(() => _marketFilter = 'all'),
-                        ),
-                        const SizedBox(width: 8),
-                        _MarketFilterChip(
-                          label: 'Spot',
-                          selected: _marketFilter == 'spot',
-                          onTap: () => setState(() => _marketFilter = 'spot'),
-                        ),
-                        const SizedBox(width: 8),
-                        _MarketFilterChip(
-                          label: 'Perp',
-                          selected: _marketFilter == 'perpetual',
-                          onTap: () =>
-                              setState(() => _marketFilter = 'perpetual'),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // ── Search ───────────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      hintText: 'Search pairs…',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      filled: true,
-                      fillColor: isDark
-                          ? Colors.grey[850]
-                          : Colors.grey.withValues(alpha: 0.07),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    onChanged: (v) => setState(() => _query = v),
-                  ),
-                ),
-
-                // ── List ─────────────────────────────────────────────────
-                Expanded(
-                  child: widget.loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _buildList(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildList() {
-    final list = _filtered;
-    if (list.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.search_off_rounded,
-              size: 40,
-              color: Theme.of(context).hintColor.withValues(alpha: 0.4),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No pairs found',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).hintColor,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      itemCount: list.length,
-      itemBuilder: (_, i) {
-        final native = _nativeSymbol(list[i].symbol);
-        return _SymbolListTile(
-          ticker: list[i],
-          displaySymbol: native,
-          // Submit the UNIFIED symbol (e.g. 'BTC/USDT:USDT' for perpetual),
-          // not the native display form (e.g. 'BTCUSDT'). Binance/Coinbase
-          // collapse spot and perpetual to the same compact symbol, so sending
-          // 'BTCUSDT' makes the backend's detectMarketType() classify it as a
-          // SPOT symbol even though the user picked 'Perpetual'. The unified
-          // ':QUOTE' marker is what preserves the perpetual product type —
-          // same root cause fixed on the place-order screen (see
-          // _formatContinuousSymbol there).
-          onTap: () => Navigator.pop(context, list[i].symbol),
-        );
-      },
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Symbol List Tile
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _SymbolListTile extends StatelessWidget {
-  final _SymbolTicker ticker;
-
-  /// Exchange-native display string, e.g. "BTCUSDT" or "BTC-USDT".
-  final String displaySymbol;
-  final VoidCallback onTap;
-
-  const _SymbolListTile({
-    required this.ticker,
-    required this.displaySymbol,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final price = ticker.price;
-    final change = ticker.change24h;
-    final isPositive = (change ?? 0) >= 0;
-    final changeColor = isPositive
-        ? const Color(0xFF10B981)
-        : const Color(0xFFEF4444);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-        child: Row(
-          children: [
-            // Coin icon
-            _CoinAvatar(symbol: ticker.symbol, size: 38),
-            const SizedBox(width: 12),
-
-            // Name
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        displaySymbol,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      _MarketTypeBadge(marketType: ticker.marketType),
-                    ],
-                  ),
-                  if (change != null) ...[
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(
-                          isPositive
-                              ? Icons.arrow_drop_up_rounded
-                              : Icons.arrow_drop_down_rounded,
-                          size: 14,
-                          color: changeColor,
-                        ),
-                        Text(
-                          '${isPositive ? '+' : ''}${change.toStringAsFixed(2)}%',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: changeColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            // Price
-            if (price != null)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.grey[850]
-                      : Colors.grey.withValues(alpha: 0.07),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _formatPrice(price),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static String _formatPrice(double p) {
-    if (p >= 1000) return p.toStringAsFixed(2);
-    if (p >= 1) return p.toStringAsFixed(4);
-    if (p >= 0.001) return p.toStringAsFixed(6);
-    return p.toStringAsFixed(8);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Market Type Badge — small pill showing "Spot" or "Perp"
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _MarketTypeBadge extends StatelessWidget {
-  final String marketType;
-  const _MarketTypeBadge({required this.marketType});
-
-  @override
-  Widget build(BuildContext context) {
-    final isPerp = marketType == 'perpetual';
-    final label = isPerp ? 'Perp' : 'Spot';
-    final bg = isPerp
-        ? const Color(0xFF6366F1).withValues(alpha: 0.15)
-        : const Color(0xFF10B981).withValues(alpha: 0.15);
-    final fg = isPerp ? const Color(0xFF6366F1) : const Color(0xFF10B981);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: fg,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Market Filter Chip — pill button for All / Spot / Perp tabs
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _MarketFilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _MarketFilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = Theme.of(context).colorScheme.primary;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? primary
-              : (isDark
-                    ? Colors.grey[850]
-                    : Colors.grey.withValues(alpha: 0.1)),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected
-                ? Colors.white
-                : Theme.of(context).textTheme.bodyMedium?.color,
           ),
         ),
       ),
