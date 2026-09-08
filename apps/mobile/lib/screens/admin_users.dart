@@ -35,6 +35,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   Timer? _searchDebounce;
 
   bool _loading = true;
+  bool _refreshing = false;
   List<AdminUser> _users = const [];
 
   String _roleFilter = 'all'; // 'all' | 'admin' | 'user'
@@ -54,13 +55,28 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     super.dispose();
   }
 
-  Future<void> _load({String search = ''}) async {
-    setState(() => _loading = true);
-    final users = await AdminService.instance.fetchUsers(search: search);
+  Future<void> _load({String search = '', bool isRefresh = false}) async {
+    if (!isRefresh) setState(() => _loading = true);
+    setState(() => _refreshing = isRefresh);
+    // Fetch users and their exchange-account stats concurrently, mirroring the
+    // web console's users page (list + `/api/admin/users/exchange-stats`).
+    final results = await Future.wait([
+      AdminService.instance.fetchUsers(search: search),
+      AdminService.instance.fetchExchangeStats(),
+    ]);
+    final users = (results[0] as List<AdminUser>);
+    final stats =
+        (results[1] as Map<String, ({int exchangeAccounts, double? balance})>);
     if (!mounted) return;
     setState(() {
-      _users = users;
+      _users = users
+          .map((u) => u.withExchangeStats(
+                exchangeAccounts: stats[u.id]?.exchangeAccounts,
+                balance: stats[u.id]?.balance,
+              ))
+          .toList();
       _loading = false;
+      _refreshing = false;
     });
   }
 
@@ -363,6 +379,25 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _refreshing
+                ? null
+                : () => _load(
+                    search: _searchController.text,
+                    isRefresh: true,
+                  ),
+            icon: _refreshing
+                ? SizedBox(
+                    width: 18.w,
+                    height: 18.w,
+                    child: const CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
+          SizedBox(width: 4.w),
+        ],
       ),
       body: Column(
         children: [
@@ -375,7 +410,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 : filtered.isEmpty
                 ? _buildEmptyState()
                 : RefreshIndicator(
-                    onRefresh: () => _load(search: _searchController.text),
+                    onRefresh: () =>
+                        _load(search: _searchController.text, isRefresh: true),
                     child: ListView.separated(
                       padding: EdgeInsets.fromLTRB(16.w, 4, 16.w, 32.w),
                       itemCount: filtered.length,
@@ -561,6 +597,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       ],
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  _buildExchangeStats(user),
                 ],
               ),
             ),
@@ -576,6 +614,69 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         ),
       ),
     );
+  }
+
+  /// Exchange Accounts + Balance summary for a user, mirroring the web
+  /// console's users-table columns. Renders N/A when the user has no linked
+  /// exchange account (stat is null).
+  Widget _buildExchangeStats(AdminUser user) {
+    final accounts = user.exchangeAccounts;
+    final balance = user.balance;
+    final muted = TextStyle(fontSize: 12.sp, color: Colors.grey[600]);
+    return Row(
+      children: [
+        Icon(Icons.account_balance_wallet_outlined,
+            size: 13.w, color: Colors.grey[600]),
+        SizedBox(width: 4.w),
+        CopyText(
+          'screen.admin_users.exchange_accounts',
+          fallback: 'Exchange',
+          style: muted,
+        ),
+        SizedBox(width: 6.w),
+        Text(
+          accounts == null ? 'N/A' : '$accounts',
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        SizedBox(width: 16.w),
+        Icon(Icons.payments_outlined, size: 13.w, color: Colors.grey[600]),
+        SizedBox(width: 4.w),
+        CopyText(
+          'screen.admin_users.balance',
+          fallback: 'Balance',
+          style: muted,
+        ),
+        SizedBox(width: 6.w),
+        Text(
+          balance == null ? 'N/A' : _formatUsd(balance),
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Formats a USD amount with thousands separators and a leading `$`,
+  /// matching the web console's `Intl.NumberFormat` currency output
+  /// (e.g. 1234567.89 -> "$1,234,567.89").
+  String _formatUsd(double value) {
+    final neg = value < 0;
+    final parts = value.abs().toStringAsFixed(2).split('.');
+    final intPart = parts[0];
+    final buf = StringBuffer();
+    final len = intPart.length;
+    for (var i = 0; i < len; i++) {
+      buf.write(intPart[i]);
+      final remaining = len - i - 1;
+      if (remaining > 0 && remaining % 3 == 0) buf.write(',');
+    }
+    return '\$${neg ? '-' : ''}$buf.${parts[1]}';
   }
 
   Widget _buildRoleBadge(AdminUser user) {

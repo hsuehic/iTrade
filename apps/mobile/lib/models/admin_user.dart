@@ -14,6 +14,14 @@ class AdminUser {
   final String? banReason;
   final DateTime? createdAt;
 
+  /// Number of active linked exchange accounts (from `/api/admin/users/
+  /// exchange-stats`). `null` when the user has no linked account.
+  final int? exchangeAccounts;
+
+  /// Sum of live exchange-account balances in USD (from `/api/admin/users/
+  /// exchange-stats`). `null` when the user has no linked account.
+  final double? balance;
+
   const AdminUser({
     required this.id,
     required this.email,
@@ -23,6 +31,8 @@ class AdminUser {
     this.banned = false,
     this.banReason,
     this.createdAt,
+    this.exchangeAccounts,
+    this.balance,
   });
 
   factory AdminUser.fromJson(Map<String, dynamic> json) {
@@ -40,11 +50,39 @@ class AdminUser {
       banned: json['banned'] == true,
       banReason: json['banReason']?.toString(),
       createdAt: createdAt,
+      exchangeAccounts: (json['exchangeAccounts'] as num?)?.toInt(),
+      balance: _doubleOrNull(json['balance']),
     );
+  }
+
+  static double? _doubleOrNull(Object? v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
   }
 
   bool hasRole(String role) =>
       this.role.split(',').map((r) => r.trim()).contains(role);
 
   bool get isAdmin => hasRole('admin');
+
+  /// Returns a copy with per-user exchange stats merged in. `null` stats keep
+  /// an existing value and are otherwise left null (renders N/A).
+  AdminUser withExchangeStats({
+    int? exchangeAccounts,
+    double? balance,
+  }) {
+    return AdminUser(
+      id: id,
+      email: email,
+      name: name,
+      image: image,
+      role: role,
+      banned: banned,
+      banReason: banReason,
+      createdAt: createdAt,
+      exchangeAccounts: exchangeAccounts ?? this.exchangeAccounts,
+      balance: balance ?? this.balance,
+    );
+  }
 }

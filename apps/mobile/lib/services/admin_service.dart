@@ -79,6 +79,43 @@ class AdminService {
     }
   }
 
+  /// Per-user aggregated exchange-account summary from
+  /// `GET /api/admin/users/exchange-stats`: number of active linked accounts +
+  /// total live balance (USD) keyed by user id. Users with no linked account
+  /// are simply absent from the map; `balance` may be null for an account
+  /// whose total is NULL. Non-blocking — returns `{}` on any failure so the
+  /// screen falls back to rendering N/A, matching the web console's behaviour.
+  Future<Map<String, ({int exchangeAccounts, double? balance})>>
+      fetchExchangeStats() async {
+    try {
+      final res = await ApiClient.instance.getJson(
+        '/api/admin/users/exchange-stats',
+        options: _tolerant,
+      );
+      if (res.statusCode != 200 || res.data is! Map) return const {};
+      final rawStats = (res.data as Map)['stats'];
+      if (rawStats is! Map) return const {};
+      final result = <String, ({int exchangeAccounts, double? balance})>{};
+      rawStats.forEach((key, value) {
+        if (key == null || value is! Map) return;
+        final accounts = (value['exchangeAccounts'] as num?)?.toInt();
+        if (accounts == null) return;
+        final rawBalance = value['balance'];
+        double? balance;
+        if (rawBalance is num) {
+          balance = rawBalance.toDouble();
+        } else if (rawBalance != null) {
+          balance = double.tryParse(rawBalance.toString());
+        }
+        result[key.toString()] =
+            (exchangeAccounts: accounts, balance: balance);
+      });
+      return result;
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Promotes/demotes a user. [role] must be 'admin' or 'user'.
   Future<AdminOperationResult> setUserRole(String userId, String role) async {
     try {
