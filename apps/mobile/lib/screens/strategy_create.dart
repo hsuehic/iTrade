@@ -151,7 +151,12 @@ class _StrategyCreateScreenState extends State<StrategyCreateScreen> {
 
   void _prefillFromStrategy(Strategy s) {
     _nameController.text = s.name;
-    _symbolController.text = s.normalizedSymbol ?? s.symbol ?? '';
+    // Prefer the stored `symbol` (unified form, e.g. 'BTC/USDT:USDT' for
+    // perpetual) over `normalizedSymbol` (native display form, e.g. 'BTCUSDT').
+    // The native form drops the ':' perp marker, so re-submitting it would make
+    // the backend's detectMarketType() classify the strategy as SPOT. Using the
+    // stored `symbol` keeps a perpetual strategy perpetual when re-saved.
+    _symbolController.text = s.symbol ?? s.normalizedSymbol ?? '';
     _descriptionController.text = s.description ?? '';
     _selectedExchange = s.exchange ?? '';
     _selectedType = s.type;
@@ -3595,7 +3600,15 @@ class _SymbolPickerSheetState extends State<_SymbolPickerSheet> {
         return _SymbolListTile(
           ticker: list[i],
           displaySymbol: native,
-          onTap: () => Navigator.pop(context, native),
+          // Submit the UNIFIED symbol (e.g. 'BTC/USDT:USDT' for perpetual),
+          // not the native display form (e.g. 'BTCUSDT'). Binance/Coinbase
+          // collapse spot and perpetual to the same compact symbol, so sending
+          // 'BTCUSDT' makes the backend's detectMarketType() classify it as a
+          // SPOT symbol even though the user picked 'Perpetual'. The unified
+          // ':QUOTE' marker is what preserves the perpetual product type —
+          // same root cause fixed on the place-order screen (see
+          // _formatContinuousSymbol there).
+          onTap: () => Navigator.pop(context, list[i].symbol),
         );
       },
     );
