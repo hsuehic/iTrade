@@ -128,6 +128,11 @@ export async function POST(request: NextRequest) {
  * DELETE /api/admin/impersonate — exit impersonation, returning to the
  * admin's own session. Available to whoever is currently impersonating
  * (i.e. the target user's session has `impersonatedBy` set).
+ *
+ * If better-auth cannot restore the admin session (stale/missing
+ * `admin_session` cookie → FAILED_TO_FIND_ADMIN_SESSION), the route falls
+ * back to signing the impersonated session out so the admin is never
+ * stranded impersonating a user. See the inline comment in the handler.
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -141,12 +146,72 @@ export async function DELETE(request: NextRequest) {
     const targetUser = session.user;
 
     const authInstance = getAuthFromRequest(request);
-    const { headers, response }: ImpersonationApiResult = await (
-      authInstance.api as any
-    ).stopImpersonating({
-      headers: request.headers,
-      returnHeaders: true,
-    });
+    let headers: Headers;
+    let response: ImpersonationApiResult['response'];
+    try {
+      const result: ImpersonationApiResult = await (
+        authInstance.api as any
+      ).stopImpersonating({
+        headers: request.headers,
+        returnHeaders: true,
+      });
+      headers = result.headers;
+      response = result.response;
+    } catch (stopErr) {
+      // better-auth could not restore the admin session. This happens when
+      // the browser is not sending a valid `admin_session` cookie — typically
+      // because it's a stale persistent cookie pointing at an admin session
+      // token that has since expired/rotated. better-auth then throws
+      // FAILED_TO_FIND_ADMIN_SESSION and would otherwise strand the admin in
+      // the impersonated session (observed in prod: 65 orphaned sessions).
+      //
+      // Only run the recovery fallback for THIS specific failure. Any other
+      // error (e.g. a transient DB error) re-throws so we never destructively
+      // sign the admin out due to an unrelated problem.
+      const err: { body?: { message?: string } } = stopErr as {
+        body?: { message?: string };
+      };
+      const msg = err?.body?.message || '';
+      const isAdminSessionLookupFailure =
+        /FAILED_TO_FIND_ADMIN_SESSION|Failed to find admin session/i.test(msg);
+      if (!isAdminSessionLookupFailure) {
+        throw stopErr;
+      }
+
+      // Recover defensively by signing the impersonated session out through
+      // better-auth itself (clears its cookie + deletes the session row), so
+      // the admin is never stuck impersonating someone else. Their own admin
+      // account/session is untouched; they simply sign back in.
+      console.error(
+        '[Admin Impersonate] stopImpersonating failed (admin session not recoverable); signing out impersonated session as fallback:',
+        stopErr,
+      );
+
+      const signOutResult = await (authInstance.api as any).signOut({
+        headers: request.headers,
+        returnHeaders: true,
+      });
+      headers = signOutResult.headers;
+
+      const dataManager = await getDataManager();
+      await dataManager.createAuditLog({
+        actorId: impersonatedBy,
+        actorEmail: session.user.email,
+        targetUserId: targetUser.id,
+        targetEmail: targetUser.email,
+        action: 'impersonate.stop_fallback_signout',
+        ipAddress: getClientIp(request.headers),
+        userAgent: request.headers.get('user-agent'),
+      });
+
+      const res = NextResponse.json({
+        success: true,
+        recovered: true,
+        message: '已退出模拟用户，请重新登录管理员账号。',
+      });
+      forwardSetCookies(headers, res);
+      return res;
+    }
 
     const dataManager = await getDataManager();
     await dataManager.createAuditLog({

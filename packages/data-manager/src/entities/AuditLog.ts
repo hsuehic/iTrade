@@ -7,6 +7,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 export type AuditLogAction =
   | 'impersonate.start'
   | 'impersonate.stop'
+  | 'impersonate.stop_fallback_signout'
   | 'strategy.create'
   | 'strategy.clone'
   | 'strategy.update'
