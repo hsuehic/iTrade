@@ -18,7 +18,7 @@ type RouteContext = {
 // Creates a new strategy with the same configuration (type, exchange, symbol,
 // parameters, initialDataConfig, subscription, description) as the original.
 // The cloned strategy:
-//   - Name: `clone_{original_strategy_name}`
+//   - Name: `{original_strategy_name}_copy` (same convention across web/mobile)
 //   - Status: STOPPED (never auto-starts)
 //   - Ownership: same user as the original strategy
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -52,9 +52,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const clonedName = `clone_${sourceStrategy.name}`;
+    const clonedName = `${sourceStrategy.name}_copy`;
 
-    // Check for name collision — if clone_<name> already exists, return 409
+    // Check for name collision — if <name>_copy already exists, return 409
     const userStrategies = await dataManager.getStrategies({
       userId: session.user.id,
     });
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Create the cloned strategy with all parameters from the original,
-    // but with status STOPPED and name prefixed with `clone_`.
+    // but with status STOPPED and name suffixed with `_copy`.
     const clonedStrategy = await dataManager.createStrategy({
       name: clonedName,
       description: sourceStrategy.description,

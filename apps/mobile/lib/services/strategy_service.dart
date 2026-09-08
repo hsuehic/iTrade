@@ -237,6 +237,27 @@ class StrategyService {
     }
   }
 
+  /// Clone an existing strategy (same convention across web/mobile).
+  ///
+  /// Creates a new strategy with the same configuration as [id]; name is
+  /// `{originalName}_copy`, status STOPPED. Returns the cloned [Strategy] or
+  /// null on failure (e.g. a strategy named `{name}_copy` already exists).
+  Future<Strategy?> cloneStrategy(int id) async {
+    try {
+      final Response response =
+          await _apiClient.postJson('/api/strategies/$id/clone');
+      if (response.statusCode == 201 && response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        if (data['strategy'] is Map<String, dynamic>) {
+          return Strategy.fromJson(data['strategy'] as Map<String, dynamic>);
+        }
+      }
+      return null;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   /// Update strategy status
   Future<Strategy?> updateStrategyStatus(int id, String status) async {
     try {
