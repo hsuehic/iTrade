@@ -219,6 +219,46 @@ class _StrategyScreenState extends State<StrategyScreen>
     });
   }
 
+  /// Clone a strategy from the list (same config, `{name}_copy`, STOPPED)
+  /// and refresh so the cloned strategy appears, matching the Web manager.
+  Future<void> _cloneStrategy(Strategy strategy) async {
+    try {
+      final cloned = await _strategyService.cloneStrategy(strategy.id);
+      if (cloned != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: CopyText(
+              'screen.strategy.clone_success',
+              params: {'name': strategy.name},
+              fallback: 'Cloned {{name}}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadStrategies();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: CopyText(
+              'screen.strategy.clone_failed',
+              fallback: 'Clone failed',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Clone failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openCreateStrategy() async {
     final created = await Navigator.push<Strategy>(
       context,
@@ -467,6 +507,7 @@ class _StrategyScreenState extends State<StrategyScreen>
               strategy: strategy,
               pnl: pnl,
               onTap: () => _navigateToDetail(strategy),
+              onClone: () => _cloneStrategy(strategy),
               getStatusColor: _getStatusColor,
               getPnLColor: _getPnLColor,
               formatPnL: _formatPnL,
@@ -505,6 +546,7 @@ class _StrategyScreenState extends State<StrategyScreen>
               strategy: strategy,
               pnl: pnl,
               onTap: () => _navigateToDetail(strategy),
+              onClone: () => _cloneStrategy(strategy),
               getStatusColor: _getStatusColor,
               getPnLColor: _getPnLColor,
               formatPnL: _formatPnL,
@@ -701,6 +743,7 @@ class _StrategyCard extends StatelessWidget {
   final Strategy strategy;
   final StrategyPnL? pnl;
   final VoidCallback onTap;
+  final VoidCallback onClone;
   final Color Function(String) getStatusColor;
   final Color Function(double) getPnLColor;
   final String Function(double) formatPnL;
@@ -711,6 +754,7 @@ class _StrategyCard extends StatelessWidget {
     required this.strategy,
     required this.pnl,
     required this.onTap,
+    required this.onClone,
     required this.getStatusColor,
     required this.getPnLColor,
     required this.formatPnL,
@@ -961,6 +1005,18 @@ class _StrategyCard extends StatelessWidget {
                           ),
                   ),
                   SizedBox(width: 6.w),
+                  // Clone / copy action (own tap area so it does not navigate)
+                  IconButton(
+                    onPressed: onClone,
+                    icon: Icon(Icons.copy_outlined, size: 18.w),
+                    iconSize: 18.w,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Clone',
+                    color: secondaryText,
+                  ),
+                  SizedBox(width: 2.w),
                   Icon(
                     Icons.chevron_right,
                     size: 18.w,

@@ -283,6 +283,52 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
     }
   }
 
+  /// Clone this strategy (same config, `{name}_copy`, status STOPPED) and
+  /// navigate to the cloned strategy's detail page, matching the Web manager.
+  Future<void> _cloneStrategy() async {
+    if (_isUpdating) return;
+    setState(() => _isUpdating = true);
+    try {
+      final cloned = await _strategyService.cloneStrategy(_strategy.id);
+      if (cloned != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: CopyText(
+              'screen.strategy_detail.strategy_cloned',
+              fallback: 'Strategy cloned',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Navigate to the cloned strategy's detail page.
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => StrategyDetailScreen(strategy: cloned)),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: CopyText(
+              'screen.strategy_detail.clone_failed',
+              fallback: 'Clone failed',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Clone failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
   Future<void> _confirmCancelOrder(Order order) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -530,6 +576,12 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
         surfaceTintColor: Colors.transparent,
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         actions: [
+          // Clone / copy strategy button
+          IconButton(
+            icon: const Icon(Icons.copy_outlined),
+            tooltip: 'Clone',
+            onPressed: _isUpdating ? null : _cloneStrategy,
+          ),
           // Edit button
           IconButton(
             icon: const Icon(Icons.edit_outlined),
