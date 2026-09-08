@@ -187,10 +187,28 @@ class _AdminRoiScreenState extends State<AdminRoiScreen> {
     final totalAccounts = _rows.fold<int>(0, (acc, r) => acc + r.accountCount);
     final totalBalance = _rows.fold<double>(0, (acc, r) => acc + r.balance);
     final totalLocked = _rows.fold<double>(0, (acc, r) => acc + r.lockedBalance);
+    // PnL / ROI baselines: only count users with a real period-start baseline
+    // (baseline > 0) so a user with no snapshot doesn't skew the aggregate,
+    // mirroring the web console's weighted totals.
+    double mtdPnl = 0, mtdBaseline = 0, ytdPnl = 0, ytdBaseline = 0;
+    for (final r in _rows) {
+      if (r.mtoNowBaseline > 0) {
+        mtdPnl += r.mtoNowPnl;
+        mtdBaseline += r.mtoNowBaseline;
+      }
+      if (r.ytoNowBaseline > 0) {
+        ytdPnl += r.ytoNowPnl;
+        ytdBaseline += r.ytoNowBaseline;
+      }
+    }
+    final mtdRoi = mtdBaseline > 0 ? (mtdPnl / mtdBaseline) * 100 : 0.0;
+    final ytdRoi = ytdBaseline > 0 ? (ytdPnl / ytdBaseline) * 100 : 0.0;
+    final hasMtd = mtdBaseline > 0;
+    final hasYtd = ytdBaseline > 0;
 
     return Container(
       margin: EdgeInsets.fromLTRB(16.w, 8, 16.w, 8),
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.all(14.w),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1F2E) : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -200,25 +218,131 @@ class _AdminRoiScreenState extends State<AdminRoiScreen> {
               : Colors.black.withValues(alpha: 0.06),
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _summaryItem('screen.admin_roi.summary_users', 'Users', totalUsers.toString()),
-          _summaryItem('screen.admin_roi.summary_accounts', 'Accounts', totalAccounts.toString()),
-          _summaryItem(
-            'screen.admin_roi.summary_balance',
-            'Total Balance',
-            _formatCurrency(totalBalance),
-            fontSize: 13.sp,
+          Row(
+            children: [
+              _summaryItem(
+                'screen.admin_roi.summary_users',
+                'Users',
+                totalUsers.toString(),
+              ),
+              _summaryItem(
+                'screen.admin_roi.summary_accounts',
+                'Accounts',
+                totalAccounts.toString(),
+              ),
+            ],
           ),
-          _summaryItem(
-            'screen.admin_roi.summary_locked',
-            'Locked',
-            _formatCurrency(totalLocked),
-            fontSize: 13.sp,
+          SizedBox(height: 12.w),
+          Row(
+            children: [
+              _summaryItem(
+                'screen.admin_roi.summary_balance',
+                'Total Balance',
+                _formatCurrency(totalBalance),
+              ),
+              _summaryItem(
+                'screen.admin_roi.summary_locked',
+                'Locked',
+                _formatCurrency(totalLocked),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.w),
+          Row(
+            children: [
+              _pnlSummaryCard(
+                'screen.admin_roi.summary_mtd_pnl',
+                'MTD PnL',
+                _formatCurrencySigned(mtdPnl),
+                mtdRoi,
+                hasBaseline: hasMtd,
+                isDark: isDark,
+              ),
+              SizedBox(width: 12.w),
+              _pnlSummaryCard(
+                'screen.admin_roi.summary_ytd_pnl',
+                'YTD PnL',
+                _formatCurrencySigned(ytdPnl),
+                ytdRoi,
+                hasBaseline: hasYtd,
+                isDark: isDark,
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  /// Colored MTD/YTD PnL summary card with its weighted ROI badge, mirroring
+  /// the web console's MTD PnL / YTD PnL cards.
+  Widget _pnlSummaryCard(
+    String key,
+    String fallback,
+    String value,
+    double roi,
+    {
+    required bool hasBaseline,
+    required bool isDark,
+  }) {
+    final cardColor = hasBaseline
+        ? (roi >= 0 ? ColorTokens.profitGreen : ColorTokens.lossRed)
+        : Colors.grey;
+    final baseBg = isDark ? const Color(0xFF242A3A) : const Color(0xFFF4F6F9);
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.all(12.w),
+        decoration: BoxDecoration(
+          color: baseBg,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CopyText(
+              key,
+              fallback: fallback,
+              style: TextStyle(fontSize: 11.sp, color: Colors.grey[600]),
+            ),
+            SizedBox(height: 4.w),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 15.sp,
+                  fontWeight: FontWeight.bold,
+                  color: hasBaseline ? cardColor : Colors.grey[600],
+                ),
+              ),
+            ),
+            SizedBox(height: 6.w),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.w),
+              decoration: BoxDecoration(
+                color: cardColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                hasBaseline ? _formatRoi(roi) : 'N/A',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.bold,
+                  color: hasBaseline ? cardColor : Colors.grey[600],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatCurrencySigned(double v) {
+    return v >= 0 ? '+${_formatCurrency(v)}' : '−${_formatCurrency(v.abs())}';
   }
 
   Widget _summaryItem(
@@ -324,15 +448,86 @@ class _AdminRoiScreenState extends State<AdminRoiScreen> {
             ],
           ),
           SizedBox(height: 10.w),
-          Row(
-            children: [
-              _roiItem('MtoNowROI', row.mtoNowRoi, hasBaseline: row.mtoNowBaseline > 0),
-              SizedBox(width: 12.w),
-              _roiItem('YtoNowROI', row.ytoNowRoi, hasBaseline: row.ytoNowBaseline > 0),
-            ],
+          _buildPeriodBlock(
+            label: 'MTD',
+            labelKey: 'screen.admin_roi.mtd',
+            pnl: row.mtoNowPnl,
+            roi: row.mtoNowRoi,
+            hasBaseline: row.mtoNowBaseline > 0,
+          ),
+          SizedBox(height: 8.w),
+          _buildPeriodBlock(
+            label: 'YTD',
+            labelKey: 'screen.admin_roi.ytd',
+            pnl: row.ytoNowPnl,
+            roi: row.ytoNowRoi,
+            hasBaseline: row.ytoNowBaseline > 0,
           ),
         ],
       ),
+    );
+  }
+
+  /// One period (MTD / YTD) block: period label, colored PnL value and a
+  /// colored ROI badge — mirrors the web console row which shows PnL + ROI
+  /// together for each period.
+  Widget _buildPeriodBlock({
+    required String label,
+    required String labelKey,
+    required double pnl,
+    required double roi,
+    required bool hasBaseline,
+  }) {
+    final color = hasBaseline ? _roiColor(pnl) : Colors.grey[600];
+    return Row(
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              CopyText(
+                labelKey,
+                fallback: label,
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              SizedBox(width: 10.w),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    hasBaseline ? _formatCurrencySigned(pnl) : 'N/A',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.bold,
+                      color: hasBaseline ? color : Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: 8.w),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.w),
+          decoration: BoxDecoration(
+            color: (hasBaseline ? _roiColor(roi) : Colors.grey)
+                .withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            hasBaseline ? _formatRoi(roi) : 'N/A',
+            style: TextStyle(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.bold,
+              color: hasBaseline ? _roiColor(roi) : Colors.grey[600],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -352,28 +547,6 @@ class _AdminRoiScreenState extends State<AdminRoiScreen> {
             child: Text(
               value,
               style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _roiItem(String label, double roi, {bool hasBaseline = true}) {
-    return Expanded(
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
-          ),
-          SizedBox(width: 6.w),
-          Text(
-            hasBaseline ? _formatRoi(roi) : 'N/A',
-            style: TextStyle(
-              fontSize: 13.sp,
-              fontWeight: FontWeight.bold,
-              color: hasBaseline ? _roiColor(roi) : Colors.grey[600],
             ),
           ),
         ],

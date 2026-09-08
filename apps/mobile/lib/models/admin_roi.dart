@@ -16,11 +16,19 @@ class AdminRoiRow {
   /// Locked balance (sum of account_info.lockedBalance).
   final double lockedBalance;
 
+  /// Trading PnL from start of month to now (USD, deposits/withdrawals netted
+  /// out): current total − netDeposits − month-start baseline.
+  final double mtoNowPnl;
+
   /// Return on investment from start of month to now (percent).
   final double mtoNowRoi;
 
   /// Equity baseline at month start (latest snapshot at-or-before that date).
   final double mtoNowBaseline;
+
+  /// Trading PnL from start of year to now (USD, deposits/withdrawals netted
+  /// out): current total − netDeposits − year-start baseline.
+  final double ytoNowPnl;
 
   /// Return on investment from start of year to now (percent).
   final double ytoNowRoi;
@@ -38,8 +46,10 @@ class AdminRoiRow {
     required this.balance,
     required this.feeBalance,
     required this.lockedBalance,
+    required this.mtoNowPnl,
     required this.mtoNowRoi,
     required this.mtoNowBaseline,
+    required this.ytoNowPnl,
     required this.ytoNowRoi,
     required this.ytoNowBaseline,
     this.createdAt,
@@ -61,8 +71,10 @@ class AdminRoiRow {
       balance: toDoubleSafe(json['balance']),
       feeBalance: toDoubleSafe(json['feeBalance']),
       lockedBalance: toDoubleSafe(json['lockedBalance']),
+      mtoNowPnl: toDoubleSafe(json['mtoNowPnl']),
       mtoNowRoi: toDoubleSafe(json['mtoNowRoi']),
       mtoNowBaseline: toDoubleSafe(json['mtoNowBaseline']),
+      ytoNowPnl: toDoubleSafe(json['ytoNowPnl']),
       ytoNowRoi: toDoubleSafe(json['ytoNowRoi']),
       ytoNowBaseline: toDoubleSafe(json['ytoNowBaseline']),
       createdAt: createdAt,
