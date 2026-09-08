@@ -62,6 +62,8 @@ export default function AdminUsersPage() {
       role?: string;
       banned?: boolean | null;
       createdAt?: Date | string;
+      exchangeAccounts?: number | null;
+      balance?: number | null;
     }[]
   >([]);
   const [loading, setLoading] = useState(true);
@@ -70,19 +72,67 @@ export default function AdminUsersPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  type SortKey =
+    | 'name'
+    | 'role'
+    | 'status'
+    | 'createdAt'
+    | 'exchangeAccounts'
+    | 'balance';
+  const [sortKey, setSortKey] = useState<SortKey>('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const fetchExchangeStats = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/users/exchange-stats', {
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        toast.error('Failed to load exchange account stats');
+        return {};
+      }
+      const data = await response.json().catch(() => ({}));
+      return (data.stats ?? {}) as Record<
+        string,
+        { exchangeAccounts: number; balance: number | null }
+      >;
+    } catch (error) {
+      console.error('Error fetching exchange stats:', error);
+      // A non-blocking warning so the admin knows the Exchange Accounts /
+      // Balance columns may be showing N/A due to a failed lookup, not a
+      // genuine lack of linked accounts.
+      toast.error('Failed to load exchange account stats');
+      return {};
+    }
+  }, []);
+
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await authClient.admin.listUsers({
-        query: {
-          limit: 100,
-        },
-      });
+      const [userResponse, stats] = await Promise.all([
+        authClient.admin.listUsers({
+          query: {
+            limit: 100,
+          },
+        }),
+        fetchExchangeStats(),
+      ]);
 
-      if (response.data?.users) {
-        setUsers(response.data.users);
-      } else if (response.error) {
-        toast.error(response.error.message || 'Failed to fetch users');
+      if (userResponse.data?.users) {
+        // Merge per-user exchange stats. Users with no linked account stay
+        // null and render "N/A" in the new columns.
+        setUsers(
+          userResponse.data.users.map((user) => {
+            const s = stats?.[user.id] ?? null;
+            return {
+              ...user,
+              exchangeAccounts: s?.exchangeAccounts ?? null,
+              balance: s?.balance ?? null,
+            };
+          }),
+        );
+      } else if (userResponse.error) {
+        toast.error(userResponse.error.message || 'Failed to fetch users');
       }
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -91,11 +141,20 @@ export default function AdminUsersPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [fetchExchangeStats]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDirection(key === 'createdAt' ? 'desc' : 'asc');
+    }
+  };
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -186,20 +245,81 @@ export default function AdminUsersPage() {
     }
   };
 
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.name?.toLowerCase().includes(searchQuery.toLowerCase());
+  const formatCurrency = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return 'N/A';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      currencyDisplay: 'narrowSymbol',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
 
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+  const filteredUsers = users
+    .filter((user) => {
+      const matchesSearch =
+        user.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        user.name?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'banned' && user.banned) ||
-      (statusFilter === 'active' && !user.banned);
+      const matchesRole = roleFilter === 'all' || user.role === roleFilter;
 
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'banned' && user.banned) ||
+        (statusFilter === 'active' && !user.banned);
+
+      return matchesSearch && matchesRole && matchesStatus;
+    })
+    .sort((a, b) => {
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      switch (sortKey) {
+        case 'name': {
+          const av = (a.name || '').toLowerCase();
+          const bv = (b.name || '').toLowerCase();
+          return av.localeCompare(bv) * dir;
+        }
+        case 'role': {
+          const av = (a.role || '').toLowerCase();
+          const bv = (b.role || '').toLowerCase();
+          return av.localeCompare(bv) * dir;
+        }
+        case 'status': {
+          const av = a.banned ? 1 : 0;
+          const bv = b.banned ? 1 : 0;
+          return (av - bv) * dir;
+        }
+        case 'exchangeAccounts': {
+          // Users with no account (null) always sort last, regardless of
+          // direction, so an explicit "no exchange account" never interleaves
+          // into the numeric ordering.
+          const av = a.exchangeAccounts;
+          const bv = b.exchangeAccounts;
+          if ((av === null || av === undefined) && (bv === null || bv === undefined))
+            return 0;
+          if (av === null || av === undefined) return 1;
+          if (bv === null || bv === undefined) return -1;
+          return (av - bv) * dir;
+        }
+        case 'balance': {
+          // Users with no account (null) always sort last, regardless of
+          // direction.
+          const av = a.balance;
+          const bv = b.balance;
+          if ((av === null || av === undefined) && (bv === null || bv === undefined))
+            return 0;
+          if (av === null || av === undefined) return 1;
+          if (bv === null || bv === undefined) return -1;
+          return (av - bv) * dir;
+        }
+        case 'createdAt':
+        default: {
+          const av = new Date(a.createdAt || 0).getTime();
+          const bv = new Date(b.createdAt || 0).getTime();
+          return (av - bv) * dir;
+        }
+      }
+    });
 
   const formatDate = (date: string | Date | undefined) => {
     if (!date) return 'N/A';
@@ -288,10 +408,78 @@ export default function AdminUsersPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>User</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Joined</TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort('name')}
+                        >
+                          User
+                          {sortKey === 'name' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort('role')}
+                        >
+                          Role
+                          {sortKey === 'role' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort('status')}
+                        >
+                          Status
+                          {sortKey === 'status' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort('exchangeAccounts')}
+                        >
+                          Exchange Accounts
+                          {sortKey === 'exchangeAccounts' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort('balance')}
+                        >
+                          Balance
+                          {sortKey === 'balance' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() => handleSort('createdAt')}
+                        >
+                          Joined
+                          {sortKey === 'createdAt' && (
+                            <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </button>
+                      </TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -334,6 +522,21 @@ export default function AdminUsersPage() {
                                 <IconCheck className="h-3 w-3" />
                                 Active
                               </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {user.exchangeAccounts === null ||
+                            user.exchangeAccounts === undefined ? (
+                              <span className="text-muted-foreground/60">N/A</span>
+                            ) : (
+                              user.exchangeAccounts
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {user.balance === null || user.balance === undefined ? (
+                              <span className="text-muted-foreground/60">N/A</span>
+                            ) : (
+                              formatCurrency(user.balance)
                             )}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
@@ -409,7 +612,7 @@ export default function AdminUsersPage() {
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
+                        <TableCell colSpan={7} className="h-24 text-center">
                           No users found matching your filters.
                         </TableCell>
                       </TableRow>
