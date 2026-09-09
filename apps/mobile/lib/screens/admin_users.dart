@@ -40,6 +40,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   String _roleFilter = 'all'; // 'all' | 'admin' | 'user'
   String _statusFilter = 'all'; // 'all' | 'active' | 'banned'
+  String _exchangeFilter = 'all'; // 'all' | 'has' | 'none'
+  String _sortKey = 'balance'; // name | role | status | exchange | balance | joined
+  bool _sortAscending = false; // null-account users always sink to the bottom
   String? _actingUserId; // user id with an in-flight action
 
   @override
@@ -81,13 +84,68 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   List<AdminUser> get _filtered {
-    return _users.where((user) {
-      final matchesRole = _roleFilter == 'all' || user.hasRole(_roleFilter);
+    final role = _roleFilter;
+    final status = _statusFilter;
+    final exchange = _exchangeFilter;
+    final filtered = _users.where((user) {
+      final matchesRole = role == 'all' || user.hasRole(role);
       final matchesStatus =
-          _statusFilter == 'all' ||
-          (_statusFilter == 'banned' ? user.banned : !user.banned);
-      return matchesRole && matchesStatus;
+          status == 'all' ||
+          (status == 'banned' ? user.banned : !user.banned);
+      final matchesExchange =
+          exchange == 'all' ||
+          (exchange == 'has' ? user.exchangeAccounts != null : user.exchangeAccounts == null);
+      return matchesRole && matchesStatus && matchesExchange;
     }).toList();
+
+    // Client-side sort mirroring the web console's users page. Users with no
+    // exchange account (null exchangeAccounts/balance) always sink to the
+    // bottom regardless of direction, so an explicit "no account" never
+    // interleaves into the numeric ordering.
+    final key = _sortKey;
+    final asc = _sortAscending;
+    filtered.sort((a, b) {
+      final dir = asc ? 1 : -1;
+      switch (key) {
+        case 'name': {
+          final av = (a.name.isEmpty ? a.email : a.name).toLowerCase();
+          final bv = (b.name.isEmpty ? b.email : b.name).toLowerCase();
+          return av.compareTo(bv) * dir;
+        }
+        case 'role': {
+          final av = a.role.toLowerCase();
+          final bv = b.role.toLowerCase();
+          return av.compareTo(bv) * dir;
+        }
+        case 'status': {
+          final av = a.banned ? 1 : 0;
+          final bv = b.banned ? 1 : 0;
+          return (av - bv) * dir;
+        }
+        case 'exchange': {
+          return _compareNullable(a.exchangeAccounts, b.exchangeAccounts, dir);
+        }
+        case 'balance': {
+          return _compareNullable(a.balance, b.balance, dir);
+        }
+        case 'joined':
+        default: {
+          final av = a.createdAt?.millisecondsSinceEpoch ?? 0;
+          final bv = b.createdAt?.millisecondsSinceEpoch ?? 0;
+          return (av - bv) * dir;
+        }
+      }
+    });
+    return filtered;
+  }
+
+  /// Compares two nullable numeric field values. `null` always sorts last
+  /// (1) regardless of direction; otherwise defer to the direction sign.
+  static int _compareNullable(num? a, num? b, int dir) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return ((a - b).sign as int) * dir;
   }
 
   void _showMessage(String key, String fallback, {bool isError = false}) {
@@ -472,7 +530,134 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           labelBuilder: (v) => v == 'all' ? 'All status' : v,
           onSelected: (v) => setState(() => _statusFilter = v),
         ),
+        _buildChipRow(
+          values: const ['all', 'has', 'none'],
+          selected: _exchangeFilter,
+          labelBuilder: (v) => switch (v) {
+            'has' => CopyService.instance.t(
+              'screen.admin_users.filter_exchange_has',
+              fallback: 'Has account',
+            ),
+            'none' => CopyService.instance.t(
+              'screen.admin_users.filter_exchange_none',
+              fallback: 'No account',
+            ),
+            _ => CopyService.instance.t(
+              'screen.admin_users.filter_exchange_all',
+              fallback: 'All exchange',
+            ),
+          },
+          onSelected: (v) => setState(() => _exchangeFilter = v),
+        ),
+        _buildSortControl(),
       ],
+    );
+  }
+
+  Widget _buildSortControl() {
+    final label = _sortLabel(_sortKey);
+    final direction = _sortAscending ? ' ↑' : ' ↓';
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 6, 16.w, 2),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ActionChip(
+          avatar: const Icon(Icons.sort, size: 18),
+          label: Text(
+            '$label$direction',
+            style: TextStyle(fontSize: 12.sp),
+          ),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onPressed: _openSortSheet,
+        ),
+      ),
+    );
+  }
+
+  String _sortLabel(String key) {
+    final t = CopyService.instance.t;
+    return switch (key) {
+      'name' => t('screen.admin_users.sort_by_name', fallback: 'Name'),
+      'role' => t('screen.admin_users.sort_by_role', fallback: 'Role'),
+      'status' => t('screen.admin_users.sort_by_status', fallback: 'Status'),
+      'exchange' => t(
+        'screen.admin_users.sort_by_exchange',
+        fallback: 'Exchange accounts',
+      ),
+      'balance' => t('screen.admin_users.sort_by_balance', fallback: 'Balance'),
+      'joined' => t('screen.admin_users.sort_by_joined', fallback: 'Joined'),
+      _ => t('screen.admin_users.sort_by_balance', fallback: 'Balance'),
+    };
+  }
+
+  void _openSortSheet() {
+    final t = CopyService.instance.t;
+    final sortOptions = <List<String>>[
+      ['name', t('screen.admin_users.sort_by_name', fallback: 'Name')],
+      ['role', t('screen.admin_users.sort_by_role', fallback: 'Role')],
+      ['status', t('screen.admin_users.sort_by_status', fallback: 'Status')],
+      [
+        'exchange',
+        t('screen.admin_users.sort_by_exchange', fallback: 'Exchange accounts'),
+      ],
+      ['balance', t('screen.admin_users.sort_by_balance', fallback: 'Balance')],
+      ['joined', t('screen.admin_users.sort_by_joined', fallback: 'Joined')],
+    ];
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        void pick(String key) {
+          setState(() {
+            if (_sortKey == key) {
+              _sortAscending = !_sortAscending;
+            } else {
+              _sortKey = key;
+              _sortAscending = false;
+            }
+          });
+          Navigator.of(sheetContext).pop();
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 8),
+                child: Text(
+                  t('screen.admin_users.sort', fallback: 'Sort by'),
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              for (final option in sortOptions)
+                ListTile(
+                  title: Text(
+                    option[1],
+                    style: TextStyle(fontSize: 14.sp),
+                  ),
+                  trailing: _sortKey == option[0]
+                      ? Icon(
+                          _sortAscending
+                              ? Icons.arrow_upward
+                              : Icons.arrow_downward,
+                          size: 18,
+                        )
+                      : null,
+                  selected: _sortKey == option[0],
+                  onTap: () => pick(option[0]),
+                ),
+              SizedBox(height: 8.w),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -599,6 +784,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   ),
                   const SizedBox(height: 8),
                   _buildExchangeStats(user),
+                  if (user.createdAt != null) ...[
+                    const SizedBox(height: 6),
+                    _buildJoinedRow(user),
+                  ],
                 ],
               ),
             ),
@@ -660,6 +849,39 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         ),
       ],
     );
+  }
+
+  /// Registration date row, mirroring the web console's "Joined" column.
+  Widget _buildJoinedRow(AdminUser user) {
+    final muted = TextStyle(fontSize: 12.sp, color: Colors.grey[600]);
+    return Row(
+      children: [
+        Icon(Icons.history, size: 13.w, color: Colors.grey[600]),
+        SizedBox(width: 4.w),
+        CopyText(
+          'screen.admin_users.joined',
+          fallback: 'Joined',
+          style: muted,
+        ),
+        SizedBox(width: 6.w),
+        Text(
+          _formatDate(user.createdAt!),
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Formats a registration date as e.g. "Sep 9, 2026".
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
   /// Formats a USD amount with thousands separators and a leading `$`,
