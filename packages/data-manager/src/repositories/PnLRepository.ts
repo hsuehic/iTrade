@@ -33,10 +33,18 @@ export class PnLRepository {
       (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
     );
 
-    // Process each filled order
+    // Process each order that actually traded.
+    //
+    // Do NOT filter on `status === 'FILLED'`: an order can carry a non-zero
+    // executedQuantity while sitting in a non-FILLED terminal state — most
+    // commonly CANCELED after a partial fill. Those quantities are real
+    // position changes and must be booked, otherwise this function understates
+    // both realized PnL and the derived open position, and diverges from
+    // rebuildStrategyPerformance() (the source of truth behind the strategy
+    // detail page). The `executedQty === 0` guard below is what excludes orders
+    // that never traded. See plan
+    // 2026-09-18-strategy-pnl-list-detail-divergence.md.
     for (const order of sortedOrders) {
-      if (order.status !== 'FILLED') continue;
-
       const executedQty = parseFloat(order.executedQuantity?.toString() || '0');
       const cumulativeQuote = parseFloat(
         order.cummulativeQuoteQuantity?.toString() || '0',
