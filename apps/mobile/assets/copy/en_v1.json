@@ -674,6 +674,17 @@
     "widget.responsive_layout_builder.tag_2": "Tag 2",
     "widget.trade_history_widget.amount": "Amount",
     "widget.trade_history_widget.recent_trades": "Recent trades",
-    "widget.trade_history_widget.time": "Time"
+    "widget.trade_history_widget.time": "Time",
+    "screen.admin_users.filter": "Filter",
+    "screen.admin_users.filter_all_roles": "All roles",
+    "screen.admin_users.filter_all_status": "All status",
+    "screen.admin_users.filter_active": "Active",
+    "screen.admin_users.filter_clear": "Clear filters",
+    "screen.admin_users.filter_group_role": "Role",
+    "screen.admin_users.filter_group_status": "Status",
+    "screen.admin_users.filter_group_exchange": "Exchange",
+    "screen.admin_users.sort_ascending": "Ascending",
+    "screen.admin_users.sort_descending": "Descending",
+    "common.clear": "Clear"
   }
 }

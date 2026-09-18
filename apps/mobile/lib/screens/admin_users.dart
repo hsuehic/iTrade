@@ -41,9 +41,24 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String _roleFilter = 'all'; // 'all' | 'admin' | 'user'
   String _statusFilter = 'all'; // 'all' | 'active' | 'banned'
   String _exchangeFilter = 'all'; // 'all' | 'has' | 'none'
-  String _sortKey = 'balance'; // name | role | status | exchange | balance | joined
+  // The filter/sort menu intentionally exposes only Balance and Name. Other
+  // previously supported keys ('role', 'status', 'exchange', 'joined') are
+  // dropped from the picker; legacy values fall back to 'balance' below so a
+  // stale in-memory state can never render an unsupported label.
+  String _sortKey = 'balance'; // name | balance
   bool _sortAscending = false; // null-account users always sink to the bottom
   String? _actingUserId; // user id with an in-flight action
+
+  /// Number of filter groups currently narrowed away from 'all'. Drives the
+  /// badge on the 筛选 button so the list state stays visible while the menu
+  /// is closed. Search is rendered as its own control, so it is not counted.
+  int get _activeFilterCount => [
+    _roleFilter,
+    _statusFilter,
+    _exchangeFilter,
+  ].where((v) => v != 'all').length;
+
+  static const _sortKeys = <String>['balance', 'name'];
 
   @override
   void initState() {
@@ -73,10 +88,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     if (!mounted) return;
     setState(() {
       _users = users
-          .map((u) => u.withExchangeStats(
-                exchangeAccounts: stats[u.id]?.exchangeAccounts,
-                balance: stats[u.id]?.balance,
-              ))
+          .map(
+            (u) => u.withExchangeStats(
+              exchangeAccounts: stats[u.id]?.exchangeAccounts,
+              balance: stats[u.id]?.balance,
+            ),
+          )
           .toList();
       _loading = false;
       _refreshing = false;
@@ -90,11 +107,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final filtered = _users.where((user) {
       final matchesRole = role == 'all' || user.hasRole(role);
       final matchesStatus =
-          status == 'all' ||
-          (status == 'banned' ? user.banned : !user.banned);
+          status == 'all' || (status == 'banned' ? user.banned : !user.banned);
       final matchesExchange =
           exchange == 'all' ||
-          (exchange == 'has' ? user.exchangeAccounts != null : user.exchangeAccounts == null);
+          (exchange == 'has'
+              ? user.exchangeAccounts != null
+              : user.exchangeAccounts == null);
       return matchesRole && matchesStatus && matchesExchange;
     }).toList();
 
@@ -102,38 +120,22 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     // exchange account (null exchangeAccounts/balance) always sink to the
     // bottom regardless of direction, so an explicit "no account" never
     // interleaves into the numeric ordering.
-    final key = _sortKey;
+    final key = _sortKeys.contains(_sortKey) ? _sortKey : 'balance';
     final asc = _sortAscending;
     filtered.sort((a, b) {
       final dir = asc ? 1 : -1;
       switch (key) {
-        case 'name': {
-          final av = (a.name.isEmpty ? a.email : a.name).toLowerCase();
-          final bv = (b.name.isEmpty ? b.email : b.name).toLowerCase();
-          return av.compareTo(bv) * dir;
-        }
-        case 'role': {
-          final av = a.role.toLowerCase();
-          final bv = b.role.toLowerCase();
-          return av.compareTo(bv) * dir;
-        }
-        case 'status': {
-          final av = a.banned ? 1 : 0;
-          final bv = b.banned ? 1 : 0;
-          return (av - bv) * dir;
-        }
-        case 'exchange': {
-          return _compareNullable(a.exchangeAccounts, b.exchangeAccounts, dir);
-        }
-        case 'balance': {
-          return _compareNullable(a.balance, b.balance, dir);
-        }
-        case 'joined':
-        default: {
-          final av = a.createdAt?.millisecondsSinceEpoch ?? 0;
-          final bv = b.createdAt?.millisecondsSinceEpoch ?? 0;
-          return (av - bv) * dir;
-        }
+        case 'name':
+          {
+            final av = (a.name.isEmpty ? a.email : a.name).toLowerCase();
+            final bv = (b.name.isEmpty ? b.email : b.name).toLowerCase();
+            return av.compareTo(bv) * dir;
+          }
+        case 'balance':
+        default:
+          {
+            return _compareNullable(a.balance, b.balance, dir);
+          }
       }
     });
     return filtered;
@@ -275,8 +277,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       failureKey: banned
           ? 'screen.admin_users.ban_failed'
           : 'screen.admin_users.unban_failed',
-      failureFallback:
-          banned ? 'Failed to ban user' : 'Failed to unban user',
+      failureFallback: banned ? 'Failed to ban user' : 'Failed to unban user',
     );
   }
 
@@ -359,7 +360,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               subtitle: !canImpersonate
                   ? CopyText(
                       'screen.admin_users.login_as_user_unavailable',
-                      fallback: 'Not available for admins, yourself, or while impersonating',
+                      fallback:
+                          'Not available for admins, yourself, or while impersonating',
                     )
                   : null,
               enabled: canImpersonate && !busy,
@@ -447,10 +449,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             tooltip: 'Refresh',
             onPressed: _refreshing
                 ? null
-                : () => _load(
-                    search: _searchController.text,
-                    isRefresh: true,
-                  ),
+                : () => _load(search: _searchController.text, isRefresh: true),
             icon: _refreshing
                 ? SizedBox(
                     width: 18.w,
@@ -464,8 +463,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       ),
       body: Column(
         children: [
-          _buildSearchBar(isDark),
-          _buildFilters(),
+          _buildToolbar(isDark),
           const SizedBox(height: 4),
           Expanded(
             child: _loading
@@ -489,27 +487,65 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
-  Widget _buildSearchBar(bool isDark) {
+  /// Single compact control strip: a full-width search field flanked by the
+  /// `筛选` and `排序` popup buttons. Replaces the previous 4 stacked chip rows
+  /// so the user card list keeps its vertical space on phones.
+  Widget _buildToolbar(bool isDark) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 8, 16.w, 4),
+      padding: EdgeInsets.fromLTRB(16.w, 8, 12.w, 4),
+      child: Row(
+        children: [
+          Expanded(child: _buildSearchBar(isDark)),
+          SizedBox(width: 8.w),
+          _buildFilterMenu(isDark),
+          SizedBox(width: 4.w),
+          _buildSortMenu(isDark),
+        ],
+      ),
+    );
+  }
+
+  /// Borderless search field, sized to sit inline with the two popup buttons.
+  Widget _buildSearchBar(bool isDark) {
+    return SizedBox(
+      height: 38.w,
       child: TextField(
         controller: _searchController,
         textInputAction: TextInputAction.search,
+        style: TextStyle(fontSize: 13.sp),
         decoration: InputDecoration(
           hintText: CopyService.instance.t(
             'screen.admin_users.search_hint',
-            fallback: 'Search email or name...',
+            fallback: 'Search users...',
           ),
-          prefixIcon: const Icon(Icons.search),
+          hintStyle: TextStyle(fontSize: 13.sp),
+          prefixIcon: Icon(Icons.search, size: 18.w),
+          prefixIconConstraints: BoxConstraints(minWidth: 34.w),
+          suffixIcon: _searchController.text.isEmpty
+              ? null
+              : IconButton(
+                  icon: Icon(Icons.close, size: 16.w),
+                  visualDensity: VisualDensity.compact,
+                  tooltip: CopyService.instance.t(
+                    'common.clear',
+                    fallback: 'Clear',
+                  ),
+                  onPressed: _clearSearch,
+                ),
+          suffixIconConstraints: BoxConstraints(minWidth: 32.w),
           isDense: true,
+          contentPadding: EdgeInsets.symmetric(vertical: 4),
           filled: true,
           fillColor: isDark ? Colors.grey[900] : Colors.grey.withOpacity(0.08),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
           ),
         ),
         onChanged: (value) {
+          // Repaint immediately so the clear-✕ appears/disappears without
+          // waiting for the debounce fire.
+          setState(() {});
           _searchDebounce?.cancel();
           _searchDebounce = Timer(const Duration(milliseconds: 350), () {
             _load(search: value);
@@ -520,181 +556,312 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
-  Widget _buildFilters() {
-    return Column(
-      children: [
-        _buildChipRow(
-          values: const ['all', 'admin', 'user'],
-          selected: _roleFilter,
-          labelBuilder: (v) => v == 'all' ? 'All roles' : v,
-          onSelected: (v) => setState(() => _roleFilter = v),
-        ),
-        _buildChipRow(
-          values: const ['all', 'active', 'banned'],
-          selected: _statusFilter,
-          labelBuilder: (v) => v == 'all' ? 'All status' : v,
-          onSelected: (v) => setState(() => _statusFilter = v),
-        ),
-        _buildChipRow(
-          values: const ['all', 'has', 'none'],
-          selected: _exchangeFilter,
-          labelBuilder: (v) => switch (v) {
-            'has' => CopyService.instance.t(
-              'screen.admin_users.filter_exchange_has',
-              fallback: 'Has account',
-            ),
-            'none' => CopyService.instance.t(
-              'screen.admin_users.filter_exchange_none',
-              fallback: 'No account',
-            ),
-            _ => CopyService.instance.t(
-              'screen.admin_users.filter_exchange_all',
-              fallback: 'All exchange',
-            ),
-          },
-          onSelected: (v) => setState(() => _exchangeFilter = v),
-        ),
-        _buildSortControl(),
-      ],
-    );
+  void _clearSearch() {
+    _searchDebounce?.cancel();
+    _searchController.clear();
+    setState(() {});
+    _load(search: '');
   }
 
-  Widget _buildSortControl() {
-    final label = _sortLabel(_sortKey);
-    final direction = _sortAscending ? ' ↑' : ' ↓';
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 6, 16.w, 2),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: ActionChip(
-          avatar: const Icon(Icons.sort, size: 18),
-          label: Text(
-            '$label$direction',
-            style: TextStyle(fontSize: 12.sp),
-          ),
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onPressed: _openSortSheet,
-        ),
-      ),
-    );
-  }
-
-  String _sortLabel(String key) {
-    final t = CopyService.instance.t;
-    return switch (key) {
-      'name' => t('screen.admin_users.sort_by_name', fallback: 'Name'),
-      'role' => t('screen.admin_users.sort_by_role', fallback: 'Role'),
-      'status' => t('screen.admin_users.sort_by_status', fallback: 'Status'),
-      'exchange' => t(
-        'screen.admin_users.sort_by_exchange',
-        fallback: 'Exchange accounts',
-      ),
-      'balance' => t('screen.admin_users.sort_by_balance', fallback: 'Balance'),
-      'joined' => t('screen.admin_users.sort_by_joined', fallback: 'Joined'),
-      _ => t('screen.admin_users.sort_by_balance', fallback: 'Balance'),
-    };
-  }
-
-  void _openSortSheet() {
-    final t = CopyService.instance.t;
-    final sortOptions = <List<String>>[
-      ['name', t('screen.admin_users.sort_by_name', fallback: 'Name')],
-      ['role', t('screen.admin_users.sort_by_role', fallback: 'Role')],
-      ['status', t('screen.admin_users.sort_by_status', fallback: 'Status')],
-      [
-        'exchange',
-        t('screen.admin_users.sort_by_exchange', fallback: 'Exchange accounts'),
-      ],
-      ['balance', t('screen.admin_users.sort_by_balance', fallback: 'Balance')],
-      ['joined', t('screen.admin_users.sort_by_joined', fallback: 'Joined')],
-    ];
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        void pick(String key) {
-          setState(() {
-            if (_sortKey == key) {
-              _sortAscending = !_sortAscending;
-            } else {
-              _sortKey = key;
-              _sortAscending = false;
-            }
-          });
-          Navigator.of(sheetContext).pop();
-        }
-
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 8),
-                child: Text(
-                  t('screen.admin_users.sort', fallback: 'Sort by'),
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              for (final option in sortOptions)
-                ListTile(
-                  title: Text(
-                    option[1],
-                    style: TextStyle(fontSize: 14.sp),
-                  ),
-                  trailing: _sortKey == option[0]
-                      ? Icon(
-                          _sortAscending
-                              ? Icons.arrow_upward
-                              : Icons.arrow_downward,
-                          size: 18,
-                        )
-                      : null,
-                  selected: _sortKey == option[0],
-                  onTap: () => pick(option[0]),
-                ),
-              SizedBox(height: 8.w),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildChipRow({
-    required List<String> values,
-    required String selected,
-    required String Function(String) labelBuilder,
-    required ValueChanged<String> onSelected,
+  /// Builds the check-marked row used by both popup menus. Kept as a common
+  /// helper so the filter and sort menus render identical selection affordances
+  /// (leading tick, bold label) and only differ in their option source.
+  ///
+  /// `trailingIcon` is rendered at the far right, after an Expanded label, so
+  /// the label stays left-aligned while the sort-direction arrow hugs the edge
+  /// instead of crowding the leading tick.
+  PopupMenuItem<String> _menuItem({
+    required String value,
+    required String label,
+    required bool selected,
+    IconData? trailingIcon,
+    int height = 44,
   }) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 3),
+    final theme = Theme.of(context);
+    return PopupMenuItem<String>(
+      value: value,
+      height: height.toDouble(),
       child: Row(
         children: [
-          for (final value in values) ...[
-            ChoiceChip(
-              label: Text(
-                value == 'all'
-                    ? labelBuilder(value)
-                    : value[0].toUpperCase() + value.substring(1),
-                style: TextStyle(fontSize: 12.sp),
+          // Reserved gutter keeps labels aligned whether or not this row is
+          // the selected one.
+          SizedBox(
+            width: 22.w,
+            child: selected
+                ? Icon(
+                    Icons.check,
+                    size: 17.w,
+                    color: theme.colorScheme.primary,
+                  )
+                : null,
+          ),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
               ),
-              selected: selected == value,
-              onSelected: (_) => onSelected(value),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            SizedBox(width: 8.w),
-          ],
+          ),
+          if (trailingIcon != null)
+            Icon(trailingIcon, size: 17.w, color: theme.colorScheme.primary),
         ],
       ),
     );
+  }
+
+  /// Non-interactive section heading inside a popup menu.
+  PopupMenuItem<String> _menuHeader(String label) {
+    return PopupMenuItem<String>(
+      enabled: false,
+      height: 30,
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10.sp,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: Colors.grey[600],
+        ),
+      ),
+    );
+  }
+
+  PopupMenuEntry<String> _menuDivider() => const PopupMenuDivider(height: 1);
+
+  /// `筛选` button: all three single-select filter groups in one anchored
+  /// menu, with a badge showing how many groups are narrowed.
+  Widget _buildFilterMenu(bool isDark) {
+    final t = CopyService.instance.t;
+    final count = _activeFilterCount;
+    final primary = Theme.of(context).colorScheme.primary;
+    return PopupMenuButton<String>(
+      tooltip: t('screen.admin_users.filter', fallback: 'Filter'),
+      icon: Badge(
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        child: Icon(
+          count > 0 ? Icons.filter_alt : Icons.filter_alt_outlined,
+          size: 20.w,
+          color: count > 0 ? primary : Colors.grey[600],
+        ),
+      ),
+      color: isDark ? Colors.grey[900] : Colors.white,
+      // Opened from the right edge of a phone: anchor to the button's right
+      // edge so the menu grows leftwards and cannot overflow the screen.
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      constraints: BoxConstraints(minWidth: 200.w, maxWidth: 240.w),
+      onSelected: _onFilterSelected,
+      itemBuilder: (context) => [
+        _menuHeader(
+          t('screen.admin_users.filter_group_role', fallback: 'Role'),
+        ),
+        _menuItem(
+          value: 'role:all',
+          label: t(
+            'screen.admin_users.filter_all_roles',
+            fallback: 'All roles',
+          ),
+          selected: _roleFilter == 'all',
+        ),
+        _menuItem(
+          value: 'role:admin',
+          label: t('screen.admin_users.role_admin', fallback: 'Admin'),
+          selected: _roleFilter == 'admin',
+        ),
+        _menuItem(
+          value: 'role:user',
+          label: t('screen.admin_users.role_user', fallback: 'User'),
+          selected: _roleFilter == 'user',
+        ),
+        _menuDivider(),
+        _menuHeader(
+          t('screen.admin_users.filter_group_status', fallback: 'Status'),
+        ),
+        _menuItem(
+          value: 'status:all',
+          label: t(
+            'screen.admin_users.filter_all_status',
+            fallback: 'All status',
+          ),
+          selected: _statusFilter == 'all',
+        ),
+        _menuItem(
+          value: 'status:active',
+          label: t('screen.admin_users.filter_active', fallback: 'Active'),
+          selected: _statusFilter == 'active',
+        ),
+        _menuItem(
+          value: 'status:banned',
+          label: t('screen.admin_users.banned_badge', fallback: 'Banned'),
+          selected: _statusFilter == 'banned',
+        ),
+        _menuDivider(),
+        _menuHeader(
+          t('screen.admin_users.filter_group_exchange', fallback: 'Exchange'),
+        ),
+        _menuItem(
+          value: 'exchange:all',
+          label: t(
+            'screen.admin_users.filter_exchange_all',
+            fallback: 'All exchange',
+          ),
+          selected: _exchangeFilter == 'all',
+        ),
+        _menuItem(
+          value: 'exchange:has',
+          label: t(
+            'screen.admin_users.filter_exchange_has',
+            fallback: 'Has account',
+          ),
+          selected: _exchangeFilter == 'has',
+        ),
+        _menuItem(
+          value: 'exchange:none',
+          label: t(
+            'screen.admin_users.filter_exchange_none',
+            fallback: 'No account',
+          ),
+          selected: _exchangeFilter == 'none',
+        ),
+        if (count > 0) ...[
+          _menuDivider(),
+          PopupMenuItem<String>(
+            value: 'clear',
+            height: 46,
+            child: Row(
+              children: [
+                Icon(
+                  Icons.restart_alt,
+                  size: 18.w,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                SizedBox(width: 8.w),
+                Text(
+                  t(
+                    'screen.admin_users.filter_clear',
+                    fallback: 'Clear filters',
+                  ),
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Menu values are `group:value` pairs so a single popup can drive three
+  /// independent filter state fields. The menu stays open on tap is NOT
+  /// desired here: one selection closes it, matching how the user picks a
+  /// single value per group in separate visits.
+  void _onFilterSelected(String value) {
+    if (value == 'clear') {
+      setState(() {
+        _roleFilter = 'all';
+        _statusFilter = 'all';
+        _exchangeFilter = 'all';
+      });
+      return;
+    }
+    final sep = value.indexOf(':');
+    if (sep <= 0) return;
+    final group = value.substring(0, sep);
+    final picked = value.substring(sep + 1);
+    setState(() {
+      switch (group) {
+        case 'role':
+          _roleFilter = picked;
+        case 'status':
+          _statusFilter = picked;
+        case 'exchange':
+          _exchangeFilter = picked;
+      }
+    });
+  }
+
+  /// `排序` button. Only Balance and Name are offered; tapping the active key
+  /// flips the direction, tapping the other switches key and resets to
+  /// descending (balance) / ascending (name) as the sensible default.
+  Widget _buildSortMenu(bool isDark) {
+    final t = CopyService.instance.t;
+    final primary = Theme.of(context).colorScheme.primary;
+    final options = <({String key, String label})>[
+      (
+        key: 'balance',
+        label: t('screen.admin_users.sort_by_balance', fallback: 'Balance'),
+      ),
+      (
+        key: 'name',
+        label: t('screen.admin_users.sort_by_name', fallback: 'Name'),
+      ),
+    ];
+    return PopupMenuButton<String>(
+      tooltip: t('screen.admin_users.sort', fallback: 'Sort by'),
+      icon: Icon(Icons.swap_vert, size: 22.w, color: primary),
+      color: isDark ? Colors.grey[900] : Colors.white,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      constraints: BoxConstraints(minWidth: 190.w, maxWidth: 230.w),
+      onSelected: _onSortSelected,
+      itemBuilder: (context) => [
+        _menuHeader(t('screen.admin_users.sort', fallback: 'Sort by')),
+        for (final option in options)
+          _menuItem(
+            value: option.key,
+            label: option.label,
+            selected: _sortKey == option.key,
+            // Show the live direction as a trailing hint on the active row so
+            // the menu and the rendered list ordering never disagree.
+            trailingIcon: _sortKey == option.key
+                ? (_sortAscending ? Icons.arrow_upward : Icons.arrow_downward)
+                : null,
+          ),
+        _menuDivider(),
+        // Explicit direction rows: pickable without changing the sort key.
+        _menuItem(
+          value: 'dir:asc',
+          label: t('screen.admin_users.sort_ascending', fallback: 'Ascending'),
+          selected: _sortAscending,
+          height: 40,
+        ),
+        _menuItem(
+          value: 'dir:desc',
+          label: t(
+            'screen.admin_users.sort_descending',
+            fallback: 'Descending',
+          ),
+          selected: !_sortAscending,
+          height: 40,
+        ),
+      ],
+    );
+  }
+
+  void _onSortSelected(String value) {
+    if (value.startsWith('dir:')) {
+      final asc = value.substring(4) == 'asc';
+      setState(() => _sortAscending = asc);
+      return;
+    }
+    setState(() {
+      if (_sortKey == value) {
+        _sortAscending = !_sortAscending;
+      } else {
+        _sortKey = value;
+        // Balance reads best largest-first; names read best A→Z.
+        _sortAscending = value == 'name';
+      }
+    });
   }
 
   Widget _buildEmptyState() {
@@ -819,8 +986,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final muted = TextStyle(fontSize: 12.sp, color: Colors.grey[600]);
     return Row(
       children: [
-        Icon(Icons.account_balance_wallet_outlined,
-            size: 13.w, color: Colors.grey[600]),
+        Icon(
+          Icons.account_balance_wallet_outlined,
+          size: 13.w,
+          color: Colors.grey[600],
+        ),
         SizedBox(width: 4.w),
         CopyText(
           'screen.admin_users.exchange_accounts',
@@ -847,10 +1017,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         SizedBox(width: 6.w),
         Text(
           balance == null ? 'N/A' : _formatUsd(balance),
-          style: TextStyle(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -863,18 +1030,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       children: [
         Icon(Icons.history, size: 13.w, color: Colors.grey[600]),
         SizedBox(width: 4.w),
-        CopyText(
-          'screen.admin_users.joined',
-          fallback: 'Joined',
-          style: muted,
-        ),
+        CopyText('screen.admin_users.joined', fallback: 'Joined', style: muted),
         SizedBox(width: 6.w),
         Text(
           _formatDate(user.createdAt!),
-          style: TextStyle(
-            fontSize: 12.sp,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -883,8 +1043,18 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   /// Formats a registration date as e.g. "Sep 9, 2026".
   String _formatDate(DateTime date) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }

@@ -674,6 +674,17 @@
     "widget.responsive_layout_builder.tag_2": "标签 2",
     "widget.trade_history_widget.amount": "数量",
     "widget.trade_history_widget.recent_trades": "最新成交",
-    "widget.trade_history_widget.time": "时间"
+    "widget.trade_history_widget.time": "时间",
+    "screen.admin_users.filter": "筛选",
+    "screen.admin_users.filter_all_roles": "全部角色",
+    "screen.admin_users.filter_all_status": "全部状态",
+    "screen.admin_users.filter_active": "正常",
+    "screen.admin_users.filter_clear": "清除筛选",
+    "screen.admin_users.filter_group_role": "角色",
+    "screen.admin_users.filter_group_status": "状态",
+    "screen.admin_users.filter_group_exchange": "交易所",
+    "screen.admin_users.sort_ascending": "升序",
+    "screen.admin_users.sort_descending": "降序",
+    "common.clear": "清除"
   }
 }
