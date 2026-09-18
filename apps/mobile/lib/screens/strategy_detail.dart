@@ -807,10 +807,34 @@ class _StrategyDetailScreenState extends State<StrategyDetailScreen>
     );
   }
 
+  /// Builds the "runtime" label, mirroring the web console's strategy detail
+  /// page (`app/(console)/strategy/[id]/page.tsx`).
+  ///
+  /// Reference semantics:
+  ///   start = performance.startTime (first order) || createdAt
+  ///   end   = isActive ? now : updatedAt
+  ///   duration = max(0, end - start)
+  ///
+  /// The previous implementation used `lastExecutionTime` as the start, but
+  /// that field is written ONLY by `StrategyRepository.updateStatus()` — it is
+  /// the time of the last status CHANGE (≈ updatedAt), not when trading began.
+  /// For a stopped strategy that made end ≈ start, so runtime collapsed to 0s.
+  ///
+  /// Prefer `_rebuiltPerformance.time.startTime` (computed live by replaying
+  /// orders) over `_strategy.performance.startTime` (a cached DB row): the
+  /// strategies API explicitly treats cached performance rows as stale and
+  /// always rebuilds, so the rebuilt value is the trustworthy one.
   String _buildRuntimeString() {
-    final startStr = _strategy.lastExecutionTime ?? _strategy.createdAt;
+    final startTime = _rebuiltPerformance?.startTime ??
+        _strategy.performance?.startTime ??
+        _strategy.createdAt;
     final endTime = _strategy.isActive ? DateTime.now() : _strategy.updatedAt;
-    final duration = endTime.difference(startStr);
+
+    // Clamp at zero: a negative Duration would flow into the `% 24` / `% 60`
+    // decomposition below and print nonsense (e.g. "-1d -2h -30m 15s").
+    var duration = endTime.difference(startTime);
+    if (duration.isNegative) duration = Duration.zero;
+
     final d = duration.inDays;
     final h = duration.inHours % 24;
     final m = duration.inMinutes % 60;

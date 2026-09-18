@@ -100,6 +100,11 @@ class StrategyPerformance {
   final int longOrdersFilledCount;
   final int shortOrdersFilledCount;
 
+  /// When the strategy first started trading — derived server-side from the
+  /// first order's timestamp (`rebuildStrategyPerformance` sets
+  /// `performance.time.startTime = orders[0].timestamp`).
+  final DateTime? startTime;
+
   StrategyPerformance({
     required this.totalPnL,
     required this.roi,
@@ -110,9 +115,18 @@ class StrategyPerformance {
     required this.losingTrades,
     required this.longOrdersFilledCount,
     required this.shortOrdersFilledCount,
+    this.startTime,
   });
 
   factory StrategyPerformance.fromJson(Map<String, dynamic> json) {
+    // `startTime` arrives in one of two shapes depending on the source:
+    //  - `strategy.performance` (the StrategyPerformanceEntity row) → FLAT
+    //    `startTime`.
+    //  - `rebuiltPerformance` (@itrade/core `createEmptyPerformance`) →
+    //    NESTED `time.startTime`.
+    // Accept both so the runtime display never silently degrades.
+    final time = json['time'] as Map<String, dynamic>?;
+    final startTimeRaw = time?['startTime'] ?? json['startTime'];
     return StrategyPerformance(
       totalPnL: _parseDouble(json['totalPnL']),
       roi: _parseDouble(json['roi']),
@@ -123,6 +137,7 @@ class StrategyPerformance {
       losingTrades: _parseInt(json['losingTrades']),
       longOrdersFilledCount: _parseInt(json['longOrdersFilledCount']),
       shortOrdersFilledCount: _parseInt(json['shortOrdersFilledCount']),
+      startTime: startTimeRaw is String ? DateTime.tryParse(startTimeRaw) : null,
     );
   }
 }
@@ -236,14 +251,23 @@ class RebuiltPerformance {
   final RebuiltPerformanceActivity? activity;
   final RebuiltPerformanceRisk? risk;
 
+  /// `time.startTime` — when the strategy first traded, derived server-side
+  /// from the FIRST ORDER's timestamp. This is part of the LIVE rebuilt
+  /// payload (see @itrade/core `createEmptyPerformance` → `time: {...}`), so
+  /// it is more trustworthy than the cached `strategy.performance` row.
+  final DateTime? startTime;
+
   RebuiltPerformance({
     required this.pnl,
     this.orders,
     this.activity,
     this.risk,
+    this.startTime,
   });
 
   factory RebuiltPerformance.fromJson(Map<String, dynamic> json) {
+    final time = json['time'] as Map<String, dynamic>?;
+    final startTimeRaw = time?['startTime'];
     return RebuiltPerformance(
       pnl: RebuiltPerformancePnL.fromJson(
         json['pnl'] as Map<String, dynamic>? ?? {},
@@ -263,6 +287,7 @@ class RebuiltPerformance {
               json['risk'] as Map<String, dynamic>,
             )
           : null,
+      startTime: startTimeRaw is String ? DateTime.tryParse(startTimeRaw) : null,
     );
   }
 }

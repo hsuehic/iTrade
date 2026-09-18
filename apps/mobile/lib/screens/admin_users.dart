@@ -141,11 +141,16 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   /// Compares two nullable numeric field values. `null` always sorts last
   /// (1) regardless of direction; otherwise defer to the direction sign.
+  ///
+  /// NOTE: do NOT cast `(a - b).sign` to int. `num.sign` is a `num` and is a
+  /// `double` for double operands, so `as int` throws
+  /// `_TypeError: type 'double' is not a subtype of type 'int'` at runtime.
+  /// `num.compareTo` is typed to return `int`, so its sign is safe.
   static int _compareNullable(num? a, num? b, int dir) {
     if (a == null && b == null) return 0;
     if (a == null) return 1;
     if (b == null) return -1;
-    return ((a - b).sign as int) * dir;
+    return a.compareTo(b).sign * dir;
   }
 
   void _showMessage(String key, String fallback, {bool isError = false}) {
