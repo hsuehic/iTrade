@@ -67,7 +67,16 @@ export class PerformanceAnalyzer {
   }
 
   calculateTradeAnalysis(trades: Order[]): TradeAnalysis {
-    const completedTrades = trades.filter((trade) => trade.status === 'FILLED');
+    // Gate on actual executed quantity, not on `status === 'FILLED'`. An order
+    // can be CANCELED after a partial fill, leaving a non-zero executedQuantity
+    // behind; that quantity is a real fill. See plan
+    // 2026-09-18-strategy-pnl-list-detail-divergence.md.
+    //
+    // NOTE: this analyzer is currently scaffolding — calculateTradePnL() below
+    // returns a constant 0, so the win/loss breakdown is not yet meaningful.
+    const completedTrades = trades.filter(
+      (trade) => Number(trade.executedQuantity ?? 0) > 0,
+    );
 
     if (completedTrades.length === 0) {
       return {

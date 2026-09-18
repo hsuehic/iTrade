@@ -285,11 +285,11 @@ export class PositionTracker extends EventEmitter {
 
   // Order Processing
   processOrderFill(order: Order): void {
-    if (
-      order.status === 'FILLED' &&
-      order.executedQuantity &&
-      order.executedQuantity.gt(0)
-    ) {
+    // Gate on actual executed quantity, not on `status === 'FILLED'`. An order
+    // can be CANCELED after a partial fill, leaving a non-zero executedQuantity
+    // behind; that quantity is a real position change. See plan
+    // 2026-09-18-strategy-pnl-list-detail-divergence.md.
+    if (order.executedQuantity && new Decimal(order.executedQuantity).gt(0)) {
       this.updatePosition(
         order.symbol,
         order.executedQuantity,

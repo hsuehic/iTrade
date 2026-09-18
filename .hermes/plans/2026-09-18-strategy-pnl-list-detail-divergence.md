@@ -76,24 +76,53 @@ for (const order of sortedOrders) {
 The existing `if (executedQty === 0 || avgPrice === 0) continue;` stays and is
 what excludes never-traded orders (NEW / zero-fill CANCELED).
 
-### Change 2 — regression test
+### Change 2 — Option A applied to all 5 downstream sites
 
-Add a case asserting that a CANCELED order with `executedQuantity > 0` is booked
-into realized PnL and into the position, and that
-`calculatePnLFromOrders` and `rebuildStrategyPerformance` agree on the same
-order set.
+The same root cause (partially-filled-then-canceled orders) also corrupts the
+other consumers that gate on `status === 'FILLED'`. All are aligned to gate on
+actual executed quantity:
+
+| File                                                                             | Before                | After                                 |
+| -------------------------------------------------------------------------------- | --------------------- | ------------------------------------- |
+| `packages/core/src/models/OrderManager.ts` `getAveragePrice`                     | `status === 'FILLED'` | `Number(executedQuantity ?? 0) > 0`   |
+| `packages/portfolio-manager/src/PositionTracker.ts` `processOrderFill`           | `status === 'FILLED'` | `new Decimal(executedQuantity).gt(0)` |
+| `packages/portfolio-manager/src/PerformanceAnalyzer.ts` `calculateTradeAnalysis` | `status === 'FILLED'` | `Number(executedQuantity ?? 0) > 0`   |
+| `apps/web/components/orders-table.tsx` `stats.totalPnl`                          | `status === 'FILLED'` | `parseFloat(executedQuantity) > 0`    |
+
+Each predicate coerces defensively: the `Order` type declares `executedQuantity`
+as `Decimal`, but raw exchange payloads legitimately supply a string/number, so
+calling Decimal methods on it directly throws.
+
+### Deliberately NOT changed — `filledOrders` counters
+
+`PnLRepository:154` and `:241` keep `status === 'FILLED'`. These feed
+`fillRate = filledOrders / totalOrders` (`api/analytics/strategies/route.ts:95`)
+and the `{filled}/{total}` display (`strategy-performance-table.tsx:224`) — a
+metric that genuinely means "fully filled". An order canceled after a partial
+fill did trade, but it is not fully filled, so it must not inflate fill rate.
+Comments were added at both sites so this reads as an intentional distinction.
+
+### Change 3 — regression test
+
+Added an executable check asserting that a CANCELED order with
+`executedQuantity > 0` is booked into realized PnL, into the position, and into
+the average price, that a never-traded CANCELED order is still ignored, and that
+`calculatePnLFromOrders` and `rebuildStrategyPerformance` agree.
 
 ## Out of scope (recommend separate ticket)
 
 1. **Write-side normalization (root of the data shape).** The console's cancel
-   path persists `executedQuantity` while leaving status `CANCELED`, so every
-   downstream consumer must remember to special-case it. Normalizing on write
-   (split the filled part into its own FILLED record, or use a terminal status
-   that carries its fill) removes the whole bug class.
+   path (`order-tracker.ts:511`) persists only `status`/`updateTime`; the
+   residual `executedQuantity` is left over from an earlier PARTIALLY_FILLED
+   save. So the "CANCELED with a fill" shape is an accident of two events, not a
+   design. Normalizing on write removes the whole bug class. Deliberately NOT
+   done here: it would require migrating 128 existing rows across 47 strategies,
+   and clearing the residual would _destroy_ real recorded fills.
 2. **`totalCost` residual on position flip.** In the same function the
    close-and-flip branches re-derive `totalCost` from the _pre-flip_ position
    size; on a flip the basis is not reset cleanly. Not triggered by 592's data
-   but reachable for other strategies.
+   but reachable for other strategies. (Reviewed and confirmed NOT a bug for the
+   paths exercised here — the algebra is equivalent — kept out to minimize diff.)
 
 ## Verification
 

@@ -148,6 +148,9 @@ export class PnLRepository {
 
     // Count orders
     const totalOrders = orders.length;
+    // Genuine "fully filled" count — intentionally keeps the status check. An
+    // order CANCELED after a partial fill did trade (and is booked in the PnL
+    // above) but is not fully filled, so it must not be counted here.
     const filledOrders = orders.filter((o) => o.status === 'FILLED').length;
 
     return {
@@ -234,6 +237,7 @@ export class PnLRepository {
 
       // Count total and filled orders
       const totalOrders = orders.length;
+      // Genuine "fully filled" count — see the note in getStrategyPnL().
       const filledOrders = orders.filter((o) => o.status === 'FILLED').length;
 
       return {

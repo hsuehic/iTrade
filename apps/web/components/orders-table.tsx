@@ -1008,8 +1008,17 @@ export function OrdersTable({
   // Statistics are computed from the current page's server-filtered data.
   // totalCount reflects the full server-side filtered total.
   const stats = React.useMemo(() => {
+    // NOTE on `filled`: this is a genuine "fully filled" count and intentionally
+    // keeps the status check. It is NOT the same question as "did this order
+    // trade" — an order CANCELED after a partial fill did trade, but it is not
+    // fully filled. See plan 2026-09-18-strategy-pnl-list-detail-divergence.md.
     const filledOrders = orders.filter((o) => o.status === 'FILLED');
-    const totalPnl = filledOrders.reduce(
+    // PnL, by contrast, must include every order that actually executed,
+    // including partially-filled-then-canceled orders.
+    const executedOrders = orders.filter(
+      (o) => parseFloat(o.executedQuantity || '0') > 0,
+    );
+    const totalPnl = executedOrders.reduce(
       (sum, o) => sum + parseFloat(o.realizedPnl || '0'),
       0,
     );

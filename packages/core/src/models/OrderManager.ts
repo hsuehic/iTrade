@@ -187,9 +187,24 @@ export class OrderManager extends EventEmitter {
   }
 
   public getAveragePrice(symbol: string, side: OrderSide): Decimal | null {
-    const orders = this.getOrdersBySymbol(symbol).filter(
-      (order) => order.side === side && order.status === 'FILLED' && order.price,
-    );
+    // Gate on actual executed quantity, not on `status === 'FILLED'`. An order
+    // can be CANCELED after a partial fill, leaving a non-zero executedQuantity
+    // behind; that quantity is a real fill and must contribute to the average
+    // price. See plan 2026-09-18-strategy-pnl-list-detail-divergence.md.
+    //
+    // Normalize up-front: the `Order` type declares executedQuantity/price as
+    // Decimal, but orders reach this manager straight from raw exchange payloads
+    // (see order-tracker.mergeWithExistingOrder, which does not coerce), so they
+    // are frequently strings/numbers at runtime. Coerce once, then work in
+    // Decimal throughout.
+    const orders = this.getOrdersBySymbol(symbol)
+      .filter((order) => order.side === side)
+      .map((order) => ({
+        executedQuantity: new Decimal(order.executedQuantity ?? 0),
+        price: order.price === undefined ? undefined : new Decimal(order.price),
+        quantity: new Decimal(order.quantity ?? 0),
+      }))
+      .filter((o) => o.executedQuantity.gt(0) && o.price !== undefined);
 
     if (orders.length === 0) {
       return null;
@@ -199,11 +214,8 @@ export class OrderManager extends EventEmitter {
     let totalQuantity = new Decimal(0);
 
     for (const order of orders) {
-      if (order.price) {
-        const value = order.price.mul(order.executedQuantity || order.quantity);
-        totalValue = totalValue.add(value);
-        totalQuantity = totalQuantity.add(order.executedQuantity || order.quantity);
-      }
+      totalValue = totalValue.add(order.price!.mul(order.executedQuantity));
+      totalQuantity = totalQuantity.add(order.executedQuantity);
     }
 
     return totalQuantity.isZero() ? null : totalValue.div(totalQuantity);
