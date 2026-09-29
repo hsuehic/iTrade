@@ -3652,10 +3652,15 @@ describe('LadderEntrySingleTPStrategy', () => {
       expect(cancels).toHaveLength(1); // entry0 cancelled for reset
     });
 
-    it('should skip proximity guard when bid0 is unknown (allow reset)', async () => {
-      // When _currentBid0 is 0 (no orderbook received), the guard condition
-      // `this._currentBid0.gt(0)` is false → guard skipped → reset proceeds.
-      // We simulate this by manually clearing _currentBid0 after init.
+    it('should NOT reset when the recomputed entry0 price only drifts sub-tick closer to bid0', async () => {
+      // entryGapValue=10 (arithmetic), no cap. Init bid0=100 -> entry0 = 90.
+      // bid0 drifts to 100.005 via WS -> new entry0 = 90.005.
+      //   distance: originDist = 10.005  ->  newDist = 10.0  (STRICTLY closer,
+      //   so the old proximity rule alone would approve a reset)
+      //   price:    90       ->  90.005  (relative diff ~5.6e-5 < 1bp → the
+      //   order would be re-placed at the same effective price)
+      // Production symptom (WLD ladder strategies): cancel + re-place at an
+      // identical price every resetInterval. The price-unchanged guard skips it.
       const strategy = new LadderEntrySingleTPStrategy(
         createStrategyConfig({
           basePrice: 0,
@@ -3669,13 +3674,13 @@ describe('LadderEntrySingleTPStrategy', () => {
         }),
       );
 
-      // Init with bid0=100 -> entry0 = 90
       const initResult = await strategy.processInitialData(
         createInitialData({ orderBook: createOrderBook(100) }),
       );
       const initEntries = findEntrySignals(initResult);
+      expect(initEntries).toHaveLength(1);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(90, 3);
 
-      // Simulate order ack
       const entry0Coid = initEntries[0].clientOrderId!;
       await strategy.analyze(
         createDataUpdate({
@@ -3683,21 +3688,237 @@ describe('LadderEntrySingleTPStrategy', () => {
         }),
       );
 
-      // Manually clear _currentBid0 to simulate "bid0 unknown" state.
-      // This triggers the guard's fallback: skip guard → allow reset.
+      // bid0 drifts up by 0.005 (sub-tick) → new entry0 = 90.005 = same price
+      await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(100.005),
+      });
+
+      const priv = strategy as unknown as {
+        _currentBid0: Decimal;
+        _currentBid0Time: number;
+      };
+      // The push must actually land on this instance, otherwise the guard falls
+      // back to its unknown-bid0 branch and the test would pass for the wrong
+      // reason (a symbol/exchange mismatch silently drops the orderbook).
+      expect(priv._currentBid0.toNumber()).toBeCloseTo(100.005, 4);
+
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+      // Pin the freshness stamp to the overridden clock: this test is about the
+      // live-bid0 comparison, not about the stale/unknown fallback.
+      priv._currentBid0Time = Date.now();
+
+      const result = await strategy.analyze({
+        exchangeName: 'okx',
+        symbol: 'BTC/USDT',
+        orderbook: createOrderBook(100.005),
+      });
+      Date.now = oldNow;
+
+      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
+      expect(cancels).toHaveLength(0);
+    });
+
+    it('should skip a reset when entry0 is cap-pinned even if bid0 is unknown', async () => {
+      // Production case (WLD ladder strategies): the market sits above
+      // maxEntryPrice, so entry 0 rests at the cap. Rebuilding cannot place it
+      // any higher or lower → the reset is pure cancel/replace churn (observed:
+      // same price cancelled 34x in 23h). This must hold even when no orderbook
+      // push has been received (_currentBid0 == 0), because the cap check needs
+      // no bid0.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+          maxEntryPrice: 85,
+        }),
+      );
+
+      // Init bid0=100 -> uncapped entry0 = 90 -> clamped to the 85 cap.
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(85, 3);
+
+      const entry0Coid = initEntries[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 85, 0.1)],
+        }),
+      );
+
+      // No orderbook push ever arrived on this strategy instance.
       (strategy as unknown as { _currentBid0: Decimal })._currentBid0 = new Decimal(0);
 
-      // Advance time past resetInterval.
       const oldNow = Date.now;
       Date.now = () => oldNow() + 2 * 60 * 1000;
 
       const result = await strategy.analyze(createDataUpdate({}));
       Date.now = oldNow;
 
-      const signals = toSignalArray(result);
-      const cancels = signals.filter((s) => s.action === 'cancel');
-      // Guard skipped because _currentBid0 == 0 → reset proceeds normally.
-      expect(cancels).toHaveLength(1);
+      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
+      // Cap-pinned → the rebuild would re-place 85 → skip the reset.
+      expect(cancels).toHaveLength(0);
+    });
+
+    it('should still reset when bid0 is unknown and entry0 is NOT cap-pinned', async () => {
+      // Guard against amputating the reset: with no bid0 the ladder cannot know
+      // the new price, and the reset's REST re-anchor is the only way it learns
+      // one. An unknown bid0 must therefore leave the reset able to fire.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const initEntries = findEntrySignals(initResult);
+      expect(initEntries[0].price!.toNumber()).toBeCloseTo(90, 3);
+
+      const entry0Coid = initEntries[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 90, 0.1)],
+        }),
+      );
+
+      (strategy as unknown as { _currentBid0: Decimal })._currentBid0 = new Decimal(0);
+
+      const oldNow = Date.now;
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+
+      const result = await strategy.analyze(createDataUpdate({}));
+      Date.now = oldNow;
+
+      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
+      expect(cancels.length).toBeGreaterThan(0);
+    });
+
+    it('should still reset when a stale bid0 would reproduce the current entry0 price', async () => {
+      // Stale-positive trap: a dead orderbook feed leaves the last pushed bid0 in
+      // place (it is never zeroed). Without a freshness check that fossil value
+      // satisfies `computeEntry0Price(bid0) == entry0Price`, the reset is skipped
+      // forever and an uncapped ladder freezes at a price the market has left.
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0Coid = findEntrySignals(initResult)[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 90, 0.1)],
+        }),
+      );
+
+      const oldNow = Date.now;
+      // Bid0 equal to the ladder's own anchor (100) — i.e. it would reproduce
+      // exactly the current entry 0 price (90) — but written long ago.
+      const priv = strategy as unknown as {
+        _currentBid0: Decimal;
+        _currentBid0Time: number;
+      };
+      priv._currentBid0 = new Decimal(100);
+      priv._currentBid0Time = oldNow() - 5 * 60 * 1000;
+
+      Date.now = () => oldNow() + 2 * 60 * 1000;
+      const result = await strategy.analyze(createDataUpdate({}));
+      Date.now = oldNow;
+
+      // Stale → treated as unknown → no cap → the reset must fire (REST re-anchor).
+      const cancels = toSignalArray(result).filter((s) => s.action === 'cancel');
+      expect(cancels.length).toBeGreaterThan(0);
+    });
+
+    it('should let one reset through after the cap-pinned skip limit (heartbeat)', async () => {
+      // The bid0-independent cap fallback is a heuristic: bound it, so a spread
+      // sitting between bid0 and the cap (where a rebuild WOULD improve the price
+      // and the resting buy cannot fill either) can never freeze the ladder.
+      // The budget is wall-clock, not per tick: `_capPinnedGuardMaxSkips` = 4
+      // intervals measured from the first skip of the streak, after which one
+      // reset re-anchors (and the streak re-arms).
+      const strategy = new LadderEntrySingleTPStrategy(
+        createStrategyConfig({
+          basePrice: 0,
+          ladderSteps: 3,
+          stepType: 'arithmetic',
+          stepValue: 5,
+          entryGapType: 'arithmetic',
+          entryGapValue: 10,
+          qtyPerStep: 0.1,
+          resetInterval: 1,
+          maxEntryPrice: 85,
+        }),
+      );
+
+      const initResult = await strategy.processInitialData(
+        createInitialData({ orderBook: createOrderBook(100) }),
+      );
+      const entry0Coid = findEntrySignals(initResult)[0].clientOrderId!;
+      await strategy.analyze(
+        createDataUpdate({
+          orders: [createOrder(entry0Coid, OrderSide.BUY, OrderStatus.NEW, 85, 0.1)],
+        }),
+      );
+      (strategy as unknown as { _currentBid0: Decimal })._currentBid0 = new Decimal(0);
+
+      const oldNow = Date.now;
+      try {
+        // The interval is long expired, so every analyze re-enters the fallback.
+        // Ticks inside the window must NOT consume the budget: a tick-based
+        // counter would be exhausted by these 5 calls within milliseconds
+        // (orderbook pushes re-run this check every ~100ms).
+        Date.now = () => oldNow() + 2 * 60 * 1000;
+        for (let i = 0; i < 5; i++) {
+          const skipped = await strategy.analyze(createDataUpdate({}));
+          expect(
+            toSignalArray(skipped).filter((s) => s.action === 'cancel'),
+          ).toHaveLength(0);
+        }
+        // Once the skip window (4 intervals) has elapsed, one reset re-anchors.
+        Date.now = () => oldNow() + 7 * 60 * 1000;
+        const result = await strategy.analyze(createDataUpdate({}));
+        expect(
+          toSignalArray(result).filter((s) => s.action === 'cancel').length,
+        ).toBeGreaterThan(0);
+        // Re-arm invariant: without clearing the streak stamp the window would
+        // stay closed and the fallback would degrade to one reset per interval —
+        // the exact churn this guard exists to prevent.
+        expect(
+          (strategy as unknown as { _capPinnedSkipSince: number })._capPinnedSkipSince,
+        ).toBe(0);
+      } finally {
+        Date.now = oldNow;
+      }
     });
   });
 

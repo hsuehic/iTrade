@@ -91,3 +91,4 @@ routa.*
 
 # Local upload storage (dev fallback for UPLOADS_DIR)
 .uploads/
+.hermes/

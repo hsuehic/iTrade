@@ -447,6 +447,17 @@ export interface StrategyOrderResult {
   // Trading mode and leverage (for futures/margin)
   tradeMode?: TradeMode; // cash=spot, isolated/cross=margin/futures
   leverage?: number; // Leverage multiplier (e.g., 1, 2, 5, 10)
+
+  /**
+   * 🆕 Mark the order as risk-reducing (exchange `reduceOnly`).
+   *
+   * Exit orders (TP / stop-loss) MUST set this so that a duplicate or orphaned
+   * exit order can never over-sell the position at the exchange level.
+   * See Strategy 609 (2026-09-23): two identical TP sells both filled because
+   * neither carried reduceOnly and the strategy had lost track of one of them.
+   */
+  reduceOnly?: boolean;
+
   metadata?: SignalMetaData;
 }
 
@@ -483,6 +494,13 @@ export interface StrategyUpdateOrderResult {
   price?: Decimal;
   /** Reason for update */
   reason?: string;
+  /**
+   * 🆕 Mark the replacement order as risk-reducing (exchange `reduceOnly`).
+   * The engine implements update as cancel+replace, so the replacement order
+   * must carry the same protection as the original — otherwise a TP loses its
+   * reduceOnly guard after every cancel+replace (Strategy 609 root cause).
+   */
+  reduceOnly?: boolean;
   /** Optional metadata for replacement order */
   metadata?: SignalMetaData;
 }

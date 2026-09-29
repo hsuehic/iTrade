@@ -321,6 +321,25 @@ export class CoinbaseExchange extends BaseExchange {
         body.margin_type = 'ISOLATED';
       }
 
+      // 🆕 Strategy 609 hardening: Coinbase Advanced Trade has NO `reduce_only`
+      // field in its CreateOrderRequest body (verified against the live API
+      // reference: client_order_id, product_id, side, order_configuration,
+      // leverage, margin_type, retail_portfolio_id, preview_id,
+      // attached_order_configuration). Only the separate Coinbase
+      // Derivatives/International API schema carries `reduce_only`, and that is
+      // not the API this connector talks to. Sending an unknown field risks a
+      // 400, so the flag cannot be forwarded here: the exit guard for Coinbase
+      // rests on the engine's duplicate-order reconciliation plus the
+      // strategy-side tracking invariant. Warn loudly instead of dropping it
+      // silently, so nobody believes a guard exists when it does not.
+      if (options?.reduceOnly) {
+        console.warn(
+          `⚠️ reduceOnly was requested for ${productId}, but Coinbase Advanced Trade ` +
+            `does not support reduce_only — the flag was NOT sent. Relying on the ` +
+            `engine-level duplicate-order reconciliation instead (Strategy 609 guard).`,
+        );
+      }
+
       return body;
     };
 
@@ -1858,7 +1877,16 @@ export class CoinbaseExchange extends BaseExchange {
     return {
       id: o.order_id || o.id || uuidv4(),
       clientOrderId: o.client_order_id,
-      symbol: o.product_id || 'UNKNOWN',
+      // 🆕 Strategy 609 review (GLM ③ / Opus M2): return the UNIFIED symbol, not
+      // Coinbase's native product_id. `BTC-USD` / `WLD-PERP-INTX` never compares
+      // equal to the engine's `BTC/USD` / `WLD/USDC:USDC`, so every
+      // symbol-matching reconciliation in the engine (duplicate-TP reconcile)
+      // silently degraded to a no-op on this venue — and Coinbase has no
+      // reduce_only field either, so both defences were dead here.
+      symbol:
+        o.product_id && o.product_id !== 'UNKNOWN'
+          ? this.denormalizeSymbol(o.product_id)
+          : o.product_id || 'UNKNOWN',
       side: (o.side?.toUpperCase() || 'BUY') === 'BUY' ? OrderSide.BUY : OrderSide.SELL,
       type: this.transformOrderType(o.order_type || o.type || 'LIMIT'),
       quantity: this.formatDecimal(quantityStr),

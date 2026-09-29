@@ -561,6 +561,10 @@ export class OrderTracker {
       await this.dataManager.updateOrder(mergedOrder.id, {
         status: mergedOrder.status,
         updateTime: mergedOrder.updateTime,
+        // 🆕 Persist the failure reason (Strategy 609: the -2011 cancel error
+        // that rewrote a filled order as REJECTED existed only in the console
+        // log — the order row had no column for it).
+        errorMessage: mergedOrder.errorMessage,
       });
 
       // 🧹 Clean up: remove from notified set (order is now closed)

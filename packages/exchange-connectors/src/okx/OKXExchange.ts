@@ -280,6 +280,38 @@ export class OKXExchange extends BaseExchange {
       orderData.posSide = 'net';
     }
 
+    // 🆕 Strategy 609 hardening: forward `reduceOnly` to the exchange.
+    //
+    // OKX DOES support it — v5 docs: "Whether orders can only reduce in
+    // position size. ... Only applicable to MARGIN orders, and FUTURES/SWAP
+    // orders in net mode." This connector always sends posSide='net' for
+    // swaps, so the flag applies. It used to be declared in the options type
+    // and then silently dropped, which meant a strategy setting reduceOnly
+    // believed it had an exchange-level guard when it had none.
+    //
+    // SPOT cash orders have no position to reduce, so the flag cannot be
+    // honoured there — say so out loud instead of dropping it silently.
+    if (options?.reduceOnly) {
+      // 🆕 Strategy 609 review (GLM MEDIUM): name the modes explicitly instead
+      // of `tdMode !== CASH`. `tdMode` is defaulted above (ISOLATED for swaps,
+      // CASH otherwise), so this is behaviour-identical today — but a future
+      // change to that default (or an undefined tdMode reaching here) would
+      // have silently started sending reduceOnly on spot orders, where OKX
+      // rejects it. Only the three modes that can actually hold a position
+      // qualify.
+      const isMarginOrDerivative =
+        isSwap || tdMode === TradeMode.CROSS || tdMode === TradeMode.ISOLATED;
+      if (isMarginOrDerivative) {
+        orderData.reduceOnly = 'true';
+      } else {
+        console.warn(
+          `⚠️ reduceOnly was requested for spot cash order ${instId}, but OKX only ` +
+            `supports it for MARGIN orders and FUTURES/SWAP orders in net mode — ` +
+            `the flag was NOT sent (Strategy 609 guard).`,
+        );
+      }
+    }
+
     if (price) {
       orderData.px = price.toString();
     }

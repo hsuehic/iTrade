@@ -288,6 +288,23 @@ export interface ExecuteOrderParameters {
   leverage?: number; // Leverage multiplier
   clientOrderId?: string; // 🆕 Client order ID from strategy signal metadata (optional)
 
+  /**
+   * 🆕 Mark the order as risk-reducing (Binance `reduceOnly`).
+   *
+   * When true:
+   *  1. The flag is forwarded to the exchange, so the exchange itself rejects
+   *     the order if it would increase/flip the position instead of reducing it.
+   *  2. The engine performs a pre-placement reconciliation of the strategy's
+   *     own live orders on the same symbol+side (see
+   *     `reconcileDuplicateReduceOnlyOrders`). This closes the duplicate-order
+   *     window where a strategy has lost track of an order that is still live
+   *     on the exchange (Strategy 609: two identical TP sells filled → oversell).
+   *
+   * Should be set on every exit order (TP / stop) that must never open a
+   * position. Do NOT set it on entry orders.
+   */
+  reduceOnly?: boolean;
+
   // Note: Stop loss and take profit should be implemented as separate orders
 }
 

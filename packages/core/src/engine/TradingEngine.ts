@@ -598,6 +598,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       tradeMode,
       leverage,
       clientOrderId: providedClientOrderId, // 🆕 Accept clientOrderId from params
+      reduceOnly,
     } = params;
     if (!this._isRunning) {
       const stateMsg = this._isInitializing
@@ -744,6 +745,26 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         throw error;
       }
 
+      // 🆕 Duplicate-exit guard (Strategy 609).
+      // A risk-reducing (reduceOnly) order is the last line of defence against
+      // over-selling, so before we place it we reconcile against the exchange's
+      // real open orders: if this strategy still has a live order on the same
+      // symbol+side that it believes is gone (cancel lost / tracking dropped),
+      // cancel it first. Best-effort: a REST failure must never block the exit.
+      if (reduceOnly) {
+        await this.reconcileDuplicateReduceOnlyOrders({
+          exchange,
+          symbol,
+          side,
+          exchangeName,
+          strategyId,
+          strategyName: userDefinedName,
+          keepClientOrderId: order.clientOrderId,
+          quantity: adjustedQuantity,
+          price: adjustedPrice,
+        });
+      }
+
       // Execute the order with adjusted values
       const executedOrder = await exchange.createOrder(
         symbol,
@@ -757,6 +778,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
           tradeMode,
           leverage,
           stopPrice: params.stopPrice, // 🆕 Pass stopPrice to exchange
+          reduceOnly, // 🆕 Risk-reducing flag (exchange-level guard)
         },
       );
 
@@ -891,6 +913,233 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   /**
+   * 🆕 Cancel this strategy's own still-live orders on the same symbol+side
+   * before a risk-reducing (reduceOnly) order is placed.
+   *
+   * Why (Strategy 609, 2026-09-23 WLD-L-9):
+   *   The strategy emitted two identical TP sells 4s apart. Its local tracking
+   *   had lost the first one, so no cancel was ever sent for it; both orders
+   *   were live and both filled → 15000 oversell (negative net position).
+   *   Local state alone cannot close that window — only the exchange knows which
+   *   orders are really live. This method asks the exchange and cancels the
+   *   duplicates before the new exit order is placed.
+   *
+   * Scope safety: only orders whose clientOrderId encodes *this* strategyId
+   *   (`^(E|T)<strategyId>D…`, the engine-wide convention already used by
+   *   `enrichOrderWithStrategyInfo`) are touched, so another strategy's orders
+   *   on the same symbol/account can never be cancelled.
+   *
+   * Best-effort: any failure is logged and swallowed — the exit order is then
+   *   placed anyway, with `reduceOnly` as the exchange-level hard guard.
+   */
+  private async reconcileDuplicateReduceOnlyOrders(options: {
+    exchange: IExchange;
+    symbol: string;
+    side: OrderSide;
+    exchangeName?: string;
+    strategyId?: number;
+    strategyName?: string;
+    keepClientOrderId?: string;
+    /** Size of the order we are about to place — used for duplicate identity. */
+    quantity?: Decimal;
+    /** Price of the order we are about to place (undefined for market orders). */
+    price?: Decimal;
+  }): Promise<void> {
+    const {
+      exchange,
+      symbol,
+      side,
+      exchangeName,
+      strategyId,
+      strategyName,
+      keepClientOrderId,
+      quantity,
+      price,
+    } = options;
+
+    if (!exchange || strategyId === undefined || strategyId === null) {
+      return;
+    }
+
+    // Without the id of the order we are about to place there is nothing to
+    // compare against — do nothing rather than cancel on a guess.
+    if (!keepClientOrderId) {
+      return;
+    }
+
+    try {
+      const openOrders = await exchange.getOpenOrders(symbol);
+      if (!Array.isArray(openOrders) || openOrders.length === 0) {
+        return;
+      }
+
+      // A duplicate must be a TRUE duplicate of the order we are about to
+      // place: same symbol, same side, same size and same price.
+      //
+      // Same-side alone is far too broad (review must-fix): a ladder can
+      // legitimately keep several live exits at once (multiple TP legs,
+      // stop-loss, a re-armed exit) and cancelling those would silently delete
+      // a position's only way out — the exact class of bug we are fixing.
+      // Anything we cannot positively identify is left alone: the
+      // `reduceOnly` flag plus the strategy-side tracking invariant remain as
+      // guards, whereas a wrong cancel is unrecoverable.
+      const duplicates = openOrders.filter((openOrder) => {
+        const clientOrderId = openOrder.clientOrderId;
+        if (!clientOrderId || clientOrderId === keepClientOrderId) {
+          return false;
+        }
+        if (openOrder.side !== side) {
+          return false;
+        }
+        if (!this.isStrategyOwnedClientOrderId(clientOrderId, strategyId)) {
+          return false;
+        }
+        // Defence in depth: a connector whose getOpenOrders ignores the symbol
+        // filter (e.g. Coinbase) returns the whole account. If the symbol
+        // formats don't line up we simply reconcile nothing.
+        if (!this.sameSymbol(openOrder.symbol, symbol)) {
+          return false;
+        }
+        // Size must match; price must match when we have one (market orders
+        // have none). Missing size/price on the exchange payload => cannot
+        // prove it is a duplicate => leave it alone.
+        if (!this.sameDecimal(openOrder.quantity, quantity)) {
+          return false;
+        }
+        if (price !== undefined && price !== null) {
+          if (!this.sameDecimal(openOrder.price, price)) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      if (duplicates.length === 0) {
+        return;
+      }
+
+      this.logger.warn(
+        `🧯 Duplicate exit order(s) detected before placing ${side} order for ${strategyName ?? strategyId}: ` +
+          `${duplicates.map((o) => o.clientOrderId ?? o.id).join(', ')} (keeping ${keepClientOrderId ?? 'n/a'})`,
+      );
+
+      for (const duplicate of duplicates) {
+        try {
+          await exchange.cancelOrder(symbol, duplicate.id, duplicate.clientOrderId);
+          this.logger.logStrategy(
+            'Cancelled duplicate exit order before placing new one',
+            {
+              strategy: strategyName ?? String(strategyId),
+              symbol,
+              side,
+              cancelledOrderId: duplicate.id,
+              cancelledClientOrderId: duplicate.clientOrderId,
+              keptClientOrderId: keepClientOrderId,
+              exchange: exchangeName,
+            },
+          );
+        } catch (cancelError) {
+          // -2011 / -2013 (unknown order / already filled or gone) are expected
+          // when the exchange already closed this order — nothing left to do.
+          this.logger.warn(
+            `Duplicate exit order cancel failed (ignored) for ${duplicate.clientOrderId ?? duplicate.id}: ` +
+              `${this.formatOrderErrorMessage(cancelError)}`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Duplicate exit order reconciliation failed before placing ${side} order for ${strategyName ?? strategyId} ` +
+          `on ${symbol}: ${this.formatOrderErrorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * 🆕 Is this order's size/price the same as the one we are about to place?
+   *
+   * Used to prove that a live exchange order really is a duplicate of the exit
+   * we are re-issuing. Missing values return `false` (we cannot prove it, so we
+   * never cancel). A small relative tolerance absorbs tick/precision
+   * differences between our own price and what the exchange echoes back.
+   */
+  private sameDecimal(
+    a?: Decimal | string | number | null,
+    b?: Decimal | string | number | null,
+    relativeTolerance = 1e-6,
+  ): boolean {
+    if (a === undefined || a === null || b === undefined || b === null) {
+      return false;
+    }
+    try {
+      const left = new Decimal(a);
+      const right = new Decimal(b);
+      if (left.eq(right)) {
+        return true;
+      }
+      const scale = Decimal.max(left.abs(), right.abs());
+      return scale.gt(0) && left.minus(right).abs().lte(scale.times(relativeTolerance));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 🆕 Do two symbol strings refer to the same instrument?
+   *
+   * Case/whitespace-insensitive only: we deliberately do not try to convert
+   * between native (`WLD-USDT-SWAP`) and unified (`WLD/USDT:USDT`) formats.
+   * A false negative costs us one skipped reconciliation (the `reduceOnly` flag
+   * and the strategy-side invariant still guard the exit), while a false
+   * positive could cancel another strategy's order — so we stay strict.
+   */
+  private sameSymbol(a?: string | null, b?: string | null): boolean {
+    if (!a || !b) {
+      return false;
+    }
+    const normalize = (value: string) => value.toUpperCase().replace(/\s+/g, '');
+    return normalize(a) === normalize(b);
+  }
+
+  /**
+   * 🆕 Does the given order already show execution?
+   *
+   * A failed cancel must never rewrite an executed order as REJECTED
+   * (Strategy 609: a FILLED 15000 sell was stored as REJECTED while keeping
+   * executedQuantity, hiding the oversell from the console).
+   */
+  private isOrderAlreadyExecuted(order?: Order): boolean {
+    if (!order) {
+      return false;
+    }
+    if (order.status === OrderStatus.FILLED) {
+      return true;
+    }
+    // ANY real execution counts, including a partial fill: inventory did move,
+    // so writing REJECTED would be a lie that hides it (review must-fix).
+    const executed = order.executedQuantity
+      ? new Decimal(order.executedQuantity)
+      : new Decimal(0);
+    return executed.gt(0);
+  }
+
+  /**
+   * 🆕 Does this clientOrderId belong to the given strategy?
+   * Mirrors the engine-wide order-id convention `^(E|T)<strategyId>D...`
+   * (see `enrichOrderWithStrategyInfo`).
+   */
+  private isStrategyOwnedClientOrderId(
+    clientOrderId: string,
+    strategyId?: number,
+  ): boolean {
+    if (!clientOrderId || strategyId === undefined || strategyId === null) {
+      return false;
+    }
+    const match = /^[ET](\d+)D/.exec(clientOrderId);
+    return !!match && parseInt(match[1], 10) === strategyId;
+  }
+
+  /**
    * Execute a cancel order signal from strategy
    */
   private async executeCancelOrder(
@@ -980,6 +1229,22 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       });
     } catch (error) {
       const errorMessage = this.formatOrderErrorMessage(error);
+
+      // 🆕 Never downgrade an order that already executed (Strategy 609).
+      // Cancelling an order the exchange already filled fails with -2011; the
+      // code below used to spread the stale order and force status=REJECTED,
+      // which overwrote a FILLED row in the DB while keeping its
+      // executedQuantity. Result: the console showed a REJECTED order that had
+      // actually traded (15000 sold) and the oversell stayed invisible.
+      if (this.isOrderAlreadyExecuted(resolvedOrder)) {
+        this.logger.warn(
+          `Cancel failed for an order that already executed — status preserved as FILLED ` +
+            `(no REJECTED overwrite): ${strategyName} ${targetSymbol} ` +
+            `${resolvedOrder?.clientOrderId ?? signal.clientOrderId ?? orderId} — ${errorMessage}`,
+        );
+        return;
+      }
+
       const rejectedOrder: Order = {
         ...(resolvedOrder ?? {
           id: orderId || signal.clientOrderId || uuidv4(),
@@ -1105,6 +1370,9 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type: orderType,
         price: nextPrice,
         clientOrderId: signal.newClientOrderId,
+        // 🆕 Keep the risk-reducing protection across cancel+replace
+        // (Strategy 609: without this, every TP refresh dropped reduceOnly).
+        reduceOnly: signal.reduceOnly,
       });
 
       this.logger.logStrategy('Order updated', {
@@ -1193,6 +1461,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         tradeMode: signal.tradeMode,
         leverage: signal.leverage,
         clientOrderId,
+        reduceOnly: signal.reduceOnly, // 🆕 Risk-reducing flag (exit orders)
       });
 
       this.logger.logStrategy('Executed signal', {

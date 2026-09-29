@@ -163,6 +163,20 @@ export interface LadderSignalMetaData extends SignalMetaData {
   stepIndex?: number;
   quantity?: string;
   price?: string;
+  /**
+   * 🆕 True when this metadata was reconstructed by `ensureRecoveredMetadata()`
+   * from the clientOrderId prefix (`T*` → TakeProfit, `E*` → Entry) rather than
+   * created by the strategy when it signalled the order.
+   *
+   * Recovered metadata carries NO real intent: after Strategy 609 (2026-09-23,
+   * WLD-L-9) placed a duplicate TP, a terminal push for an order whose metadata
+   * had already been deleted was "recovered" as a TP and its CANCELED event was
+   * mis-read as the current TP's terminal state → spurious refreshTakeProfit()
+   * → second TP. Consumers must therefore treat recovered metadata as
+   * low-confidence: it may be used for bookkeeping/cleanup, never to decide
+   * that the current TP cycle ended.
+   */
+  recovered?: boolean;
 }
 
 // ──────────────────────────────────────────────────────────────────────────

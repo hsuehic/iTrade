@@ -136,6 +136,58 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    */
   private _pendingCancelTpIds = new Set<string>();
   private static readonly _PENDING_CANCEL_TP_CAP = 200;
+  /** 🆕 Strategy 609 review (M/LOW): cap for `_trackedTpIds` (see trackTpId). */
+  private static readonly _TRACKED_TP_CAP = 200;
+
+  /**
+   * 🆕 Strategy 609 review (C1/H4): cancel attempts per tracked TP id.
+   *
+   * The tracked-TP invariant promises "no live TP is ever left untracked", but
+   * issuing a cancel is not the same as confirming one. A cancel can fail
+   * (-2011 while the order is not yet active, network error, weight limit) and
+   * no terminal push ever arrives — the id then sits in `_pendingCancelTpIds`
+   * forever and, before this map existed, was never retried: the old TP stayed
+   * live while a new TP was placed next to it, i.e. exactly the 609 defect.
+   *
+   * So an unconfirmed cancel is retried on later refreshes, bounded by a
+   * cooldown (no cancel storm: the 3.2 s safety-net cadence would otherwise
+   * re-cancel on every tick) and by a max attempt count (no infinite loop).
+   */
+  private _tpCancelAttempts = new Map<string, { count: number; lastAt: number }>();
+  private static readonly _TP_CANCEL_RETRY_COOLDOWN_MS = 5_000;
+  private static readonly _TP_CANCEL_MAX_ATTEMPTS = 5;
+  /** 🆕 Review round 2 (GLM ⑤ / Opus ④): the attempt map needs its own bound. */
+  private static readonly _TP_CANCEL_ATTEMPTS_CAP = 200;
+  /**
+   * 🆕 Review round 2 (GLM ② / Opus ①): a blacklisted TP may still be booked as
+   * a real fill ONLY while its cancel is genuinely in flight. Without a window,
+   * an id that gave up retrying stays pending forever and any later (or
+   * replayed) FILLED push from an older cycle would be booked into the CURRENT
+   * cycle — the ledger would under-count inventory and eject a live TP.
+   * Ten minutes comfortably covers fill/cancel races (609 filled ~3 s apart)
+   * while making stale-cycle mis-booking impossible.
+   */
+  private static readonly _UNCONFIRMED_CANCEL_FILL_TTL_MS = 10 * 60 * 1000;
+
+  /**
+   * 🆕 Every TP clientOrderId this strategy has signalled and whose terminal
+   * state has NOT been confirmed yet.
+   *
+   * Why this exists (Strategy 609, 2026-09-23, `2026-09-WLD-L-9`, WLDUSDC perp):
+   *   refreshTakeProfit() used to drop `tpClientOrderId` silently — it deleted
+   *   the local reference and placed a brand-new TP 4 seconds later, without
+   *   ever emitting a cancel for the previous TP when its metadata was missing
+   *   from `orderMetadataMap`. The previous TP was already live on the exchange,
+   *   so two identical 15000 sells sat in the book and BOTH filled → oversell of
+   *   15000 → net position -15000.
+   *
+   * Invariant: an id enters this set when its TP signal is generated and leaves
+   *   it ONLY on a terminal push (FILLED / CANCELED / REJECTED / EXPIRED) or on
+   *   cycle cleanup (resetLadder → previousCycleOrderIds).
+   *   refreshTakeProfit() must therefore cancel every tracked id it is not
+   *   keeping before it places a new TP — never silently forget one.
+   */
+  private _trackedTpIds = new Set<string>();
 
   /**
    * Flag set by handleTpFilled when basePrice=0 — strategy needs the engine
@@ -230,6 +282,35 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * 0 = unknown.
    */
   private _currentBid0: Decimal = new Decimal(0);
+
+  /**
+   * Timestamp (ms) of the last ORDERBOOK PUSH that wrote `_currentBid0`, or 0
+   * when no push has been seen. Only the push path stamps it: the init/reinit
+   * writes copy the ladder's own anchor, which is not independent market
+   * evidence and must never be used to prove that "the price did not change".
+   *
+   * The reset guard treats a bid0 whose stamp is 0, or older than one reset
+   * interval, as unknown and falls back to the bid0-independent cap check. A
+   * frozen bid0 would otherwise reproduce the current entry 0 price forever and
+   * block the reset (production: 7 WLD ladder strategies with no orderbook push
+   * and a cap-pinned entry 0 churned the same price 34x in 23h).
+   */
+  private _currentBid0Time = 0;
+
+  /**
+   * Timestamp (ms) of the first reset skipped by the bid0-independent cap
+   * fallback in the current streak, or 0 when no skip is outstanding. Bounds the
+   * skip by TIME, not by tick count: the interval stays expired, so every tick
+   * would otherwise re-enter this branch and burn a tick-based counter in
+   * seconds. After `_capPinnedGuardMaxSkips` intervals one reset is allowed
+   * through to re-anchor, so a mis-modelled cap state cannot freeze a strategy
+   * (churn throttled to at most one reset per `_capPinnedGuardMaxSkips` + 1
+   * intervals, instead of one every interval).
+   */
+  private _capPinnedSkipSince = 0;
+
+  /** Cap-fallback intervals tolerated before one re-anchoring reset. */
+  private readonly _capPinnedGuardMaxSkips = 4;
 
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
@@ -551,6 +632,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.pendingClientOrderIds.clear();
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
+    // 🆕 Strategy 609: any TP still tracked when the ladder resets belongs to
+    // the cycle that just ended — blacklist it so a delayed CANCELED push
+    // cannot drive the new cycle (mirrors the _pendingCancelTpIds handling in
+    // handleTpFilled). The reinit path re-tracks the live TP it recovers from
+    // fetchOpenOrders.
+    for (const coid of this._trackedTpIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
+    this._trackedTpIds.clear();
     this.entry0PlacedTime = 0;
     this._currentAsk0 = new Decimal(0);
 
@@ -903,6 +993,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.orderMetadataMap.set(clientOrderId, metadata);
     this.pendingClientOrderIds.add(clientOrderId);
     this.tpClientOrderId = clientOrderId;
+    this.trackTpId(clientOrderId); // 🆕 Strategy 609
     this._tpRefreshedThisCycle = true;
     return {
       action: 'sell',
@@ -912,6 +1003,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       clientOrderId,
       leverage: this.leverage,
       tradeMode: this.tradeMode,
+      // 🆕 Never let a TP order open/increase a position (Strategy 609:
+      // two unprotected TP sells both filled → -15000 net position).
+      reduceOnly: true,
       reason:
         this.tpType === 'absolute'
           ? `ladder_tp_absolute_${this.tpAbsoluteProfit.toString()}`
@@ -941,10 +1035,20 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // refreshTakeProfit() call (before exchange confirms the order) can
     // detect the pending TP and skip duplicate placement.
     this.tpClientOrderId = newClientOrderId;
+    this.trackTpId(newClientOrderId); // 🆕 Strategy 609
     this._tpRefreshedThisCycle = true;
-    // Remove old TP from pending to avoid stale cancel storms
+    // Remove old TP from pending to avoid stale cancel storms.
+    // 🆕 Strategy 609: keep the OLD id tracked (_trackedTpIds) and keep its
+    // metadata. The update signal cancels it on the exchange; its CANCELED
+    // push must still be recognisable as a TP and must be able to trigger the
+    // stale-TP reconciliation (or be cancelled again if the cancel failed).
+    // Deleting both here is what made the old TP invisible → orphan → oversell.
     this.pendingClientOrderIds.delete(oldClientOrderId);
-    this.orderMetadataMap.delete(oldClientOrderId);
+    this.trackTpId(oldClientOrderId);
+    // 🆕 Review round 3 (GLM N1): the update replaces the old TP, so its cancel
+    // is implied rather than emitted — still record an attempt timestamp (no
+    // overwrite) so a fill racing the replacement can be booked.
+    this.noteUnconfirmedCancelTp(oldClientOrderId);
     return {
       action: 'update',
       clientOrderId: oldClientOrderId,
@@ -953,6 +1057,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       quantity: qty,
       price: tpPrice,
       reason: 'ladder_tp_update',
+      // 🆕 The engine implements update as cancel+replace; without this the
+      // replacement TP would lose its reduceOnly protection (Strategy 609).
+      reduceOnly: true,
       metadata,
     };
   }
@@ -1080,6 +1187,9 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    */
   private refreshTakeProfit(): StrategyResult[] {
     const signals: StrategyResult[] = [];
+    // 🆕 Strategy 609 review (H4): dedupe cancels within this pass — one TP id
+    // can be reached by several branches below.
+    const sentCancels = new Set<string>();
 
     if (this.inventoryQty.lte(0) || this.vwap.lte(0)) {
       const cancelSignals = this.cancelAllTpOrders('ladder_tp_cancel_no_inventory');
@@ -1142,53 +1252,288 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           // fails, the TP becomes an orphan that the strategy cannot see.
           // Instead, move the ID to _pendingCancelTpIds so it stays tracked
           // until the CANCELED/REJECTED terminal push confirms the cancel.
-          signals.push(
-            this.generateCancelSignal(
+          // 🆕 Review round 3 (Opus): this was the ONE cancel path that bypassed
+          // the unified limiter — it hard-set count=1 on every hit, so an id
+          // re-entering this branch could never reach the 5-attempt cap, i.e. a
+          // partial regression of the round-2 fix. Route it through
+          // cancelTrackedTp (accumulates the count, honours cooldown and cap).
+          // Only drop the pending entry when a cancel was actually issued; if
+          // the cooldown blocked it, the branch re-runs next refresh.
+          if (
+            this.cancelTrackedTp(
               this.tpClientOrderId,
               'ladder_tp_cancel_stale_pending',
-            ),
-          );
-          this._pendingCancelTpIds.add(this.tpClientOrderId);
-          // FIFO eviction — bounded Set (mirrors pendingCancelEntryIds pattern)
-          if (
-            this._pendingCancelTpIds.size >
-            LadderEntrySingleTPStrategy._PENDING_CANCEL_TP_CAP
+              signals,
+              sentCancels,
+            )
           ) {
-            const oldest = this._pendingCancelTpIds.values().next().value;
-            if (oldest) {
-              this._pendingCancelTpIds.delete(oldest);
-              this._logger.warn(
-                `[refreshTakeProfit] _pendingCancelTpIds exceeded cap ` +
-                  `(${LadderEntrySingleTPStrategy._PENDING_CANCEL_TP_CAP}) — ` +
-                  `evicted oldest entry ${oldest}. If its cancel was never ` +
-                  `confirmed, it may remain an untracked orphan on the ` +
-                  `exchange until the next reinit's REST orphan sweep.`,
-              );
-            }
+            this.pendingClientOrderIds.delete(this.tpClientOrderId);
           }
-          this.pendingClientOrderIds.delete(this.tpClientOrderId);
           // Keep orderMetadataMap entry — needed by cancelAllTpOrders fallback
           // and by terminal handler to identify the order as a TP.
         }
+        // 🆕 Strategy 609: when pendingMeta is missing we used to fall through
+        // and silently drop the reference (see below) — the order was already
+        // live on the exchange with no cancel ever sent.
       }
 
-      // Clean up stale tpClientOrderId reference
-      this.orders.delete(this.tpClientOrderId);
-      this.tpClientOrderId = null;
+      // Clean up stale tpClientOrderId reference.
+      // 🆕 Strategy 609 (2026-09-23, WLD-L-9): this MUST cancel before dropping
+      // the reference. Deleting `tpClientOrderId` without a cancel left the
+      // previous TP live and invisible to the strategy; generateTpSignal()
+      // below then placed a second identical TP sell and BOTH filled
+      // (15000 + 15000 against 15000 inventory) → net position -15000.
+      if (this.tpClientOrderId) {
+        // 🆕 Strategy 609 review (C1): via cancelTrackedTp so an unconfirmed
+        // cancel is retried on a later refresh instead of being skipped.
+        this.cancelTrackedTp(
+          this.tpClientOrderId,
+          'ladder_tp_cancel_stale_ref',
+          signals,
+          sentCancels,
+        );
+      }
+      if (this.tpClientOrderId) {
+        // 🆕 Review round 4 (GLM ②): keep the id in _trackedTpIds before dropping
+        // the pending mark. Otherwise a TP recovered from metadata only (after a
+        // restart) whose cancel failed was dropped here and never retried — the
+        // tracked-TP loop is the only retry path left, so it must know the id.
+        this.trackTpId(this.tpClientOrderId);
+        this.pendingClientOrderIds.delete(this.tpClientOrderId);
+        this.orders.delete(this.tpClientOrderId);
+        this.tpClientOrderId = null;
+      }
     }
 
-    // Cancel any remaining stale pending TP signals
+    // Cancel any remaining stale pending TP signals.
+    // 🆕 Strategy 609: identify TP signals by _trackedTpIds as well as by
+    // metadata, and KEEP the metadata entry — deleting it made the later
+    // CANCELED/REJECTED push unidentifiable (ensureRecoveredMetadata had to
+    // guess the type from the clientOrderId prefix).
     for (const clientId of Array.from(this.pendingClientOrderIds)) {
       const meta = this.orderMetadataMap.get(clientId);
-      if (meta?.signalType === SignalType.TakeProfit) {
-        signals.push(this.generateCancelSignal(clientId, 'ladder_tp_cancel_stale'));
-        this.pendingClientOrderIds.delete(clientId);
-        this.orderMetadataMap.delete(clientId);
+      const isTp =
+        this._trackedTpIds.has(clientId) || meta?.signalType === SignalType.TakeProfit;
+      if (isTp) {
+        // 🆕 Review round 3 (GLM N1): unified limiter — this scan used to emit a
+        // cancel that skipped sentCancels (duplicate REST + a synthesised
+        // REJECTED in the same pass) and recorded no attempt.
+        // 🆕 Review round 5 (GLM ②): mirror the rule used everywhere else — only
+        // drop the pending mark when a cancel was actually issued, and keep the
+        // id in _trackedTpIds so the tracked loop stays a retry path. Unconditional
+        // deletion here stranded metadata-only ids (recovered after a restart, so
+        // absent from _trackedTpIds): one failed cancel and nothing ever retried
+        // it — a live ghost TP free to fill alongside the new one (609 again).
+        if (
+          this.cancelTrackedTp(clientId, 'ladder_tp_cancel_stale', signals, sentCancels)
+        ) {
+          this.pendingClientOrderIds.delete(clientId);
+        }
+        this.trackTpId(clientId);
+      }
+    }
+
+    // 🆕 Strategy 609 invariant: every TP this strategy has signalled and not
+    // yet seen a terminal push for must be cancelled before a new TP is
+    // placed. Without this loop a TP that lost its local reference stayed
+    // live on the exchange and could fill alongside the new one.
+    for (const clientId of Array.from(this._trackedTpIds)) {
+      // 🆕 Strategy 609 review (GLM ①): route through cancelTrackedTp, which
+      // counts attempts, rate-limits and RETRIES. The previous version pushed a
+      // single cancel and recorded the id in _pendingCancelTpIds, and the
+      // `continue` above then skipped it on EVERY later refresh — so a cancel
+      // that failed for a network reason (the engine synthesises a REJECTED
+      // audit push, which the terminal handler read as "no longer live") left a
+      // ghost TP on the exchange forever, free to fill alongside the new one.
+      const sent = this.cancelTrackedTp(
+        clientId,
+        'ladder_tp_cancel_untracked_before_place',
+        signals,
+        sentCancels,
+      );
+      if (sent) {
+        this._logger.warn(
+          `[refreshTakeProfit] tracked TP ${clientId} is not the current TP and ` +
+            `had no confirmed terminal state — sending cancel before placing a ` +
+            `new TP (Strategy 609 duplicate-TP guard).`,
+        );
       }
     }
 
     signals.push(this.generateTpSignal(tpPrice, tpQty));
     return signals;
+  }
+
+  /**
+   * 🆕 Record that a cancel signal was sent for a TP clientOrderId so it stays
+   * tracked until the exchange confirms a terminal state.
+   *
+   * Bounded with FIFO eviction (mirrors the pendingCancelEntryIds pattern from
+   * the Strategy 494/505 fixes) — prevents unbounded growth if terminal pushes
+   * never arrive.
+   */
+  private noteUnconfirmedCancelTp(clientOrderId: string): void {
+    // 🆕 Review round 3 (GLM N1 / Opus): some cancels are implied by an order
+    // UPDATE rather than by a signal we emit (updateTpSignal replaces the old
+    // TP). Those ids must still carry an attempt timestamp, or the round-2 TTL
+    // gate would refuse to book a genuine fill. Never overwrite an existing
+    // entry — overwriting would reset the 5-attempt cap (Opus's objection).
+    if (!this._tpCancelAttempts.has(clientOrderId)) {
+      this._tpCancelAttempts.set(clientOrderId, { count: 1, lastAt: Date.now() });
+    }
+    this.trackPendingCancelTp(clientOrderId);
+  }
+
+  private trackPendingCancelTp(clientOrderId: string): void {
+    this._pendingCancelTpIds.add(clientOrderId);
+    if (
+      this._pendingCancelTpIds.size > LadderEntrySingleTPStrategy._PENDING_CANCEL_TP_CAP
+    ) {
+      const oldest = this._pendingCancelTpIds.values().next().value;
+      if (oldest) {
+        this._pendingCancelTpIds.delete(oldest);
+        // 🆕 Review round 6 (GLM ②): same three-way lockstep — drop the tracked
+        // entry so the tracked loop does not restart the attempt budget.
+        this._trackedTpIds.delete(oldest);
+        // 🆕 Review round 2 (GLM ⑤ / Opus ④): drop the matching attempt entry too —
+        // the two structures must evict in step or they disagree about whether an
+        // id is still tracked (leak + stale TTL anchor).
+        this._tpCancelAttempts.delete(oldest);
+        // 🆕 Strategy 609 review (L9): an evicted id is NOT forgotten — it moves
+        // to the previous-cycle blacklist so a late terminal push for it is
+        // ignored rather than being mistaken for the current cycle's TP.
+        this.previousCycleOrderIds.add(oldest);
+        this._logger.warn(
+          `[trackPendingCancelTp] _pendingCancelTpIds exceeded cap ` +
+            `(${LadderEntrySingleTPStrategy._PENDING_CANCEL_TP_CAP}) — ` +
+            `evicted oldest entry ${oldest} (blacklisted for this process). If ` +
+            `its cancel was never confirmed, it may remain an untracked orphan ` +
+            `on the exchange until the next reinit's REST orphan sweep.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * 🆕 Strategy 609 review (M/LOW): track a TP clientOrderId with bounded
+   * growth.
+   *
+   * Every TP we signal is tracked until its terminal push arrives, but a push
+   * can be lost (WS gap, restart) — so the set was unbounded on a long-running
+   * process. Eviction moves the id to `previousCycleOrderIds` (same L9 lesson
+   * as trackPendingCancelTp): an evicted id is not *forgotten*, it is treated
+   * as terminal/ignored, so a late push for it can never be read as the
+   * current TP's terminal state.
+   */
+  private trackTpId(clientOrderId: string): void {
+    this._trackedTpIds.add(clientOrderId);
+    if (this._trackedTpIds.size > LadderEntrySingleTPStrategy._TRACKED_TP_CAP) {
+      const oldest = this._trackedTpIds.values().next().value;
+      if (oldest) {
+        this._trackedTpIds.delete(oldest);
+        this.previousCycleOrderIds.add(oldest);
+        // 🆕 Review round 5 (Opus ②): lockstep with the other two collections —
+        // an evicted id must not keep a pending mark / attempt count that
+        // disagrees with _trackedTpIds about whether it is still in flight.
+        this._pendingCancelTpIds.delete(oldest);
+        this._tpCancelAttempts.delete(oldest);
+        this._logger.warn(
+          `[trackTpId] _trackedTpIds exceeded cap ` +
+            `(${LadderEntrySingleTPStrategy._TRACKED_TP_CAP}) — evicted oldest ` +
+            `entry ${oldest} (blacklisted for this process). Its TP reached no ` +
+            `terminal state we saw; the next reinit's REST orphan sweep is the ` +
+            `backstop (Strategy 609 review).`,
+        );
+      }
+    }
+  }
+
+  /**
+   * 🆕 Strategy 609 review (C1/H4): emit a cancel for a tracked TP, or retry
+   * one whose cancel was never confirmed — rate-limited and deduplicated.
+   *
+   * - `sentThisCall` dedupes within a single analyze() pass (a TP id can be
+   *   reached by the stale-pending branch, the pending sweep and the tracked
+   *   loop alike).
+   * - The cooldown stops the 3.2 s safety-net cadence from re-cancelling the
+   *   same id on every tick (cancel-storm / -1015 risk).
+   * - After `_TP_CANCEL_MAX_ATTEMPTS` the id is given up on, logged as an
+   *   error and blacklisted for this process; the exchange-side `reduceOnly`
+   *   flag on the newly placed TP remains the hard backstop.
+   *
+   * @returns true when a cancel signal was pushed.
+   */
+  private cancelTrackedTp(
+    clientOrderId: string,
+    reason: string,
+    signals: StrategyResult[],
+    sentThisCall: Set<string>,
+  ): boolean {
+    if (sentThisCall.has(clientOrderId)) return false;
+
+    const previous = this._tpCancelAttempts.get(clientOrderId);
+    const now = Date.now();
+    if (previous) {
+      if (previous.count >= LadderEntrySingleTPStrategy._TP_CANCEL_MAX_ATTEMPTS) {
+        return false; // already logged as an error when it gave up
+      }
+      if (
+        now - previous.lastAt <
+        LadderEntrySingleTPStrategy._TP_CANCEL_RETRY_COOLDOWN_MS
+      ) {
+        return false; // cooldown — retried on a later refresh
+      }
+    }
+
+    signals.push(this.generateCancelSignal(clientOrderId, reason));
+    sentThisCall.add(clientOrderId);
+    const count = (previous?.count ?? 0) + 1;
+    this._tpCancelAttempts.set(clientOrderId, { count, lastAt: now });
+    // 🆕 Review round 2 (GLM ⑤ / Opus ④): bound the attempt map the same way as
+    // the sets — unlike _pendingCancelTpIds it had no cap at all, so a
+    // long-running process leaked one entry per distinct TP ever cancelled.
+    if (
+      this._tpCancelAttempts.size > LadderEntrySingleTPStrategy._TP_CANCEL_ATTEMPTS_CAP
+    ) {
+      const oldest = this._tpCancelAttempts.keys().next().value;
+      if (oldest !== undefined) {
+        this._tpCancelAttempts.delete(oldest);
+        // 🆕 Review round 6 (GLM ②): also stop the tracked loop from restarting
+        // the count for this id (otherwise it would re-earn a fresh 5 attempts).
+        this._trackedTpIds.delete(oldest);
+        // 🆕 Review round 4 (GLM ③ / Opus ②): keep the collections in lockstep.
+        // An attempt entry evicted alone would leave the id in
+        // _pendingCancelTpIds with no timestamp, silently disabling the TTL gate
+        // for it. Drop it from both so the gate stays consistent.
+        this._pendingCancelTpIds.delete(oldest);
+      }
+    }
+    this.trackPendingCancelTp(clientOrderId);
+
+    if (count >= LadderEntrySingleTPStrategy._TP_CANCEL_MAX_ATTEMPTS) {
+      this._logger.error(
+        `[cancelTrackedTp] giving up on ${clientOrderId} after ${count} unconfirmed ` +
+          `cancel attempts — its terminal push never arrived. Blacklisting the id ` +
+          `for this process. NOTE: on venues WITHOUT reduceOnly support (Coinbase ` +
+          `Advanced Trade) this leaves an unprotected order — verify manually ` +
+          `(Strategy 609).`,
+      );
+      this.previousCycleOrderIds.add(clientOrderId);
+      // 🆕 Review round 2 (GLM ① / Opus ①): stop the orphan sweep from
+      // re-cancelling this id on every later cycle. The id is deliberately KEPT
+      // in _pendingCancelTpIds (and its attempt entry kept as the timestamp
+      // anchor) so a fill that arrives while the cancel is still "in flight"
+      // window is booked instead of silently swallowed — swallowing is what
+      // caused the 609 oversell.
+      this._trackedTpIds.delete(clientOrderId);
+      this.pendingClientOrderIds.delete(clientOrderId);
+    } else if (count > 1) {
+      this._logger.warn(
+        `[cancelTrackedTp] retry #${count} of unconfirmed cancel for ${clientOrderId} ` +
+          `(reason: ${reason}) — the previous cancel was never confirmed (Strategy 609).`,
+      );
+    }
+    return true;
   }
 
   private cancelAllTpOrders(reason: string): StrategyResult[] {
@@ -1210,19 +1555,33 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       handledTpClientOrderId = this.tpClientOrderId;
       // If tpClientOrderId is in _pendingCancelTpIds, the cancel was already
       // sent — don't duplicate the signal, just clear the reference.
-      // Otherwise (tpClientOrderId not in _pendingCancelTpIds and not in
-      // this.orders as NEW/PARTIALLY_FILLED), it may be a ghost or already
-      // terminal — just clear the reference.
+      // 🆕 Strategy 609 (2026-09-23, WLD-L-9): otherwise (not resolvable as a
+      // live order and no cancel sent yet) we must NOT just clear the reference.
+      // An unresolvable TP may be live on the exchange — a "ghost" whose
+      // creation push never arrived, or one whose earlier cancel failed. This
+      // silent drop is the same defect that produced the duplicate TP: the
+      // order stayed live while the strategy forgot it existed.
+      if (!cancelledIds.has(this.tpClientOrderId)) {
+        // 🆕 Review round 4 (GLM ①): last remaining direct-emit path. It booked
+        // no attempt, so a fill racing this cancel could never be booked by the
+        // TTL gate (the 609 failure mode). Route it through the limiter, which
+        // de-dupes via cancelledIds and honours cooldown/cap.
+        this.cancelTrackedTp(this.tpClientOrderId, reason, signals, cancelledIds);
+      }
       this.tpClientOrderId = null;
     }
     for (const clientId of Array.from(this.pendingClientOrderIds)) {
       if (cancelledIds.has(clientId)) continue; // skip already-cancelled
       const meta = this.orderMetadataMap.get(clientId);
-      if (meta?.signalType === SignalType.TakeProfit) {
-        signals.push(this.generateCancelSignal(clientId, reason));
-        cancelledIds.add(clientId);
-        this.pendingClientOrderIds.delete(clientId);
-        this.orderMetadataMap.delete(clientId);
+      const isTp =
+        this._trackedTpIds.has(clientId) || meta?.signalType === SignalType.TakeProfit;
+      if (isTp) {
+        // 🆕 Review round 4 (GLM ①): same — unified limiter + attempt booking.
+        if (this.cancelTrackedTp(clientId, reason, signals, cancelledIds)) {
+          this.pendingClientOrderIds.delete(clientId);
+        }
+        // 🆕 Strategy 609: keep orderMetadataMap entry so a later terminal push
+        // (CANCELED/REJECTED/FILLED) is still identified as a TP order.
       }
     }
     // Strategy 505 fix: also cancel TPs whose cancel was sent but not yet
@@ -1239,10 +1598,29 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     for (const clientId of Array.from(this._pendingCancelTpIds)) {
       if (clientId === handledTpClientOrderId) continue;
       if (cancelledIds.has(clientId)) continue; // skip already-cancelled
-      signals.push(this.generateCancelSignal(clientId, reason));
-      cancelledIds.add(clientId);
-      // Keep in _pendingCancelTpIds — the terminal handler will delete it
-      // when the CANCELED/REJECTED push arrives (or onCleanup clears all).
+      // 🆕 Review round 2 (GLM ① / Opus ④): go through cancelTrackedTp so the
+      // retry is bounded by the 5 s cooldown and the 5-attempt cap (give-up path
+      // included). Re-issuing a cancel for every pending id on every call — with
+      // no counter — was an unbounded canceller (rate-limit risk).
+      this.cancelTrackedTp(clientId, reason, signals, cancelledIds);
+    }
+    // 🆕 Strategy 609 review (H3): a TP whose local reference was lost (it is
+    // neither the current tpClientOrderId nor in pendingClientOrderIds, but we
+    // did signal it and never saw a terminal state) is STILL LIVE on the
+    // exchange. The strategy forgetting it does not make it disappear — that
+    // is exactly how 609 oversold: a forgotten live sell filled alongside the
+    // new TP. Cancel every tracked id that no branch above already handled.
+    for (const clientId of Array.from(this._trackedTpIds)) {
+      if (cancelledIds.has(clientId)) continue;
+      // 🆕 Review round 2 (GLM ①): same bound as above — a lost-reference TP is
+      // retried through cancelTrackedTp (cooldown + attempt cap), never an
+      // unconditional re-send per cycle.
+      if (!this.cancelTrackedTp(clientId, reason, signals, cancelledIds)) continue;
+      this.pendingClientOrderIds.delete(clientId);
+      this._logger.warn(
+        `[cancelAllTpOrders] cancelling tracked TP ${clientId} whose local ` +
+          `reference was lost (reason: ${reason}) — Strategy 609 orphan guard.`,
+      );
     }
     return signals;
   }
@@ -1382,9 +1760,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     for (const coid of this._pendingCancelTpIds) {
       this.previousCycleOrderIds.add(coid);
     }
+    // 🆕 Strategy 609: blacklist every TP we were still tracking, so a delayed
+    // CANCELED push for a replaced TP cannot resurrect state for the new cycle.
+    for (const coid of this._trackedTpIds) {
+      this.previousCycleOrderIds.add(coid);
+    }
 
     this.pendingClientOrderIds.delete(order.clientOrderId!);
     this._pendingCancelTpIds.delete(order.clientOrderId!);
+    this._trackedTpIds.delete(order.clientOrderId!);
     this.orderMetadataMap.delete(order.clientOrderId!);
     this.tpClientOrderId = null;
     // Clear any pending debounced TP refresh
@@ -1531,6 +1915,29 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
             this._recoveredNetPosTime > 0 &&
             Date.now() - this._recoveredNetPosTime <
               LadderEntrySingleTPStrategy.RECOVERED_NET_POS_TTL_MS;
+          // 🆕 Strategy 609 review (GLM ②): a blacklisted TP whose cancel we
+          // requested but never saw confirmed may still be LIVE, so a FILLED
+          // push for it is a real economic event — it must be booked, not
+          // swallowed. Swallowing it (the old behaviour) left the ledger
+          // over-stating inventory, which is exactly how a second full-size TP
+          // gets placed (the 609 oversell). Accepted only while the cancel is
+          // unconfirmed: once a terminal push arrives the id leaves
+          // _pendingCancelTpIds and normal blacklist rules resume.
+          const isUnconfirmedCancelFill =
+            this._pendingCancelTpIds.has(order.clientOrderId) &&
+            // 🆕 Review round 2 (GLM ② / Opus ①): the id alone is not enough —
+            // a give-up id stays pending for the whole process lifetime, so an
+            // ancient (or replayed) FILLED push would be booked into the CURRENT
+            // cycle. Only count it while its cancel attempt is recent, i.e. the
+            // cancel is plausibly still in flight.
+            (() => {
+              const attempt = this._tpCancelAttempts.get(order.clientOrderId);
+              return (
+                attempt !== undefined &&
+                Date.now() - attempt.lastAt <=
+                  LadderEntrySingleTPStrategy._UNCONFIRMED_CANCEL_FILL_TTL_MS
+              );
+            })();
           const isOrphanedFill =
             (order.status === OrderStatus.FILLED ||
               order.status === OrderStatus.PARTIALLY_FILLED ||
@@ -1538,8 +1945,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
                 order.status === OrderStatus.EXPIRED) &&
                 hasExecQty)) &&
             hasExecQty &&
-            this.inventoryQty.isZero() &&
-            (withinResetWindow || isConsoleRestartOrphan);
+            (this.inventoryQty.isZero() || isUnconfirmedCancelFill) &&
+            (withinResetWindow || isConsoleRestartOrphan || isUnconfirmedCancelFill);
           if (isOrphanedFill) {
             this.previousCycleOrderIds.delete(order.clientOrderId);
             // Decrement _recoveredNetPos by the recovered fill quantity so
@@ -1672,6 +2079,27 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
       // ── Terminal (cancelled / rejected / expired) ──
       if (this.isTerminalStatus(order.status)) {
+        // 🆕 Strategy 609 review (GLM ① / Opus M1): a REJECTED push is NOT proof
+        // that the order left the exchange. When a *cancel* fails for a reason
+        // other than "already executed" (-2011) — e.g. a network error — the
+        // engine synthesises a REJECTED audit row for an order that is STILL
+        // LIVE. Untracking it here killed both cancelTrackedTp's retries and the
+        // orphan sweep, leaving a ghost TP free to fill alongside the next one
+        // (the 609 oversell). While a cancel we requested is unconfirmed, keep
+        // the TP tracked and retried. CANCELED/EXPIRED (and FILLED) are real
+        // proof, so they still untrack as before.
+        if (
+          order.status === OrderStatus.REJECTED &&
+          this._pendingCancelTpIds.has(order.clientOrderId)
+        ) {
+          this._logger.warn(
+            `[handleOrderUpdates] REJECTED for ${order.clientOrderId} while its ` +
+              `cancel is still unconfirmed — keeping it tracked for retry; it may ` +
+              `still be live on the exchange (Strategy 609 review).`,
+          );
+          continue;
+        }
+
         if (this.processedTerminalIds.has(order.clientOrderId)) continue;
         this.processedTerminalIds.add(order.clientOrderId);
         this.pendingClientOrderIds.delete(order.clientOrderId);
@@ -1680,6 +2108,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // in _pendingCancelTpIds, its cancel is now confirmed — remove it so
         // cancelAllTpOrders doesn't keep re-issuing cancel signals for it.
         this._pendingCancelTpIds.delete(order.clientOrderId);
+        // 🆕 Review round 2 (GLM ⑤ / Opus ④): cancel confirmed — no retry state left.
+        this._tpCancelAttempts.delete(order.clientOrderId);
+        // 🆕 Strategy 609: a terminal push is the ONLY proof that a TP we
+        // signalled is no longer live on the exchange — stop tracking it.
+        this._trackedTpIds.delete(order.clientOrderId);
 
         // If a reinit is pending, do NOT set shouldRefreshLadder or touch step
         // state. The reinit path in processInitialData will clear all state via
@@ -1755,13 +2188,44 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
                 `tpFilledQty=${this.tpFilledQty.toString()}`,
             );
           }
-          if (this.tpClientOrderId === order.clientOrderId) {
+          // 🆕 Strategy 609 (2026-09-23, WLD-L-9): a terminal push for a TP that
+          // this process never signalled (metadata reconstructed by
+          // ensureRecoveredMetadata from the `T` clientOrderId prefix) must NOT
+          // be read as "our current TP is gone — place a new one". That is how
+          // the duplicate TP was created: the CANCELED push of a *previously
+          // replaced* TP arrived after its metadata had been deleted and was
+          // treated as the current TP's terminal state.
+          const isKnownTp =
+            this.tpClientOrderId === order.clientOrderId ||
+            this._trackedTpIds.has(order.clientOrderId) ||
+            this._pendingCancelTpIds.has(order.clientOrderId);
+          const hasUnsoldInventory =
+            this.inventoryQty.gt(0) && this.inventoryQty.minus(this.tpFilledQty).gt(0);
+          const isCurrentTp = this.tpClientOrderId === order.clientOrderId;
+          if (isCurrentTp) {
             this.tpClientOrderId = null;
           }
-          if (
-            this.inventoryQty.gt(0) &&
-            this.inventoryQty.minus(this.tpFilledQty).gt(0)
-          ) {
+          // 🆕 review must-fix #3 (restart race): "recovered metadata" alone must
+          // not suppress the refresh. After a restart this process has not yet
+          // learned which TP is live (_trackedTpIds/_pendingCancelTpIds are
+          // in-memory, tpClientOrderId is null), so the *real* current TP comes
+          // back as recovered metadata — and skipping its terminal event would
+          // leave unsold inventory with NO exit at all. Only suppress the
+          // refresh while some other live TP (or pending placement) exists,
+          // which is exactly the 609 duplicate-TP situation this guard targets.
+          // A missing exit is the worse failure: the duplicate case is covered
+          // by reduceOnly + engine-level duplicate reconciliation.
+          const stillHasLiveTp =
+            !!this.tpClientOrderId ||
+            this._trackedTpIds.size > 0 ||
+            this.tpRefreshPending;
+          if (!isKnownTp && metadata.recovered && stillHasLiveTp) {
+            this._logger.warn(
+              `[handleOrderUpdates] Terminal ${order.status} for TP ${order.clientOrderId} ` +
+                `that this strategy does not track (recovered metadata) — skipping TP ` +
+                `refresh to avoid placing a duplicate TP (Strategy 609 guard).`,
+            );
+          } else if (hasUnsoldInventory) {
             // Clear pending debounce — terminal TP refresh takes priority,
             // same as handleEntryFilled does. Without this, a subsequent
             // deferred debounce TP refresh in the same analyze() cycle would
@@ -1824,6 +2288,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       timestamp: Date.now(),
       clientOrderId: order.clientOrderId,
       side: order.side,
+      // 🆕 Type inferred from the clientOrderId prefix — no real intent was
+      // recorded. Flagged so callers never treat it as a signalled order
+      // (Strategy 609: a recovered TP terminal push must not trigger a TP
+      // refresh → duplicate TP → oversell).
+      recovered: true,
     };
     this.orderMetadataMap.set(order.clientOrderId, metadata);
     return metadata;
@@ -1924,6 +2393,21 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         const freshBid0 = initialData.orderBook.bids?.[0]?.[0];
         if (freshBid0 && freshBid0.gt(0)) {
           this.referencePrice = freshBid0;
+          // Keep _currentBid0 in sync with the anchor the ladder is about to be
+          // rebuilt from. It is deliberately NOT stamped as a fresh push (see
+          // _currentBid0Time): this value is the ladder's own anchor, so using it
+          // to prove that "the price did not change" would be self-comparison and
+          // would block every future reset. The guard treats an unstamped bid0 as
+          // unknown and falls back to the bid0-independent cap check instead.
+          this._currentBid0 = freshBid0;
+          // Explicit re-arm: the value above is the anchor the ladder is about to
+          // be rebuilt from, so a rebuild from it reproduces the current entry 0
+          // price BY CONSTRUCTION — it cannot serve as independent evidence that
+          // the market moved. (This path also cannot attest the payload's
+          // freshness.) Clearing the stamp makes "anchor value, no fresh push
+          // evidence" an explicit invariant instead of relying on the age
+          // arithmetic, so the guard falls through to the cap check below.
+          this._currentBid0Time = 0;
           this._logger.info(
             `[processInitialData] Reinit: updated reference price from fresh REST orderbook bid0: ${this.referencePrice.toString()}`,
           );
@@ -2285,6 +2769,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
         if (metadata.signalType === SignalType.TakeProfit) {
           this.tpClientOrderId = order.clientOrderId;
+          // 🆕 Strategy 609: the live TP recovered from fetchOpenOrders must be
+          // tracked too — otherwise a later refresh cannot tell that this order
+          // is still live on the exchange before placing another one.
+          this.trackTpId(order.clientOrderId);
         }
 
         // Track executed quantities for VWAP recalculation
@@ -3113,6 +3601,57 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   }
 
   /**
+   * True when a resetInterval reset would place entry 0 at effectively the
+   * same price it already has — i.e. the rebuild cannot change the entry price
+   * and cancel/replace would be pure churn (extra cancel-replace race window,
+   * extra rate-limit pressure, no better fill price).
+   *
+   * Happens in production whenever `maxEntryPrice` pins entry 0 (the active WLD
+   * ladder strategies run caps of 0.435–0.46 while the market trades above the
+   * cap → every rebuild yields exactly the cap price) and whenever the
+   * recomputed price differs only by sub-tick / Decimal precision drift.
+   *
+   * Mirrors the 0.01% (1bp) relative tolerance of
+   * MarketMakerGridStrategy.pricesEffectivelyEqual, which fixed the same class
+   * of pointless cancel-replace cycles for the grid strategy.
+   *
+   * Tradeoff: the tolerance is relative, so it widens with the price scale — 1bp
+   * is ~0.0000044 on a 0.44 entry (far below the exchange tick, i.e. exactly the
+   * sub-tick drift this absorbs) but ~$6 on a 60k BTC entry, where it could skip
+   * a genuinely improved price. The ladder strategies in production run
+   * low-priced alt pairs; if this guard is ever applied to a high-priced symbol,
+   * compare against the tick size instead (absolute difference <= 1 tick) —
+   * the strategy does not currently receive tickSize.
+   */
+  private isEntry0PriceEffectivelyUnchanged(
+    originPrice: Decimal,
+    newPrice: Decimal,
+  ): boolean {
+    if (originPrice.eq(newPrice)) return true;
+    if (originPrice.lte(0) || newPrice.lte(0)) return false;
+    const relDiff = newPrice
+      .sub(originPrice)
+      .abs()
+      .div(Decimal.min(originPrice, newPrice));
+    return relDiff.lt(new Decimal('0.0001')); // 0.01% tolerance
+  }
+
+  /**
+   * Whether the bid0-independent cap fallback may still skip a reset in the
+   * current streak. Measured from the FIRST skip of the streak, not from the
+   * last tick: the reset interval stays expired while skips repeat, so a
+   * per-attempt counter would burn the whole budget within seconds of the first
+   * skip (orderbook pushes re-run this check every ~100ms). The streak is
+   * therefore bounded in wall-clock intervals, which is what "skip at most N
+   * intervals" is supposed to mean.
+   */
+  private isCapPinnedSkipWindowOpen(): boolean {
+    if (this._capPinnedSkipSince === 0) return true;
+    const windowMs = this._capPinnedGuardMaxSkips * this.resetInterval * 60 * 1000;
+    return Date.now() - this._capPinnedSkipSince < windowMs;
+  }
+
+  /**
    * Check if the resetInterval condition is met and perform the reset.
    *
    * Reset condition: ALL of the following must be true:
@@ -3122,6 +3661,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * 4. Entry 0 exists and its order status is NEW (unfilled, not even partial)
    * 5. No other entries are active (only entry 0 is pending)
    * 6. entry0PlacedTime > 0 and the elapsed time >= resetInterval minutes
+   * 7. The rebuild would actually change entry 0's price. Evaluated on two
+   *    evidence levels: with a fresh bid0 the rebuild price is computed exactly
+   *    (isEntry0PriceEffectivelyUnchanged + proximity), without one only the
+   *    bid0-independent case of an entry 0 already resting at maxEntryPrice is
+   *    treated as a no-op. Either way a reset that would re-place the same price
+   *    is skipped (bounded — see the cap-pinned heartbeat below).
    *
    * Reset action:
    * 1. Cancel entry 0's order
@@ -3131,6 +3676,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    *
    * Note: Reset is only meaningful when basePrice=0 (dynamic bid0). When basePrice>0
    * (fixed price), rebuilding the ladder produces identical prices, so reset is skipped.
+   * The same "identical prices" logic is enforced by isEntry0PriceEffectivelyUnchanged
+   * for dynamic-price strategies whose entry 0 price is pinned (maxEntryPrice cap) or
+   * drifts sub-tick: a reset that cannot change the price is pure cancel/replace churn
+   * (extra race window, extra rate-limit pressure, no better fill).
    *
    * @returns StrategyResult[] containing cancel signal if reset was triggered, empty otherwise
    */
@@ -3202,20 +3751,66 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // race risk (Strategies 468/473/505) without improving fill probability.
     //
     // The comparison uses the live bid0 from the most recent orderbook push
-    // (WebSocket or REST). When bid0 is unknown (strategy just started, no
-    // orderbook received yet), skip the guard and allow the reset — the old
-    // entry was placed with stale information anyway.
+    // (WebSocket or REST). The guard has two evidence levels, because a usable
+    // bid0 is not always available:
+    //
+    // 1. bid0 known and fresh → compare the rebuild exactly (price-unchanged
+    //    tolerance, then proximity) and skip only when a reset cannot improve
+    //    entry 0. Fresh = written within twice the reset interval; a bid0 left
+    //    behind by a dead feed would otherwise reproduce the current entry 0
+    //    price forever and block the reset indefinitely.
+    // 2. bid0 unknown or stale → the rebuild price cannot be computed. The reset
+    //    must stay possible, because its REST re-anchor is the only way the
+    //    ladder learns a new price in that state and treating "no bid0" as
+    //    "unchanged" would freeze the ladder forever. Skipped here only while
+    //    entry 0 rests at maxEntryPrice (a rebuild reproduces the capped price
+    //    for any bid0 above the cap) and only for `_capPinnedGuardMaxSkips`
+    //    intervals — one reset is then let through to re-anchor, so even a
+    //    mis-modelled cap state cannot freeze the strategy.
+    //
+    // Production symptom this addresses: the WLD ladder strategies with
+    // resetInterval=15min and the market above maxEntryPrice=0.44 for hours
+    // cancelled and re-placed the identical 0.44 entry every ~15-40 min with
+    // zero fills.
     const originEntry0Price = entry0Order.price;
-    if (originEntry0Price && originEntry0Price.gt(0) && this._currentBid0.gt(0)) {
-      const newEntry0Price = this.computeEntry0Price(this._currentBid0);
+    // One reset interval, not a multiple: `_currentBid0Time` is stamped only by
+    // orderbook pushes (never by the init/reinit anchor writes — see the field
+    // doc), so a bid0 carried over from a dead feed is already older than the
+    // cadence this guard arbitrates. An unstamped bid0 (`_currentBid0Time == 0`)
+    // counts as unknown, which keeps the fail-safe direction: unknown bid0 can
+    // never be used to prove that "the price did not change".
+    const bid0MaxAgeMs = this.resetInterval * 60 * 1000;
+    const bid0Usable =
+      this._currentBid0Time > 0 && Date.now() - this._currentBid0Time <= bid0MaxAgeMs;
+    if (originEntry0Price && originEntry0Price.gt(0) && bid0Usable) {
+      const guardBid0 = this._currentBid0;
+      const newEntry0Price = this.computeEntry0Price(guardBid0);
       if (newEntry0Price) {
-        const originDist = originEntry0Price.sub(this._currentBid0).abs();
-        const newDist = newEntry0Price.sub(this._currentBid0).abs();
+        // Price-unchanged guard: when the reset would leave entry 0 at the
+        // same price (maxEntryPrice caps it, or the recomputed price only
+        // differs by sub-tick precision drift), cancel/replace cannot improve
+        // the entry price — it only opens another cancel/replace race window.
+        // Skip the reset entirely.
+        if (this.isEntry0PriceEffectivelyUnchanged(originEntry0Price, newEntry0Price)) {
+          // debug, not info: a live bid0 makes this a precise no-op verdict, but
+          // it is re-evaluated on every tick, so info would flood the log while
+          // entry 0 legitimately sits at an unchanged price.
+          this._logger.debug(
+            `[checkAndPerformReset] Entry-price guard: skipping reset — ` +
+              `new entry0 (${newEntry0Price.toString()}) is not meaningfully ` +
+              `different from current entry0 (${originEntry0Price.toString()}). ` +
+              `A reset would only re-place the same price.`,
+          );
+          return [];
+        }
+        const originDist = originEntry0Price.sub(guardBid0).abs();
+        const newDist = newEntry0Price.sub(guardBid0).abs();
         if (!newDist.lt(originDist)) {
-          this._logger.info(
+          // debug: same per-tick re-evaluation as the price-unchanged guard above.
+          this._logger.debug(
             `[checkAndPerformReset] Proximity guard: skipping reset — ` +
               `new entry0 (${newEntry0Price.toString()}) is NOT closer to ` +
-              `bid0 (${this._currentBid0.toString()}) than current entry0 ` +
+              `bid0 (${guardBid0.toString()}) than current entry0 ` +
               `(${originEntry0Price.toString()}). ` +
               `newDist=${newDist.toString()} >= originDist=${originDist.toString()}`,
           );
@@ -3224,11 +3819,47 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         this._logger.debug(
           `[checkAndPerformReset] Proximity guard: reset approved — ` +
             `new entry0 (${newEntry0Price.toString()}) is closer to bid0 ` +
-            `(${this._currentBid0.toString()}) than current entry0 ` +
+            `(${guardBid0.toString()}) than current entry0 ` +
             `(${originEntry0Price.toString()}). ` +
             `newDist=${newDist.toString()} < originDist=${originDist.toString()}`,
         );
       }
+    } else if (
+      originEntry0Price &&
+      originEntry0Price.gt(0) &&
+      this.maxEntryPrice.gt(0) &&
+      originEntry0Price.gte(this.maxEntryPrice.mul(new Decimal('0.9999'))) &&
+      this.isCapPinnedSkipWindowOpen()
+    ) {
+      // bid0 unknown/stale and entry 0 resting at the cap. maxEntryPrice is set
+      // once from parameters and never mutated for a strategy instance, so entry
+      // 0 at the cap implies bid0 >= cap: a rebuild yields min(bid0 - gap, cap)
+      // <= cap = the current price <= bid0, i.e. the new price is never CLOSER to
+      // bid0 than the current one — a no-op reset (pure cancel/replace churn, the
+      // production case). The skip is bounded by TIME (`isCapPinnedSkipWindowOpen`
+      // measures from the first skip of the streak, not from the last tick): after
+      // `_capPinnedGuardMaxSkips` intervals one reset re-anchors the ladder, so a
+      // spread sitting between bid0 and the cap (where the resting buy cannot fill
+      // either) cannot freeze the strategy.
+      // (The 0.9999 tolerance treats an entry 0 slightly BELOW the cap as not
+      // pinned, which fails towards one extra REST re-anchor — acceptable.)
+      //
+      // Log only the first skip of a streak: the interval stays expired, so every
+      // later tick (orderbook push frequency) would otherwise repeat this line.
+      const isFirstSkipOfStreak = this._capPinnedSkipSince === 0;
+      if (isFirstSkipOfStreak) this._capPinnedSkipSince = Date.now();
+      const skipLog =
+        `[checkAndPerformReset] Entry-price guard: skipping reset — entry 0 ` +
+        `(${originEntry0Price.toString()}) rests at maxEntryPrice ` +
+        `(${this.maxEntryPrice.toString()}) and bid0 is unknown/stale; a ` +
+        `rebuild would re-place the same capped price (first skip of a streak of ` +
+        `at most ${this._capPinnedGuardMaxSkips} intervals).`;
+      if (isFirstSkipOfStreak) {
+        this._logger.info(skipLog);
+      } else {
+        this._logger.debug(skipLog);
+      }
+      return [];
     }
 
     // Verify NO other entries are active (only the reset step should be pending)
@@ -3267,6 +3898,17 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
 
     // Reset condition met — cancel entry 0 and rebuild
+    if (this._capPinnedSkipSince > 0) {
+      // This reset was let through by the cap-fallback heartbeat (the skip window
+      // is closed only once it has been open for the allowed number of intervals,
+      // so reaching here with a skip in flight means the heartbeat expired).
+      this._logger.warn(
+        `[checkAndPerformReset] Entry-price guard: cap-pinned heartbeat — ` +
+          `allowing a reset after ${this._capPinnedGuardMaxSkips} skipped intervals ` +
+          `so the ladder re-anchors.`,
+      );
+    }
+    this._capPinnedSkipSince = 0;
     this._logger.info(
       `[checkAndPerformReset] Reset triggered: entry 0 has been pending for ${Math.floor(elapsedMs / 1000)}s ` +
         `(resetInterval=${this.resetInterval}min). Cancelling entry 0.`,
@@ -3336,6 +3978,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         const bid0 = dataUpdate.orderbook.bids?.[0]?.[0];
         if (bid0 && bid0.gt(0)) {
           this._currentBid0 = bid0;
+          this._currentBid0Time = Date.now();
         }
       }
     }
@@ -3444,12 +4087,63 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         !this.orders.has(this.tpClientOrderId) &&
         !this.pendingClientOrderIds.has(this.tpClientOrderId)
       ) {
+        const ghostTpId = this.tpClientOrderId;
         this._logger.warn(
-          `[analyze] SAFETY NET: tpClientOrderId=${this.tpClientOrderId} points to ` +
+          `[analyze] SAFETY NET: tpClientOrderId=${ghostTpId} points to ` +
             `a ghost order (not in this.orders or pendingClientOrderIds). ` +
             `Clearing and re-attempting TP placement.`,
         );
-        this.tpClientOrderId = null;
+        // 🆕 Strategy 609 (2026-09-23, WLD-L-9): cancel BEFORE dropping the
+        // reference. The "ghost" is usually just an order whose creation push
+        // has not arrived yet — the duplicate TP of 609 was placed 3.2s after
+        // its predecessor, which was already live on the exchange. Dropping the
+        // reference silently let both fills through.
+        // 🆕 Review round 3 (GLM N1): unified limiter (books an attempt, honours
+        // cooldown/cap). 🆕 Review round 4 (Opus ①): and do NOT drop the
+        // reference unless the cancel was actually issued (or the limiter has
+        // given up). Clearing it while the order may still be live is precisely
+        // how 609 ended up with two live TPs: the strategy "forgot" a live order.
+        // Blocking the replacement for a few cycles is the intended trade-off —
+        // placing a new TP while the old one might still be live is the bug.
+        // 🆕 Review round 6 (GLM ①): call the limiter UNCONDITIONALLY. Gating on
+        // `!_pendingCancelTpIds.has(...)` meant the first cancel put the id into
+        // that set forever, so the safety net never re-sent and the attempt count
+        // froze at 1 — give-up was unreachable, i.e. the "bounded wait" above was
+        // really an indefinite block whenever the CANCELED push was lost (the very
+        // case this guard exists for). cancelTrackedTp self-dedupes (5 s cooldown
+        // + sentThisCall), so calling it every tick is safe and bounded.
+        this.cancelTrackedTp(
+          ghostTpId,
+          'ladder_tp_cancel_ghost_before_replace',
+          allSignals,
+          new Set<string>(),
+        );
+        const ghostAttempt = this._tpCancelAttempts.get(ghostTpId);
+        const ghostGivenUp =
+          ghostAttempt !== undefined &&
+          ghostAttempt.count >= LadderEntrySingleTPStrategy._TP_CANCEL_MAX_ATTEMPTS;
+        // 🆕 Review round 5 (Opus ①): a cancel SIGNAL is not a CONFIRMED cancel.
+        // Clearing on emission let the new TP be placed while the old one could
+        // still be live — exactly the 609 race. Only a terminal push we actually
+        // processed, or the limiter giving up (bounded), unlocks the reference.
+        const ghostConfirmedTerminal = this.processedTerminalIds.has(ghostTpId);
+        if (ghostConfirmedTerminal || ghostGivenUp) {
+          this.pendingClientOrderIds.delete(ghostTpId);
+          this.orders.delete(ghostTpId);
+          this.tpClientOrderId = null;
+        } else {
+          // 🆕 Review round 7 (GLM nit / Opus): track ONLY while we are still
+          // waiting. Tracking unconditionally fought the give-up branch, which
+          // deletes the id from _trackedTpIds on purpose — the id came back as a
+          // dangling, count=5-frozen entry. The retry path is what makes give-up
+          // reachable (bounded wait), so it belongs exactly here.
+          this.trackTpId(ghostTpId);
+          this._logger.warn(
+            `[analyze] SAFETY NET: cancel for ${ghostTpId} is not confirmed yet — ` +
+              `keeping the reference and retrying next cycle instead of placing a ` +
+              `second TP (Strategy 609 review).`,
+          );
+        }
       }
       if (
         this.inventoryQty.gt(0) &&
@@ -3569,6 +4263,8 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.orderMetadataMap.clear();
     this.pendingClientOrderIds.clear();
     this._pendingCancelTpIds.clear();
+    this._tpCancelAttempts.clear(); // 🆕 Review round 2 (GLM ⑤ / Opus ④)
+    this._trackedTpIds.clear(); // 🆕 Strategy 609
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
     this.steps = [];
@@ -3588,6 +4284,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this._recoveredNetPosTime = 0;
     this._currentAsk0 = new Decimal(0);
     this._currentBid0 = new Decimal(0);
+    this._currentBid0Time = 0;
+    // Re-arm the cap-fallback skip streak: this ladder state is gone (reset /
+    // reinit / cycle boundary), so the next streak must start its own window
+    // instead of inheriting a stale stamp that would already be expired.
+    this._capPinnedSkipSince = 0;
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }

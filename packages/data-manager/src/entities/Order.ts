@@ -169,6 +169,23 @@ export class OrderEntity implements Order {
   @Column({ type: 'text', nullable: true })
   commissionAsset?: string;
 
+  /**
+   * 🆕 Rejection / failure reason reported by the exchange or engine
+   * (e.g. `-2011 Unknown order sent`, `-2022 ReduceOnly Order is rejected`).
+   *
+   * Why it exists (Strategy 609, 2026-09-23): a cancel attempt on an
+   * already-filled TP returned -2011 and the reason was only visible in the
+   * console log — the row kept executedQuantity=15000 but its status was
+   * rewritten to REJECTED, with nothing persisted to explain why.
+   *
+   * NOTE: additive column. Production runs the documented schema sync
+   * (`npx tsx sync-scheme-to-db.ts` in packages/data-manager) BEFORE the new
+   * code is deployed — TypeORM selects every mapped column, so deploying first
+   * would fail with `column Order.errorMessage does not exist`.
+   */
+  @Column({ type: 'text', nullable: true })
+  errorMessage?: string;
+
   @OneToMany('order_fills', 'order', { cascade: true })
   fills?: OrderFillEntity[];
 
