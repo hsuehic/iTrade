@@ -211,6 +211,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   /** How long to wait for the engine's reinit before self-healing locally. */
   private static readonly REINIT_STUCK_MS = 30_000;
 
+  /**
+   * 🆕 Re-issue interval for cancelling an unclaimed live entry order: a
+   * still-live stray is re-cancelled at most once per interval, from any path
+   * that could place an entry (see `sweepUnclaimedEntries`).
+   */
+  private static readonly UNCLAIMED_CANCEL_RETRY_MS = 60_000;
+
+  /** How long a self-cancelled entry suppresses the stall alert (review round 6, opus F1). */
+  private static readonly SELF_CANCEL_TTL_MS = 10 * 60 * 1000;
+
   private referencePriceWasReversedFromTp = false;
 
   /**
@@ -311,6 +321,57 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
   /** Cap-fallback intervals tolerated before one re-anchoring reset. */
   private readonly _capPinnedGuardMaxSkips = 4;
+
+  /**
+   * Per-alert-type throttle for logger-bypassing console alerts (see
+   * `logVisibleAlert`), so a sick strategy cannot flood the container log while
+   * one alert type can never silence another (a single shared timestamp would
+   * drop the most important line of a pass).
+   */
+  private _lastVisibleAlertAt = new Map<string, number>();
+
+  /**
+   * 🆕 Unclaimed live entry orders awaiting cancel confirmation — id → issued
+   * time in ms (Strategy 631, 2026-10-01).
+   *
+   * This map is a THROTTLE ONLY (last cancel-issue time per unclaimed entry id):
+   * whether new entries are blocked is DERIVED from `this.orders` + `this.steps`
+   * in `sweepUnclaimedEntries`, never from the presence of a key here. A derived
+   * gate cannot get stuck: the block lifts by itself the moment the stray stops
+   * being locally live, and clearing this map (see `resetLadder` / `onCleanup`)
+   * unblocks nothing by itself: it only drops the last-issue time. The next
+   * sweep then re-issues the cancel, except that a *fresh* self-cancel stamp
+   * defers that first re-issue by one retry window (review round 10 seed).
+   */
+  private _unclaimedCancelIssuedAt = new Map<string, number>();
+
+  /**
+   * 🆕 Entry ids THIS instance has already sent a cancel for (TP-filled cleanup,
+   * reset interval), mapped to the time of that cancel. Such an order can
+   * momentarily look "unclaimed" while its cancel is still unconfirmed;
+   * re-issuing the cancel is harmless (idempotent at the venue) and keeping it
+   * blocking is correct during a wind-down, but alerting on it would be a false
+   * alarm. Alert suppression only — never a reason to stop blocking or retrying
+   * (review round 5, opus MAJOR A).
+   *
+   * Time-bounded on purpose (review round 6, opus F1): if the CANCELED push
+   * never arrives the order keeps blocking, so after one retry window the alarm
+   * must fire as a visible stall instead of staying silent forever. NOT cleared
+   * by `resetLadder` — a reset must not be able to hide a self-cancel that is
+   * still unconfirmed. Pruned by TTL ONLY (review round 8): binding the prune to
+   * `this.orders` would drop the suppression the instant a reset emptied that
+   * map, and the very next sweep would fire a false alarm on the still-live
+   * stray.
+   */
+  private _selfCancelledEntryIds = new Map<string, number>();
+
+  /**
+   * 🆕 First time each unclaimed live entry was seen by `sweepUnclaimedEntries`,
+   * used only to report the true stall age in the alert (the throttle timestamp
+   * above is overwritten on every re-issue, so it cannot be used for that).
+   * Pruned together with `_unclaimedCancelIssuedAt`.
+   */
+  private _unclaimedStrayFirstSeenAt = new Map<string, number>();
 
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
@@ -632,6 +693,28 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.pendingClientOrderIds.clear();
     this.processedQuantityMap.clear();
     this.processedTerminalIds.clear();
+    // 🆕 Only throttle bookkeeping is dropped here — never a *block*: whether an
+    // unclaimed stray blocks the new cycle is derived from `this.orders` +
+    // `this.steps` on every placement attempt (`sweepUnclaimedEntries`).
+    // `resetLadder` clears `this.orders` but does NOT set `_needsReinit` — that
+    // flag is set separately by `handleTpFilled` (basePrice=0) and
+    // `checkAndPerformReset`, and it is what defers placement until the engine
+    // re-fetches the orderbook and re-runs `processInitialData`.
+    //   • Non-reinit (the 2026-10-01 incident path): the recovered open orders are
+    //     re-merged into `this.orders`, so a still-live stray is re-detected,
+    //     re-cancelled AND blocked before any entry is placed (pinned by the reset
+    //     regression test).
+    //   • Real reinit (`_needsReinit`): the pre-existing ghost-cleanup branch
+    //     cancels a still-live stray by id and re-blacklists it, but does NOT merge
+    //     it and does NOT block placement in that same pass (replace semantics).
+    //     A cancel lost at the venue there is a known residual: the ghost is left
+    //     out of `this.orders`, so if it later fills its push is dropped → duplicate
+    //     exposure plus an orphan long with no TP. Tracked as a separate follow-up —
+    //     recorded in the MR description for this change; see the reinit ghost test
+    //     (which pins the same-pass placement).
+    this._unclaimedCancelIssuedAt.clear();
+    this._unclaimedStrayFirstSeenAt.clear();
+    this._lastVisibleAlertAt.clear();
     // 🆕 Strategy 609: any TP still tracked when the ladder resets belongs to
     // the cycle that just ended — blacklist it so a delayed CANCELED push
     // cannot drive the new cycle (mirrors the _pendingCancelTpIds handling in
@@ -1003,9 +1086,33 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       clientOrderId,
       leverage: this.leverage,
       tradeMode: this.tradeMode,
-      // 🆕 Never let a TP order open/increase a position (Strategy 609:
-      // two unprotected TP sells both filled → -15000 net position).
-      reduceOnly: true,
+      // 🆕 2026-10-01 (owner scope, strategy 631): the TP deliberately does NOT
+      // carry `reduceOnly` any more. As a reduceOnly SELL it was rejected with
+      // HTTP 400 / -2022 ("ReduceOnly Order is rejected") whenever the order
+      // would not PURELY reduce the ACCOUNT net position — flat, short, or net
+      // long smaller than the TP quantity (flip) — e.g. after a manual order on
+      // the same symbol. The strategy's own long then had NO exit at all.
+      //
+      // Accepted consequence of sending a plain SELL: if the account net
+      // position diverges from the strategy inventory (manual trades), a TP fill
+      // may open or extend an account-level short, and the excess can consume
+      // margin. That trade-off is deliberate (a guaranteed strategy exit beats a
+      // rejected one) — do not "fix" this back to reduceOnly.
+      //
+      // Oversell is guarded in-strategy instead: the TP quantity is sized from
+      // the derived inventory, and refreshTakeProfit() will not place a
+      // replacement while an earlier TP is still being cancelled. NOTE that this
+      // prevents strategy-created duplicates only — it is not a cover when the
+      // cancellation is never confirmed (see the give-up path in
+      // cancelTrackedTp(), where an unconfirmed orphan and a replacement can
+      // coexist; accepted 2026-10-01).
+      //
+      // The engine ALSO reconciles against the exchange's real open orders before
+      // placing any exit (TradingEngine.reconcileDuplicateExitOrders, armed since
+      // 2026-10-01 by exit intent rather than by reduceOnly). That closes the
+      // window only for EXACT duplicates — same symbol+side+strategy, identical
+      // quantity AND price. A give-up orphan at a different price or size (e.g.
+      // after a VWAP reprice) can still coexist and both still fill.
       reason:
         this.tpType === 'absolute'
           ? `ladder_tp_absolute_${this.tpAbsoluteProfit.toString()}`
@@ -1057,9 +1164,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       quantity: qty,
       price: tpPrice,
       reason: 'ladder_tp_update',
-      // 🆕 The engine implements update as cancel+replace; without this the
-      // replacement TP would lose its reduceOnly protection (Strategy 609).
-      reduceOnly: true,
+      // 🆕 2026-10-01: no `reduceOnly` on the replacement either — see the note
+      // in the placement path above. A reduceOnly SELL is rejected (-2022)
+      // whenever it would not purely reduce the ACCOUNT net position, which
+      // strands the strategy's long.
       metadata,
     };
   }
@@ -1071,6 +1179,194 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   // ──────────────────────────────────────────────────────────────────────────
   // Ladder entry placement
   // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Cancel any LIVE entry order of this strategy that no ladder step claims, and
+   * report whether such an order still exists.
+   *
+   * Root cause of the 2026-10-01 strategy-631 incident: `E631D3 @1414.81`
+   * (placed 18:15) fell outside `recoverStepIndex`'s tolerance once the ladder
+   * was rebuilt from a new bid0, so it stayed LIVE on the exchange while
+   * `hasActiveEntryAfterCleanup` was false and a second entry
+   * `E631D2 @1397.12` was placed at 18:31 — 12 ZEC of live exposure instead of
+   * 6. Evaluated AFTER the recovery/inference steps, because those legitimately
+   * claim a recovered entry (cancelling earlier would turn every restart into
+   * cancel+replace churn).
+   *
+   * Deliberately STATELESS: the answer is derived from `this.orders` +
+   * `this.steps` on every call, so there is no lifecycle that can get stuck. A
+   * still-live stray is re-cancelled (and alerted) at most once per
+   * `UNCLAIMED_CANCEL_RETRY_MS` from ANY path that could place an entry, so a
+   * cancel lost in a running process is retried without needing a reinit, while
+   * the block itself stays up until the stray is observably dead.
+   *
+   * Snapshot semantics (verified by test): `processInitialData` MERGES the venue's
+   * open orders into `this.orders`, it does not replace them, so a locally live
+   * entry that the venue no longer lists keeps blocking — deliberate: treating
+   * "absent from the snapshot" as dead could drop a fill that raced the snapshot
+   * (orphan long, no TP). The block is therefore cleared by the terminal push, or
+   * by a restart, and is repeated in the alert meanwhile.
+   *
+   * Fail-safe by design: if a terminal push never arrives, entries stay blocked
+   * and an alert repeats every `UNCLAIMED_CANCEL_RETRY_MS` (a visible stall that
+   * a restart clears, since a fresh process only knows the venue's open orders)
+   * instead of failing open onto a live stray — the duplicate exposure this
+   * exists to prevent. The ladder's tracked inventory keeps its TP either way,
+   * and any fill that is OBSERVABLE through this strategy's own order stream is
+   * booked and then covered by `refreshTakeProfit` (verified by test). Known
+   * own-state limitation: a fill landing in the reset→reinit gap is not
+   * observable (the order is gone from the venue's open orders, and its push was
+   * blacklisted by the reset) — that case cannot be seen from own state at all.
+   */
+  private sweepUnclaimedEntries(signals: StrategyResult[]): boolean {
+    const now = Date.now();
+
+    // 1) Collect: LIVE + owned + claimed-by-no-step.
+    const liveUnclaimedEntryIds: string[] = [];
+    for (const [clientOrderId, order] of this.orders) {
+      // `OrderStatus` has no intermediate "cancel pending" state (NEW,
+      // PARTIALLY_FILLED, FILLED, CANCELED, REJECTED, EXPIRED), so these two are
+      // exactly the statuses that can still fill at the venue.
+      if (
+        order.status !== OrderStatus.NEW &&
+        order.status !== OrderStatus.PARTIALLY_FILLED
+      ) {
+        continue;
+      }
+      const metadata = this.orderMetadataMap.get(clientOrderId);
+      if (!metadata) {
+        // Fail-open guard (review round 7, opus F2): a restart can skip the
+        // block that recovers metadata for the init `openOrders`, which would
+        // make an own entry invisible here and let the duplicate through
+        // silently. An own-id, live, BUY order is an entry of ours by
+        // construction in this strategy (it places no other BUY orders; its TPs
+        // are SELL), so treat it as a stray rather than `continue`-ing past it.
+        // This fallback is scoped to the MISSING-metadata case only: when
+        // metadata exists and says "not an entry" (e.g. a TakeProfit), the order
+        // is never touched.
+        const looksLikeOwnEntry =
+          order.side === OrderSide.BUY && this.isStrategyOrderId(clientOrderId);
+        if (!looksLikeOwnEntry) continue;
+      } else if (
+        metadata.signalType !== SignalType.Entry ||
+        !this.isStrategyOrderId(clientOrderId)
+      ) {
+        // Metadata positively says "not an entry" — never touch it. The ownership
+        // re-check is defence in depth (round 9, opus m1): metadata is only ever
+        // recovered for own ids today, but capping the blast radius structurally
+        // costs nothing.
+        continue;
+      }
+      if (this.steps.some((step) => step.entryClientOrderId === clientOrderId)) {
+        continue;
+      }
+      liveUnclaimedEntryIds.push(clientOrderId);
+    }
+
+    // 2) Prune tracking for ids that stopped being live unclaimed orders, so no
+    // state can outlive the order it describes.
+    const liveIds = new Set(liveUnclaimedEntryIds);
+    for (const id of [...this._unclaimedCancelIssuedAt.keys()]) {
+      if (!liveIds.has(id)) this._unclaimedCancelIssuedAt.delete(id);
+    }
+    for (const [id, ts] of [...this._selfCancelledEntryIds]) {
+      // Pruned by the TTL ONLY. Anything smarter leaks the round-7 regression:
+      // `resetLadder` empties `this.orders`, so pruning on `!this.orders.has(id)`
+      // would drop the suppression on the very first sweep after a reset, and
+      // the still-unconfirmed re-merged order would fire the false alarm on a
+      // normal TP-filled cycle. The map is tiny, so a TTL is enough.
+      if (now - ts > LadderEntrySingleTPStrategy.SELF_CANCEL_TTL_MS) {
+        this._selfCancelledEntryIds.delete(id);
+      }
+    }
+    for (const id of [...this._unclaimedStrayFirstSeenAt.keys()]) {
+      if (!liveIds.has(id)) this._unclaimedStrayFirstSeenAt.delete(id);
+    }
+    for (const key of [...this._lastVisibleAlertAt.keys()]) {
+      if (!key.startsWith('unclaimed_entry_cancel:')) continue;
+      if (!liveIds.has(key.slice('unclaimed_entry_cancel:'.length))) {
+        this._lastVisibleAlertAt.delete(key);
+      }
+    }
+
+    // 3) Cancel (throttled) — this branch also runs on every analyze cycle, so a
+    // cancel that got lost in a running process is retried without a reinit.
+    for (const clientOrderId of liveUnclaimedEntryIds) {
+      const order = this.orders.get(clientOrderId);
+      if (!order) continue; // defensive; cannot happen inside this loop
+
+      const firstSeen = this._unclaimedStrayFirstSeenAt.get(clientOrderId) ?? now;
+      this._unclaimedStrayFirstSeenAt.set(clientOrderId, firstSeen);
+
+      // NOTE (rounds 12-13, opus M2 — phantom-inventory risk): double-booking
+      // was NOT reproducible here. Inventory is DERIVED, not accumulated: it is
+      // rebuilt from live own entries by `recalculateVWAP()` (plus
+      // `processedQuantityMap` for ids no longer in `this.orders`), so a late
+      // terminal push cannot add to it. Three fault injections all left
+      // inventoryQty unchanged: (a) deleting the processedQuantityMap re-seed in
+      // the recovery branch, (b) forcing the resetCancelPending branch in
+      // handleOrderUpdates, (c) disabling the blacklist skip. This un-blacklist
+      // only fires for an id PRESENT in `this.orders`. A *blacklisted* id either is
+      // already present (a step may still claim it — the sweep skips claimed ids, so
+      // a reset's blacklist survives the same-cycle sweep) or (re)enters via the
+      // recovery merge; pushes for it are skipped, and the merge rebuilds inventory
+      // from the venue's executed quantity. The derived-inventory invariant is pinned
+      // by the reset -> merge -> late-push test and by the
+      // blacklisted-then-swept test (both falsified by zeroing `recalculateVWAP`).
+      // Un-blacklist unconditionally, on EVERY sweep (round 10, opus MAJOR-1).
+      // `previousCycleOrderIds` also holds ids blacklisted by a reset/reinit. If
+      // that un-blacklisting were throttled, a CANCELED/FILLED push for a
+      // re-merged, self-cancelled order would be SWALLOWED for up to 60 s — a
+      // permanent block with a repeating alert, or worse an orphan long with no
+      // TP (the very outcome the in-code comment forbids). Only the cancel signal
+      // and the stamp write below are throttled; this must always run.
+      this.previousCycleOrderIds.delete(clientOrderId);
+
+      const lastIssued =
+        this._unclaimedCancelIssuedAt.get(clientOrderId) ??
+        // Seed from the self-cancel stamp (round 9, opus m2): the strategy
+        // already told the venue to kill this order, so the first sweep should
+        // not immediately re-issue an idempotent duplicate cancel.
+        this._selfCancelledEntryIds.get(clientOrderId) ??
+        0;
+      if (now - lastIssued < LadderEntrySingleTPStrategy.UNCLAIMED_CANCEL_RETRY_MS) {
+        continue;
+      }
+
+      this._unclaimedCancelIssuedAt.set(clientOrderId, now);
+      signals.push(
+        this.generateCancelSignal(
+          clientOrderId,
+          'ladder_unclaimed_entry_cancel_no_duplicate',
+        ),
+      );
+      // Suppress the alert when this instance is the one that already cancelled
+      // the order (see `_selfCancelledEntryIds`): the block and the retry below
+      // still apply, only the alarm is noise.
+      const selfCancelTs = this._selfCancelledEntryIds.get(clientOrderId);
+      const selfCancelFresh =
+        selfCancelTs !== undefined &&
+        now - selfCancelTs < LadderEntrySingleTPStrategy.UNCLAIMED_CANCEL_RETRY_MS;
+      if (!selfCancelFresh) {
+        this.logVisibleAlert(
+          `unclaimed_entry_cancel:${clientOrderId}`,
+          `strategyId=${this._strategyId ?? 'n/a'} symbol=${this._symbol}: unclaimed live entry ` +
+            `${clientOrderId} (status=${order.status}, ` +
+            `executed=${order.executedQuantity?.toString() ?? '0'} of ${order.quantity.toString()}) ` +
+            `has been claimed by no ladder step for ${Math.round((now - firstSeen) / 1000)}s; ` +
+            `${
+              lastIssued === 0
+                ? 'cancelling it'
+                : 're-issuing its cancel (the previous attempt is still unconfirmed)'
+            } and blocking new entries until it is dead. Any executed part is booked into inventory ` +
+            `and covered by a TP by the normal fill/recovery accounting — this cancel only removes ` +
+            `the resting remainder.`,
+        );
+      }
+    }
+
+    return liveUnclaimedEntryIds.length > 0;
+  }
 
   /**
    * Place the next pending entry order in the ladder.
@@ -1086,6 +1382,15 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    */
   private placeLadderEntries(): StrategyResult[] {
     const signals: StrategyResult[] = [];
+
+    // Structural safety: never place an entry while a live entry order of this
+    // strategy is unclaimed by every ladder step — that is exactly how the
+    // 2026-10-01 duplicate (two live entries, 12 ZEC) happened. This also
+    // re-issues the cancel (throttled) and alerts, so a cancel lost in a
+    // running process is retried even when no reinit ever follows.
+    if (this.sweepUnclaimedEntries(signals)) {
+      return signals;
+    }
 
     if (this.steps.length === 0) {
       this.steps = this.buildLadder();
@@ -1178,6 +1483,29 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     }
 
     return signals;
+  }
+
+  /**
+   * 🆕 Escape hatch for alerts that must survive the silent logger (Strategy
+   * 631, 2026-10-01).
+   *
+   * This strategy is constructed with a hard-coded `silentLogger`
+   * (`super({ ...config, logger: silentLogger })`), so logger-only safety
+   * alerts are invisible in production — verified: 0 occurrences of
+   * `[LadderEntrySingleTPStrategy]` in `docker logs itrade-console` while the
+   * 631 TP was being rejected on every attempt. Structural-safety alerts
+   * therefore also go to `console` so they land in the container log, throttled
+   * to one line per minute per alert key (see `_lastVisibleAlertAt`).
+   */
+  private logVisibleAlert(kind: string, message: string): void {
+    const now = Date.now();
+    const last = this._lastVisibleAlertAt.get(kind) ?? 0;
+    // The alert cadence is intentionally its own 60 s, independent of the cancel
+    // throttle (`UNCLAIMED_CANCEL_RETRY_MS`); they coincide today but are separate
+    // knobs (opus v17 n4).
+    if (now - last < 60_000) return;
+    this._lastVisibleAlertAt.set(kind, now);
+    console.error(`🔴 [LadderEntrySingleTPStrategy] ${message}`);
   }
 
   /**
@@ -1458,8 +1786,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * - The cooldown stops the 3.2 s safety-net cadence from re-cancelling the
    *   same id on every tick (cancel-storm / -1015 risk).
    * - After `_TP_CANCEL_MAX_ATTEMPTS` the id is given up on, logged as an
-   *   error and blacklisted for this process; the exchange-side `reduceOnly`
-   *   flag on the newly placed TP remains the hard backstop.
+   *   error and blacklisted for this process. There is NO exchange-side
+   *   `reduceOnly` backstop any more (2026-10-01, strategy 631): the TP does not
+   *   carry the flag, so an unconfirmed cancel leaves a live, unprotected TP,
+   *   AND the strategy may place a replacement TP alongside it (the blacklisted
+   *   id no longer trips the live-TP guard) — two full-size sells can therefore
+   *   coexist and both fill. That is the accepted cost of keeping the exit
+   *   available; the give-up path logs loudly and asks for manual checks. The
+   *   engine reconciles against the exchange before every exit placement /
+   *   replacement, but only cancels EXACT duplicates (same symbol+side, identical
+   *   quantity and price), so an orphan at a different price or size survives it.
    *
    * @returns true when a cancel signal was pushed.
    */
@@ -1514,9 +1850,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       this._logger.error(
         `[cancelTrackedTp] giving up on ${clientOrderId} after ${count} unconfirmed ` +
           `cancel attempts — its terminal push never arrived. Blacklisting the id ` +
-          `for this process. NOTE: on venues WITHOUT reduceOnly support (Coinbase ` +
-          `Advanced Trade) this leaves an unprotected order — verify manually ` +
-          `(Strategy 609).`,
+          `for this process. NOTE: the TP carries no exchange-level reduceOnly ` +
+          `flag any more, so this leaves a live UNPROTECTED order on the venue — ` +
+          `verify manually. The engine's exchange reconciliation only catches ` +
+          `EXACT duplicates (same size AND price), so a re-priced or re-sized ` +
+          `orphan like this one survives it.`,
       );
       this.previousCycleOrderIds.add(clientOrderId);
       // 🆕 Review round 2 (GLM ① / Opus ①): stop the orphan sweep from
@@ -1641,6 +1979,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         order.status === OrderStatus.NEW ||
         order.status === OrderStatus.PARTIALLY_FILLED
       ) {
+        this._selfCancelledEntryIds.set(clientOrderId, Date.now());
         signals.push(this.generateCancelSignal(clientOrderId, reason));
         cancelledIds.add(clientOrderId);
       }
@@ -1649,6 +1988,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       if (cancelledIds.has(clientId)) continue; // skip already-cancelled
       const meta = this.orderMetadataMap.get(clientId);
       if (meta?.signalType === SignalType.Entry) {
+        this._selfCancelledEntryIds.set(clientId, Date.now());
         signals.push(this.generateCancelSignal(clientId, reason));
         cancelledIds.add(clientId);
         this.pendingClientOrderIds.delete(clientId);
@@ -2213,8 +2553,13 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           // leave unsold inventory with NO exit at all. Only suppress the
           // refresh while some other live TP (or pending placement) exists,
           // which is exactly the 609 duplicate-TP situation this guard targets.
-          // A missing exit is the worse failure: the duplicate case is covered
-          // by reduceOnly + engine-level duplicate reconciliation.
+          // A missing exit is the worse failure. The duplicate case is
+          // PREVENTED by the tracked-TP invariant (cancel before replace, wait
+          // for the terminal push). Two layers acknowledge the residual window if
+          // that prevention fails: the engine reconciles exact duplicates against
+          // the exchange (identical symbol+side+quantity+price only), and the
+          // give-up path in cancelTrackedTp() logs that a non-identical orphan
+          // survives it (accepted 2026-10-01).
           const stillHasLiveTp =
             !!this.tpClientOrderId ||
             this._trackedTpIds.size > 0 ||
@@ -3562,14 +3907,27 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
-    const hasActiveEntryAfterCleanup = this.steps.some((step) => {
-      if (!step.entryClientOrderId) return false;
-      const ord = this.orders.get(step.entryClientOrderId);
-      return (
-        ord &&
-        (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
-      );
-    });
+    // 🆕 Unclaimed-entry guard (Strategy 631, 2026-10-01).
+    // Every recovery path has now run, so `step.entryClientOrderId` holds the
+    // final claim decision. Only the order a step tracks is owned by the ladder:
+    // an owned LIVE entry order that NO step claims — e.g. E631D3 @1414.81, which
+    // fell outside `recoverStepIndex`'s tolerance once the ladder was rebuilt
+    // from a new bid0 — must not coexist with a newly placed entry. Handling is
+    // derived and stateless, see `sweepUnclaimedEntries`.
+    const hasLiveUnclaimedEntry = this.sweepUnclaimedEntries(signals);
+
+    const hasActiveEntryAfterCleanup =
+      // An unclaimed live entry (its cancel just went out, or is being retried)
+      // may still be live at the venue — wait before placing a new entry.
+      hasLiveUnclaimedEntry ||
+      this.steps.some((step) => {
+        if (!step.entryClientOrderId) return false;
+        const ord = this.orders.get(step.entryClientOrderId);
+        return (
+          ord &&
+          (ord.status === OrderStatus.NEW || ord.status === OrderStatus.PARTIALLY_FILLED)
+        );
+      });
 
     if (hasActiveEntryAfterCleanup) {
       this._logger.debug(
@@ -3932,6 +4290,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
 
     // Cancel the stuck entry. resetLadder() in processInitialData's reinit path will
     // clear all tracking maps and add remaining IDs to previousCycleOrderIds.
+    this._selfCancelledEntryIds.set(resetEntryCoid, Date.now());
     signals.push(this.generateCancelSignal(resetEntryCoid, 'ladder_reset_interval'));
 
     // Clear any pending TP debounce state (defensive — reset condition requires
@@ -4166,6 +4525,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // Evaluate the resetInterval condition against the post-update state.
       allSignals.push(...this.checkAndPerformReset());
 
+      // Structural safety on every cycle, not only at init/placement: re-issues
+      // (throttled) the cancel of any live unclaimed entry and alerts, so a
+      // cancel lost in a running process is never left silent.
+      this.sweepUnclaimedEntries(allSignals);
+
       if (allSignals.length > 0) return allSignals;
       return { action: 'hold' };
     }
@@ -4188,6 +4552,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
     tpDebounceSignals.push(...this.checkAndPerformReset());
+
+    // Structural safety on every cycle (see the branch above).
+    this.sweepUnclaimedEntries(tpDebounceSignals);
+
     if (tpDebounceSignals.length > 0) return tpDebounceSignals;
 
     return { action: 'hold' };
@@ -4289,6 +4657,10 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // reinit / cycle boundary), so the next streak must start its own window
     // instead of inheriting a stale stamp that would already be expired.
     this._capPinnedSkipSince = 0;
+    this._unclaimedCancelIssuedAt.clear();
+    this._selfCancelledEntryIds.clear(); // round 9, opus m3 (teardown symmetry)
+    this._unclaimedStrayFirstSeenAt.clear();
+    this._lastVisibleAlertAt.clear();
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
   }

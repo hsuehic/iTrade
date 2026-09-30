@@ -30,8 +30,30 @@ import {
  * Two identical TP sells (15000 @ 0.4202) were live at the same time and BOTH
  * filled against 15000 of inventory. Root causes covered here:
  *
- *   1. TP orders carried no `reduceOnly` → nothing stopped the second sell from
- *      opening a short position.
+ *   Original incident (2026-09-23): TP orders carried no `reduceOnly`, so
+ *   nothing stopped the second sell from opening a short position.
+ *
+ *   Current state (2026-10-01, strategy 631): the TP still carries no
+ *   `reduceOnly`. The flag was added as a patch for this incident and has now
+ *   been REMOVED again, because Binance USDT-margined futures reject a reduceOnly SELL with
+ *   HTTP 400 / -2022 whenever the order would not PURELY reduce the account net
+ *   position (flat, short, or net long smaller than the TP quantity — a flip),
+ *   leaving the strategy's long with no exit at all.
+ *   Oversell is instead prevented by two layers:
+ *   (1) the in-strategy invariant pinned in Fix 3/Fix 4 — at most one
+ *       strategy-created live TP (cancel the tracked TP and wait for its
+ *       terminal push before placing a replacement), plus a TP quantity derived
+ *       from the strategy's own inventory; and
+ *   (2) the engine-side guard shipped in the same change
+ *       (TradingEngine.reconcileDuplicateExitOrders, armed by exit intent rather
+ *       than by reduceOnly): before placing an exit it cancels this strategy's
+ *       still-live order on the same symbol+side when quantity AND price are
+ *       IDENTICAL — which covers the canonical 609 replay (two identical TP
+ *       sells) and the placement-after-restart / cancel-lost replays.
+ *   Open residual (accepted 2026-10-01, see cancelTrackedTp()): a give-up orphan
+ *   that is re-priced or re-sized by the replacement (VWAP moved), a fill racing
+ *   the replacement, or an orphan that is never replaced — those survive layer 2
+ *   and need a broader sweep, logged as a follow-up.
  *   2. `refreshTakeProfit()` dropped `tpClientOrderId` WITHOUT emitting a cancel
  *      when the TP metadata was missing → the previous TP stayed live on the
  *      exchange, invisible to the strategy, and a second TP was placed.
@@ -195,16 +217,28 @@ async function fillFirstEntry(strategy: LadderEntrySingleTPStrategy) {
 // ──────────────────────────────────────────────────────────────────────────
 
 describe('LadderEntrySingleTPStrategy — Strategy 609 oversell guards', () => {
-  describe('Fix 1: TP orders are risk-reducing (reduceOnly)', () => {
-    it('marks the placed TP SELL order as reduceOnly', async () => {
+  describe('Fix 1 (revised): TP orders carry no reduceOnly flag', () => {
+    it('never marks the placed TP SELL order as reduceOnly (the -2022 fix)', async () => {
+      // 2026-10-01, strategy 631: Binance rejects a reduceOnly SELL (-2022)
+      // whenever the ACCOUNT net position is flat, short, or net long smaller
+      // than the TP quantity (a flip) — not only when flat/short — so the TP is
+      // sent as a plain SELL.
       const strategy = new LadderEntrySingleTPStrategy(createStrategyConfig());
       const { tp } = await fillFirstEntry(strategy);
 
       expect(tp.action).toBe('sell');
-      expect(tp.reduceOnly).toBe(true);
+      // End-to-end chain: the engine's duplicate-exit guard is armed by this
+      // metadata, NOT by a reduceOnly flag (see TradingEngine.isExitIntent).
+      expect(tp.metadata?.signalType).toBe(SignalType.TakeProfit);
+      // Deliberately `toBeUndefined()` (not `toBeFalsy()`): ANY reappearance of
+      // the flag — including an explicit `reduceOnly: false` — must fail here,
+      // so this pins the absence of the parameter on the SIGNAL object (the
+      // wire-level omission is pinned by the engine test asserting
+      // `options.reduceOnly === undefined`).
+      expect(tp.reduceOnly).toBeUndefined();
     });
 
-    it('keeps reduceOnly on the cancel+replace (update) path', async () => {
+    it('leaves reduceOnly off the cancel+replace (update) path too', async () => {
       const strategy = new LadderEntrySingleTPStrategy(createStrategyConfig());
       const { tp, nextEntry } = await fillFirstEntry(strategy);
       expect(nextEntry).toBeDefined();
@@ -224,7 +258,8 @@ describe('LadderEntrySingleTPStrategy — Strategy 609 oversell guards', () => {
 
       // Second entry fills at a different price → VWAP changes → TP must be
       // re-priced. The engine implements this as cancel+replace, so the
-      // replacement order needs its own reduceOnly flag.
+      // replacement carries its own order params — which must not include
+      // reduceOnly either.
       const fill = createOrder(
         nextEntry!.clientOrderId!,
         OrderSide.BUY,
@@ -239,7 +274,9 @@ describe('LadderEntrySingleTPStrategy — Strategy 609 oversell guards', () => {
       const updates = findTpUpdateSignals(result);
 
       expect(updates.length).toBeGreaterThanOrEqual(1);
-      expect(updates[0].reduceOnly).toBe(true);
+      // The replacement guards the same way: exit intent via metadata, no flag.
+      expect(updates[0].metadata?.signalType).toBe(SignalType.TakeProfit);
+      expect(updates[0].reduceOnly).toBeUndefined();
       expect(updates[0].clientOrderId).toBe(tp.clientOrderId);
     });
   });
@@ -282,7 +319,10 @@ describe('LadderEntrySingleTPStrategy — Strategy 609 oversell guards', () => {
       const newTps = findNewTpSignals(result);
       expect(newTps).toHaveLength(1);
       expect(newTps[0].clientOrderId).not.toBe(firstTpId);
-      expect(newTps[0].reduceOnly).toBe(true);
+      expect(newTps[0].reduceOnly).toBeUndefined();
+      // Replacement TPs must keep carrying exit metadata: this is what arms the
+      // engine's duplicate-exit reconciliation (see TradingEngine.isExitIntent).
+      expect(newTps[0].metadata?.signalType).toBe(SignalType.TakeProfit);
 
       // The orphan stays tracked until a terminal push confirms the cancel.
       expect(internal._trackedTpIds.has(firstTpId)).toBe(true);
@@ -328,7 +368,10 @@ describe('LadderEntrySingleTPStrategy — Strategy 609 oversell guards', () => {
       const newTps = findNewTpSignals(after);
       expect(newTps).toHaveLength(1);
       expect(newTps[0].clientOrderId).not.toBe(tpId);
-      expect(newTps[0].reduceOnly).toBe(true);
+      expect(newTps[0].reduceOnly).toBeUndefined();
+      // Replacement TPs must keep carrying exit metadata: this is what arms the
+      // engine's duplicate-exit reconciliation (see TradingEngine.isExitIntent).
+      expect(newTps[0].metadata?.signalType).toBe(SignalType.TakeProfit);
     });
 
     it('tracks every signalled TP until a terminal push arrives', async () => {
@@ -392,7 +435,10 @@ describe('LadderEntrySingleTPStrategy — Strategy 609 oversell guards', () => {
 
       const newTps = findNewTpSignals(result);
       expect(newTps).toHaveLength(1);
-      expect(newTps[0].reduceOnly).toBe(true);
+      expect(newTps[0].reduceOnly).toBeUndefined();
+      // Replacement TPs must keep carrying exit metadata: this is what arms the
+      // engine's duplicate-exit reconciliation (see TradingEngine.isExitIntent).
+      expect(newTps[0].metadata?.signalType).toBe(SignalType.TakeProfit);
     });
   });
 

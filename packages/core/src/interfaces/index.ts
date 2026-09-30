@@ -291,19 +291,40 @@ export interface ExecuteOrderParameters {
   /**
    * 🆕 Mark the order as risk-reducing (Binance `reduceOnly`).
    *
-   * When true:
-   *  1. The flag is forwarded to the exchange, so the exchange itself rejects
-   *     the order if it would increase/flip the position instead of reducing it.
-   *  2. The engine performs a pre-placement reconciliation of the strategy's
-   *     own live orders on the same symbol+side (see
-   *     `reconcileDuplicateReduceOnlyOrders`). This closes the duplicate-order
-   *     window where a strategy has lost track of an order that is still live
-   *     on the exchange (Strategy 609: two identical TP sells filled → oversell).
+   * When true: the flag is forwarded to the exchange, so the exchange itself
+   * rejects the order if it would increase/flip the position instead of
+   * reducing it — with the -2022 caveat spelled out below.
    *
-   * Should be set on every exit order (TP / stop) that must never open a
-   * position. Do NOT set it on entry orders.
+   * ⚠️ Since 2026-10-01 (strategy 631) NO strategy sets this flag any more: on a
+   * shared account Binance rejects a reduceOnly SELL with HTTP 400 / -2022
+   * whenever it would not purely reduce the account net position (flat, short,
+   * or net long smaller than the quantity), which stranded strategy exits.
+   * Duplicate-exit protection does NOT depend on it (see `dedupeExit`), but
+   * setting it STILL arms the engine's pre-placement reconciliation: the gate is
+   * `reduceOnly || dedupeExit`.
    */
   reduceOnly?: boolean;
+
+  /**
+   * 🆕 Arm the engine's duplicate-exit reconciliation for this order.
+   *
+   * When true the engine reconciles against the EXCHANGE's real open orders
+   * before placing: any order this strategy still has live on the same
+   * symbol+side WITH IDENTICAL QUANTITY AND PRICE that it believes is gone
+   * (cancel lost / tracking dropped / process restarted) is cancelled first
+   * (Strategy 609: two identical TP sells both filled → oversell). Anything not
+   * provably identical is left alone, so a give-up orphan at a different price
+   * or size can still coexist with its replacement — that residual window is
+   * accepted (see `TradingEngine.reconcileDuplicateExitOrders`). The wait is
+   * bounded (`DUPLICATE_EXIT_RECONCILE_TIMEOUT_MS`): a slow reconciliation never
+   * delays the exit itself.
+   *
+   * Exit orders should set this. The engine derives it from the signal's
+   * `metadata.signalType` via an allowlist (TakeProfit / StopLoss / TrailingStop
+   * — see `isExitIntent`), so strategies normally do not need to set it
+   * explicitly; an unrecognised signal is left unarmed (fail closed).
+   */
+  dedupeExit?: boolean;
 
   // Note: Stop loss and take profit should be implemented as separate orders
 }

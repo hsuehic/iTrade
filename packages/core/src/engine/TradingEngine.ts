@@ -45,6 +45,8 @@ import {
   TradesSubscriptionConfig,
   KlinesSubscriptionConfig,
   SubscriptionParamValue,
+  SignalType,
+  SignalMetaData,
 } from '../types';
 import { EventBus } from '../events';
 import { PrecisionUtils } from '../utils/PrecisionUtils';
@@ -53,6 +55,16 @@ import { loadInitialDataForStrategy } from '../utils/StrategyLoader';
 import { SubscriptionCoordinator } from './SubscriptionCoordinator';
 
 export class TradingEngine extends EventEmitter implements ITradingEngine {
+  /**
+   * 🆕 Upper bound on the pre-placement duplicate-exit reconciliation.
+   *
+   * The reconciliation runs ahead of EVERY exit (it is keyed on exit intent),
+   * including stop-losses, so it must not be able to delay an exit by an
+   * unbounded REST round-trip. On timeout the order is placed anyway — the same
+   * outcome as a failed reconciliation (best-effort guard).
+   */
+  private static readonly DUPLICATE_EXIT_RECONCILE_TIMEOUT_MS = 3000;
+
   private _isRunning = false;
   private _isInitializing = false; // Track if engine is in initialization phase
   private readonly _strategies = new Map<string, IStrategy>();
@@ -599,6 +611,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       leverage,
       clientOrderId: providedClientOrderId, // 🆕 Accept clientOrderId from params
       reduceOnly,
+      dedupeExit,
     } = params;
     if (!this._isRunning) {
       const stateMsg = this._isInitializing
@@ -746,23 +759,80 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       }
 
       // 🆕 Duplicate-exit guard (Strategy 609).
-      // A risk-reducing (reduceOnly) order is the last line of defence against
-      // over-selling, so before we place it we reconcile against the exchange's
-      // real open orders: if this strategy still has a live order on the same
-      // symbol+side that it believes is gone (cancel lost / tracking dropped),
-      // cancel it first. Best-effort: a REST failure must never block the exit.
-      if (reduceOnly) {
-        await this.reconcileDuplicateReduceOnlyOrders({
-          exchange,
-          symbol,
-          side,
-          exchangeName,
-          strategyId,
-          strategyName: userDefinedName,
-          keepClientOrderId: order.clientOrderId,
-          quantity: adjustedQuantity,
-          price: adjustedPrice,
-        });
+      // Before placing an order that is meant to CLOSE a position we reconcile
+      // against the exchange's real open orders: if this strategy still has a
+      // live order on the same symbol+side **with identical quantity and price**
+      // that it believes is gone (cancel lost / tracking dropped / process
+      // restarted), cancel it first. Anything we cannot prove is a duplicate is
+      // left alone.
+      // Best-effort: a REST failure — or a slow one — must never block the exit.
+      //
+      // 2026-10-01 (strategy 631): the gate is EXIT INTENT, not the exchange's
+      // `reduceOnly` flag. A reduceOnly SELL is rejected (-2022) whenever it
+      // would not purely reduce the account net position, so no strategy sets
+      // that flag any more — gating this reconciliation on it would have left
+      // the guard dead and reopened the 609 window. Callers pass `dedupeExit`
+      // (derived from the signal's `metadata.signalType` by `isExitIntent`);
+      // `reduceOnly` is still honoured for any caller that explicitly sets it.
+      // No price (market / stop-market exit) => the duplicate filter can NEVER
+      // prove identity (`price == null` is left alone by design), so running the
+      // reconciliation would add a REST round-trip — up to the timeout — for a
+      // guaranteed no-op. Skip it outright (review R3 M1).
+      const hasProvablePrice = adjustedPrice !== undefined && adjustedPrice !== null;
+      if ((reduceOnly || dedupeExit) && hasProvablePrice) {
+        // Bounded wait (review R2 m4): this now runs ahead of EVERY exit,
+        // including stop-losses, so a slow `getOpenOrders` must not delay a stop
+        // in a fast market. On timeout we place the order anyway.
+        //
+        // ⚠️ The timeout only stops us WAITING; it does not stop the
+        // reconciliation. A late snapshot must therefore never trigger a cancel
+        // after we gave up on it (review R3 B1: a stale snapshot could cancel
+        // the order we just placed → position left with no exit at all). The
+        // `abandoned` flag below is checked by the reconciliation itself after
+        // `getOpenOrders` and before every `cancelOrder`.
+        let abandoned = false;
+        let reconciliationSettled = false;
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            this.reconcileDuplicateExitOrders({
+              exchange,
+              symbol,
+              side,
+              exchangeName,
+              strategyId,
+              strategyName: userDefinedName,
+              keepClientOrderId: order.clientOrderId,
+              quantity: adjustedQuantity,
+              price: adjustedPrice,
+              isAbandoned: () => abandoned,
+            }).then(
+              () => {
+                reconciliationSettled = true;
+              },
+              () => {
+                reconciliationSettled = true;
+              },
+            ),
+            new Promise<void>((resolve) => {
+              timeoutHandle = setTimeout(() => {
+                abandoned = true;
+                resolve();
+              }, TradingEngine.DUPLICATE_EXIT_RECONCILE_TIMEOUT_MS);
+            }),
+          ]);
+        } finally {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+        }
+        if (!reconciliationSettled) {
+          this.logger.warn(
+            `Duplicate exit reconciliation still running after ` +
+              `${TradingEngine.DUPLICATE_EXIT_RECONCILE_TIMEOUT_MS}ms before placing ${side} order for ` +
+              `${userDefinedName ?? strategyId} on ${symbol} — placing the order anyway (best-effort guard)`,
+          );
+        }
       }
 
       // Execute the order with adjusted values
@@ -914,7 +984,11 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
   /**
    * 🆕 Cancel this strategy's own still-live orders on the same symbol+side
-   * before a risk-reducing (reduceOnly) order is placed.
+   * before an exit order is placed (exit intent: TP / stop-loss / trailing —
+   * see `isExitIntent`). Previously named `reconcileDuplicateReduceOnlyOrders`
+   * and gated on the exchange `reduceOnly` flag; re-keyed 2026-10-01 (strategy
+   * 631) because that flag is no longer sent by any strategy and the guard had
+   * become dead code.
    *
    * Why (Strategy 609, 2026-09-23 WLD-L-9):
    *   The strategy emitted two identical TP sells 4s apart. Its local tracking
@@ -924,15 +998,34 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
    *   orders are really live. This method asks the exchange and cancels the
    *   duplicates before the new exit order is placed.
    *
+   * What counts as a duplicate: same symbol, same side, same strategyId, and
+   *   IDENTICAL quantity and price. Anything else is left alone — a ladder may
+   *   legitimately keep several live exits at once, and an unprovable duplicate
+   *   must never be cancelled (a wrong cancel is unrecoverable).
+   *
    * Scope safety: only orders whose clientOrderId encodes *this* strategyId
    *   (`^(E|T)<strategyId>D…`, the engine-wide convention already used by
    *   `enrichOrderWithStrategyInfo`) are touched, so another strategy's orders
    *   on the same symbol/account can never be cancelled.
    *
    * Best-effort: any failure is logged and swallowed — the exit order is then
-   *   placed anyway, with `reduceOnly` as the exchange-level hard guard.
+   *   placed anyway (the wait is bounded, see
+   *   `DUPLICATE_EXIT_RECONCILE_TIMEOUT_MS`). There is no exchange-level
+   *   `reduceOnly` hard guard behind it any more (removed for strategy 631 on
+   *   2026-10-01), which is exactly why this exchange-truth reconciliation must
+   *   stay armed.
+   *
+   * Abandonment: when the caller's bounded wait expires it sets `isAbandoned`,
+   *   and this method then performs NO cancels (checked right after
+   *   `getOpenOrders` and before every `cancelOrder`) — a late snapshot must
+   *   never cancel an order that was already placed in the meantime.
+   *
+   * Documented assumption: no strategy deliberately keeps two live EXITS with
+   *   identical symbol, side, quantity and price as separate tranches — such a
+   *   pattern would be deduped here. Entries (`SignalType.Entry`) are never
+   *   armed, so ladder entries are untouched.
    */
-  private async reconcileDuplicateReduceOnlyOrders(options: {
+  private async reconcileDuplicateExitOrders(options: {
     exchange: IExchange;
     symbol: string;
     side: OrderSide;
@@ -944,6 +1037,12 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     quantity?: Decimal;
     /** Price of the order we are about to place (undefined for market orders). */
     price?: Decimal;
+    /**
+     * Returns true once the caller has stopped waiting for us (bounded wait).
+     * Checked after `getOpenOrders` and before every `cancelOrder`: a late
+     * snapshot must never cancel an order based on a state we abandoned.
+     */
+    isAbandoned?: () => boolean;
   }): Promise<void> {
     const {
       exchange,
@@ -955,6 +1054,7 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       keepClientOrderId,
       quantity,
       price,
+      isAbandoned,
     } = options;
 
     if (!exchange || strategyId === undefined || strategyId === null) {
@@ -969,6 +1069,17 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     try {
       const openOrders = await exchange.getOpenOrders(symbol);
+      // The caller may have stopped waiting for us while this call was in
+      // flight (bounded wait). A snapshot taken after we were abandoned must
+      // not drive cancels: acting on it could cancel the exit the caller has
+      // already placed in the meantime (review R3 B1).
+      if (isAbandoned?.()) {
+        this.logger.warn(
+          `Duplicate exit reconciliation abandoned (caller already placed its ${side} ` +
+            `order for ${strategyName ?? strategyId} on ${symbol}) — no cancels performed`,
+        );
+        return;
+      }
       if (!Array.isArray(openOrders) || openOrders.length === 0) {
         return;
       }
@@ -981,8 +1092,8 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // stop-loss, a re-armed exit) and cancelling those would silently delete
       // a position's only way out — the exact class of bug we are fixing.
       // Anything we cannot positively identify is left alone: the
-      // `reduceOnly` flag plus the strategy-side tracking invariant remain as
-      // guards, whereas a wrong cancel is unrecoverable.
+      // strategy-side tracking invariant remains as the guard, whereas a wrong
+      // cancel is unrecoverable.
       const duplicates = openOrders.filter((openOrder) => {
         const clientOrderId = openOrder.clientOrderId;
         if (!clientOrderId || clientOrderId === keepClientOrderId) {
@@ -1000,16 +1111,19 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         if (!this.sameSymbol(openOrder.symbol, symbol)) {
           return false;
         }
-        // Size must match; price must match when we have one (market orders
-        // have none). Missing size/price on the exchange payload => cannot
-        // prove it is a duplicate => leave it alone.
+        // Size must match; the price must be PROVABLE on both sides (review R2
+        // m4): if our own order has no price (market/stop-market) or the
+        // exchange payload has none, two orders of the same size are NOT
+        // provably identical, and this method's rule is to leave anything
+        // unprovable alone — a wrong cancel is unrecoverable.
         if (!this.sameDecimal(openOrder.quantity, quantity)) {
           return false;
         }
-        if (price !== undefined && price !== null) {
-          if (!this.sameDecimal(openOrder.price, price)) {
-            return false;
-          }
+        if (price === undefined || price === null) {
+          return false;
+        }
+        if (!this.sameDecimal(openOrder.price, price)) {
+          return false;
         }
         return true;
       });
@@ -1024,6 +1138,14 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       );
 
       for (const duplicate of duplicates) {
+        if (isAbandoned?.()) {
+          this.logger.warn(
+            `Duplicate exit reconciliation abandoned mid-cancels for ` +
+              `${strategyName ?? strategyId} on ${symbol} — stopping (the caller has ` +
+              `already placed its exit; a wrong cancel is unrecoverable)`,
+          );
+          return;
+        }
         try {
           await exchange.cancelOrder(symbol, duplicate.id, duplicate.clientOrderId);
           this.logger.logStrategy(
@@ -1085,13 +1207,37 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   /**
+   * 🆕 Is this signal an EXIT order (closing/reducing a position)?
+   *
+   * Used to arm the duplicate-exit reconciliation without relying on the
+   * exchange `reduceOnly` flag, which no strategy sets any more (a reduceOnly
+   * SELL is rejected with -2022 when it would not purely reduce the account net
+   * position — strategy 631, 2026-10-01).
+   *
+   * Rule — an explicit ALLOWLIST: `TakeProfit`, `StopLoss`, `TrailingStop`.
+   * Anything else stays unarmed, including a missing/unknown `signalType` or a
+   * signal without metadata. We never guess: this guard cancels live orders, so
+   * an unrecognised signal must fail closed.
+   */
+  private isExitIntent(metadata?: SignalMetaData): boolean {
+    if (!metadata) {
+      return false;
+    }
+    return (
+      metadata.signalType === SignalType.TakeProfit ||
+      metadata.signalType === SignalType.StopLoss ||
+      metadata.signalType === SignalType.TrailingStop
+    );
+  }
+
+  /**
    * 🆕 Do two symbol strings refer to the same instrument?
    *
    * Case/whitespace-insensitive only: we deliberately do not try to convert
    * between native (`WLD-USDT-SWAP`) and unified (`WLD/USDT:USDT`) formats.
-   * A false negative costs us one skipped reconciliation (the `reduceOnly` flag
-   * and the strategy-side invariant still guard the exit), while a false
-   * positive could cancel another strategy's order — so we stay strict.
+   * A false negative costs us one skipped reconciliation (the strategy-side
+   * invariant still guards the exit), while a false positive could cancel
+   * another strategy's order — so we stay strict.
    */
   private sameSymbol(a?: string | null, b?: string | null): boolean {
     if (!a || !b) {
@@ -1370,9 +1516,13 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         type: orderType,
         price: nextPrice,
         clientOrderId: signal.newClientOrderId,
-        // 🆕 Keep the risk-reducing protection across cancel+replace
-        // (Strategy 609: without this, every TP refresh dropped reduceOnly).
+        // 🆕 Keep the exit-intent protection across cancel+replace
+        // (Strategy 609: without this, every TP refresh dropped the guard).
+        // What arms the reconciliation is `dedupeExit` below; `reduceOnly` is
+        // merely forwarded unchanged if some caller still sets it (no strategy
+        // does since 2026-10-01).
         reduceOnly: signal.reduceOnly,
+        dedupeExit: this.isExitIntent(signal.metadata),
       });
 
       this.logger.logStrategy('Order updated', {
@@ -1461,7 +1611,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
         tradeMode: signal.tradeMode,
         leverage: signal.leverage,
         clientOrderId,
-        reduceOnly: signal.reduceOnly, // 🆕 Risk-reducing flag (exit orders)
+        reduceOnly: signal.reduceOnly, // 🆕 Exchange-level risk-reducing flag (unused since 2026-10-01)
+        // 🆕 Duplicate-exit reconciliation is keyed on exit intent, not on the
+        // `reduceOnly` flag (Strategy 631, 2026-10-01).
+        dedupeExit: this.isExitIntent(signal.metadata),
       });
 
       this.logger.logStrategy('Executed signal', {

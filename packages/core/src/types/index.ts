@@ -451,10 +451,18 @@ export interface StrategyOrderResult {
   /**
    * 🆕 Mark the order as risk-reducing (exchange `reduceOnly`).
    *
-   * Exit orders (TP / stop-loss) MUST set this so that a duplicate or orphaned
-   * exit order can never over-sell the position at the exchange level.
-   * See Strategy 609 (2026-09-23): two identical TP sells both filled because
-   * neither carried reduceOnly and the strategy had lost track of one of them.
+   * ⚠️ Since 2026-10-01 (strategy 631) NO strategy sets this: on a shared
+   * account the exchange rejects a reduceOnly SELL with HTTP 400 / -2022
+   * whenever it would not purely reduce the ACCOUNT net position (flat, short,
+   * or net long smaller than the quantity), which stranded the strategy's exit.
+   *
+   * Duplicate-exit protection does NOT depend on it: setting it still arms the
+   * same reconciliation (the gate is `reduceOnly || dedupeExit`), but the guard
+   * is keyed on EXIT INTENT — the engine derives `dedupeExit` from this
+   * signal's `metadata.signalType` and reconciles against the exchange's real
+   * open orders before placing (`TradingEngine.reconcileDuplicateExitOrders`),
+   * which is the fix for Strategy 609 (2026-09-23: two identical TP sells both
+   * filled).
    */
   reduceOnly?: boolean;
 
@@ -496,9 +504,14 @@ export interface StrategyUpdateOrderResult {
   reason?: string;
   /**
    * 🆕 Mark the replacement order as risk-reducing (exchange `reduceOnly`).
-   * The engine implements update as cancel+replace, so the replacement order
-   * must carry the same protection as the original — otherwise a TP loses its
-   * reduceOnly guard after every cancel+replace (Strategy 609 root cause).
+   * No strategy sets this since 2026-10-01 (strategy 631 — a reduceOnly SELL is
+   * rejected with -2022 when it would not purely reduce the account net
+   * position); it is forwarded only if a caller sets it explicitly.
+   *
+   * What matters for the replacement is exit intent: the engine derives
+   * `dedupeExit` from the signal metadata and reconciles the strategy's own
+   * live orders on the same symbol+side before placing, so a TP refresh cannot
+   * leave an orphaned exit next to its replacement (Strategy 609 root cause).
    */
   reduceOnly?: boolean;
   /** Optional metadata for replacement order */
