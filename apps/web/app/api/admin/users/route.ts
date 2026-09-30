@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
     const sortDirection = searchParams.get('sortDirection');
     const parsedLimit = Number.parseInt(searchParams.get('limit') ?? '', 10);
     const parsedOffset = Number.parseInt(searchParams.get('offset') ?? '', 10);
+    // `basic=1` returns only id/email/name — see the shaping note below.
+    const basic = searchParams.get('basic') === '1';
 
     const authInstance = getAuthFromRequest(request);
     const result = await (authInstance.api as any).listUsers({
@@ -84,8 +86,19 @@ export async function GET(request: NextRequest) {
       }),
     );
 
+    // `basic=1` drops the base64 avatar and the account metadata. Each avatar
+    // can be several MB, so a picker that renders only names was previously
+    // downloading and parsing the whole table's worth of them.
+    const shaped = basic
+      ? users.map((user: { id: string; email: string; name: string }) => ({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        }))
+      : users;
+
     return NextResponse.json({
-      users,
+      users: shaped,
       total: result?.total ?? users.length,
       limit: result?.limit,
       offset: result?.offset,

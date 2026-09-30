@@ -11,6 +11,7 @@ export type AuditLogAction =
   | 'strategy.create'
   | 'strategy.clone'
   | 'strategy.update'
+  | 'strategy.status-update'
   | 'strategy.delete'
   | 'order.create'
   | 'order.update'

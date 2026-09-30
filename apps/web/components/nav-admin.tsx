@@ -3,6 +3,7 @@
 import {
   IconSettings,
   IconChartInfographic,
+  IconTrendingUp,
   IconUsers,
   IconBrain,
   IconBook,
@@ -42,6 +43,11 @@ export function NavAdmin() {
       title: t('users'),
       url: '/admin/users',
       icon: IconUsers,
+    },
+    {
+      title: t('strategies'),
+      url: '/admin/strategies',
+      icon: IconTrendingUp,
     },
     {
       title: t('roiAnalysis'),

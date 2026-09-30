@@ -1221,6 +1221,101 @@ export class TypeOrmDataManager implements IDataManager {
     return await this.strategyRepository.findAll(filters);
   }
 
+  /**
+   * Admin-scope strategy listing across ALL users with keyword/token/owner
+   * filters, server-side sort (incl. ROI/PnL) and pagination.
+   * See StrategyRepository.findAllAdmin.
+   */
+  async getStrategiesAdmin(filters?: {
+    search?: string;
+    symbol?: string;
+    userId?: string;
+    status?: string;
+    exchange?: string;
+    type?: string;
+    sortBy?:
+      | 'name'
+      | 'createdAt'
+      | 'updatedAt'
+      | 'status'
+      | 'symbol'
+      | 'exchange'
+      | 'totalPnL'
+      | 'roi'
+      | 'totalOrders';
+    sortDirection?: 'asc' | 'desc';
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ strategies: StrategyEntity[]; total: number }> {
+    this.ensureInitialized();
+    return await this.strategyRepository.findAllAdmin(filters);
+  }
+
+  /**
+   * Users that have at least one ACTIVE bound exchange account, reduced to the
+   * fields the admin console renders (`id`/`name`/`email` — never the avatar).
+   *
+   * The admin Strategy Management owner filter uses this instead of pulling
+   * every user through Better Auth's `listUsers` (which returns a full user row
+   * — base64 avatar included — per record) and intersecting client-side.
+   * Predicate matches `/api/admin/users/exchange-stats`: active accounts only,
+   * so a user whose exchange bindings were all disabled is not offered.
+   * `account_info` has no soft-delete column, so a raw EXISTS is complete.
+   */
+  async getUsersWithExchangeAccounts(): Promise<
+    Array<{ id: string; name: string | null; email: string | null }>
+  > {
+    this.ensureInitialized();
+    return await this.dataSource.query(
+      `SELECT u.id, u.name, u.email
+         FROM "user" u
+        WHERE EXISTS (
+              SELECT 1 FROM account_info a
+               WHERE a."userId" = u.id AND a."isActive" = true
+        )
+        ORDER BY u.name NULLS LAST, u.email`,
+    );
+  }
+
+  /**
+   * Does this user have at least one ACTIVE bound exchange account? Same
+   * predicate as `getUsersWithExchangeAccounts`, for a single id — used to
+   * reject starting a strategy for a user who cannot trade it.
+   */
+  async userHasActiveExchangeAccount(userId: string): Promise<boolean> {
+    this.ensureInitialized();
+    const rows = await this.dataSource.query(
+      `SELECT 1 FROM account_info
+        WHERE "userId" = $1 AND "isActive" = true
+        LIMIT 1`,
+      [userId],
+    );
+    return rows.length > 0;
+  }
+
+  /** Admin helper: does an auth user with this id exist? */
+  async userExists(userId: string): Promise<boolean> {
+    this.ensureInitialized();
+    const rows = await this.dataSource.query(
+      'SELECT 1 FROM "user" WHERE id = $1 LIMIT 1',
+      [userId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Admin helper: does this user already own a strategy with this name?
+   * Case-insensitive to match the console's duplicate-name convention.
+   */
+  async strategyNameExistsForUser(userId: string, name: string): Promise<boolean> {
+    this.ensureInitialized();
+    const rows = await this.dataSource.query(
+      'SELECT 1 FROM strategies WHERE "userId" = $1 AND lower(name) = lower($2) LIMIT 1',
+      [userId, name],
+    );
+    return rows.length > 0;
+  }
+
   async updateStrategy(id: number, updates: Partial<StrategyEntity>): Promise<void> {
     this.ensureInitialized();
     await this.strategyRepository.update(id, updates);

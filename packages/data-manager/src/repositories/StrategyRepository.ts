@@ -4,6 +4,63 @@ import { normalizeSymbol, detectMarketType } from '@itrade/utils';
 import { StrategyEntity, StrategyStatus, MarketType } from '../entities/Strategy';
 import { StrategyPerformanceEntity } from '../entities/StrategyPerformance';
 
+export type AdminStrategySortKey =
+  | 'name'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'status'
+  | 'symbol'
+  | 'exchange'
+  | 'totalPnL'
+  | 'roi'
+  | 'totalOrders';
+
+/**
+ * Escape LIKE/ILIKE metacharacters so a literal `%` or `_` typed into a search
+ * box is matched literally instead of acting as a wildcard (searching for "_"
+ * used to return every row). Pair with `ESCAPE '\'` on the SQL side.
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+/** `<column> ILIKE <param>` with the escape clause applied consistently. */
+function ilikeClause(column: string, param: string): string {
+  return `${column} ILIKE :${param} ESCAPE '\\'`;
+}
+
+export interface AdminStrategyFilters {
+  /** Free-text keyword: matches name / description / symbol / type (ILIKE). */
+  search?: string;
+  /** Token/symbol filter (ILIKE) — e.g. "BTC". */
+  symbol?: string;
+  /** Owner user id. */
+  userId?: string;
+  status?: string;
+  exchange?: string;
+  /** Strategy class name (exact). */
+  type?: string;
+  sortBy?: AdminStrategySortKey;
+  sortDirection?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+const ADMIN_SORT_COLUMNS: Record<AdminStrategySortKey, string> = {
+  name: 'strategy.name',
+  createdAt: 'strategy.createdAt',
+  updatedAt: 'strategy.updatedAt',
+  status: 'strategy.status',
+  symbol: 'strategy.symbol',
+  exchange: 'strategy.exchange',
+  totalPnL: 'performance.totalPnL',
+  roi: 'performance.roi',
+  totalOrders: 'performance.totalOrders',
+};
+
+/** Sort keys that live on the joined strategy_performance table. */
+const PERFORMANCE_SORT_KEYS: AdminStrategySortKey[] = ['totalPnL', 'roi', 'totalOrders'];
+
 export class StrategyRepository {
   private repository: Repository<StrategyEntity>;
 
@@ -136,6 +193,85 @@ export class StrategyRepository {
     }
 
     return await query.orderBy('strategy.createdAt', 'DESC').getMany();
+  }
+
+  /**
+   * Admin-scope listing: strategies across ALL users, with keyword/token/owner
+   * filters, server-side sorting (incl. performance metrics) and pagination.
+   *
+   * Joins `user` (id/name/email only — never `user.image`, a base64 avatar that
+   * can be several MB; see findById) and maps `strategy_performance` so ROI/PnL
+   * can be displayed and sorted on. Performance columns are ordered NULLS LAST
+   * so strategies that have no performance row never occupy the top of a DESC
+   * sort.
+   */
+  async findAllAdmin(
+    filters?: AdminStrategyFilters,
+  ): Promise<{ strategies: StrategyEntity[]; total: number }> {
+    const page = filters?.page && filters.page > 0 ? filters.page : 1;
+    const pageSize = Math.min(
+      filters?.pageSize && filters.pageSize > 0 ? filters.pageSize : 50,
+      200,
+    );
+
+    const query = this.repository
+      .createQueryBuilder('strategy')
+      .leftJoin('strategy.user', 'user')
+      .addSelect(['user.id', 'user.name', 'user.email'])
+      .leftJoinAndMapOne(
+        'strategy.performance',
+        StrategyPerformanceEntity,
+        'performance',
+        'performance.strategyId = strategy.id',
+      );
+
+    if (filters?.search) {
+      query.andWhere(
+        `(${ilikeClause('strategy.name', 'search')} OR ${ilikeClause('strategy.description', 'search')} OR ${ilikeClause('strategy.symbol', 'search')} OR ${ilikeClause('strategy.type', 'search')})`,
+        { search: `%${escapeLikePattern(filters.search)}%` },
+      );
+    }
+    if (filters?.symbol) {
+      query.andWhere(ilikeClause('strategy.symbol', 'symbol'), {
+        symbol: `%${escapeLikePattern(filters.symbol)}%`,
+      });
+    }
+    if (filters?.userId) {
+      query.andWhere('strategy.userId = :userId', { userId: filters.userId });
+    }
+    if (filters?.status) {
+      query.andWhere('strategy.status = :status', { status: filters.status });
+    }
+    if (filters?.exchange) {
+      query.andWhere('strategy.exchange = :exchange', {
+        exchange: filters.exchange,
+      });
+    }
+    if (filters?.type) {
+      query.andWhere('strategy.type = :type', { type: filters.type });
+    }
+
+    const sortKey: AdminStrategySortKey = filters?.sortBy ?? 'createdAt';
+    const order = filters?.sortDirection === 'asc' ? 'ASC' : 'DESC';
+    const orderColumn = ADMIN_SORT_COLUMNS[sortKey] ?? 'strategy.createdAt';
+    // Nullable columns (performance metrics, plus symbol/exchange) are pinned to
+    // the end of a DESC sort — Postgres puts NULLs FIRST on DESC by default,
+    // which would fill the top of the list with rows that have no value.
+    const nulls =
+      PERFORMANCE_SORT_KEYS.includes(sortKey) ||
+      sortKey === 'symbol' ||
+      sortKey === 'exchange'
+        ? 'NULLS LAST'
+        : undefined;
+
+    query
+      .orderBy(orderColumn, order, nulls)
+      .addOrderBy('strategy.id', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+
+    const [strategies, total] = await query.getManyAndCount();
+    return { strategies, total };
   }
 
   async update(id: number, updates: Partial<StrategyEntity>): Promise<void> {
