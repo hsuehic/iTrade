@@ -571,25 +571,54 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     );
   }
 
+  /**
+   * 🆕 The exchange error body carried by a failed HTTP call, if any.
+   *
+   * Binance answers `{ code: -2011, msg: 'Unknown order sent.' }` with HTTP 400;
+   * axios only surfaces `Request failed with status code 400` in `message`, so
+   * the body is the only place the real reason exists.
+   */
+  private getExchangeErrorBody(
+    error: unknown,
+  ): { code?: string | number; msg?: string; message?: string } | undefined {
+    return error && typeof error === 'object' && 'response' in error
+      ? (
+          error as {
+            response?: {
+              data?: { msg?: string; message?: string; code?: string | number };
+            };
+          }
+        ).response?.data
+      : undefined;
+  }
+
   private formatOrderErrorMessage(error: unknown): string {
+    // 🆕 The EXCHANGE's own message outranks the transport's.
+    //
+    // An axios failure carries the generic `Request failed with status code
+    // 400` in `error.message`, while the reason that actually matters sits in
+    // the response body (`{ code: -2011, msg: 'Unknown order sent.' }`).
+    // Reading `message` first hid every exchange code from the persisted row,
+    // the push notification and the operator (incident 2026-10-01, strategy
+    // 633: a dead entry was reported as `Order Failed — Request failed with
+    // status code 400` once a minute for an hour, with nothing to act on).
+    // The code is kept alongside the text: it is what operators grep for.
+    const responseData = this.getExchangeErrorBody(error);
+    const exchangeMessage = responseData?.msg || responseData?.message;
+    const code = responseData?.code;
+    if (exchangeMessage !== undefined && String(exchangeMessage).trim() !== '') {
+      return code === undefined || code === null || String(code).trim() === ''
+        ? String(exchangeMessage)
+        : `${String(exchangeMessage)} (code ${code})`;
+    }
+    if (code !== undefined && code !== null && String(code).trim() !== '') {
+      return `Exchange error code ${String(code)}`;
+    }
     if (error instanceof Error && error.message) {
       return error.message;
     }
     if (typeof error === 'string') {
       return error;
-    }
-    const responseData =
-      error && typeof error === 'object' && 'response' in error
-        ? (
-            error as {
-              response?: { data?: { msg?: string; message?: string; code?: string } };
-            }
-          ).response?.data
-        : undefined;
-    const exchangeMessage =
-      responseData?.msg || responseData?.message || responseData?.code;
-    if (exchangeMessage) {
-      return exchangeMessage;
     }
     try {
       return JSON.stringify(error);
@@ -1270,6 +1299,180 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
   }
 
   /**
+   * 🆕 Does this order error mean "the venue does not know this order"?
+   *
+   * Binance answers `-2011 Unknown order sent.` and `-2013 Order does not
+   * exist` for an order that was already filled, cancelled or expired — and
+   * for an id the venue never saw at all. It is the venue's own words that
+   * matter, so the match is on the response CODE or on the exchange `msg`;
+   * the transport's generic `Request failed with status code 400` never matches
+   * (a plain HTTP 400 must not be read as "order is gone" — only the exchange
+   * can say that).
+   *
+   * SCOPE (deliberate): the codes and the wording below are Binance's, matched
+   * on the axios/`response.data` error shape. A venue whose adapter surfaces a
+   * different code, or that squeezes the text into `error.message`, simply will
+   * not match — the reconcile then fails closed to the old REJECTED report,
+   * which is the safe direction, but it means the fix is NOT automatic for
+   * other venues. Those adapters must normalise their error shape (a
+   * `{ code, msg }` body) for this to engage.
+   */
+  private isUnknownOrderError(error: unknown): boolean {
+    const responseData = this.getExchangeErrorBody(error);
+    // Adapters differ on the type of `code` (a number from Binance, a string
+    // once it went through a gateway) — compare numerically.
+    const code = Number(responseData?.code);
+    if (code === -2011 || code === -2013) {
+      return true;
+    }
+
+    const exchangeMessage = String(responseData?.msg || responseData?.message || '');
+    return /unknown order sent|order does not exist|order not found/i.test(
+      exchangeMessage,
+    );
+  }
+
+  /**
+   * 🆕 Is this failure a rate-limit rejection?
+   *
+   * Reconciling a failed cancel costs one more REST call — exactly what must
+   * NOT happen while the venue is throttling us (Binance escalates 429 into a
+   * 418 IP ban, with exponentially growing duration). Those failures skip the
+   * reconcile and keep the old report, so a throttled engine behaves exactly as
+   * it did before this change.
+   */
+  /** The HTTP status the transport reported, if any (axios response shape). */
+  private getExchangeErrorStatus(error: unknown): number | undefined {
+    return error && typeof error === 'object' && 'response' in error
+      ? (error as { response?: { status?: number } }).response?.status
+      : undefined;
+  }
+
+  private isRateLimitError(error: unknown): boolean {
+    const status = this.getExchangeErrorStatus(error);
+    if (status === 429 || status === 418) {
+      return true;
+    }
+    const code = Number(this.getExchangeErrorBody(error)?.code);
+    return code === -1003 || code === -1015;
+  }
+
+  /**
+   * What the venue told us about an order whose cancel just failed.
+   *
+   * `terminal` — the venue reports an end state we can adopt (FILLED, CANCELED,
+   *              EXPIRED), or both the cancel and a lookup call the order
+   *              unknown, which is proof enough that it is gone.
+   * `live`     — the venue still holds the order. It may nonetheless carry
+   *              executions we did not know about, so the caller must not read
+   *              this as "nothing happened".
+   * `unknown`  — nothing could be verified (no local record, an unrelated
+   *              lookup failure, an unusable payload): the caller falls back to
+   *              the conservative REJECTED report.
+   */
+  private async resolveStateAfterCancelFailure(
+    exchange: IExchange,
+    symbol: string,
+    orderId: string,
+    clientOrderId: string | undefined,
+    resolvedOrder: Order | undefined,
+    cancelError: unknown,
+    meta: {
+      exchangeName?: string;
+      strategyId?: number;
+      strategyType?: string;
+      strategyName?: string;
+    },
+  ): Promise<
+    | { kind: 'terminal'; order: Order }
+    | { kind: 'live'; order: Order }
+    | { kind: 'unknown' }
+  > {
+    // Without our own record of the order there is nothing trustworthy to
+    // report: a synthesised side/quantity would corrupt the persisted row.
+    if (!resolvedOrder) {
+      return { kind: 'unknown' };
+    }
+
+    let venueOrder: Order | undefined;
+    try {
+      venueOrder = await exchange.getOrder(
+        symbol,
+        orderId,
+        clientOrderId || resolvedOrder.clientOrderId,
+      );
+    } catch (lookupError) {
+      if (!this.isUnknownOrderError(lookupError)) {
+        // Unrelated failure (network, auth, throttling): we can neither prove
+        // the order is dead nor read its real state → fail closed.
+        this.logger.warn(
+          `Could not verify the state of ${clientOrderId ?? orderId} after a ` +
+            `failed cancel: ${this.formatOrderErrorMessage(lookupError)}`,
+        );
+        return { kind: 'unknown' };
+      }
+      if (!this.isUnknownOrderError(cancelError)) {
+        // The lookup alone is not proof: a stale/mismatched orderId answers
+        // `unknown` for an order that is still live on the venue.
+        return { kind: 'unknown' };
+      }
+      this.logger.warn(
+        `Both the cancel and a lookup report ${clientOrderId ?? orderId} as ` +
+          `unknown on ${meta.exchangeName ?? exchange.name} (symbol ${symbol}, ` +
+          `orderId ${orderId}) — treating the order as ${OrderStatus.CANCELED}.`,
+      );
+      return {
+        kind: 'terminal',
+        order: { ...resolvedOrder, status: OrderStatus.CANCELED, updateTime: new Date() },
+      };
+    }
+
+    const status = venueOrder?.status;
+    if (!status) {
+      // The adapter returned a shape we do not understand → fail closed.
+      return { kind: 'unknown' };
+    }
+
+    // The venue wins for every field it reports; keep our own metadata for the
+    // rest. Fields the venue left undefined must not blank ours out, and the
+    // identity stays ours: the order map is keyed on it, so an adapter that
+    // reports a different `id`/`clientOrderId` must not fork our record in two
+    // (the second entry would start from executed 0 and re-count the fill).
+    const venueFields = Object.fromEntries(
+      Object.entries(venueOrder).filter(
+        ([key, value]) => value !== undefined && key !== 'id' && key !== 'clientOrderId',
+      ),
+    ) as Partial<Order>;
+
+    const order: Order = {
+      ...resolvedOrder,
+      ...venueFields,
+      symbol,
+      status,
+      // Ours first: the strategies key their state on the clientOrderId this
+      // engine generated, so a venue echo (or a differently-translated value)
+      // must not rename the order under them. `id` and `clientOrderId` are also
+      // excluded from venueFields above, so identity stays ours throughout.
+      clientOrderId:
+        resolvedOrder.clientOrderId ?? clientOrderId ?? venueOrder.clientOrderId,
+      exchange: meta.exchangeName ?? resolvedOrder.exchange,
+      strategyId: resolvedOrder.strategyId ?? meta.strategyId,
+      strategyType: resolvedOrder.strategyType ?? meta.strategyType,
+      strategyName: resolvedOrder.strategyName ?? meta.strategyName,
+      updateTime: venueOrder.updateTime ?? new Date(),
+    };
+
+    // A live order is reported as such rather than thrown away: the venue just
+    // told us something, and a live order can already carry executions we never
+    // booked (a fill hidden behind the lost terminal push). The caller decides
+    // what to do with it — REJECTED is not an option for one that has traded
+    // (review R6 Major).
+    return this.isTerminalOrderStatus(status)
+      ? { kind: 'terminal', order }
+      : { kind: 'live', order };
+  }
+
+  /**
    * 🆕 Does this clientOrderId belong to the given strategy?
    * Mirrors the engine-wide order-id convention `^(E|T)<strategyId>D...`
    * (see `enrichOrderWithStrategyInfo`).
@@ -1382,11 +1585,315 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
       // which overwrote a FILLED row in the DB while keeping its
       // executedQuantity. Result: the console showed a REJECTED order that had
       // actually traded (15000 sold) and the oversell stayed invisible.
-      if (this.isOrderAlreadyExecuted(resolvedOrder)) {
+      //
+      // Any order we already hold as TERMINAL is out of that lever's reach, and
+      // a cancel for one we recorded as closed is a no-op anyway: re-emitting it
+      // would push a duplicate notification on every retry while a duplicate
+      // cancel is in flight (the sweep drops the order on the first terminal
+      // event, but the engine must not depend on that to stay exactly-once).
+      //
+      // One deliberate trade-off: the synthesised CANCELED (the cancel *and* the
+      // lookup both answered `unknown`) now also takes this early return, so it
+      // will not be re-verified on a later sweep. A websocket `CANCELED → FILLED`
+      // correction still reaches the order, and the alternative — asking the
+      // venue forever about an order it says it does not have — is the 3183 s
+      // loop this MR exists to end.
+      //
+      // A locally NON-terminal order is the one case where the reconcile below
+      // still has something to win: if the venue actually closed it (the 633
+      // shape, when the terminal push was lost) only the reconcile can prove it
+      // and stop the sweep. That path must still never write REJECTED — the
+      // guards after the reconcile enforce it (review R5 Minor-3, R6 Major).
+      if (this.isTerminalOrderStatus(resolvedOrder?.status)) {
+        // Hand over the record the engine holds NOW, not the snapshot this
+        // signal was resolved against: the cancel REST call above awaits, and a
+        // `CANCELED → FILLED` correction (or a growing execution) can land on the
+        // websocket while it is in flight. Delivering the stale snapshot last
+        // would put the strategy back on the terminal state it had already
+        // outlived — a strategy that believes it never traded, which is the 609
+        // direction (review R7 Major).
+        const heldForGate = this.findHeldOrder(
+          exchangeName ?? exchange.name,
+          targetSymbol,
+          resolvedOrder?.clientOrderId ?? signal.clientOrderId,
+          resolvedOrder?.id ?? orderId,
+        );
+        // …but only when it really is the same order: a clientOrderId reused for
+        // a brand-new order would otherwise make this gate hand over the new
+        // order's state while answering for the terminal one (review R8 Nit).
+        const closedOrder =
+          heldForGate &&
+          (!resolvedOrder?.id || this.sameVenueOrderId(heldForGate.id, resolvedOrder.id))
+            ? heldForGate
+            : resolvedOrder;
         this.logger.warn(
-          `Cancel failed for an order that already executed — status preserved as FILLED ` +
-            `(no REJECTED overwrite): ${strategyName} ${targetSymbol} ` +
-            `${resolvedOrder?.clientOrderId ?? signal.clientOrderId ?? orderId} — ${errorMessage}`,
+          `Cancel failed for an order already recorded as ${resolvedOrder?.status} — ` +
+            `nothing new to report, re-delivering the recorded ` +
+            `${closedOrder?.status} state: ${strategyName} ${targetSymbol} ` +
+            `${closedOrder?.clientOrderId ?? signal.clientOrderId ?? orderId} — ${errorMessage}`,
+        );
+        // Re-delivering is what lets a strategy that missed the state drop the
+        // order instead of holding it LIVE and sweeping forever — the silent half
+        // of incident 633. Idempotent on the strategy side, one cheap callback
+        // per retry.
+        if (closedOrder) {
+          void this.onAccountUpdate({
+            orders: [{ ...closedOrder }],
+            exchangeName: exchangeName ?? exchange.name,
+          }).catch((applyError) =>
+            this.logger.error(
+              `Failed to re-deliver the ${closedOrder.status} state for ` +
+                `${closedOrder.clientOrderId ?? orderId}`,
+              applyError as Error,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 🆕 A failed cancel means our local view disagrees with the venue, and
+      // the blanket REJECTED verdict below is wrong in exactly the case that
+      // keeps happening in production: the order is already gone from the venue
+      // (its terminal event was lost to a deploy restart or a missed user-data
+      // push, or the previous process already closed it). Retrying the cancel
+      // can never succeed, yet the strategy held the order as LIVE forever,
+      // re-issued the cancel every 60 s and pushed a misleading `Order Failed`
+      // each time (incident 2026-10-01, strategy 633 — `E633D1D1790828287920`,
+      // 3 183 s of repeating `Request failed with status code 400`).
+      //
+      // The venue is authoritative, so ask it what really happened and report
+      // THAT instead (one extra REST call, on the error path only). If the
+      // lookup cannot prove a terminal state — the venue still shows the order
+      // as live, or the lookup itself failed for an unrelated reason — fall
+      // through to the conservative REJECTED report below.
+      //
+      // Nothing extra while we are being throttled: the reconcile is a REST
+      // call, and a 429 escalates to a 418 IP ban if we keep hammering.
+      const recovery: { kind: 'terminal' | 'live' | 'unknown'; order?: Order } =
+        this.isRateLimitError(error)
+          ? { kind: 'unknown' }
+          : await this.resolveStateAfterCancelFailure(
+              exchange,
+              targetSymbol,
+              orderId,
+              signal.clientOrderId,
+              resolvedOrder,
+              error,
+              {
+                exchangeName,
+                strategyId,
+                strategyType,
+                strategyName: userDefinedName,
+              },
+            );
+
+      if (recovery.kind === 'terminal' && recovery.order) {
+        const terminalOrder = recovery.order;
+        this.logger.warn(
+          `Cancel failed — the venue reports ${terminalOrder.status} for this ` +
+            `order (reporting that instead of REJECTED): ${strategyName} ` +
+            `${targetSymbol} ${terminalOrder.clientOrderId ?? orderId} — ${errorMessage}`,
+        );
+        // Deliberately the SAME entry point as the websocket `orderUpdate`
+        // listener: order map, execution/trade detection, event bus and
+        // strategy notification all have to happen exactly once, so a state
+        // recovered from the venue can never double-count a fill that a late
+        // websocket push reports too.
+        //
+        // Best effort: reporting the recovered state must never fail the cancel
+        // path (a strategy callback that throws would otherwise surface as an
+        // unhandled rejection of the cancel, hiding the original error).
+        let applied = false;
+        try {
+          await this.applyExchangeOrderUpdate(
+            exchangeName ?? exchange.name,
+            targetSymbol,
+            terminalOrder,
+          );
+          applied = true;
+        } catch (applyError) {
+          this.logger.error(
+            `Failed to apply the recovered ${terminalOrder.status} state for ` +
+              `${terminalOrder.clientOrderId ?? orderId}`,
+            applyError as Error,
+          );
+          // Fail closed: the order-map write is the part that matters, so treat
+          // the state as reported only when it landed there (a throw from a
+          // later stage — an event listener — must not undo it). If nothing
+          // landed we fall through to the conservative REJECTED report below
+          // rather than going silent: the strategy must never be left holding
+          // an order we could not actually verify.
+          const landed = this.findHeldOrder(
+            exchangeName ?? exchange.name,
+            targetSymbol,
+            terminalOrder.clientOrderId,
+            terminalOrder.id,
+          );
+          applied = !!landed && this.isTerminalOrderStatus(landed.status);
+        }
+        if (applied) {
+          // Reported — though not necessarily with the state we just adopted: a
+          // record that is already terminal absorbs this one as a stale update
+          // (a FILLED the venue never quantified swallows the recovered
+          // CANCELED, and a fill that landed while the lookup was in flight wins
+          // the same way). A strategy that never hears a terminal state keeps
+          // sweeping forever, so hand over the record the engine actually
+          // holds before stopping (review R6 Minor-2).
+          const held = this.findHeldOrder(
+            exchangeName ?? exchange.name,
+            targetSymbol,
+            terminalOrder.clientOrderId,
+            terminalOrder.id,
+          );
+          if (held && held.status !== terminalOrder.status) {
+            this.logger.warn(
+              `The recovered ${terminalOrder.status} state was absorbed by an ` +
+                `existing ${held.status} record — handing that one over instead: ` +
+                `${strategyName} ${targetSymbol} ${held.clientOrderId ?? orderId}`,
+            );
+            void this.onAccountUpdate({
+              orders: [{ ...held }],
+              exchangeName: exchangeName ?? exchange.name,
+            }).catch((applyError) =>
+              this.logger.error(
+                `Failed to re-deliver the held ${held.status} state for ` +
+                  `${held.clientOrderId ?? orderId}`,
+                applyError as Error,
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // The venue said the order is still working AND that it has traded: adopting
+      // that state is the whole point of asking — its executions must be booked
+      // (the monotonic guards keep them from double-counting), and writing
+      // REJECTED over inventory the venue says we own is precisely the lie this
+      // path exists to stop (609 red line, review R6 Major). A live order with
+      // nothing executed still takes the conservative report below.
+      if (
+        recovery.kind === 'live' &&
+        recovery.order &&
+        this.isOrderAlreadyExecuted(recovery.order)
+      ) {
+        this.logger.warn(
+          `Cancel failed and the venue still holds this order with executions — ` +
+            `adopting its ${recovery.order.status} state instead of writing ` +
+            `REJECTED: ${strategyName} ${targetSymbol} ` +
+            `${recovery.order.clientOrderId ?? orderId} — ${errorMessage}`,
+        );
+        let landed = false;
+        try {
+          await this.applyExchangeOrderUpdate(
+            exchangeName ?? exchange.name,
+            targetSymbol,
+            recovery.order,
+          );
+          landed = true;
+        } catch (applyError) {
+          this.logger.error(
+            `Failed to apply the live state of ${recovery.order.clientOrderId ?? orderId}`,
+            applyError as Error,
+          );
+          // What has to land is the execution the venue reported, not merely
+          // "a record exists": the map entry existed before this call, so
+          // checking for its presence would always succeed (review R8 Minor).
+          const heldNow = this.findHeldOrder(
+            exchangeName ?? exchange.name,
+            targetSymbol,
+            recovery.order.clientOrderId,
+            recovery.order.id,
+          );
+          landed =
+            (heldNow?.executedQuantity ?? new Decimal(0)).gte(
+              recovery.order.executedQuantity ?? new Decimal(0),
+            ) &&
+            (heldNow?.cummulativeQuoteQuantity ?? new Decimal(0)).gte(
+              recovery.order.cummulativeQuoteQuantity ?? new Decimal(0),
+            );
+        }
+        if (!landed) {
+          // Never REJECTED over an execution the venue just confirmed: hand its
+          // own answer to the strategy and leave the map for the next update to
+          // correct.
+          this.logger.warn(
+            `Could not record the live ${recovery.order.status} state of ` +
+              `${recovery.order.clientOrderId ?? orderId} — re-delivering the ` +
+              `venue's answer instead.`,
+          );
+          void this.onAccountUpdate({
+            orders: [{ ...recovery.order }],
+            exchangeName: exchangeName ?? exchange.name,
+          }).catch((applyError) =>
+            this.logger.error(
+              `Failed to re-deliver the venue's ${recovery.order?.status} state for ` +
+                `${recovery.order?.clientOrderId ?? orderId}`,
+              applyError as Error,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Every judgement below is made on a snapshot read BEFORE the venue
+      // lookup, and that lookup awaits: a late websocket push can land in
+      // between and replace the map entry with a filled one. Re-read the record
+      // the engine holds now — the same source the `applied` check above trusts
+      // — so a fill that arrived during the await cannot be reported REJECTED
+      // (review R6 Major).
+      const freshOrder =
+        this.findHeldOrder(
+          exchangeName ?? exchange.name,
+          targetSymbol,
+          resolvedOrder?.clientOrderId ?? signal.clientOrderId,
+          resolvedOrder?.id ?? orderId,
+        ) ?? resolvedOrder;
+
+      // 609 red line, second door: whatever the reconcile could not prove, an
+      // order that has real executions must never be downgraded to REJECTED —
+      // writing REJECTED over a partially filled order both hides inventory we
+      // own and is the lie this whole path exists to stop. Keep what we hold,
+      // re-deliver it so the strategy at least sees the latest truth, and say
+      // why in the log.
+      //
+      // (Known follow-up, deliberately deferred: when the venue reports FILLED
+      // without execution numbers we report FILLED as-is, so the strategy may
+      // hear FILLED once without a quantity and again when the websocket push
+      // carries the fill. Deriving `executedQuantity = quantity` here would fix
+      // that display, but it is a derivation the whole adapter surface would
+      // inherit, so it wants its own review — not a rider on this fix.)
+      const heldIsAuthoritative =
+        this.isTerminalOrderStatus(freshOrder?.status) ||
+        this.isOrderAlreadyExecuted(freshOrder);
+      // The venue's own verdict counts too, even when it could not be written to
+      // the order map: the apply can fail before the write, and REJECTED over an
+      // order the venue reports as traded is exactly the lie this path exists to
+      // stop (review R8 Minor).
+      const venueVerdict =
+        recovery.order !== undefined &&
+        (this.isTerminalOrderStatus(recovery.order.status) ||
+          this.isOrderAlreadyExecuted(recovery.order));
+
+      if (heldIsAuthoritative || venueVerdict) {
+        const authoritative = (
+          heldIsAuthoritative ? freshOrder : recovery.order
+        ) as Order;
+        this.logger.warn(
+          `Cancel failed and the venue would not confirm a terminal state — ` +
+            `keeping the recorded ${authoritative.status} rather than writing ` +
+            `REJECTED over it: ${strategyName} ${targetSymbol} ` +
+            `${authoritative.clientOrderId ?? signal.clientOrderId ?? orderId} — ${errorMessage}`,
+        );
+        void this.onAccountUpdate({
+          orders: [{ ...authoritative }],
+          exchangeName: exchangeName ?? exchange.name,
+        }).catch((applyError) =>
+          this.logger.error(
+            `Failed to re-deliver the ${authoritative.status} state for ` +
+              `${authoritative.clientOrderId ?? orderId}`,
+            applyError as Error,
+          ),
         );
         return;
       }
@@ -1875,6 +2382,491 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
     });
   }
 
+  /**
+   * The order record this engine holds for a venue order.
+   *
+   * The cancel path's lookups all go through here — the clientOrderId the
+   * strategies key on first, then the venue id, normalised and pinned to the
+   * symbol, because the order map is bucketed per exchange and a bare id match
+   * could otherwise pick up another market's record (review R7 Minor: three call
+   * sites had already drifted apart).
+   *
+   * The clientOrderId pass deliberately does NOT pin the symbol — the key is
+   * generated by this engine and is globally unique, and matching on it alone is
+   * what lets a cancel that names the wrong symbol still find and update its
+   * order. Do not "make it consistent" by adding a symbol check there.
+   *
+   * `applyExchangeOrderUpdate` keeps an inline variant of this two-pass match
+   * because it needs the array index, not just the record. **If that matching
+   * ever changes, change it in both places** — two implementations of one rule is
+   * exactly the drift both reviews flagged.
+   */
+  private findHeldOrder(
+    exchangeName: string,
+    symbol: string,
+    clientOrderId: string | undefined,
+    orderId: string | undefined,
+  ): Order | undefined {
+    const orders = this._orders.get(exchangeName) ?? [];
+    if (clientOrderId) {
+      const byClientOrderId = orders.find((o) => o.clientOrderId === clientOrderId);
+      if (byClientOrderId) {
+        return byClientOrderId;
+      }
+    }
+    if (!orderId) {
+      return undefined;
+    }
+    return orders.find(
+      (o) => this.sameVenueOrderId(o.id, orderId) && (o.symbol === symbol || !o.symbol),
+    );
+  }
+
+  /**
+   * Are these two venue ids the SAME order?
+   *
+   * Adapters are not consistent about the id they echo: the engine stores the
+   * venue's own number as `order-748929329`, while a raw user-data push for that
+   * same order arrives as `748929329`. Comparing the strings literally made the
+   * engine read one order as two — a late non-terminal push for a closed order
+   * then looked like a brand new order, spliced the record and let the next
+   * reconcile book the whole fill again (the 609 double-count, review R5 Major).
+   *
+   * So one order number wrapped as `prefix + digits` is normalised to those
+   * digits: `order-748929329` and `748929329` are one order. This assumes the
+   * venue's own order number is unique within the venue — every adapter we ship
+   * stores exactly that number (some with a prefix), so a numeric body must never
+   * become the discriminator: an adapter that encoded a type in the id
+   * (`S-123` vs `F-123`) would be merged by this rule. Anything else (a
+   * uuid, a composite id, digits in the middle) is compared literally, so two
+   * ids that merely share digits — `1-23` against `12-3`, `v2-0001` against
+   * `20001` — are never merged. The order map is bucketed per exchange, so ids
+   * never cross venues either.
+   */
+  private sameVenueOrderId(a?: string, b?: string): boolean {
+    if (!a || !b) {
+      return false;
+    }
+    if (a === b) {
+      return true;
+    }
+    const digitsA = /^\D*(\d+)$/.exec(a);
+    const digitsB = /^\D*(\d+)$/.exec(b);
+    if (digitsA === null || digitsB === null) {
+      return false;
+    }
+    // The same number written with different padding is still one order:
+    // `00748929329` and `748929329` must not start a second record. Compared as
+    // strings on purpose — venue order numbers can exceed Number.MAX_SAFE_INTEGER
+    // (Binance is already at 19 digits), so never "simplify" this to Number().
+    const trimZeros = (digits: string) => digits.replace(/^0+(?=\d)/, '');
+    return trimZeros(digitsA[1]) === trimZeros(digitsB[1]);
+  }
+
+  /**
+   * 🆕 Is this status final for the order? Terminal orders can only be updated
+   * by an equally terminal state, and their status event is never re-fired for
+   * a duplicate update that brings no new execution.
+   */
+  private isTerminalOrderStatus(status?: OrderStatus): boolean {
+    return (
+      status === OrderStatus.FILLED ||
+      status === OrderStatus.CANCELED ||
+      status === OrderStatus.EXPIRED
+    );
+  }
+
+  /**
+   * Apply an order update to the engine's own state, then tell everyone who
+   * cares about it: the order map (which feeds execution/trade detection), the
+   * event bus, the strategies and the account snapshot.
+   *
+   * 🆕 This is the ONE place where a learned order state is booked, so it is
+   * shared by the websocket `orderUpdate` listener and by every path that
+   * learns an order's real state by other means — today
+   * `executeCancelOrder`, which recovers the terminal state of an order whose
+   * push was lost (see `resolveStateAfterCancelFailure`).
+   * Booking it anywhere else means a late websocket push for the same order
+   * gets processed twice: the execution delta below is only recalculated
+   * correctly because the order map is updated here, first.
+   */
+  private async applyExchangeOrderUpdate(
+    exchangeName: string,
+    symbol: string,
+    order: Order,
+  ): Promise<void> {
+    // 🆕 Enrich order with strategy info BEFORE any processing/logging
+    this.enrichOrderWithStrategyInfo(order);
+
+    this.logger.info(`📦 Order Update from ${exchangeName}: ${symbol} - ${order.status}`);
+
+    // Store/update order in the orders map
+    const orders = this._orders.get(exchangeName) || [];
+    // clientOrderId is the identity the strategies (and the cancel signal) key
+    // on, so prefer it when present: an adapter reporting a different `id` for
+    // the same order must not fork our record into a second entry, which would
+    // start from executed 0 and re-count the whole fill as a fresh trade.
+    // Two explicit passes rather than one OR: if a legacy fork ever left two
+    // records matching on different fields, the clientOrderId (what the
+    // strategies key on) has to win, not whichever sits first in the array.
+    let existingOrderIndex = order.clientOrderId
+      ? orders.findIndex((o) => o.clientOrderId === order.clientOrderId)
+      : -1;
+    if (existingOrderIndex < 0) {
+      // Normalised, so an adapter that wraps the id it echoed (`order-748929329`
+      // for `748929329`) matches the record we hold instead of looking like a
+      // second order. Pinned to the symbol because this map is bucketed per
+      // exchange: two different symbols can share a numeric body, and merging
+      // those would attach one market's fill to the other (review R6 Minor).
+      existingOrderIndex = orders.findIndex(
+        (o) =>
+          this.sameVenueOrderId(o.id, order.id) && (o.symbol === symbol || !o.symbol),
+      );
+    }
+
+    // 🆕 Calculate execution delta for partial fills
+    let trade: Trade | undefined;
+    let previousExecutedQty = new Decimal(0);
+    let previousCumQuoteQty = new Decimal(0);
+    let previousCommission = new Decimal(0);
+    let previousStatus: OrderStatus | undefined;
+
+    if (existingOrderIndex >= 0) {
+      const existingOrder = orders[existingOrderIndex];
+
+      // 🆕 A different venue id under the same clientOrderId is a NEW order, not
+      // an update: venues let the key be reused once the old order closed, and
+      // silently folding the new order into the old record would hide it (its
+      // fills would never be booked). Only an order we already saw end is
+      // superseded this way.
+      // …and narrow on purpose. Three conditions, because reading one order as
+      // two is the expensive mistake (609 double-count) while the reverse only
+      // hides a theoretical reuse:
+      //  1. the ids must be genuinely different ONCE NORMALISED — `order-748929329`
+      //     and `748929329` are one order, and folding that into a "new order"
+      //     is how a late push re-counts a fill (R5 Major);
+      //  2. the update must be manifestly LIVE — an order we already saw end can
+      //     never revive, so a terminal push under a foreign id is far more
+      //     likely to be the adapter's own formatting for the SAME order.
+      //  3. it must be a CLEARLY FRESH order — `NEW` with nothing executed.
+      //     Anything less still reads as an update, and this is what keeps the
+      //     fold honest across pushes: once an order is folded into the record
+      //     our id replaces the venue's, so a later non-terminal push (an
+      //     out-of-order `PARTIALLY_FILLED` for that new order) would otherwise
+      //     look like a reuse, splice away a record that already booked fills
+      //     and book them again on the next reconcile (R5 Minor).
+      // The deliberate trade-off: a new order whose first visible update is
+      // already terminal, or already partly filled, is read as an update of the
+      // expired record. Its fills are then measured against the old record, so
+      // it is under-counted — and if it executed LESS than the old record did,
+      // the whole update is a regression the monotonic guard discards, i.e. it
+      // goes unbooked entirely. Both are the safe direction, and both need the
+      // key to be globally unique (true for the engine's `E<sid>D<ts>`, which is
+      // generated here and cannot be supplied by a caller), which is why the
+      // reuse branch exists rather than assuming it.
+      const isKeyReuse =
+        !!order.id &&
+        !!existingOrder.id &&
+        !this.sameVenueOrderId(order.id, existingOrder.id) &&
+        this.isTerminalOrderStatus(existingOrder.status) &&
+        order.status === OrderStatus.NEW &&
+        (!order.executedQuantity || order.executedQuantity.eq(0));
+
+      if (isKeyReuse) {
+        this.logger.warn(
+          `Order ${order.id} reuses the clientOrderId of the ended order ` +
+            `${existingOrder.id} (${order.clientOrderId}) — tracking it as a new order.`,
+        );
+        // Drop the ended record so the reused key maps to exactly one order,
+        // and start a fresh one (delta and events as for any new order). The
+        // key's "already emitted OrderCreated" marker goes with it, otherwise
+        // the new order would never be announced.
+        orders.splice(existingOrderIndex, 1);
+        existingOrderIndex = -1;
+        this._emittedOrderCreated.delete(order.clientOrderId || order.id);
+        orders.push(order);
+      } else {
+        // Both a genuine adapter echo and the deliberate trade-off above land
+        // here, and they are indistinguishable after the fact unless we say so:
+        // the reuse path warns, so this path must too (kimi R5 Nit).
+        if (
+          !!order.id &&
+          !!existingOrder.id &&
+          !this.sameVenueOrderId(order.id, existingOrder.id)
+        ) {
+          this.logger.warn(
+            `Update for ${order.clientOrderId ?? existingOrder.id} carries a different ` +
+              `venue id (${order.id} vs the recorded ${existingOrder.id}) — treating it ` +
+              `as an update of the recorded order.`,
+          );
+        }
+        previousStatus = existingOrder.status;
+        previousExecutedQty = existingOrder.executedQuantity || new Decimal(0);
+        previousCumQuoteQty = existingOrder.cummulativeQuoteQuantity || new Decimal(0);
+        previousCommission = existingOrder.commission || new Decimal(0);
+
+        // 🆕 Drop an update that would roll this order back. A terminal order is
+        // final (a websocket push racing the recovery path's REST snapshot, an
+        // adapter replaying NEW after FILLED, an older snapshot landing late —
+        // the 609 oversell shape), FILLED is absorbing (only a CANCELED → FILLED
+        // correction is still allowed), and execution only ever grows (rolling
+        // it back makes the next update re-count the difference as a fresh fill,
+        // at the wrong price and fee). Each of these is dropped whole: a
+        // half-applied stale snapshot is worse than not applying it at all.
+        const previousIsTerminal = this.isTerminalOrderStatus(previousStatus);
+        const incomingIsTerminal = this.isTerminalOrderStatus(order.status);
+        // The venue's terminal wording is authoritative and must land even when
+        // the numbers travelling with it look like a rollback (an adapter that
+        // defaults a missing executedQuantity to 0, a snapshot taken inside a
+        // settlement window, a retention-truncated order). Monotonicity is our
+        // own bookkeeping discipline, so it clamps the numbers rather than
+        // vetoing the status: dropping the whole update left the engine holding a
+        // live order forever, which is the 3183 s sweep this MR exists to end
+        // (review R7 Major).
+        // A terminal *transition* is what has to land — FILLED after CANCELED
+        // included, even when the correction carries the same or fewer
+        // executions (an adapter that defaults a missing executedQuantity to 0 is
+        // exactly the case that produced this rule). A repeat of a status already
+        // recorded is not a transition, so a stale same-status snapshot is still
+        // dropped whole below.
+        const terminalTransition = incomingIsTerminal && previousStatus !== order.status;
+        const isStale =
+          (previousIsTerminal && !incomingIsTerminal) ||
+          // FILLED absorbs anything but another FILLED: the clause that follows
+          // is the mark of what is allowed THROUGH, not a description of what
+          // gets discarded. A filling update for an already-filled order is how a
+          // tail execution (or a fill the recovery could not read) gets booked,
+          // so only that shape must be applied — the duplicate-emit guard further
+          // down keeps it quiet when it carries no new execution.
+          (previousStatus === OrderStatus.FILLED &&
+            order.status !== OrderStatus.FILLED) ||
+          (!terminalTransition &&
+            order.executedQuantity !== undefined &&
+            order.executedQuantity.lt(previousExecutedQty));
+
+        if (isStale) {
+          if (
+            previousIsTerminal &&
+            !this.isTerminalOrderStatus(order.status) &&
+            order.executedQuantity !== undefined &&
+            order.executedQuantity.gt(previousExecutedQty)
+          ) {
+            // Contradictory rather than impossible: our own synthesised CANCELED
+            // can be outlived by a real execution. The terminal state still
+            // stands — only the venue's own terminal correction revises it — but
+            // dropping executions silently is what made incident 633 hard to read
+            // (review R8 Minor, follow-up).
+            this.logger.warn(
+              `Dropping a ${order.status} update for ${order.clientOrderId ?? order.id} that ` +
+                `reports more executions (${order.executedQuantity}) than the recorded ` +
+                `${previousStatus} (${previousExecutedQty}) — the terminal state stands.`,
+            );
+          }
+          this.logger.warn(
+            `Ignoring a stale ${order.status} update (executed ` +
+              `${order.executedQuantity ?? '?'}) for the order recorded as ` +
+              `${previousStatus} (executed ${previousExecutedQty}): ` +
+              `${order.clientOrderId ?? order.id}`,
+          );
+          return;
+        }
+
+        // 🆕 Safety: If incoming order has undefined executedQuantity, inherit from previous state
+        // This prevents regression to 0 which would cause double-counting on next fill
+        if (order.executedQuantity === undefined) {
+          order.executedQuantity = previousExecutedQty;
+        }
+        // A terminal state that arrived with numbers below what we already hold
+        // keeps its status but not the rollback: the amounts we booked are real
+        // executions, and taking them back would make the next update re-count
+        // them as a fresh fill, at the wrong price and fee.
+        if (
+          order.executedQuantity !== undefined &&
+          order.executedQuantity.lt(previousExecutedQty)
+        ) {
+          this.logger.warn(
+            `The ${order.status} update for ${order.clientOrderId ?? order.id} reports ` +
+              `executed ${order.executedQuantity} below the recorded ` +
+              `${previousExecutedQty} — keeping the higher figure and the status.`,
+          );
+          order.executedQuantity = previousExecutedQty;
+        }
+        // Inherit cumulative quote qty if missing too
+        if (order.cummulativeQuoteQuantity === undefined) {
+          order.cummulativeQuoteQuantity = previousCumQuoteQty;
+        }
+        if (
+          order.cummulativeQuoteQuantity !== undefined &&
+          order.cummulativeQuoteQuantity.lt(previousCumQuoteQty)
+        ) {
+          this.logger.warn(
+            `The ${order.status} update for ${order.clientOrderId ?? order.id} reports ` +
+              `a cumulative quote of ${order.cummulativeQuoteQuantity} below the recorded ` +
+              `${previousCumQuoteQty} — keeping the higher figure.`,
+          );
+          order.cummulativeQuoteQuantity = previousCumQuoteQty;
+        }
+        // Inherit cumulative commission if missing too (same double-counting guard as above)
+        if (order.commission === undefined) {
+          order.commission = previousCommission;
+        }
+        if (order.commissionAsset === undefined) {
+          order.commissionAsset = existingOrder.commissionAsset;
+        }
+        if (order.commission !== undefined && order.commission.lt(previousCommission)) {
+          this.logger.warn(
+            `The ${order.status} update for ${order.clientOrderId ?? order.id} reports a ` +
+              `commission of ${order.commission} below the recorded ${previousCommission} — ` +
+              `keeping the higher figure.`,
+          );
+          order.commission = previousCommission;
+        }
+
+        // Keep our own identity: an adapter reporting a different id for an
+        // order we already hold (its own id format, a re-issued number) must not
+        // rename our record — the order map, the emitted events and the
+        // persisted row all key on it.
+        if (existingOrder.id) {
+          order.id = existingOrder.id;
+        }
+
+        // Update existing order
+        orders[existingOrderIndex] = order;
+      }
+    } else {
+      // Add new order
+      orders.push(order);
+    }
+    this._orders.set(exchangeName, orders);
+    // Calculate delta to detect if a trade occurred
+    const currentExecutedQty = order.executedQuantity || new Decimal(0);
+    const currentCumQuoteQty = order.cummulativeQuoteQuantity || new Decimal(0);
+    const currentCommission = order.commission || new Decimal(0);
+    const deltaQty = currentExecutedQty.minus(previousExecutedQty);
+
+    if (deltaQty.gt(0)) {
+      // A trade occurred (partial or final fill)
+      const deltaQuote = currentCumQuoteQty.minus(previousCumQuoteQty);
+      // Calculate average price of this chunk
+      const fillPrice = deltaQty.isZero() ? new Decimal(0) : deltaQuote.div(deltaQty);
+      // 🆕 Fee for this specific chunk, derived from the (cumulative) commission delta.
+      // `order.commission` is expected to be a running total for the whole order
+      // (mirrors executedQuantity/cummulativeQuoteQuantity), so diffing gives the
+      // fee attributable to just this fill. Guard against negative deltas from
+      // out-of-order/duplicate updates.
+      const deltaFee = currentCommission.minus(previousCommission);
+
+      trade = {
+        id: `${order.id}-${Date.now()}`, // Generate unique trade ID for this fill
+        symbol: order.symbol,
+        price: fillPrice.isZero() ? order.price || new Decimal(0) : fillPrice,
+        quantity: deltaQty,
+        side: order.side === OrderSide.BUY ? 'buy' : 'sell',
+        timestamp: new Date(),
+        exchange: exchangeName,
+        strategyId: order.strategyId,
+        fee: deltaFee.gt(0) ? deltaFee : new Decimal(0),
+      };
+
+      this.logger.info(
+        `⚖️ Execution detected: ${trade.side} ${trade.quantity} @ ${trade.price} ` +
+          `(Order: ${order.clientOrderId})`,
+      );
+
+      // 🆕 Notify strategies of the trade execution. Deliberately NOT awaited:
+      // a strategy callback must never hold up — or truncate — the state
+      // bookkeeping above, and notifyStrategies* already isolate every strategy
+      // in its own try/catch. Ordering between two pushes for one order comes
+      // from `applyExchangeOrderUpdate` writing the map synchronously (there is
+      // no `await` before that write) — this floating notify is orthogonal to it.
+      const executedTrade: Trade = trade;
+      void this.notifyStrategiesTradeExecuted(executedTrade, exchangeName).catch(
+        (error) =>
+          this.logger.error(
+            'Failed to notify strategies of a trade execution',
+            error as Error,
+          ),
+      );
+    }
+
+    order.exchange = exchangeName;
+    if (!order.userId) {
+      order.userId = this._userId;
+    }
+
+    // The order map already holds the new state, so the account update below has
+    // to go out even when a listener throws synchronously: skipping it would leave
+    // the strategy on the old state — the silent half of incident 633 (review R6
+    // Minor). Emitting stays synchronous, so a throw still propagates once the
+    // notification has been sent.
+    try {
+      const emittedKey = order.clientOrderId || order.id;
+      const shouldEmitCreated =
+        order.status !== OrderStatus.CANCELED &&
+        order.status !== OrderStatus.REJECTED &&
+        order.status !== OrderStatus.EXPIRED;
+      if (shouldEmitCreated && !this._emittedOrderCreated.has(emittedKey)) {
+        this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
+        this._emittedOrderCreated.add(emittedKey);
+      }
+
+      // Emit status-specific events for non-NEW statuses.
+      // 🆕 …but not for a duplicate of a terminal update we already applied: a
+      // replayed or delayed push for the same end state carries no new execution,
+      // so re-firing the event (and the strategy callback) would notify twice for
+      // one fill — the residual half of the "one push, two notifications" bug.
+      const isDuplicateTerminal =
+        previousStatus !== undefined &&
+        previousStatus === order.status &&
+        this.isTerminalOrderStatus(order.status) &&
+        !deltaQty.gt(0);
+
+      if (!isDuplicateTerminal) {
+        switch (order.status) {
+          case OrderStatus.FILLED:
+            this._eventBus.emitOrderFilled({ order, timestamp: new Date() });
+            void this.notifyStrategiesOrderFilled(order, exchangeName).catch((error) =>
+              this.logger.error(
+                'Failed to notify strategies of an order fill',
+                error as Error,
+              ),
+            );
+            break;
+          case OrderStatus.PARTIALLY_FILLED:
+            this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
+            // Note: trade notification handled above
+            break;
+          case OrderStatus.CANCELED:
+            this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
+            break;
+          case OrderStatus.REJECTED:
+            this._eventBus.emitOrderRejected({ order, timestamp: new Date() });
+            break;
+          case OrderStatus.EXPIRED:
+            // Expired orders - emit if needed
+            break;
+          case OrderStatus.NEW:
+            // OrderCreated already handled above
+            break;
+        }
+      }
+    } finally {
+      // 🆕 Notify strategies of the specific order update. Fire-and-forget, as the
+      // websocket path always was: the account-update gate already serialises
+      // these calls (and queues one that arrives while another is in flight), and
+      // a strategy error must not undo the state bookkeeping above.
+      void this.onAccountUpdate({
+        orders: [order],
+        exchangeName,
+      }).catch((error) =>
+        this.logger.error(
+          'Failed to notify strategies of an order update',
+          error as Error,
+        ),
+      );
+    }
+  }
+
   private setupExchangeListeners(exchange: IExchange): void {
     const exchangeName = exchange.name;
 
@@ -1918,137 +2910,10 @@ export class TradingEngine extends EventEmitter implements ITradingEngine {
 
     // Listen for user data updates
     exchange.on('orderUpdate', (symbol: string, order: Order) => {
-      // 🆕 Enrich order with strategy info BEFORE any processing/logging
-      this.enrichOrderWithStrategyInfo(order);
-
-      this.logger.info(
-        `📦 Order Update from ${exchangeName}: ${symbol} - ${order.status}`,
+      // All order bookkeeping lives in one place — see the method docs.
+      void this.applyExchangeOrderUpdate(exchangeName, symbol, order).catch((error) =>
+        this.logger.error(`Error applying an order update for ${symbol}`, error as Error),
       );
-
-      // Store/update order in the orders map
-      const orders = this._orders.get(exchangeName) || [];
-      const existingOrderIndex = orders.findIndex((o) => o.id === order.id);
-
-      // 🆕 Calculate execution delta for partial fills
-      let trade: Trade | undefined;
-      let previousExecutedQty = new Decimal(0);
-      let previousCumQuoteQty = new Decimal(0);
-      let previousCommission = new Decimal(0);
-
-      if (existingOrderIndex >= 0) {
-        const existingOrder = orders[existingOrderIndex];
-        previousExecutedQty = existingOrder.executedQuantity || new Decimal(0);
-        previousCumQuoteQty = existingOrder.cummulativeQuoteQuantity || new Decimal(0);
-        previousCommission = existingOrder.commission || new Decimal(0);
-
-        // 🆕 Safety: If incoming order has undefined executedQuantity, inherit from previous state
-        // This prevents regression to 0 which would cause double-counting on next fill
-        if (order.executedQuantity === undefined) {
-          order.executedQuantity = previousExecutedQty;
-        }
-        // Inherit cumulative quote qty if missing too
-        if (order.cummulativeQuoteQuantity === undefined) {
-          order.cummulativeQuoteQuantity = previousCumQuoteQty;
-        }
-        // Inherit cumulative commission if missing too (same double-counting guard as above)
-        if (order.commission === undefined) {
-          order.commission = previousCommission;
-        }
-        if (order.commissionAsset === undefined) {
-          order.commissionAsset = existingOrder.commissionAsset;
-        }
-
-        // Update existing order
-        orders[existingOrderIndex] = order;
-      } else {
-        // Add new order
-        orders.push(order);
-      }
-      this._orders.set(exchangeName, orders);
-
-      // Calculate delta to detect if a trade occurred
-      const currentExecutedQty = order.executedQuantity || new Decimal(0);
-      const currentCumQuoteQty = order.cummulativeQuoteQuantity || new Decimal(0);
-      const currentCommission = order.commission || new Decimal(0);
-      const deltaQty = currentExecutedQty.minus(previousExecutedQty);
-
-      if (deltaQty.gt(0)) {
-        // A trade occurred (partial or final fill)
-        const deltaQuote = currentCumQuoteQty.minus(previousCumQuoteQty);
-        // Calculate average price of this chunk
-        const fillPrice = deltaQty.isZero() ? new Decimal(0) : deltaQuote.div(deltaQty);
-        // 🆕 Fee for this specific chunk, derived from the (cumulative) commission delta.
-        // `order.commission` is expected to be a running total for the whole order
-        // (mirrors executedQuantity/cummulativeQuoteQuantity), so diffing gives the
-        // fee attributable to just this fill. Guard against negative deltas from
-        // out-of-order/duplicate updates.
-        const deltaFee = currentCommission.minus(previousCommission);
-
-        trade = {
-          id: `${order.id}-${Date.now()}`, // Generate unique trade ID for this fill
-          symbol: order.symbol,
-          price: fillPrice.isZero() ? order.price || new Decimal(0) : fillPrice,
-          quantity: deltaQty,
-          side: order.side === OrderSide.BUY ? 'buy' : 'sell',
-          timestamp: new Date(),
-          exchange: exchangeName,
-          strategyId: order.strategyId,
-          fee: deltaFee.gt(0) ? deltaFee : new Decimal(0),
-        };
-
-        this.logger.info(
-          `⚖️ Execution detected: ${trade.side} ${trade.quantity} @ ${trade.price} ` +
-            `(Order: ${order.clientOrderId})`,
-        );
-
-        // Notify strategies of the trade execution
-        this.notifyStrategiesTradeExecuted(trade, exchangeName);
-      }
-
-      order.exchange = exchange.name;
-      if (!order.userId) {
-        order.userId = this._userId;
-      }
-
-      const emittedKey = order.clientOrderId || order.id;
-      const shouldEmitCreated =
-        order.status !== OrderStatus.CANCELED &&
-        order.status !== OrderStatus.REJECTED &&
-        order.status !== OrderStatus.EXPIRED;
-      if (shouldEmitCreated && !this._emittedOrderCreated.has(emittedKey)) {
-        this._eventBus.emitOrderCreated({ order, timestamp: new Date() });
-        this._emittedOrderCreated.add(emittedKey);
-      }
-
-      // Emit status-specific events for non-NEW statuses
-      switch (order.status) {
-        case OrderStatus.FILLED:
-          this._eventBus.emitOrderFilled({ order, timestamp: new Date() });
-          this.notifyStrategiesOrderFilled(order, exchangeName);
-          break;
-        case OrderStatus.PARTIALLY_FILLED:
-          this._eventBus.emitOrderPartiallyFilled({ order, timestamp: new Date() });
-          // Note: trade notification handled above
-          break;
-        case OrderStatus.CANCELED:
-          this._eventBus.emitOrderCancelled({ order, timestamp: new Date() });
-          break;
-        case OrderStatus.REJECTED:
-          this._eventBus.emitOrderRejected({ order, timestamp: new Date() });
-          break;
-        case OrderStatus.EXPIRED:
-          // Expired orders - emit if needed
-          break;
-        case OrderStatus.NEW:
-          // OrderCreated already handled above
-          break;
-      }
-
-      // Notify strategies of specific order update
-      this.onAccountUpdate({
-        orders: [order],
-        exchangeName,
-      });
     });
 
     // Balance Update Event
