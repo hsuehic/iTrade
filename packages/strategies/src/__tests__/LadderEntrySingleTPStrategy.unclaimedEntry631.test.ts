@@ -738,10 +738,17 @@ describe('LadderEntrySingleTPStrategy — Strategy 631 unclaimed-entry guards', 
     expect(findCancelSignals(result).map((s) => s.clientOrderId)).not.toContain('E631D1');
   });
 
-  it('treats an own BUY entry with no metadata as a stray instead of failing open', async () => {
+  it('repairs an own BUY entry whose metadata/step link was skipped, instead of cancelling it', async () => {
     // Review round 6, opus F2: a restart can skip the block that recovers
     // metadata for the init `openOrders`. Skipping such an own order silently
     // would let the duplicate through with no signal at all.
+    //
+    // 2026-10-01 restart regression: the sweep now claims an own live entry that
+    // maps onto a ladder step (here price 99 == step 0's price) instead of
+    // cancelling it — the entry is ours by construction, so re-linking it is
+    // strictly better than removing a genuine order. The duplicate the round-6
+    // test guarded against is still impossible: the step holds the live order,
+    // so `hasActiveEntryAfterCleanup` stays true and nothing else is placed.
     const strategy = new LadderEntrySingleTPStrategy(createStrategyConfig());
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -762,7 +769,8 @@ describe('LadderEntrySingleTPStrategy — Strategy 631 unclaimed-entry guards', 
 
     const result = await strategy.analyze(createDataUpdate([]));
 
-    expect(findCancelSignals(result).map((s) => s.clientOrderId)).toEqual([id]);
+    expect(findCancelSignals(result).map((s) => s.clientOrderId)).toEqual([]);
+    expect(internals.steps[0].entryClientOrderId).toBe(id);
     expect(findEntrySignals(result).length).toBe(0);
     errSpy.mockRestore();
   });

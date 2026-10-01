@@ -212,6 +212,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private static readonly REINIT_STUCK_MS = 30_000;
 
   /**
+   * Observation window after the first recovery (2026-10-01, review round 2 M1).
+   *
+   * A cancel is irreversible and destroys the very evidence needed to rebuild the
+   * ladder, while waiting only delays a buy — the costs are asymmetric. For this
+   * window an unclaimed live entry is therefore only BLOCKED (placement stops),
+   * never cancelled: the account stream can still be replaying entries that the
+   * REST snapshot did not contain (five strategies initialise serially, ~9 s in
+   * production, while their streams arrive in parallel).
+   */
+  private static readonly POST_INIT_OBSERVATION_MS = 30_000;
+
+  /**
    * 🆕 Re-issue interval for cancelling an unclaimed live entry order: a
    * still-live stray is re-cancelled at most once per interval, from any path
    * that could place an entry (see `sweepUnclaimedEntries`).
@@ -372,6 +384,86 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
    * Pruned together with `_unclaimedCancelIssuedAt`.
    */
   private _unclaimedStrayFirstSeenAt = new Map<string, number>();
+
+  /**
+   * 🆕 2026-10-01 restart regression: epoch (ms) at which the FIRST recovery
+   * verdict became final, 0 until then.
+   *
+   * The engine sets `_isRunning = true` BEFORE its sequential
+   * `loadInitialDataForStrategy()` loop (deliberately, "allows strategies to
+   * execute orders during initialization") and registers each strategy before
+   * its initial data is loaded, while `onAccountUpdate()` has no
+   * `_strategiesWithLoadedInitialData` gate. The account stream replays every
+   * open order on reconnect, so `analyze()` runs while the strategy has neither
+   * a recovered ladder nor any idea which entry belongs to which level. Until
+   * this epoch is set, the strategy must neither cancel (every replayed entry
+   * looks unclaimed — cancellations were the 09:26 incident) nor place (a
+   * replayed entry would arrive next to a freshly placed duplicate). In-memory
+   * on purpose: "has this process recovered yet" is exactly process state.
+   */
+  private _initialRecoveryCompletedAt = 0;
+
+  /**
+   * Client order ids that the init REST snapshot (`initialData.openOrders`)
+   * contained (2026-10-01, review round 2 M1).
+   *
+   * Their price was available to the recovery, so Step 1c can re-anchor on them and
+   * the ladder can claim them; an entry from this set that is STILL unclaimed after
+   * the recovery is genuinely not part of the ladder (old cycle, above the cap) and
+   * may be cancelled at once. The observation window is reserved for entries that
+   * only ever arrived over the account stream — the case where the snapshot omitted
+   * them and the recovery never saw their price.
+   */
+  private _snapshotEntryIds = new Set<string>();
+
+  /**
+   * Gross size bought this cycle (still held + already sold) as established by the
+   * net-position recovery (Step 4e).
+   *
+   * The rest of the strategy works on GROSS inventory: `recalculateVWAP()` sums the
+   * entry BUY fills, and the TP is sized `inventoryQty - tpFilledQty`. A recovery
+   * that only knows the NET position of the DB must therefore restore the gross
+   * (net + already sold) or the TP would be short by the sold part. Kept separately
+   * so Step 4d's gross-vs-net level inference does not add `tpFilledQty` twice.
+   * Kept until the cycle resets: `recalculateVWAP()` re-derives the position from
+   * order evidence on every pass, so it only ever rises ABOVE this value, and
+   * dropping it would let the evidence shrink the position (and the TP).
+   */
+  private _recoveredGrossInventory: Decimal | null = null;
+  /**
+   * Quantity/cost of the recovered gross that the visible entry fills do NOT
+   * account for (truncated `orderHistory`). `recalculateVWAP()` works from order
+   * evidence only, so without this carry-in the first later fill would shrink the
+   * position back to the visible part and the TP would under-cover the remainder
+   * (review round 3, C). Cleared on cycle reset.
+   */
+  private _recoveredCarryInQty = new Decimal(0);
+  private _recoveredCarryInCost = new Decimal(0);
+  /**
+   * Set when the recovery could not price an incomplete fill set. `recalculateVWAP()`
+   * must then NOT price the position from the visible subset (that VWAP is below the
+   * true cost and would silently release the "manual intervention" halt), until real
+   * fills beyond the recovered gross arrive (review round 4, N1).
+   */
+  private _recoveryPricingLocked = false;
+  /** Already-sold total seen in the history by the net-position recovery (Step 4e). */
+  private _recoveredSoldThisCycle = new Decimal(0);
+
+  /**
+   * Set by the net-position recovery (Step 4e) when `inventoryQty` still holds the
+   * NET position: the already-sold part is only known once Step 4c ran, so the gross
+   * restoration happens right after it (see Step 4e, continued).
+   */
+  private _pendingGrossRecovery = false;
+
+  /**
+   * 🆕 Set when a position was recovered but no VWAP could be established
+   * (`computeTpPrice` refuses a zero VWAP → no TP can cover it). Adding entries
+   * on top of an uncovered position compounds exactly the risk the recovery
+   * exists to remove, so placement is halted until a later fill provides a
+   * price (the alert is visible to the operator either way).
+   */
+  private _positionUncovered = false;
 
   constructor(config: StrategyConfig<LadderEntrySingleTPParameters>) {
     super({ ...config, logger: silentLogger });
@@ -676,10 +768,36 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       this.previousCycleOrderIds.add(coid);
     }
 
+    // A reset drops the ladder/TP book-keeping for whatever is still held. Compare
+    // the STILL-HELD part (`inventoryQty` is GROSS, so subtract what the TP already
+    // sold): a normal cycle end has `inventoryQty == tpFilledQty` and must not raise
+    // this alarm (review round 4, item 8).
+    if (this.inventoryQty.minus(this.tpFilledQty).gt(0) || this._positionUncovered) {
+      this.logVisibleAlert(
+        `reset_drops_position:${this.getStrategyId()}`,
+        `strategyId=${this.getStrategyId()} symbol=${this._symbol}: ladder reset while ` +
+          `inventory=${this.inventoryQty.toString()} (uncovered=${this._positionUncovered}) — ` +
+          `the reset drops the strategy's ladder and TP book-keeping for it; ` +
+          `check the venue/exchange position. Manual intervention required if it is real.`,
+      );
+    }
+
     this.steps = [];
     this.inventoryQty = new Decimal(0);
     this.tpFilledQty = new Decimal(0);
     this.vwap = new Decimal(0);
+    // No position, so nothing is uncovered: a fresh/reset cycle starts unhalted.
+    this._positionUncovered = false;
+    // Drop every trace of the net-position recovery as well: a new cycle has nothing
+    // to do with the position that was recovered, and a leftover carry-in would be
+    // added on top of a fresh gross (review round 4, N1 - the oversell direction).
+    // The TP-filled path and `cleanup()` clear the same set.
+    this._recoveredGrossInventory = null;
+    this._pendingGrossRecovery = false;
+    this._recoveredCarryInQty = new Decimal(0);
+    this._recoveredCarryInCost = new Decimal(0);
+    this._recoveryPricingLocked = false;
+    this._recoveredSoldThisCycle = new Decimal(0);
     this.tpClientOrderId = null;
     this._tpRefreshedThisCycle = false;
     // CRITICAL: Clear all order tracking maps to prevent stale orders from
@@ -916,9 +1034,52 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       totalQty = totalQty.plus(processedQty);
     }
 
+    // Fold in whatever the recovery could not see in the order history, so the
+    // position (and the TP sized from it) stays complete (round 3, C).
+    if (this._recoveredCarryInQty.gt(0)) {
+      totalQty = totalQty.plus(this._recoveredCarryInQty);
+      totalCost = totalCost.plus(this._recoveredCarryInCost);
+    }
+
+    // A locked recovery stays locked until the cycle boundary clears it (`resetLadder`
+    // / TP-filled / `cleanup`). It deliberately has NO auto-release: the price evidence
+    // is incomplete, so re-deriving the VWAP from the visible subset would place the TP
+    // below the true cost, and releasing it once the visible fills exceed the recovered
+    // gross would still drop the part that was never visible (round 4/5). The Step 4e
+    // alert asks for manual intervention instead. Note that a locked recovery also makes
+    // `placeLadderEntries` return before `sweepUnclaimedEntries`, so no stray is cancelled
+    // while the strategy is halted (conservative direction).
+
     if (totalQty.gt(0)) {
-      this.vwap = totalCost.div(totalQty);
-      this.inventoryQty = totalQty;
+      if (!this._recoveryPricingLocked) this.vwap = totalCost.div(totalQty);
+      // GROSS, as everywhere else. Never let the visible fills shrink the position
+      // below what Step 4e recovered: a truncated order history (or fills withheld
+      // by the adoption cap) would silently under-cover the position and re-open
+      // levels that are already filled (round 3, B3).
+      const recoveredGross = this._recoveredGrossInventory;
+      this.inventoryQty = recoveredGross
+        ? Decimal.max(totalQty, recoveredGross)
+        : totalQty;
+      // A price is available again, so a TP can cover the position: release the
+      // placement halt `_positionUncovered` imposed (see Step 4e). The lock only keeps
+      // the halt while there is NO price at all — a locked recovery that still has a
+      // (recovered) price keeps trading on that price instead of halting silently
+      // (round 5, residual 2).
+      this._positionUncovered = this._recoveryPricingLocked && this.vwap.lte(0);
+    } else if (this._recoveredGrossInventory && this._recoveredGrossInventory.gt(0)) {
+      // Step 4e recovered a real position from the DB in THIS cycle, but no entry in
+      // `this.orders` carries a price (positions-fallback VWAP, or fills withheld
+      // because they exceeded the position). Never silently zero a position we know
+      // exists — that would re-arm placement on top of unsold inventory (round 2, M4b)
+      // — and keep it GROSS: writing NET here makes `tpQty = inventoryQty - tpFilledQty`
+      // go negative and the position loses its cover (round 3, B2).
+      //   Gated on `_recoveredGrossInventory` (this cycle's recovery marker, cleared by
+      //   `resetLadder` / TP-filled / `cleanup`) and NOT on `_recoveredNetPos`: that one
+      //   deliberately survives a reset as the delayed-push budget, and pairing it with
+      //   this branch would resurrect a discarded position into the next cycle with no
+      //   price and no way out (round 5, B).
+      this.inventoryQty = this._recoveredGrossInventory;
+      if (this.vwap.lte(0)) this._positionUncovered = true;
     } else {
       this.vwap = new Decimal(0);
       this.inventoryQty = new Decimal(0);
@@ -1221,6 +1382,24 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private sweepUnclaimedEntries(signals: StrategyResult[]): boolean {
     const now = Date.now();
 
+    // 🆕 2026-10-01 restart mass-cancel guard: with no ladder there is nothing an
+    // entry could be claimed BY, so every replayed live entry would look
+    // "unclaimed by every step" — and `_unclaimedStrayFirstSeenAt` is in-memory,
+    // so right after a restart the grace window is 0s and the sweep cancelled all
+    // of them within a single pass (production: strategies 629-633 cancelled at
+    // 09:26:18.9–09:26:19.8, while the engine was still inside its sequential
+    // `loadInitialDataForStrategy()` loop and only finished initializing at
+    // 09:26:27.8). `TradingEngine.start()` sets `_isRunning = true` BEFORE that
+    // loop and `addStrategy()` registers the strategy before its data loads,
+    // while `onAccountUpdate()` has no `_strategiesWithLoadedInitialData` gate,
+    // so the account stream's replay of open orders reaches this method first.
+    // Cancel nothing, and report nothing: with no ladder there is also nothing
+    // to place (every placement path rebuilds the ladder first and bails out when
+    // the anchor is still unavailable), so returning false cannot open a
+    // duplicate next to a replayed entry either.
+    if (this._initialRecoveryCompletedAt === 0) return false;
+    if (this.steps.length === 0) return false;
+
     // 1) Collect: LIVE + owned + claimed-by-no-step.
     const liveUnclaimedEntryIds: string[] = [];
     for (const [clientOrderId, order] of this.orders) {
@@ -1260,6 +1439,147 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       if (this.steps.some((step) => step.entryClientOrderId === clientOrderId)) {
         continue;
       }
+
+      // 🆕 Anchor-independent claim (2026-10-01). An own live entry whose
+      // quantity maps onto a ladder step belongs to the ladder even when the
+      // market drifted past every price tolerance. Claim it here — never cancel
+      // it — so the ladder keeps exactly one live order and `hasActiveEntryAfterCleanup`
+      // cannot be talked into placing a duplicate next to it. Suppressed
+      // (self-cancelled / blacklisted) ids are deliberately excluded: those
+      // belong to a cycle this process already tore down.
+      if (
+        !this._selfCancelledEntryIds.has(clientOrderId) &&
+        !this.previousCycleOrderIds.has(clientOrderId)
+      ) {
+        const stepIndex = this.recoverStepIndex(order);
+        if (stepIndex !== undefined) {
+          const step = this.steps.find((s) => s.index === stepIndex);
+          // Claim only what the ladder can actually accept, so a genuine stray is
+          // not adopted into the book (review round 1, M5):
+          //  - the level must still be OPEN (claiming onto a filled level would
+          //    silently discard the fill accounting);
+          //  - it must be the NEXT level to fill — sequential mode keeps one live
+          //    entry, and this level must have no unfilled predecessor;
+          //  - the level must not be locked by another LIVE order (round 2, 4b: a
+          //    stale id left behind by an earlier recovery must not lock it forever);
+          //  - rival live own entries must not win the evidence tie-break;
+          //  - the quantity-implied level must be where this order's price sits.
+          const hasUnfilledPredecessor =
+            !!step && this.steps.some((s) => !s.filled && s.index < step.index);
+          // Rivals: own live entries other than this one. Ids this process already
+          // cancelled, and ids belonging to a cycle it tore down, are NOT rivals —
+          // a cancel in flight leaves the venue order NEW for a moment and would
+          // otherwise veto a legitimate claim (round 2, 4c).
+          const ownLiveEntryIds = [...this.orders.values()]
+            .filter(
+              (other) =>
+                other.clientOrderId !== clientOrderId &&
+                other.side === OrderSide.BUY &&
+                !!other.clientOrderId &&
+                this.isStrategyOrderId(other.clientOrderId) &&
+                /^(E)\d+D/.test(other.clientOrderId) &&
+                !this._selfCancelledEntryIds.has(other.clientOrderId) &&
+                !this.previousCycleOrderIds.has(other.clientOrderId) &&
+                (other.status === OrderStatus.NEW ||
+                  other.status === OrderStatus.PARTIALLY_FILLED),
+            )
+            .map((other) => other.clientOrderId!);
+          // Two mutually unclaimed live entries must not cancel each other out
+          // (round 2, 4d). The strongest evidence wins: executed quantity first,
+          // then the entry that arrived first (Map insertion order). The loser
+          // stays unclaimed and is handled as a stray below — exactly one of a
+          // duplicate pair survives.
+          const arrival = [...this.orders.keys()];
+          const candidateExecuted = order.executedQuantity ?? new Decimal(0);
+          // Only rivals that could THEMSELVES be claimed take part in the tie-break:
+          // a stronger entry that cannot claim its level (price evidence, wrong
+          // level, an unfilled predecessor) becomes a stray anyway, and dragging the
+          // weaker one into the stray path with it would cancel both — the original
+          // duplicate problem at a lower probability (round 3, item 11).
+          const rivalClaimable = (rivalId: string): boolean => {
+            const rival = this.orders.get(rivalId);
+            if (!rival) return false;
+            const rivalStepIndex = this.recoverStepIndex(rival);
+            if (rivalStepIndex === undefined) return false;
+            const rivalStep = this.steps.find((s) => s.index === rivalStepIndex);
+            if (!rivalStep || rivalStep.filled) return false;
+            if (this.steps.some((s) => !s.filled && s.index < rivalStep.index))
+              return false;
+            if (rivalStep.entryClientOrderId) {
+              const rivalAttached = this.orders.get(rivalStep.entryClientOrderId);
+              if (
+                rivalAttached &&
+                (rivalAttached.status === OrderStatus.NEW ||
+                  rivalAttached.status === OrderStatus.PARTIALLY_FILLED)
+              ) {
+                return false;
+              }
+            }
+            const rivalPrice = rival.price;
+            if (rivalPrice && rivalStep.price.gt(0)) {
+              if (rivalStep.price.minus(rivalPrice).abs().gt(rivalPrice.mul(0.015))) {
+                return false;
+              }
+            }
+            return true;
+          };
+          const candidateWins = ownLiveEntryIds
+            .filter((rivalId) => rivalClaimable(rivalId))
+            .every((rivalId) => {
+              const rival = this.orders.get(rivalId);
+              if (!rival) return true;
+              const rivalExecuted = rival.executedQuantity ?? new Decimal(0);
+              if (!rivalExecuted.eq(candidateExecuted)) {
+                return rivalExecuted.lt(candidateExecuted);
+              }
+              return arrival.indexOf(rivalId) > arrival.indexOf(clientOrderId);
+            });
+          const anotherLiveOwnEntry = ownLiveEntryIds.length > 0 && !candidateWins;
+          // Cross-check the quantity evidence against the price evidence: the level
+          // the quantity points at must ITSELF be where this order's price sits.
+          // Matching the nearest level instead flips to the neighbouring step as
+          // soon as the drift exceeds half a step gap and would reject a legitimate
+          // entry (round 2, 4a).
+          const orderPrice = order.price;
+          const evidenceAgrees =
+            !step ||
+            step.price.lte(0) ||
+            !orderPrice ||
+            step.price.minus(orderPrice).abs().lte(orderPrice.mul(0.015));
+          // A level is claimable when nothing is attached to it, or when the order
+          // attached to it is no longer live (round 2, 4b).
+          const attached = step?.entryClientOrderId
+            ? this.orders.get(step.entryClientOrderId)
+            : undefined;
+          const attachedIsLive =
+            !!attached &&
+            (attached.status === OrderStatus.NEW ||
+              attached.status === OrderStatus.PARTIALLY_FILLED);
+
+          if (
+            step &&
+            !step.filled &&
+            !hasUnfilledPredecessor &&
+            !anotherLiveOwnEntry &&
+            !attachedIsLive &&
+            evidenceAgrees
+          ) {
+            step.entryClientOrderId = clientOrderId;
+            // Visible: this is a recovery decision that decides whether a live
+            // order is kept or cancelled, and the strategy's own logger is silent
+            // in production (the console injects a silent logger).
+            this.logVisibleAlert(
+              `entry_claim:${clientOrderId}`,
+              `strategyId=${this.getStrategyId()} symbol=${this._symbol}: claimed live entry ` +
+                `${clientOrderId} as ladder step ${stepIndex} ` +
+                `(qty=${order.quantity?.toString()}, price=${order.price?.toString()}) — ` +
+                `it belongs to the ladder, so it is kept instead of being cancelled as a stray.`,
+            );
+            continue;
+          }
+        }
+      }
+
       liveUnclaimedEntryIds.push(clientOrderId);
     }
 
@@ -1322,6 +1642,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       // and the stamp write below are throttled; this must always run.
       this.previousCycleOrderIds.delete(clientOrderId);
 
+      // Observation window (round 2, M1): block placement, but do not cancel yet.
+      // `liveUnclaimedEntryIds` is non-empty, so the caller still refuses to place.
+      if (
+        !this._snapshotEntryIds.has(clientOrderId) &&
+        now - this._initialRecoveryCompletedAt <
+          LadderEntrySingleTPStrategy.POST_INIT_OBSERVATION_MS
+      ) {
+        continue;
+      }
+
       const lastIssued =
         this._unclaimedCancelIssuedAt.get(clientOrderId) ??
         // Seed from the self-cancel stamp (round 9, opus m2): the strategy
@@ -1383,6 +1713,42 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   private placeLadderEntries(): StrategyResult[] {
     const signals: StrategyResult[] = [];
 
+    // 🆕 Fail-closed until the first recovery completed (2026-10-01, review round
+    // 2 M1). The engine sets `_isRunning = true` and registers the strategy BEFORE
+    // it loads initial data, and `onAccountUpdate()` has no initialData gate, so
+    // `analyze()` legitimately runs while the position/open-order state is still
+    // unknown. A ladder rebuilt from a stale anchor here would be placed NEXT TO
+    // the entry the account stream is about to replay — the duplicate exposure of
+    // 2026-10-01. Nothing may be placed before the book has been reconciled, and
+    // the block is loud so an engine that never delivers initial data cannot fail
+    // silently.
+    if (this._initialRecoveryCompletedAt === 0) {
+      this.logVisibleAlert(
+        `pre_init_placement_blocked:${this.getStrategyId()}`,
+        `strategyId=${this.getStrategyId()} symbol=${this._symbol}: entry placement is held — the ` +
+          `position / open-order state (initial data) has not been reconciled yet. If this alert ` +
+          `persists, the engine never delivered initial data for this strategy and MANUAL ` +
+          `INTERVENTION IS REQUIRED.`,
+      );
+      return signals;
+    }
+
+    // 🆕 An uncovered position (no VWAP → no TP can cover it) forbids adding
+    // exposure: that would compound exactly the risk the recovery exists to
+    // remove. See `_positionUncovered` / Step 4e.
+    if (this._positionUncovered) {
+      return signals;
+    }
+
+    // Build the ladder BEFORE judging strays: `sweepUnclaimedEntries` needs a
+    // ladder to claim an entry onto (quantity is the primary key, see
+    // `matchStepIndexByQuantity`), and after a reset it is the only place the
+    // first entry gets placed. Without a usable anchor no entry is placed below.
+    if (this.steps.length === 0) {
+      this.steps = this.buildLadder();
+      if (this.steps.length === 0) return signals;
+    }
+
     // Structural safety: never place an entry while a live entry order of this
     // strategy is unclaimed by every ladder step — that is exactly how the
     // 2026-10-01 duplicate (two live entries, 12 ZEC) happened. This also
@@ -1390,11 +1756,6 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // running process is retried even when no reinit ever follows.
     if (this.sweepUnclaimedEntries(signals)) {
       return signals;
-    }
-
-    if (this.steps.length === 0) {
-      this.steps = this.buildLadder();
-      if (this.steps.length === 0) return signals;
     }
 
     for (const step of this.steps) {
@@ -2118,6 +2479,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     // would allow false recovery of delayed WS pushes from the next cycle.
     this._recoveredNetPos = new Decimal(0);
     this._recoveredNetPosTime = 0;
+    this._recoveredGrossInventory = null;
+    this._pendingGrossRecovery = false;
+    this._recoveredCarryInQty = new Decimal(0);
+    this._recoveredCarryInCost = new Decimal(0);
+    this._recoveryPricingLocked = false;
+    this._recoveredSoldThisCycle = new Decimal(0);
 
     // Cancel ALL remaining entry orders
     signals.push(...this.cancelAllEntryOrders('ladder_entry_cancel_on_tp_filled'));
@@ -2658,12 +3025,112 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
   }
 
   /**
-   * Recover step index from entry order clientOrderId by matching price.
-   * Used during restart recovery when metadata.stepIndex is not available.
+   * Maps an order quantity onto a ladder step index — anchor-independent.
+   *
+   * The ladder's per-step quantities come from the config only
+   * (`qtyPerStep` + `qtyStepAdd`/`qtyStepRatio`; verified against `buildLadder`,
+   * which applies no price/notional truncation), so they are identical before and
+   * after a restart even when the market — and therefore every ladder price — has
+   * moved. That makes the quantity the one piece of evidence that identifies the
+   * level without depending on the anchor.
+   *
+   * Ambiguity is reported as `undefined` rather than guessed at, in both forms:
+   *  - the matched quantity value is NOT unique to one step (a constant-size
+   *    ladder from `qtyStepAdd=0, qtyStepRatio=1`, or lot-rounded duplicates such
+   *    as [0.001, 0.001, 0.002]) — this is checked per value, not globally, so one
+   *    duplicated level does not disable the whole ladder;
+   *  - more than one step falls inside the tolerance without an exact match.
+   * The caller then falls back to price matching.
+   *
+   * Exact match wins; a 0.5% tolerance absorbs venue-side quantity rounding.
+   */
+  private matchStepIndexByQuantity(quantity: Decimal): number | undefined {
+    if (this.steps.length === 0 || quantity.lte(0)) return undefined;
+
+    const counts = new Map<string, number>();
+    for (const step of this.steps) {
+      const key = step.quantity.toString();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const isUniqueValue = (value: Decimal): boolean =>
+      (counts.get(value.toString()) ?? 0) === 1;
+
+    // Exact match (only when that quantity value identifies a single step).
+    for (const step of this.steps) {
+      if (step.quantity.lte(0)) continue;
+      if (step.quantity.eq(quantity)) {
+        return isUniqueValue(step.quantity) ? step.index : undefined;
+      }
+    }
+
+    // Tolerance match — only when exactly one step qualifies and its value is
+    // unique, so a neighbouring step can never be shadowed.
+    const tolerance = quantity.mul(0.005); // 0.5%
+    const candidates = this.steps.filter(
+      (step) =>
+        step.quantity.gt(0) &&
+        step.quantity.minus(quantity).abs().lte(tolerance) &&
+        isUniqueValue(step.quantity),
+    );
+    return candidates.length === 1 ? candidates[0].index : undefined;
+  }
+
+  /**
+   * Inverse of the ladder's per-step price formula: given a price that sits on
+   * step `stepIndex`, returns entry 0's price — the base the whole ladder is
+   * built from (`entryBase = referencePrice * (1 - entryGapValue/100)`).
+   *
+   * Only the step geometry is needed, and that comes from the config, so this
+   * works even when the ladder in memory is anchored on a drifted bid0: it is
+   * the anchor-free half of the reconstruction. `stepIndex` 0 returns the price
+   * itself (no division, so the recovered anchor is exact).
+   *
+   * arithmetic: price[i] = entryBase - (i*stepValue + stepValueAdd*i*(i-1)/2)
+   * geometric:  price[i] = entryBase * prod((1 - pct[j]/100), j=0..i-1),
+   *             pct[j] = stepValue * stepValueRatio^j
+   *
+   * Returns undefined when the geometry cannot be inverted (non-positive step
+   * factor), never a guessed value.
+   */
+  private reverseEntryBaseFromPrice(
+    price: Decimal,
+    stepIndex: number,
+  ): Decimal | undefined {
+    if (stepIndex <= 0) return price;
+    if (this.stepType === 'arithmetic') {
+      const drop = this.computeCumulativeStepDrop(stepIndex);
+      return drop ? price.plus(drop) : price;
+    }
+    const stepFactor = this.computeStepPriceRatio(stepIndex);
+    if (!stepFactor || stepFactor.lte(0)) return undefined;
+    return price.div(stepFactor);
+  }
+
+  /**
+   * Recover the ladder step index of an entry order — used during restart
+   * recovery when `metadata.stepIndex` is not available.
+   *
+   * Quantity first (anchor-independent, see `matchStepIndexByQuantity`), then an
+   * exact price match, then a 0.1% price tolerance. The tolerance is deliberately
+   * tight: it is the last resort, and a loose one would claim a neighbouring level.
    */
   private recoverStepIndex(order: Order): number | undefined {
     if (order.side !== OrderSide.BUY) return undefined;
     if (!order.price) return undefined;
+
+    // 🆕 Quantity-first identity (2026-10-01 restart regression).
+    // qty_i = qtyPerStep * qtyStepRatio^i (or qtyPerStep + qtyStepAdd*i) comes
+    // from the CONFIG alone — it does not depend on the price anchor. The ladder
+    // is rebuilt from the current bid0 on every restart, so price is the part
+    // that drifts; quantity is stable and unique per level. Reading the level
+    // off the quantity therefore survives both the restart and the drift, while
+    // price matching needs a tolerance that is wrong in one direction or the
+    // other (production: 0.12%–0.83% drift after the 09:26 CD restart made every
+    // live entry fail the 0.1% match below).
+    if (order.quantity && order.quantity.gt(0)) {
+      const byQuantity = this.matchStepIndexByQuantity(order.quantity);
+      if (byQuantity !== undefined) return byQuantity;
+    }
 
     // Try exact match by price against existing ladder steps
     for (const step of this.steps) {
@@ -2710,6 +3177,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     const signals: StrategyResult[] = [];
     this.referencePriceWasReversedFromTp = false;
     const isReinit = this._needsReinit;
+
+    // Remember which own orders the REST snapshot carried: those are the ones the
+    // recovery below can price, re-anchor on and claim. An entry from this set that
+    // is still unclaimed once the recovery finished is genuinely not part of the
+    // ladder, so the stray sweep may cancel it without the observation window that
+    // entries arriving only over the account stream get (round 2, M1).
+    this._snapshotEntryIds.clear();
+    for (const order of initialData.openOrders ?? []) {
+      if (order.clientOrderId && this.isStrategyOrderId(order.clientOrderId)) {
+        this._snapshotEntryIds.add(order.clientOrderId);
+      }
+    }
 
     // Step 1: Set reference price from REST orderbook if basePrice=0.
     // When _needsReinit=true (TP filled in previous cycle with basePrice=0),
@@ -2874,6 +3353,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
           `Cannot determine reference price. Make sure getInitialDataConfig() returns fetchOrderBook.enabled=true. ` +
           `No entry orders will be placed.`,
       );
+      // This is a real (config) failure, not an unfinished recovery: open the
+      // placement gate so a later analyze() does not report a phantom
+      // `pre_init_placement_blocked` alert forever — there is simply no reference
+      // price to build a ladder from (see `placeLadderEntries`).
+      this._initialRecoveryCompletedAt = Date.now();
       return [];
     }
 
@@ -2967,11 +3451,34 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // mode, an active entry with no TP means step 0 hasn't filled yet.
         // If there were filled steps, a TP would exist.
         let matchedStepIndex = -1;
-        const matchTolerance = entryOrder.price.mul(0.005); // 0.5%
-        for (const step of this.steps) {
-          if (step.price.minus(entryOrder.price).abs().lte(matchTolerance)) {
-            matchedStepIndex = step.index;
-            break;
+        // 🆕 Quantity first (2026-10-01): the quantity identifies the level
+        // independently of the anchor, so it is the primary key here too. It is
+        // evaluated against the ladder built in Step 1/2 (which, when no TP is
+        // present, is anchored on the fresh bid0 and therefore drifted).
+        if (entryOrder.quantity && entryOrder.quantity.gt(0)) {
+          const byQuantity = this.matchStepIndexByQuantity(entryOrder.quantity);
+          if (byQuantity !== undefined) {
+            matchedStepIndex = byQuantity;
+            if (byQuantity > 0 && !this.tpClientOrderId) {
+              // Visible: this is the state the 2026-10-01 restart regression lived
+              // in (a level identified with no TP confirming it), and the console
+              // injects a silent logger — `_logger.warn` would never surface it.
+              this.logVisibleAlert(
+                `step1c_contradictory_evidence:${this.getStrategyId()}`,
+                `strategyId=${this.getStrategyId()} symbol=${this._symbol}: entry ` +
+                  `${entryOrder.clientOrderId} identifies level ${byQuantity} by quantity, ` +
+                  `but no live TP confirms filled levels — rebuilding the anchor from this level.`,
+              );
+            }
+          }
+        }
+        if (matchedStepIndex < 0) {
+          const matchTolerance = entryOrder.price.mul(0.005); // 0.5%
+          for (const step of this.steps) {
+            if (step.price.minus(entryOrder.price).abs().lte(matchTolerance)) {
+              matchedStepIndex = step.index;
+              break;
+            }
           }
         }
         // Fallback: if no price match, assume step 0 (sequential mode:
@@ -2995,26 +3502,16 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         // constant-gap formulas (backward compatible).
         // Then: referencePrice = entryBase + entryGapValue (arithmetic gap)
         //                     or entryBase / (1 - entryGapValue/100) (geometric gap)
-        let entryBase: Decimal | undefined;
-        if (this.stepType === 'arithmetic') {
-          // entryBase = price + i*stepValue + stepValueAdd * i*(i-1)/2
-          const drop = this.computeCumulativeStepDrop(matchedStepIndex);
-          if (drop) {
-            entryBase = entryOrder.price.plus(drop);
-          } else {
-            entryBase = entryOrder.price;
-          }
-        } else {
-          // entryBase = price / ratio where ratio = prod((1-pct[j]/100), j=0..i-1)
-          const stepFactor = this.computeStepPriceRatio(matchedStepIndex);
-          if (stepFactor && stepFactor.gt(0)) {
-            entryBase = entryOrder.price.div(stepFactor);
-          } else {
-            this._logger.warn(
-              `[processInitialData] stepFactor <= 0 for stepIndex=${matchedStepIndex}, ` +
-                `cannot reverse-engineer referencePrice from entry order.`,
-            );
-          }
+        const entryBase = this.reverseEntryBaseFromPrice(
+          entryOrder.price,
+          matchedStepIndex,
+        );
+        if (!entryBase) {
+          this._logger.warn(
+            `[processInitialData] cannot reverse-engineer referencePrice from entry ` +
+              `order ${entryOrder.clientOrderId} (stepIndex=${matchedStepIndex}): ` +
+              `non-invertible step geometry.`,
+          );
         }
 
         if (entryBase && entryBase.gt(0)) {
@@ -3637,6 +4134,336 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       );
     }
 
+    // Step 4e: net-position fallback (2026-10-01 restart regression).
+    //
+    // Narrow trigger: NO live own entry, NO live TP, and a DB-reported executed
+    // position — the state where nothing is left on the venue to read the cycle
+    // from and the net position is the ONLY trace of what the ladder did. That
+    // state used to abandon the position (no entry to complete the ladder and no
+    // TP to exit it = unlimited market risk) and restart the ladder at step 0 on
+    // top of a live position.
+    //
+    // It deliberately does NOT fire while a live entry exists (that entry is the
+    // authority — Step 1c/Step 3 above) or while a live TP exists (the TP quantity
+    // already encodes the filled levels — Step 4a-b above), so it cannot rewrite
+    // the book-keeping of a cycle the other recoveries already resolved.
+    //
+    // Quantity decides WHICH levels are filled (config-derived, anchor-free); this
+    // strategy's own FILLED entries from the CURRENT cycle decide the PRICES that
+    // rebuild entry 0 — a bare net position carries no price. `inventoryQty` stays
+    // NET on purpose: the inference below turns it into the gross quantity via
+    // `inventoryQty + tpFilledQty` before deciding how many levels are filled.
+    // "No live own entry" = nothing of ours is resting on the venue as an entry
+    // (a live entry is the authority on the current cycle — Step 1c/Step 3 above).
+    const hasLiveOwnEntry = [...this.orders.values()].some(
+      (order) =>
+        order.side === OrderSide.BUY &&
+        !!order.clientOrderId &&
+        this.isStrategyOrderId(order.clientOrderId) &&
+        /^(E)\d+D/.test(order.clientOrderId) &&
+        (order.status === OrderStatus.NEW ||
+          order.status === OrderStatus.PARTIALLY_FILLED),
+    );
+    if (
+      !isReinit &&
+      !hasLiveOwnEntry &&
+      !this.tpClientOrderId &&
+      this.steps.length > 0 &&
+      initialData.strategyNetPosition !== undefined &&
+      initialData.strategyNetPosition.gt(0)
+    ) {
+      const netPos = initialData.strategyNetPosition;
+      const history = initialData.orderHistory ?? [];
+
+      // Cycle boundary: entries created AFTER the last FILLED TP belong to the
+      // current, still-incomplete cycle. Without this filter, fills from
+      // already-closed cycles are adopted too (and mixed into the VWAP), which is
+      // how a "recovered" inventory ends up larger than the real position.
+      let lastFilledTpTime: Date | null = null;
+      for (const order of history) {
+        if (
+          order.clientOrderId &&
+          /^(T)\d+D/.test(order.clientOrderId) &&
+          this.isStrategyOrderId(order.clientOrderId) &&
+          order.status === OrderStatus.FILLED &&
+          order.timestamp &&
+          (!lastFilledTpTime || order.timestamp > lastFilledTpTime)
+        ) {
+          lastFilledTpTime = order.timestamp;
+        }
+      }
+
+      const currentCycleFills = history
+        .filter(
+          (order) =>
+            order.symbol === this._symbol &&
+            !!order.clientOrderId &&
+            this.isStrategyOrderId(order.clientOrderId) &&
+            /^(E)\d+D/.test(order.clientOrderId) &&
+            order.side === OrderSide.BUY &&
+            // Any executed quantity, whatever the order's final status: the entry
+            // this recovery exists for was CANCELED with 104/3000 executed, and a
+            // FILLED-only filter dropped that evidence entirely (round 2, 5a).
+            !!order.executedQuantity &&
+            order.executedQuantity.gt(0) &&
+            !!order.timestamp &&
+            (!lastFilledTpTime || order.timestamp > lastFilledTpTime),
+        )
+        .map((order) => {
+          const price = order.averagePrice || order.price;
+          const stepIndex = this.matchStepIndexByQuantity(
+            order.quantity ?? order.executedQuantity!,
+          );
+          return { order, price, stepIndex };
+        })
+        // A price is all a fill needs to be: the VWAP and the TP must not depend on
+        // a level index, which a constant-quantity ladder cannot supply (round 2,
+        // 5b). Only the ladder anchor needs the level (see `firstFill` below).
+        .filter(
+          (
+            fill,
+          ): fill is { order: Order; price: Decimal; stepIndex: number | undefined } =>
+            !!fill.price && fill.price.gt(0),
+        )
+        .sort((a, b) => (a.stepIndex ?? -1) - (b.stepIndex ?? -1));
+
+      const fillsVolume = currentCycleFills.reduce(
+        (sum, fill) => sum.plus(fill.order.executedQuantity!),
+        new Decimal(0),
+      );
+
+      // The already-sold part of the cycle is recovered BEFORE the fills are judged:
+      // `fillsVolume` is GROSS (own BUY fills) while `netPos` is NET, so comparing
+      // them directly rejects the most common restart shape — step 0 bought 3000,
+      // the TP sold 2000 and was cancelled, DB net position 1000 — and with the
+      // fills rejected the ladder loses both its anchor and its VWAP (round 3, B1).
+      //
+      // A TP that partially sold and was then cancelled/replaced is no longer in
+      // `initialData.openOrders`, yet the part it sold is real inventory already
+      // exited and must be netted out of `tpFilledQty`. Step 4c counts
+      // `this.orders`, so a missing SELL order understates the sold part, makes the
+      // gross-vs-net level inference see only the net position and re-places a level
+      // that is already covered (round 2, 5c). Mirrors the R2-C1 sibling path.
+      let sold = new Decimal(0);
+      for (const order of history) {
+        if (
+          !!order.clientOrderId &&
+          this.isStrategyOrderId(order.clientOrderId) &&
+          /^T\d+D/.test(order.clientOrderId) &&
+          order.side === OrderSide.SELL &&
+          !!order.executedQuantity &&
+          order.executedQuantity.gt(0) &&
+          (!lastFilledTpTime || (!!order.timestamp && order.timestamp > lastFilledTpTime))
+        ) {
+          if (!this.orders.has(order.clientOrderId)) {
+            if (!this.orderMetadataMap.get(order.clientOrderId)) {
+              this.ensureRecoveredMetadata(order);
+            }
+            this.orders.set(order.clientOrderId, order);
+            this.processedQuantityMap.set(order.clientOrderId, order.executedQuantity);
+          }
+          sold = sold.plus(order.executedQuantity);
+        }
+      }
+      this._recoveredSoldThisCycle = sold;
+      const expectedGross = netPos.plus(sold);
+
+      // Never adopt more fills than the cycle can account for: a larger total means
+      // the history spans cycles we could not delimit (no FILLED TP to draw the
+      // boundary) or the venue has not finished reporting. In that case keep the
+      // fills OUT of `this.orders` so no later `recalculateVWAP()` can inflate the
+      // inventory, and carry only what the DB position asserts.
+      const adoptFills = fillsVolume.lte(expectedGross);
+      // Fills price the position only when they account for the WHOLE gross: a
+      // partial set (truncated history, or an early fill the venue no longer
+      // reports) would put the TP off target without saying so (round 3, B3).
+      const fillsComplete = fillsVolume.gt(0) && fillsVolume.eq(expectedGross);
+      if (fillsVolume.gt(0) && !fillsVolume.eq(expectedGross)) {
+        // Visible as well: `_logger` is silent in production, and this state means
+        // the recovery had to carry a part of the position it could not see.
+        this.logVisibleAlert(
+          `net_position_recovery_partial_evidence:${this.getStrategyId()}`,
+          `strategyId=${this.getStrategyId()} symbol=${this._symbol}: current-cycle fills ` +
+            `${fillsVolume.toString()} do not account for the recovered gross ` +
+            `${expectedGross.toString()} (net ${netPos.toString()} + sold ${sold.toString()}). ` +
+            `The difference is carried into the inventory so the TP still covers the position; ` +
+            `a late push of one of those older fills would be counted a second time — verify manually.`,
+        );
+        this._logger.warn(
+          `[processInitialData] Step 4e: current-cycle fills total ${fillsVolume.toString()} but ` +
+            `strategyNetPosition + already-sold = ${expectedGross.toString()} — the difference is not ` +
+            `a whole ladder level (e.g. a partial fill that was cancelled or partly sold). Inventory ` +
+            `follows the DB position; the level inference below works in whole levels, so the ` +
+            `remainder is not representable as a step.`,
+        );
+      }
+
+      let anchorSource = 'fresh bid0 (no current-cycle filled-entry price)';
+      // Only an ADOPTED fill with a usable level may re-anchor the ladder: a fill
+      // the position cannot cover is evidence about a cycle that could not be
+      // bounded, and anchoring on it would rebuild the ladder off the wrong level
+      // and place limit buys above the market (round 2, M3).
+      const firstFill = adoptFills
+        ? currentCycleFills.find((fill) => fill.stepIndex !== undefined)
+        : undefined;
+      const gapFactor = new Decimal(1).minus(this.entryGapValue.div(100));
+      if (firstFill && firstFill.stepIndex !== undefined) {
+        const entryBase = this.reverseEntryBaseFromPrice(
+          firstFill.price,
+          firstFill.stepIndex,
+        );
+        const recoveredRef =
+          entryBase && entryBase.gt(0)
+            ? this.entryGapType === 'arithmetic'
+              ? entryBase.plus(this.entryGapValue)
+              : gapFactor.gt(0)
+                ? entryBase.div(gapFactor)
+                : undefined
+            : undefined;
+        if (recoveredRef && recoveredRef.gt(0)) {
+          this.referencePrice = recoveredRef;
+          this.steps = this.buildLadder();
+          anchorSource =
+            `current-cycle filled entry ${firstFill.order.clientOrderId} ` +
+            `(step ${firstFill.stepIndex}, price ${firstFill.price.toString()})`;
+        }
+      }
+
+      let filledVolume = new Decimal(0);
+      let filledNotional = new Decimal(0);
+      for (const { order, price } of currentCycleFills) {
+        const coid = order.clientOrderId!;
+        if (adoptFills) {
+          if (!this.orderMetadataMap.get(coid)) this.ensureRecoveredMetadata(order);
+          this.orders.set(coid, order);
+          this.processedQuantityMap.set(coid, order.executedQuantity!);
+          // Adopted into the current cycle: a push for it must not be dropped.
+          this.previousCycleOrderIds.delete(coid);
+        }
+        // Withheld fills must not price the position either (round 2, M3): their
+        // cost belongs to a cycle this strategy cannot account for, and a VWAP
+        // built from them puts the TP (and therefore the whole exit) off target.
+        if (adoptFills) {
+          filledVolume = filledVolume.plus(order.executedQuantity!);
+          filledNotional = filledNotional.plus(price.mul(order.executedQuantity!));
+        }
+      }
+
+      let vwapSource = 'current-cycle fills';
+      // A withheld or partial fill set must not price the position (round 3, B1/B3):
+      // fall through to the reported position and then to "uncovered" instead.
+      if (adoptFills && fillsComplete) {
+        this.vwap = filledNotional.div(filledVolume);
+      } else {
+        if (filledVolume.gt(0)) vwapSource = 'fills incomplete — not used for pricing';
+        // Last resort for the VWAP: the reported account position for this symbol,
+        // used ONLY when its quantity equals the DB net position exactly (otherwise
+        // the position pools several strategies on the same symbol and its
+        // `avgPrice` is not this strategy's VWAP) and it is a long (this strategy
+        // only ever buys).
+        const matched = (initialData.positions ?? []).find(
+          (p) =>
+            p.symbol === this._symbol &&
+            p.side === 'long' &&
+            p.quantity.eq(netPos) &&
+            p.avgPrice.gt(0),
+        );
+        if (matched) {
+          this.vwap = matched.avgPrice;
+          vwapSource = 'reported position avgPrice';
+        } else {
+          // No trustworthy price for this position. Clear whatever an earlier
+          // recalculation may have derived from the VISIBLE subset — the guards
+          // below (uncovered halt, pricing lock, carry-in) all key off this value,
+          // and a partial-fill VWAP sits below the true cost (round 4, N1).
+          this.vwap = new Decimal(0);
+          vwapSource = 'none (incomplete fills, no position price)';
+        }
+      }
+
+      // Carry in whatever the order history could not show (round 3, C):
+      // `recalculateVWAP()` sees order evidence only, so the first fill after the
+      // recovery would drop the unseen part of the gross and the TP would
+      // under-cover the position. The cost side uses the recovered VWAP.
+      const evidenceQty = adoptFills ? fillsVolume : new Decimal(0);
+      const unseenGross = expectedGross.minus(evidenceQty);
+      if (unseenGross.gt(0) && this.vwap.gt(0)) {
+        // The recovered VWAP covers the WHOLE gross, so the unseen part must carry
+        // `gross * vwap - visible notional`. Using `unseen * vwap` would blend the
+        // position VWAP with the visible fills' price and move the TP (and trigger a
+        // refresh) on the first recalculation (review round 4, N2).
+        const carryCost = expectedGross.mul(this.vwap).minus(filledNotional);
+        if (carryCost.gte(0)) {
+          this._recoveredCarryInQty = unseenGross;
+          this._recoveredCarryInCost = carryCost;
+        } else {
+          // Visible fills cost more than the whole position at the recovered VWAP:
+          // contradictory evidence. Keep the recovered VWAP (a zero cost carry-in
+          // would price the unseen part at nothing) and hold the pricing lock.
+          this._recoveryPricingLocked = true;
+          this.logVisibleAlert(
+            `net_position_carry_in_inconsistent:${this.getStrategyId()}`,
+            `strategyId=${this.getStrategyId()} symbol=${this._symbol}: carry-in cost is negative ` +
+              `(visible fills cost ${filledNotional.toString()} > recovered ${expectedGross.toString()} @ ` +
+              `${this.vwap.toString()}). Keeping the recovered VWAP; verify manually.`,
+          );
+        }
+      }
+
+      if (!adoptFills) {
+        // Fills that span a cycle this recovery could not delimit are kept OUT of
+        // `this.orders`, and the carry-in above stands in for the whole gross (not
+        // just the unseen part). Blacklisting their ids — literally what the withhold
+        // decision means — stops a late push for one of them being counted twice on
+        // top of that carry-in (review round 4, nit).
+        for (const fill of currentCycleFills) {
+          const withheldId = fill.order.clientOrderId;
+          if (withheldId) this.previousCycleOrderIds.add(withheldId);
+        }
+      }
+
+      // The rest of the strategy works on GROSS inventory (see
+      // `_recoveredGrossInventory`): restore what the cycle bought — the position the
+      // DB still shows plus what its TP already sold. Step 4c then recovers the same
+      // amount into `tpFilledQty`, so the TP is sized
+      // `inventoryQty - tpFilledQty = netPos`, i.e. it exits exactly what is still
+      // held. The sold part is only known after Step 4c, so flag it and finish there
+      // (setting NET here would leave the TP short by the already-sold part).
+      this.inventoryQty = netPos;
+      this._pendingGrossRecovery = true;
+      this._recoveredNetPos = netPos;
+      this._recoveredNetPosTime = Date.now();
+
+      if (this.vwap.lte(0)) {
+        // No price anywhere → `computeTpPrice()` refuses a zero VWAP, so no TP can
+        // cover the position. Adding entries on top of an uncovered position
+        // compounds exactly the risk this recovery exists to remove, so placement
+        // is halted until a later fill supplies a price. Lock the pricing too:
+        // `recalculateVWAP()` would otherwise price the position from the visible
+        // subset of an incomplete fill set and release the halt by itself
+        // (round 4, N1).
+        this._positionUncovered = true;
+        this._recoveryPricingLocked = true;
+      }
+
+      this.logVisibleAlert(
+        `net_position_recovery:${this.getStrategyId()}`,
+        this.vwap.gt(0)
+          ? `strategyId=${this.getStrategyId()} symbol=${this._symbol}: no live entry and no live TP, ` +
+              `but strategyNetPosition=${netPos.toString()} > 0. Recovered from the DB net position ` +
+              `(inventory=${this.inventoryQty.toString()} gross = net ${netPos.toString()} + sold ${sold.toString()}, ` +
+              `VWAP=${this.vwap.toString()} via ${vwapSource}; ` +
+              `ladder anchor=${anchorSource}; fills adopted=${adoptFills}). Filled levels follow from the ` +
+              `quantity; the TP/recovery accounting covers the position.`
+          : `strategyId=${this.getStrategyId()} symbol=${this._symbol}: no live entry, no live TP and NO price ` +
+              `evidence, but strategyNetPosition=${netPos.toString()} > 0. Position UNCOVERED — no TP can be ` +
+              `priced (inventory=${this.inventoryQty.toString()} gross = net ${netPos.toString()} + sold ${sold.toString()}, ` +
+              `VWAP unknown; ladder anchor=${anchorSource}). ` +
+              `ENTRIES HALTED: this halt is not self-healing (entries are stopped, so no further fill can ` +
+              `supply a price) — MANUAL INTERVENTION IS REQUIRED.`,
+      );
+    }
+
     // Step 4c: Recover tpFilledQty from ALL SELL orders with executedQuantity > 0
     // in this.orders. This includes:
     //   - PARTIALLY_FILLED TP (from openOrders) — the active TP
@@ -3682,6 +4509,29 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       }
     }
 
+    // Step 4e (continued): now that Step 4c has recovered how much this cycle's TP
+    // already sold, restore the GROSS inventory the net-position recovery left NET.
+    // `tpQty = inventoryQty - tpFilledQty` then exits exactly the position the DB
+    // reports, which is what the NET reading alone would fall short of.
+    if (this._pendingGrossRecovery) {
+      this._pendingGrossRecovery = false;
+      const gross = this._recoveredNetPos.plus(this.tpFilledQty);
+      this.inventoryQty = gross;
+      this._recoveredGrossInventory = gross;
+      // Two independent sources describe what this cycle already sold: the SELL
+      // fills seen in the history (`sold`, used for the adoption cap and the
+      // carry-in) and Step 4c's sum over `this.orders`. A divergence would make the
+      // two gross values disagree, so say it out loud (review round 4, nit).
+      if (!this.tpFilledQty.eq(this._recoveredSoldThisCycle)) {
+        this.logVisibleAlert(
+          `net_position_recovery_sold_mismatch:${this.getStrategyId()}`,
+          `strategyId=${this.getStrategyId()} symbol=${this._symbol}: already-sold totals disagree — ` +
+            `history fills ${this._recoveredSoldThisCycle.toString()} vs Step 4c ${this.tpFilledQty.toString()}. ` +
+            `The TP may be sized off either one; verify manually.`,
+        );
+      }
+    }
+
     // Step 4d: Infer filled steps from inventoryQty when there is no active TP
     // order. Step 4a-b (TP-qty inference) requires tpClientOrderId to be set,
     // but when all TP orders were CANCELED/REJECTED (not active in openOrders),
@@ -3705,7 +4555,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
       !this.tpClientOrderId &&
       this.steps.length > 0
     ) {
-      let effectiveInventory = this.inventoryQty.plus(this.tpFilledQty);
+      // In the live state `inventoryQty` is the GROSS bought size and the sold part
+      // sits separately in `tpFilledQty`; a Step 4e recovery restored the gross
+      // directly (`_recoveredGrossInventory`), so adding `tpFilledQty` again would
+      // double count it and overstate the filled levels.
+      let effectiveInventory =
+        this._recoveredGrossInventory ?? this.inventoryQty.plus(this.tpFilledQty);
       let inferredFilledSteps = 0;
       let cumulative = new Decimal(0);
       for (let i = 0; i < this.steps.length; i++) {
@@ -3839,6 +4694,11 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
         signals.push(...this.refreshTakeProfit());
       }
     }
+
+    // The recovery verdict is final from here: open the cancel/placement gates
+    // again (the engine may have been driving `analyze()` throughout — see
+    // `_initialRecoveryCompletedAt`).
+    this._initialRecoveryCompletedAt = Date.now();
 
     // Step 6: Place remaining ladder entries
     // Decision tree when restarting with a recovered TP order:
@@ -4639,6 +5499,18 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this.inventoryQty = new Decimal(0);
     this.tpFilledQty = new Decimal(0);
     this.vwap = new Decimal(0);
+    // No position, so nothing is uncovered: a fresh/reset cycle starts unhalted.
+    this._positionUncovered = false;
+    // Drop every trace of the net-position recovery as well: a new cycle has nothing
+    // to do with the position that was recovered, and a leftover carry-in would be
+    // added on top of a fresh gross (review round 4, N1 - the oversell direction).
+    // The TP-filled path and `cleanup()` clear the same set.
+    this._recoveredGrossInventory = null;
+    this._pendingGrossRecovery = false;
+    this._recoveredCarryInQty = new Decimal(0);
+    this._recoveredCarryInCost = new Decimal(0);
+    this._recoveryPricingLocked = false;
+    this._recoveredSoldThisCycle = new Decimal(0);
     this.tpClientOrderId = null;
     this.tpRefreshPending = false;
     this.lastPartialFillTpTriggerTime = 0;
@@ -4650,6 +5522,12 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this._lastResetTime = 0;
     this._recoveredNetPos = new Decimal(0);
     this._recoveredNetPosTime = 0;
+    this._recoveredGrossInventory = null;
+    this._pendingGrossRecovery = false;
+    this._recoveredCarryInQty = new Decimal(0);
+    this._recoveredCarryInCost = new Decimal(0);
+    this._recoveryPricingLocked = false;
+    this._recoveredSoldThisCycle = new Decimal(0);
     this._currentAsk0 = new Decimal(0);
     this._currentBid0 = new Decimal(0);
     this._currentBid0Time = 0;
@@ -4660,6 +5538,7 @@ export class LadderEntrySingleTPStrategy extends BaseStrategy<LadderEntrySingleT
     this._unclaimedCancelIssuedAt.clear();
     this._selfCancelledEntryIds.clear(); // round 9, opus m3 (teardown symmetry)
     this._unclaimedStrayFirstSeenAt.clear();
+    this._snapshotEntryIds.clear();
     this._lastVisibleAlertAt.clear();
     this.previousCycleOrderIds.clear();
     this._logger.debug('LadderEntrySingleTPStrategy cleaned up');
